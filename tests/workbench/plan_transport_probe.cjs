@@ -1,16 +1,11 @@
 'use strict';
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
 const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js'];
 const scripts = files.map(name => ({name, source: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
-const digest = value => crypto.createHash('sha256').update(value).digest('hex');
-const sources = scripts.map(script => ({path: 'frontend/workbench/app/' + script.name, sha256: digest(script.source)}));
-for (const file of ['tests/workbench/plan_transport_probe.cjs', 'tests/workbench/test_plan_transport.py'])
-  sources.push({path: file, sha256: digest(fs.readFileSync(path.join(root, file)))});
 const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 const P = 'a'.repeat(48), OTHER = 'b'.repeat(48), TASK = 'c'.repeat(48), OP = 'd'.repeat(48);
 const START = '2026-09-09T22:30:00', END = '2026-09-10T06:30:00';
@@ -329,6 +324,6 @@ async function exports() {
 async function run() {
   if (!input.fixturesOnly) { await requests(); await contracts(); await failures(); await exports(); }
   await backendFixtures();
-  console.log(JSON.stringify({checks: cases.length, cases, sources, network: 'mock-only', production: false, methods: ['GET']}));
+  console.log(JSON.stringify({checks: cases.length, cases, network: 'mock-only', production: false, methods: ['GET']}));
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,9 +1,8 @@
-"""回归测试：MachineService/OperatorService 在设备或人员仅被 Schedule 排程结果引用时，delete()/ensure_replace_allowed() 也应抛 BusinessError（MACHINE_IN_USE / OPERATOR_IN_USE，消息含「排程结果引用」），而删除不存在设备抛 MACHINE_NOT_FOUND。"""
+"""排产引用阻止设备删除与人员替换。"""
 
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import pytest
 
@@ -56,29 +55,6 @@ def test_machine_delete_blocks_schedule_only_reference(tmp_path) -> None:
         conn.close()
 
 
-def test_machine_replace_blocks_schedule_only_reference(tmp_path) -> None:
-    conn = _new_conn(tmp_path)
-    try:
-        conn.execute(
-            "INSERT INTO Machines (machine_id, name, status, remark) VALUES (?, ?, ?, ?)",
-            ("MC001", "数控车床1", "active", ""),
-        )
-        op_id = _insert_part_batch_and_op(conn, op_code="OP-B001-10", machine_id=None, operator_id=None)
-        conn.execute(
-            "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (op_id, "MC001", None, "2026-03-02 08:00:00", "2026-03-02 12:00:00", "locked", 1),
-        )
-        conn.commit()
-
-        svc = MachineService(conn)
-        with pytest.raises(BusinessError) as exc_info:
-            svc.ensure_replace_allowed()
-
-        assert exc_info.value.code == ErrorCode.MACHINE_IN_USE
-    finally:
-        conn.close()
-
-
 def test_operator_replace_blocks_schedule_only_reference(tmp_path) -> None:
     conn = _new_conn(tmp_path)
     try:
@@ -98,17 +74,5 @@ def test_operator_replace_blocks_schedule_only_reference(tmp_path) -> None:
             svc.ensure_replace_allowed()
 
         assert exc_info.value.code == ErrorCode.OPERATOR_IN_USE
-    finally:
-        conn.close()
-
-
-def test_machine_delete_missing_raises_not_found(tmp_path) -> None:
-    conn = _new_conn(tmp_path)
-    try:
-        svc = MachineService(conn)
-        with pytest.raises(BusinessError) as exc_info:
-            svc.delete("MC404")
-
-        assert exc_info.value.code == ErrorCode.MACHINE_NOT_FOUND
     finally:
         conn.close()

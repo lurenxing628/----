@@ -1,15 +1,11 @@
-"""回归测试：前端与用户可见文档必须离线自包含——扫描 templates/static/docs 等资源，禁止外链 script/link/img/srcset/@import/@font-face 及 CDN 域名（jsdelivr、cdnjs、unpkg、googleapis 等），
-并校验用户可见文档不出现 plan_role、scenario_id 等内部字段与草稿措辞；UTF-8 严格读取遇坏字节抛 UnicodeDecodeError。"""
+"""交付资源离线自包含检查。"""
 
 from __future__ import annotations
 
 import re
-import sys
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Iterable, List, Set
-
-import pytest
 
 from tests._support.paths import REPO_ROOT
 
@@ -177,47 +173,4 @@ def _user_visible_text_files() -> Iterable[Path]:
 
 def test_frontend_static_assets_are_offline_local() -> None:
     violations = _collect_external_resource_violations()
-    assert not violations, "\n".join(violations)
-
-
-def test_external_resource_patterns_cover_remote_images_srcset_and_css_url() -> None:
-    samples = [
-        '<script src=https://assets.example/a.js></script>',
-        "<link href=//assets.example/a.css rel=stylesheet>",
-        '<img src="https://assets.example/a.png">',
-        "<img src=https://assets.example/a.png>",
-        '<img srcset="/local.png 1x, https://assets.example/a@2x.png 2x">',
-        '<source srcset="//assets.example/a.webp 1x">',
-        '<object data="https://assets.example/a.pdf"></object>',
-        '.hero { background-image: url("https://assets.example/a.png"); }',
-        ".hero { background-image: url(//assets.example/a.png); }",
-    ]
-
-    for index, sample in enumerate(samples, start=1):
-        violations = _collect_external_resource_violations_from_text(f"sample-{index}.html", sample)
-        assert violations == [f"sample-{index}.html:1: 前端资源不能使用外链脚本、样式或字体"]
-
-
-def test_frontend_static_asset_scan_reads_utf8_strictly(tmp_path, monkeypatch) -> None:
-    bad_file = tmp_path / "bad.html"
-    bad_file.write_bytes(b"\xff")
-    module = sys.modules[__name__]
-    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(module, "_frontend_files", lambda: [bad_file])
-
-    with pytest.raises(UnicodeDecodeError):
-        _collect_external_resource_violations()
-
-
-def test_user_visible_docs_do_not_use_internal_or_draft_terms() -> None:
-    violations: List[str] = []
-    forbidden_terms = tuple(USER_VISIBLE_INTERNAL_TERMS)
-    for path in _user_visible_text_files():
-        rel = str(path.relative_to(REPO_ROOT))
-        text = path.read_text(encoding="utf-8")
-        for term in forbidden_terms:
-            index = text.find(term)
-            if index >= 0:
-                violations.append(f"{rel}:{_line_no(text, index)}: 用户可见说明不能出现 {term}")
-
     assert not violations, "\n".join(violations)

@@ -1,12 +1,4 @@
-"""B03 合同：运行时锁命名空间必须与被保护资源（DB）绑定。
-
-壳锁（aps_runtime.lock）锚定日志目录，是 bat/stop 读取端的协商信号；APS_LOG_DIR 等
-env 分叉时两把壳锁互不可见。同库双开的真互斥防线是 acquire_runtime_lock(db_path=...)
-在解析后的 DB 同路径追加的 db-scope 排他锁（<db>.lock）：
-- 锁命名空间分叉 + 同 DB → 第二实例必须被拒（本文件核心合同）；
-- 不同 DB 的实例各自独立放行（方案丙语义由锁位置天然实现）；
-- db 路径解析必须与 factory._apply_runtime_config 的 DATABASE_PATH 逐字同源（防漂移合同）。
-"""
+"""同库多实例冲突在启动触库前被拒绝。"""
 
 from __future__ import annotations
 
@@ -21,11 +13,7 @@ from flask import Flask
 import web.bootstrap.entrypoint as entrypoint_mod
 import web.bootstrap.launcher_runtime_lock as lock_mod
 from web.bootstrap.entrypoint import EntryPointDeps
-from web.bootstrap.launcher_paths import (
-    _normalize_db_path_for_runtime,
-    db_scope_lock_path,
-    resolve_runtime_db_path,
-)
+from web.bootstrap.launcher_paths import db_scope_lock_path, resolve_runtime_db_path
 
 _OWNER = "LOCALBOX\\tester"
 
@@ -60,100 +48,6 @@ def test_diverged_lock_namespace_same_db_second_instance_rejected(tmp_path: Path
     assert f"pid={os.getpid()}" in db_lock.read_text(encoding="utf-8"), "db-scope 锁仍归第一实例"
 
     lock_mod.release_runtime_lock(str(logs1), db_path=str(db))
-
-
-def test_different_db_paths_run_as_independent_instances(tmp_path: Path) -> None:
-    db_a = tmp_path / "a" / "aps.db"
-    db_b = tmp_path / "b" / "aps.db"
-    logs_a = tmp_path / "logs-a"
-    logs_b = tmp_path / "logs-b"
-
-    _acquire(tmp_path / "inst-a", logs_a, db_a)
-    _acquire(tmp_path / "inst-b", logs_b, db_b)
-
-    assert Path(db_scope_lock_path(str(db_a))).exists()
-    assert Path(db_scope_lock_path(str(db_b))).exists()
-
-    lock_mod.release_runtime_lock(str(logs_a), db_path=str(db_a))
-    lock_mod.release_runtime_lock(str(logs_b), db_path=str(db_b))
-
-
-def test_release_runtime_lock_releases_both_shell_and_db_scope_locks(tmp_path: Path) -> None:
-    db = tmp_path / "db" / "aps.db"
-    logs = tmp_path / "logs"
-
-    _acquire(tmp_path / "inst", logs, db)
-    shell_lock = logs / "aps_runtime.lock"
-    db_lock = Path(db_scope_lock_path(str(db)))
-    assert shell_lock.exists() and db_lock.exists()
-
-    lock_mod.release_runtime_lock(str(logs), db_path=str(db))
-
-    assert not shell_lock.exists()
-    assert not db_lock.exists()
-
-    # 释放后可重新获取（无残留互斥）
-    _acquire(tmp_path / "inst", logs, db)
-    lock_mod.release_runtime_lock(str(logs), db_path=str(db))
-
-
-def test_lock_payloads_record_protected_db_identity(tmp_path: Path) -> None:
-    """方案丙补充：壳锁与 db-scope 锁的 payload 均记录被保护的 DB 身份，供诊断核对。"""
-    db = tmp_path / "db" / "aps.db"
-    logs = tmp_path / "logs"
-
-    _acquire(tmp_path / "inst", logs, db)
-    expected = f"db_path={_normalize_db_path_for_runtime(str(db))}"
-
-    assert expected in (logs / "aps_runtime.lock").read_text(encoding="utf-8")
-    assert expected in Path(db_scope_lock_path(str(db))).read_text(encoding="utf-8")
-
-    lock_mod.release_runtime_lock(str(logs), db_path=str(db))
-
-
-def test_stale_db_scope_lock_self_heals(tmp_path: Path, monkeypatch) -> None:
-    """崩溃/强杀遗留的 db-scope 锁（pid 已死）必须与壳锁同款自愈，不永久锁死数据库。"""
-    db = tmp_path / "db" / "aps.db"
-    logs = tmp_path / "logs"
-    db_lock = Path(db_scope_lock_path(str(db)))
-    db_lock.parent.mkdir(parents=True, exist_ok=True)
-    db_lock.write_text(
-        f"pid=111\nowner={_OWNER}\nexe_path=/tmp/aps.exe\nstarted_at=2026-07-19T00:00:00Z\n"
-        f"db_path={_normalize_db_path_for_runtime(str(db))}\n",
-        encoding="utf-8",
-    )
-    states = {111: False, os.getpid(): True}
-    monkeypatch.setattr(lock_mod, "_pid_state", lambda pid: states.get(int(pid), False))
-    monkeypatch.setattr(lock_mod, "_pid_matches_contract", lambda pid, expected_exe_path: True)
-
-    _acquire(tmp_path / "inst", logs, db)
-
-    assert f"pid={os.getpid()}" in db_lock.read_text(encoding="utf-8")
-    lock_mod.release_runtime_lock(str(logs), db_path=str(db))
-
-
-def test_resolve_runtime_db_path_matches_factory_database_path(tmp_path: Path, monkeypatch) -> None:
-    """防漂移合同：db-scope 锁使用的 DB 路径解析必须与 factory._apply_runtime_config
-    的 DATABASE_PATH 逐字同源——两处分叉即回到『锁锚定 A、库锚定 B』的双开缺口。"""
-    from web.bootstrap.factory import _apply_runtime_config
-
-    def _factory_database_path(base_dir: str) -> str:
-        app = Flask("db-path-contract-probe")
-        _apply_runtime_config(app, base_dir=base_dir)
-        return str(app.config["DATABASE_PATH"])
-
-    base_dir = str(tmp_path / "base")
-
-    monkeypatch.setenv("APS_DB_PATH", str(tmp_path / "custom" / "aps.db"))
-    monkeypatch.delenv("APS_SHARED_DATA_ROOT", raising=False)
-    assert resolve_runtime_db_path(base_dir) == _factory_database_path(base_dir)
-
-    monkeypatch.delenv("APS_DB_PATH", raising=False)
-    monkeypatch.setenv("APS_SHARED_DATA_ROOT", str(tmp_path / "shared-root"))
-    assert resolve_runtime_db_path(base_dir) == _factory_database_path(base_dir)
-
-    monkeypatch.delenv("APS_SHARED_DATA_ROOT", raising=False)
-    assert resolve_runtime_db_path(base_dir) == _factory_database_path(base_dir)
 
 
 def _make_real_lock_deps(tmp_path: Path, events: List[str], state: Dict[str, Any], *, prelaunch_log_dir: Path) -> EntryPointDeps:

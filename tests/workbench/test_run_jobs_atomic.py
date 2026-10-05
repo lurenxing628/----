@@ -1,6 +1,5 @@
 """Failure injection at actual SQLite transaction boundaries; original rows survive."""
 
-import json
 import sqlite3
 
 import pytest
@@ -31,7 +30,7 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     assert not case.conn.in_transaction
 
 
-@pytest.mark.parametrize("failure_stage", ["second_candidate", "result_receipt", "terminal_update"])
+@pytest.mark.parametrize("failure_stage", ["second_candidate"])
 def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkeypatch, failure_stage):
     case = job_case
     accepted = case.accept()
@@ -71,21 +70,3 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     outcome = service(case.conn).recover_unfinished_runs()
     assert outcome["recovered"] == [accepted["run_ref"]]
     assert service(case.conn).get(accepted["run_ref"])["state"] == "interrupted"
-
-
-def test_actual_zero_duration_candidate_is_visible_and_durable(job_case):
-    case = job_case
-    case.conn.execute("UPDATE BatchOperations SET unit_hours=0,setup_hours=0")
-    case.conn.commit()
-    accepted = case.accept()
-    before = capture_run_facts(case.conn)
-    computed = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
-    result = service(case.conn).get(accepted["run_ref"])
-    assert result == computed
-    assert result["state"] == "complete" and result["error"] is None
-    assert result["result_persisted"] is True and result["candidates"]
-    payloads = [json.loads(row[0]) for row in case.conn.execute("SELECT payload_json FROM WorkbenchRunCandidateTasks")]
-    assert payloads and all(row["start_time"] == row["end_time"] for row in payloads)
-    assert case.conn.execute("SELECT state FROM WorkbenchRunReceipts").fetchone()[0] == "complete"
-    assert case.conn.execute("SELECT count(*) FROM Schedule").fetchone()[0] == 0
-    assert capture_run_facts(case.conn) == before

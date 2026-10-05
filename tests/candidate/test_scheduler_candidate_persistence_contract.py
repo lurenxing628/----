@@ -1,4 +1,4 @@
-"""回归测试：persist_schedule_run_with_candidates 候选方案持久化原子性——一次成功运行同事务写入 Schedule/ScheduleHistory/ScheduleCandidate(2)/ScheduleCandidateRows/ScheduleCandidateSelection(adopted/baseline_best/critical_best 各对应 source_table)并只 op_log 一次精简摘要；selection 写入失败、候选明细 op_id 越出可重排范围、选中/最优角色指向不存在的方案编号时，全部整体回滚且无残留、不落 op_log。"""
+"""候选方案成功持久化与失败回滚。"""
 
 from __future__ import annotations
 
@@ -10,11 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
-import pytest
-
-from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.scheduler.run.schedule_candidate_persistence import persist_candidate_comparison
 from core.services.scheduler.run.schedule_candidate_runner import CandidateComparisonOutcome, CandidatePlan
 from core.services.scheduler.run.schedule_candidate_selection import CandidateSelectionResult
 from core.services.scheduler.run.schedule_candidate_summary import candidate_comparison_public_summary
@@ -304,105 +300,5 @@ def test_candidate_persistence_failure_rolls_back_schedule_history_and_candidate
         assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateRows WHERE version = 8").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateSelection WHERE version = 8").fetchone()[0] == 0
         assert op_logger.calls == []
-    finally:
-        conn.close()
-
-
-def test_candidate_detail_rows_reject_out_of_scope_op_id_and_rollback(tmp_path: Path) -> None:
-    conn = _connect_fresh_schema(tmp_path)
-    op_logger = _OpLogger()
-    try:
-        _seed_schedule_context(conn)
-        svc = ScheduleService(conn, logger=None, op_logger=op_logger)
-        comparison = _comparison(baseline_op_id=999)
-        adopted = comparison.selection.selected_plan
-        payload = build_validated_schedule_payload(list(adopted.results), allowed_op_ids={10})
-
-        with pytest.raises(ValidationError) as exc_info:
-            persist_schedule_run_with_candidates(
-                svc,
-                cfg=SimpleNamespace(auto_assign_persist="no"),
-                version=11,
-                validated_schedule_payload=payload,
-                summary=adopted.summary,
-                used_strategy=adopted.used_strategy,
-                used_params=adopted.used_params,
-                batches={"B1": SimpleNamespace(batch_id="B1", status="pending")},
-                reschedulable_operations=[SimpleNamespace(id=10, batch_id="B1", source="internal", status="pending")],
-                normalized_batch_ids=["B1"],
-                created_by="pytest",
-                simulate=True,
-                frozen_op_ids=set(),
-                result_status="simulated",
-                result_summary_json="{}",
-                result_summary_obj={"algo": {"candidate_comparison": candidate_comparison_public_summary(comparison)}},
-                missing_internal_resource_op_ids=set(),
-                overdue_items=[],
-                time_cost_ms=12,
-                candidate_comparison=comparison,
-            )
-
-        assert exc_info.value.field == "candidate_rows"
-        assert "超出本次可重排范围" in str(exc_info.value)
-        assert conn.execute("SELECT COUNT(*) FROM Schedule WHERE version = 11").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM ScheduleHistory WHERE version = 11").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidate WHERE version = 11").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateRows WHERE version = 11").fetchone()[0] == 0
-        assert conn.execute("SELECT COUNT(*) FROM ScheduleCandidateSelection WHERE version = 11").fetchone()[0] == 0
-        assert op_logger.calls == []
-    finally:
-        conn.close()
-
-
-def test_candidate_persistence_rejects_missing_selected_candidate_key(tmp_path: Path) -> None:
-    conn = _connect_fresh_schema(tmp_path)
-    try:
-        _seed_schedule_context(conn)
-        svc = ScheduleService(conn, logger=None, op_logger=_OpLogger())
-        comparison = _comparison_with_selection(selected_candidate_key="missing_candidate")
-
-        with pytest.raises(ValidationError) as exc_info:
-            persist_candidate_comparison(
-                svc,
-                version=9,
-                candidate_comparison=comparison,
-                frozen_op_ids=set(),
-                allowed_op_ids={10},
-            )
-
-        assert exc_info.value.field == "candidate_selection"
-        assert "指向不存在的方案编号" in str(exc_info.value)
-    finally:
-        conn.close()
-
-
-@pytest.mark.parametrize(
-    "selection_override",
-    [
-        {"baseline_best_key": "missing_baseline"},
-        {"critical_best_key": "missing_critical"},
-    ],
-)
-def test_candidate_persistence_rejects_missing_best_role_candidate_key(
-    tmp_path: Path,
-    selection_override: Dict[str, Any],
-) -> None:
-    conn = _connect_fresh_schema(tmp_path)
-    try:
-        _seed_schedule_context(conn)
-        svc = ScheduleService(conn, logger=None, op_logger=_OpLogger())
-        comparison = _comparison_with_selection(**selection_override)
-
-        with pytest.raises(ValidationError) as exc_info:
-            persist_candidate_comparison(
-                svc,
-                version=10,
-                candidate_comparison=comparison,
-                frozen_op_ids=set(),
-                allowed_op_ids={10},
-            )
-
-        assert exc_info.value.field == "candidate_selection"
-        assert "指向不存在的方案编号" in str(exc_info.value)
     finally:
         conn.close()

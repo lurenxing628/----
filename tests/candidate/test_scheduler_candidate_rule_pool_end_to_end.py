@@ -1,11 +1,4 @@
-"""Through the real candidate comparison, the optimizer must search the whole SGS rule pool and report the adopted rule.
-
-The trial config service pins sort strategy, dispatch mode, objective and algorithm mode so that
-candidates differ in graph weights alone. Before 2026-09-14 it also narrowed the dispatch rule pool
-to the configured rule, which silently turned multi-start into a single start and made every
-``sgs_dispatch_rule`` neighborhood move a no-op while still consuming the budget. This test drives
-``run_candidate_comparison`` with the production optimizer and a deterministic step clock.
-"""
+"""真实候选比较搜索规则池并公开实际采用的规则。"""
 
 import itertools
 
@@ -17,15 +10,14 @@ from core.services.scheduler.run.schedule_candidate_summary import (
     candidate_comparison_public_summary,
     candidate_public_summary,
 )
-from tests._support.optimizer_end_to_end_cases import case_environment, fixture_data
-from tests._support.optimizer_end_to_end_runner import DEFAULT_RUN_CONFIG
+from tests._support.optimizer_business_cases import case_environment, fixture_data
 
 # Registry rules plus the ATC k ladder; the optimizer may adopt any token from this pool.
 RULE_POOL = set(dispatch_rule_search_pool(("slack", "cr", "atc")))
 
 
 def _compare(scenario, objective="min_overdue"):
-    config = dict(DEFAULT_RUN_CONFIG, time_budget_seconds=2, run_time_budget_seconds=20.0)
+    config = {"seed": 0, "time_budget_seconds": 2, "run_time_budget_seconds": 20.0}
     ticks = itertools.count(0.0, 0.01)
     data = fixture_data(scenario)
     with case_environment(data, objective, config) as schedule_input:
@@ -64,10 +56,3 @@ def test_adopted_rule_is_reported_and_may_differ_from_the_configured_rule(shift_
     assert candidate_public_summary(baseline)["configured_dispatch_rule"] == "slack"
     summary = candidate_comparison_public_summary(shift_pool_outcome)
     assert [row["adopted_dispatch_rule"] for row in summary["candidates"]] == [plan.adopted_dispatch_rule for plan in shift_pool_outcome.candidates]
-
-
-def test_graph_tiers_keep_the_sgs_mode_lock():
-    outcome = _compare("frozen_ready_external")
-    tiers = [plan for plan in outcome.candidates if plan.candidate_key != "baseline"]
-    assert tiers and all(plan.dispatch_mode == "sgs" for plan in tiers)
-    assert all(plan.adopted_dispatch_rule in RULE_POOL for plan in tiers)

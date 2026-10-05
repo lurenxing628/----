@@ -61,7 +61,7 @@ py -3.8 -m venv .venv
 .venv\Scripts\python scripts/run_daily_quality_gate.py
 ```
 
-它会先看本次到底改了哪些文件：只改 README、开发文档或 CodeStable 记录时，不跑 required pytest，只做本地运行产物拦截、pytest 收集检查和一小组重点冒烟测试；改了 Python 文件时，只对这些还存在的 Python 文件跑 `ruff check`；改了公共配置、门禁工具配置，或脚本判断不出改动范围时，才退回全仓 `ruff check` 和更保守的 required pytest。
+它会先看本次改了哪些文件：只改 README、开发文档或 CodeStable 记录时，只做本地产物拦截和一小组重点冒烟测试；改了 Python 文件时，只对这些还存在的 Python 文件跑 `ruff check`，并把受影响的测试文件与重点冒烟用例合成一次 pytest；公共配置、门禁工具配置或改动范围无法判断时，使用全仓静态检查和保留的业务回归。日常门禁不再另跑全仓收集检查，也不重复执行已经包含在目标文件里的重点用例。
 
 请注意：这条命令只用来尽快挡住明显问题，**不是最终 clean proof**。它不声明 full-test-debt proof，也不声明干净工作区证明。`.pre-commit-config.yaml` 的 pre-push hook 现在默认调用这条快门禁，所以日常推送不会每次都被完整 full-test-debt 执行拖住。
 
@@ -81,7 +81,7 @@ py -3.8 -m venv .venv
 .venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache
 ```
 
-如果已经激活 `.venv`，也可以把上面的 `.venv\Scripts\python` 简写成 `python`。这个入口会统一串联测试收集、full-test-debt proof、`ruff`、`pyright`、架构适应度、治理台账、启动链专项回归和速查表一致性检查。本地与托管环境都以这条入口为准。维护者想完全不复用 long gate cache 手动重跑时，可以去掉 `--long-gate-cache`，或显式加 `--no-long-gate-cache`。
+如果已经激活 `.venv`，也可以把上面的 `.venv\Scripts\python` 简写成 `python`。这个入口会统一串联测试收集、full-test-debt proof、`ruff`、`pyright`、治理台账和速查表一致性检查。保留的测试在全量 pytest 中执行，required 回归复用这次运行结果；架构自测和启动链独立重复回归已经退役。本地与托管环境都以这条入口为准。维护者想完全不复用 long gate cache 手动重跑时，可以去掉 `--long-gate-cache`，或显式加 `--no-long-gate-cache`。
 
 full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败，已登记的 full pytest 测试债务被台账管住，并且数量只能减少。它不是说历史 5 条测试债务已经全部修完。
 
@@ -89,7 +89,6 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 
 ```powershell
 .venv\Scripts\python -m pytest --collect-only tests -q
-.venv\Scripts\python -m pytest tests/gate_meta -q
 .venv\Scripts\python -m pytest tests -q
 .venv\Scripts\python scripts\run_quality_gate.py --fast-precheck
 .venv\Scripts\python -m pyright --version
@@ -101,12 +100,13 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 补充说明：
 
 - `.venv\Scripts\python -m pytest --collect-only tests -q` 只列出测试，不执行 full pytest。
-- `.venv\Scripts\python -m pytest tests/gate_meta -q` 用于先跑门禁自身的合同测试；`.venv\Scripts\python -m pytest tests -q` 是直接执行全量测试。
+- `.venv\Scripts\python -m pytest tests -q` 执行全部保留的业务测试；Windows 的 `run_smoke_full_e2e.bat` 使用同一入口。
+- 测试分组与必跑清单统一维护在 `tools/test_registry_data.py`，不再维护单独的浏览器测试车道。
 - `.venv\Scripts\python scripts\run_quality_gate.py --fast-precheck` 只对本次改动相关的 Python 文件跑局部 ruff，用来提前提醒明显问题。它不是 `ruff_check_full`，也不是 `pyright_gate_full` / `pyright_tools_full`，不能当成完整质量门禁、clean proof 或 long gate proof。
 - 上面这些常用定向命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
 - 质量门禁里的 full pytest 收口检查由 `.venv\Scripts\python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
 - 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会生成本次 full-test-debt 的 current/summary 证明，不会写 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
-- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`；当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
+- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync` 和 `quickref_vs_routes`。
 - 要预热最终完整门禁会用到的 long gate 缓存，请跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。这条命令成功后，才会留下 long gate success cache。
 - CI 里也会复用 long gate cache：GitHub Actions 在完整门禁前恢复缓存，完整门禁成功后再保存缓存。缓存 key 的前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` / `requirements-optimizer-lite-win7.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含已被忽略、下次复用会用到的 `evidence/QualityGate/` 运行产物，例如 `evidence/QualityGate/long_gate/`、几份 long gate proof JSON 和 `evidence/QualityGate/quickref_vs_routes.md`，不会把本机旧证据目录重新提交到仓库。pull request 只允许读取已有缓存，不会把自己的运行产物保存回主仓库缓存；只有 `push` 和手动 `workflow_dispatch` 在完整门禁成功后会保存。
 - long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；证据缺失、损坏或 hash 不一致都会自动重跑。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住。
@@ -135,7 +135,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `templates/`、`static/`：页面模板与本地静态资源。
 - `templates_excel/`：运行时的 Excel 模板目录，随包不再附带示例文件；业务表模板由工作台按表描述现生成。
 - `plugins/`：自研插件目录，当前插件默认关闭。
-- `tests/`：自动化测试；新增回归优先写成标准 `test_*.py` 用例，并按业务目录或 `tests/gate_meta/` 落点。
+- `tests/`：精简后的业务回归，按业务目录放置标准 `test_*.py` 用例；`tests/gate_meta/` 只保留速查表检查工具。
 - `开发文档/`：开发说明、系统速查表、页面与接口清单、设计资料。
 - `AGENTS.md`：AI 协作约定、CodeStable 分流规则和 APS 硬约束。
 - `installer/`：Win7 双包安装器说明与脚本。

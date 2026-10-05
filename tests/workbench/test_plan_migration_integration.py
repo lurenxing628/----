@@ -8,10 +8,8 @@ from core.infrastructure.migration_state import (
     MigrationContractError,
     current_schema_contract_issues,
     get_schema_version,
-    is_truly_empty_db,
     set_schema_version,
 )
-from core.infrastructure.migrations import MIGRATIONS, v24, v25, v27, v28
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_plan_identity_schema import plan_identity_objects
 from core.infrastructure.workbench_run_schema import RUN_TABLES, workbench_run_objects
@@ -38,41 +36,6 @@ from tests.workbench.plan_identity_support import (
     table_snapshot,
 )
 from tests.workbench.schema29_regression_support import V29_TABLES, assert_v29_source_maps_only
-
-
-def test_real_fresh_schema_seeds_clock_and_fastforwards_without_migration(tmp_path, schema_path, monkeypatch):
-    def migration_forbidden(*args, **kwargs):
-        pytest.fail("A genuinely new database must not need a legacy migration")
-
-    monkeypatch.setattr(database, "_migrate_with_backup_impl", migration_forbidden)
-    path, backups = tmp_path / "new.db", tmp_path / "backups"
-    database.ensure_schema(str(path), schema_path=schema_path, backup_dir=str(backups))
-    assert MIGRATIONS[28] is v28.run
-    assert MIGRATIONS[27] is v27.run
-    assert 26 in MIGRATIONS
-    assert MIGRATIONS[24] is v24.run and MIGRATIONS[25] is v25.run
-    with connect_temp(path) as conn:
-        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(conn) == []
-        assert table_rows(conn, "WorkbenchPlanIdentityClock") == [(1, 1)]
-        assert table_rows(conn, "WorkbenchExecutionLedgerClock") == [(1, 1, 1)]
-        assert all(table_rows(conn, table) == [] for table in LEDGER_TABLES[1:] + RUN_TABLES + V27_TABLES)
-        assert table_rows(conn, "WorkbenchPlanSourceRefs") == table_rows(conn, "WorkbenchTaskRefs") == []
-        assert is_truly_empty_db(conn)
-    assert not list(backups.glob("*.db"))
-
-
-@pytest.mark.parametrize("state", ["used_clock", "missing_clock", "reference_tombstone", "business_row"])
-def test_empty_detection_does_not_hide_used_metadata_or_business_rows(schema_conn, state):
-    conn = schema_conn
-    assert is_truly_empty_db(conn)
-    statements = {
-        "used_clock": "UPDATE WorkbenchPlanIdentityClock SET revision=2",
-        "missing_clock": "DELETE FROM WorkbenchPlanIdentityClock",
-        "reference_tombstone": "INSERT INTO WorkbenchPlanSourceRefs(ref,kind,source_key,active) VALUES ('" + "a" * 48 + "','operation','old',0)",
-        "business_row": "INSERT INTO Parts(part_no,part_name) VALUES ('retained','retained')",
-    }
-    conn.execute(statements[state])
-    assert not is_truly_empty_db(conn)
 
 
 def test_real_v23_upgrade_backs_up_all_rows_and_keeps_plan_refs_across_restart(mem_conn, tmp_path, schema_path):

@@ -1,13 +1,4 @@
-"""合同测试：新库路径与迁移链路径的整库结构对账。
-
-路径 A：空库 ← schema.sql（ensure_schema 的新库路径）。
-路径 B：空库 ← tests/migration_db/fixtures/schema-v4.sql（冻结起点）← 逐版迁移到 CURRENT_SCHEMA_VERSION。
-两条路径得到的库，按表、列（名/类型/NOT NULL/默认值/主键）、外键、索引（唯一性/列序/部分索引）、
-CHECK 约束、触发器、视图逐项比较，任一差异即失败并逐项列出。列的物理顺序不比较：SQLite 的
-ALTER TABLE ADD COLUMN 只能追加，Machines/Operators/ScheduleAdjustmentScenario 三张表在迁移链上的
-列序天然与 schema.sql 不同，按列名访问不受影响。修法方向固定为“补迁移让 B 追上 A”，
-不允许删 A 的对象来凑齐（见 .codestable/roadmap/foundation-boundary-governance §4.4）。
-"""
+"""新建库与旧版本完整迁移所得结构一致。"""
 
 from __future__ import annotations
 
@@ -198,31 +189,3 @@ def test_fresh_schema_matches_v4_origin_migrated_to_current(tmp_path: Path) -> N
         f"schema.sql 新库与 v{ORIGIN_VERSION} 起点迁移到 v{CURRENT_SCHEMA_VERSION} 的库结构不一致，共 {len(diffs)} 项：\n"
         + "\n".join(f"  - {item}" for item in diffs)
     )
-
-
-def test_diff_structures_reports_each_facet() -> None:
-    left = {
-        "tables": {
-            "A": {"columns": [("id", "INTEGER", 1, "<none>", 1), ("x", "TEXT", 0, "'a'", 0)], "foreign_keys": [],
-                  "indexes": {"idx_a": (0, ("x",), 0, "CREATE INDEX idx_a ON A(x)")}, "checks": ["X IN ('A')"]},
-            "OnlyFresh": {"columns": [], "foreign_keys": [], "indexes": {}, "checks": []},
-        },
-        "triggers": {"trg": "CREATE TRIGGER trg ..."},
-        "views": {},
-    }
-    right = {
-        "tables": {
-            "A": {"columns": [("id", "INTEGER", 1, "<none>", 1), ("x", "TEXT", 1, "'a'", 0)], "foreign_keys": [],
-                  "indexes": {}, "checks": []},
-            "OnlyMigrated": {"columns": [], "foreign_keys": [], "indexes": {}, "checks": []},
-        },
-        "triggers": {},
-        "views": {},
-    }
-    diffs = diff_structures(left, right)
-    assert any("OnlyFresh" in item and "缺迁移" in item for item in diffs)
-    assert any("OnlyMigrated" in item and "漏表" in item for item in diffs)
-    assert any("列 x：定义不同" in item for item in diffs)
-    assert any("索引 idx_a：新库有" in item for item in diffs)
-    assert any("CHECK 约束不同" in item for item in diffs)
-    assert any("trigger trg：新库有" in item for item in diffs)

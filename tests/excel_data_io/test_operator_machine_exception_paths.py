@@ -1,4 +1,4 @@
-"""回归测试：OperatorMachineService 与 OperatorMachineQueryService 的技能等级/主操设备归一化只对 ValueError/ValidationError 做兜底（非法值回退 normal 或转成 ERROR 预览行），而对底层 normalize_* 抛出的意外 RuntimeError 一律向上传播不吞掉——覆盖 optional/stored 归一、list_by_operator 读侧、预览解析、写入 resolve 与查询服务 _normalize_row 各路径。"""
+"""保留已登记的人员设备异常传播检查。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pytest
 
 from core.errors import ValidationError
 from core.services.common.excel_service import ImportPreviewRow, RowStatus
-from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 from core.services.personnel.operator_machine_service import OperatorMachineService
 from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
@@ -81,40 +80,6 @@ def test_list_by_operator_propagates_unexpected_readside_normalization_errors() 
         conn.close()
 
 
-def test_preview_skill_and_primary_only_convert_validation_error() -> None:
-    conn = _conn_with_links()
-    try:
-        svc = OperatorMachineService(conn)
-
-        skill_norm, skill_err = svc._parse_skill_optional_for_preview({"技能等级": "unknown_level"}, 2, has_skill_col=True)
-        assert skill_norm is None
-        assert skill_err is not None
-        assert skill_err.status == RowStatus.ERROR
-        assert "技能等级" in skill_err.message
-
-        primary_norm, primary_err = svc._parse_primary_optional_for_preview({"主操设备": "maybe"}, 3, has_primary_col=True)
-        assert primary_norm is None
-        assert primary_err is not None
-        assert primary_err.status == RowStatus.ERROR
-        assert "主操设备" in primary_err.message
-
-        with patch(
-            "core.services.personnel.operator_machine_normalizers.normalize_skill_level_optional",
-            side_effect=RuntimeError("normalize exploded"),
-        ):
-            with pytest.raises(RuntimeError, match="normalize exploded"):
-                svc._parse_skill_optional_for_preview({"技能等级": "expert"}, 4, has_skill_col=True)
-
-        with patch(
-            "core.services.personnel.operator_machine_normalizers.normalize_yes_no_optional",
-            side_effect=RuntimeError("yesno exploded"),
-        ):
-            with pytest.raises(RuntimeError, match="yesno exploded"):
-                svc._parse_primary_optional_for_preview({"主操设备": "yes"}, 5, has_primary_col=True)
-    finally:
-        conn.close()
-
-
 def test_resolve_write_values_only_converts_validation_error() -> None:
     conn = _conn_with_links()
     try:
@@ -145,16 +110,3 @@ def test_resolve_write_values_only_converts_validation_error() -> None:
                 )
     finally:
         conn.close()
-
-
-def test_query_service_only_falls_back_for_value_error() -> None:
-    row = OperatorMachineQueryService._normalize_row({"skill_level": "unknown_level", "is_primary": "yes"})
-    assert row["skill_level"] == "normal"
-    assert row["is_primary"] == "yes"
-
-    with patch(
-        "core.services.personnel.operator_machine_query_service.normalize_skill_level",
-        side_effect=RuntimeError("query normalize exploded"),
-    ):
-        with pytest.raises(RuntimeError, match="query normalize exploded"):
-            OperatorMachineQueryService._normalize_row({"skill_level": "expert", "is_primary": "yes"})

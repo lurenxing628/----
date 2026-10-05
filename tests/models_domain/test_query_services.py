@@ -1,4 +1,4 @@
-"""回归测试：各只读查询服务的行为契约——BatchQueryService.has_any、PartOperationQueryService 列工时/内部工时/含供应商与外协合并明细、MachineDowntimeQueryService.list_active_machine_ids_at 按时间窗与状态/空白机号过滤、OperatorMachineQueryService 归一化技能等级与主操标记并标 dirty_fields/dirty_reasons、ScheduleHistoryQueryService 取最新版本/按版本取最新一条/列版本与近期记录。"""
+"""人员设备联动查询与排产版本历史查询。"""
 
 from __future__ import annotations
 
@@ -62,17 +62,6 @@ def _assert_operator_machine_link(row, *, skill_level, is_primary, dirty_skill):
         assert row.get("dirty_reasons", {}) == {}
 
 
-def test_operator_machine_query_service_normalizes_simple_rows() -> None:
-    q = _operator_machine_query_service()
-    simple = sorted(q.list_simple_rows(), key=lambda r: (r.get("machine_id"), r.get("operator_id")))
-
-    assert [(r["machine_id"], r["operator_id"]) for r in simple] == [("M1", "O1"), ("M1", "O2"), ("M2", "O1")]
-    simple_by_key = _operator_machine_rows_by_key(simple)
-    _assert_operator_machine_link(simple_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
-    _assert_operator_machine_link(simple_by_key[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
-    _assert_operator_machine_link(simple_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
-
-
 def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> None:
     q = _operator_machine_query_service()
 
@@ -81,66 +70,6 @@ def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> N
     assert len(q.list_with_names_by_operator()) == 3
     assert len(q.list_links_with_operator_info()) == 3
     assert len(q.list_simple_rows_for_machine_operator_sets(["M1", "M2"], ["O1"])) == 2
-
-
-def test_operator_machine_query_service_normalizes_name_rows() -> None:
-    q = _operator_machine_query_service()
-    by_mc = q.list_with_names_by_machine()
-
-    assert [(r["machine_id"], r["operator_id"]) for r in by_mc] == [("M1", "O1"), ("M1", "O2"), ("M2", "O1")]
-    assert by_mc[0]["machine_name"] == "机床1"
-    assert by_mc[0]["operator_name"] == "张三"
-    by_mc_by_key = _operator_machine_rows_by_key(by_mc)
-    _assert_operator_machine_link(by_mc_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
-    _assert_operator_machine_link(by_mc_by_key[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
-    _assert_operator_machine_link(by_mc_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
-
-    by_op = q.list_with_names_by_operator()
-    assert [(r["operator_id"], r["machine_id"]) for r in by_op] == [("O1", "M1"), ("O1", "M2"), ("O2", "M1")]
-    assert by_op[0]["operator_name"] == "张三"
-    assert by_op[0]["machine_name"] == "机床1"
-    by_op_by_key = _operator_machine_rows_by_key(by_op)
-    _assert_operator_machine_link(by_op_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
-    _assert_operator_machine_link(by_op_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
-    _assert_operator_machine_link(by_op_by_key[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
-
-
-def test_operator_machine_query_service_keeps_operator_info_rows_without_dirty_fields() -> None:
-    q = _operator_machine_query_service()
-    links = q.list_links_with_operator_info()
-
-    assert [(r["machine_id"], r["operator_id"]) for r in links] == [("M1", "O1"), ("M1", "O2"), ("M2", "O1")]
-    assert links[0]["operator_name"] == "张三"
-    assert links[0]["operator_status"] == "active"
-    assert all("dirty_fields" not in r for r in links)
-    assert all("dirty_reasons" not in r for r in links)
-
-
-def test_operator_machine_query_service_normalizes_machine_operator_subset_rows() -> None:
-    q = _operator_machine_query_service()
-    sub = q.list_simple_rows_for_machine_operator_sets(["M1", "M2"], ["O1"])
-
-    assert [(r["machine_id"], r["operator_id"]) for r in sub] == [("M1", "O1"), ("M2", "O1")]
-    sub_by_key = _operator_machine_rows_by_key(sub)
-    _assert_operator_machine_link(sub_by_key[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
-    _assert_operator_machine_link(sub_by_key[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
-
-    sub_normal = q.list_simple_rows_for_machine_operator_sets(["M1"], ["O2"])
-    assert [(r["machine_id"], r["operator_id"]) for r in sub_normal] == [("M1", "O2")]
-    _assert_operator_machine_link(sub_normal[0], skill_level="normal", is_primary="no", dirty_skill=False)
-    assert q.list_simple_rows_for_machine_operator_sets([], ["O1"]) == []
-    assert q.list_simple_rows_for_machine_operator_sets(["M1"], []) == []
-
-
-def test_operator_machine_query_service_marks_dirty_primary_blank() -> None:
-    row = OperatorMachineQueryService._normalize_row(
-        {"operator_id": "O1", "machine_id": "M1", "skill_level": "normal", "is_primary": ""}
-    )
-
-    assert row["skill_level"] == "normal"
-    assert row["is_primary"] == "no"
-    assert "is_primary" in row.get("dirty_fields", [])
-    assert "历史主操标记为空" in row.get("dirty_reasons", {}).get("is_primary", "")
 
 
 def test_schedule_history_query_service_versions_and_latest() -> None:

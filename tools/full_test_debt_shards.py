@@ -10,35 +10,8 @@ from tools.test_registry import iter_startup_regressions
 ShardKind = Literal["serial", "parallel"]
 
 SERIAL_FILE_PATTERNS: Tuple[str, ...] = (
-    "tests/app_runtime/test_ui_browser_geometry_smoke.py",
-    "tests/app_runtime/test_runtime_probe_resolution.py",
-    "tests/app_runtime/test_*runtime*.py",
-    "tests/app_runtime/test_*port*.py",
-    "tests/app_runtime/test_check_manual_layout_runtime_resolution.py",
-    "tests/app_runtime/test_validate_dist_runtime_identity.py",
-    "tests/app_runtime/test_startup*.py",
-    "tests/gate_meta/test_long_gate*.py",
-    "tests/gate_meta/test_long_gate_required_regression_cache.py",
-    "tests/gate_meta/test_long_gate_startup_regression_cache.py",
-    "tests/gate_meta/test_long_gate_full_test_debt_cache.py",
-    "tests/gate_meta/test_run_quality_gate.py",
-    "tests/gate_meta/test_architecture_fitness.py",
-    "tests/app_runtime/test_win7*.py",
-    # scheduler_graph 整目录判 serial：多个用例 sys.modules.pop(networkx / core.services.scheduler.graph.*)
-    # 验证惰性加载但不还原，并行分片把它们与他用例打散后，后续用例拿到陈旧/新建模块对象、monkeypatch
-    # 打空（is_dag 误判、networkx 不可用模拟失效等，只命中分片里第一个）。按收集顺序连续跑（本地
-    # `pytest tests/scheduler_graph/` 恒过）即无此问题，故整目录 serial。
     "tests/scheduler_graph/test_*.py",
-    # These module-scoped benchmark fixtures must run once, without competing workers.
-    "tests/algorithm/test_optimizer_quality_matrix*.py",
     "tests/algorithm/test_optimizer_end_to_end*.py",
-    "tests/algorithm/test_optimizer_compare_algorithms_contract.py",
-    "tests/algorithm/test_optimizer_smtwt_compare_algorithms_contract.py",
-    "tests/algorithm/test_optimizer_graph_ready_v2_long_run_contract.py",
-    "tests/algorithm/test_optimizer_benchmark_timing_contract.py",
-    "tests/algorithm/test_optimizer_benchmark_ratchet_gate.py",
-    # Drives the end-to-end and quality-matrix runners, which refuse to start under xdist.
-    "tests/algorithm/test_graph_repair_multiround.py",
 )
 
 SERIAL_EXACT_PATHS = frozenset(iter_startup_regressions())
@@ -76,19 +49,8 @@ def classify_nodeid(nodeid: str) -> ShardKind:
     return "parallel"
 
 
-# P5.3 ISOLATE_PERF：性能/重 E2E 用例的单一真相源（口径同 SERIAL_FILE_PATTERNS）。
-# conftest.pytest_collection_modifyitems 据此给被收集的 perf 用例自动打 @pytest.mark.perf；
-# daily 门禁与正式 full gate（FORMAL_FULL_TEST_PYTEST_ARGS）都用 -m "not perf" 把它们剔出。
-# 2026-09-17 起 tools/browser_lane_files.py 里的浏览器验收车道同样按 perf 处理，
-# 由 scripts/run_browser_test_lane.py 单独实跑（sharding 只看文件名/nodeid 不看 marker）。
-# 注：regression_ui_browser_geometry_smoke 同时属 SERIAL（真浏览器 ~19s，见上 :12），perf 标记
-# 与其 serial 归属并存、不改 serial 分片。
-PERF_FILE_PATTERNS: Tuple[str, ...] = (
-    "tests/scheduler_graph/test_graph_performance.py",
-    "tests/candidate/test_scheduler_candidate_performance_guard.py",
-    "tests/app_runtime/test_ui_browser_geometry_smoke.py",
-)
-
+# Heavy browser and performance tests were deleted, rather than excluded.
+PERF_FILE_PATTERNS: Tuple[str, ...] = ()
 
 def is_perf_nodeid(nodeid: str) -> bool:
     path = nodeid_file(nodeid)

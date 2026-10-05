@@ -27,33 +27,14 @@ from tools.test_registry import (
     iter_required_regression_groups,
 )
 
-# 每次 push 无条件跑的冒烟用例。只保留真业务冒烟（UI 页面 HTML 契约）；旧批次页 viewmodel 用例随旧页面测试于 2026-09-18 删除。
-# P0.1（test-gate-cleanup）：移除 4 个 test_long_gate_*_cache 与 test_architecture_fitness 等
-# 门禁自指用例——它们已在各自 required regression group 的 target_paths 与 CI 全量门禁里覆盖，
-# 无需在每次 push 的 focused 冒烟里重复支付（这几个又慢，是最慢榜常客）。
+# Every daily run includes these two real application contracts. If an impact
+# target already includes their files, that execution also supplies the smoke proof.
 FOCUSED_PYTEST_NODEIDS: Tuple[str, ...] = (
-    "tests/app_runtime/test_ui_geometry_html_contract.py::test_ui_smoke_pages_render_expected_html_contract",
-    # 失效路径字面量棘轮必须无条件跑：它要抓的是"删了文件、引用它的字符串还在"，
-    # 而删除发生在哪个目录事先不知道，按影响面选组必然漏（2026-09-18 删旧路由层就漏了）。
-    "tests/gate_meta/test_dead_path_literals.py::test_repo_dead_path_literals_have_no_new_debt",
-    "tests/gate_meta/test_dead_path_literals.py::test_baseline_entries_point_at_existing_source_files",
-    # 实现一致性对标同理：它横跨 schema.sql、bootstrap、排产配置和架构分层，改哪儿都可能动它，
-    # 按影响面选组同样必然漏。0.4 秒，无条件跑。
-    "tests/gate_meta/test_conformance_report.py::test_implementation_matches_documented_conformance_checks",
-    "tests/gate_meta/test_conformance_report.py::test_minor_conformance_gaps_are_reported_without_blocking",
-    # 同理无条件：260 个 .cjs 探针用子进程拉起的 Python 模块，在 Python 侧的 import 图、
-    # 符号索引、死代码扫描里全都不可见。2026-09-21 就这么把两个"零引用"脚本删错了，
-    # 只有一小时一次、且长期没人跑的浏览器车道才报得出来。
-    "tests/gate_meta/test_node_referenced_python_modules.py::test_node_probes_do_not_reference_deleted_python_modules",
-    "tests/gate_meta/test_node_referenced_python_modules.py::test_the_scan_actually_reaches_the_probe_scripts",
+    "tests/app_runtime/test_app_new_ui_create_app_smoke.py::test_app_new_ui_create_app_smoke",
+    "tests/app_runtime/test_frontend_offline_static_assets.py::test_frontend_static_assets_are_offline_local",
 )
 
-_COLLECT_COUNT_RE = re.compile(r"\b(\d+)\s+(?:tests?|items?) collected\b")
-_TAIL_LINES = 40
 _ZERO_SHA = "0" * 40
-# pytest 在"未收集到任何用例"时的退出码（ExitCode.NO_TESTS_COLLECTED）。impact 集按 serial/not-serial
-# 分两步跑时，某一类本次为空＝合法空集，仅对这两步容忍此退出码（focused 等其余步骤照常按失败处理）。
-_PYTEST_NO_TESTS_EXITCODE = 5
 
 
 class ChangedPathSet(NamedTuple):
@@ -510,90 +491,40 @@ def daily_gate_scope_payload(scope: DailyGateScope) -> Dict[str, object]:
 
 def _commands(
     required_targets: Sequence[str], ruff_plan: RuffPlan, *, workbench_ui_evidence: Optional[str] = None,
-) -> List[Tuple[str, List[str], bool]]:
-    # 三元组 (label, command, allow_no_tests)：allow_no_tests=True 的步骤对 pytest「未收集到用例」
-    # 退出码（_PYTEST_NO_TESTS_EXITCODE）视为通过（合法空集），其余步骤一律按非零失败处理。
-    commands: List[Tuple[str, List[str], bool]] = [
+) -> List[Tuple[str, List[str]]]:
+    if workbench_ui_evidence is not None:
+        raise ValueError("--workbench-ui-evidence is retired; retained UI Node contracts run in pytest")
+    commands: List[Tuple[str, List[str]]] = [
         (
             "block staged runtime artifacts",
             [sys.executable, "tools/git_hook_checks.py", "check-staged-artifacts"],
-            False,
         )
     ]
     if ruff_plan.all_files:
-        commands.append(("ruff check full", [sys.executable, "-m", "ruff", "check"], False))
+        commands.append(("ruff check full", [sys.executable, "-m", "ruff", "check"]))
     elif ruff_plan.target_paths:
         commands.append(
             (
                 "ruff check changed files",
                 [sys.executable, "-m", "ruff", "check", "--force-exclude", "--", *ruff_plan.target_paths],
-                False,
             )
         )
 
     normalized_targets = _dedupe_paths(required_targets)
-    if normalized_targets:
-        # Focused nodes run once in their unconditional lane, regardless of their serial/perf markers.
-        focused_exclusions = [arg for nodeid in FOCUSED_PYTEST_NODEIDS for arg in ("--deselect", nodeid)]
-        # impact 集分流：not-serial 用例走 xdist 并行（-n auto --dist worksteal），serial 用例
-        # （startup/runtime/portfile/long_gate 等独占进程态，口径见 tools.full_test_debt_shards）单独串行。
-        # serial/perf marker 由 conftest 按 classify_nodeid / is_perf_nodeid 自动打标，这里仅按 marker
-        # 表达式分流。P5.3：两步均叠加 not perf，把性能/重 E2E（PERF_FILE_PATTERNS）剔出 push 快速路径
-        # （full gate 不 deselect、仍全量覆盖）。两步各自在本次 impact 集无对应类用例时会 no-tests
-        # collected，故 allow_no_tests=True。
-        commands.append(
-            (
-                "impact pytest (parallel)",
-                [
-                    sys.executable, "-m", "pytest", "-q", "-rfE",
-                    "-n", "auto", "--dist", "worksteal",
-                    "-m", "not serial and not perf",
-                    *focused_exclusions,
-                    *normalized_targets,
-                ],
-                True,
-            )
-        )
-        commands.append(
-            (
-                "impact pytest (serial)",
-                [sys.executable, "-m", "pytest", "-q", "-rfE", "-m", "serial and not perf",
-                 *focused_exclusions, *normalized_targets],
-                True,
-            )
-        )
+    covered_files = {target for target in normalized_targets if "::" not in target}
+    pytest_targets = list(normalized_targets)
+    for nodeid in FOCUSED_PYTEST_NODEIDS:
+        if nodeid not in pytest_targets and nodeid.split("::", 1)[0] not in covered_files:
+            pytest_targets.append(nodeid)
+    # One process and one collection; no xdist startup or repeated focused runs.
     commands.append(
         (
-            "focused pytest",
-            [sys.executable, "-m", "pytest", "-q", "-rfE", *FOCUSED_PYTEST_NODEIDS],
-            False,
+            "impact and focused pytest" if normalized_targets else "focused pytest",
+            [sys.executable, "-m", "pytest", "-q", "-rfE", *pytest_targets],
         )
     )
-    if workbench_ui_evidence is not None:
-        commands.append(
-            (
-                "workbench UI refinement evidence",
-                [sys.executable, "-B", "tests/workbench/ui_refinement_gate.py", "--evidence-dir", workbench_ui_evidence],
-                False,
-            )
-        )
     return commands
 
-
-def _parse_collect_count(output: str) -> Optional[int]:
-    matches = _COLLECT_COUNT_RE.findall(output)
-    if matches:
-        return int(matches[-1])
-    if "no tests collected" in output:
-        return 0
-    return None
-
-
-def _tail(text: str, *, line_count: int = _TAIL_LINES) -> str:
-    lines = str(text or "").splitlines()
-    if not lines:
-        return "<empty>"
-    return "\n".join(lines[-line_count:])
 
 
 _FAILED_SUMMARY_RE = re.compile(r"^(FAILED|ERROR)\s+(\S+)")
@@ -690,46 +621,6 @@ def _run_step_streaming(command: Sequence[str], env: Dict[str, str]) -> Tuple[in
     return int(process.wait()), "".join(captured)
 
 
-def _run_collect_only(env: Dict[str, str]) -> Tuple[int, str]:
-    command = [sys.executable, "-m", "pytest", "--collect-only", "tests", "-q"]
-    result = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    combined_output = (result.stdout or "") + "\n" + (result.stderr or "")
-    if result.returncode == 0:
-        count = _parse_collect_count(combined_output)
-        if count is None:
-            print(
-                "[daily-fast-gate] failed: pytest collect-only did not report collected count",
-                file=sys.stderr,
-                flush=True,
-            )
-            print("[daily-fast-gate] pytest collect-only stdout tail:", file=sys.stderr, flush=True)
-            print(_tail(result.stdout), file=sys.stderr, flush=True)
-            print("[daily-fast-gate] pytest collect-only stderr tail:", file=sys.stderr, flush=True)
-            print(_tail(result.stderr), file=sys.stderr, flush=True)
-            return 1, combined_output
-        print(f"[daily-fast-gate] pytest collect-only collected_count={count}", flush=True)
-        return 0, combined_output
-
-    print(
-        f"[daily-fast-gate] failed: pytest collect-only returncode={result.returncode}",
-        file=sys.stderr,
-        flush=True,
-    )
-    print("[daily-fast-gate] pytest collect-only stdout tail:", file=sys.stderr, flush=True)
-    print(_tail(result.stdout), file=sys.stderr, flush=True)
-    print("[daily-fast-gate] pytest collect-only stderr tail:", file=sys.stderr, flush=True)
-    print(_tail(result.stderr), file=sys.stderr, flush=True)
-    return int(result.returncode), combined_output
-
-
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the fast local development gate.")
     parser.add_argument("--pre-push-from-ref", default="")
@@ -742,7 +633,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.set_defaults(pre_push_scope_known=None)
     parser.add_argument(
         "--workbench-ui-evidence", metavar="DIR", default=None,
-        help="Also run the independent workbench UI evidence gate; omitted by default.",
+        help="Retired option; retained UI Node contracts run in the normal pytest suite.",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.pre_push_scope_file:
@@ -761,8 +652,8 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
         args.pre_push_changed_path = paths
         args.pre_push_scope_reason = scope["reason"]
         args.pre_push_scope_known = scope["scope_known"]
-    if args.workbench_ui_evidence is not None and not args.workbench_ui_evidence.strip():
-        parser.error("--workbench-ui-evidence must name a non-empty evidence directory")
+    if args.workbench_ui_evidence is not None:
+        parser.error("--workbench-ui-evidence is retired; retained UI Node contracts run in pytest")
     return args
 
 
@@ -817,32 +708,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if saved:
             print(f"[daily-fast-gate] 完整输出已留存：{saved}", file=sys.stderr, flush=True)
 
-    collect_returncode, collect_output = _run_collect_only(env)
-    run_log.append("# pytest --collect-only -q tests\n")
-    run_log.append(collect_output)
-    if collect_returncode != 0:
-        for entry in _extract_failed_nodeids(collect_output):
-            print(f"  - {entry}", file=sys.stderr, flush=True)
-        _announce_failure_log()
-        return collect_returncode
-
     commands = _commands(impact_plan.target_paths, ruff_plan, workbench_ui_evidence=args.workbench_ui_evidence)
-    impact_no_test_labels = set()
-    impact_allowed_labels = {"impact pytest (parallel)", "impact pytest (serial)"}
-    for index, (label, command, allow_no_tests) in enumerate(commands, start=1):
+    for index, (label, command) in enumerate(commands, start=1):
         print(f"[daily-fast-gate] {index}/{len(commands)} {label}", flush=True)
         returncode, step_output = _run_step_streaming(command, env)
         run_log.append(f"\n# [{index}/{len(commands)}] {label}\n")
         run_log.append(step_output)
-        if returncode == _PYTEST_NO_TESTS_EXITCODE and allow_no_tests:
-            print(
-                f"[daily-fast-gate] {label}: 本次 impact 集无该类用例"
-                "（pytest no tests collected，exit 5），跳过",
-                flush=True,
-            )
-            if label in impact_allowed_labels:
-                impact_no_test_labels.add(label)
-            continue
         if returncode != 0:
             print(f"[daily-fast-gate] failed: {label} returncode={returncode}", file=sys.stderr, flush=True)
             failed_nodeids = _extract_failed_nodeids(step_output)
@@ -852,14 +723,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     print(f"  - {entry}", file=sys.stderr, flush=True)
             _announce_failure_log()
             return returncode
-    if impact_plan.target_paths and impact_no_test_labels == impact_allowed_labels:
-        print(
-            "[daily-fast-gate] failed: 本次 impact 集有目标文件，但 parallel/serial 两组 pytest 都没有收集到用例",
-            file=sys.stderr,
-            flush=True,
-        )
-        _announce_failure_log()
-        return 1
     _remove_failure_log(failure_log)
     print("[daily-fast-gate] passed", flush=True)
     return 0

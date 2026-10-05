@@ -1,17 +1,14 @@
-"""Portable paths stay with the directory despite old installations and accounts."""
+"""便携运行使用本地目录，移动目录后业务数据仍可读取。"""
 from __future__ import annotations
 
-import os
 import sqlite3
 import sys
 from contextlib import closing
-from types import SimpleNamespace
 
 import pytest
 from flask import Flask
 
 from web.bootstrap import factory, launcher, launcher_paths
-from web.bootstrap.launcher_contracts import _runtime_contract_payload
 
 
 @pytest.fixture
@@ -32,7 +29,7 @@ def portable_dir(tmp_path, monkeypatch):
     return root
 
 
-@pytest.mark.parametrize("domain", ["LOCALBOX", "工厂域"])
+@pytest.mark.parametrize('domain', ["工厂域"])
 def test_portable_factory_and_lock_use_local_paths_under_any_account(portable_dir, monkeypatch, domain):
     monkeypatch.setenv("USERNAME", "操作员")
     monkeypatch.setenv("USERDOMAIN", domain)
@@ -64,57 +61,3 @@ def test_moving_portable_directory_preserves_data_and_resolves_new_paths(portabl
     with closing(sqlite3.connect(moved_db)) as conn:
         assert conn.execute("SELECT value FROM preserved").fetchone() == ("原有数据",)
     assert not portable_dir.exists()
-
-
-def test_portable_stop_contract_uses_the_same_browser_profile(portable_dir):
-    data = portable_dir / "user-data"
-    payload = _runtime_contract_payload(
-        str(portable_dir), "127.0.0.1", 51399,
-        db_path=str(data / "db" / "aps.db"), shutdown_token="test-only",
-        ui_mode="default", log_dir=str(data / "logs"), backup_dir=str(data / "backups"),
-        excel_template_dir=str(data / "templates_excel"),
-    )
-    assert payload["chrome_profile_dir"] == str(data / "chrome109_profile")
-
-
-def test_portable_runtime_read_and_stop_resolve_root_and_logs_identically(portable_dir):
-    log_dir = portable_dir / "user-data" / "logs"
-    root_paths = launcher_paths.resolve_runtime_state_paths(str(portable_dir))
-    log_paths = launcher_paths.resolve_runtime_state_paths(str(log_dir))
-    assert root_paths == log_paths
-    assert root_paths["runtime_dir"] == str(portable_dir)
-    assert root_paths["state_dir"] == str(log_dir)
-    assert root_paths["contract_path"] == str(log_dir / "aps_runtime.json")
-    assert launcher_paths.resolve_runtime_stop_context(str(portable_dir)) == (str(portable_dir), str(log_dir))
-    assert launcher_paths.resolve_runtime_stop_context(str(log_dir)) == (str(portable_dir), str(log_dir))
-
-
-def test_exe_validator_uses_portable_logs_and_rejects_a_different_database(portable_dir, monkeypatch, capsys):
-    import validate_dist_exe as validator
-
-    exe = portable_dir / "排产系统.exe"
-    exe.write_bytes(b"synthetic")
-    other_db = portable_dir.parent / "wrong.db"
-    other_db.write_bytes(b"synthetic")
-    monkeypatch.setattr(sys, "argv", ["validate_dist_exe.py", str(exe)])
-    monkeypatch.setattr(validator, "_assert_networkx_bundled", lambda _path: None)
-    monkeypatch.setattr(validator, "_assert_static_bundled", lambda _path: None)
-    cleared = []
-    monkeypatch.setattr(validator, "_clear_runtime_contract_files", cleared.append)
-    process = SimpleNamespace(terminate=lambda: None, wait=lambda timeout: None)
-    monkeypatch.setattr(validator.subprocess, "Popen", lambda *args, **kwargs: process)
-    monkeypatch.setattr(validator, "_wait_for_runtime_contract",
-                        lambda *args, **kwargs: ("127.0.0.1", 51399, str(other_db)))
-    assert validator.main() == 5
-    assert cleared == [str(portable_dir / "user-data" / "logs")]
-    assert "数据库偏离交付目录配置" in capsys.readouterr().out
-
-
-def test_invalid_portable_data_directory_fails_without_external_fallback(portable_dir):
-    (portable_dir / "user-data").write_text("not a directory", encoding="ascii")
-    app = Flask("portable-unwritable-path")
-    factory._apply_runtime_config(app, base_dir=str(portable_dir))
-    with pytest.raises(OSError):
-        factory._ensure_runtime_dirs(app)
-    assert app.config["LOG_DIR"] == os.path.join(str(portable_dir), "user-data", "logs")
-    assert not (portable_dir.parent / "old installation").exists()

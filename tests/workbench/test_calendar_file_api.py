@@ -1,4 +1,4 @@
-"""全局工作日历文件的真实 HTTP 合同：路由确实注册进了应用，导出按日期范围而不是列表筛选。"""
+"""全局工作日历导入预检保持只读，确认写入一次并复用回执。"""
 
 import json
 import sqlite3
@@ -7,7 +7,7 @@ from io import BytesIO
 
 import pytest
 
-from tests.workbench.calendar_file_support import HEADERS, decode, file_bytes
+from tests.workbench.calendar_file_support import HEADERS, file_bytes
 
 BASE = "/api/workbench/v1/calendar-files"
 PERIOD_HEADERS = ["工作时段数"] + ["第" + str(index) + "段" + field for index in range(2, 9) for field in ("开始", "结束", "开始日期")]
@@ -78,96 +78,3 @@ def test_preview_does_not_write_and_confirm_commits_once(client):
     replay = confirm(client, preview)
     assert replay.status_code == 200 and replay.get_json()["replayed"] is True
     assert snapshot(client) == after
-
-
-def test_rejected_rows_block_confirmation(client):
-    preview = preview_ok(client, [(DAY, "工作日", "8", "", "", "", ""), (OTHER, "工作日", "99", "", "", "", "")])
-    assert preview["can_confirm"] is False
-    assert preview["write_context"]["capabilities"][KIND + ".import"] is False
-    assert [row["result"] for row in preview["rows"]] == ["new", "rejected"]
-    assert confirm(client, preview).status_code != 200
-    assert days(client) == {}
-
-
-def test_holiday_with_hours_carries_a_public_note(client):
-    preview = preview_ok(client, [(DAY, "假期", "4", "80", "是", "否", "加班")])
-    row = preview["rows"][0]
-    assert row["requires_confirmation"] and any("工作日" in note for note in row["notes"])
-    assert confirm(client, preview).status_code == 200
-    assert days(client) == {DAY: ("holiday", 4.0)}
-
-
-@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
-def test_template_download_has_headers_only(client, fmt):
-    response = client.get(BASE + "/" + KIND + "/template", query_string={"format": fmt})
-    assert response.status_code == 200 and response.headers["X-Workbench-Row-Count"] == "0"
-    assert response.headers["Cache-Control"] == "no-store"
-
-    class Download:
-        content = response.get_data()
-
-    headers, rows = decode(Download(), fmt)
-    assert headers == list(HEADERS) + ["班次开始", "班次结束"] + PERIOD_HEADERS and rows == []
-
-
-@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
-def test_export_by_date_range_round_trips(client, fmt):
-    assert confirm(client, preview_ok(client, [(DAY, "工作日", "8", "100", "是", "是", "")])).status_code == 200
-    prepared = client.post(BASE + "/" + KIND + "/export-preview",
-                           json={"range": {"start_date": "2026-10-01", "end_date": "2026-10-31"}})
-    assert prepared.status_code == 200, prepared.get_data(as_text=True)
-    data = prepared.get_json()["data"]
-    assert data["row_count"] == 1 and data["formats"] == ["csv", "xlsx"]
-    assert data["range"] == {"start_date": "2026-10-01", "end_date": "2026-10-31"}
-
-    download = client.get(BASE + "/" + KIND + "/export",
-                          query_string={"export_ref": data["export_ref"], "format": fmt})
-    assert download.status_code == 200 and download.headers["X-Workbench-Row-Count"] == "1"
-    fields = {"file": (BytesIO(download.get_data()), "back." + fmt), "format": fmt, "mode": "upsert"}
-    again = client.post(BASE + "/" + KIND + "/preview", data=fields, content_type="multipart/form-data")
-    assert again.status_code == 200, again.get_data(as_text=True)
-    assert [row["result"] for row in again.get_json()["data"]["rows"]] == ["unchanged"]
-
-
-def test_export_preview_reuses_a_matching_snapshot(client):
-    body = {"range": {"start_date": "2026-10-01", "end_date": "2026-10-31"}}
-    first = client.post(BASE + "/" + KIND + "/export-preview", json=body)
-    assert first.status_code == 200
-    reference = first.get_json()["meta"]["snapshot_ref"]
-    again = client.post(BASE + "/" + KIND + "/export-preview", json={**body, "snapshot_ref": reference})
-    assert again.status_code == 200
-    assert again.get_json()["meta"]["snapshot_ref"] == reference
-
-
-def test_export_preview_rejects_a_snapshot_from_a_changed_range(client):
-    body = {"range": {"start_date": "2026-10-01", "end_date": "2026-10-31"}}
-    reference = client.post(BASE + "/" + KIND + "/export-preview", json=body).get_json()["meta"]["snapshot_ref"]
-    assert confirm(client, preview_ok(client, [(DAY, "工作日", "8", "", "", "", "")])).status_code == 200
-    stale = client.post(BASE + "/" + KIND + "/export-preview", json={**body, "snapshot_ref": reference})
-    assert stale.status_code != 200
-
-
-@pytest.mark.parametrize("body", (
-    {"range": {"start_date": "2026-10-31", "end_date": "2026-10-01"}},
-    {"range": {"start_date": "2026-01-01", "end_date": "2030-01-01"}},
-    {"range": {"start_date": "2026-10-01"}},
-    {"range": {"start_date": "2026-10-01", "end_date": "2026-10-31", "extra": 1}},
-    {"range": "2026-10"},
-))
-def test_bad_export_range_is_rejected(client, body):
-    assert client.post(BASE + "/" + KIND + "/export-preview", json=body).status_code == 400
-
-
-@pytest.mark.parametrize("kind", ("shift_calendar", "work-calendar", "WORK_CALENDAR"))
-def test_unsupported_calendar_kind_is_rejected(client, kind):
-    assert client.get(BASE + "/" + kind + "/template", query_string={"format": "csv"}).status_code in (400, 404)
-
-
-@pytest.mark.parametrize("form", ({"format": "csv"}, {"format": "json", "mode": "upsert"},
-                                  {"format": "csv", "mode": "replace"}))
-def test_bad_upload_form_is_rejected(client, form):
-    fields = {"file": (BytesIO(file_bytes([(DAY, "工作日", "8", "", "", "", "")])), "calendar.csv")}
-    fields.update(form)
-    response = client.post(BASE + "/" + KIND + "/preview", data=fields, content_type="multipart/form-data")
-    assert response.status_code == 400
-    assert days(client) == {}

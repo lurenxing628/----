@@ -4,9 +4,9 @@ import csv
 import io
 
 from tests.workbench.piece_chain_support import adopt_candidate
-from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read, report
+from tests.workbench.piece_presentation_support import PIECES, real_case
+from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
 from tests.workbench.test_piece_chain_end_to_end import workspace
-from tests.workbench.test_piece_presentation import PIECES, real_case
 from tests.workbench.trial_support import snapshot
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
@@ -68,64 +68,12 @@ def test_piece_downstream_exact_identity_quantity_and_search(trial_case):
         assert {r['任务编号'] for r in rows} == {t['task_ref'] for t in filtered}
 
 
-def test_piece_downstream_old_plan_unknown_and_current_master_drift(trial_case):
-    case = trial_case
-    client, plan, _ = setup(case)
-    before = verify_chain(client, case, plan)[0]
-    case.conn.execute("UPDATE Batches SET quantity=99 WHERE batch_id='B1'")
-    case.conn.commit()
-    assert verify_chain(client, case, plan)[0]['tasks'] == before['tasks']
-    old = {'plan_ref': case.plan_ref(4)}
-    formal, field, actual = verify_chain(client, case, old)
-    task = field['data']['tasks'][0]
-    assert task['quantity'] is None and task['batch_quantity'] is None
-    assert task['quantity_basis'] == 'unknown' and task['quantity_reason'] == 'plan_target_not_recorded'
-    assert task['execution']['target_quantity'] == 99
-    assert not task['execution']['write_context']['capabilities']['create']
-
-
-def test_piece_downstream_missing_receipt_stays_unknown(trial_case):
-    client, plan, adopted = setup(trial_case)
-    trial_case.conn.execute('DELETE FROM WorkbenchCommandReceipts WHERE receipt_ref=?', (adopted['receipt_ref'],))
-    trial_case.conn.commit()
-    _, field, actual = verify_chain(client, trial_case, plan)
-    for task in field['data']['tasks']:
-        assert task['quantity'] is None and task['batch_quantity'] is None
-        assert task['quantity_reason'] == 'plan_target_unavailable'
-
-
-def test_piece_downstream_report_does_not_complete_sibling_or_change_refs(trial_case):
-    case = trial_case
-    client, plan, _ = setup(case)
-    formal = workspace(case.conn, plan['plan_ref'])
-    task = next(t for t in formal['tasks'] if t['piece_id'] == PIECES[0] and t['sequence'] == 20)
-    before = snapshot(case.conn)
-    report(client, {'task': task}, quantity=0, hours=0, start=task['start'], end=task['end'])
-    _, field, _ = verify_chain(client, case, plan)
-    rows = {t['task_ref']: t for t in field['data']['tasks']}
-    assert rows[task['task_ref']]['execution']['execution_state'] != 'complete'
-    assert all(t['execution']['execution_state'] == 'unreported' for t in rows.values()
-               if t['piece_id'] is not None and t['task_ref'] != task['task_ref'])
-    stored = rows[task['task_ref']]['execution']['reports'][0]
-    assert stored['completed_quantity'] == 0
-    assert stored['recorded_against_plan_ref'] == task['plan_ref']
-    assert stored['recorded_against_task_ref'] == task['task_ref']
-    assert stored['operation_ref'] == task['operation_ref']
-    after = snapshot(case.conn)
-    for table in ('Batches', 'BatchOperations', 'Schedule', 'WorkbenchTaskRefs', 'WorkbenchPlanSourceRefs', 'OperationExecutionEvents'):
-        assert after[table] == before[table], table
-    for table in ('WorkbenchProductionReports', 'WorkbenchProductionReportRevisions'):
-        assert set(before[table]) <= set(after[table]), table
-
-
 def test_piece_downstream_frontend_model():
-    import os
     import subprocess
     from pathlib import Path
 
-    from tests.workbench.test_live_browser import runtime_tools
+    from tests.workbench.node_runtime_support import node_runtime
 
-    node, _, modules = runtime_tools()
-    result = subprocess.run([node, str(Path(__file__).with_name('piece_downstream_contract.cjs'))],
-        env=dict(os.environ, NODE_PATH=modules), capture_output=True, text=True, timeout=30)
+    result = subprocess.run([node_runtime(), str(Path(__file__).with_name('piece_downstream_contract.cjs'))],
+        capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr

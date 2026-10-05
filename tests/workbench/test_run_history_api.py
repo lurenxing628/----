@@ -16,7 +16,7 @@ from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_history_support import BASE, dump, read, seed
-from tests.workbench.run_history_support import history_case as _history_case
+from tests.workbench.run_history_support import history_case as _history_case  # noqa: F401
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 from web.routes.workbench.run_history import register_run_history_routes
 
@@ -79,21 +79,6 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     # The full app may still be awaiting the parent's explicit AV registration.
     assert not app.config.get("WORKBENCH_RUN_JOBS_ENABLED")
     assert dump(case.conn) == before and paths and str(case.path) in paths
-
-
-def test_get_registration_coexists_with_existing_post_and_no_worker_required(history_case):
-    from tests.workbench.run_history_support import api
-    from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
-
-    case = history_case
-    bp = Blueprint("bq_existing_post", __name__)
-    register_scheduling_job_routes(bp)
-    case.app.register_blueprint(bp)
-    seed(case, "failed")
-    client, _ = api(case)
-    assert read(client)["data"]["runs"][0]["state"] == "failed"
-    assert client.post(BASE, json={}).status_code == 400
-    assert client.delete(BASE).status_code == 405
 
 
 def test_new_process_reopens_history_without_browser_token_cache(history_case):

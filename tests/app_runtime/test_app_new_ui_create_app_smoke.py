@@ -1,9 +1,4 @@
-"""
-冒烟测试：app_new_ui create_app 基础可用性。
-
-旧的 smoke_* 脚本不会被 pytest 默认收集；这个 regression_* 文件保留同等保护，
-并让全量 pytest 能自动覆盖这条入口。
-"""
+"""启动入口与工作台首页冒烟测试。"""
 
 from __future__ import annotations
 

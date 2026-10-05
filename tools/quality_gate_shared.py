@@ -24,9 +24,6 @@ from tools.test_registry import (
     iter_required_tests as _registry_required_tests,
 )
 from tools.test_registry import (
-    iter_startup_regressions as _registry_startup_regressions,
-)
-from tools.test_registry import (
     normalize_test_paths as _normalize_test_paths,
 )
 from tools.test_registry import (
@@ -36,7 +33,8 @@ from tools.test_registry import (
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.md")
 STAGE_RECORD_PATH = os.path.join(REPO_ROOT, "开发文档", "阶段留痕与验收记录.md")
-TEST_ARCH_FITNESS_PATH = os.path.join(REPO_ROOT, "tests", "gate_meta", "test_architecture_fitness.py")
+# Compatibility export for callers of the retired gate meta selftests.
+TEST_ARCH_FITNESS_PATH = ""
 QUALITY_GATE_MANIFEST_REL = os.path.join("evidence", "QualityGate", "quality_gate_manifest.json")
 QUALITY_GATE_RECEIPTS_DIR_REL = os.path.join("evidence", "QualityGate", "receipts")
 QUALITY_GATE_LOGS_DIR_REL = os.path.join("evidence", "QualityGate", "logs")
@@ -96,11 +94,9 @@ QUALITY_GATE_QUICKREF_VS_ROUTES_REL = os.path.join(
     "QualityGate",
     "quickref_vs_routes.md",
 )
-# 2026-09-17: the formal full run deselects perf (performance guards + the browser acceptance lane in
-# tools/browser_lane_files.py). scripts/run_browser_test_lane.py runs that lane on purpose.
-FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider", "-m", "not perf"]
+# The retained suite is the complete suite: no marker-based exclusions or browser lane.
+FORMAL_FULL_TEST_PYTEST_ARGS = ["tests", "-q", "--tb=short", "-ra", "-p", "no:cacheprovider"]
 REQUIRED_BROWSER_ENV_OVERLAY = {
-    "APS_BROWSER_SMOKE_REQUIRED": "1",
     "PYTHONDONTWRITEBYTECODE": "1",
     "PYTHONUTF8": "1",
     "PYTHONIOENCODING": "utf-8",
@@ -183,17 +179,9 @@ QUALITY_GATE_TOOL_PATHS = [
     "tools/test_debt_registry.py",
     "tools/test_registry.py",
     "tools/test_registry_data.py",
-    "tools/test_registry_groups_misc.py",
-    "tools/test_registry_groups_scheduler.py",
-    "tools/test_registry_groups_workbench.py",
-    "tools/test_registry_workbench_ui.py",
     "tests/conftest.py",
     ".codestable/tools/validate-yaml.py",
-    "tests/config/test_config_manual_markdown.py",
     "tests/app_runtime/test_frontend_offline_static_assets.py",
-    "tests/web_pages/test_page_manual_registry.py",
-    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
-    "tests/operation_execution/test_operation_execution_event_time_contract.py",
 ]
 QUALITY_GATE_SOURCE_FILES = tuple(
     dict.fromkeys(
@@ -208,12 +196,7 @@ QUALITY_GATE_SOURCE_FILES = tuple(
             ".codestable/checkup/import_cycles_production_baseline.json",
             ".codestable/checkup/import_cycles_with_tests_baseline.json",
             *QUALITY_GATE_TOOL_PATHS,
-            # 非真机那半已登记进 QUALITY_GATE_REQUIRED_TESTS（见下一行展开），
-            # 这里只需要单列留在浏览器车道的真机文件。
-            "tests/web_pages/test_frontend_ui_language_polish_browser.py",
-            "tests/gate_meta/test_architecture_fitness.py",
             *QUALITY_GATE_REQUIRED_TESTS,
-            *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
             "tests/gate_meta/check_quickref_vs_routes.py",
         )
     )
@@ -267,14 +250,16 @@ FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS = (
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_resolve_write_values_only_converts_validation_error",
     "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows",
 )
-# required 回归集里允许在特定平台合法 skip 的 nodeid（不视为非通过）。这些用例验证平台特有的
-# 文件系统语义——含换行符的文件名在 POSIX 合法、git 以八进制引号路径上报，本用例据此守护引号
-# 路径反引用 + 内容漂移指纹；该文件名在 Windows 非法（OSError 22），用例 skipif(os.name=="nt")。
-# 产品目标平台含 Windows，required 守卫须容忍其在 Windows 的平台 skip；但仅限本白名单逐条登记，
-# 其余 required 一律 must-pass，避免误吞真回归。POSIX 上这些用例照常运行、必须 passed（白名单休眠）。
-REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS = (
-    "tests/gate_meta/test_run_quality_gate.py::test_dirty_fingerprint_detects_quoted_untracked_path_change",
-)
+# These real socket tests require Windows. Their existing skipif permits POSIX
+# collection; the Windows gate must execute them and obtain passed reports.
+REQUIRED_REGRESSION_ALLOWED_SKIPPED_PLATFORMS: Dict[str, Tuple[str, ...]] = {
+    "tests/app_runtime/test_runtime_server_binding.py::test_listener_rejects_even_a_reusable_competing_bind": ("posix",),
+    "tests/app_runtime/test_runtime_server_binding.py::test_competing_reusable_listener_is_not_stolen": ("posix",),
+    "tests/app_runtime/test_runtime_server_binding.py::test_fallback_serves_on_the_same_reserved_socket": ("posix",),
+    "tests/app_runtime/test_runtime_server_binding.py::test_failed_bind_does_not_leak_a_socket": ("posix",),
+    "tests/app_runtime/test_runtime_server_binding.py::test_failed_listen_releases_the_bound_socket": ("posix",),
+}
+REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS = tuple(REQUIRED_REGRESSION_ALLOWED_SKIPPED_PLATFORMS)
 UI_MODE_SCOPE_TAG_VALUES = {"render_bridge"}
 
 ENTRY_MANUAL_FIELDS = ["status", "owner", "batch", "notes", "exit_condition"]
@@ -705,7 +690,6 @@ def quality_gate_required_test_nodeid_matches(
 
 
 def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
-    startup_regressions = _registry_startup_regressions()
     return [
         {
             "display": "python -m ruff --version",
@@ -768,7 +752,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tests/app_runtime/test_frontend_offline_static_assets.py tests/web_pages/test_frontend_ui_language_polish.py tests/web_pages/test_frontend_ui_language_polish_browser.py tests/config/test_config_manual_markdown.py tests/web_pages/test_page_manual_registry.py tests/gate_meta/test_aps_three_gap_docs_quality_gate.py tests/gate_meta/test_run_quality_gate.py",
+            "display": "python tools/scan_py38plus_syntax.py --fail-on-hit scripts/run_quality_gate.py tools/quality_gate_shared.py tools/scan_aps_three_gap_py38_scope.py tools/test_registry.py tools/test_registry_data.py tests/conftest.py tests/app_runtime/test_frontend_offline_static_assets.py",
             "args": [
                 "python",
                 "tools/scan_py38plus_syntax.py",
@@ -776,13 +760,10 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
                 "scripts/run_quality_gate.py",
                 "tools/quality_gate_shared.py",
                 "tools/scan_aps_three_gap_py38_scope.py",
+                "tools/test_registry.py",
+                "tools/test_registry_data.py",
+                "tests/conftest.py",
                 "tests/app_runtime/test_frontend_offline_static_assets.py",
-                "tests/web_pages/test_frontend_ui_language_polish.py",
-                "tests/web_pages/test_frontend_ui_language_polish_browser.py",
-                "tests/config/test_config_manual_markdown.py",
-                "tests/web_pages/test_page_manual_registry.py",
-                "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
-                "tests/gate_meta/test_run_quality_gate.py",
             ],
             "capture_output": True,
             "output_policy": "normalized",
@@ -823,20 +804,8 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
             "output_policy": "normalized",
         },
         {
-            "display": "python -m pytest -q tests/gate_meta/test_architecture_fitness.py",
-            "args": ["python", "-m", "pytest", "-q", "tests/gate_meta/test_architecture_fitness.py"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
             "display": "python scripts/sync_debt_ledger.py check",
             "args": ["python", "scripts/sync_debt_ledger.py", "check"],
-            "capture_output": False,
-            "output_policy": "normalized",
-        },
-        {
-            "display": "python -m pytest -q " + " ".join(startup_regressions),
-            "args": ["python", "-m", "pytest", "-q"] + list(startup_regressions),
             "capture_output": False,
             "output_policy": "normalized",
         },

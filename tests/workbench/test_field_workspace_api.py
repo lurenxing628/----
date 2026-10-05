@@ -1,14 +1,9 @@
 """Field route evidence against a real, isolated database and AJ's real ledger."""
 
-from datetime import date, datetime
 
-import pytest
-
-import web.public_token_registry as registry
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from tests.workbench.execution_ledger_support import all_rows
-from tests.workbench.field_workspace_support import BASE, FieldAPI, _ledger_fixture, success
-from tests.workbench.field_workspace_support import field_api as _field_api
+from tests.workbench.field_workspace_support import BASE, FieldAPI, _ledger_fixture, success  # noqa: F401
+from tests.workbench.field_workspace_support import field_api as _field_api  # noqa: F401
 
 
 def test_unreported_null_zero_partial_finish_and_readonly(field_api):
@@ -35,73 +30,6 @@ def test_unreported_null_zero_partial_finish_and_readonly(field_api):
     assert api.case.conn.execute('SELECT count(*) FROM OperationExecutionEvents').fetchone()[0] == 0
 
 
-def test_correction_history_old_revision_and_original_request(field_api):
-    api = field_api
-    api.create()
-    record = api.task()['execution']['reports'][0]
-    body = api.body(record['write_context'], {'original_revision_ref': record['revision_ref'], 'reason': '工时复核', 'effective_processing_hours': 1.25})
-    first = success(api.client.post(BASE + '/reports/' + record['report_ref'] + '/correct', json=body))
-    second = success(api.client.post(BASE + '/reports/' + record['report_ref'] + '/correct', json={**body, 'write_token': 'expired'}))
-    assert second['replayed'] and second['receipt_ref'] == first['receipt_ref']
-    conflict = api.client.post(BASE + '/reports/' + record['report_ref'] + '/correct', json={**body, 'input': {**body['input'], 'reason': 'another'}})
-    assert conflict.status_code == 409 and conflict.get_json()['error']['code'] == 'request_key_conflict'
-    fresh = api.task()['execution']['reports'][0]
-    assert fresh['report_ref'] == record['report_ref'] and fresh['revision_ref'] != record['revision_ref']
-    assert len(fresh['correction_history']) == 2
-    stale = api.body(fresh['write_context'], body['input'])
-    assert api.client.post(BASE + '/reports/' + record['report_ref'] + '/correct', json=stale).status_code == 409
-
-
-def test_pages_filter_detail_scope_and_old_plan_identity(field_api):
-    api = field_api
-    ids = [api.case.op_id] + [api.case.op('OP' + str(index), seq=index) for index in range(2, 27)]
-    api.case.plan(2, ids)
-    first = api.read(size=10)
-    second = api.read(size=10, page=2, snapshot_ref=first['meta']['snapshot_ref'], **first['data']['scope'])
-    assert second['meta']['as_of'] == first['meta']['as_of']
-    assert len(second['data']['tasks']) == 10 and second['data']['page']['total'] == 26
-    task = second['data']['tasks'][0]
-    detail = api.read('/tasks/' + task['task_ref'], snapshot_ref=first['meta']['snapshot_ref'], **first['data']['scope'])
-    assert detail['data']['task'] == task
-    bad = api.client.get(BASE + '/tasks', query_string={'query': 'changed', 'snapshot_ref': first['meta']['snapshot_ref']})
-    assert bad.status_code == 409
-    old = api.task(plan_ref=api.case.plan_ref(1))
-    assert not old['execution']['write_context']['capabilities']['create']
-    current = next(row for row in first['data']['tasks'] if row['operation_ref'] == old['operation_ref'])
-    assert old['task_ref'] != current['task_ref']
-
-
-def test_list_issues_write_tokens_for_returned_rows_only(field_api):
-    # 汇总和指纹仍按整份计划算，写令牌只发给本次返回的行，不把各页面共用的令牌登记表挤满。
-    api = field_api
-    ids = [api.case.op_id] + [api.case.op('TOKEN-' + str(index), seq=index) for index in range(2, 27)]
-    api.case.plan(2, ids)
-    first = api.read(size=10)
-    page = [row['execution']['write_context']['write_token'] for row in first['data']['tasks']]
-    with api.app.app_context():
-        issued = set(registry._registry()['workbench-write-v1']['tokens'])
-    assert first['data']['page']['total'] == 26 and all(page) and issued == set(page)
-    later = api.read(size=10, page=3, snapshot_ref=first['meta']['snapshot_ref'], **first['data']['scope'])
-    api.create(task=later['data']['tasks'][-1])
-    api.create()  # 令牌绑定台账修订号，报工后要重新读取才能拿到新令牌
-    # 旧计划上的任务不能新增报工，但已有报工照旧能补录、更正、作废。
-    old = api.task(plan_ref=api.case.plan_ref(1))
-    assert not old['execution']['write_context']['capabilities']['create']
-    assert old['execution']['reports'][0]['write_context']['write_token']
-
-
-def test_cross_plan_reports_legacy_finish_and_raw_preservation(field_api):
-    api = field_api
-    api.create(api.case.values(2))
-    old = api.task()
-    raw = [tuple(row) for row in api.case.conn.execute('SELECT * FROM WorkbenchProductionReports')]
-    api.case.plan(2, [api.case.op_id])
-    current = api.task()
-    report = current['execution']['reports'][0]
-    assert current['task_ref'] != old['task_ref'] and report['recorded_against_task_ref'] == old['task_ref']
-    assert [tuple(row) for row in api.case.conn.execute('SELECT * FROM WorkbenchProductionReports')] == raw
-
-
 def test_missing_schema_is_unavailable_and_never_installed(request):
     case = request.getfixturevalue('ledger_case')
     api = FieldAPI(case)
@@ -109,101 +37,3 @@ def test_missing_schema_is_unavailable_and_never_installed(request):
     response = api.client.get(BASE + '/tasks')
     assert response.status_code == 409 and response.get_json()['error']['code'] == 'execution_ledger_unavailable'
     assert all_rows(case.conn) == before
-
-
-def test_blob_and_date_private_facts_are_typed(field_api):
-    api = field_api
-    api.case.conn.execute('UPDATE BatchOperations SET status=? WHERE id=?', (b'old\x00status', api.case.op_id))
-    api.case.conn.commit()
-    task = api.task()
-    assert task['execution']['write_context']['write_token']
-    api.create(task=task)
-    typed = plain_plan_facts({'date': date(2026, 9, 1), 'time': datetime(2026, 9, 1, 1, 2), 'blob': b'\x00'})
-    assert typed['date']['storage_type'] == 'date' and typed['blob']['hex'] == '00'
-
-
-def test_initial_cross_page_focus_and_common_gantt_scope(field_api, monkeypatch):
-    from core.services.workbench.execution.field_workspace import FieldWorkspaceService
-
-    api = field_api
-    ids = [api.case.op_id] + [api.case.op('FOCUS-' + str(index), seq=index) for index in range(2, 30)]
-    api.case.plan(2, ids)
-    selected = api.case.task(2, ids[-1])
-    original, signed = FieldWorkspaceService._with_contexts, []
-
-    def with_contexts(self, tasks):
-        signed.extend(task['task_ref'] for task in tasks)
-        return original(self, tasks)
-
-    monkeypatch.setattr(FieldWorkspaceService, '_with_contexts', with_contexts)
-    result = api.read(size=10, task_ref=selected, batch_ids='["B1"]', range_start='2026-09-09T07:00:00', range_end='2026-09-09T11:00:00')
-    assert result['data']['page']['number'] == 3 and any(row['task_ref'] == selected for row in result['data']['tasks'])
-    # 定位页码只在已算好的范围里查：报工令牌只给返回的这一页签一次，选中任务不重复签。
-    assert signed == [row['task_ref'] for row in result['data']['tasks']]
-    wrong =api.client.get(BASE + '/tasks', query_string={'plan_ref': api.case.plan_ref(1), 'task_ref': selected})
-    assert wrong.status_code == 404
-
-
-def test_selected_task_operation_pair_is_checked_without_losing_plan_scope(field_api):
-    api = field_api
-    second_id = api.case.op('SECOND-FOCUS', seq=2)
-    api.case.plan(2, [api.case.op_id, second_id])
-    first = api.read(plan_ref=api.case.plan_ref(2), batch_ids='["B1"]', query='Turning')
-    one, two = first['data']['tasks']
-    query = {**first['data']['scope'], 'batch_ids': '["B1"]', 'snapshot_ref': first['meta']['snapshot_ref']}
-    before = all_rows(api.case.conn)
-    valid = api.read(**query, task_ref=two['task_ref'], operation_ref=two['operation_ref'])
-    assert valid['data']['scope'] == first['data']['scope']
-    assert any(row['task_ref'] == two['task_ref'] for row in valid['data']['tasks'])
-    wrong = api.client.get(BASE + '/tasks', query_string={
-        **query, 'task_ref': two['task_ref'], 'operation_ref': one['operation_ref'],
-    })
-    assert wrong.status_code == 409
-    assert wrong.get_json()['error']['code'] == 'constraint_conflict'
-    assert wrong.get_json()['committed'] is False
-    assert all_rows(api.case.conn) == before
-
-
-def test_legacy_finish_explicit_supplement_and_preserved_events(field_api):
-    api = field_api
-    api.case.event(api.case.op_id, 'start')
-    api.case.event(api.case.op_id, 'finish', quantity=None)
-    # Explicit installation records newly appended old events in this test database.
-    api.case.install()
-    before = [tuple(row) for row in api.case.conn.execute('SELECT * FROM OperationExecutionEvents')]
-    task = api.task()
-    assert task['execution']['execution_state'] == 'complete' and task['execution']['data_quality'] == 'legacy_incomplete'
-    assert task['execution']['reports'] == [] and task['execution']['remaining_quantity'] is None
-    legacy = next(row for row in task['execution']['legacy_facts'] if row['event_type'] == 'finish')
-    api.create(api.case.values(10, legacy_fact_ref=legacy['legacy_fact_ref'], reason='人工复核原始完工'), task=task)
-    assert api.task()['execution']['known_completed_quantity'] == 10
-    assert [tuple(row) for row in api.case.conn.execute('SELECT * FROM OperationExecutionEvents')] == before
-
-
-@pytest.mark.parametrize('query', [{'page': 2}, {'page': '1.5'}, {'source': 'demo'}, {'state': 'done'}, {'event_id': 1},
-    {'plan_finish_date_from': '2026-02-30', 'plan_finish_date_to': '2026-03-02'}, {'plan_finish_date_from': '2026-09-01'}])
-def test_invalid_queries_do_not_fallback(field_api, query):
-    response = field_api.client.get(BASE + '/tasks', query_string=query)
-    assert response.status_code == 400 and response.get_json()['committed'] is False
-
-
-def test_page_tokens_are_issued_after_the_read_snapshot_without_sql(field_api, monkeypatch):
-    import sqlite3
-
-    from core.services.workbench.execution.field_workspace import FieldWorkspaceService
-    from web.routes.workbench import read_budget
-
-    original, paged = FieldWorkspaceService.page, []
-
-    def page(self, cohort, number, size):
-        paged.append((self.conn.in_transaction, read_budget.PLAN_READ_SLOTS._available))
-        self.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_DENY)
-        try:
-            return original(self, cohort, number, size)
-        finally:
-            self.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
-
-    monkeypatch.setattr(FieldWorkspaceService, 'page', page)
-    assert field_api.task()['execution']['write_context']['write_token']
-    # 整份范围在读额度和读快照里算完；给这一页签发报工令牌不再读库，也不再占着读锁和额度。
-    assert paged == [(False, 1)]

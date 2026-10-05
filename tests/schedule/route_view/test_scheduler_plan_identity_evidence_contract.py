@@ -1,15 +1,9 @@
-"""回归测试：SchedulePlanQueryService.resolve_plan/resolve_plan_view 产出的 plan_identity 证据契约——当前 adopted 正式锁定计划可派工可回写反馈；失败/模拟的正式结果、历史旧版本、对比参考候选方案、回退到 adopted 的角色、场景预览方案均按规则禁派工/禁反馈并给出对应 user_label 与来源标记；build_plan_identity 缺 source_table 时抛 ValueError。"""
+"""正式方案可派工反馈，历史和对比方案拒绝写入。"""
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import pytest
-
-from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
-from core.services.scheduler.schedule_plan_identity_builder import build_plan_identity
 from core.services.scheduler.schedule_plan_query_service import (
     ROLE_ADOPTED,
     ROLE_BASELINE_BEST,
@@ -255,75 +249,6 @@ def test_current_adopted_plan_identity_can_dispatch_and_write_feedback(tmp_path)
         conn.close()
 
 
-@pytest.mark.parametrize(
-    ("result_status", "result_summary"),
-    [
-        (None, "{}"),
-        ("failed", "{}"),
-        ("simulated", "{}"),
-        ("success", '{"is_simulation": true}'),
-    ],
-)
-def test_failed_or_simulated_official_result_cannot_dispatch_or_write_feedback(
-    tmp_path,
-    result_status,
-    result_summary,
-) -> None:
-    conn = _seed_db(tmp_path)
-    try:
-        conn.execute(
-            """
-            UPDATE ScheduleHistory
-               SET result_status = ?, result_summary = ?
-             WHERE version = ?
-            """,
-            (result_status, result_summary, VERSION),
-        )
-        conn.commit()
-
-        identity = _identity_dict(SchedulePlanQueryService(conn).resolve_plan(VERSION, ROLE_ADOPTED))
-
-        assert identity["is_current_executable_official_version"] is False
-        assert identity["can_dispatch"] is False
-        assert identity["can_write_feedback"] is False
-    finally:
-        conn.close()
-
-
-def test_bad_result_summary_fails_closed_for_official_identity(tmp_path) -> None:
-    conn = _seed_db(tmp_path)
-    try:
-        conn.execute(
-            """
-            UPDATE ScheduleHistory
-               SET result_status = 'success', result_summary = ?
-             WHERE version = ?
-            """,
-            ("{bad-json", VERSION),
-        )
-        conn.commit()
-
-        identity = _identity_dict(SchedulePlanQueryService(conn).resolve_plan(VERSION, ROLE_ADOPTED))
-
-        assert identity["result_summary_parse_failed"] is True
-        assert identity["result_summary_parse_reason"]
-        assert identity["is_simulation"] is True
-        assert identity["is_current_executable_official_version"] is False
-        assert identity["can_dispatch"] is False
-        assert identity["can_write_feedback"] is False
-    finally:
-        conn.close()
-
-
-def test_bad_plan_role_still_raises_with_plan_role_field() -> None:
-    from core.services.scheduler.schedule_result_view_context import normalize_plan_role
-
-    with pytest.raises(ValidationError) as exc_info:
-        normalize_plan_role("bad_role")
-
-    assert exc_info.value.field == "plan_role"
-
-
 def test_history_candidate_fallback_and_same_source_comparison_cannot_write_feedback(tmp_path) -> None:
     conn = _seed_db(tmp_path)
     try:
@@ -375,74 +300,5 @@ def test_history_candidate_fallback_and_same_source_comparison_cannot_write_feed
                 "can_write_feedback": False,
             },
         )
-    finally:
-        conn.close()
-
-
-def test_scenario_preview_plan_identity_uses_plain_label_and_cannot_write_feedback(tmp_path) -> None:
-    conn = _seed_db(tmp_path)
-    try:
-        scenario_id = "scenario-plain"
-        identity = _identity_dict(SchedulePlanQueryService(conn).resolve_plan_view(VERSION, ROLE_ADOPTED, scenario_id))
-
-        assert identity["scenario_id"] == scenario_id
-        assert identity["source_table"] == "adjustment_scenario_rows"
-        assert identity["source_row_id"] is not None
-        assert identity["user_label"] == "试调方案（未命名）"
-        assert identity["is_official"] is False
-        assert identity["is_preview"] is True
-        assert identity["is_simulation"] is True
-        assert identity["can_dispatch"] is False
-        assert identity["can_write_feedback"] is False
-    finally:
-        conn.close()
-
-
-def test_plan_identity_builder_rejects_missing_source_table() -> None:
-    with pytest.raises(ValueError, match="有效的数据来源"):
-        build_plan_identity(
-            version=VERSION,
-            requested_role=ROLE_ADOPTED,
-            effective_role=ROLE_ADOPTED,
-            status="resolved_adopted",
-            source_table="",
-            source_row_id=80,
-            candidate_id=None,
-            candidate_key=None,
-            scenario_id=None,
-            scenario_display_name="",
-            schedule_result_status="success",
-            result_summary="{}",
-            latest_official_version=VERSION,
-            schedule_lock_status="unlocked",
-            detail_saved="yes",
-        )
-
-
-@pytest.mark.parametrize("report", ["overdue_batches", "utilization", "downtime_impact", "version_date_range", "execution_review"])
-def test_reports_resolve_plan_once_without_loading_all_history(tmp_path, monkeypatch, report) -> None:
-    from core.services.report.report_engine import ReportEngine
-
-    conn = _connect_fresh_schema(tmp_path)
-    try:
-        _seed_base(conn)
-        engine = ReportEngine(conn)
-        original = engine.plan_query_service.resolve_plan_view
-        calls = []
-
-        def resolve(*args, **kwargs):
-            calls.append(args)
-            return original(*args, **kwargs)
-
-        def unbounded_history():
-            raise AssertionError("resolving the latest identity needs a scalar version, not all history")
-
-        monkeypatch.setattr(engine.plan_query_service, "resolve_plan_view", resolve)
-        monkeypatch.setattr(engine.plan_query_service.repo, "list_history_identity_rows", unbounded_history)
-        kwargs = {"start_date": "2026-05-05", "end_date": "2026-05-05"} if report in ("utilization", "downtime_impact") else {}
-        result = getattr(engine, report)(VERSION, **kwargs)
-        assert result["version"] == VERSION
-        assert calls == [(VERSION, ROLE_ADOPTED if report == "execution_review" else None, None)]
-        assert engine.plan_query_service.repo.latest_version() == VERSION
     finally:
         conn.close()

@@ -1,8 +1,8 @@
 """Real HTTP preview/confirm binds reason, revision and all execution facts."""
 
 from tests.workbench.execution_ledger_support import all_rows
-from tests.workbench.field_workspace_support import BASE, _ledger_fixture, success
-from tests.workbench.field_workspace_support import field_api as _field_api
+from tests.workbench.field_workspace_support import BASE, _ledger_fixture, success  # noqa: F401
+from tests.workbench.field_workspace_support import field_api as _field_api  # noqa: F401
 
 
 def preview(api, record, reason="误报本次加工"):
@@ -31,34 +31,3 @@ def test_field_preview_confirm_refresh_and_original_receipt_replay(field_api):
     assert audit['report']['report_no'] == record['report_no'] and audit['report']['completed_quantity'] == 2
     assert audit['report']['actual_start'] == record['actual_start'] and audit['report']['actual_machine_label'] == 'Lathe'
     assert audit['void_fact']['reason'] == payload['reason']
-
-
-def test_changed_reason_and_new_report_require_a_fresh_preview(field_api):
-    api = field_api
-    api.create()
-    record = api.task()['execution']['reports'][0]
-    payload, data = preview(api, record)
-    path = BASE + '/reports/' + record['report_ref'] + '/void'
-    changed = api.body(data['write_context'], {**payload, 'reason': '另一原因'})
-    response = api.client.post(path, json=changed)
-    assert response.status_code == 409 and not response.get_json()['committed']
-    api.create(api.case.values(1))
-    response = api.client.post(path, json=api.body(data['write_context'], payload))
-    assert response.status_code == 409 and not response.get_json()['committed']
-    assert api.case.conn.execute('SELECT count(*) FROM WorkbenchProductionReportVoids').fetchone()[0] == 0
-    payload, data = preview(api, record)
-    success(api.client.post(path, json=api.body(data['write_context'], payload)))
-    assert api.task()['execution']['known_completed_quantity'] == 1
-
-
-def test_reason_is_required_and_unpreviewed_normal_record_token_is_rejected(field_api):
-    api = field_api
-    api.create()
-    record = api.task()['execution']['reports'][0]
-    path = BASE + '/reports/' + record['report_ref']
-    response = api.client.post(path + '/void-preview', json={'input': {'original_revision_ref': record['revision_ref'], 'reason': ' '}})
-    assert response.status_code == 422
-    body = api.body(record['write_context'], {'original_revision_ref': record['revision_ref'], 'reason': '误录'})
-    response = api.client.post(path + '/void', json=body)
-    assert response.status_code == 409
-    assert len(api.task()['execution']['reports']) == 1

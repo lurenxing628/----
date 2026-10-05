@@ -40,7 +40,9 @@ py -3.8 -m venv .venv
 .venv\Scripts\python scripts/run_daily_quality_gate.py
 ```
 
-这条命令是给日常开发用的快速检查。它会先看本次到底改了哪些文件：只改 README、开发文档或 CodeStable 记录时，不跑 required pytest，只做本地运行产物拦截、pytest 收集检查和一小组重点冒烟测试；改了 Python 文件时，只对这些还存在的 Python 文件跑 `ruff check`；改了公共配置、门禁工具配置，或脚本判断不出改动范围时，才退回全仓 `ruff check` 和更保守的 required pytest。
+这条命令是给日常开发用的快速检查。它先判断本次改动：只改 README、开发文档或 CodeStable 记录时，只做运行产物拦截和应用启动、离线静态资源两项冒烟；改了 Python 文件时，对还存在的改动文件跑 `ruff check`，并从登记表选择相关职责组；改了公共配置、门禁工具，或判断不出范围时，跑全仓 `ruff check` 和全部保留的 required 测试。
+
+所有选中的测试和尚未覆盖的冒烟节点合并为一次单进程 pytest。已经选中冒烟文件时直接复用该文件的执行，不重复跑节点，也不启动 xdist worker。日常入口由这一次 pytest 收集实际选中的目标；全仓收集证明仍由完整门禁负责。旧 `--workbench-ui-evidence` 浏览器证据入口已退役，保留的 UI Node 契约进入普通 pytest。
 
 它不是最终 clean proof：不声明 full-test-debt proof，不声明干净工作区证明，也不代表 CI 或收口门禁已经通过。`.pre-commit-config.yaml` 的 pre-push hook 现在默认跑这条快门禁，目的是先挡明显问题，不再让每次日常 push 都完整执行 full-test-debt。
 
@@ -66,11 +68,13 @@ py -3.8 -m venv .venv
 2. 运行 `.venv\Scripts\python tools/check_full_test_debt.py`，确认 full-test-debt 没有新增未登记失败。
 3. 检查 `ruff` 和 `pyright` 版本是不是仓库要求的版本。
 4. 跑 `radon` 导入检查、`ruff check`、主链 `pyright` 和工具脚本 `pyright`。
-5. 跑架构适应度、必需回归、治理台账检查、启动链专项回归与系统速查表一致性检查。
+5. 从上述完整 pytest 的实际结果验证 required 覆盖，跑治理台账检查与系统速查表一致性检查。启动链回归已纳入统一 required 清单，不再单独重跑；旧架构适应度 pytest 专项已退役。
+
+完整 pytest 直接运行 `tests` 中的全部保留用例，不再用 `-m "not perf"` 排除测试。旧重浏览器、性能基准及门禁元测试已实际删除；纯 Node UI 契约与 API/事务回归一起执行。两个旧浏览器脚本仅保留退役提示，不再提供测试执行或成功报告。
 
 full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且已登记测试债务仍受台账约束；它不代表历史测试债务已经全部修完。
 
-long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions`、`quickref_vs_routes`、`import_cycles_production` 和 `import_cycles_with_tests`。当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
+long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`quickref_vs_routes`、`import_cycles_production` 和 `import_cycles_with_tests`。旧 `startup_runtime_regressions` 和 `architecture_fitness` 专项 entry 已退役。
 
 完整门禁在同次缓存判定中共享源码快照与工具 metadata；实际命令执行后会重新取得需要刷新的输入证据。`aps-full-selftest` 核验同 HEAD 的干净证明时，可复用仍匹配输入、环境、日志、输出且与本次 receipt 一致的 long-gate 成功结果；缺少或变化的证据继续重放对应命令，未覆盖的独立步骤照常执行。禁用重放仍是 `STRUCTURAL_ONLY`，不能当作通过证明。
 
@@ -109,7 +113,7 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 ### 可直接复用的测试落点
 
 - 历史兼容回归目录不再作为新增 `main()` 风格脚本的默认落点；当前没有可直接复跑的专项脚本集合，不能把它当成现成回归集合。
-- 现有高频回归已经迁到按业务分组的 `tests/schedule/`、`tests/web_pages/`、`tests/resource_dispatch/` 和 `tests/gate_meta/` 等目录；需要找具体守卫时优先看 `tools/test_registry_data.py` 和 `tools/test_registry_groups_*.py`。
+- 保留回归按排产、工作台、运行时与页面、数据导入、模型与事务、日历六个职责组登记在 `tools/test_registry_data.py`。旧分散登记模块和 gate meta 测试已退役；`tests/gate_meta/check_quickref_vs_routes.py` 继续作为完整门禁工具使用。
 
 ### 命名契约
 
@@ -118,7 +122,7 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 - 禁止在 `regression_*.py` 中同时声明 `main()` 与 `test_` 用例；若需要标准 `pytest` 用例，必须改为 `test_*.py` 命名，避免收集遗漏。
 - 仓库当前已移除 main-style 回归收集器；不要再新增带 `main()` 的 `regression_*.py` 脚本，新增回归优先写成标准 `test_*.py` 用例并放进对应业务目录。
 - 上述契约依赖当前 `tests/conftest.py` 的收集适配保持不变；`SP01` 只补目录、探针与契约，不修改该实现。
-- `SP10` 完成前不迁移旧根层测试；后续新增专项回归优先写成标准 `test_*.py`，放进对应业务目录或 `tests/gate_meta/`，避免继续把新文件堆回 `tests/` 根层。
+- 新增回归优先复用已有业务测试中的场景，确需新文件时写成标准 `test_*.py` 并放进对应业务目录，在统一登记表说明其职责。
 
 ## 对 SP02 的承接边界
 
@@ -126,7 +130,7 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 
 - 可稳定链接的根入口、开发文档入口与审计入口。
 - 本地开发与托管检查共用的开发依赖声明。
-- 新增专项回归不再放回历史兼容回归目录；应放到对应业务目录或 `tests/gate_meta/`，并按需要登记到 `tools/test_registry_data.py` 或对应分组文件。
+- 新增专项回归放到对应业务目录，统一登记到 `tools/test_registry_data.py`；不恢复旧门禁元测试目录或第二份目标清单。
 - 已明确写清的命名契约，以及它对当前 `tests/conftest.py` 收集适配前提的依赖。
 - 统一质量门禁入口 `.venv\Scripts\python scripts/run_quality_gate.py`；只有已经激活 `.venv` 后，才可以简写成 `python scripts/run_quality_gate.py`。
 - 唯一台账写入口 `.venv\Scripts\python scripts/sync_debt_ledger.py`；只有已经激活 `.venv` 后，才可以简写成 `python scripts/sync_debt_ledger.py`。
@@ -152,7 +156,7 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 - 手动快速静态预检可以用 `.venv\Scripts\python tools\git_hook_checks.py run-fast-static-precheck`。它不会改变 `run-quality-gate` 的 daily fast gate 语义，也不会改变 `run-final-quality-gate` 的完整 clean gate 语义。
 - 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它，绕过后不能当作已经通过本地提交检查。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 和 CI 阻断。
-- `scripts/run_quality_gate.py` 固定顺序已包含：测试收集、`python tools/check_full_test_debt.py`、`ruff` 版本检查、`pyright` 版本检查、`radon` 导入检查、`ruff check`、主链 `pyright`、工具脚本 `pyright`、架构适应度、必需回归、治理台账检查、启动链专项回归与速查表核对。
+- `scripts/run_quality_gate.py` 包含全仓测试收集、`python tools/check_full_test_debt.py`、工具版本与依赖检查、`ruff check`、主链与工具脚本 `pyright`、import cycle 检查、Python 3.8 语法检查、必需回归结果复用、治理台账检查与速查表核对。
 - `pyrightconfig.gate.json` 只覆盖 `app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/` 主链，是主链 gate 的类型检查口径。
 - `pyrightconfig.tools.json` 覆盖门禁和维护脚本，是 `pyright_tools_full` 的正式工具脚本门禁口径。
 - `pyrightconfig.json` 保留为全仓类型债务盘点入口，包含 `tests/` 等更宽范围，不直接作为本轮硬门禁。

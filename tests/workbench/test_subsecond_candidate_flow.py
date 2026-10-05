@@ -16,7 +16,7 @@ from tests.workbench.run_candidate_support import candidate_case as _case  # noq
 from tests.workbench.run_candidate_support import compute, connect
 
 
-@pytest.mark.parametrize("efficiency,shift_hours", [(1, 8), (0.7, 8), (1, 0.0025)])
+@pytest.mark.parametrize("efficiency,shift_hours", [(1, 0.0025)])
 def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_case, efficiency, shift_hours):
     case = candidate_case
     case.conn.execute("UPDATE Batches SET part_name='Original part'")

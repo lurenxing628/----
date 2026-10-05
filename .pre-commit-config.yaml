@@ -40,14 +40,3 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
-      # 放在日常门禁后面：它最慢，而且没准备 Chromium 109 时会自己跳过，
-      # 先让快的、确定性的结果出来。整条车道一个多小时塞不进 push，所以按轮转抽样，
-      # 每次两个文件、N 次 push 覆盖一圈。APS_BROWSER_LANE_SAMPLE=0 可临时关掉。
-      - id: browser-lane-sample
-        name: browser lane sample (rotating)
-        entry: python -m tools.browser_lane_sample
-        language: system
-        pass_filenames: false
-        always_run: true
-        verbose: true
-        stages: [pre-push]

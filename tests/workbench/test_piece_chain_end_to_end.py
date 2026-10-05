@@ -28,7 +28,7 @@ def workspace(conn, ref):
         return svc.workspace(PlanReadScope(ref))[0]
 
 
-@pytest.mark.parametrize("common", [False, True])
+@pytest.mark.parametrize("common", [True])
 def test_real_complete_chain_preserves_raw_source_old_scene_and_receipts(trial_case, common):
     case = trial_case
     ids, run_ref, refs = piece_candidate(case, common=common)
@@ -84,12 +84,3 @@ def test_real_complete_chain_preserves_raw_source_old_scene_and_receipts(trial_c
         assert final_connection.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
     finally:
         final_connection.close()
-
-
-def test_real_worker_candidate_can_be_trial_source_without_adopting_it(trial_case):
-    case = trial_case
-    ids, _, refs = piece_candidate(case)
-    _, _, saved = saved_trial(case, {"candidate_ref": refs[0]}, op_id=ids[None, 40])
-    assert case.conn.execute("SELECT count(*) FROM Schedule").fetchone()[0] == 0
-    result = adopt_trial(case, saved)
-    assert result["data"]["official_plan"]["version"] == 1

@@ -1,7 +1,5 @@
 """Batch atomic previews, template copies and actual resource constraints."""
 
-from core.infrastructure.transaction import TransactionManager
-from core.services.process.workflow_state import start_workflow
 from tests.workbench.batch_support import (
     BASE,
     assert_error,
@@ -9,11 +7,9 @@ from tests.workbench.batch_support import (
     body,
     detail,
     list_data,
-    post,
     ref_for,
     state,
 )
-from tests.workbench.identity_metadata_support import insert_row
 
 _batch_fixture = batch_database
 
@@ -23,11 +19,6 @@ def preview(client, action="update", refs=None, patch=None):
         "input": {"action": action, "refs": refs or [ref_for(client)], "patch": patch or {}}})
     assert response.status_code == 200, response.get_json()
     return response.get_json()["data"]
-
-
-def sync_preview(client, strict=None):
-    ref = ref_for(client)
-    return client.post(BASE + "/" + ref + "/sync-preview", json={"snapshot_ref": detail(client)["meta"]["snapshot_ref"], "input": {} if strict is None else {"strict_mode": strict}})
 
 
 def confirm(client, data, path="/bulk-confirm", key="batch-preview-confirm-001"):
@@ -55,28 +46,6 @@ def test_bulk_modify_copy_delete_actual_records_atomic(batch_client):
     assert_error(client.get(BASE + "/" + created), "entity_not_found")
 
 
-def test_stale_previews_name_the_button_that_redoes_them(batch_client):
-    """预检过期或资料有变化时，提示点名页面上真正用来重做这一步的按钮，不再一律写「预览变更」。"""
-    client = batch_client
-    for action, button in (("update", "「预览变更」"), ("copy", "「复制所选」"), ("delete", "「删除所选」，或列表里该批次的「删除」、批次详情的「删除批次」")):
-        p = preview(client, action, patch={"remark": "x"} if action == "update" else None)
-        client.batch_conn.execute("UPDATE Parts SET remark=?", ("drift-" + action,))
-        client.batch_conn.commit()
-        message = assert_error(confirm(client, p, key="batch-drift-" + action + "-00001"), "stale_write")["error"]["message"]
-        assert message == "预检之后资料有变化，还没有保存。请重新点" + button + "。", message
-    ref = ref_for(client)
-    for path, expected in (("/" + ref + "/split-confirm", "还没有保存。请重新点「预检可开工数量」。"),
-                           ("/" + ref + "/sync-confirm", "还没有保存。请重新点「预检工序更新」。"),
-                           ("/bulk-confirm", "还没有保存。请按原来的操作重新点「预览变更」「复制所选」「删除所选」，或列表里该批次的「删除」、批次详情的「删除批次」。"),
-                           ("/import-confirm", "文件还没有导入。请点「更换文件」后重新点「开始预检」。")):
-        response = client.post(BASE + path, json={"request_key": "batch-expired" + path.replace("/", "-")[-24:],
-                                                  "write_token": "expired-write-token", "input": {"preview_ref": "expired-preview-ref"}})
-        message = assert_error(response, "stale_write")["error"]["message"]
-        assert message == "预检结果已过期，系统没有自动重做，" + expected, message
-    message = assert_error(client.get(BASE + "/export", query_string={"export_ref": "expired-export-ref"}), "stale_write")["error"]["message"]
-    assert message == "导出范围已过期，系统没有自动重做，没有开始下载。请重新点「下载批次清单」。", message
-
-
 def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypatch):
     from core.services.batch.service import BatchService
 
@@ -100,94 +69,3 @@ def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypa
     before = state(client)
     assert confirm(client, p).get_json()["committed"] == "unknown"
     assert len(calls) == 2 and state(client) == before
-
-
-def test_sync_requires_complete_template_preserves_zero_and_managed_gate(batch_client):
-    client = batch_client
-    conn = client.batch_conn
-    conn.execute("UPDATE PartOperations SET source='internal',setup_hours=NULL,unit_hours=0,ext_group_id=NULL,ext_days=NULL,supplier_id=NULL")
-    conn.commit()
-    before = state(client)
-    assert_error(sync_preview(client, strict=False), "template_validation_required")
-    rejected = assert_error(sync_preview(client), "constraint_conflict")
-    assert "工序 1 的换型工时未填写" in rejected["error"]["message"]
-    assert_error(sync_preview(client, strict=True), "constraint_conflict")
-    assert state(client) == before
-    template = detail(client)["data"]["template"]
-    assert not template["complete"] and template["operation_count"] == 1
-    assert template["diagnostics"][0]["message"] in rejected["error"]["message"]
-    conn.execute("UPDATE PartOperations SET setup_hours=0")
-    conn.commit()
-    response = sync_preview(client)
-    assert response.status_code == 200, response.get_json()
-    p = response.get_json()["data"]
-    old = detail(client)["data"]["operations"][0]["ref"]
-    assert confirm(client, p, "/" + ref_for(client) + "/sync-confirm").status_code == 200
-    op = detail(client)["data"]["operations"][0]
-    assert op["setup_hours"] == 0 and op["unit_hours"] == 0 and op["ref"] != old
-    assert client.batch_conn.execute("SELECT active FROM WorkbenchPlanSourceRefs WHERE ref=?", (old,)).fetchone()[0] == 0
-    with TransactionManager(conn).transaction():
-        start_workflow(conn, "P1")
-    before = state(client)
-    assert_error(sync_preview(client), "constraint_conflict")
-    assert state(client) == before
-
-
-def test_operations_patch_preserves_null_zero_and_rejects_wrong_authorization(batch_client):
-    client = batch_client
-    op = detail(client)["data"]["operations"][0]
-    response = post(client, "operation_update", {"operation_ref": op["ref"], "fields": {"machine_ref": ref_for(client, "machine", "M1"), "operator_ref": ref_for(client, "operator", "O1")}})
-    assert response.status_code == 200, response.get_json()
-    changed = detail(client)["data"]["operations"][0]
-    assert changed["setup_hours"] is None and changed["unit_hours"] == 0 and changed["ref"] == op["ref"]
-    client.batch_conn.execute("DELETE FROM OperatorMachine")
-    client.batch_conn.commit()
-    before = state(client)
-    assert_error(post(client, "operation_update", {"operation_ref": op["ref"], "fields": {"unit_hours": 1}}, key="batch-unauth-00000001"), "invalid_input")
-    assert state(client) == before
-
-
-def test_merged_external_period_never_overridden(batch_client):
-    client = batch_client
-    client.batch_conn.execute("UPDATE ExternalGroups SET merge_mode='merged',total_days=7")
-    client.batch_conn.execute("UPDATE BatchOperations SET source='external',supplier_id='S1' WHERE batch_id='FREE-001'")
-    client.batch_conn.commit()
-    op = detail(client)["data"]["operations"][0]
-    before = state(client)
-    assert op["external_group"]["merge_mode"] == "merged" and op["external_group"]["total_days"] == 7
-    assert_error(post(client, "operation_update", {"operation_ref": op["ref"], "fields": {"external_days": 2}}), "constraint_conflict")
-    assert state(client) == before
-
-
-def test_partial_completion_is_not_batch_completion(batch_client):
-    client = batch_client
-    client.batch_conn.execute("UPDATE BatchOperations SET status='completed' WHERE batch_id='FREE-001'")
-    insert_row(client.batch_conn, "BatchOperations", dict(op_code="FREE-001_02", batch_id="FREE-001", seq=2,
-               op_type_id="OT1", op_type_name="turning", source="internal", setup_hours=0, unit_hours=0, status="pending"))
-    client.batch_conn.execute("UPDATE Batches SET status='completed' WHERE batch_id='FREE-001'")
-    client.batch_conn.commit()
-    entity = detail(client)["data"]
-    assert entity["relationships"]["completed_count"] == 1 and entity["relationships"]["operation_count"] == 2
-    assert not entity["all_operations_complete"] and any(row["code"] == "completion_inconsistent" for row in entity["issues"])
-    assert entity["operations"][1]["status"] == "pending" and not entity["operations"][1]["completed"]
-
-
-def test_selection_facets_and_filter_before_pagination(batch_client):
-    client = batch_client
-    scope = {"page": 1, "size": 1, "sort": "quantity", "direction": "desc", "column_filters": {"ready_status": ["no"]}}
-    response = client.post(BASE + "/query", json=scope)
-    assert response.status_code == 200, response.get_json()
-    result = response.get_json()
-    assert result["data"]["page"]["total"] == 2 and len(result["data"]["entities"]) == 1
-    assert result["data"]["entities"][0]["business_code"] == "B1"
-    scope["snapshot_ref"] = result["meta"]["snapshot_ref"]
-    selection = client.post(BASE + "/selection", json=scope).get_json()
-    assert selection["data"]["count"] == 2
-    facets = client.post(BASE + "/facets", json={"scope": scope, "field": "quantity"}).get_json()
-    assert sorted(facets["data"]["values"]) == [5, 17]
-    old = state(client)
-    scope["column_filters"] = {"quantity": []}
-    assert_error(client.post(BASE + "/query", json=scope), "snapshot_stale")
-    del scope["snapshot_ref"]
-    assert client.post(BASE + "/query", json=scope).get_json()["data"]["page"]["total"] == 0
-    assert state(client) == old

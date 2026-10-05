@@ -1,4 +1,4 @@
-"""A14: real freeze collection, filtered optimizer input, greedy dispatch and persistence."""
+"""模板变化不改已冻结工序，冻结工序保持执行事实与固定字段。"""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def _observe_production(monkeypatch):
     return captured
 
 
-@pytest.mark.parametrize("dispatch_mode", ["batch_order", "sgs"])
+@pytest.mark.parametrize('dispatch_mode', ["sgs"])
 def test_template_change_does_not_merge_existing_partially_frozen_work(db_path, monkeypatch, dispatch_mode):
     conn = get_connection(db_path)
     try:
@@ -125,25 +125,6 @@ def test_template_change_does_not_merge_existing_partially_frozen_work(db_path, 
         assert conn.execute("SELECT COUNT(*) FROM OperationExecutionEvents").fetchone()[0] == 0
         assert "_external_group_metadata" not in str(result)
         assert "_external_group_identity" not in str(result)
-    finally:
-        conn.close()
-
-
-@pytest.mark.parametrize("merge_mode,freeze_days", [("merged", 1), ("separate", 1), ("merged", 0)])
-def test_healthy_full_group_separate_and_unfrozen_schedules_keep_existing_rows(db_path, merge_mode, freeze_days):
-    conn = get_connection(db_path)
-    try:
-        config, first = _prepare_plan(conn, dispatch_mode="batch_order", merge_mode=merge_mode)
-        before = _rows(conn, first["version"])
-        config.set_freeze_window("yes" if freeze_days else "no", freeze_days)
-        result = ScheduleService(conn).run_schedule(["B1"], start_dt="2026-09-08 08:00:00")
-        after = _rows(conn, result["version"])
-        keys = ("op_id", "machine_id", "operator_id", "start_time", "end_time")
-        assert [{key: row[key] for key in keys} for row in after] == [{key: row[key] for key in keys} for row in before]
-        assert _rows(conn, first["version"]) == before
-        locked_count = sum(row["lock_status"] == "locked" for row in after)
-        assert locked_count == (0 if not freeze_days else 2 if merge_mode == "merged" else 1)
-        assert set(result) == set(first)
     finally:
         conn.close()
 

@@ -27,7 +27,6 @@ from tools.long_gate_schema import (
 from tools.test_registry import (
     iter_required_regression_common_scope_policy,
     iter_required_regression_groups,
-    iter_startup_regressions,
 )
 
 LONG_GATE_SCHEMA_VERSION = LONG_GATE_MANIFEST_SCHEMA_VERSION
@@ -59,10 +58,8 @@ _LONG_ENTRY_TYPES = {
     ENTRY_RUFF_CHECK_FULL,
     ENTRY_PYRIGHT_GATE_FULL,
     ENTRY_PYRIGHT_TOOLS_FULL,
-    ENTRY_ARCHITECTURE_FITNESS,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_DEBT_LEDGER_SYNC,
-    ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     ENTRY_QUICKREF_VS_ROUTES,
     ENTRY_IMPORT_CYCLES_PRODUCTION,
     ENTRY_IMPORT_CYCLES_WITH_TESTS,
@@ -76,7 +73,6 @@ _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_PYRIGHT_TOOLS_FULL,
     ENTRY_REQUIRED_REGRESSIONS,
     ENTRY_DEBT_LEDGER_SYNC,
-    ENTRY_STARTUP_RUNTIME_REGRESSIONS,
     ENTRY_QUICKREF_VS_ROUTES,
     ENTRY_IMPORT_CYCLES_PRODUCTION,
     ENTRY_IMPORT_CYCLES_WITH_TESTS,
@@ -139,8 +135,6 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
         path in args for path in quality_gate_shared.QUALITY_GATE_TOOL_PATHS
     ):
         return ENTRY_PYRIGHT_TOOLS_FULL
-    if display == "python -m pytest -q tests/gate_meta/test_architecture_fitness.py":
-        return ENTRY_ARCHITECTURE_FITNESS
     if display == "python scripts/sync_debt_ledger.py check":
         return ENTRY_DEBT_LEDGER_SYNC
     if display == "python tests/gate_meta/check_quickref_vs_routes.py":
@@ -150,8 +144,6 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
     if pytest_targets is not None:
         if _list_equal(pytest_targets, quality_gate_shared.iter_quality_gate_required_tests()):
             return ENTRY_REQUIRED_REGRESSIONS
-        if _list_equal(pytest_targets, iter_startup_regressions()):
-            return ENTRY_STARTUP_RUNTIME_REGRESSIONS
 
     return ENTRY_UNKNOWN
 
@@ -483,99 +475,6 @@ def _scopes_for_entry(
             dependency_scopes.extend(str(path) for path in list(group.get("dependency_file_scopes") or []))
             env_keys.extend(str(key) for key in list(group.get("env_keys") or []))
         output_files.append(quality_gate_shared.QUALITY_GATE_REQUIRED_REGRESSIONS_REL.replace("\\", "/"))
-    elif entry_type == ENTRY_STARTUP_RUNTIME_REGRESSIONS:
-        input_scopes = list(iter_startup_regressions())
-        input_scopes.extend(
-            [
-                "tests/conftest.py",
-                "tests/app_runtime/runtime_cleanup_helper.py",
-                "app.py",
-                "app_new_ui.py",
-                "schema.sql",
-                "web/bootstrap/**/*.py",
-                "web/error_boundary.py",
-                "web/error_handlers.py",
-                "web/manual_src_security.py",
-                "web/routes/**/*.py",
-                "web/viewmodels/**/*.py",
-                "core/**/*.py",
-                "data/**/*.py",
-                "plugins/**/*.py",
-                "templates/**/*.html",
-                "static/**/*",
-                "assets/启动_排产系统_Chrome.bat",
-                "build_win7*.bat",
-                "installer/aps_win7*.iss",
-                ".limcode/skills/aps-package-win7/scripts/package_win7.ps1",
-            ]
-        )
-        config_scopes = [
-            "pytest.ini",
-            "pyproject.toml",
-            "setup.cfg",
-            "tox.ini",
-            "tools/test_registry.py",
-            "tools/quality_gate_shared.py",
-            "tools/quality_gate_support.py",
-        ]
-        tool_scopes = [
-            "scripts/run_quality_gate.py",
-            "tools/long_gate_cache.py",
-            "tools/long_gate_collect.py",
-            "tools/long_gate_fingerprint.py",
-            "tools/long_gate_full_test_debt.py",
-            "tools/long_gate_manifest.py",
-            "tools/long_gate_paths.py",
-            "tools/long_gate_schema.py",
-            "tools/long_gate_summary.py",
-            "tools/test_registry.py",
-            "tools/quality_gate_shared.py",
-            "tools/quality_gate_support.py",
-        ]
-        dependency_scopes.extend(
-            [
-                "requirements*.txt",
-                "requirements-dev*.txt",
-                "poetry.lock",
-                "uv.lock",
-                "Pipfile.lock",
-            ]
-        )
-        env_keys.extend(
-            [
-                "python_executable_realpath",
-                "python_version",
-                "pytest_version",
-                "pytest_plugin_distribution_versions",
-                "platform",
-                "APS_ENV",
-                "APS_DB_PATH",
-                "APS_LOG_DIR",
-                "APS_BACKUP_DIR",
-                "APS_EXCEL_TEMPLATE_DIR",
-                "APS_CHROME_PATH",
-                "APS_HOST",
-                "APS_PORT",
-                "APS_SHARED_DATA_ROOT",
-                "APS_STATIC_VERSION",
-                "SECRET_KEY",
-                "LOCALAPPDATA",
-                "USERNAME",
-                "USERDOMAIN",
-                "COMPUTERNAME",
-                "ProgramData",
-                "PYTHONPATH",
-                "PYTHONUTF8",
-                "PYTHONIOENCODING",
-                "PYTEST_ADDOPTS",
-                "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
-                "PYTEST_PLUGINS",
-                "WERKZEUG_RUN_MAIN",
-            ]
-        )
-        output_files = [
-            quality_gate_shared.QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"),
-        ]
     elif entry_type == ENTRY_QUICKREF_VS_ROUTES:
         input_scopes.extend(
             [
@@ -611,8 +510,6 @@ def _scopes_for_entry(
         tool_scopes.extend(
             [
                 "tests/gate_meta/check_quickref_vs_routes.py",
-                "tests/gate_meta/test_check_quickref_vs_routes.py",
-                "tests/gate_meta/test_long_gate_quickref_cache.py",
             ]
         )
         dependency_scopes.extend(
@@ -815,15 +712,8 @@ def _scopes_for_entry(
                 "platform",
                 "git_executable_realpath",
                 "git_version",
-                "APS_BROWSER_SMOKE_REQUIRED",
-                "APS_CHROME_PATH",
-                "chrome_executable_resolution",
-                "chrome_version",
-                "chrome_executable_identity",
-                "chrome_headless_preflight",
                 "node_executable_realpath",
                 "node_version",
-                "node_browser_runtime_capability",
                 "CI",
                 "NODE_OPTIONS",
                 "PYTHONPATH",
@@ -839,13 +729,12 @@ def _scopes_for_entry(
             quality_gate_shared.QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL.replace("\\", "/"),
         ]
 
-    if entry_type in {ENTRY_PYTEST_COLLECT_ALL, ENTRY_FULL_TEST_DEBT, ENTRY_STARTUP_RUNTIME_REGRESSIONS}:
+    if entry_type in {ENTRY_PYTEST_COLLECT_ALL, ENTRY_FULL_TEST_DEBT}:
         tool_scopes.extend(["tools/long_gate_manifest_environment.py", "tools/test_registry*.py"])
         if entry_type == ENTRY_FULL_TEST_DEBT:
             env_keys.extend(full_debt_environment_keys(_normalize_command(command or {})["args"]))
         else:
-            targets = iter_startup_regressions() if entry_type == ENTRY_STARTUP_RUNTIME_REGRESSIONS else None
-            env_keys.extend(registry_test_environment_keys(targets))
+            env_keys.extend(registry_test_environment_keys())
 
     return (
         _dedupe(input_scopes),

@@ -50,17 +50,9 @@
     "tools/test_debt_registry.py",
     "tools/test_registry.py",
     "tools/test_registry_data.py",
-    "tools/test_registry_groups_misc.py",
-    "tools/test_registry_groups_scheduler.py",
-    "tools/test_registry_groups_workbench.py",
-    "tools/test_registry_workbench_ui.py",
     "tests/conftest.py",
     ".codestable/tools/validate-yaml.py",
-    "tests/config/test_config_manual_markdown.py",
-    "tests/app_runtime/test_frontend_offline_static_assets.py",
-    "tests/web_pages/test_page_manual_registry.py",
-    "tests/gate_meta/test_aps_three_gap_docs_quality_gate.py",
-    "tests/operation_execution/test_operation_execution_event_time_contract.py"
+    "tests/app_runtime/test_frontend_offline_static_assets.py"
   ],
   "exclude": [
     "**/node_modules",

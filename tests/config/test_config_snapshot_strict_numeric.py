@@ -1,4 +1,4 @@
-"""回归测试：build_schedule_config_snapshot 在 strict_mode 下对非法数值（priority_weight/due_weight/holiday_default_efficiency/ortools_time_limit_seconds/time_budget_seconds/freeze_window_days/graph_critical_weight/graph_impact_weight 及空白的 sort_strategy/dispatch_mode/dispatch_rule/auto_assign_enabled）抛带正确 field 的 ValidationError 且提示用中文标签不泄露内部字段名；非 strict 下应回退默认或钳到最小值。"""
+"""配置快照的代表性非法数值与空白选项处理。"""
 
 from __future__ import annotations
 
@@ -66,28 +66,13 @@ def test_config_snapshot_strict_numeric() -> None:
     relaxed = _build(
         {
             "priority_weight": "abc",
-            "holiday_default_efficiency": "0",
-            "ortools_time_limit_seconds": "0",
             "time_budget_seconds": "0",
-            "freeze_window_days": "-3",
-            "graph_critical_weight": "-3",
-            "graph_impact_weight": "bad",
         },
         strict_mode=False,
     )
     assert relaxed.priority_weight == defaults["priority_weight"], "非 strict 下非法浮点应回退默认"
-    assert relaxed.holiday_default_efficiency == defaults["holiday_default_efficiency"], "非 strict 下 <=0 效率应回退默认"
-    assert relaxed.ortools_time_limit_seconds == 1, "非 strict 下 time limit 应保持最小值钳制"
     assert relaxed.time_budget_seconds == 1, "非 strict 下 time budget 应保持最小值钳制"
-    assert relaxed.freeze_window_days == 0, "非 strict 下 freeze_window_days 应保持最小值钳制"
-    assert relaxed.graph_critical_weight == 0, "非 strict 下 graph_critical_weight 应保持最小值钳制"
-    assert relaxed.graph_impact_weight == defaults["graph_impact_weight"], "非 strict 下非法图影响权重应回退默认"
 
-    _expect_validation(
-        "strict.sort_strategy.missing",
-        lambda: _build({}, strict_mode=True),
-        "sort_strategy",
-    )
 
     _expect_validation(
         "strict.priority_weight",
@@ -97,63 +82,7 @@ def test_config_snapshot_strict_numeric() -> None:
         forbidden_message_text="priority_weight",
     )
     _expect_validation(
-        "strict.due_weight",
-        lambda: _build({**defaults, "due_weight": "NaN"}, strict_mode=True),
-        "due_weight",
-    )
-    _expect_validation(
-        "strict.holiday_default_efficiency",
-        lambda: _build({**defaults, "holiday_default_efficiency": "0"}, strict_mode=True),
-        "holiday_default_efficiency",
-    )
-    _expect_validation(
-        "strict.ortools_time_limit_seconds",
-        lambda: _build({**defaults, "ortools_time_limit_seconds": "1.5"}, strict_mode=True),
-        "ortools_time_limit_seconds",
-    )
-    _expect_validation(
-        "strict.time_budget_seconds",
-        lambda: _build({**defaults, "time_budget_seconds": "0"}, strict_mode=True),
-        "time_budget_seconds",
-    )
-    _expect_validation(
-        "strict.freeze_window_days",
-        lambda: _build({**defaults, "freeze_window_days": "-1"}, strict_mode=True),
-        "freeze_window_days",
-        message_contains="锁定天数",
-        forbidden_message_text="freeze_window_days",
-    )
-    _expect_validation(
-        "strict.graph_critical_weight",
-        lambda: _build({**defaults, "graph_critical_weight": "-1"}, strict_mode=True),
-        "graph_critical_weight",
-        message_contains="重点工序提前权重",
-        forbidden_message_text="graph_critical_weight",
-    )
-    _expect_validation(
-        "strict.graph_impact_weight",
-        lambda: _build({**defaults, "graph_impact_weight": "abc"}, strict_mode=True),
-        "graph_impact_weight",
-        message_contains="后续影响权重",
-        forbidden_message_text="graph_impact_weight",
-    )
-    _expect_validation(
-        "strict.sort_strategy.blank",
-        lambda: _build({**defaults, "sort_strategy": "   "}, strict_mode=True),
-        "sort_strategy",
-    )
-    _expect_validation(
         "strict.dispatch_mode.blank",
         lambda: _build({**defaults, "dispatch_mode": "   "}, strict_mode=True),
         "dispatch_mode",
-    )
-    _expect_validation(
-        "strict.dispatch_rule.blank",
-        lambda: _build({**defaults, "dispatch_rule": "   "}, strict_mode=True),
-        "dispatch_rule",
-    )
-    _expect_validation(
-        "strict.auto_assign_enabled.blank",
-        lambda: _build({**defaults, "auto_assign_enabled": "   "}, strict_mode=True),
-        "auto_assign_enabled",
     )

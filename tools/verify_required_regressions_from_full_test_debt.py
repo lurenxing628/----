@@ -212,9 +212,7 @@ def verify_required_regressions_from_payload(
     if missing_report_nodeids:
         raise RequiredRegressionProofError("required nodeid 缺少 reports 明细：" + ", ".join(missing_report_nodeids[:20]))
 
-    allowed_skipped_platforms = {
-        str(nodeid): {"nt"} for nodeid in quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS
-    }
+    allowed_skipped_platforms = quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_PLATFORMS
     payload_os_name = str(payload.get("os_name") or payload.get("platform_os_name") or os.name)
     bad_reports: List[str] = []
     xfail_reports: List[str] = []

@@ -1,26 +1,22 @@
 @echo off
-rem Full E2E smoke test runner (Excel -> schedule -> gantt/week-plan -> system)
-rem Runs: tests\smoke_e2e_excel_to_schedule.py
-rem Report: evidence\FullE2E\excel_to_schedule_report.md
+rem Run the retained test suite with the project Python environment.
 
 setlocal EnableExtensions
 pushd "%~dp0" >nul 2>&1
-
-echo [FullE2E] Start...
-echo [FullE2E] repo: %CD%
-echo.
-
-python tests\smoke_e2e_excel_to_schedule.py
-set "RC=%ERRORLEVEL%"
-
-echo.
-if %RC%==0 (
-  echo [FullE2E] PASS
-  echo [FullE2E] report: evidence\FullE2E\excel_to_schedule_report.md
-) else (
-  echo [FullE2E] FAIL (exit=%RC%)
-  echo [FullE2E] report: evidence\FullE2E\excel_to_schedule_report.md
+if errorlevel 1 (
+  echo [Tests] Cannot enter repository directory. >&2
+  endlocal & exit /b 2
 )
+
+set "APS_TEST_PYTHON=%CD%\.venv\Scripts\python.exe"
+if not exist "%APS_TEST_PYTHON%" (
+  echo [Tests] Missing project Python: "%APS_TEST_PYTHON%" >&2
+  popd >nul 2>&1
+  endlocal & exit /b 2
+)
+
+"%APS_TEST_PYTHON%" -m pytest tests -q
+set "RC=%ERRORLEVEL%"
 
 popd >nul 2>&1
 endlocal & exit /b %RC%
