@@ -25,7 +25,7 @@ from core.services.workbench.facts.run_input_rows import (
     validate_single_chain,
 )
 
-from .input_config import candidate_config, hold_window
+from .input_config import candidate_config, configuration_snapshot, hold_window
 from .input_execution import execution_guards
 from .input_external import external_execution_cycles, prime_template_cache
 from .input_materials import bind_material_releases
@@ -58,7 +58,7 @@ def _projection_map(execution_projections, selected_refs):
 
 
 def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
-                                execution_projections: Sequence[ExecutionProjection]) -> CandidateRunInput:
+                                execution_projections: Sequence[ExecutionProjection], *, capture_fingerprint=True) -> CandidateRunInput:
     """Read-only. Caller supplies AJ selected + all last-official execution scope.
 
     The worker owns the existing run lock and its admission/final revalidation.
@@ -69,7 +69,7 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
         fail("empty_scope", "请先勾选要排产的批次。")
     with candidate_read_snapshot(conn):
         facts = PreflightFacts(conn)
-        with facts.snapshot() as fingerprint:
+        with facts.snapshot(fingerprint=capture_fingerprint) as fingerprint:
             raw_batches = facts.selected(settings["batch_refs"])
             batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
             raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
@@ -85,7 +85,8 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     if piece_scope is None:
         validate_single_chain(operations)
     svc = ScheduleService(conn)
-    cfg = candidate_config(conn, settings)
+    base_config = configuration_snapshot(conn)
+    cfg = candidate_config(conn, settings, snapshot=base_config)
     if piece_scope is not None:
         cfg = replace(cfg, dispatch_mode="sgs")
     prev_version = svc.history_repo.get_latest_version()
@@ -106,7 +107,7 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     runtime = build_runtime(
         svc, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
         mutable=runtime_mutable, algo_ops=algo_outcome.value, fixed_ids=fixed, completed_ids=completed,
-        execution_seeds=execution_seeds, reservations=reservations, hold_window=hold_window(conn, hold)[0],
+        execution_seeds=execution_seeds, reservations=reservations, hold_window=hold_window(conn, hold, snapshot=base_config)[0],
         hold_start=datetime.combine(local_date(hold["start_date"]), datetime.min.time()),
     )
     frozen, seeds, warnings, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime

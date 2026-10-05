@@ -17,7 +17,7 @@ from core.services.workbench.facts.run_data_context import RunDataContext
 from core.services.workbench.run.jobs import WorkbenchRunService
 from web.api_responses import failure, query_success
 
-from .preflight import resolve_preflight_input
+from .preflight import evaluate_preflight_input
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
@@ -25,7 +25,7 @@ from .write_context import issue_write_context, validate_write_context
 def _service():
     dispatcher = current_app.extensions.get("workbench_run_dispatcher")
     enabled = current_app.config.get("WORKBENCH_RUN_JOBS_ENABLED") is True and callable(dispatcher)
-    return WorkbenchRunService(g.db, integration_enabled=enabled, input_resolver=resolve_preflight_input,
+    return WorkbenchRunService(g.db, integration_enabled=enabled, input_resolver=evaluate_preflight_input,
                                context_factory=issue_write_context, context_validator=validate_write_context,
                                data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"),
                                                            current_app.config.get("BACKUP_DIR")))

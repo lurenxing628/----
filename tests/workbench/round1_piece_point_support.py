@@ -1,6 +1,5 @@
 """R1-A private production DATE connections and the real managed worker."""
 
-import json
 from datetime import date
 
 import pytest
@@ -12,6 +11,7 @@ from core.services.workbench.run.jobs import WorkbenchRunService
 from tests.workbench.ea_zero_duration_support import adoption_service, trial_adoption_service
 from tests.workbench.piece_chain_support import piece_layout
 from tests.workbench.run_candidate_adoption_support import INTENT, assert_retained
+from tests.workbench.run_candidate_support import stored_candidate_artifact
 from tests.workbench.run_jobs_support import JobCase
 from tests.workbench.trial_support import snapshot
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
@@ -70,8 +70,7 @@ def candidate(case, **kwargs):
 
 
 def artifact(case, ref):
-    return json.loads(case.conn.execute(
-        "SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (ref,)).fetchone()[0])
+    return stored_candidate_artifact(case.conn, ref)
 
 
 def adopt(case, ref, *, trial=False, key="r1a-adopt-candidate-0001"):

@@ -6,7 +6,7 @@ from io import StringIO
 
 import pytest
 
-from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION
+from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, get_schema_version
 from core.services.workbench.execution.actual_gantt import ActualGanttService
 from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
@@ -49,7 +49,7 @@ def test_field_all_batch_omission_and_explicit_nonempty_scope_keep_original_iden
 def test_real_adoption_services_keep_identity_quantities_and_state(trial_case, setup, unit, quantity, point):
     case = trial_case
     identity = adopted(case, setup=setup, unit=unit, quantity=quantity)
-    assert CURRENT_SCHEMA_VERSION == 37
+    assert get_schema_version(case.conn) == CURRENT_SCHEMA_VERSION
     before = snapshot(case.conn)
     for service in (ActualGanttService(case.conn), FieldWorkspaceService(case.conn)):
         with service.read_snapshot():

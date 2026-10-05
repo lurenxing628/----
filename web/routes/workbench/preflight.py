@@ -19,8 +19,7 @@ from .read_context import bind_read_snapshot
 INPUT_SCOPE = "workbench-preflight-input-v1"
 
 
-def resolve_preflight_input(conn, input_ref):
-    """Caller must hold its admission transaction. This does not authorize a run."""
+def _preflight_binding(conn, input_ref):
     if not conn.in_transaction:
         raise RuntimeError("Preflight input revalidation requires the caller's transaction")
     try:
@@ -28,9 +27,29 @@ def resolve_preflight_input(conn, input_ref):
     except (ValidationError, ValueError, TypeError) as exc:
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查结果已过期或读不出来，这次排产没有开始。请重新点「开始排产检查」。") from exc
     normalized = normalize_preflight_input(bound["input"])
-    if bound["scope"] != {"source": "production", "batch_refs": normalized["batch_refs"]} or bound["fingerprint"] != full_facts_fingerprint(conn):
+    if bound["scope"] != {"source": "production", "batch_refs": normalized["batch_refs"]}:
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查之后批次范围或现场记录有变化，这次排产没有开始。请重新点「开始排产检查」。")
+    return normalized, bound["fingerprint"]
+
+
+def _require_current(original, current):
+    if original != current:
+        raise WorkbenchCommandRejected("snapshot_stale", "排产检查之后批次范围或现场记录有变化，这次排产没有开始。请重新点「开始排产检查」。")
+
+
+def resolve_preflight_input(conn, input_ref):
+    """Independent resolver retains its full freshness check in the caller's transaction."""
+    normalized, original = _preflight_binding(conn, input_ref)
+    _require_current(original, full_facts_fingerprint(conn))
     return normalized
+
+
+def evaluate_preflight_input(conn, input_ref):
+    """Admission consumes one current preflight for both business checks and freshness."""
+    normalized, original = _preflight_binding(conn, input_ref)
+    data, fingerprint = PreflightService(conn).evaluate(normalized)
+    _require_current(original, fingerprint)
+    return data, fingerprint
 
 
 def scheduling_preflight():

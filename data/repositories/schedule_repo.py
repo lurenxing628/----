@@ -7,7 +7,7 @@ from core.models import Schedule
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_rows import ScheduleDetailRow, ScheduleSeedRow
-from .schedule_time_sql import parse_dt_for_sql, time_dt
+from .schedule_time_sql import parse_dt_for_sql, register_schedule_time_sql_functions, time_dt
 
 
 def _require_schedule_op_id(schedule: Schedule) -> int:
@@ -19,6 +19,10 @@ def _require_schedule_op_id(schedule: Schedule) -> int:
 
 class ScheduleRepository(BaseRepository):
     """排程结果仓库（Schedule）。"""
+
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
+        register_schedule_time_sql_functions(conn)
 
     def get(self, schedule_id: int) -> Optional[Schedule]:
         row = self.fetchone(

@@ -11,7 +11,7 @@ from core.models.workbench_calibration import (
     issue,
 )
 from core.models.workbench_calibration_adoption import MAX_EVIDENCE_BYTES, CalibrationAdoptionEvidence
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import snapshot
 from core.services.workbench.process.quota_protection import read_quota_locks, require_adoption_schema
 
@@ -44,7 +44,7 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
                            if reason["code"] == SUGGESTION_BELOW_PRECISION_CODE]
         blockers = _blockers(template, suggestion, samples, facts["lineage_available"], locks, method_blockers)
         evidence = CalibrationAdoptionEvidence(template, suggestion, samples, binding, as_of.isoformat(timespec="seconds"), blockers)
-        encoded = canonical_json({"snapshot": binding, "suggestion": suggestion, "samples": samples})
+        encoded = evidence.audit_document()
         if len(encoded.encode("utf-8")) > MAX_EVIDENCE_BYTES:
             raise WorkbenchCommandRejected("query_too_large", "采用依据超过 8 MB，系统没有截断完工记录，请缩小范围后重试。", 413)
         return evidence

@@ -28,6 +28,13 @@ def adopt_quota(repo, template, value):
     if not repo.conn.in_transaction:
         raise RuntimeError("Quota adoption requires the caller write transaction.")
     require_unlocked(repo, [template["template_operation_ref"]])
+    return adopt_checked_quota(repo, template, value)
+
+
+def adopt_checked_quota(repo, template, value):
+    """Evidence guard has checked the lock in the same outer write transaction."""
+    if not repo.conn.in_transaction:
+        raise RuntimeError("Quota adoption requires the caller write transaction.")
     if template["unit_hours"] != value and repo.update_quota(template, value) != 1:
         raise WorkbenchCommandRejected("stale_write", "模板定额在采纳前已变化，请重新预览核对。")
     after = require_template(repo, template["template_operation_ref"])

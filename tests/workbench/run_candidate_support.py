@@ -134,6 +134,24 @@ def edit_artifact(case, ref, edit):
                    (json.dumps(artifact, ensure_ascii=False), ref))
 
 
+def candidate_artifact_view(artifact, tasks):
+    """Test/oracle view of arrangements; never rewrite the immutable archive."""
+    if artifact.get("task_payload_source") == "candidate_tasks_v1":
+        rows = [{key: value for key, value in task.items() if key != "locked"} for task in tasks]
+        artifact["validated_payload"] = {**artifact["validated_payload"], "schedule_rows": rows,
+            "assigned_by_op_id": {str(row["op_id"]): {key: row[key] for key in ("machine_id", "operator_id")}
+                                  for row in rows if row["source"] == "internal"}}
+        artifact["results"] = [{**metadata, **row} for metadata, row in zip(artifact["results"], rows)]
+    return artifact
+
+
+def stored_candidate_artifact(conn, ref):
+    raw = conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (ref,)).fetchone()[0]
+    tasks = [json.loads(row[0]) for row in conn.execute(
+        "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
+    return candidate_artifact_view(json.loads(raw), tasks)
+
+
 def edit_capture(case, field, edit):
     assert field in ("facts_json", "execution_json", "normalized_input_json", "baseline_json")
     raw = case.conn.execute("SELECT " + field + " FROM WorkbenchRunJobs").fetchone()[0]

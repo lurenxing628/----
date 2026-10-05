@@ -12,7 +12,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 
 from .adoption_evidence import read_evidence
-from .adoption_policy import adopt_quota
+from .adoption_policy import adopt_checked_quota
 
 
 class WorkbenchCalibrationAdoptionService:
@@ -71,7 +71,7 @@ class WorkbenchCalibrationAdoptionService:
             actor = self.actor_provider()
             if type(actor) is not str or not actor.strip() or len(actor) > 512 or "\x00" in actor:
                 raise RuntimeError("The server must supply a valid local application operator.")
-            after = adopt_quota(self.repo, evidence.template, evidence.suggestion["suggested_unit_hours"])
+            after = adopt_checked_quota(self.repo, evidence.template, evidence.suggestion["suggested_unit_hours"])
             audit = self.repo.append(evidence, after, intent, request_key=request_key, actor=actor,
                                      adopted_at=evidence.generated_at)
             return WorkbenchCommandOutcome("committed", {**audit, "locked": True,

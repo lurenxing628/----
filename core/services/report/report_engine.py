@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import cached_property
 from typing import Any, BinaryIO, Callable, ClassVar, Dict, Iterable, List, Optional
 
 from core.errors import AppError, ErrorCode, ValidationError
@@ -12,8 +13,6 @@ from core.services.report.delay_diagnosis_presentation import (
     build_delay_diagnosis_page_context,
 )
 from core.services.scheduler.calendar.service import CalendarService
-from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
-from core.services.scheduler.schedule_delay_diagnosis_service import ScheduleDelayDiagnosisService
 from core.services.scheduler.schedule_plan_query_service import (
     SchedulePlanQueryService,
     SchedulePlanResolution,
@@ -68,9 +67,17 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         self.history_repo = ScheduleHistoryRepository(conn, logger=logger)
         self.machine_downtime_repo = MachineDowntimeRepository(conn, logger=logger)
         self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
-        self.delay_diagnosis_service = ScheduleDelayDiagnosisService(conn, logger=logger)
-        self.execution_feedback_service = OperationExecutionFeedbackService(conn, logger=logger)
         self.calendar = CalendarService(conn, logger=logger)
+
+    @cached_property
+    def delay_diagnosis_service(self):
+        from core.services.scheduler.schedule_delay_diagnosis_service import ScheduleDelayDiagnosisService
+        return ScheduleDelayDiagnosisService(self.conn, logger=self.logger)
+
+    @cached_property
+    def execution_feedback_service(self):
+        from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
+        return OperationExecutionFeedbackService(self.conn, logger=self.logger)
 
     def _export_nonnegative_int(self, value: Any, *, field: str, default: Optional[int] = None) -> int:
         return parse_report_nonnegative_int(
@@ -156,8 +163,9 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        resolution: Optional[SchedulePlanResolution] = None,
     ) -> List[Dict[str, Any]]:
-        resolution = self._resolve_plan(version, plan_role, scenario_id)
+        resolution = resolution or self._resolve_plan(version, plan_role, scenario_id)
         resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
         return self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
             version=int(version),
@@ -177,10 +185,11 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        _resolution: Optional[SchedulePlanResolution] = None,
     ) -> Dict[str, Any]:
         v = int(version or 0)
         resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
-        resolution = self._resolve_plan(v, plan_role, scenario_id)
+        resolution = _resolution or self._resolve_plan(v, plan_role, scenario_id)
         rows = self._fetch_overdue_base_rows_for_plan(
             v,
             plan_role,
@@ -188,6 +197,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=batch_id,
+            resolution=resolution,
         )
         scheduled, unscheduled, invalid_time, as_of = calculations.compute_overdue_bucket_groups(rows)
         invalid_due_items = [item for item in invalid_time if item.get("bucket") == "due_date_invalid"]
@@ -297,11 +307,12 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             overdue_kwargs.update({"resource_type": resource_type, "resource_id": resource_id})
         if batch_id:
             overdue_kwargs["batch_id"] = batch_id
+        resolution = self._resolve_plan(int(version or 0), plan_role, scenario_id)
+        overdue_kwargs["_resolution"] = resolution
         rep = self.overdue_batches(version, **overdue_kwargs)
         items = list(rep.get("items") or [])
         if not items:
             raise ValidationError("当前版本没有可导出的超期结果，请换一个排产版本后再试。", field="导出")
-        resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         exported_batch_ids = [item.get("batch_id") for item in items]
         def build_overdue_export(*, write_only: bool = False):
             diagnosis_rows = self._overdue_diagnosis_export_rows(
@@ -359,10 +370,11 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
         enforce_date_range_limit: bool = True,
+        _resolution: Optional[SchedulePlanResolution] = None,
     ) -> Dict[str, Any]:
         v = int(version or 0)
         resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
-        resolution = self._resolve_plan(v, plan_role, scenario_id)
+        resolution = _resolution or self._resolve_plan(v, plan_role, scenario_id)
         sd, ed = self._parse_limited_report_date_range(
             start_date,
             end_date,
@@ -383,6 +395,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=batch_id,
+            resolution=resolution,
         )
 
         calendars = resource_calendars(self.conn, schedule_rows, start_dt, end_dt_excl)
@@ -431,12 +444,13 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             self._parse_limited_report_date_range(start_date, end_date)
         else:
             utilization_kwargs["enforce_date_range_limit"] = False
+        resolution = self._resolve_plan(int(version or 0), plan_role, scenario_id)
+        utilization_kwargs["_resolution"] = resolution
         rep = self.utilization(version, start_date, end_date, **utilization_kwargs)
         machines = list(rep.get("machines") or [])
         operators = list(rep.get("operators") or [])
         if not machines and not operators:
             self._raise_empty_export(rep)
-        resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         return self._build_xlsx_export(
             report_name="资源负荷与利用率",
             filename=f"资源负荷与利用率_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}至{rep['end_date']}.xlsx",
@@ -476,10 +490,11 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
         enforce_date_range_limit: bool = True,
+        _resolution: Optional[SchedulePlanResolution] = None,
     ) -> Dict[str, Any]:
         v = int(version or 0)
         resource_type, resource_id = normalize_report_resource_filter(resource_type, resource_id)
-        resolution = self._resolve_plan(v, plan_role, scenario_id)
+        resolution = _resolution or self._resolve_plan(v, plan_role, scenario_id)
         sd, ed = self._parse_limited_report_date_range(
             start_date,
             end_date,
@@ -501,6 +516,7 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=batch_id,
+            resolution=resolution,
         )
         degradation_collector = DegradationCollector()
         downtime_rows = filter_downtime_rows_for_report_context(
@@ -551,11 +567,12 @@ class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):
             self._parse_limited_report_date_range(start_date, end_date)
         else:
             downtime_kwargs["enforce_date_range_limit"] = False
+        resolution = self._resolve_plan(int(version or 0), plan_role, scenario_id)
+        downtime_kwargs["_resolution"] = resolution
         rep = self.downtime_impact(version, start_date, end_date, **downtime_kwargs)
         machines = list(rep.get("machines") or [])
         if not machines:
             self._raise_empty_export(rep)
-        resolution = self._resolve_plan(int(rep["version"]), plan_role, scenario_id)
         return self._build_xlsx_export(
             report_name="停机影响统计",
             filename=f"停机影响统计_{self._filename_plan_label(resolution)}_v{int(rep['version'])}_{rep['start_date']}至{rep['end_date']}.xlsx",

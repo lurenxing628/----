@@ -38,7 +38,7 @@ def _outcomes(result):
             for plan in comparison.candidates]
 
 
-def test_combined_run_reads_one_full_fingerprint_and_matches_independent_run(run_case, monkeypatch):
+def test_combined_run_skips_unused_fingerprint_and_matches_independent_run(run_case, monkeypatch):
     case = run_case
     # Unequal chains plus an unselected batch exercise complete input scope.
     case.operation(seq=2, setup_hours=0.5)
@@ -48,10 +48,10 @@ def test_combined_run_reads_one_full_fingerprint_and_matches_independent_run(run
     settings, projections = case.settings(), case.projections("B1")
     calls = _count_fingerprints(monkeypatch)
     combined = unchanged(case, lambda: run_compute.compute_candidate_run(case.conn, settings, projections))
-    assert calls == [combined.schedule_input.facts_fingerprint]
+    assert calls == [] and combined.schedule_input.facts_fingerprint == ""
     prepared = unchanged(case, lambda: prepare_candidate_run_input(case.conn, settings, projections))
     independent = unchanged(case, lambda: run_compute.compute_prepared_candidate_run(case.conn, prepared))
-    assert len(calls) == 3 and len(set(calls)) == 1
+    assert len(calls) == 2 and len(set(calls)) == 1
     assert combined.candidate_payloads == independent.candidate_payloads
     assert combined.dispositions == independent.dispositions
     assert combined.state == independent.state
@@ -110,7 +110,7 @@ def test_combined_path_keeps_connection_identity_check(run_case, monkeypatch):
     case = run_case
     prepared = prepare_candidate_run_input(case.conn, case.settings(), case.projections())
     wrong = replace(prepared, cal_svc=type("ForeignCalendar", (), {"conn": object()})())
-    monkeypatch.setattr(run_compute, "prepare_candidate_run_input", lambda *args: wrong)
+    monkeypatch.setattr(run_compute, "prepare_candidate_run_input", lambda *args, **kwargs: wrong)
     with pytest.raises(CandidateRunInputError) as error:
         unchanged(case, lambda: run_compute.compute_candidate_run(case.conn, case.settings(), case.projections()))
     assert error.value.reason == "candidate_connection_mismatch"
@@ -130,13 +130,13 @@ def test_private_continuation_rejects_missing_read_scope(run_case, open_transact
         case.conn.rollback()
 
 
-def test_worker_uses_one_fingerprint_and_keeps_prepare_engine_observation(job_case, monkeypatch, tmp_path):
+def test_worker_skips_unused_fingerprint_and_keeps_prepare_engine_observation(job_case, monkeypatch, tmp_path):
     accepted = job_case.accept()
     calls = _count_fingerprints(monkeypatch)
     with observe_worker(tmp_path, profile=True):
         result = run_worker.WorkbenchRunWorker(job_case.conn).execute(accepted["run_ref"])
     assert result["state"] == "complete"
-    assert len(calls) == 1
+    assert calls == []
     stages = [json.loads(line) for line in (tmp_path / "worker-stages.jsonl").read_text().splitlines()]
     by_stage = {item["stage"]: item for item in stages}
     assert {"prepare", "engine", "serialization", "persistence", "worker_total"} <= set(by_stage)

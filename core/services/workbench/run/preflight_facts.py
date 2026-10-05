@@ -12,10 +12,10 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES, WorkbenchPreflightFactsRepository
 
 TABLES = PREFLIGHT_TABLES
-# 排产检查和排产计算都不读这些表的内容：OperationLogs 只写不读；排产账本是排产自己的记录；
+# 排产检查和排产计算都不读这些表的内容：OperationLogs 只写不读；SystemJobState 只驱动自动维护间隔；排产账本是排产自己的记录；
 # 试调草稿和方案只记试调过程（排产只读已采用方案的行，触发器保证它们不能改、不能删）；
 # 看板处置只记处理进度。试调采用会改正式计划表，其他改动也都落在业务表上，仍参与比对。
-NON_INPUT_TABLES = frozenset(("OperationLogs",) + RUN_TABLES + TRIAL_TABLES + (
+NON_INPUT_TABLES = frozenset(("OperationLogs", "SystemJobState") + RUN_TABLES + TRIAL_TABLES + (
     "WorkbenchDashboardStates", "WorkbenchDashboardHistory",
     "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory"))
 _NON_INPUT_ACTIONS = ("trial.", "dashboard.")
@@ -29,7 +29,7 @@ def quote(name):
 
 
 def non_input_row(table, row, receipt_columns, *, skip_runs=True):
-    """这一行不影响排产输入：OperationLogs 的自增计数、排产自己的回执、试调和看板处置回执、“无改动”回执。
+    """这一行不影响排产输入：日志/维护状态的自增计数、排产自己的回执、试调和看板处置回执、“无改动”回执。
 
     回执只增不改；已提交、部分提交的其他回执和读不出来的行都保守地留在比对里。
     skip_runs=False 时排产回执也留在比对里（排产检查到开始排产之间用）。
@@ -37,7 +37,7 @@ def non_input_row(table, row, receipt_columns, *, skip_runs=True):
     if type(row) not in (list, tuple):
         return False
     if table == "sqlite_sequence":
-        return len(row) == 2 and row[0] == "OperationLogs"
+        return len(row) == 2 and row[0] in ("OperationLogs", "SystemJobState")
     if table != "WorkbenchCommandReceipts" or len(row) != len(receipt_columns):
         return False
     receipt = dict(zip(receipt_columns, row))
@@ -86,13 +86,13 @@ class PreflightFacts:
         self.operation_refs = {}
 
     @contextmanager
-    def snapshot(self):
+    def snapshot(self, *, fingerprint=True):
         with TransactionManager(self.conn).transaction():
             self.tables = self.repo.preflight_tables()
             self.refs = {(row["kind"], row["entity_key"]): row["ref"] for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
             self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
                                    if row["kind"] == "operation" and row["active"]}
-            yield full_facts_fingerprint(self.conn)
+            yield full_facts_fingerprint(self.conn) if fingerprint else ""
 
     def selected(self, refs):
         identities = {ref: key for (kind, key), ref in self.refs.items() if kind == "batch"}

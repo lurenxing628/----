@@ -4,6 +4,7 @@ from datetime import date
 
 from core.models.workbench_run_candidate import local_time
 
+from .candidate_projection import scheduled_ids, uses_task_rows
 from .candidate_values import corrupt, gap, number, text
 from .zero_duration import point_event_dto
 from .zero_duration_evidence import CandidatePointReader, overlaps
@@ -82,6 +83,11 @@ def operation_labels(facts, ref, payload=None):
 
 
 def _expected_task_rows(rows, candidate):
+    if uses_task_rows(candidate["artifact"]):
+        ids = scheduled_ids(candidate)
+        if ids is None or len(ids) != len(rows):
+            corrupt()
+        return dict.fromkeys(ids)
     validated = candidate["artifact"].get("validated_payload")
     expected = None
     if validated is not None:
@@ -95,12 +101,16 @@ def _expected_task_rows(rows, candidate):
 
 
 def _check_task_payload(payload, expected, seen):
+    if set(payload) != {"op_id", "machine_id", "operator_id", "start_time", "end_time", "source", "locked"}:
+        corrupt()
     op = payload.get("op_id")
     if type(op) is not int or op <= 0 or op in seen:
         corrupt()
     seen.add(op)
-    if expected is not None and {key: value for key, value in payload.items() if key != "locked"} != expected.get(op):
-        corrupt()
+    if expected is not None:
+        if op not in expected or (expected[op] is not None and
+                {key: value for key, value in payload.items() if key != "locked"} != expected[op]):
+            corrupt()
 
 
 def _task_dto(row, facts, start, end):

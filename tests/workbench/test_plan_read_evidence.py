@@ -109,8 +109,8 @@ def test_separate_workspace_reads_reverify_corrupted_saved_source(trial_case, mo
     with reader.read_snapshot():
         first, _ = reader.workspace(scope)
     assert first["projections"]["baseline"]["state"] == "available"
-    mutate_json(trial_case.conn, "WorkbenchTrialScenarios", "snapshot_json",
-        lambda saved: saved["tasks"][0].update(start="2026-09-09T09:00:00"))
+    mutate_json(trial_case.conn, "WorkbenchTrialScenarioRows", "payload_json",
+        lambda task: task.update(start="2026-09-09T09:00:00"))
     with reader.read_snapshot():
         second, _ = reader.workspace(scope)
     assert second["projections"]["baseline"]["state"] == "unavailable"

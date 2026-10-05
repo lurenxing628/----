@@ -6,7 +6,7 @@ from typing import NoReturn
 from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
-from core.models.workbench_trial_codec import fingerprint
+from core.models.workbench_trial_codec import same as same
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 REASONS = {
@@ -34,10 +34,6 @@ def fail(code="adoption_snapshot_invalid", gap="adoption_snapshot") -> NoReturn:
 def require(condition, gap):
     if not condition:
         fail(gap=gap)
-
-
-def same(left, right):
-    return fingerprint(left) == fingerprint(right)
 
 
 def stored(text):

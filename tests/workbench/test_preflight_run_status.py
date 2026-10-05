@@ -141,7 +141,7 @@ def test_piece_admission_issue_surfaces_app_error_message_without_code_prefix(mo
         def piece_batch_refs(self):
             return ["batch-1"]
 
-    def _prepare(conn, settings, projections):
+    def _prepare(conn, settings, projections, *, capture_fingerprint=True):
         raise AppError(ErrorCode.SCHEDULE_CONFLICT, "报工记录还没有准备好，这次操作没有完成。",
                        details={"reason": "execution_ledger_scope_missing"})
 

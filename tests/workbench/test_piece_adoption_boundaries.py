@@ -65,11 +65,30 @@ def test_piece_point_requires_its_own_witness_and_missing_dto_does_not_pass(cand
     assert caught.value.code == "piece_evidence_incomplete"
 
 
-def test_zero_piece_payload_is_proven_by_original_work_not_equal_interval(candidate_case):
+def test_zero_piece_payload_is_proven_by_original_work_not_equal_interval(candidate_case, monkeypatch):
+    from core.services.workbench.run import piece_adoption, piece_adoption_execution, piece_adoption_facts
+
     case = candidate_case
     ids = split(case, common=False, unit=0)
+    counts = {"scope": 0, "execution": 0, "constraints": 0, "algorithm": 0}
+
+    def counted(module, name, key):
+        original = getattr(module, name)
+
+        def read(*args, **kwargs):
+            counts[key] += 1
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(module, name, read)
+
+    counted(piece_adoption_facts, "_current_piece_scope", "scope")
+    counted(piece_adoption_execution, "_execution_inputs", "execution")
+    counted(piece_adoption, "_constraint_facts", "constraints")
+    counted(piece_adoption, "_algorithm_facts", "algorithm")
     result = compute_candidate_run(case.conn, case.settings(), case.projections())
     assert result.state == "complete"
+    assert len(result.candidate_payloads) == 4
+    assert counts == {"scope": 1, "execution": 1, "constraints": 1, "algorithm": 1}
     prepared = result.schedule_input
     for value in result.candidate_payloads.values():
         proof = check(case, prepared, value)

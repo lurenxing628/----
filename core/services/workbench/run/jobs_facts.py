@@ -14,10 +14,10 @@ from .preflight_facts import NON_INPUT_TABLES, non_input_row
 
 
 def capture_run_facts(conn):
-    schema, tables = WorkbenchRunFactsRepository(conn).admission_facts()
-    facts = {"schema": durable_value(schema),
-             "tables": {name: [durable_value(row) for row in rows] for name, rows in tables.items()}}
-    text = canonical_json(facts)
+    repo = WorkbenchRunFactsRepository(conn)
+    schema, tables = repo.admission_facts(exclude_tables=NON_INPUT_TABLES)
+    facts = _production_facts({"schema": schema, "tables": tables}, repo.command_receipt_columns())
+    text = canonical_json(durable_value(facts))
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
 
 
@@ -33,9 +33,9 @@ def run_facts_unchanged(conn, captured_text, captured_hash):
 
     Keep the original full archive and SHA unchanged, including older admissions:
     the exclusions apply to both sides only while comparing, so an archive taken
-    before they existed still compares on the same terms. OperationLogs is
-    write-only telemetry for scheduling; its allocator is not a production
-    resource. An 'unchanged' command receipt only records that a command found
+    before they existed still compares on the same terms. OperationLogs and
+    SystemJobState hold telemetry and maintenance timing; neither contents nor
+    their allocators are scheduling inputs. An 'unchanged' command receipt only records that a command found
     nothing to change. Trial drafts/scenarios and dashboard handling, with their
     receipts, are never read by the run (see NON_INPUT_TABLES); a trial adoption
     still changes the official plan tables. Every other committed or partial
@@ -44,6 +44,11 @@ def run_facts_unchanged(conn, captured_text, captured_hash):
     """
     if type(captured_text) is not str or hashlib.sha256(captured_text.encode("utf-8")).hexdigest() != captured_hash:
         return False
+    return production_facts_match(conn, captured_text, captured_hash)
+
+
+def production_facts_match(conn, captured_text, captured_hash):
+    """Compare live inputs after the caller has verified the immutable archive once."""
     current_hash, current_text = capture_run_facts(conn)
     if current_hash == captured_hash:
         return True

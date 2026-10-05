@@ -1,8 +1,9 @@
 """Complete production evidence, with no trial/command bookkeeping feedback loop."""
 
 from core.infrastructure.schema_probe import schema_objects
+from core.models.workbench_command import canonical_json
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
-from core.models.workbench_trial_codec import dump, fingerprint
+from core.models.workbench_trial_codec import dump_and_fingerprint, packed
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.run.jobs_facts import run_baseline
 from data.repositories.workbench_trial_query_repo import BOOKKEEPING_TABLES, WorkbenchTrialQueryRepository
@@ -17,8 +18,21 @@ def capture_facts(conn):
             continue
         columns[name], tables[name] = repo.read_whole_table(name)
     result = {"schema": schema, "columns": columns, "tables": tables}
-    dump(result)
-    return result, fingerprint(result)
+    _, digest = dump_and_fingerprint(result)
+    return result, digest
+
+
+def facts_unchanged(admission, live):
+    """Old admissions retain their original bytes/digest; compare the same input scope."""
+    if admission["facts_hash"] == live["facts_hash"]:
+        return True
+
+    def inputs(value):
+        return {"schema": [row for row in value["schema"] if row[2] not in BOOKKEEPING_TABLES],
+                "columns": {name: columns for name, columns in value["columns"].items() if name not in BOOKKEEPING_TABLES},
+                "tables": {name: rows for name, rows in value["tables"].items() if name not in BOOKKEEPING_TABLES}}
+
+    return canonical_json(packed(inputs(admission["facts"]))) == canonical_json(packed(inputs(live["facts"])))
 
 
 def execution_facts(conn, tables, selected_refs):

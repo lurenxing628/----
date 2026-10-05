@@ -1,5 +1,7 @@
 """Full saved snapshot, real revalidation, original identity and no scope fallback."""
 
+import json
+
 import pytest
 
 from core.services.workbench.trial.adoption_validation import validate_trial_adoption
@@ -41,6 +43,92 @@ def test_production_drift_blocks_without_mutation(trial_case, sql):
     assert result["validation"]["can_adopt"] is False
     assert result["write_context"]["write_token"] is None
     assert snapshot(case.conn) == before
+
+
+@pytest.mark.parametrize("legacy_capture", [False, True])
+def test_dashboard_handling_preserves_new_and_legacy_trial_admission(trial_case, monkeypatch, legacy_capture):
+    from core.services.workbench.trial import facts
+    from data.repositories import workbench_trial_query_repo
+
+    case = trial_case
+    dashboards = {"WorkbenchDashboardStates", "WorkbenchDashboardHistory",
+                  "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory"}
+    # Capture through the real historical table scope; do not rewrite saved evidence.
+    with monkeypatch.context() as legacy:
+        if legacy_capture:
+            previous = facts.BOOKKEEPING_TABLES - dashboards
+            legacy.setattr(facts, "BOOKKEEPING_TABLES", previous)
+            legacy.setattr(workbench_trial_query_repo, "BOOKKEEPING_TABLES", previous)
+        saved = saved_scenario(case)
+    original = tuple(case.conn.execute("SELECT admission_json,admission_hash FROM WorkbenchTrialDrafts").fetchone())
+    archived = json.loads(original[0])
+    assert ("WorkbenchDashboardStates" in archived["facts"]["tables"]) == legacy_capture
+    item = case.conn.execute("SELECT item_ref FROM WorkbenchDashboardItems WHERE category='delivery'").fetchone()[0]
+    case.conn.execute("INSERT INTO WorkbenchDashboardStates VALUES (?,1,'{}','{}','2026-09-10T12:00:00')", (item,))
+    case.conn.commit()
+    assert preview(case, saved)
+    assert tuple(case.conn.execute("SELECT admission_json,admission_hash FROM WorkbenchTrialDrafts").fetchone()) == original
+    case.conn.execute("UPDATE Machines SET status='maintenance' WHERE machine_id='M2'")
+    case.conn.commit()
+    result = service(case.conn).preview(saved["scenario_ref"])
+    assert not result["validation"]["can_adopt"]
+    assert "trial_facts_changed" in {row["code"] for row in result["validation"]["issues"]}
+
+
+@pytest.mark.parametrize("legacy_capture", [False, True])
+def test_automatic_maintenance_preserves_new_and_legacy_trial_admission(trial_case, monkeypatch, legacy_capture):
+    from core.services.workbench.trial import facts
+    from data.repositories import workbench_trial_query_repo
+    from data.repositories.system_job_state_repo import SystemJobStateRepository
+
+    case = trial_case
+    with monkeypatch.context() as legacy:
+        if legacy_capture:
+            previous = facts.BOOKKEEPING_TABLES - {"SystemJobState"}
+            legacy.setattr(facts, "BOOKKEEPING_TABLES", previous)
+            legacy.setattr(workbench_trial_query_repo, "BOOKKEEPING_TABLES", previous)
+        saved = saved_scenario(case)
+    original = tuple(case.conn.execute("SELECT admission_json,admission_hash FROM WorkbenchTrialDrafts").fetchone())
+    assert ("SystemJobState" in json.loads(original[0])["facts"]["tables"]) == legacy_capture
+    repo = SystemJobStateRepository(case.conn)
+    for job in ("auto_backup", "auto_cleanup"):
+        repo.set_last_run(job, "2026-09-10T12:00:00", "Completed maintenance")
+    case.conn.commit()
+    assert preview(case, saved)
+    assert tuple(case.conn.execute("SELECT admission_json,admission_hash FROM WorkbenchTrialDrafts").fetchone()) == original
+    case.conn.execute("UPDATE Machines SET status='maintenance' WHERE machine_id='M2'")
+    case.conn.commit()
+    result = service(case.conn).preview(saved["scenario_ref"])
+    assert not result["validation"]["can_adopt"]
+    assert "trial_facts_changed" in {row["code"] for row in result["validation"]["issues"]}
+
+
+def test_new_run_archive_omits_recursive_trial_contents_and_keeps_old_archive_comparison(trial_case):
+    import hashlib
+
+    from core.models.workbench_command import canonical_json
+    from core.models.workbench_run_job import durable_value
+    from core.services.workbench.run.jobs_facts import capture_run_facts, run_facts_unchanged
+    from core.services.workbench.run.preflight_facts import NON_INPUT_TABLES
+    from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
+
+    case = trial_case
+    saved = saved_scenario(case, candidate(case))
+    source = tuple(case.conn.execute("SELECT admission_json,admission_hash FROM WorkbenchTrialDrafts").fetchone())
+    schema, tables = WorkbenchRunFactsRepository(case.conn).admission_facts()
+    old_text = canonical_json(durable_value({"schema": schema, "tables": tables}))
+    old_digest = hashlib.sha256(old_text.encode("utf-8")).hexdigest()
+    assert tables["WorkbenchTrialDrafts"] and old_digest != capture_run_facts(case.conn)[0]
+    _, current_text = capture_run_facts(case.conn)
+    archive = json.loads(current_text)
+    assert not set(archive["tables"]) & NON_INPUT_TABLES
+    assert archive["tables"]["BatchOperations"]
+    assert run_facts_unchanged(case.conn, old_text, old_digest)
+    assert preview(case, saved)
+    assert tuple(case.conn.execute("SELECT admission_json,admission_hash FROM WorkbenchTrialDrafts").fetchone()) == source
+    case.conn.execute("UPDATE Machines SET name='Changed production source'")
+    case.conn.commit()
+    assert not run_facts_unchanged(case.conn, old_text, old_digest)
 
 
 def test_missing_batch_operations_not_filled_from_current_plan(trial_case):

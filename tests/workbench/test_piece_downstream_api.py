@@ -100,7 +100,7 @@ def test_piece_downstream_report_does_not_complete_sibling_or_change_refs(trial_
     formal = workspace(case.conn, plan['plan_ref'])
     task = next(t for t in formal['tasks'] if t['piece_id'] == PIECES[0] and t['sequence'] == 20)
     before = snapshot(case.conn)
-    report(client, {'task': task}, quantity=0, hours=0)
+    report(client, {'task': task}, quantity=0, hours=0, start=task['start'], end=task['end'])
     _, field, _ = verify_chain(client, case, plan)
     rows = {t['task_ref']: t for t in field['data']['tasks']}
     assert rows[task['task_ref']]['execution']['execution_state'] != 'complete'

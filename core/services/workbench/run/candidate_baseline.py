@@ -7,10 +7,9 @@ from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason, elapsed_hours
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reject
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, invalid_baseline
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import candidate_summary
-from core.services.workbench.facts.candidate_tasks import operation_labels, tasks_projection
-from core.services.workbench.facts.candidate_values import bounded_size, corrupt
+from core.services.workbench.facts.candidate_tasks import operation_labels
+from core.services.workbench.facts.candidate_values import bounded_size
 
 from .candidates import WorkbenchRunCandidateQueryService
 
@@ -101,28 +100,25 @@ class WorkbenchRunCandidateBaselineQueryService:
     def baseline(self, scope):
         store = self.reader.store
         with store.snapshot():
-            run_ref = store.candidate_run(scope.candidate_ref)
-            run, candidates, disposition = self.reader._load(run_ref)
-            candidate = next((row for row in candidates if row["candidate_ref"] == scope.candidate_ref), None)
-            if candidate is None:
-                corrupt()
-            summary = candidate_summary(candidate, disposition)
-            capture = store.capture(run_ref)
-            facts = GenerationFacts(capture)
-            admission = AdmissionBaseline(capture, facts, disposition, run["accepted_at"])
-            raw = store.tasks(scope.candidate_ref)
-            if len(raw) != candidate["task_count"]:
-                corrupt()
-            # BL allows missing display metadata; comparison requires an exact captured identity.
-            for row in raw:
-                if facts.operations.get(row["operation_ref"]) != row["payload"].get("op_id"):
-                    invalid_baseline()
-            tasks = tasks_projection(raw, candidate, facts)
-            all_rows = _rows(tasks, admission, disposition)
-            rows = _scope_rows(all_rows, scope)
-            data = self._dto(run, summary, admission, rows, len(all_rows), scope)
-            bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
-            return data, input_fingerprint(data)
+            source = self.reader._source(scope.candidate_ref)
+            admission, rows = self._source(source)
+            return self._baseline(source, admission, rows, scope)
+
+    @staticmethod
+    def _source(source):
+        admission = AdmissionBaseline(source.capture, source.facts, source.disposition, source.run["accepted_at"])
+        # Workspace allows missing display metadata; comparison requires exact captured identity.
+        for row in source.raw_tasks:
+            if source.facts.operations.get(row["operation_ref"]) != row["payload"].get("op_id"):
+                invalid_baseline()
+        return admission, _rows(source.tasks, admission, source.disposition)
+
+    def _baseline(self, source, admission, all_rows, scope):
+        rows = _scope_rows(all_rows, scope)
+        data = self._dto(source.run, candidate_summary(source.candidate, source.disposition),
+                         admission, rows, len(all_rows), scope)
+        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
+        return data, input_fingerprint(data)
 
     @staticmethod
     def _dto(run, candidate, admission, rows, count, scope):

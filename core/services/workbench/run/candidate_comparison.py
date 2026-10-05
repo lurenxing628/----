@@ -6,9 +6,8 @@ from core.models.schedule_plan_role import SOURCE_SCHEDULE
 from core.models.workbench_command import canonical_json, input_fingerprint
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, RunCandidateReadScope, reject
-from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
-from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
-from core.services.workbench.facts.candidate_values import bounded_size, stored_json
+from core.services.workbench.facts.candidate_facts import _table
+from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.plan.delivery_completeness import completion_evidence
 from core.services.workbench.plan.delivery_projection import project_delivery_batch, task_intervals
 
@@ -56,7 +55,7 @@ def _baseline_deliveries(admission, capture, refs):
     if admission.baseline["version"] is None:
         incomplete, uncertain = set(), ["no_admission_baseline"]
     else:
-        archive = stored_json(capture["facts_text"])
+        archive = facts.archive
         history = [row for row in _table(archive, "ScheduleHistory") or [] if row["version"] == admission.baseline["version"]]
         if len(history) != 1:
             reject("candidate_baseline_invalid", "排产时的正式计划摘要无效，请刷新重试。", 500)
@@ -139,16 +138,13 @@ def read_candidate_comparison(conn, scope):
     baseline_scope = RunCandidateBaselineScope(scope.candidate_ref, scope.range_start, scope.range_end,
                                                scope.batch_ref, scope.sort, scope.order)
     with reader.store.snapshot():
-        workspace, workspace_state = reader.workspace(scope)
-        baseline, baseline_state = baseline_reader.baseline(baseline_scope)
-        full_workspace, _ = reader.workspace(RunCandidateReadScope(scope.candidate_ref))
-        full_baseline, _ = baseline_reader.baseline(RunCandidateBaselineScope(scope.candidate_ref))
-        run_ref = workspace["candidate"]["run_ref"]
-        run, _, disposition = reader._load(run_ref)
-        capture = reader.store.capture(run_ref)
-        facts = GenerationFacts(capture)
-        admission = AdmissionBaseline(capture, facts, disposition, run["accepted_at"])
-        data = _projection(workspace, baseline, full_workspace, full_baseline, admission, capture, scope)
+        source = reader._source(scope.candidate_ref)
+        admission, rows = baseline_reader._source(source)
+        workspace, workspace_state = reader._workspace(source, scope)
+        baseline, baseline_state = baseline_reader._baseline(source, admission, rows, baseline_scope)
+        full_workspace, _ = reader._workspace(source, RunCandidateReadScope(scope.candidate_ref))
+        full_baseline, _ = baseline_reader._baseline(source, admission, rows, RunCandidateBaselineScope(scope.candidate_ref))
+        data = _projection(workspace, baseline, full_workspace, full_baseline, admission, source.capture, scope)
         state = input_fingerprint({"data": data, "workspace": workspace_state, "baseline": baseline_state})
         bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, state

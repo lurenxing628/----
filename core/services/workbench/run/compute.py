@@ -4,6 +4,7 @@ from functools import partial
 from typing import Callable, Optional
 
 from core.infrastructure.connection_guards import is_query_only
+from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_optimizer import optimize_schedule
@@ -36,9 +37,9 @@ def _prepare_and_compute_in_snapshot(
     conn, normalized_input, execution_projections, version_override,
     on_progress: Optional[Callable[[int, int], None]] = None,
 ):
-    # No prepared-input handoff or caller callback occurs here. Preparation's
-    # complete fingerprint and computation share the enclosing read transaction.
-    prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections)
+    # The private continuation consumes this preparation in the same read snapshot.
+    # Independent prepared inputs still capture and recheck their complete fingerprint.
+    prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections, capture_fingerprint=False)
     version = _prepared_version(conn, prepared, version_override)
     return _compute_in_read_snapshot(conn, prepared, version, on_progress)
 
@@ -58,13 +59,14 @@ def _prepared_version(conn, schedule_input, version_override):
 
 def _candidate_payloads(conn, schedule_input, comparison):
     payloads = {}
-    for candidate in comparison.candidates:
-        if candidate.status == "completed":
-            payloads[candidate.candidate_key] = validate_candidate(
-                schedule_input, candidate.results, list(candidate.summary.errors),
-            )
-            if any(op.piece_id is not None for op in schedule_input.operations):
-                validate_piece_adoption(conn, prepared=schedule_input, payload=payloads[candidate.candidate_key])
+    with read_evidence_scope(conn):
+        for candidate in comparison.candidates:
+            if candidate.status == "completed":
+                payloads[candidate.candidate_key] = validate_candidate(
+                    schedule_input, candidate.results, list(candidate.summary.errors),
+                )
+                if any(op.piece_id is not None for op in schedule_input.operations):
+                    validate_piece_adoption(conn, prepared=schedule_input, payload=payloads[candidate.candidate_key])
     return payloads
 
 

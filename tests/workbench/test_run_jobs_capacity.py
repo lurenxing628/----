@@ -36,7 +36,8 @@ def test_5000_real_tasks_persist_all_four_candidates(job_case):
     assert capture_run_facts(case.conn) == before
     for row in case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates"):
         artifact = json.loads(row[0])
-        assert len(artifact["results"]) == len(artifact["validated_payload"]["schedule_rows"]) == 5000
+        assert len(artifact["results"]) == len(artifact["validated_payload"]["scheduled_op_ids"]) == 5000
+        assert "schedule_rows" not in artifact["validated_payload"]
     with connection(case.path) as restarted:
         assert service(restarted).get(accepted["run_ref"]) == result
     assert time.monotonic() - started < 240

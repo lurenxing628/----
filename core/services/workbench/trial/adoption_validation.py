@@ -9,7 +9,7 @@ from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import durable_value
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
-from core.models.workbench_trial_codec import fingerprint
+from core.models.workbench_trial_codec import fingerprint, same
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.candidate_archive import require_adoption_schema
 from core.services.workbench.facts.preflight_checks import PreflightChecks
@@ -88,11 +88,11 @@ def validate_trial_adoption(conn, scenario_ref):
 
 
 def _current_baseline(conn, admission, live):
-    if fingerprint(admission["baseline"]) != fingerprint(live["baseline"]):
+    if not same(admission["baseline"], live["baseline"]):
         raise TrialAdoptionBlocked("snapshot_stale", "正式计划已更新，请基于当前正式计划重新试调。")
     if WorkbenchTrialQueryRepository(conn).official_rows_without_history_exist():
         raise TrialAdoptionBlocked("official_history_inconsistent", "正式安排缺少所属历史版本，不能采用。")
-    if fingerprint(admission["execution"]) != fingerprint(live["execution"]):
+    if not same(admission["execution"], live["execution"]):
         raise TrialAdoptionBlocked("snapshot_stale", "建草稿之后现场数据变了，请重新核对这份试调方案。")
 
 
@@ -115,8 +115,8 @@ def _original_work(rows, live):
     refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
     for row in rows:
         original = row["original"]
-        if (fingerprint(original["operation"]) != fingerprint(ops.get(original["operation"]["id"]))
-                or fingerprint(original["batch"]) != fingerprint(batches.get(original["batch"]["batch_id"]))
+        if (not same(original["operation"], ops.get(original["operation"]["id"]))
+                or not same(original["batch"], batches.get(original["batch"]["batch_id"]))
                 or refs.get(("batch", original["batch"]["batch_id"])) != original["batch_ref"]):
             raise TrialAdoptionBlocked("scenario_work_changed", "试调方案里的工序、数量、工时或批次和当前资料不一致。")
         for kind in ("machine", "operator"):

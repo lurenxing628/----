@@ -101,7 +101,9 @@ def verify(root, first, second):
     check(len(after["WorkbenchRunCandidates"]) == 4, "Expected four persisted candidates")
     expected = read(root / "run-seed.json")
     expected_ops = {row["operation_id"]: row for row in expected["operations"]}
-    datasets = [("candidate:" + row["candidate_ref"], json.loads(row["artifact_json"])["validated_payload"]["schedule_rows"])
+    datasets = [("candidate:" + row["candidate_ref"],
+                 [json.loads(task["payload_json"]) for task in sorted(after["WorkbenchRunCandidateTasks"], key=lambda task: task["ordinal"])
+                  if task["candidate_ref"] == row["candidate_ref"]])
                 for row in after["WorkbenchRunCandidates"]]
     datasets += [("official:" + str(version), [row for row in after["Schedule"] if row["version"] == version]) for version in (5, 6)]
     for label, rows in datasets:

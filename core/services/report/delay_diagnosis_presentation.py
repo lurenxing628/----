@@ -63,6 +63,7 @@ def _public_item(item: OverdueDiagnosisItem) -> Dict[str, Any]:
         "delay_text": _delay_text(item),
         "leading_clue_label": item.leading_clue_label or "证据不足",
         "confidence_label": _CONFIDENCE_LABELS.get(item.confidence, "证据较少"),
+        "confirmed_facts": [fact.text for fact in item.confirmed_facts or []],
         "data_gaps": _stable_unique(data_gaps + _item_warnings(item)),
         "suggested_actions": [
             {

@@ -7,7 +7,7 @@ from typing import NoReturn
 
 from core.models.workbench_command import input_fingerprint, validate_request_key
 from core.models.workbench_trial import reference, reject
-from core.models.workbench_trial_codec import fingerprint, load_object, require_object
+from core.models.workbench_trial_codec import load_object, require_object, same
 from core.services.workbench.facts.trial_policy import load_scenario, require_trial_schema
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
@@ -46,6 +46,9 @@ def scenario_evidence(conn, scenario_ref):
     bound(sum(size or 0 for size in sizes), MAX_SCENARIO_BYTES)
     if len(sizes) > 10000:
         reject("query_too_large", "试调方案的明细超过 10000 条上限，这次没有读取。请缩小范围。", 413)
+    # The immutable save receipt still contains the complete public snapshot.
+    # Bound it before reconstructing metadata plus permanent task bodies.
+    receipt = load_receipt(repo, header["request_key"])
     saved = load_scenario(trial_repo, scenario_ref)
     admission_row = repo.draft_admission(draft["draft_ref"])
     if admission_row is None:
@@ -63,18 +66,17 @@ def scenario_evidence(conn, scenario_ref):
             or saved["base"] != {draft["base_kind"]: draft["base_ref"]}):
         invalid()
     created = repo.receipt_action(draft["request_key"])
-    receipt = load_receipt(repo, header["request_key"])
     outcome = json_object(receipt["outcome_json"])
     if (created is None or tuple(created) != ("trial.create", draft["base_ref"])
             or (receipt["action"], receipt["context_ref"]) != ("trial.save", draft["draft_ref"])
-            or outcome.get("result") != "committed" or fingerprint(outcome.get("data")) != fingerprint(saved)):
+            or outcome.get("result") != "committed" or not same(outcome.get("data"), saved)):
         invalid()
     return saved, header, draft
 
 
 def matches(value, expected):
     # Canonical comparison also distinguishes JSON bool/int/float field types.
-    return fingerprint({key: value[key] for key in expected}) == fingerprint(expected)
+    return same({key: value[key] for key in expected}, expected)
 
 
 def _receipt_lineage(row, saved, value):

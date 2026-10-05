@@ -47,10 +47,15 @@ class ReportPlanMixin:
     ) -> Dict[str, Any]:
         return self._resolve_plan(version, plan_role, scenario_id).to_dict()
 
-    def _get_plan_time_span(self, version: int, plan_role: Optional[str], scenario_id: Optional[str] = None):
+    def _get_plan_time_span(self, version: int, plan_role: Optional[str], scenario_id: Optional[str] = None,
+                            resolution: Optional[SchedulePlanResolution] = None):
         host = cast(_ReportPlanHost, self)
         try:
-            return host.plan_query_service.get_plan_time_span_for_view(int(version), plan_role, scenario_id)
+            resolution = resolution or self._resolve_plan(version, plan_role, scenario_id)
+            return host.plan_query_service.get_plan_time_span_for_resolution(
+                version=int(version), source_table=resolution.source_table,
+                candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id,
+            )
         except ValueError as exc:
             raise ValidationError(str(exc), field="scenario_id" if scenario_id else "plan_role") from exc
 
@@ -65,13 +70,16 @@ class ReportPlanMixin:
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        resolution: Optional[SchedulePlanResolution] = None,
     ):
         host = cast(_ReportPlanHost, self)
         try:
-            return host.plan_query_service.list_plan_detail_rows_between_for_view(
+            resolution = resolution or self._resolve_plan(version, plan_role, scenario_id)
+            return host.plan_query_service.list_plan_detail_rows_between_for_resolution(
                 version=int(version),
-                role=plan_role,
-                scenario_id=scenario_id,
+                source_table=resolution.source_table,
+                candidate_id=resolution.candidate_id,
+                scenario_id=resolution.scenario_id,
                 start_time=start_time,
                 end_time=end_time,
                 resource_type=resource_type,
@@ -90,10 +98,11 @@ class ReportPlanMixin:
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        resolution: Optional[SchedulePlanResolution] = None,
     ):
         host = cast(_ReportPlanHost, self)
         try:
-            resolution = self._resolve_plan(version, plan_role, scenario_id)
+            resolution = resolution or self._resolve_plan(version, plan_role, scenario_id)
             return host.plan_query_service.list_plan_detail_rows_all_for_resolution(
                 version=int(version),
                 source_table=resolution.source_table,
@@ -184,7 +193,7 @@ class ReportPlanMixin:
         resolution = self._resolve_plan(v, plan_role, scenario_id)
         out.update(self._plan_meta(resolution))
 
-        span = self._get_plan_time_span(v, plan_role, scenario_id)
+        span = self._get_plan_time_span(v, plan_role, scenario_id, resolution=resolution)
         if not span:
             return out
 

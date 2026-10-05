@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
 ADOPT_ACTION = "calibration.adopt"
 MAX_EVIDENCE_BYTES = 8 * 1024 * 1024
@@ -37,6 +37,11 @@ class CalibrationAdoptionEvidence:
     snapshot: Dict[str, Any]
     generated_at: str
     blockers: list
+
+    def audit_document(self):
+        # The snapshot owns the recommendation; samples stay at their durable
+        # location consumed by report-void dependency checks, including old audits.
+        return canonical_json({"snapshot": self.snapshot, "samples": self.samples})
 
     def require_adoptable(self):
         if self.blockers:

@@ -69,6 +69,8 @@ def rewrite_candidate(case, ref, change):
         change(payload)
         corrupt_update(case.conn, "WorkbenchRunCandidateTasks", "UPDATE WorkbenchRunCandidateTasks SET payload_json=? WHERE row_ref=?",
                        (canonical_json(payload), row_ref))
+    if artifact.get("task_payload_source") == "candidate_tasks_v1":
+        return
     artifact["validated_payload"]["schedule_rows"] = [{k: v for k, v in payload.items() if k != "locked"} for _, payload in tasks]
     by_id = {payload["op_id"]: payload for _, payload in tasks}
     for row in artifact["results"]:

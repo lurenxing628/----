@@ -17,7 +17,7 @@ from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.run_compute_support import RunCase
 from web.public_token_registry import issue_public_token_with_expiry
-from web.routes.workbench.preflight import INPUT_SCOPE, resolve_preflight_input
+from web.routes.workbench.preflight import INPUT_SCOPE, evaluate_preflight_input
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 
@@ -29,7 +29,7 @@ def connection(path):
 
 
 def service(conn, enabled=True):
-    return WorkbenchRunService(conn, integration_enabled=enabled, input_resolver=resolve_preflight_input,
+    return WorkbenchRunService(conn, integration_enabled=enabled, input_resolver=evaluate_preflight_input,
         context_factory=issue_write_context, context_validator=validate_write_context,
         clock=lambda: datetime(2026, 9, 10, 12))
 

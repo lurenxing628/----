@@ -9,7 +9,7 @@ from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_metadata_schema import _canonical_sql, canonical_ddl_parts
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_preflight import normalize_preflight_input
 from core.models.workbench_run_baseline import elapsed_hours
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference, reject
@@ -31,7 +31,7 @@ class AdmissionBaseline:
 
     def __init__(self, capture, facts, disposition, accepted_at):
         self.facts = facts
-        archive = stored_json(capture["facts_text"])
+        archive = facts.archive
         self.sources = self._required(archive, "WorkbenchPlanSourceRefs")
         self.tasks = _index(self._required(archive, "WorkbenchTaskRefs"), "ref")
         self.baseline = capture["baseline"]
@@ -68,7 +68,7 @@ class AdmissionBaseline:
         if any(type(row.get("id")) is not int or type(row.get("op_id")) is not int for row in rows):
             invalid_baseline()
         rows.sort(key=lambda row: row["id"])
-        if input_fingerprint(rows) != input_fingerprint(self.baseline["rows"]):
+        if canonical_json(rows) != canonical_json(self.baseline["rows"]):
             invalid_baseline()
 
     def _check_baseline_ref(self, version):
@@ -167,7 +167,7 @@ class AdmissionBaseline:
                     original = restore_execution_projections([disposition[ref].get("execution")])[0]
                 except (CandidateRunInputError, TypeError, ValueError):
                     invalid_baseline()
-                if input_fingerprint(original.to_dict()) != input_fingerprint(projection.to_dict()):
+                if canonical_json(original.to_dict()) != canonical_json(projection.to_dict()):
                     invalid_baseline()
             current = projection.current_task_ref
             if ref in self.by_operation:
@@ -206,7 +206,7 @@ class AdmissionBaseline:
             except (KeyError, TypeError, ValueError, OverflowError):
                 invalid_baseline()
             saved = projection.to_dict()
-            if input_fingerprint({key: checked[key] for key in fields}) != input_fingerprint({key: saved[key] for key in fields}):
+            if canonical_json({key: checked[key] for key in fields}) != canonical_json({key: saved[key] for key in fields}):
                 invalid_baseline()
 
     def segments(self, ref):

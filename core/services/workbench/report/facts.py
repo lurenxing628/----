@@ -10,6 +10,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, input_finger
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_report import MAX_REPORT_EVENTS, MAX_REPORT_OPERATIONS
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
+from core.services.report.plan_labels import planned_review_labels
 from core.services.report.report_engine import ReportEngine
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
@@ -18,21 +19,12 @@ from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_report_facts_repo import WorkbenchReportFactsRepository
 
 
-class ReportReadEngine(ReportEngine):
-    """Keep the domain's guarded read and labels; retain typed inputs privately."""
-
-    def _execution_review_rows(self, plan_rows):
-        self.plan_rows = [dict(row) for row in plan_rows]
-        # Only plan labels come from the old renderer. Execution has one ledger owner.
-        return [self._execution_review_row(row, None) for row in self.plan_rows]
-
-
 class WorkbenchReportFacts:
     def __init__(self, conn, logger=None):
         self.conn = conn
         self.repo = WorkbenchReportFactsRepository(conn, logger)
         self.plans = WorkbenchPlanQueryService(conn, logger)
-        self.engine = ReportReadEngine(conn, logger)
+        self.engine = ReportEngine(conn, logger)
 
     def read_snapshot(self):
         return self.plans.read_snapshot()
@@ -76,8 +68,8 @@ class WorkbenchReportFacts:
         count = self.repo.schedule_operation_count(version)
         if count > MAX_REPORT_OPERATIONS:
             raise WorkbenchCommandRejected("query_too_large", "这份正式计划的工序太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
-        report = self.engine.execution_review(version)
-        rows = self.engine.plan_rows
+        report = self.engine.execution_review_plan(version)
+        rows = [dict(row) for row in report["plan_rows"]]
         if len({row["op_id"] for row in rows}) != len(rows):
             raise WorkbenchCommandRejected("plan_unavailable", "正式计划里有重复的工序，完成率算不出来，没有生成结果。请联系维护人员核对这份计划。")
         operation_refs = self.plans.references.get_operation_refs(row["op_id"] for row in rows)
@@ -91,7 +83,7 @@ class WorkbenchReportFacts:
             raise WorkbenchCommandRejected("query_too_large", "这个范围里的报工和更正记录太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
         resources = self._resource_maps(rows)
         facts = {"plan": plan, "scope": scope, "span": span, "rows": rows,
-                 "ledger": ledger, "labels": report["rows"], "resources": resources,
+                 "ledger": ledger, "labels": [planned_review_labels(row) for row in rows], "resources": resources,
                  "operation_refs": operation_refs, "task_refs": task_refs}
         facts["fingerprint"] = input_fingerprint(plain_plan_facts({
             "revision": self.plans.references.read_revision(), "plan": plan, "rows": rows,

@@ -9,14 +9,14 @@ from core.services.scheduler.config.config_snapshot import build_schedule_config
 from data.repositories.config_repo import ConfigRepository
 
 
-def _snapshot(conn):
+def configuration_snapshot(conn):
     return build_schedule_config_snapshot(ConfigRepository(conn), strict_mode=True)
 
 
-def candidate_config(conn, settings):
+def candidate_config(conn, settings, *, snapshot=None):
     # 工作台不按配置里的冻结开关和天数推算窗口：不重排时段由 hold_window() 定好后显式交给冻结逻辑。
     return replace(
-        _snapshot(conn),
+        configuration_snapshot(conn) if snapshot is None else snapshot,
         enforce_ready_default="yes" if settings["ready_check"] else "no",
         auto_assign_enabled="yes" if settings["missing_resource_policy"] == "auto_assign" else "no",
         auto_assign_persist="no",
@@ -26,7 +26,7 @@ def candidate_config(conn, settings):
     )
 
 
-def hold_window(conn, settings):
+def hold_window(conn, settings, *, snapshot=None):
     """本次不重排时段 ((开始, 结束) 或 None, 来源)。
 
     本次参数带了 hold_window 就照它（null 即不设，来源 explicit）；没带这个键（旧调用、旧排产记录、页面还没动过）
@@ -36,7 +36,7 @@ def hold_window(conn, settings):
     if "hold_window" in settings:
         return hold_window_bounds(settings["hold_window"]), "explicit"
     try:
-        cfg = _snapshot(conn)
+        cfg = configuration_snapshot(conn) if snapshot is None else snapshot
     except ValidationError:
         return None, "default"
     days = cfg.freeze_window_days if str(cfg.freeze_window_enabled).strip().lower() == "yes" else 0

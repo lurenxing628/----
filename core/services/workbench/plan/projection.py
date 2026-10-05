@@ -23,7 +23,7 @@ _REASONS = {
 }
 
 
-def _wire_positive_int64(value):
+def wire_positive_int64(value):
     if type(value) is not int or not 0 < value <= (1 << 63) - 1:
         return None
     return value if value <= (1 << 53) - 1 else str(value)
@@ -36,7 +36,7 @@ def _public_reasons(codes):
 
 def project_plan(entry, plan_ref):
     identity = entry.plan_identity
-    version = _wire_positive_int64(entry.locator.version)
+    version = wire_positive_int64(entry.locator.version)
     if entry.can_view and version is None:
         raise WorkbenchCommandRejected("plan_unavailable", "计划的版本号无效，不能开放查看。请刷新计划列表后重试。")
     return {"plan_ref": plan_ref, "version": version, "kind": entry.kind,
@@ -51,7 +51,7 @@ def project_plan(entry, plan_ref):
 def project_unavailable_plan(locator, plan_ref, display_name, reason_codes, *, completeness="invalid"):
     """A disabled header; a missing permanent identity stays null, never allocated."""
     kind = "scenario" if locator.scenario_id is not None else "official" if locator.plan_role == ROLE_ADOPTED else "candidate"
-    version = _wire_positive_int64(locator.version)
+    version = wire_positive_int64(locator.version)
     return {"plan_ref": plan_ref, "version": version, "kind": kind,
             "is_current_official": False, "display_name": display_name, "completeness": completeness,
             "capabilities": {"view": False, "export": False, "edit_draft": False, "adopt": False, "report_actual": False},
@@ -83,7 +83,7 @@ def _required_text(value):
 
 
 def _sequence(value):
-    wire = _wire_positive_int64(value)
+    wire = wire_positive_int64(value)
     if wire is None:
         raise WorkbenchCommandRejected("plan_unavailable", "工序号无效，请到批次管理核对。")
     return wire

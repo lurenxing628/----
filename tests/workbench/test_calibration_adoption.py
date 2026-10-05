@@ -51,6 +51,8 @@ def test_real_preview_confirm_receipt_and_future_template_only(ready_adoption_ca
     audit = dict(case.conn.execute("SELECT * FROM WorkbenchCalibrationAdoptions").fetchone())
     assert audit["declared_operator"] == INTENT["declared_operator"] and audit["confirmed"] == 1
     evidence = json.loads(audit["evidence_json"])
+    assert set(evidence) == {"snapshot", "samples"}
+    assert evidence["snapshot"]["suggestion"] == preview["suggestion"]
     assert {row["sample_ref"] for row in evidence["samples"]} == set(data["sample_refs"])
     assert len(data["sample_refs"]) == len(data["sample_revisions"]) == 5
     assert all(row["lineage_evidence_ref"] and row["report_revision_refs"] for row in evidence["samples"])

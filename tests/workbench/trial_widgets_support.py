@@ -30,7 +30,7 @@ TRIAL_WIDGET_SOURCES = (
     "PointContract.js", "PointGantt.jsx", "PlanGanttModel.js", "FieldContract.js", "RunCandidateModel.js",
     "WorkbenchCaption.jsx", "WorkbenchPageContext.jsx", "TrialContract.js", "TrialAPI.js", "TrialSession.js", "TrialExport.js",
     "TrialControls.jsx", "TrialViewState.js", "TrialCatalog.jsx", "TrialGantt.jsx", "TrialDetails.jsx",
-    "TrialResults.jsx", "TrialStyles.jsx", "TrialWorkspace.jsx",
+    "TrialResults.jsx", "TrialWorkspace.jsx",
 )
 
 

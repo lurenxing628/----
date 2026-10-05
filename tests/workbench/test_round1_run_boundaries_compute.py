@@ -40,7 +40,12 @@ def test_result_preparation_retains_all_candidate_dataclass_fields_and_nested_ra
     for plan, row in zip(plans, rows):
         payload = result.candidate_payloads[plan.candidate_key]
         expected = {item.name: durable_value(getattr(plan, item.name)) for item in fields(plan)}
-        assert row["artifact"] == {**expected, "validated_payload": durable_value(payload)}
+        engine = expected.pop("results")
+        common = {"machine_id", "operator_id", "start_time", "end_time", "source"}
+        expected["results"] = [{key: value for key, value in item.items() if key not in common} for item in engine]
+        validated = {key: value for key, value in durable_value(payload).items()
+                     if key not in ("schedule_rows", "assigned_by_op_id")}
+        assert row["artifact"] == {**expected, "validated_payload": validated, "task_payload_source": "candidate_tasks_v1"}
         assert row["status"] == "completed" and len(row["tasks"]) == len(payload.schedule_rows)
         for task, source in zip(row["tasks"], payload.schedule_rows):
             assert task["operation_ref"] == identities[source.op_id] and len(task["row_ref"]) == 48
@@ -70,6 +75,7 @@ def test_failed_and_skipped_candidates_are_retained_without_tasks(computed):
 @pytest.mark.parametrize("damage,message", [
     ("identity", "identity is missing"), ("scope", "scope disagree"),
     ("errors", "validation errors"), ("outside", "validation errors"),
+    ("engine", "engine results and validated rows disagree"),
     ("duplicate", "Duplicate candidate identity"), ("selected", "Selected candidate is missing"),
 ])
 def test_invalid_prepared_artifacts_fail_before_any_persistence(computed, damage, message):
@@ -86,6 +92,8 @@ def test_invalid_prepared_artifacts_fail_before_any_persistence(computed, damage
         plans = list(result.orchestration.candidate_comparison.candidates)
         if damage == "duplicate":
             plans.append(plans[0])
+        elif damage == "engine":
+            plans[0] = replace(plans[0], results=[])
         else:
             plans = [plan for plan in plans if plan.candidate_key != selected]
         result = _comparison(result, plans)

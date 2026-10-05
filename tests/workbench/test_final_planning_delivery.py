@@ -148,7 +148,7 @@ def test_common_and_piece_points_preserve_all_tied_terminal_refs(candidate_case)
 def test_payload_mismatch_is_rejected_not_rebuilt_from_summary(candidate_case):
     case = candidate_case
     _, refs = compute(case)
-    edit_artifact(case, refs[0], lambda value: value["validated_payload"]["schedule_rows"][0].update(op_id=999999))
+    edit_artifact(case, refs[0], lambda value: value["validated_payload"].update(scheduled_op_ids=[999999]))
     with pytest.raises(WorkbenchCommandRejected):
         workspace(case, refs[0])
 

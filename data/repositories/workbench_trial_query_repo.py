@@ -17,7 +17,10 @@ from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 
 from .base_repo import BaseRepository
 
-BOOKKEEPING_TABLES = frozenset(TRIAL_TABLES + RUN_TABLES) | {"WorkbenchCommandReceipts", "OperationLogs", "sqlite_sequence"}
+BOOKKEEPING_TABLES = frozenset(TRIAL_TABLES + RUN_TABLES) | {
+    "WorkbenchCommandReceipts", "OperationLogs", "SystemJobState", "sqlite_sequence"}
+BOOKKEEPING_TABLES |= {"WorkbenchDashboardStates", "WorkbenchDashboardHistory",
+                       "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory"}
 
 
 def _quote(name: Any) -> str:

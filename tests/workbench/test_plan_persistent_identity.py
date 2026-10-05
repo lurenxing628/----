@@ -112,6 +112,27 @@ def test_plan_aliases_never_share_plan_or_task_refs(identity_case):
     assert len(set(repo.get_operation_refs([ids[0]]).values())) == 1
 
 
+def test_catalog_binding_reads_share_history_and_roles_only_inside_snapshot(identity_case):
+    from core.infrastructure.transaction import TransactionManager
+
+    conn, repo, _ = identity_case
+    statements = []
+    conn.set_trace_callback(statements.append)
+    with TransactionManager(conn).transaction():
+        with repo.read_bindings():
+            for locator in (Locator(1, "adopted"), Locator(1, "baseline_best"), Locator(1, "adopted", "saved")):
+                assert repo.get_catalog_reference(locator).binding_valid
+    conn.set_trace_callback(None)
+    history_reads = [sql for sql in statements if "FROM ScheduleHistory WHERE version" in sql]
+    role_reads = [sql for sql in statements if "FROM ScheduleCandidateSelection s" in sql]
+    assert len(history_reads) == len(role_reads) == 1
+    conn.execute("DELETE FROM ScheduleAdjustmentScenario WHERE scenario_id='saved'")
+    conn.commit()
+    with TransactionManager(conn).transaction():
+        with repo.read_bindings():
+            assert not repo.get_catalog_reference(Locator(1, "adopted", "saved")).binding_valid
+
+
 def test_summary_head_changes_do_not_create_a_new_business_plan(identity_case):
     conn, repo, _ = identity_case
     locator = Locator(2, "adopted")

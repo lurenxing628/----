@@ -56,9 +56,13 @@ def state_snapshot(row):
     return snapshot({key: row[key] for key in STATE_COLUMNS})
 
 
+def operation_code(batch_id, sequence, piece):
+    return batch_id + "_" + str(sequence).zfill(2) + ("_" + piece if piece is not None else "")
+
+
 def copy_payload(row, batch_id, *, from_template):
     piece = None if from_template else row["piece_id"]
-    code = batch_id + "_" + str(row["seq"]).zfill(2) + ("_" + piece if piece is not None else "")
+    code = operation_code(batch_id, row["seq"], piece)
     payload = {key: row.get(key) for key in COPY_COLUMNS}
     payload.update(batch_id=batch_id, piece_id=piece, op_code=code, status="pending")
     if from_template:

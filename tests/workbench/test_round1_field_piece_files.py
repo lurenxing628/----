@@ -42,7 +42,10 @@ def test_download_prefills_exact_task_scope_and_zero_import_does_not_complete(pi
     with api.app.app_context():
         document, original = resolve_context(PREVIEW_NAMESPACE, preview['data']['preview_ref'], 'stale_write')
     stored = json.loads(document)
-    assert original == content and stored['read_snapshot'] and stored['preview']['snapshot']
+    assert original.content == content
+    assert original.file_digest == preview['data']['file_sha256']
+    assert {row['values']['task_ref'] for row in original.parsed()} == {task['task_ref'] for task in tasks.values()}
+    assert stored['read_snapshot'] and stored['preview']['snapshot']
     body = api.confirm_body(preview)
     result = success(api.client.post(BASE + '/files/confirm', json=body))
     after = by_piece(api)

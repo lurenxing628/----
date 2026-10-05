@@ -4,9 +4,9 @@ from datetime import datetime
 
 from core.errors import AppError
 from core.models.resource_capabilities import supports_source
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_trial import issue, reject, validation
-from core.models.workbench_trial_codec import fingerprint
+from core.models.workbench_trial_codec import packed, same
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
@@ -15,6 +15,7 @@ from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 from .calendar import calendar_engine, estimate
 from .constraints import interval, relation_issues, resource_issues
 from .execution_anchors import anchor_issue, execution_anchors
+from .facts import facts_unchanged
 from .materials import deferral_policy, material_issues, run_policy
 from .protection import TrialProtection, frozen_arrangements, frozen_issue, frozen_note, keeps_frozen
 
@@ -70,9 +71,9 @@ class TrialValidator:
         if any(row["operation_ref"] is None or row["recorded_against_task_ref"] is None
                for row in self.tables["WorkbenchExecutionLegacyFacts"]):
             issues.append(issue("execution_scope_unproven", "保留的历史报工记录里有对不上工序的记录，这里没有忽略它们。"))
-        if self.admission["facts_hash"] != self.live["facts_hash"]:
+        if not facts_unchanged(self.admission, self.live):
             issues.append(issue("trial_facts_changed", "建草稿之后现场数据变了；草稿里的工序和对比基准没变，不能按旧数据正式采用。"))
-        if fingerprint(self.admission["baseline"]) != fingerprint(self.live["baseline"]):
+        if not same(self.admission["baseline"], self.live["baseline"]):
             issues.append(issue("trial_baseline_changed", "建草稿时的正式计划已经变了，草稿没有自动切到最新计划。"))
         for row in self.rows:
             issues.extend(self._row(row))
@@ -80,7 +81,7 @@ class TrialValidator:
         policy = deferral_policy(self.admission, self.rows, self.checks, self.live["execution"])
         issues.extend(trial_piece_issues(self.rows, self.live, policy))
         issues.extend(resource_issues(self.rows, self.live, conn=self.conn))
-        unique = {fingerprint(item): item for item in issues}
+        unique = {canonical_json(packed(item)): item for item in issues}
         return validation(list(unique.values()))
 
     def _row(self, row):

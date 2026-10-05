@@ -19,16 +19,17 @@ def _quote(name: str) -> str:
 
 
 class WorkbenchRunFactsRepository(BaseRepository):
-    def admission_facts(self) -> Tuple[List[SchemaObject], Dict[str, List[Tuple[Any, ...]]]]:
+    def admission_facts(self, *, exclude_tables=()) -> Tuple[List[SchemaObject], Dict[str, List[Tuple[Any, ...]]]]:
         """(sqlite_master 有序对象清单, {表名: [按 rowid 排序的原始行元组]})。
 
         排产账本四张表不入快照；WorkbenchCommandReceipts 只取非 scheduling.run 的回执。
         表名来自 sqlite_master 自省而非调用方参数，这里不是按名读表的逃生口。
         """
         schema = schema_objects(self.conn)
+        excluded = set(RUN_TABLES) | set(exclude_tables)
         tables: Dict[str, List[Tuple[Any, ...]]] = {}
         for kind, name, _, _ in schema:
-            if kind != "table" or name in RUN_TABLES:
+            if kind != "table" or name in excluded:
                 continue
             sql = "SELECT * FROM " + _quote(name)
             if name == "WorkbenchCommandReceipts":

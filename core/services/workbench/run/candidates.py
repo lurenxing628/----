@@ -1,6 +1,8 @@
 """Self-contained permanent candidate catalog and full-scope workspace service."""
 
+from dataclasses import dataclass
 from datetime import date
+from typing import Optional
 
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_preflight import stored_hold_window_valid
@@ -17,6 +19,18 @@ from core.services.workbench.facts.candidate_tasks import (
 from core.services.workbench.facts.candidate_values import corrupt, gap
 
 from .candidate_delivery import candidate_delivery_risks
+
+
+@dataclass(frozen=True)
+class CandidateReadSource:
+    run: dict
+    candidate: dict
+    disposition: Optional[dict]
+    capture: dict
+    facts: GenerationFacts
+    raw_tasks: list
+    tasks: list
+    unplanned: Optional[list]
 
 
 class WorkbenchRunCandidateQueryService:
@@ -56,35 +70,40 @@ class WorkbenchRunCandidateQueryService:
     def workspace(self, scope):
         """No UI paging: every persisted task in the exact requested scope is returned."""
         with self.store.snapshot():
-            run_ref = self.store.candidate_run(scope.candidate_ref)
-            run, rows, disposition = self._load(run_ref)
-            candidate = next(row for row in rows if row["candidate_ref"] == scope.candidate_ref)
-            summary = candidate_summary(candidate, disposition)
-            capture = self.store.capture(run_ref)
-            facts = GenerationFacts(capture)
-            raw_tasks = self.store.tasks(scope.candidate_ref)
-            if len(raw_tasks) != candidate["task_count"]:
-                corrupt()
-            tasks = tasks_projection(raw_tasks, candidate, facts)
-            unplanned = unplanned_projection(disposition, tasks, facts)
-            span = task_span(tasks)
-            full_tasks = tasks
-            tasks, unplanned = filter_workspace(tasks, unplanned, scope)
-            delivery = candidate_delivery_risks(candidate, facts, full_tasks, disposition, scope,
-                                                capture["input"], tasks, unplanned)
-            generation = _generation(run, capture)
-            gaps = [] if unplanned is not None else [gap("unplanned_operations")]
-            data = {"candidate": summary, "generation": generation, "tasks": tasks, "task_count": len(tasks),
-                    "tasks_complete": True, "candidate_task_count": candidate["task_count"],
-                    "candidate_span": span, "task_span": task_span(tasks),
-                    "unplanned_operations": unplanned,
-                    "unplanned_operation_count": len(unplanned) if unplanned is not None else None,
-                    "time_scope": {"range_start": scope.range_start, "range_end": scope.range_end,
-                                   "interval": "half_open_overlap", "time_basis": "factory_local",
-                                   "unplanned_policy": "included_without_time_interval"},
-                    "batch_ref": scope.batch_ref, "capabilities": read_capabilities(),
-                    "blocked_reasons": blocked_reasons(), "data_gaps": gaps, "delivery_risks": delivery}
-            return data, input_fingerprint(data)
+            return self._workspace(self._source(scope.candidate_ref), scope)
+
+    def _source(self, candidate_ref):
+        """Load and verify once for projections owned by this read snapshot."""
+        run_ref = self.store.candidate_run(candidate_ref)
+        run, rows, disposition = self._load(run_ref)
+        candidate = next(row for row in rows if row["candidate_ref"] == candidate_ref)
+        capture = self.store.capture(run_ref)
+        facts = GenerationFacts(capture)
+        raw_tasks = self.store.tasks(candidate_ref)
+        if len(raw_tasks) != candidate["task_count"]:
+            corrupt()
+        tasks = tasks_projection(raw_tasks, candidate, facts)
+        return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks,
+                                   tasks, unplanned_projection(disposition, tasks, facts))
+
+    @staticmethod
+    def _workspace(source, scope):
+        tasks, unplanned = filter_workspace(source.tasks, source.unplanned, scope)
+        delivery = candidate_delivery_risks(source.candidate, source.facts, source.tasks, source.disposition, scope,
+                                            source.capture["input"], tasks, unplanned)
+        data = {"candidate": candidate_summary(source.candidate, source.disposition),
+                "generation": _generation(source.run, source.capture), "tasks": tasks, "task_count": len(tasks),
+                "tasks_complete": True, "candidate_task_count": source.candidate["task_count"],
+                "candidate_span": task_span(source.tasks), "task_span": task_span(tasks),
+                "unplanned_operations": unplanned,
+                "unplanned_operation_count": len(unplanned) if unplanned is not None else None,
+                "time_scope": {"range_start": scope.range_start, "range_end": scope.range_end,
+                               "interval": "half_open_overlap", "time_basis": "factory_local",
+                               "unplanned_policy": "included_without_time_interval"},
+                "batch_ref": scope.batch_ref, "capabilities": read_capabilities(),
+                "blocked_reasons": blocked_reasons(),
+                "data_gaps": [] if unplanned is not None else [gap("unplanned_operations")], "delivery_risks": delivery}
+        return data, input_fingerprint(data)
 
 
 def _generation(run, capture):

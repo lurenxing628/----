@@ -28,8 +28,9 @@ class RunDataContext:
         self.backup_dir = backup_dir
 
     def _records(self):
-        self.journal.assert_ready()
-        return self.journal.records()
+        records = self.journal.records()
+        self.journal.assert_ready(records)
+        return records
 
     def ref(self):
         return restored_context_ref(self.journal.database_scope, self._records())

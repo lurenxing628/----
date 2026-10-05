@@ -9,6 +9,7 @@ exists. Bulk methods are all-or-error, with bounded SQL parameter chunks.
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from typing import Any, Dict, Iterable, Mapping, NoReturn, Optional, Tuple
 
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
@@ -80,6 +81,29 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
     def __init__(self, conn, logger=None):
         super().__init__(conn, logger=logger)
         self._checked_schema_version = None
+        self._binding_facts = None
+
+    @contextmanager
+    def read_bindings(self):
+        """Reuse binding facts only inside the caller's current read transaction."""
+        if not self.conn.in_transaction:
+            raise RuntimeError("Plan binding facts require the caller's read transaction")
+        previous = self._binding_facts
+        if previous is None:
+            self._binding_facts = {"history": {}, "roles": {}}
+        try:
+            yield
+        finally:
+            self._binding_facts = previous
+
+    def _history_exists(self, version):
+        cached = self._binding_facts["history"] if self._binding_facts is not None else None
+        if cached is not None and version in cached:
+            return cached[version]
+        present = self.fetchone("SELECT 1 FROM ScheduleHistory WHERE version = ? LIMIT 1", (version,)) is not None
+        if cached is not None:
+            cached[version] = present
+        return present
 
     def _check_schema(self) -> int:
         version = self.fetchvalue("SELECT schema_version FROM pragma_schema_version")
@@ -102,6 +126,9 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
                              "AND source_key = ? AND active = 1", (kind, key))
 
     def _roles(self, version: int) -> Dict[str, Dict[str, Any]]:
+        cached = self._binding_facts["roles"] if self._binding_facts is not None else None
+        if cached is not None and version in cached:
+            return cached[version]
         rows = self.fetchall("""SELECT s.*, c.id AS resolved_id, c.candidate_key,
             m.ref AS selection_ref, m.version AS mapped_version, m.plan_role AS mapped_role,
             m.source_table AS mapped_source, m.owner_key AS mapped_owner,
@@ -117,21 +144,27 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         if rows and "adopted" not in roles:
             _fail("plan_binding_invalid")
         for row in rows:
-            if row["selection_ref"] is None or row["candidate_ref"] is None:
-                _fail("identity_missing" if row["resolved_id"] is not None else "plan_binding_invalid")
-            expected = (row["version"], row["role"], row["source_table"], str(row["candidate_id"]), row["candidate_ref"])
-            actual = (row["mapped_version"], row["mapped_role"], row["mapped_source"], row["mapped_owner"], row["parent_ref"])
-            if actual != expected or row["role"] not in VALID_PLAN_ROLES:
-                _fail("plan_binding_invalid")
-            if row["source_table"] not in ("schedule", "candidate_rows"):
-                _fail("plan_binding_invalid")
-            if row["role"] == "adopted" and row["source_table"] != "schedule":
-                _fail("plan_binding_invalid")
-            if row["source_table"] == "schedule" and row["candidate_id"] != roles["adopted"]["candidate_id"]:
-                _fail("plan_binding_invalid")
+            self._validate_role_binding(row, roles)
+        if cached is not None:
+            cached[version] = roles
         return roles
 
-    def _plan_record(self, locator: WorkbenchPlanLocator) -> Dict[str, Any]:
+    @staticmethod
+    def _validate_role_binding(row, roles) -> None:
+        if row["selection_ref"] is None or row["candidate_ref"] is None:
+            _fail("identity_missing" if row["resolved_id"] is not None else "plan_binding_invalid")
+        expected = (row["version"], row["role"], row["source_table"], str(row["candidate_id"]), row["candidate_ref"])
+        actual = (row["mapped_version"], row["mapped_role"], row["mapped_source"], row["mapped_owner"], row["parent_ref"])
+        if actual != expected or row["role"] not in VALID_PLAN_ROLES:
+            _fail("plan_binding_invalid")
+        if row["source_table"] not in ("schedule", "candidate_rows"):
+            _fail("plan_binding_invalid")
+        if row["role"] == "adopted" and row["source_table"] != "schedule":
+            _fail("plan_binding_invalid")
+        if row["source_table"] == "schedule" and row["candidate_id"] != roles["adopted"]["candidate_id"]:
+            _fail("plan_binding_invalid")
+
+    def _plan_record(self, locator: WorkbenchPlanLocator, *, history_proven=False, roles=None) -> Dict[str, Any]:
         if locator.scenario_id is not None:
             record = self._source("scenario", locator.scenario_id)
         elif locator.plan_role == "adopted":
@@ -145,15 +178,15 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             record = records[0] if records else None
         if record is None:
             _fail("identity_missing")
-        self._validate_record(record, locator)
+        self._validate_record(record, locator, history_proven=history_proven, roles=roles)
         return record
 
-    def _validate_record(self, record, locator: WorkbenchPlanLocator) -> None:
+    def _validate_record(self, record, locator: WorkbenchPlanLocator, *, history_proven=False, roles=None) -> None:
         if (record["version"], record["plan_role"]) != (locator.version, locator.plan_role):
             _fail("plan_binding_invalid")
-        if not self.fetchone("SELECT 1 FROM ScheduleHistory WHERE version = ? LIMIT 1", (locator.version,)):
+        if not history_proven and not self._history_exists(locator.version):
             _fail("plan_binding_invalid")
-        roles = self._roles(locator.version)
+        roles = self._roles(locator.version) if roles is None else roles
         if locator.scenario_id is not None:
             self._validate_scenario(record, locator, roles)
         elif locator.plan_role != "adopted":
@@ -167,7 +200,8 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         scenario = self.fetchone("SELECT * FROM ScheduleAdjustmentScenario WHERE scenario_id = ?", (locator.scenario_id,))
         if scenario is None or (scenario["base_version"], scenario["base_plan_role"]) != (locator.version, locator.plan_role):
             _fail("plan_binding_invalid")
-        base = self._plan_record(WorkbenchPlanLocator(locator.version, locator.plan_role))
+        base = self._plan_record(WorkbenchPlanLocator(locator.version, locator.plan_role),
+                                 history_proven=True, roles=roles)
         role = roles.get(locator.plan_role)
         expected = ("schedule", None, None) if role is None else (
             role["source_table"], role["candidate_id"], role["candidate_key"])
@@ -214,6 +248,8 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         if locator.plan_role == "adopted":
             source = self.fetchone("SELECT version, CAST(version AS TEXT) AS identity_key FROM ScheduleHistory "
                                     "WHERE version = ? LIMIT 1", (locator.version,))
+            if self._binding_facts is not None:
+                self._binding_facts["history"][locator.version] = source is not None
             if source is None:
                 return None
             return "official", source["identity_key"], {
@@ -255,10 +291,11 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         plan_ref = record["ref"]
         if invalid_context is not None:
             return _catalog_failure("plan_binding_invalid", invalid_context, plan_ref)
-        if not self.fetchone("SELECT 1 FROM ScheduleHistory WHERE version = ? LIMIT 1", (normalized.version,)):
+        history_proven = kind == "official"
+        if not history_proven and not self._history_exists(normalized.version):
             return _catalog_failure("history_missing", "计划的基础排产历史不存在。", plan_ref)
         try:
-            self._validate_record(record, normalized)
+            self._validate_record(record, normalized, history_proven=True)
         except WorkbenchPlanReferenceError as exc:
             return _catalog_failure("plan_binding_invalid", str(exc), plan_ref)
         return WorkbenchPlanCatalogReference(plan_ref, True)

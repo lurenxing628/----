@@ -60,7 +60,9 @@ def _rescheduled_ids(rows, live):
             if anchor["basis"] == "merged_external_actuals":
                 result.add(original["operation"]["id"])
             continue
-        batch = batches.get(op["batch_id"]) if op else None
+        if op is None:
+            continue
+        batch = batches.get(op["batch_id"])
         projection = live["execution"].get(row["operation_ref"]) or {}
         if (batch is not None and projection.get("execution_state") == "unreported"
                 and op["status"] not in ("skipped", "processing", "completed")

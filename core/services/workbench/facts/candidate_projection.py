@@ -68,6 +68,15 @@ def _check_scheduled_rows(scheduled, values):
         corrupt()
 
 
+def uses_task_rows(artifact):
+    source = artifact.get("task_payload_source")
+    if source is None:
+        return False
+    if source != "candidate_tasks_v1":
+        corrupt()
+    return True
+
+
 def scheduled_ids(row):
     payload = row["artifact"].get("validated_payload")
     if payload is None:
@@ -75,7 +84,8 @@ def scheduled_ids(row):
     if type(payload) is not dict:
         corrupt()
     values = _scheduled_values(payload, row)
-    _check_scheduled_rows(payload.get("schedule_rows"), values)
+    scheduled = row["artifact"].get("results") if uses_task_rows(row["artifact"]) else payload.get("schedule_rows")
+    _check_scheduled_rows(scheduled, values)
     return set(values)
 
 

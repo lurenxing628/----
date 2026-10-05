@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, Iterator, List, Sequence, Tuple
 
 from .base_repo import BaseRepository
-from .schedule_time_sql import time_dt
+from .schedule_time_sql import register_schedule_time_sql_functions, time_dt
 
 CALENDAR_TABLES = ("WorkCalendar", "OperatorCalendar")
 ADOPTION_CHECK_TABLES = ("Machines", "MachineOpTypes", "Operators", "Suppliers", "OpTypes", "OperatorMachine", "OperatorSkill",
@@ -19,6 +19,10 @@ _POINT_CHUNK = 900
 
 
 class WorkbenchRunInputRepository(BaseRepository):
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
+        register_schedule_time_sql_functions(conn)
+
     def schedule_rows_through_version(self, prev_version: int) -> Iterator[Dict[str, Any]]:
         """流式产出 version<=prev_version 的全部 Schedule 行，按 version,id 排序（同一工序后版本覆盖前版本）。
 

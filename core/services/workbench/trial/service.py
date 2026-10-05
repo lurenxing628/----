@@ -21,7 +21,13 @@ from core.models.workbench_trial import (
 from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-from core.services.workbench.facts.trial_policy import load_draft, load_scenario, require_advanced, require_trial_schema
+from core.services.workbench.facts.trial_policy import (
+    load_draft,
+    load_scenario,
+    reload_changed_draft,
+    require_advanced,
+    require_trial_schema,
+)
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository, new_ref
 
 from .base import prepare_base
@@ -128,7 +134,7 @@ class WorkbenchTrialService:
             if before == row["current"]:
                 return WorkbenchCommandOutcome("unchanged", self._projection(head, rows, live, (checked, validator.frozen)))
             require_advanced(self.repo.change(head, row, before, checked, request_key, self.actor_provider(), self._now()))
-            current_head, current_rows = load_draft(self.repo, draft_ref)
+            current_head, current_rows = reload_changed_draft(self.repo, head, rows)
             return WorkbenchCommandOutcome("committed", self._projection(current_head, current_rows, live, (checked, validator.frozen)))
 
         return self._execute(CHANGE, draft_ref, intent, write_token, request_key, mutate)

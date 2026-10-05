@@ -11,7 +11,7 @@ from .samples import review_sample
 
 def project_lineage_calibration(templates, instances, projections, lineage, *, as_of):
     by_ref = {row.operation_ref: row for row in templates}
-    samples_by_part, samples_by_template, unbound = defaultdict(list), defaultdict(list), defaultdict(list)
+    samples_by_template, unbound = defaultdict(list), defaultdict(list)
     for row in instances:
         ref = row["operation_ref"]
         origin = lineage["lineages"].get(ref)
@@ -27,7 +27,6 @@ def project_lineage_calibration(templates, instances, projections, lineage, *, a
             samples_by_template[origin.template_operation_ref].append(sample)
         else:
             unbound[row["part_no"]].append(sample)
-        samples_by_part[row["part_no"]].append(sample)
     unbound_summaries = {key: summarize_samples(values) for key, values in unbound.items()}
     empty = summarize_samples([])
     rows = []
@@ -41,6 +40,6 @@ def project_lineage_calibration(templates, instances, projections, lineage, *, a
     unbound_count = sum(map(len, unbound.values()))
     constraints = ([issue("template_lineage_missing", "部分完工记录未关联工艺模板，未参与校准。")]
                    if unbound_count else [])
-    return {"rows": rows, "samples_by_part": dict(samples_by_part), "samples_by_template": dict(samples_by_template),
+    return {"rows": rows, "samples_by_template": dict(samples_by_template),
             "unbound_samples_by_part": dict(unbound), "unbound_instance_count": unbound_count,
             "source_constraints": constraints, "lineage_available": lineage["available"]}

@@ -77,7 +77,8 @@ class WorkbenchPlanQueryService:
     def read_snapshot(self):
         try:
             with TransactionManager(self.conn).transaction():
-                yield self.references.read_revision()
+                with self.references.read_bindings():
+                    yield self.references.read_revision()
         except WorkbenchPlanReferenceError as exc:
             missing = exc.code == "reference_not_found"
             raise WorkbenchCommandRejected(

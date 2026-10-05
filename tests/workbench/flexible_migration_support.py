@@ -60,15 +60,21 @@ def _assert_report_ddl_delta(before, after):
     return removed
 
 
+V38_REMOVED_INDEXES = {"idx_operator_calendar_operator_date", "idx_schedule_adjustment_scenario_draft",
+                       "idx_operation_execution_events_op_revision_unique"}
+
+
 def assert_migrated_legacy_ddl(conn, before, *, preserve_column_order=True):
-    """Prove the declared v37 report delta and every remaining historical object."""
+    """Prove the v37 report delta, three v38 index removals, and all other old objects."""
     assert current_schema_contract_issues(conn) == []
     after = [tuple(row) for row in conn.execute("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name")]
     removed = _assert_report_ddl_delta(before, after)
     current = {row[1]: row for row in after}
-    assert {row[1] for row in before} - current.keys() == {removed}
+    old_names = {row[1] for row in before}
+    removed_names = {removed} | (V38_REMOVED_INDEXES & old_names)
+    assert old_names - current.keys() == removed_names
     for old in before:
-        if old[1] == removed:
+        if old[1] in removed_names:
             continue
         actual = current[old[1]]
         expected = actual if old[1] == "WorkbenchProductionReports" else old

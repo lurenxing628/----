@@ -1,6 +1,7 @@
 """Admission owns a short transaction. Query and restart recovery never rerun work."""
 
 from datetime import datetime
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import (
@@ -18,7 +19,6 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .input_admission import piece_admission_issues
 from .jobs_facts import capture_run_facts, run_baseline, run_execution_projections
-from .preflight import PreflightService
 from .progress import read_progress
 
 
@@ -30,7 +30,8 @@ def _with_progress(payload):
 
 
 class WorkbenchRunService:
-    def __init__(self, conn, *, integration_enabled=False, input_resolver=None, context_factory=None,
+    def __init__(self, conn, *, integration_enabled=False,
+                 input_resolver: Optional[Callable[..., Tuple[Dict[str, Any], str]]] = None, context_factory=None,
                  context_validator=None, clock=None, data_context=None):
         self.conn = conn
         self.repo = WorkbenchRunRepository(conn)
@@ -48,8 +49,8 @@ class WorkbenchRunService:
     def _resolve(self, input_ref):
         if not callable(self.input_resolver):
             raise WorkbenchCommandRejected("run_worker_not_connected", messages.UNAVAILABLE, 503)
-        settings = self.input_resolver(self.conn, input_ref)
-        data, fingerprint = PreflightService(self.conn).evaluate(settings)
+        data, fingerprint = self.input_resolver(self.conn, input_ref)
+        settings = data["normalized_input"]
         data["blockers"].extend(piece_admission_issues(self.conn, settings))
         snapshot = {"input_ref": input_ref, "normalized_input": settings, "fingerprint": fingerprint,
                     "data_context_ref": self.data_context.ref()}

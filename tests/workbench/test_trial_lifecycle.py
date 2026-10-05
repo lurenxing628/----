@@ -17,6 +17,43 @@ from tests.workbench.trial_support import (
 from tests.workbench.trial_support import trial_case as trial_case
 
 
+@pytest.mark.parametrize("tag", [
+    {"$sqlite_real": "0x1.0000000000000p+0"},
+    {"$sqlite_real": "INF"},
+    {"$sqlite_real": "NaN"},
+    {"$sqlite_blob": "Zh=="},
+])
+def test_old_scenario_digest_keeps_the_original_packed_tag(tag, monkeypatch):
+    import json
+
+    from core.models import workbench_trial_codec as codec
+    from core.models.workbench_command import canonical_json
+    from core.services.workbench.facts import trial_policy
+
+    # Compare digest inputs without generating a new hash. The old loader hashes
+    # the parsed packed JSON, whose accepted tag encodings need not round-trip.
+    monkeypatch.setattr(codec, "input_fingerprint", canonical_json)
+    monkeypatch.setattr(trial_policy, "input_fingerprint", canonical_json)
+    row = {"row_ref": "a" * 48}
+    packed = {"tasks": [row], "legacy_value": tag}
+    raw, digest = json.dumps(packed), canonical_json(packed)
+    codec.load_object(raw, digest)
+
+    class Repo:
+        def schema_issues(self):
+            return []
+
+        def scenario_header(self, _ref):
+            return {"snapshot_json": raw, "snapshot_hash": digest}
+
+        def scenario_rows(self, _ref):
+            return [{"row_ref": row["row_ref"], "payload_json": json.dumps(row)}]
+
+    restored = trial_policy.load_scenario(Repo(), "scenario")
+    assert restored["tasks"] == [row]
+    assert codec.packed(restored["legacy_value"]) != tag
+
+
 @pytest.mark.parametrize("kind", ["official", "candidate"])
 def test_complete_create_change_save_and_reopen(trial_case, kind):
     case = trial_case
@@ -49,6 +86,10 @@ def test_complete_create_change_save_and_reopen(trial_case, kind):
     if kind == "candidate":
         assert "candidate_ref" in draft["base"] and "plan_ref" not in draft["base"]
         assert task["source_task_ref"] is None
+        admission = load(case.conn.execute(
+            "SELECT admission_json FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft["draft_ref"],)).fetchone()[0])
+        assert "artifact" not in admission["source"]
+        assert {"capture", "dispositions", "identity"} <= set(admission["source"])
 
 
 def test_exact_display_scope_preserved_without_filtering_base(trial_case):

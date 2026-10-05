@@ -7,7 +7,7 @@ from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_job import durable_value
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
-from .jobs_facts import run_baseline, run_execution_projections, run_facts_unchanged
+from .jobs_facts import production_facts_match, run_baseline, run_execution_projections
 
 
 def check_admission_current(conn, capture):
@@ -22,7 +22,7 @@ def check_admission_current(conn, capture):
         raise CandidateAdoptionBlocked("empty_baseline_inconsistent", "系统里还有找不到所属版本的正式安排，不能采用。请联系维护人员核对。")
     if facts.schedule_has_rows_without_history():
         raise CandidateAdoptionBlocked("official_history_inconsistent", "有正式安排找不到所属的版本记录，不能采用。请联系维护人员核对。")
-    if not run_facts_unchanged(conn, text, capture["facts_hash"]):
+    if not production_facts_match(conn, text, capture["facts_hash"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")
     projections = run_execution_projections(conn, capture["input"])
     _require_official_baseline(baseline, projections)

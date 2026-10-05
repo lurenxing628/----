@@ -3,7 +3,8 @@
 import secrets
 
 from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
-from core.models.workbench_trial_codec import dump, fingerprint, load_object
+from core.models.workbench_trial_codec import dump, dump_and_fingerprint, load_object
+from core.models.workbench_trial_scenario_archive import scenario_archive
 
 
 def new_ref():
@@ -31,53 +32,74 @@ class WorkbenchTrialRepository:
         return [dict(raw) for raw in self.conn.execute(
             "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal", (draft_ref,))]
 
+    def draft_state(self, draft_ref):
+        """Current mutable header fields; the caller already holds the immutable admission."""
+        row = self.conn.execute("""SELECT revision,status,validation_json,updated_at
+            FROM WorkbenchTrialDrafts WHERE draft_ref=?""", (draft_ref,)).fetchone()
+        return None if row is None else dict(row)
+
+    def draft_arrangements(self, draft_ref):
+        """Current row arrangements, without fetching the immutable original snapshots again."""
+        return [dict(row) for row in self.conn.execute("""SELECT row_ref,ordinal,current_json
+            FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal""", (draft_ref,))]
+
     def create(self, admission, rows, checked, request_key, actor, now):
         self._transaction()
         ref = new_ref()
         key, value = next(iter(admission["input"]["base"].items()))
+        admission_json, admission_hash = dump_and_fingerprint(admission)
         self.conn.execute("""INSERT INTO WorkbenchTrialDrafts
             (draft_ref,base_kind,base_ref,admission_json,admission_hash,row_count,revision,status,
              validation_json,created_at,updated_at,local_operator,request_key)
             VALUES (?,?,?,?,?,?,1,'editing',?,?,?,?,?)""",
-            (ref, key, value, dump(admission), fingerprint(admission), len(rows), dump(checked), now, now, actor, request_key))
+            (ref, key, value, admission_json, admission_hash, len(rows), dump(checked), now, now, actor, request_key))
+        stored_rows = []
+        for index, row in enumerate(rows):
+            original_json, original_hash = dump_and_fingerprint(row["original"])
+            stored_rows.append((row["row_ref"], row["task_ref"], ref, row["operation_ref"], row["source_task_ref"],
+                                row["source_row_ref"], index, original_json, original_hash, dump(row["current"])))
         self.conn.executemany("""INSERT INTO WorkbenchTrialRows
             (row_ref,task_ref,draft_ref,operation_ref,source_task_ref,source_row_ref,ordinal,
              original_json,original_hash,current_json) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            [(row["row_ref"], row["task_ref"], ref, row["operation_ref"], row["source_task_ref"],
-              row["source_row_ref"], index, dump(row["original"]), fingerprint(row["original"]), dump(row["current"]))
-             for index, row in enumerate(rows)])
+            stored_rows)
         return ref
 
     def change(self, head, row, before, checked, request_key, actor, now):
         """Record one arrangement change; True when the draft head advanced, False when it was stale."""
         self._transaction()
+        current_json, checked_json = dump(row["current"]), dump(checked)
         cur = self.conn.execute("UPDATE WorkbenchTrialRows SET current_json=? WHERE row_ref=? AND draft_ref=?",
-                               (dump(row["current"]), row["row_ref"], head["draft_ref"]))
+                               (current_json, row["row_ref"], head["draft_ref"]))
         if cur.rowcount != 1:
             raise RuntimeError("Trial row was not updated exactly once")
         self.conn.execute("""INSERT INTO WorkbenchTrialChanges
             (change_ref,draft_ref,task_ref,revision,before_json,after_json,validation_json,
              recorded_at,local_operator,request_key) VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (new_ref(), head["draft_ref"], row["task_ref"], head["revision"] + 1, dump(before),
-             dump(row["current"]), dump(checked), now, actor, request_key))
-        return self.transition(head, "editing", checked, now)
+             current_json, checked_json, now, actor, request_key))
+        return self._transition(head, "editing", checked_json, now)
 
     def transition(self, head, status, checked, now):
         """True when exactly the editing head at this revision advanced; False when another write got there first."""
         self._transaction()
+        return self._transition(head, status, dump(checked), now)
+
+    def _transition(self, head, status, checked_json, now):
         cur = self.conn.execute("""UPDATE WorkbenchTrialDrafts SET status=?,revision=revision+1,
             validation_json=?,updated_at=? WHERE draft_ref=? AND revision=? AND status='editing'""",
-            (status, dump(checked), now, head["draft_ref"], head["revision"]))
+            (status, checked_json, now, head["draft_ref"], head["revision"]))
         return cur.rowcount == 1
 
     def save(self, head, snapshot, request_key, actor, now):
-        """Persist a scenario snapshot plus permanent rows; True when the draft head advanced to saved."""
+        """Persist ordered metadata and permanent task bodies; retain the full public snapshot digest."""
         self._transaction()
         ref = snapshot["scenario_ref"]
+        _, snapshot_hash = dump_and_fingerprint(snapshot)
+        snapshot_json = dump(scenario_archive(snapshot))
         self.conn.execute("""INSERT INTO WorkbenchTrialScenarios
             (scenario_ref,draft_ref,name,revision,snapshot_json,snapshot_hash,saved_at,local_operator,request_key)
             VALUES (?,?,?,?,?,?,?,?,?)""", (ref, head["draft_ref"], snapshot["name"], head["revision"],
-            dump(snapshot), fingerprint(snapshot), now, actor, request_key))
+            snapshot_json, snapshot_hash, now, actor, request_key))
         self.conn.executemany("""INSERT INTO WorkbenchTrialScenarioRows
             (row_ref,task_ref,scenario_ref,source_row_ref,payload_json) VALUES (?,?,?,?,?)""",
             [(row["row_ref"], row["task_ref"], ref, row["source_row_ref"], dump(row)) for row in snapshot["tasks"]])

@@ -27,8 +27,19 @@ def _prepare_candidate(candidate, computation, identities):
         payload = computation.candidate_payloads[candidate.candidate_key]
         if payload.out_of_scope_op_ids or payload.validation_errors:
             raise ValueError("Candidate payload contains validation errors")
-        artifact["validated_payload"] = durable_value(payload)
         tasks = _candidate_tasks(payload, identities, computation)
+        validated = durable_value(payload)
+        arrangement_fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
+        engine_rows = artifact.pop("results")
+        if [{key: row.get(key) for key in arrangement_fields} for row in engine_rows] != validated["schedule_rows"]:
+            raise ValueError("Candidate engine results and validated rows disagree")
+        # Permanent task rows own the arrangement. Keep only engine-specific trace
+        # fields and validation conclusions; historical artifacts retain their old shape.
+        artifact["task_payload_source"] = "candidate_tasks_v1"
+        artifact["results"] = [{key: value for key, value in row.items()
+                                if key == "op_id" or key not in arrangement_fields} for row in engine_rows]
+        artifact["validated_payload"] = {key: value for key, value in validated.items()
+                                         if key not in ("schedule_rows", "assigned_by_op_id")}
     return {"candidate_ref": new_run_ref(), "key": candidate.candidate_key,
             "sequence": candidate.sequence, "status": candidate.status, "label": candidate.label,
             "artifact": artifact, "tasks": tasks}

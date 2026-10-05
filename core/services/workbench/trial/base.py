@@ -172,7 +172,7 @@ def _candidate(conn, ref):
             issues.append(issue("trial_base_incomplete", "候选方案没有覆盖排产时的全部工序，没排上的工序也照样列出。"))
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
                                "display_name": summary["label"], "completeness": summary["completeness"]},
-                 "capture": capture, "dispositions": scope, "artifact": candidate["artifact"]}
+                 "capture": capture, "dispositions": scope}
         return result, extra, facts.tables["BatchOperations"], {key: ref for ref, key in facts.operations.items()}, issues
 
 

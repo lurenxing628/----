@@ -29,7 +29,10 @@ def test_accept_and_real_candidate_result_preserve_original_database(job_case):
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0] == 4
     for row in case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates"):
         artifact = json.loads(row[0])
-        assert len(artifact["results"]) == len(artifact["validated_payload"]["schedule_rows"]) == 1
+        assert artifact["task_payload_source"] == "candidate_tasks_v1"
+        assert len(artifact["results"]) == len(artifact["validated_payload"]["scheduled_op_ids"]) == 1
+        assert "schedule_rows" not in artifact["validated_payload"] and "assigned_by_op_id" not in artifact["validated_payload"]
+        assert not {"machine_id", "operator_id", "start_time", "end_time", "source"}.intersection(artifact["results"][0])
     with connection(case.path) as reopened:
         assert service(reopened).get(accepted["run_ref"]) == result
         assert service(reopened).lookup("run-request-00000001") == result
@@ -78,6 +81,29 @@ def test_preflight_fact_drift_rejected_before_any_admission(job_case):
         service(case.conn).accept(ref, token, "run-request-00000001")
     assert error.value.code == "snapshot_stale"
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunJobs").fetchone()[0] == 0
+
+
+def test_preview_and_accept_evaluate_bound_input_once_per_transaction(job_case, monkeypatch):
+    from core.services.workbench.run import preflight_facts
+    from web.routes.workbench import preflight
+
+    case = job_case
+    ref = case.preflight()
+    calls = []
+    original = preflight_facts.full_facts_fingerprint
+
+    def fingerprint(conn):
+        assert conn.in_transaction
+        calls.append(conn)
+        return original(conn)
+
+    monkeypatch.setattr(preflight_facts, "full_facts_fingerprint", fingerprint)
+    monkeypatch.setattr(preflight, "full_facts_fingerprint", fingerprint)
+    intent = service(case.conn).preview(ref)
+    assert calls == [case.conn]
+    accepted = service(case.conn).accept(ref, intent["write_context"]["write_token"], "run-once-per-txn-0001")
+    assert accepted["result"] == "accepted"
+    assert calls == [case.conn, case.conn]
 
 
 def test_post_acceptance_fact_drift_records_failure_without_candidates(job_case):
@@ -130,25 +156,37 @@ def test_actual_excluded_batch_produces_persisted_partial_result(job_case):
     assert capture_run_facts(case.conn) == before
 
 
-def test_audit_writes_before_compute_and_before_persist_preserve_run(job_case, monkeypatch):
+def test_actual_automatic_backup_before_worker_persist_preserves_run(job_case, monkeypatch):
+    from core.services.system.system_maintenance_service import SystemMaintenanceService
     from core.services.workbench.run import worker as run_worker
 
     case = job_case
+    case.conn.execute("INSERT OR REPLACE INTO SystemConfig(config_key,config_value) VALUES ('auto_backup_enabled','yes')")
+    case.conn.commit()
     accepted = case.accept()
     captured = tuple(case.conn.execute("SELECT facts_json,facts_hash FROM WorkbenchRunJobs").fetchone())
     assert OperationLogger(case.conn).info("plugins", "load", detail={"startup": True})
     real_compute = run_worker.compute_candidate_run
 
-    def compute_with_audit(*args, **kwargs):
+    def compute_with_backup(*args, **kwargs):
         result = real_compute(*args, **kwargs)
-        assert OperationLogger(case.conn).info("system", "backup", detail={"complete": True})
+        SystemMaintenanceService.reset_throttle_for_tests()
+        try:
+            maintenance = SystemMaintenanceService.run_if_due(case.conn, db_path=str(case.path),
+                backup_dir=str(case.path.parent / "automatic-backups"), backup_keep_days_default=7,
+                op_logger=OperationLogger(case.conn))
+            assert maintenance.ran_any and maintenance.details["auto_backup"]["created"]
+        finally:
+            SystemMaintenanceService.reset_throttle_for_tests()
         return result
 
-    monkeypatch.setattr(run_worker, "compute_candidate_run", compute_with_audit)
+    monkeypatch.setattr(run_worker, "compute_candidate_run", compute_with_backup)
     result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     assert result["state"] == "complete" and result["result_persisted"] is True
     assert tuple(case.conn.execute("SELECT facts_json,facts_hash FROM WorkbenchRunJobs").fetchone()) == captured
     assert case.conn.execute("SELECT COUNT(*) FROM OperationLogs WHERE action IN ('load','backup')").fetchone()[0] == 2
+    assert case.conn.execute("SELECT last_run_time FROM SystemJobState WHERE job_key='auto_backup'").fetchone()[0]
+    assert list((case.path.parent / "automatic-backups").glob("*_auto.db"))
 
 
 @pytest.mark.parametrize("outcome,state", [("unchanged", "complete"), ("committed", "failed")])

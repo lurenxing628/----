@@ -4,8 +4,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from core.errors import AppError
-from core.services.capacity.plan_calendar_intervals import hours, intersection, segments, union
 from core.services.capacity.plan_calendar_windows import apply_resource, available_intervals, policy_projection
+from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
 from .calendar import calendar_engine
 
@@ -58,22 +58,21 @@ def _projections(engine, groups, sources, first, start, end):
         else:
             base = policy_projection(engine, first, end.date(), start, end, operator_id=key)
         calendar = apply_resource(base, records[kind].get(key), kind, downtimes[key] if kind == "machine" else [], start, end)
-        output.append(_resource(kind, ref, intervals, calendar))
+        output.append(_resource(kind, ref, intervals, calendar, start, end))
     return output
 
 
-def _resource(kind, ref, intervals, calendar):
+def _resource(kind, ref, intervals, calendar, start, end):
     valid = [(start, end) for start, end in intervals if start < end]
-    occupied = union(valid)
-    swept = segments(valid)
-    available = available_intervals(calendar)
-    capacity = hours(available) if available is not None else None
-    in_calendar = hours(intersection(occupied, available)) if available is not None else None
+    metrics = ResourceUtilizationMetrics(valid, available_intervals(calendar))
+    # Trial keeps full precision and reports the wall-clock overlap span. The
+    # shared overlap_hours instead measures the excess load inside the calendar.
+    values = metrics.window(start, end, precision=None)
     return {"resource_type": kind, "resource_ref": ref, "state": calendar["state"], "calendar": calendar,
-            "arranged_hours": hours(valid), "occupied_hours": hours(occupied),
-            "overlap_hours": hours([(start, end) for start, end, count in swept if count > 1]),
-            "available_hours": capacity, "available_occupied_hours": in_calendar,
-            "outside_available_hours": hours(occupied) - in_calendar if in_calendar is not None else None,
-            "utilization": in_calendar / capacity if in_calendar is not None and capacity is not None and capacity > 0 else None,
+            "arranged_hours": values["span_summed_hours"], "occupied_hours": values["span_occupied_hours"],
+            "overlap_hours": values["span_overlap_hours"],
+            "available_hours": values["available_hours"], "available_occupied_hours": values["occupied_hours"],
+            "outside_available_hours": values["outside_calendar_hours"],
+            "utilization": values["utilization_ratio"],
             "segments": [{"start": start.isoformat(), "end": end.isoformat(), "concurrent_operations": count}
-                         for start, end, count in swept]}
+                         for start, end, count in metrics.segments]}

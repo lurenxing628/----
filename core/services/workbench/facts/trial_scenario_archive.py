@@ -8,12 +8,12 @@ from typing import NoReturn
 from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
-from core.models.workbench_trial_codec import fingerprint
+from core.models.workbench_trial_codec import same
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 from .preflight_dependencies import material_deferred_ids
-from .trial_policy import load_draft, load_scenario
+from .trial_policy import load_draft, load_scenario_record
 
 
 def _invalid(message) -> NoReturn:
@@ -27,10 +27,7 @@ def load_saved_scenario(conn, scenario_ref):
 
 def _load_saved_scenario(conn, scenario_ref):
     repo = WorkbenchTrialRepository(conn)
-    saved = load_scenario(repo, scenario_ref)
-    header = repo.scenario_header(scenario_ref)
-    if header is None:
-        _invalid("试调方案与保存结果不一致，请刷新后重试。")
+    header, saved = load_scenario_record(repo, scenario_ref)
     head, originals = load_draft(repo, header["draft_ref"])
     _require_head(saved, header, head, originals)
     _require_receipts(conn, saved, header, head)
@@ -59,7 +56,7 @@ def _require_head(saved, header, head, originals):
     for key, expected in (("base", admission["input"]["base"]), ("scope", admission["input"]["scope"]),
                           ("base_identity", admission["source"]["identity"]),
                           ("baseline", {name: admission["baseline"][name] for name in ("plan_ref", "version")})):
-        if fingerprint(saved[key]) != fingerprint(expected):
+        if not same(saved[key], expected):
             _invalid("试调方案的来源、范围或建草稿时的正式计划对不上。请刷新后重试。")
 
 
@@ -91,7 +88,7 @@ def _require_receipts(conn, saved, header, head):
             or persisted is None or (persisted["action"], persisted["context_ref"]) != ("trial.save", head["draft_ref"])):
         _invalid("找不到建草稿或保存试调方案的结果记录，来源无法确认。请刷新后重试。")
     result = repo.public_result(persisted, replayed=True)
-    if result["result"] != "committed" or fingerprint(result["data"]) != fingerprint(saved):
+    if result["result"] != "committed" or not same(result["data"], saved):
         _invalid("试调方案与保存结果不一致，请刷新后重试。")
 
 
@@ -103,7 +100,7 @@ def _saved_row(task, source):
                 "batch_id": batch["batch_id"], "part_no": batch["part_no"],
                 "sequence": op["seq"], "piece_id": op["piece_id"], "source": op["source"],
                 "predecessor_operation_refs": original["predecessor_operation_refs"]}
-    if fingerprint({key: task[key] for key in expected}) != fingerprint(expected):
+    if not same({key: task[key] for key in expected}, expected):
         _invalid("试调方案里的工序、批次、前序或草稿来源对不上。请刷新后重试。")
     for key in ("row_ref", "task_ref"):
         reference(task[key])
@@ -112,7 +109,7 @@ def _saved_row(task, source):
     current = {key: task[key] for key in ("machine_ref", "operator_ref", "start", "end")}
     for kind in ("machine", "operator"):
         current[kind + "_id"] = source["current"][kind + "_id"]
-    if fingerprint(current) != fingerprint(source["current"]):
+    if not same(current, source["current"]):
         _invalid("试调方案与草稿安排不一致，请刷新后重试。")
     for name in ("start", "end"):
         raw = current[name]

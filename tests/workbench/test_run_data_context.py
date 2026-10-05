@@ -20,6 +20,23 @@ from tests.workbench.test_run_jobs_api import jobs_api as _jobs_api  # noqa: F40
 KEY = "restore-context-run-request-000001"
 
 
+def test_context_captures_journal_once_per_observation_and_keeps_pending_block(context_case, monkeypatch):
+    case = context_case
+    calls, original = [], case.context.journal.records
+
+    def records():
+        calls.append(True)
+        return original()
+
+    monkeypatch.setattr(case.context.journal, "records", records)
+    case.context.ref()
+    assert calls == [True]
+    case.journal.begin("restore-context-pending-000001", "restore", {})
+    with pytest.raises(WorkbenchCommandRejected):
+        case.context.ref()
+    assert calls == [True, True]
+
+
 @pytest.fixture
 def context_case(job_case, tmp_path, monkeypatch):
     journal_dir = tmp_path / "run-context-journal"

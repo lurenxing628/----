@@ -83,6 +83,7 @@ class GenerationFacts:
         if type(value) is not str or hashlib.sha256(value.encode("utf-8")).hexdigest() != capture["facts_hash"]:
             corrupt()
         facts = stored_json(value)
+        self.archive = facts
         self.tables = {name: _index(_table(facts, name), key) for name, key in _TABLES.items()}
         self.entity_refs = _entity_refs(facts)
         self.operations = _operation_refs(facts)

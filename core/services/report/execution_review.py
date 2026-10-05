@@ -13,6 +13,7 @@ from core.services.scheduler.schedule_plan_query_service import plan_role_label
 from . import calculations
 from .date_range_limits import ensure_report_date_range_within_limit
 from .exporters import export_execution_review_xlsx
+from .plan_labels import planned_review_labels, resource_pair_label
 from .values.number_parsing import parse_report_float, parse_report_int
 
 
@@ -99,6 +100,7 @@ class _ExecutionReviewHost(Protocol):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        resolution: Any = None,
     ) -> Any:
         ...
 
@@ -111,6 +113,7 @@ class _ExecutionReviewHost(Protocol):
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
+        resolution: Any = None,
     ) -> Any:
         ...
 
@@ -176,6 +179,7 @@ class ExecutionReviewMixin:
         batch_filter: str,
         resource_type: Any = None,
         resource_id: Any = None,
+        resolution: Any = None,
     ):
         host = cast(_ExecutionReviewHost, self)
         if date_bounds["start_time"] and date_bounds["end_time"]:
@@ -189,6 +193,7 @@ class ExecutionReviewMixin:
                 resource_type=str(resource_type or "").strip(),
                 resource_id=str(resource_id or "").strip(),
                 batch_id=batch_filter,
+                resolution=resolution,
             )
         else:
             # 无日期筛选时同样硬钉正式 adopted/null，不能把对比方案当现场事实复盘来源。
@@ -199,6 +204,7 @@ class ExecutionReviewMixin:
                 resource_type=str(resource_type or "").strip(),
                 resource_id=str(resource_id or "").strip(),
                 batch_id=batch_filter,
+                resolution=resolution,
             )
         return plan_rows
 
@@ -212,7 +218,7 @@ class ExecutionReviewMixin:
         states = host.execution_feedback_service.get_execution_state_for_scopes(scopes)
         return [self._execution_review_row(row, states.get(scope)) for row, scope in rows_with_scopes]
 
-    def execution_review(
+    def execution_review_plan(
         self,
         version: int,
         *,
@@ -222,11 +228,13 @@ class ExecutionReviewMixin:
         resource_type: Any = None,
         resource_id: Any = None,
         enforce_date_range_limit: bool = True,
+        _resolution: Any = None,
     ) -> Dict[str, Any]:
+        """Read official plan facts without generating an execution projection."""
         host = cast(_ExecutionReviewHost, self)
         v = int(version or 0)
         # 先按正式 adopted/null 解析身份，再进入复盘计算，避免下游读路径被查询参数放宽。
-        resolution = host._resolve_plan(v, ROLE_ADOPTED, None)
+        resolution = _resolution or host._resolve_plan(v, ROLE_ADOPTED, None)
         plan_resolution = resolution.to_dict()
         _ensure_reviewable_official_plan(plan_resolution, action="生成")
         date_bounds = self._execution_review_date_bounds(
@@ -241,8 +249,8 @@ class ExecutionReviewMixin:
             batch_filter=batch_filter,
             resource_type=resource_type,
             resource_id=resource_id,
+            resolution=resolution,
         )
-        rows = self._execution_review_rows(list(plan_rows or []))
         return {
             "version": v,
             "plan_label": _plan_identity_label(plan_resolution),
@@ -254,9 +262,26 @@ class ExecutionReviewMixin:
             "date_range_label": date_bounds["date_range_label"],
             "batch_id": batch_filter,
             "batch_filter_label": batch_filter or "全部批次",
-            "rows": rows,
-            "count": len(rows),
+            "plan_rows": list(plan_rows or []),
         }
+
+    def execution_review(
+        self,
+        version: int,
+        *,
+        date_from: Any = None,
+        date_to: Any = None,
+        batch_id: Any = None,
+        resource_type: Any = None,
+        resource_id: Any = None,
+        enforce_date_range_limit: bool = True,
+        _resolution: Any = None,
+    ) -> Dict[str, Any]:
+        report = self.execution_review_plan(version, date_from=date_from, date_to=date_to,
+            batch_id=batch_id, resource_type=resource_type, resource_id=resource_id,
+            enforce_date_range_limit=enforce_date_range_limit, _resolution=_resolution)
+        rows = self._execution_review_rows(report.pop("plan_rows"))
+        return dict(report, rows=rows, count=len(rows))
 
     def export_execution_review_xlsx(
         self,
@@ -280,6 +305,7 @@ class ExecutionReviewMixin:
             resource_type=resource_type,
             resource_id=resource_id,
             enforce_date_range_limit=enforce_date_range_limit,
+            _resolution=resolution,
         )
         rows = list(rep.get("rows") or [])
         if not rows:
@@ -319,11 +345,8 @@ class ExecutionReviewMixin:
     def _execution_review_row(self, row: Dict[str, Any], state) -> Dict[str, Any]:
         has_feedback = bool(getattr(state, "last_event_id", None))
         has_exception = bool(getattr(state, "latest_exception_event_id", None))
-        planned_start = self._display_time(row.get("start_time"))
-        planned_end = self._display_time(row.get("end_time"))
         actual_start = getattr(state, "actual_start_time", None) if state is not None else None
         actual_end = getattr(state, "actual_end_time", None) if state is not None else None
-        planned_resource = self._planned_resource_identity(row)
         actual_resource = self._actual_resource_identity(state, has_feedback)
         affected_machine = self._state_resource_identity(
             state,
@@ -348,12 +371,9 @@ class ExecutionReviewMixin:
             empty_text="未填写影响人员",
         )
         return {
-            "batch_id_label": str(row.get("batch_id") or ""),
-            "operation_label": self._operation_label(row),
-            "planned_start_time_label": planned_start,
+            **planned_review_labels(row),
             "actual_start_time_label": self._actual_value_label(actual_start, has_feedback),
             "start_deviation_label": self._deviation_label(row.get("start_time"), actual_start, has_feedback),
-            "planned_end_time_label": planned_end,
             "actual_end_time_label": self._actual_value_label(actual_end, has_feedback),
             "end_deviation_label": self._deviation_label(row.get("end_time"), actual_end, has_feedback),
             "pause_duration_label": self._pause_duration_label(getattr(state, "pause_duration_minutes", 0.0), has_feedback),
@@ -384,21 +404,9 @@ class ExecutionReviewMixin:
                 has_feedback,
                 has_exception,
             ),
-            "planned_resource_label": planned_resource["display_label"],
-            "planned_machine_id": str(row.get("machine_id") or ""),
-            "planned_machine_name": str(row.get("machine_name") or ""),
-            "planned_operator_id": str(row.get("operator_id") or ""),
-            "planned_operator_name": str(row.get("operator_name") or ""),
             "actual_resource_label": actual_resource["display_label"],
             "feedback_status_label": getattr(state, "current_status_label", None) if has_feedback else "暂无现场反馈",
         }
-
-    @staticmethod
-    def _display_time(value: Any) -> str:
-        # 计划时间保持 ISO 文本口径：页面同一行的实际时间和 Excel 导出共享本标签，
-        # 不做中文友好化转换，避免页面/导出口径分叉（2026-06-05 复审回退）。
-        text = str(value or "").strip()
-        return text or "未填写计划时间"
 
     @staticmethod
     def _actual_value_label(value: Any, has_feedback: bool) -> str:
@@ -406,34 +414,6 @@ class ExecutionReviewMixin:
         if text:
             return text
         return "暂无现场反馈" if not has_feedback else "未填写实际时间"
-
-    @staticmethod
-    def _operation_label(row: Dict[str, Any]) -> str:
-        op_name = str(row.get("op_type_name") or "").strip()
-        op_code = str(row.get("op_code") or "").strip()
-        if op_name and op_code:
-            return f"{op_code} / {op_name}"
-        return op_name or op_code or "未命名工序"
-
-    @staticmethod
-    def _resource_pair_payload(machine: ResourceIdentity, operator: ResourceIdentity, *, empty_label: str) -> Dict[str, str]:
-        machine_display = machine.display_label
-        operator_display = operator.display_label
-        if machine_display and operator_display:
-            display = f"{machine_display} / {operator_display}"
-        elif machine_display:
-            display = f"{machine_display} / 未安排人员"
-        elif operator_display:
-            display = f"未安排设备 / {operator_display}"
-        else:
-            display = empty_label
-        return {"display_label": display}
-
-    @staticmethod
-    def _planned_resource_identity(row: Dict[str, Any]) -> Dict[str, str]:
-        machine = build_resource_identity(row.get("machine_id"), row.get("machine_name"))
-        operator = build_resource_identity(row.get("operator_id"), row.get("operator_name"))
-        return ExecutionReviewMixin._resource_pair_payload(machine, operator, empty_label="未安排计划资源")
 
     @staticmethod
     def _state_resource_identity(state, prefix: str, *, empty_label: str = "") -> ResourceIdentity:
@@ -450,7 +430,7 @@ class ExecutionReviewMixin:
             return {"display_label": "暂无现场反馈"}
         machine = ExecutionReviewMixin._state_resource_identity(state, "actual_machine")
         operator = ExecutionReviewMixin._state_resource_identity(state, "actual_operator")
-        return ExecutionReviewMixin._resource_pair_payload(machine, operator, empty_label="未填写实际资源")
+        return {"display_label": resource_pair_label(machine, operator, empty_label="未填写实际资源")}
 
     @staticmethod
     def _pause_duration_label(value: Any, has_feedback: bool) -> str:

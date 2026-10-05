@@ -5,6 +5,7 @@ not used here. Fresh shared guardrails retain exact actual intervals/resources,
 all revisions, the whole official snapshot and unselected resource reservations.
 """
 
+from core.infrastructure.read_evidence import verified_read
 from core.services.scheduler.run.schedule_execution_guardrails import _collect_execution_guardrails
 from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_unselected_resource_overlap
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
@@ -27,6 +28,15 @@ def _stable_projection(projection):
 
 
 def validate_piece_execution(svc, prepared, payload, scope, refs):
+    facts, actual_seeds = verified_read(svc.conn, ("piece_execution", id(prepared)),
+        lambda: _execution_inputs(svc, prepared, scope, refs))
+    protected = _protected_arrangements(svc, prepared, payload, actual_seeds)
+    _validate_unselected_resource_overlap(svc, payload=payload, execution_facts=facts,
+                                        operations=prepared.operations)
+    return protected
+
+
+def _execution_inputs(svc, prepared, scope, refs):
     if svc.history_repo.get_latest_version() != prepared.prev_version:
         block("piece_baseline_changed", "正式计划在这次排产之后又变了，本次没有采用。请刷新后重新排产。")
     ledger = ExecutionLedgerService(svc.conn)
@@ -37,11 +47,7 @@ def validate_piece_execution(svc, prepared, payload, scope, refs):
     }:
         block("piece_execution_changed", "排产时读到的报工记录和现在的不一致，本次没有采用。请刷新现场记录后重新排产。")
     _quantities(scope, refs, current)
-    facts, actual_seeds = _current_protection(svc, prepared)
-    protected = _protected_arrangements(svc, prepared, payload, actual_seeds)
-    _validate_unselected_resource_overlap(svc, payload=payload, execution_facts=facts,
-                                        operations=prepared.operations)
-    return protected
+    return _current_protection(svc, prepared)
 
 
 def _current_protection(svc, prepared):

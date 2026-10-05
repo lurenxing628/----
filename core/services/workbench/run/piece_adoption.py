@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.errors import AppError
+from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked, PieceAdoptionEvidence
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
@@ -69,12 +70,16 @@ def _validate_piece_adoption(conn, prepared, payload):
         _payload(prepared, payload, scope)
         svc = ScheduleService(conn)
         protected = validate_piece_execution(svc, prepared, payload, scope, refs)
-        prime_template_cache(svc, WorkbenchPieceAdoptionRepository(conn).template_tables(), prepared.batches, prepared.operations)
-        algo_ops = {op.id: op for op in build_algo_operations(svc, prepared.operations, strict_mode=True)}
+        algo_ops = verified_read(conn, ("piece_algorithm", id(prepared)), lambda: _algorithm_facts(svc, prepared))
         _precedence(payload, scope, algo_ops)
         _constraints(conn, prepared, payload, scope, algo_ops)
         return PieceAdoptionEvidence(scope, tuple(sorted(refs.items())), tuple(sorted(protected)),
                                      prepared.execution_snapshot_revision)
+
+
+def _algorithm_facts(svc, prepared):
+    prime_template_cache(svc, WorkbenchPieceAdoptionRepository(svc.conn).template_tables(), prepared.batches, prepared.operations)
+    return {op.id: op for op in build_algo_operations(svc, prepared.operations, strict_mode=True)}
 
 
 def _payload(prepared, payload, scope):
@@ -113,14 +118,12 @@ def _precedence(payload, scope, ops):
 
 
 def _constraints(conn, prepared, payload, scope, algo_ops):
-    _validate_stored_runtime(conn)
-    calendar = CalendarService(conn)
+    calendar, checks = verified_read(conn, ("piece_constraints", id(prepared)), lambda: _constraint_facts(conn))
     downtime = adoption_downtimes(conn, prepared, payload)
     actual_intervals = adoption_external_intervals(prepared, algo_ops=algo_ops.values())
     derived = {seed["op_id"] for seed in prepared.seed_results if seed.get("seed_source") == MERGED_EXECUTION_GROUP_SOURCE}
     if not derived <= set(actual_intervals):
         block("piece_execution_protection_changed", "同组固定安排缺少对应的实际外协周期依据，本次没有采用。请刷新后重新排产。")
-    checks = PreflightChecks(WorkbenchPieceAdoptionRepository(conn).preflight_tables())
     quantities = {work.op_id: work.target_quantity for work in scope.operations}
     ops = {op.id: op for op in prepared.operations}
     _material_deferrals(prepared, checks, ops)
@@ -141,6 +144,11 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
         _mutable_work(prepared, checks, row, op, batch, quantities[row.op_id], seeds, high,
                       actual_cycle=row.op_id in actual_intervals)
         _duration(calendar, downtime, row, algo, batch, quantities[row.op_id], actual_intervals)
+
+
+def _constraint_facts(conn):
+    _validate_stored_runtime(conn)
+    return CalendarService(conn), PreflightChecks(WorkbenchPieceAdoptionRepository(conn).preflight_tables())
 
 
 def _material_deferrals(prepared, checks, ops):

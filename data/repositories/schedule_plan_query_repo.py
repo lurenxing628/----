@@ -13,7 +13,13 @@ from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_resource_sql_filters import append_detail_filters, overdue_resource_filter
 from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
-from .schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL, require_dt_for_sql, time_dt, valid_time_range_sql
+from .schedule_time_sql import (
+    DETAIL_OVERLAP_OR_BAD_TIME_SQL,
+    register_schedule_time_sql_functions,
+    require_dt_for_sql,
+    time_dt,
+    valid_time_range_sql,
+)
 
 _SCHEDULE_PLAN_ROWS_SQL = """
 SELECT
@@ -73,6 +79,13 @@ def _require_scenario_id(source_table: str, scenario_id: Optional[str]) -> str:
 
 class SchedulePlanQueryRepository(BaseRepository):
     """按 adopted / 候选代表方案读取同一形状的排产明细。"""
+
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
+        register_schedule_time_sql_functions(conn)
+
+    def latest_version(self) -> Optional[int]:
+        return self.fetchvalue("SELECT MAX(version) FROM ScheduleHistory WHERE version > 0", default=None)
 
     def list_history_identity_rows(self) -> List[Dict[str, Any]]:
         return self.fetchall(

@@ -3,7 +3,6 @@
 import secrets
 
 from core.infrastructure.workbench_calibration_adoption_schema import contract_issues
-from core.models.workbench_command import canonical_json
 from core.models.workbench_template_lineage import snapshot
 
 from .base_repo import BaseRepository
@@ -61,7 +60,7 @@ class WorkbenchCalibrationAdoptionRepository(BaseRepository):
                "declared_operator": intent["declared_operator"], "confirmed": intent["confirm"], "application_operator": actor,
                "adopted_at": adopted_at, "generated_at": evidence.generated_at,
                "method_version": suggestion["method_version"], "sample_count": suggestion["sample_count"],
-               "evidence_json": canonical_json({"snapshot": evidence.snapshot, "suggestion": suggestion, "samples": evidence.samples}),
+               "evidence_json": evidence.audit_document(),
                "template_before": snapshot(before), "template_after": snapshot(after)}
         self.conn.execute("INSERT INTO WorkbenchCalibrationAdoptions (" + ",".join(row) + ") VALUES (" +
                           ",".join("?" for _ in row) + ")", tuple(row.values()))

@@ -16,6 +16,7 @@ def deviation(planned, actual, action):
 
 
 def export_labels(label, operation, directory):
+    """Compose shared plan labels with the ledger's execution labels."""
     result = dict(label)
     result.update({"feedback_status_label": operation["execution_label"],
         "actual_start_time_label": operation["actual_start"] or "暂无已确认实际开工",

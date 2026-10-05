@@ -113,4 +113,4 @@ def test_five_complete_identical_unbound_instances_are_not_samples(lineage_case)
     row = facts["rows"][0]
     assert row["candidate_count"] == 5 and row["eligible_sample_count"] == row["sample_count"] == 0
     assert row["suggested_unit_hours"] is None
-    assert all(sample["template_operation_ref"] is None for sample in facts["samples_by_part"]["P1"])
+    assert all(sample["template_operation_ref"] is None for sample in facts["unbound_samples_by_part"]["P1"])

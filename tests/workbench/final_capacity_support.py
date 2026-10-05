@@ -136,14 +136,16 @@ def verify_database(path, run_ref, expected_count, *, expected_batches, expected
         for row in rows:
             artifact = json.loads(row["artifact_json"])
             payload = artifact["validated_payload"]
-            scheduled = verify_payload(payload, operations)
             assert row["status"] == "completed" and row["task_count"] == expected_count
             tasks = list(conn.execute("SELECT * FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (row["candidate_ref"],)))
             assert len(tasks) == expected_count and len({task["row_ref"] for task in tasks}) == expected_count
+            projected = dict(payload, schedule_rows=[{key: value for key, value in json.loads(task["payload_json"]).items()
+                                                     if key != "locked"} for task in tasks])
+            scheduled = verify_payload(projected, operations)
             for ordinal, (task, source) in enumerate(zip(tasks, scheduled)):
                 assert task["ordinal"] == ordinal and task["operation_ref"] == refs[source["op_id"]]
                 assert json.loads(task["payload_json"]) == {**source, "locked": False}
-            payloads.append(payload)
+            payloads.append(projected)
             candidates.append({"candidate_ref": row["candidate_ref"], "candidate_key": row["candidate_key"],
                                "task_count": len(tasks), "artifact_sha256": digest(artifact),
                                "payload_sha256": digest(payload), "tasks_sha256": digest([dict(task) for task in tasks]),

@@ -4,8 +4,6 @@ from core.models.workbench_command import canonical_json, input_fingerprint
 from core.models.workbench_run_analysis import delivery_deltas, delivery_metrics, operation_metrics
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, RunCandidateReadScope
-from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_values import bounded_size
 
 from .candidate_baseline import WorkbenchRunCandidateBaselineQueryService
@@ -16,12 +14,12 @@ from .candidates import WorkbenchRunCandidateQueryService
 def read_candidate_analysis(conn, candidate_ref):
     reader = WorkbenchRunCandidateQueryService(conn)
     with reader.store.snapshot():
-        workspace, _ = reader.workspace(RunCandidateReadScope(candidate_ref))
-        baseline, _ = WorkbenchRunCandidateBaselineQueryService(conn).baseline(RunCandidateBaselineScope(candidate_ref))
-        run_ref = workspace["candidate"]["run_ref"]
-        run, _, disposition = reader._load(run_ref)
-        capture = reader.store.capture(run_ref)
-        admission = AdmissionBaseline(capture, GenerationFacts(capture), disposition, run["accepted_at"])
+        source = reader._source(candidate_ref)
+        baseline_reader = WorkbenchRunCandidateBaselineQueryService(conn)
+        admission, rows = baseline_reader._source(source)
+        workspace, _ = reader._workspace(source, RunCandidateReadScope(candidate_ref))
+        baseline, _ = baseline_reader._baseline(source, admission, rows, RunCandidateBaselineScope(candidate_ref))
+        run_ref, capture = source.run["run_ref"], source.capture
         refs = sorted(admission.settings["batch_refs"])
         before = _baseline_deliveries(admission, capture, refs)
         after = [row for row in workspace["delivery_risks"]["items"] if row["batch_ref"] in refs]

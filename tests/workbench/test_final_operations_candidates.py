@@ -55,6 +55,33 @@ def test_final_operations_comparison_ignores_changed_live_labels_calendar_and_pl
         case.conn.set_authorizer(None)
 
 
+def test_comparison_uses_one_verified_archive_for_scoped_and_full_views(candidate_case, monkeypatch):
+    from core.services.workbench.run import candidate_baseline, candidates
+
+    case = candidate_case
+    original_plan(case)
+    _, refs = compute(case)
+    scope = RunCandidateReadScope(refs[0], batch_ref=case.ref("batch", "B1"), **RANGE)
+    expected = read_candidate_comparison(case.conn, scope)
+    calls = []
+    original_facts = candidates.GenerationFacts
+    original_baseline = candidate_baseline.AdmissionBaseline
+
+    def facts(*args, **kwargs):
+        calls.append("facts")
+        return original_facts(*args, **kwargs)
+
+    def baseline(*args, **kwargs):
+        calls.append("baseline")
+        return original_baseline(*args, **kwargs)
+
+    monkeypatch.setattr(candidates, "GenerationFacts", facts)
+    monkeypatch.setattr(candidate_baseline, "AdmissionBaseline", baseline)
+    with retained(case.conn):
+        assert read_candidate_comparison(case.conn, scope) == expected
+    assert calls == ["facts", "baseline"]
+
+
 def test_final_operations_comparison_missing_baseline_is_not_zero_improvement(candidate_case):
     case = candidate_case
     _, refs = compute(case)

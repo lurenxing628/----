@@ -230,10 +230,11 @@ _RECEIPT = ("INSERT INTO WorkbenchCommandReceipts(request_key,receipt_ref,action
 
 @pytest.mark.parametrize("change,stale", [
     ("INSERT INTO OperationLogs(log_level,module,action) VALUES ('INFO','system','export')", False),
+    ("INSERT INTO SystemJobState(job_key,last_run_time,last_run_detail) VALUES ('auto_backup','2026-10-06 01:00:00','{}')", False),
     (_RECEIPT.format("dashboard.transition", "committed"), False), (_RECEIPT.format("trial.save", "committed"), False),
     (_RECEIPT.format("calendar.defaults", "unchanged"), False), (_RECEIPT.format("calendar.defaults", "committed"), True)])
 def test_input_ref_uses_the_run_worker_facts_scope(pf, change, stale):
-    # 检查到开始之间：日志、看板处置、试调和“无改动”回执排产都不读，和排产计算同一口径，不算现场变化；
+    # 检查到开始之间：日志、自动维护时钟、看板处置、试调和“无改动”回执排产都不读，和排产计算同一口径，不算现场变化；
     # 其他已提交的回执仍保守地算变化。
     data = checked(pf)
     pf.conn.execute(change)

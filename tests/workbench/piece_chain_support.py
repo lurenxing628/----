@@ -1,11 +1,9 @@
 """EF real worker/SQLite fixtures; no prepared input or guard substitutions."""
 
-import json
-
 from tests.workbench.piece_adoption_support import split
 from tests.workbench.run_candidate_adoption_support import INTENT, assert_retained
 from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
-from tests.workbench.run_candidate_support import compute
+from tests.workbench.run_candidate_support import compute, stored_candidate_artifact
 from tests.workbench.trial_adoption_support import service as trial_adoption
 from tests.workbench.trial_support import change, create, snapshot
 from tests.workbench.trial_support import service as trial_service
@@ -31,8 +29,7 @@ def piece_layout(case, *, parallel=True, common=True, unit=0.25):
 
 
 def artifact(case, ref):
-    raw = case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (ref,)).fetchone()[0]
-    return json.loads(raw)
+    return stored_candidate_artifact(case.conn, ref)
 
 
 def adopt_candidate(case, ref, key="ef-candidate-adopt-0001"):

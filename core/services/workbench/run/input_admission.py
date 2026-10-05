@@ -15,7 +15,7 @@ def piece_admission_issues(conn, settings):
     if not any(ref in selected for ref in refs):
         return []
     try:
-        prepare_candidate_run_input(conn, settings, run_execution_projections(conn, settings))
+        prepare_candidate_run_input(conn, settings, run_execution_projections(conn, settings), capture_fingerprint=False)
     except (CandidateRunInputError, CandidateAdoptionBlocked) as exc:
         return [{"code": exc.code, "message": str(exc)}]
     except AppError as exc:
