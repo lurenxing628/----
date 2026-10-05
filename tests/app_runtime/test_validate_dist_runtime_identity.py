@@ -174,3 +174,27 @@ def test_validate_dist_runtime_contract_refuses_symlink_and_bad_utf8(tmp_path: P
     except RuntimeError as e:
         _assert("host 文件无效" in str(e), "软链接 host 的错误信息应落到 host 文件无效")
     _assert(victim.read_text(encoding="utf-8") == "VICTIM", "读取契约不应触碰软链接目标")
+
+
+def test_runtime_database_path_rejects_existing_relative_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'relative.db').write_bytes(b'existing file')
+    try:
+        mod._assert_runtime_db_path('relative.db')
+    except RuntimeError as error:
+        _assert('不是绝对路径' in str(error), '应检查原始路径而非 abspath 后的值')
+    else:
+        raise AssertionError('相对路径必须被拒绝，即使文件已经存在')
+
+
+def test_runtime_contract_rejects_relative_db_path_before_normalizing(tmp_path):
+    log_dir = tmp_path / 'logs'
+    _write_text(log_dir / 'aps_host.txt', '127.0.0.1')
+    _write_text(log_dir / 'aps_port.txt', '5000')
+    _write_text(log_dir / 'aps_db_path.txt', 'relative.db')
+    try:
+        mod._read_runtime_contract(str(log_dir))
+    except RuntimeError as error:
+        _assert('db_path 文件无效' in str(error), '契约读取必须拒绝原始相对路径')
+    else:
+        raise AssertionError('不能先归一化相对路径，再把它当作绝对路径契约')

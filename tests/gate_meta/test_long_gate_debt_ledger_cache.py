@@ -271,12 +271,12 @@ def test_debt_ledger_sync_explain_decision_does_not_write_proof(monkeypatch, tmp
     monkeypatch.setattr(
         module,
         "_strict_long_gate_fingerprint",
-        lambda entry: {"schema_version": 1, "hash": "sha256:explain-debt"},
+        lambda entry, **kwargs: {"schema_version": 1, "hash": "sha256:explain-debt"},
     )
     monkeypatch.setattr(
         module,
         "evaluate_reuse",
-        lambda entry, fingerprint, repo_root=None, cache_dir=None: {
+        lambda entry, fingerprint, repo_root=None, cache_dir=None, metadata=None: {
             "decision": {
                 "entry_id": "debt_ledger_sync",
                 "decision": "run",
@@ -373,7 +373,7 @@ def test_debt_ledger_sync_planned_entry_writes_proof_without_pending_success(mon
     monkeypatch.setattr(
         module,
         "_strict_long_gate_fingerprint",
-        lambda entry: {"schema_version": 1, "hash": "sha256:planned-debt"},
+        lambda entry, **kwargs: {"schema_version": 1, "hash": "sha256:planned-debt"},
     )
     monkeypatch.setattr(
         module,

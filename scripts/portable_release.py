@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-import shutil
 import tempfile
 import zipfile
 from pathlib import Path
@@ -50,7 +49,9 @@ def payload_files(dist_dir: Path) -> List[Path]:
 
 def prepare_portable_directory(dist_dir: Path) -> None:
     payload_files(dist_dir)
-    shutil.copyfile(REPO_ROOT / "assets" / LAUNCHER, dist_dir / LAUNCHER)
+    target = dist_dir / LAUNCHER
+    if not target.is_file() or target.stat().st_size == 0:
+        raise ValueError("Missing or empty built launcher: " + LAUNCHER)
     # Win7 Notepad needs a BOM to recognize the Chinese readme reliably.
     for name in (README, ACCEPTANCE):
         text = (REPO_ROOT / "assets" / name).read_text(encoding="utf-8")

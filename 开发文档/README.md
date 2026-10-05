@@ -70,7 +70,9 @@ py -3.8 -m venv .venv
 
 full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且已登记测试债务仍受台账约束；它不代表历史测试债务已经全部修完。
 
-long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions` 和 `quickref_vs_routes`。当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
+long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`startup_runtime_regressions`、`quickref_vs_routes`、`import_cycles_production` 和 `import_cycles_with_tests`。当前仍 planned 的 long gate entry 只有 `architecture_fitness`。
+
+完整门禁在同次缓存判定中共享源码快照与工具 metadata；实际命令执行后会重新取得需要刷新的输入证据。`aps-full-selftest` 核验同 HEAD 的干净证明时，可复用仍匹配输入、环境、日志、输出且与本次 receipt 一致的 long-gate 成功结果；缺少或变化的证据继续重放对应命令，未覆盖的独立步骤照常执行。禁用重放仍是 `STRUCTURAL_ONLY`，不能当作通过证明。
 
 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会写本次 full-test-debt 的 current/summary 证明，不会写 `evidence/QualityGate/long_gate/results/full_test_debt.success.json`。如果想预热最终完整门禁会用到的缓存，需要跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 

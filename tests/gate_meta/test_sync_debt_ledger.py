@@ -14,6 +14,27 @@ import pytest
 from tests._support.paths import REPO_ROOT, REPO_ROOT_STR
 
 
+def test_saving_unchanged_ledger_preserves_the_file_timestamp(monkeypatch, tmp_path):
+    from tools import quality_gate_ledger as ledger_module
+    path = tmp_path / "ledger.md"
+    current = ledger_module.default_ledger()
+    path.write_text(ledger_module.render_ledger_markdown(ledger_module.sort_ledger(current)), encoding="utf-8")
+    timestamp = path.stat().st_mtime_ns
+    writes = []
+    monkeypatch.setattr(ledger_module, "LEDGER_PATH", str(path))
+    monkeypatch.setattr(ledger_module, "read_text_file", lambda relative: path.read_text(encoding="utf-8"))
+    def write(relative, text):
+        writes.append(relative)
+        path.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(ledger_module, "write_text_file", write)
+    ledger_module.save_ledger(current)
+    assert writes == []
+    assert path.stat().st_mtime_ns == timestamp
+    current["updated_at"] = "2026-10-05T12:00:00+08:00"
+    ledger_module.save_ledger(current)
+    assert writes == ["开发文档/技术债务治理台账.md"]
+
+
 def _architecture_scan_fact(path, *, line_count=0, silent_entries=None, complexity_entries=None):
     from tools import architecture_scan_cache
 

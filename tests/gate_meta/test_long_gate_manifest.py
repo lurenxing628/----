@@ -42,6 +42,22 @@ def _entry_by_id(manifest, entry_id):
     raise AssertionError(f"missing entry_id: {entry_id}")
 
 
+@pytest.mark.parametrize("policy,expected", [(None, "exact"), (" NORMALIZED ", "normalized"), ("invalid", "exact")])
+def test_command_policy_agrees_between_cache_receipt_and_resume(policy, expected, tmp_path):
+    from scripts import run_quality_gate as runner
+    command = {"display": " python -m ruff --version ", "args": ["python", "-m", "ruff", "--version"],
+               "capture_output": True, "env_overlay": {"APS_TEST": 1}}
+    if policy is not None:
+        command["output_policy"] = policy
+    entry = manifest_mod._build_entry(command, 1, repo_root=str(tmp_path))
+    receipt = quality_gate_shared.build_quality_gate_command_receipt(command, returncode=0)
+    resume = runner._command_identity(command)
+    assert entry["output_policy"] == receipt["output_policy"] == resume["output_policy"] == expected
+    for key in ("display", "args", "capture_output", "env_overlay"):
+        assert entry[key] == receipt[key] == resume[key]
+    assert fingerprint_mod.fingerprint_command(command) == entry["command_hash"]
+
+
 def test_build_long_gate_manifest_uses_real_quality_gate_plan(monkeypatch, tmp_path):
     real_plan_builder = quality_gate_shared.build_quality_gate_command_plan
     real_plan = real_plan_builder()
@@ -156,7 +172,7 @@ def test_required_groups_cover_required_registry():
     assert coverage["group_target_count"] == len(required)
     # Preserve the historical 582 and explicitly account for reviewed additions.
     # Registration coverage is not execution proof.
-    assert coverage["group_count"] == 34
+    assert coverage["group_count"] == 35
     final_required = (
         ("tests/gate_meta/test_scheduler_lazy_exports_final.py", "scheduler_run_core"),
         ("tests/workbench/test_final_planning_analysis.py", "workbench_run_jobs"),
@@ -374,7 +390,7 @@ def test_completed_ea_ec_eg_source_edit_invalidates_required_parent_fingerprint(
     "tests/workbench/point_downstream_browser_build_support.cjs", "tests/workbench/point_downstream_support.py",
     "tests/workbench/run_candidate_support.py", "tests/workbench/trial_support.py",
     "web/routes/workbench/plan_reads.py", "core/services/workbench/plan/projection.py",
-    "frontend/workbench/app/PlanWorkspace.jsx", "frontend/workbench/app/PlanLayout.jsx",
+    "frontend/workbench/app/PlanWorkspace.jsx",
     "frontend/workbench/app/PlanContract.js", "frontend/workbench/app/PlanAPI.js",
     "frontend/workbench/app/PointContract.js", "scripts/workbench/compile.cjs",
     "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
@@ -760,7 +776,7 @@ APP_CONFIG_TRIGGERED_GROUPS = frozenset({
     "workbench_mainmigration", "workbench_outsourcing", "workbench_piece_adoption", "workbench_plans",
     "workbench_preflight", "workbench_process", "workbench_reports", "workbench_request_lifecycle",
     "workbench_resources", "workbench_run_compute", "workbench_run_jobs", "workbench_system",
-    "workbench_template_lineage", "workbench_trial", "workbench_trial_adoption", "workbench_zero_duration",
+    "workbench_subsecond_time", "workbench_template_lineage", "workbench_trial", "workbench_trial_adoption", "workbench_zero_duration",
 })
 
 

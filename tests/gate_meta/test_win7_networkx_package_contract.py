@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.gate_meta.verify_installer_iss_sync import installer_source
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -32,3 +34,13 @@ def test_win7_networkx_offline_wheel_is_tracked_in_repo() -> None:
     wheel = REPO_ROOT / "vendor" / "wheels" / "networkx-3.1-py3-none-any.whl"
 
     assert wheel.is_file()
+
+
+def test_installers_consume_the_launcher_from_the_built_payload():
+    """A direct ISCC build and wrapper builds must install the same staged launcher."""
+    builder = (REPO_ROOT / 'build_win7_onedir.bat').read_text(encoding='utf-8')
+    assert 'copy /y "assets\\启动_排产系统_Chrome.bat" "dist\\排产系统\\启动_排产系统_Chrome.bat"' in builder
+    for name in ('aps_win7.iss', 'aps_win7_legacy.iss'):
+        installer = installer_source(REPO_ROOT / 'installer' / name)
+        assert 'Source: "{#DistDir}\\*"' in installer
+        assert 'LauncherBatSource' not in installer

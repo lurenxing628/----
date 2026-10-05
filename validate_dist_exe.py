@@ -182,6 +182,8 @@ def _normalize_db_path(path: str) -> str:
     raw = str(path or "").strip()
     if not raw:
         return ""
+    if not os.path.isabs(raw):
+        raise RuntimeError(f"运行时 DB 路径不是绝对路径：{path}")
     return os.path.normcase(os.path.abspath(raw))
 
 
@@ -376,8 +378,6 @@ def _assert_runtime_db_path(db_path: str) -> None:
     normalized = _normalize_db_path(db_path)
     if not normalized:
         raise RuntimeError("运行时 DB 契约文件为空。")
-    if not os.path.isabs(normalized):
-        raise RuntimeError(f"运行时 DB 路径不是绝对路径：{db_path}")
     if not os.path.exists(normalized):
         raise RuntimeError(f"运行时 DB 文件不存在：{normalized}")
 

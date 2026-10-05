@@ -240,7 +240,7 @@ def test_force_rerun_entry_executes_instead_of_reusing_and_refreshes_cache(monke
     collect = _entry_by_id(summary, "pytest_collect_all")
     assert "python -m pytest --collect-only -q tests" in calls
     assert manifest["planned_commands"] == [module._command_identity(command) for command in command_plan]
-    assert manifest["planned_commands_hash"] == module.hash_quality_gate_commands(command_plan)
+    assert "planned_commands_hash" not in manifest
     assert [str(command["display"]) for command in manifest["commands"]] == [
         str(command["display"]) for command in command_plan
     ]

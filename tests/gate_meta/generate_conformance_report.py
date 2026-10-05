@@ -1,3 +1,4 @@
+import ast
 import os
 import re
 import sys
@@ -122,49 +123,47 @@ def _check_backup_on_exit(repo_root: str) -> CheckResult:
 
 
 def _check_scheduler_config_defaults(repo_root: str) -> CheckResult:
-    # DEFAULT_* 这组常量后来从 config_service.py 挪进了 config_constants.py，字面写法没变。
-    svc_path = os.path.join(repo_root, "core", "services", "scheduler", "config", "config_constants.py")
-    spec_path = os.path.join(repo_root, "core", "services", "scheduler", "config", "config_field_spec.py")
-    txt = _read_text(svc_path)
-    spec_txt = _read_text(spec_path)
-    ok = (
-        'DEFAULT_SORT_STRATEGY = str(default_for("sort_strategy"))' in txt
-        and 'DEFAULT_PRIORITY_WEIGHT = float(default_for("priority_weight"))' in txt
-        and 'DEFAULT_DUE_WEIGHT = float(default_for("due_weight"))' in txt
-        and 'DEFAULT_READY_WEIGHT = float(default_for("ready_weight"))' in txt
-        and 'key="sort_strategy"' in spec_txt
-        and 'default="priority_first"' in spec_txt
-        and 'key="priority_weight"' in spec_txt
-        and "default=0.4" in spec_txt
-        and 'key="due_weight"' in spec_txt
-        and "default=0.5" in spec_txt
-        and 'key="ready_weight"' in spec_txt
-        and "default=0.1" in spec_txt
-    )
-    evidence = [
-        "`core/services/scheduler/config/config_constants.py` 默认值片段：",
-    ]
-    # 抽取 DEFAULT_* 区域
-    lines = txt.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        if "DEFAULT_SORT_STRATEGY" in line:
-            start = i
-            break
-    if start is not None:
-        evidence.extend(["```", *lines[start : min(len(lines), start + 12)], "```"])
-    else:
-        evidence.append("未找到 DEFAULT_* 常量定义")
-    evidence.append("`core/services/scheduler/config/config_field_spec.py` 默认值片段：")
-    spec_lines = spec_txt.splitlines()
-    for key in ("sort_strategy", "priority_weight", "due_weight", "ready_weight"):
-        idx = next((i for i, line in enumerate(spec_lines) if f'key="{key}"' in line), None)
-        if idx is None:
-            evidence.append(f"- 未找到 key={key}")
+    from core.models.schedule_config_runtime_fields import default_for
+    from core.services.scheduler.config import config_constants
+
+    # 默认值由共同注册表负责；服务常量是实际消费者，文档表格是验收口径。
+    # 比较运行值，避免再次把字段布局、引号和换行当成产品政策。
+    keys = ("sort_strategy", "priority_weight", "due_weight", "ready_weight")
+    runtime_defaults = {key: default_for(key) for key in keys}
+    service_defaults = {key: getattr(config_constants, "DEFAULT_" + key.upper(), None) for key in keys}
+    doc_rel = "开发文档/开发文档.md"
+    doc_text = _read_text(os.path.join(repo_root, *doc_rel.split("/")))
+    doc_defaults = {}
+    doc_rows = []
+    in_table = False
+    for line_number, line in enumerate(doc_text.splitlines(), 1):
+        if line.strip() == "ScheduleConfig 表:":
+            in_table = True
             continue
-        evidence.extend(["```", *spec_lines[max(0, idx - 2) : min(len(spec_lines), idx + 5)], "```"])
+        if not in_table:
+            continue
+        if line.startswith("└"):
+            break
+        cells = [cell.strip() for cell in line.split("│")]
+        if len(cells) < 4 or cells[1] not in keys:
+            continue
+        try:
+            value = ast.literal_eval(cells[2])
+        except (ValueError, SyntaxError):
+            value = cells[2]
+        doc_defaults[cells[1]] = value
+        doc_rows.append(f"- `{doc_rel}:{line_number}`：{line.strip()}")
+    ok = runtime_defaults == service_defaults == doc_defaults
+    evidence = [
+        "`core/models/schedule_config_runtime_fields.py` 共同注册表默认值：",
+        f"`{runtime_defaults}`",
+        "`core/services/scheduler/config/config_constants.py` 实际服务默认值：",
+        f"`{service_defaults}`",
+        f"`{doc_rel}` ScheduleConfig 表默认值：",
+        *doc_rows,
+    ]
     return CheckResult(
-        name="排产策略默认值（priority_first；权重 0.4/0.5/0.1）对齐开发文档",
+        name="排产策略及权重默认值对齐开发文档",
         ok=ok,
         severity="MAJOR" if not ok else "INFO",
         evidence=evidence,

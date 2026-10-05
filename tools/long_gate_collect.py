@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from typing import Any, Dict, List, Mapping
@@ -10,10 +9,6 @@ from tools.quality_gate_shared import REPO_ROOT, parse_pytest_collect_nodeids
 
 COLLECT_NODEIDS_REL = os.path.join("evidence", "QualityGate", "collect_nodeids.json").replace("\\", "/")
 COLLECT_NODEIDS_SCHEMA_VERSION = 1
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
 
 
 def _nodeids_by_file(nodeids: List[str]) -> Dict[str, List[str]]:
@@ -39,7 +34,6 @@ def build_collect_nodeids_payload(
         "nodeid_hash": stable_json_hash(nodeids),
         "nodeids_by_file": _nodeids_by_file(nodeids),
         "pytest_version": str(pytest_version or ""),
-        "generated_from_stdout_sha256": _sha256_text(stdout),
         "collect_stdout_log_path": str(collect_stdout_log_path or "").replace("\\", "/"),
     }
 

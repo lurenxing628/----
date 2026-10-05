@@ -91,6 +91,7 @@ def _seed_failed_manifest_with_receipts(
     git_status_short_before=None,
     python_executable: Optional[str] = None,
     python_version: Optional[str] = None,
+    legacy: bool = False,
 ) -> dict:
     old_receipts = []
     for index, command in enumerate(command_plan, start=1):
@@ -108,9 +109,9 @@ def _seed_failed_manifest_with_receipts(
         )
     old_manifest = {
         "status": "failed",
+        "schema_version": module.quality_gate_shared.QUALITY_GATE_PROOF_SCHEMA_VERSION,
         "run_id": old_run_id,
         "planned_commands": [module._command_identity(command) for command in command_plan],
-        "planned_commands_hash": module.hash_quality_gate_commands(command_plan),
         "commands": list(command_plan),
         "head_sha": head_sha,
         "python_executable": sys.executable if python_executable is None else python_executable,
@@ -122,6 +123,17 @@ def _seed_failed_manifest_with_receipts(
         "command_receipts": old_receipts,
         "failure_message": f"命令失败：{command_plan[failed_index - 1]['display']}",
     }
+    if legacy:
+        old_manifest["schema_version"] = 2
+        old_manifest["planned_commands_hash"] = module.hash_quality_gate_commands(command_plan)
+        for command, entry in zip(command_plan, old_receipts):
+            path = repo_root / entry["path"]
+            payload = module.json.loads(path.read_text(encoding="utf-8"))
+            payload["schema_version"] = 2
+            payload["command_hash"] = module.quality_gate_shared._stable_json_hash(
+                module.quality_gate_shared._normalize_command_rows([command])[0])
+            path.write_text(module.json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            entry["sha256"] = module._sha256_file(str(path))
     manifest_path = _manifest_path(repo_root)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(module.json.dumps(old_manifest, ensure_ascii=False), encoding="utf-8")
@@ -442,7 +454,7 @@ def test_main_executes_every_shared_command_when_plan_inserts_preflight(monkeypa
     for display in (module.IMPORT_CYCLE_PRODUCTION_DISPLAY, module.IMPORT_CYCLE_WITH_TESTS_DISPLAY):
         receipt = _load_receipt_payload(module, repo_root, manifest, expected_displays.index(display))
         assert receipt["display"] == display
-        assert receipt["command_hash"]
+        assert "command_hash" not in receipt
         assert receipt["returncode"] == 0
 
 
@@ -1266,13 +1278,11 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
     assert manifest["proof_scope"]["claim"] == "required_registry_bound_to_clean_worktree"
     assert manifest["proof_scope"]["does_not_claim"] == "risk_coverage_complete"
     assert manifest["required_tests"] == shared.iter_quality_gate_required_tests()
-    assert manifest["required_tests_hash"] == shared.hash_required_tests_registry(manifest["required_tests"])
-    assert manifest["commands_hash"] == shared.hash_quality_gate_commands(manifest["commands"])
-    assert manifest["collection_proof_hash"] == shared.hash_quality_gate_collection_proof(manifest["collection_proof"])
-    assert manifest["command_receipts_hash"] == shared.hash_quality_gate_command_receipts(manifest["command_receipts"])
-    assert manifest["gate_sources_hash"] == shared.hash_quality_gate_source_proof(manifest["gate_sources"])
+    for field in ("required_tests_hash", "commands_hash", "collection_proof_hash",
+                  "command_receipts_hash", "gate_sources_hash"):
+        assert field not in manifest
     assert manifest["planned_commands"] == [module._command_identity(command) for command in manifest["commands"]]
-    assert manifest["planned_commands_hash"] == shared.hash_quality_gate_commands(manifest["commands"])
+    assert "planned_commands_hash" not in manifest
     assert len(manifest["command_receipts"]) == len(manifest["commands"])
     for receipt in manifest["command_receipts"]:
         receipt_path = repo_root / receipt["path"]
@@ -1280,7 +1290,7 @@ def test_main_writes_quality_gate_manifest_with_git_and_collection_proof(monkeyp
         receipt_payload = module.json.loads(receipt_path.read_text(encoding="utf-8"))
         assert receipt_payload["schema_version"] == shared.QUALITY_GATE_PROOF_SCHEMA_VERSION
         assert receipt_payload["run_id"] == manifest["run_id"]
-        assert receipt_payload["command_hash"]
+        assert "command_hash" not in receipt_payload
         assert receipt_payload["output_policy"] in {"exact", "normalized"}
         assert receipt_payload["stdout_log_path"].startswith("evidence/QualityGate/logs/")
         assert receipt_payload["stderr_log_path"].startswith("evidence/QualityGate/logs/")
@@ -1521,7 +1531,8 @@ def test_main_updates_manifest_to_failed_on_command_error(monkeypatch, tmp_path)
     assert manifests[-1]["tracked_drift_detected"] is False
 
 
-def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_path, capsys):
+@pytest.mark.parametrize("legacy", (False, True))
+def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_path, capsys, legacy):
     module = _import_run_quality_gate()
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1530,7 +1541,7 @@ def test_main_allow_dirty_resumes_from_previous_failed_command(monkeypatch, tmp_
     stale_current_debt.write_text('{"stale": true}', encoding="utf-8")
     command_plan = _small_quality_gate_plan()
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[" M app.py"], [" M app.py"]])
-    _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=4)
+    _seed_failed_manifest_with_receipts(module, repo_root, command_plan, failed_index=4, legacy=legacy)
 
     calls = []
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
@@ -1696,7 +1707,7 @@ def test_long_gate_cache_explain_uses_strict_fingerprint(monkeypatch, tmp_path):
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_quality_gate_plan())
     calls = []
 
-    def spy_fingerprint_entry(entry, repo_root_arg, *, strict=False):
+    def spy_fingerprint_entry(entry, repo_root_arg, *, strict=False, file_snapshot=None):
         calls.append(strict)
         return {
             "schema_version": 1,
@@ -1708,7 +1719,7 @@ def test_long_gate_cache_explain_uses_strict_fingerprint(monkeypatch, tmp_path):
     monkeypatch.setattr(
         module,
         "evaluate_reuse",
-        lambda entry, fingerprint, repo_root=None, cache_dir=None: {
+        lambda entry, fingerprint, repo_root=None, cache_dir=None, metadata=None: {
             "decision": {
                 "entry_id": "pytest_collect_all",
                 "decision": "run",
@@ -1736,7 +1747,7 @@ def test_long_gate_cache_explain_marks_fingerprint_error_cache_unavailable(monke
     monkeypatch.setattr(module, "REPO_ROOT", str(repo_root))
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_quality_gate_plan())
 
-    def fail_fingerprint(entry, repo_root_arg, *, strict=False):
+    def fail_fingerprint(entry, repo_root_arg, *, strict=False, file_snapshot=None):
         del entry, repo_root_arg
         assert strict is True
         raise module.LongGateFingerprintError(
@@ -1776,7 +1787,7 @@ def test_final_gate_fingerprint_error_runs_command_without_success_cache(monkeyp
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: _small_quality_gate_plan())
 
-    def fail_fingerprint(entry, repo_root_arg, *, strict=False):
+    def fail_fingerprint(entry, repo_root_arg, *, strict=False, file_snapshot=None):
         del entry, repo_root_arg
         assert strict is True
         raise module.LongGateFingerprintError(
@@ -1832,7 +1843,6 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     command_plan = _small_quality_gate_plan()
-    original_plan_hash = module.hash_quality_gate_commands(command_plan)
     _patch_basic_gate_environment(monkeypatch, module, repo_root, statuses=[[], [], [], []])
     monkeypatch.setattr(module, "build_quality_gate_command_plan", lambda: list(command_plan))
 
@@ -1898,8 +1908,8 @@ def test_main_long_gate_cache_reuses_collect_only_success(monkeypatch, tmp_path,
     assert "- pytest_collect_all: REUSE" in output
     assert "[long-gate-reuse]" in output
     manifest = _load_manifest(module, repo_root)
-    assert manifest["planned_commands_hash"] == original_plan_hash
-    assert manifest["commands_hash"] == original_plan_hash
+    assert "planned_commands_hash" not in manifest
+    assert "commands_hash" not in manifest
     assert [str(command["display"]) for command in manifest["commands"]] == [
         str(command["display"]) for command in command_plan
     ]

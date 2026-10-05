@@ -112,22 +112,6 @@ function Resolve-DistDir {
     throw "dist output directory not found."
 }
 
-function Find-LauncherPath {
-    $launcherFileName = -join ([char[]](21551, 21160, 95, 25490, 20135, 31995, 32479, 95, 67, 104, 114, 111, 109, 101, 46, 98, 97, 116))
-    $launcherPath = Join-Path "assets" $launcherFileName
-
-    if (-not (Test-Path $launcherPath -PathType Leaf)) {
-        throw "Expected launcher bat at assets\\$launcherFileName."
-    }
-
-    return (Resolve-Path $launcherPath).Path
-}
-
-function Copy-LauncherToDist([string]$distDir) {
-    $launcher = Find-LauncherPath
-    Copy-Item -Force $launcher -Destination $distDir
-}
-
 function Resolve-Iscc {
     if ($env:ISCC_EXE -and (Test-Path $env:ISCC_EXE)) {
         return $env:ISCC_EXE
@@ -182,14 +166,6 @@ function Resolve-PythonExe {
     }
 
     throw "python.exe not found in PATH."
-}
-
-function Test-OnedirToolchain {
-    $python = Resolve-PythonExe
-    & $python "scripts/check_win7_build.py"
-    if ($LASTEXITCODE -ne 0) {
-        throw "Win7 build preflight failed before deleting build/dist. Run setup_win7_build.bat first."
-    }
 }
 
 function Wait-HttpReady([string]$url, [int]$timeoutSeconds) {
@@ -557,13 +533,9 @@ function New-ChromeRuntimePayload([string]$sourceDir, [string]$payloadDir) {
 
 function Invoke-MainPackageBuild([string]$iscc) {
     Set-HostPortDefaults
-    Test-OnedirToolchain
-    Remove-PathWithRetry "build"
-    Remove-PathWithRetry "dist"
 
     Invoke-CmdBat "build_win7_onedir.bat"
     $distDir = Resolve-DistDir
-    Copy-LauncherToDist $distDir
     Test-DistExeStartup $distDir
     Remove-DistRuntimeArtifacts $distDir
 
@@ -575,7 +547,6 @@ function Invoke-MainPackageBuild([string]$iscc) {
 
 function Invoke-PortablePackageBuild {
     Set-HostPortDefaults
-    Test-OnedirToolchain
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
     Test-PathOrThrow $chrome "Missing offline Chrome109 before portable build."
@@ -615,21 +586,17 @@ function Invoke-ChromeRuntimeBuild([string]$iscc) {
 
 function Invoke-LegacyPackageBuild([string]$iscc) {
     Set-HostPortDefaults
-    Test-OnedirToolchain
     $chrome = "tools\Chrome.109.0.5414.120.x64\chrome.exe"
     Initialize-OfflineChrome109 $chrome
     Test-PathOrThrow $chrome "Missing $chrome. Provide offline Chrome109 at tools\\Chrome.109.0.5414.120.x64\\chrome.exe or tools\\ungoogled-chromium_109*.zip"
 
     Stop-LegacyDistChromeBestEffort
-    Remove-PathWithRetry "build"
-    Remove-PathWithRetry "dist"
 
     Invoke-CmdBat "build_win7_onedir.bat"
     Invoke-CmdBat "stage_chrome109_to_dist.bat"
 
     $distDir = Resolve-DistDir
     Invoke-ChromeRuntimeSmoke (Join-Path $distDir "tools\chrome109\chrome.exe") "legacy dist chrome runtime"
-    Copy-LauncherToDist $distDir
     Test-DistExeStartup $distDir
     Remove-DistRuntimeArtifacts $distDir
 

@@ -395,7 +395,9 @@ def pre_push_daily_cache_hit(
     scope_payload: Optional[Mapping[str, Any]] = None,
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> bool:
-    if git_status_lines():
+    path = cache_path(PRE_PUSH_DAILY_CACHE_NAME)
+    cached = _load_json(path)
+    if not cached or cached.get("status") != "passed" or git_status_lines():
         return False
     key_hash, _payload = daily_gate_cache_key(
         executable,
@@ -404,7 +406,7 @@ def pre_push_daily_cache_hit(
         scope_payload=scope_payload,
         ref_contexts=ref_contexts,
     )
-    return _cache_matches(cache_path(PRE_PUSH_DAILY_CACHE_NAME), key_hash)
+    return cached.get("key_hash") == key_hash
 
 
 def write_pre_push_daily_cache(
@@ -480,10 +482,11 @@ def final_gate_cache_key(executable: str) -> Tuple[str, Dict[str, Any]]:
 
 
 def final_gate_cache_hit(executable: str) -> bool:
-    if git_status_lines():
+    cached = _load_json(cache_path(FINAL_GATE_PASS_CACHE_NAME))
+    if not cached or cached.get("status") != "passed" or git_status_lines():
         return False
     key_hash, _payload = final_gate_cache_key(executable)
-    return _cache_matches(cache_path(FINAL_GATE_PASS_CACHE_NAME), key_hash)
+    return cached.get("key_hash") == key_hash
 
 
 def write_final_gate_cache(executable: str) -> None:

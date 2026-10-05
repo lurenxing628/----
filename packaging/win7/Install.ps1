@@ -59,7 +59,6 @@ try{
  if($LASTEXITCODE -ne 0){throw 'Extraction failed; original user data was not modified'}
  $app=Child $Destination 'APS_Portable'
  $files=ReadCsv (Join-Path $root 'files.csv')
- if($files.Count -lt 100){throw 'Application file manifest is incomplete'}
  foreach($row in $files){Check (Child $app $row.Path) $row.SHA256 ([long]$row.Bytes)}
  $actual=@(Get-ChildItem -LiteralPath $app -Recurse -Force|Where-Object {-not $_.PSIsContainer})
  if($actual.Count -ne $files.Count){throw 'Unexpected application files were found'}

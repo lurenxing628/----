@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -159,8 +160,16 @@ def test_run_quality_gate_prefers_pre_commit_pre_push_env(monkeypatch, tmp_path:
     ]
 
 
-def test_run_quality_gate_passes_pre_commit_range_to_daily_gate(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("path_count,gate_exit_code", ((1, 0), (1000, 7)))
+def test_run_quality_gate_passes_prepared_pre_commit_scope_to_daily_gate(
+    monkeypatch, tmp_path: Path, path_count, gate_exit_code,
+) -> None:
     calls = []
+    source = tmp_path / "core" / "scope_source.py"
+    source.parent.mkdir()
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    changed_path = source.relative_to(tmp_path).as_posix()
+    paths = [changed_path] + [f"core/services/example/changed_source_{index}.py" for index in range(1, path_count)]
     project_python = str(tmp_path / ".venv" / "bin" / "python")
     monkeypatch.setenv("PRE_COMMIT_FROM_REF", "old-sha")
     monkeypatch.setenv("PRE_COMMIT_TO_REF", "new-sha")
@@ -169,6 +178,8 @@ def test_run_quality_gate_passes_pre_commit_range_to_daily_gate(monkeypatch, tmp
     monkeypatch.setenv("PRE_COMMIT_REMOTE_NAME", "origin")
     monkeypatch.setattr(git_hook_checks, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(git_hook_checks, "_project_python_executable", lambda: project_python)
+    monkeypatch.setattr(git_hook_checks, "_daily_scope_for_refs", lambda refs, remote_name:
+                        {"scope_known": True, "changed_paths": paths, "reason": "prepared ref diff"})
     monkeypatch.setattr(
         git_hook_checks.git_hook_cache,
         "pre_push_daily_cache_hit",
@@ -183,24 +194,21 @@ def test_run_quality_gate_passes_pre_commit_range_to_daily_gate(monkeypatch, tmp
     def fake_call(command, *, cwd, env):
         del cwd, env
         calls.append(list(command))
-        return 0
+        scope_path = Path(command[3])
+        assert json.loads(scope_path.read_text(encoding="utf-8")) == {
+            "scope_known": True, "changed_paths": paths, "reason": "prepared ref diff"}
+        return gate_exit_code
 
     monkeypatch.setattr(subprocess, "call", fake_call)
 
-    assert git_hook_checks.main(["run-quality-gate"]) == 0
+    assert git_hook_checks.main(["run-quality-gate"]) == gate_exit_code
 
     command = calls[0]
     assert command[:2] == [project_python, "scripts/run_daily_quality_gate.py"]
-    assert command[2:] == [
-        "--pre-push-from-ref",
-        "old-sha",
-        "--pre-push-to-ref",
-        "new-sha",
-        "--pre-push-remote-name",
-        "origin",
-        "--pre-push-remote-ref",
-        "refs/heads/main",
-    ]
+    assert len(command) == 4
+    assert command[2] == "--pre-push-scope-file"
+    assert len(subprocess.list2cmdline(command)) < 32767
+    assert not Path(command[3]).exists()
 
 
 def test_run_quality_gate_skips_delete_only_pre_push(monkeypatch, tmp_path: Path) -> None:
@@ -793,7 +801,7 @@ def test_pre_push_daily_gate_failure_does_not_write_cache(monkeypatch, tmp_path:
     assert calls == []
 
 
-def test_multi_ref_unknown_scope_command_matches_full_scope_payload(monkeypatch) -> None:
+def test_multi_ref_unknown_scope_command_matches_full_scope_payload(monkeypatch, tmp_path) -> None:
     from scripts import run_daily_quality_gate as daily_gate
 
     refs = [
@@ -812,23 +820,23 @@ def test_multi_ref_unknown_scope_command_matches_full_scope_payload(monkeypatch)
     monkeypatch.setattr(daily_gate, "_git_name_only", lambda _args: [])
 
     scope_payload = git_hook_checks._daily_scope_for_refs(refs, remote_name="origin")
-    command = git_hook_checks._daily_gate_command_for_refs("/python", refs, remote_name="origin")
+    scope_file = tmp_path / "scope.json"
+    scope_file.write_text(json.dumps(scope_payload), encoding="utf-8")
+    command = git_hook_checks._daily_gate_command("/python", scope_file=str(scope_file))
+    args = daily_gate._parse_args(command[2:])
+    refreshed = daily_gate.build_daily_gate_scope(
+        pre_push_changed_paths=args.pre_push_changed_path,
+        pre_push_scope_reason=args.pre_push_scope_reason,
+        pre_push_scope_known=args.pre_push_scope_known,
+    )
 
     assert scope_payload["scope_known"] is False
     assert scope_payload["impact_pytest"]["all_required_groups"] is True
     assert scope_payload["ruff"]["all_files"] is True
-    assert command == [
-        "/python",
-        "scripts/run_daily_quality_gate.py",
-        "--pre-push-from-ref",
-        "",
-        "--pre-push-to-ref",
-        "missing-multi-ref-range",
-        "--pre-push-remote-name",
-        "origin",
-        "--pre-push-remote-ref",
-        "refs/heads/a,refs/heads/b",
-    ]
+    assert command == ["/python", "scripts/run_daily_quality_gate.py", "--pre-push-scope-file", str(scope_file)]
+    assert refreshed.changed.scope_known is False
+    assert refreshed.impact_plan.all_required_groups is True
+    assert refreshed.ruff_plan.all_files is True
 
 
 def test_daily_gate_module_adds_repo_root_for_direct_script_execution(monkeypatch) -> None:
@@ -982,3 +990,38 @@ def test_pre_commit_config_wires_quality_gate_and_ruff_hooks() -> None:
     assert hooks["aps-quality-gate"]["stages"] == ["pre-push"]
     assert hooks["aps-quality-gate"]["pass_filenames"] is False
     assert hooks["aps-quality-gate"]["always_run"] is True
+
+
+@pytest.mark.parametrize("ref_count", (1, 2))
+def test_ref_command_reuses_the_prepared_scope_and_refreshes_dirty_paths(monkeypatch, tmp_path, ref_count):
+    from scripts import run_daily_quality_gate as daily_gate
+    guide = tmp_path / 'docs' / 'guide.md'
+    guide.parent.mkdir()
+    guide.write_text('A changed guide.\n')
+    changed_path = guide.relative_to(tmp_path).as_posix()
+    refs = [git_hook_checks.PrePushRef('a', 'to-a', 'a', 'from-a'),
+            git_hook_checks.PrePushRef('b', 'to-b', 'b', 'from-b')][:ref_count]
+    calls = []
+    def changed(from_ref, to_ref, *args, **kwargs):
+        calls.append((from_ref, to_ref))
+        return daily_gate.ChangedPathSet([changed_path], True, 'pre-push ref diff')
+    monkeypatch.setattr(git_hook_checks, '_daily_gate_module', lambda: daily_gate)
+    monkeypatch.setattr(daily_gate, '_pre_push_diff_paths', changed)
+    monkeypatch.setattr(daily_gate, '_git_name_only', lambda args: [])
+    scope = git_hook_checks._daily_scope_for_refs(refs, remote_name='origin')
+    scope_file = tmp_path / 'scope.json'
+    scope_file.write_text(json.dumps(scope), encoding='utf-8')
+    command = git_hook_checks._daily_gate_command('/python', scope_file=str(scope_file))
+    args = daily_gate._parse_args(command[2:])
+    assert len(calls) == ref_count
+    assert command[2:4] == ['--pre-push-scope-file', str(scope_file)]
+    dirty = tmp_path / 'core' / 'dirty_source.py'
+    dirty.parent.mkdir()
+    dirty.write_text('VALUE = 2\n', encoding='utf-8')
+    dirty_path = dirty.relative_to(tmp_path).as_posix()
+    monkeypatch.setattr(daily_gate, '_git_name_only', lambda args: [dirty_path])
+    refreshed = daily_gate._changed_paths(pre_push_changed_paths=args.pre_push_changed_path,
+                                         pre_push_scope_reason=args.pre_push_scope_reason,
+                                         pre_push_scope_known=args.pre_push_scope_known)
+    assert refreshed.paths == [dirty_path, changed_path]
+    assert len(calls) == ref_count

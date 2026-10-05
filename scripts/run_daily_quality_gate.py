@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from fnmatch import fnmatch
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple
 
@@ -253,6 +254,7 @@ def _changed_paths(
     pre_push_remote_ref: str = "",
     pre_push_changed_paths: Sequence[str] = (),
     pre_push_scope_reason: str = "",
+    pre_push_scope_known: Optional[bool] = None,
 ) -> ChangedPathSet:
     local_sources = (
         ["diff", "--name-only"],
@@ -266,10 +268,10 @@ def _changed_paths(
             return ChangedPathSet([], False, "git changed path detection failed")
         changed.extend(paths)
 
-    if pre_push_changed_paths:
+    if pre_push_scope_known is not None or pre_push_changed_paths or pre_push_scope_reason:
         branch_paths = ChangedPathSet(
             _dedupe_paths(list(pre_push_changed_paths)),
-            True,
+            True if pre_push_scope_known is None else pre_push_scope_known,
             str(pre_push_scope_reason or "pre-push supplied changed paths"),
         )
     elif pre_push_from_ref or pre_push_to_ref:
@@ -461,6 +463,7 @@ def build_daily_gate_scope(
     pre_push_remote_ref: str = "",
     pre_push_changed_paths: Sequence[str] = (),
     pre_push_scope_reason: str = "",
+    pre_push_scope_known: Optional[bool] = None,
 ) -> DailyGateScope:
     changed = _changed_paths(
         pre_push_from_ref=pre_push_from_ref,
@@ -469,6 +472,7 @@ def build_daily_gate_scope(
         pre_push_remote_ref=pre_push_remote_ref,
         pre_push_changed_paths=pre_push_changed_paths,
         pre_push_scope_reason=pre_push_scope_reason,
+        pre_push_scope_known=pre_push_scope_known,
     )
     impact_plan = _build_impact_plan(changed)
     ruff_plan = _build_ruff_plan(changed, impact_plan)
@@ -529,6 +533,8 @@ def _commands(
 
     normalized_targets = _dedupe_paths(required_targets)
     if normalized_targets:
+        # Focused nodes run once in their unconditional lane, regardless of their serial/perf markers.
+        focused_exclusions = [arg for nodeid in FOCUSED_PYTEST_NODEIDS for arg in ("--deselect", nodeid)]
         # impact 集分流：not-serial 用例走 xdist 并行（-n auto --dist worksteal），serial 用例
         # （startup/runtime/portfile/long_gate 等独占进程态，口径见 tools.full_test_debt_shards）单独串行。
         # serial/perf marker 由 conftest 按 classify_nodeid / is_perf_nodeid 自动打标，这里仅按 marker
@@ -542,6 +548,7 @@ def _commands(
                     sys.executable, "-m", "pytest", "-q", "-rfE",
                     "-n", "auto", "--dist", "worksteal",
                     "-m", "not serial and not perf",
+                    *focused_exclusions,
                     *normalized_targets,
                 ],
                 True,
@@ -550,7 +557,8 @@ def _commands(
         commands.append(
             (
                 "impact pytest (serial)",
-                [sys.executable, "-m", "pytest", "-q", "-rfE", "-m", "serial and not perf", *normalized_targets],
+                [sys.executable, "-m", "pytest", "-q", "-rfE", "-m", "serial and not perf",
+                 *focused_exclusions, *normalized_targets],
                 True,
             )
         )
@@ -654,6 +662,13 @@ def _remove_failure_log(log_path: Optional[str]) -> None:
 
 def _run_step_streaming(command: Sequence[str], env: Dict[str, str]) -> Tuple[int, str]:
     """跑一步命令：实时把输出转发到终端，同时捕获全文返回（供失败点名 + 落盘）。"""
+    if sys.platform == "win32" and list(command[1:3]) == ["-m", "pytest"] and len(subprocess.list2cmdline(command)) >= 32767:
+        # pytest reads one complete argument per line, preserving markers and paths with spaces.
+        with tempfile.TemporaryDirectory(prefix="aps-pytest-args-") as argument_dir:
+            argument_file = os.path.join(argument_dir, "pytest.args")
+            with open(argument_file, "w", encoding="utf-8") as handle:
+                handle.write("\n".join(command[3:]) + "\n")
+            return _run_step_streaming([*command[:3], "@" + argument_file], env)
     process = subprocess.Popen(
         list(command),
         cwd=REPO_ROOT,
@@ -723,11 +738,29 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument("--pre-push-remote-ref", default="")
     parser.add_argument("--pre-push-changed-path", action="append", default=[], help=argparse.SUPPRESS)
     parser.add_argument("--pre-push-scope-reason", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--pre-push-scope-file", default="", help=argparse.SUPPRESS)
+    parser.set_defaults(pre_push_scope_known=None)
     parser.add_argument(
         "--workbench-ui-evidence", metavar="DIR", default=None,
         help="Also run the independent workbench UI evidence gate; omitted by default.",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    if args.pre_push_scope_file:
+        try:
+            with open(args.pre_push_scope_file, encoding="utf-8") as handle:
+                scope = json.load(handle)
+            if not isinstance(scope, dict) or type(scope.get("scope_known")) is not bool:
+                raise ValueError("scope_known must be a boolean")
+            paths = scope.get("changed_paths")
+            if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
+                raise ValueError("changed_paths must be a list of strings")
+            if not isinstance(scope.get("reason"), str):
+                raise ValueError("reason must be a string")
+        except (OSError, ValueError) as exc:
+            parser.error("cannot read --pre-push-scope-file: " + str(exc))
+        args.pre_push_changed_path = paths
+        args.pre_push_scope_reason = scope["reason"]
+        args.pre_push_scope_known = scope["scope_known"]
     if args.workbench_ui_evidence is not None and not args.workbench_ui_evidence.strip():
         parser.error("--workbench-ui-evidence must name a non-empty evidence directory")
     return args
@@ -751,6 +784,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         pre_push_remote_ref=str(args.pre_push_remote_ref or ""),
         pre_push_changed_paths=list(args.pre_push_changed_path or []),
         pre_push_scope_reason=str(args.pre_push_scope_reason or ""),
+        pre_push_scope_known=args.pre_push_scope_known,
     )
     impact_plan = scope.impact_plan
     ruff_plan = scope.ruff_plan

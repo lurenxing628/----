@@ -9,8 +9,7 @@ sha256 的扫描结果磁盘缓存（含 ~250 行缓存校验/合并机器）。
   scan_single_file_architecture_fact / scan_architecture_paths_with_cache /
   architecture_scan_cache_metadata）签名与返回结构保持不变；
   cache_path / force 参数保留但不再有任何作用。
-- 不再读写磁盘缓存文件；进程内复用由 quality_gate_operations 的
-  _cached_architecture_aggregate 内存 memo 承担。
+- 不再读写磁盘缓存文件；同次适应度检查显式共享扫描快照，跨次调用保持新鲜。
 - architecture_scan_cache_metadata 仍被 long_gate_fingerprint 与
   run_quality_gate 回执使用，保持原字段。
 """

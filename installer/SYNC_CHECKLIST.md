@@ -1,63 +1,20 @@
-# installer `[Code]` 段同步清单
+# Win7 安装脚本共同主体
 
-适用范围：
-- `installer/aps_win7.iss`
-- `installer/aps_win7_legacy.iss`
+`aps_win7.iss` 与 `aps_win7_legacy.iss` 都引用 `aps_win7_shared.iss`。安装配置、数据目录、迁移、停机及清理只有一份实现，修改共同主体即可，不再逐例程同步两份副本。
 
-目的：
-- 约束两份安装脚本中**必须保持一致**的共享实现。
-- 在继续保留双脚本的前提下，先用清单与校验脚本避免隐性漂移。
+两个入口仅声明输出包名及 `LegacyFullInstaller`：
 
-## 必须同步的共享例程
+| 入口 | 输出包名 | 卸载浏览器行为 |
+|---|---|---|
+| `aps_win7.iss` | `APS_Main_Setup` | 关闭 APS 后端，独立 Chrome109 运行时由其自身卸载器处理 |
+| `aps_win7_legacy.iss` | `APS_Legacy_Full_Setup` | 关闭 APS 后端和内置浏览器 |
 
-以下例程在两份脚本中应保持逐字一致：
+对应卸载、安装完成文案在共同主体中按这项实际包差异选择。主程序与 legacy 的安装入口和输出文件名保持原值。
 
-- `SharedDataRootPath`
-- `SharedLogDirPath`
-- `LegacyDataRootPath`
-- `LegacyLogDirPath`
-- `RegisteredMainAppDirPath`
-- `AppLogDirPath`
-- `AppExePathFromDir`
-- `ShouldDeleteSharedData`
-- `DirHasEntries`
-- `HasLegacyData`
-- `HasSharedData`
-- `CopyDirTree`
-- `TryLoadTextFile`
-- `ExtractKeyValue`
-- `UnescapeJsonString`
-- `ExtractJsonStringValue`
-- `StateDirHasRuntimeSignals`
-- `ResolveHelperExeFromStateDir`
-- `KnownRuntimeSignalsExist`
-- `ResolveStopHelperExe`
-- `AppendMessage`
-- `TryDeleteDirTree`
-- `HasInstallCleanupTargets`
-- `CleanupMigrationPartialData`
-- `TryMigrateLegacyDataBeforeInstall`
-- `TryStopApsRuntimeAtDir`
-- `TryStopKnownApsRuntime`
-- `RunPreInstallFullWipe`
-- `PrepareToInstall`
-
-## 允许差异的例程
-
-以下例程允许按包类型保留差异：
-
-- `InitializeUninstall`
-  - legacy 全量包需要同时关闭后端与内置浏览器。
-  - 主程序包只关闭后端。
-- `CurStepChanged`
-  - 安装完成提示文案允许不同。
-
-## 校验方式
-
-执行：
+执行已有检查入口：
 
 ```powershell
 python tests/gate_meta/verify_installer_iss_sync.py
 ```
 
-若脚本返回非零，说明共享实现已发生漂移，需要先修复再继续改动。
+该检查核对共同主体的引用及两个包的卸载职责。Inno 编译、Win7 安装/升级/卸载仍由对应构建和现场验收验证。

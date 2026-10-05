@@ -92,17 +92,7 @@ def _normalize_args(args: Iterable[Any]) -> List[str]:
     return [str(arg) for arg in list(args or [])]
 
 
-def _normalize_command(command: Mapping[str, Any]) -> Dict[str, Any]:
-    policy = str(command.get("output_policy") or "exact").strip().lower()
-    if policy not in {"exact", "normalized"}:
-        policy = "exact"
-    return {
-        "display": str(command.get("display") or "").strip(),
-        "args": _normalize_args(command.get("args") or []),
-        "capture_output": bool(command.get("capture_output")),
-        "output_policy": policy,
-        "env_overlay": quality_gate_shared._normalize_env_overlay(command.get("env_overlay")),
-    }
+_normalize_command = quality_gate_shared.normalize_quality_gate_command
 
 
 def _pytest_q_targets(args: Sequence[str]) -> Optional[List[str]]:

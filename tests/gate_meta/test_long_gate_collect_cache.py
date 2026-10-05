@@ -81,6 +81,7 @@ def test_collect_nodeids_payload_groups_nodeids_by_file():
         "tests/test_a.py": ["tests/test_a.py::test_one", "tests/test_a.py::test_two"],
     }
     assert payload["pytest_version"] == "pytest 8.3.5"
+    assert "generated_from_stdout_sha256" not in payload
     assert payload["collect_stdout_log_path"] == "evidence/QualityGate/logs/stdout.log"
 
 

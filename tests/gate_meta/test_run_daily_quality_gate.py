@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
+
+import pytest
 
 import scripts.run_daily_quality_gate as daily_gate
 
@@ -565,3 +568,55 @@ def test_main_split_steps_tolerate_no_tests_but_not_real_failure(monkeypatch) ->
         returns = iter(codes)
         monkeypatch.setattr(daily_gate, "_run_step_streaming", lambda command, env: (next(returns), ""))
         assert daily_gate.main([]) == expected, (codes, expected)
+
+
+def test_impact_lanes_deselect_exact_focused_nodes_before_marker_partition():
+    commands = daily_gate._commands(['tests/app_runtime/test_ui_geometry_html_contract.py'],
+                                    daily_gate.RuffPlan([], False, 'no Python changes'))
+    for label, command, _allow in commands:
+        if label.startswith('impact pytest'):
+            exclusions = [command[index + 1] for index, value in enumerate(command) if value == '--deselect']
+            assert exclusions == list(daily_gate.FOCUSED_PYTEST_NODEIDS)
+    focused = next(command for label, command, _allow in commands if label == 'focused pytest')
+    assert '--deselect' not in focused
+
+
+@pytest.mark.parametrize("contents", (None, '{invalid json', '{"scope_known":"false","changed_paths":[],"reason":"bad"}'))
+def test_unreadable_or_malformed_scope_file_stops_before_the_gate(tmp_path, contents):
+    scope_file = tmp_path / 'scope.json'
+    if contents is not None:
+        scope_file.write_text(contents, encoding='utf-8')
+    with pytest.raises(SystemExit) as exc:
+        daily_gate._parse_args(['--pre-push-scope-file', str(scope_file)])
+    assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("marker", ("not serial and not perf", "serial and not perf"))
+def test_long_windows_pytest_command_uses_native_argument_file_and_preserves_lanes(monkeypatch, tmp_path, marker):
+    repo = tmp_path / 'repo with spaces'
+    repo.mkdir()
+    source = repo / 'test argument file.py'
+    source.write_text(
+        'import pytest\n'
+        'def test_parallel_selected():\n    pass\n'
+        '@pytest.mark.serial\ndef test_serial_selected():\n    pass\n'
+        'def test_explicitly_deselected():\n    raise AssertionError("deselection lost")\n', encoding='utf-8')
+    (repo / 'pytest.ini').write_text('[pytest]\nmarkers =\n    serial: exclusive process state\n', encoding='utf-8')
+    monkeypatch.setattr(daily_gate, 'REPO_ROOT', str(repo))
+    monkeypatch.setattr(daily_gate.sys, 'platform', 'win32')
+    arguments = ['-q', '-m', marker + ' ' * 33000, '--deselect', source.name + '::test_explicitly_deselected', str(source)]
+    launched = []
+    original_popen = subprocess.Popen
+
+    def observed_popen(command, **kwargs):
+        launched.append(list(command))
+        assert Path(command[3][1:]).read_text(encoding='utf-8').splitlines() == arguments
+        return original_popen(command, **kwargs)
+
+    monkeypatch.setattr(daily_gate.subprocess, 'Popen', observed_popen)
+    returncode, output = daily_gate._run_step_streaming([sys.executable, '-m', 'pytest', *arguments], daily_gate._gate_env())
+    assert returncode == 0
+    assert '1 passed, 2 deselected' in output
+    assert len(launched) == 1 and len(launched[0]) == 4
+    assert len(subprocess.list2cmdline(launched[0])) < 32767
+    assert not Path(launched[0][3][1:]).exists()

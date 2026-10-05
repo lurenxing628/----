@@ -116,9 +116,10 @@ def scan_added(base_ref: str, root: str) -> Dict[str, List[str]]:
     added = _git_added_python_files(base_ref, root)
     test_paths = [p for p in added if is_collected_test_path(p)]
     source_paths = [p for p in added if is_production_source_path(p)]
+    trees = {path: _parse(root, path) for path in test_paths}
     return {
-        "missing_test_function": scan_missing_test_function(root, test_paths),
-        "missing_docstring": scan_missing_docstring(root, test_paths),
+        "missing_test_function": [path for path, tree in trees.items() if not _has_test_function(tree)],
+        "missing_docstring": [path for path, tree in trees.items() if ast.get_docstring(tree) is None],
         "uncovered_source": scan_uncovered_source(source_paths, load_scope_globs()),
     }
 

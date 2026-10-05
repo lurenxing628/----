@@ -71,7 +71,8 @@ def prepare(action: str, output: Path, entries: list) -> None:
             raise ValueError("Artifact escapes output directory: " + str(target))
         if action == "download":
             download_file(target, entry)
-        verify_file(target, entry)
+        else:
+            verify_file(target, entry)
         print("[offline] verified " + entry["path"], flush=True)
 
 

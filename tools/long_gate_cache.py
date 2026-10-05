@@ -478,6 +478,7 @@ def evaluate_reuse(
     *,
     repo_root: Optional[str] = None,
     cache_dir: Optional[str] = None,
+    metadata: Optional[Mapping[str, Any]] = None,
 ) -> ReuseEvaluation:
     root = _repo_root(repo_root)
     resolved_cache_dir = resolve_cache_dir(root, cache_dir)
@@ -526,7 +527,7 @@ def evaluate_reuse(
                 current_fingerprint_hash=current_hash,
             )
         )
-    expected_metadata = long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
+    expected_metadata = metadata if metadata is not None else long_gate_cache_metadata(root, cache_dir=resolved_cache_dir)
     for untrusted_field, reason in (
         ("runner_version_untrusted_paths", "runner version contains untrusted path"),
         ("tooling_version_untrusted_paths", "tooling version contains untrusted path"),
@@ -1043,6 +1044,8 @@ def write_success(
     _write_text_if_needed(root, stderr_log_path, str(command_result.get("stderr") or ""))
     output_file_rows = _hash_output_files(root, output_files)
     _assert_output_files_cover_declared_paths(root, entry, output_file_rows)
+    stdout_hash = _sha256_bytes(_abs_from_rel(root, stdout_log_path))
+    stderr_hash = _sha256_bytes(_abs_from_rel(root, stderr_log_path))
     payload = {
         "schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
         **long_gate_cache_metadata(root, cache_dir=resolved_cache_dir),
@@ -1056,8 +1059,8 @@ def write_success(
         "fingerprint_hash": str(fingerprint.get("hash") or ""),
         "fingerprint": dict(fingerprint),
         "returncode": int(command_result.get("returncode") or 0),
-        "stdout_sha256": _sha256_bytes(_abs_from_rel(root, stdout_log_path)),
-        "stderr_sha256": _sha256_bytes(_abs_from_rel(root, stderr_log_path)),
+        "stdout_sha256": stdout_hash,
+        "stderr_sha256": stderr_hash,
         "stdout_log_path": stdout_log_path,
         "stderr_log_path": stderr_log_path,
         "output_files": output_file_rows,
@@ -1093,6 +1096,8 @@ def write_failure(
     _write_text_if_needed(root, stdout_log_path, str(command_result.get("stdout") or ""))
     _write_text_if_needed(root, stderr_log_path, str(command_result.get("stderr") or ""))
     returncode = int(command_result.get("returncode") or 0)
+    stdout_hash = _sha256_bytes(_abs_from_rel(root, stdout_log_path))
+    stderr_hash = _sha256_bytes(_abs_from_rel(root, stderr_log_path))
     payload = {
         "schema_version": LONG_GATE_CACHE_SCHEMA_VERSION,
         **long_gate_cache_metadata(root, cache_dir=resolved_cache_dir),
@@ -1106,8 +1111,8 @@ def write_failure(
         "fingerprint_hash": str(fingerprint.get("hash") or ""),
         "fingerprint": dict(fingerprint),
         "returncode": returncode,
-        "stdout_sha256": _sha256_bytes(_abs_from_rel(root, stdout_log_path)),
-        "stderr_sha256": _sha256_bytes(_abs_from_rel(root, stderr_log_path)),
+        "stdout_sha256": stdout_hash,
+        "stderr_sha256": stderr_hash,
         "stdout_log_path": stdout_log_path,
         "stderr_log_path": stderr_log_path,
         "output_files": [],
@@ -1119,8 +1124,8 @@ def write_failure(
         "result_hash": stable_json_hash(
             {
                 "returncode": returncode,
-                "stdout_sha256": _sha256_bytes(_abs_from_rel(root, stdout_log_path)),
-                "stderr_sha256": _sha256_bytes(_abs_from_rel(root, stderr_log_path)),
+                "stdout_sha256": stdout_hash,
+                "stderr_sha256": stderr_hash,
             }
         ),
     }

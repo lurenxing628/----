@@ -1,11 +1,9 @@
-"""校验脚本：installer/aps_win7.iss 与 installer/aps_win7_legacy.iss 的 [Code] 段中 SHARED_ROUTINES 列出的 33 个共享 Inno Setup 例程逐行完全一致，任一缺失或漂移即逐行 diff 报错并返回非零，防止主安装脚本与 legacy 脚本的共享实现失同步。"""
+"""Check that both Win7 entry scripts consume one shared installer implementation."""
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 _REPO_ROOT_FOR_IMPORT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT_FOR_IMPORT) not in sys.path:
@@ -15,129 +13,40 @@ from tests._support.paths import REPO_ROOT
 
 MAIN_ISS = REPO_ROOT / "installer" / "aps_win7.iss"
 LEGACY_ISS = REPO_ROOT / "installer" / "aps_win7_legacy.iss"
-CHECKLIST_MD = REPO_ROOT / "installer" / "SYNC_CHECKLIST.md"
-
-SHARED_ROUTINES = [
-    "SharedDataRootPath",
-    "SharedLogDirPath",
-    "LegacyDataRootPath",
-    "LegacyLogDirPath",
-    "RegisteredMainAppDirPath",
-    "AppLogDirPath",
-    "AppExePathFromDir",
-    "ShouldDeleteSharedData",
-    "DirHasEntries",
-    "HasLegacyData",
-    "HasSharedData",
-    "CopyDirTree",
-    "TryLoadTextFile",
-    "ExtractKeyValue",
-    "UnescapeJsonString",
-    "ExtractJsonStringValue",
-    "StateDirHasRuntimeSignals",
-    "ResolveHelperExeFromStateDir",
-    "KnownRuntimeSignalsExist",
-    "ResolveStopHelperExe",
-    "AppendMessage",
-    "TryDeleteDirTree",
-    "HasInstallCleanupTargets",
-    "CleanupMigrationPartialData",
-    "TryMigrateLegacyDataBeforeInstall",
-    "TryStopApsRuntimeAtDir",
-    "TryStopKnownApsRuntime",
-    "RunPreInstallFullWipe",
-    "PrepareToInstall",
-]
-
-ROUTINE_START_RE = re.compile(r"^(function|procedure)\s+([A-Za-z0-9_]+)\b", re.IGNORECASE)
+SHARED_ISS = REPO_ROOT / "installer" / "aps_win7_shared.iss"
 
 
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def _extract_code_section(text: str) -> str:
-    marker = "[Code]"
-    start = text.find(marker)
-    if start < 0:
-        raise RuntimeError("未找到 [Code] 段")
-    return text[start + len(marker) :].strip()
-
-
-def _extract_routines(code_text: str) -> Dict[str, str]:
-    lines = code_text.splitlines()
-    starts: List[Tuple[int, str]] = []
-    for idx, line in enumerate(lines):
-        match = ROUTINE_START_RE.match(line.strip())
-        if match:
-            starts.append((idx, match.group(2)))
-
-    routines: Dict[str, str] = {}
-    for pos, (start_idx, name) in enumerate(starts):
-        end_idx = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
-        block = "\n".join(line.rstrip() for line in lines[start_idx:end_idx]).strip()
-        routines[name] = block
-    return routines
-
-
-def _first_diff_line(left: str, right: str) -> Optional[Tuple[int, str, str]]:
-    left_lines = left.splitlines()
-    right_lines = right.splitlines()
-    max_len = max(len(left_lines), len(right_lines))
-    for idx in range(max_len):
-        left_line = left_lines[idx] if idx < len(left_lines) else "<EOF>"
-        right_line = right_lines[idx] if idx < len(right_lines) else "<EOF>"
-        if left_line != right_line:
-            return idx + 1, left_line, right_line
-    return None
+def installer_source(entry: Path) -> str:
+    """Read the entry and its shared body for source-level packaging checks."""
+    return entry.read_text(encoding="utf-8") + SHARED_ISS.read_text(encoding="utf-8")
 
 
 def main() -> int:
-    errors: List[str] = []
-
-    if not CHECKLIST_MD.exists():
-        errors.append(f"缺少同步清单：{CHECKLIST_MD}")
-    if not MAIN_ISS.exists():
-        errors.append(f"缺少主安装脚本：{MAIN_ISS}")
-    if not LEGACY_ISS.exists():
-        errors.append(f"缺少 legacy 安装脚本：{LEGACY_ISS}")
-    if errors:
-        for item in errors:
-            print(f"[sync] ✗ {item}")
-        return 1
-
-    main_routines = _extract_routines(_extract_code_section(_read_text(MAIN_ISS)))
-    legacy_routines = _extract_routines(_extract_code_section(_read_text(LEGACY_ISS)))
-
-    for name in SHARED_ROUTINES:
-        main_block = main_routines.get(name)
-        legacy_block = legacy_routines.get(name)
-        if main_block is None:
-            errors.append(f"主安装脚本缺少共享例程：{name}")
+    errors = []
+    for entry, output_name, legacy in ((MAIN_ISS, "APS_Main_Setup", 0), (LEGACY_ISS, "APS_Legacy_Full_Setup", 1)):
+        if not entry.is_file():
+            errors.append(f"缺少安装入口：{entry}")
             continue
-        if legacy_block is None:
-            errors.append(f"legacy 安装脚本缺少共享例程：{name}")
-            continue
-        if main_block != legacy_block:
-            diff = _first_diff_line(main_block, legacy_block)
-            if diff is None:
-                errors.append(f"共享例程不一致：{name}")
-            else:
-                line_no, left_line, right_line = diff
-                errors.append(
-                    f"共享例程漂移：{name} 第 {line_no} 行不一致\n"
-                    f"  main  : {left_line}\n"
-                    f"  legacy: {right_line}"
-                )
-
+        actual = [line.strip() for line in entry.read_text(encoding="utf-8").splitlines()
+                  if line.strip() and not line.lstrip().startswith(";")]
+        expected = [f'#define InstallerOutputName "{output_name}"', f"#define LegacyFullInstaller {legacy}",
+                    '#include "aps_win7_shared.iss"']
+        if actual != expected:
+            errors.append(f"安装入口应只声明包名、legacy 浏览器行为并引用共同主体：{entry}")
+    if not SHARED_ISS.is_file():
+        errors.append(f"缺少共同主体：{SHARED_ISS}")
+    else:
+        shared = SHARED_ISS.read_text(encoding="utf-8")
+        if "[Setup]" not in shared or "[Code]" not in shared or "OutputBaseFilename={#InstallerOutputName}" not in shared:
+            errors.append("共同主体缺少安装配置、运行代码或入口包名绑定。")
+        browser_switch = '#if LegacyFullInstaller\n#define UninstallStopApsChrome "True"\n#else\n#define UninstallStopApsChrome "False"\n#endif'
+        if browser_switch not in shared or shared.count("TryStopKnownApsRuntime({#UninstallStopApsChrome})") != 2:
+            errors.append("卸载必须使用入口的浏览器停止策略，静默和交互卸载均需遵循。")
     if errors:
-        print("[sync] 发现共享实现漂移：")
-        for item in errors:
-            print(f"- {item}")
+        for message in errors:
+            print(f"[installer] ✗ {message}")
         return 1
-
-    print(f"[sync] 通过：已校验 {len(SHARED_ROUTINES)} 个共享例程，主脚本与 legacy 脚本保持一致。")
-    print(f"[sync] 清单文件：{CHECKLIST_MD}")
+    print("[installer] 通过：两个入口引用同一主体，主程序/legacy 包名及卸载浏览器职责保持区分。")
     return 0
 
 

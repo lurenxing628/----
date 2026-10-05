@@ -13,6 +13,8 @@ import os
 import re
 from typing import Dict, List, Set
 
+import pytest
+
 from tests.gate_meta.architecture_fitness_support import (
     REPO_ROOT,
     collect_py_files,
@@ -21,6 +23,8 @@ from tests.gate_meta.architecture_fitness_support import (
     used_stable_degradation_codes,
     viewmodel_import_violations,
 )
+from tools.architecture_scan_cache import aggregate_architecture_scan, scan_files_with_cache
+from tools.quality_gate_shared import collect_quality_rule_files
 from tools.quality_gate_support import (
     COMPLEXITY_THRESHOLD,
     CORE_DIRS,
@@ -358,12 +362,18 @@ def test_repository_bundle_consumption_does_not_drift():
 
 # ─── Fitness 4: 文件/函数规模 ─────────────────────────────────
 
-def test_file_size_limit():
+@pytest.fixture(scope="module")
+def architecture_size_and_complexity():
+    """One fresh scan supplies both new-debt and stale-ledger checks in this run."""
+    return aggregate_architecture_scan(scan_files_with_cache(collect_quality_rule_files(), fact_kinds=("complexity",)))
+
+
+def test_file_size_limit(architecture_size_and_complexity):
     """三类规则专属范围内，未登记文件不得超过 500 行。"""
 
     ledger = load_ledger(required=True)
     allowlist = architecture_oversize_allowlist_map(ledger)
-    scanned = architecture_oversize_scan_map()
+    scanned = architecture_size_and_complexity["oversize_map"]
     violations = []
     for path, item in sorted(scanned.items()):
         if path in allowlist:
@@ -372,11 +382,11 @@ def test_file_size_limit():
     assert not violations, "文件超 500 行（新增）:\n" + "\n".join(violations)
 
 
-def test_known_oversize_entries_still_exceed_limit():
+def test_known_oversize_entries_still_exceed_limit(architecture_size_and_complexity):
     """超长文件白名单中的条目必须仍然真实超限。"""
     ledger = load_ledger(required=True)
     allowlist = architecture_oversize_allowlist_map(ledger)
-    scanned = architecture_oversize_scan_map()
+    scanned = architecture_size_and_complexity["oversize_map"]
     stale_entries = []
     for path, entry in sorted(allowlist.items()):
         if path not in scanned:
@@ -409,12 +419,12 @@ def test_greedy_refactor_files_stay_under_quality_gate_limits():
 
 # ─── Fitness 5: 圈复杂度门禁 ──────────────────────────────────
 
-def test_cyclomatic_complexity_threshold():
+def test_cyclomatic_complexity_threshold(architecture_size_and_complexity):
     """三类规则专属范围内，未登记函数不得超过复杂度阈值。"""
 
     ledger = load_ledger(required=True)
     allowlist = architecture_complexity_allowlist_map(ledger)
-    scanned = architecture_complexity_scan_map()
+    scanned = architecture_size_and_complexity["complexity_map"]
     new_violations = []
     for key, item in sorted(scanned.items()):
         if key in allowlist:
@@ -430,12 +440,12 @@ def test_cyclomatic_complexity_threshold():
     )
 
 
-def test_known_complexity_entries_still_exceed_threshold():
+def test_known_complexity_entries_still_exceed_threshold(architecture_size_and_complexity):
     """高复杂度白名单中的条目必须仍然真实超限。"""
 
     ledger = load_ledger(required=True)
     allowlist = architecture_complexity_allowlist_map(ledger)
-    scanned = architecture_complexity_scan_map()
+    scanned = architecture_size_and_complexity["complexity_map"]
     stale_entries = []
     for key, entry in sorted(allowlist.items()):
         if key not in scanned:

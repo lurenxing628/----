@@ -181,7 +181,10 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
 def save_ledger(ledger: Dict[str, Any]) -> None:
     sorted_ledger = sort_ledger(copy.deepcopy(ledger))
     validate_ledger(sorted_ledger)
-    write_text_file("开发文档/技术债务治理台账.md", render_ledger_markdown(sorted_ledger))
+    rendered = render_ledger_markdown(sorted_ledger)
+    relative = "开发文档/技术债务治理台账.md"
+    if not os.path.exists(LEDGER_PATH) or read_text_file(relative) != rendered:
+        write_text_file(relative, rendered)
 
 
 def load_sp02_facts_snapshot() -> Dict[str, Any]:

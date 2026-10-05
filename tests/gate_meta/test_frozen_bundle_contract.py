@@ -27,6 +27,8 @@ from __future__ import annotations
 import ast
 import importlib
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
@@ -175,6 +177,26 @@ def test_frozen_anchor_module_imports_cleanly() -> None:
     module = importlib.import_module(_ANCHOR_MODULE)
     anchors = getattr(module, "FROZEN_IMPORT_ANCHORS")
     assert anchors, "FROZEN_IMPORT_ANCHORS 不应为空"
+
+
+def test_retired_dispatch_services_remain_lazy_and_importable() -> None:
+    code = """
+import importlib
+import sys
+services = {
+    'ResourceDispatchService': 'core.services.scheduler.resource_dispatch.service',
+    'ResourceDispatchExecutionService': 'core.services.scheduler.resource_dispatch.execution_service',
+    'ResourceDispatchActualRecordService': 'core.services.scheduler.resource_dispatch.actual_record_service',
+}
+importlib.import_module('web.bootstrap._frozen_import_anchor')
+assert not any(module in sys.modules for module in services.values())
+scheduler = importlib.import_module('core.services.scheduler')
+for name, module in services.items():
+    assert getattr(scheduler, name).__module__ == module
+"""
+    result = subprocess.run([sys.executable, "-c", code], cwd=REPO_ROOT,
+        capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
 
 
 def test_legacy_blueprint_handlers_are_imported_literally_not_dynamically() -> None:

@@ -19,6 +19,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, 
 
 from tools import architecture_scan_cache
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
+from tools.quality_gate_shared import normalize_quality_gate_command
 
 _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 1
 _CURRENT_FULL_TEST_DEBT_REL = "evidence/QualityGate/current_full_test_debt.json"
@@ -245,14 +246,46 @@ def _fingerprint_one_file(rel_path: str, repo_root: str, tracked: Set[str], untr
     }
 
 
-def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str, *, strict: bool = False) -> Dict[str, Any]:
+class FingerprintFileSnapshot:
+    """File observations shared only within one cache-decision phase."""
+
+    def __init__(self, repo_root: str, *, strict: bool = False) -> None:
+        self.repo_root = os.path.abspath(repo_root)
+        self.strict = strict
+        self.sources: Optional[Tuple[Set[str], Set[str], str]] = None
+        self.rows: Dict[str, Dict[str, Any]] = {}
+        self.scopes: Dict[str, Set[str]] = {}
+
+    def path_sources(self) -> Tuple[Set[str], Set[str], str]:
+        if self.sources is None:
+            self.sources = _git_path_sources(self.repo_root, strict=self.strict)
+        return self.sources
+
+    def file_row(self, path: str) -> Dict[str, Any]:
+        if path not in self.rows:
+            tracked, untracked, _status = self.path_sources()
+            self.rows[path] = _fingerprint_one_file(path, self.repo_root, tracked, untracked)
+        return dict(self.rows[path])
+
+    def scope_paths(self, scope: str) -> Set[str]:
+        if scope not in self.scopes:
+            tracked, untracked, _status = self.path_sources()
+            self.scopes[scope] = _candidate_paths_for_scope(scope, self.repo_root, tracked, untracked)
+        return self.scopes[scope]
+
+
+def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str, *, strict: bool = False,
+                      file_snapshot: Optional[FingerprintFileSnapshot] = None) -> Dict[str, Any]:
     root = os.path.abspath(repo_root)
-    tracked, untracked, git_source_status = _git_path_sources(root, strict=strict)
+    snapshot = file_snapshot or FingerprintFileSnapshot(root, strict=strict)
+    if snapshot.repo_root != root or snapshot.strict != strict:
+        raise ValueError("file snapshot belongs to a different fingerprint phase")
+    tracked, untracked, git_source_status = snapshot.path_sources()
     rel_paths: Set[str] = set()
     for scope in list(paths_or_patterns or []):
-        rel_paths.update(_candidate_paths_for_scope(str(scope), root, tracked, untracked))
+        rel_paths.update(snapshot.scope_paths(str(scope)))
 
-    files = [_fingerprint_one_file(path, root, tracked, untracked) for path in sorted(rel_paths)]
+    files = [snapshot.file_row(path) for path in sorted(rel_paths)]
     path_rows = [
         {
             "path": row["path"],
@@ -271,26 +304,7 @@ def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str, *, stric
 
 
 def fingerprint_command(command: Mapping[str, Any]) -> str:
-    normalized = {
-        "display": str(command.get("display") or "").strip(),
-        "args": [str(arg) for arg in list(command.get("args") or [])],
-        "capture_output": bool(command.get("capture_output")),
-        "output_policy": str(command.get("output_policy") or "exact").strip().lower(),
-        "env_overlay": _normalize_env_overlay(command.get("env_overlay")),
-    }
-    return stable_json_hash(normalized)
-
-
-def _normalize_env_overlay(value: Any) -> Dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    normalized: Dict[str, str] = {}
-    for key in sorted(value):
-        key_text = str(key or "").strip()
-        if not key_text:
-            continue
-        normalized[key_text] = str(value.get(key) or "")
-    return normalized
+    return stable_json_hash(normalize_quality_gate_command(command))
 
 
 def _pytest_version(*, strict: bool = False) -> str:
@@ -800,21 +814,17 @@ def _required_full_test_debt_component(repo_root: str) -> Dict[str, Any]:
     return component
 
 
-def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool = False) -> Dict[str, Any]:
-    env_overlay = _normalize_env_overlay(entry.get("env_overlay"))
+def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool = False,
+                      file_snapshot: Optional[FingerprintFileSnapshot] = None) -> Dict[str, Any]:
+    command_payload = normalize_quality_gate_command(entry)
+    env_overlay = command_payload["env_overlay"]
     effective_environment = {str(key): str(value) for key, value in os.environ.items()}
     effective_environment.update(env_overlay)
-    command_payload = {
-        "display": entry.get("display"),
-        "args": entry.get("args"),
-        "capture_output": entry.get("capture_output"),
-        "output_policy": entry.get("output_policy"),
-        "env_overlay": env_overlay,
-    }
     env_keys = [str(key) for key in list(entry.get("env_keys") or [])]
     components = {
-        "command_hash": fingerprint_command(command_payload),
-        "files": fingerprint_files(_entry_file_scopes_for_fingerprint(entry), repo_root, strict=strict),
+        "command_hash": stable_json_hash(command_payload),
+        "files": fingerprint_files(_entry_file_scopes_for_fingerprint(entry), repo_root, strict=strict,
+                                   file_snapshot=file_snapshot),
         "environment": fingerprint_environment(
             env_keys,
             strict=strict,

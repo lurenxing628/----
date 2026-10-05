@@ -9,7 +9,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
 
 from tools.test_registry import (
     QUALITY_GATE_GUARD_TESTS,
@@ -111,7 +111,8 @@ QUALITY_GATE_PROOF_SCOPE = {
     "claim": "required_registry_bound_to_clean_worktree",
     "does_not_claim": "risk_coverage_complete",
 }
-QUALITY_GATE_PROOF_SCHEMA_VERSION = 2
+# New proofs bind the complete normalized records; schema 2 remains readable.
+QUALITY_GATE_PROOF_SCHEMA_VERSION = 3
 IMPORT_CYCLE_PRODUCTION_DISPLAY = (
     "python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean"
 )
@@ -347,8 +348,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/launcher_shutdown.py",
         symbol="read_exit_backup_enabled",
-        line_start=89,
-        line_end=91,
+        line_start=103,
+        line_end=105,
         fallback_kind="cleanup_best_effort",
     ),
     SilentFallbackSample(
@@ -446,24 +447,19 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
 
 
+def normalize_quality_gate_command(command: Mapping[str, Any]) -> Dict[str, Any]:
+    """One command identity for execution, receipts, resume and cache fingerprints."""
+    return {
+        "display": str(command.get("display") or "").strip(),
+        "args": [str(arg) for arg in list(command.get("args") or [])],
+        "capture_output": bool(command.get("capture_output")),
+        "output_policy": _command_output_policy(command),
+        "env_overlay": _normalize_env_overlay(command.get("env_overlay")),
+    }
+
+
 def _normalize_command_rows(commands: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    normalized: List[Dict[str, Any]] = []
-    for row in list(commands or []):
-        args = [str(arg) for arg in list(row.get("args") or [])]
-        output_policy = str(row.get("output_policy") or "exact").strip().lower()
-        if output_policy not in {"exact", "normalized"}:
-            output_policy = "exact"
-        env_overlay = _normalize_env_overlay(row.get("env_overlay"))
-        normalized.append(
-            {
-                "display": str(row.get("display") or "").strip(),
-                "args": args,
-                "capture_output": bool(row.get("capture_output")),
-                "output_policy": output_policy,
-                "env_overlay": env_overlay,
-            }
-        )
-    return normalized
+    return [normalize_quality_gate_command(command) for command in list(commands or [])]
 
 
 def _normalize_env_overlay(value: Any) -> Dict[str, str]:
@@ -525,11 +521,10 @@ def _normalize_collection_proof(collection_proof: Dict[str, Any]) -> Dict[str, A
 def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     reused_from_obj = payload.get("reused_from")
     reused_from = dict(cast(Mapping[str, Any], reused_from_obj)) if isinstance(reused_from_obj, dict) else {}
-    return {
+    receipt = {
         "schema_version": int(payload.get("schema_version") or 0),
         "run_id": str(payload.get("run_id") or "").strip(),
         "command_index": int(payload.get("command_index") or 0),
-        "command_hash": str(payload.get("command_hash") or "").strip(),
         "display": str(payload.get("display") or "").strip(),
         "args": [str(arg) for arg in list(payload.get("args") or [])],
         "capture_output": bool(payload.get("capture_output")),
@@ -546,6 +541,9 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
         "interrupted": payload.get("interrupted"),
         "partial_write": payload.get("partial_write"),
     }
+    if receipt["schema_version"] == 2:
+        receipt["command_hash"] = str(payload.get("command_hash") or "").strip()
+    return receipt
 
 
 def _normalize_command_receipt_index(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -599,7 +597,7 @@ def _resolve_quality_gate_command_args(command: Dict[str, Any]) -> List[str]:
     return args
 
 
-def _command_output_policy(command: Dict[str, Any]) -> str:
+def _command_output_policy(command: Mapping[str, Any]) -> str:
     policy = str(command.get("output_policy") or "exact").strip().lower()
     return policy if policy in {"exact", "normalized"} else "exact"
 
@@ -634,34 +632,41 @@ def replay_quality_gate_command_plan(
     *,
     timeout_s: int = 900,
     compare_receipts: bool = True,
+    reusable_results: Optional[Mapping[int, Mapping[str, Any]]] = None,
+    validated_receipts: Optional[Mapping[int, Dict[str, Any]]] = None,
+    resolve_reusable_result: Optional[Callable[[int], Optional[Mapping[str, Any]]]] = None,
+    on_command_executed: Optional[Callable[[], None]] = None,
 ) -> Optional[str]:
     for index, command in enumerate(_normalize_command_rows(commands), start=1):
         display = str(command.get("display") or "").strip()
         env = os.environ.copy()
         env.update(_normalize_env_overlay(command.get("env_overlay")))
-        proc = subprocess.run(
-            _resolve_quality_gate_command_args(command),
-            cwd=os.fspath(repo_root),
-            env=env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=int(timeout_s),
-        )
-        if int(proc.returncode) != 0:
+        cached = resolve_reusable_result(index) if resolve_reusable_result else (reusable_results or {}).get(index)
+        if cached is None:
+            proc = subprocess.run(
+                _resolve_quality_gate_command_args(command), cwd=os.fspath(repo_root), env=env,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=int(timeout_s),
+            )
+            returncode, stdout, stderr = int(proc.returncode), str(proc.stdout or ""), str(proc.stderr or "")
+            if on_command_executed:
+                on_command_executed()
+        else:
+            returncode, stdout, stderr = int(cached["returncode"]), str(cached["stdout"]), str(cached["stderr"])
+        if returncode != 0:
             return f"UNBOUND: quality gate command replay failed: {display}"
         if compare_receipts:
             receipt_rel = build_quality_gate_receipt_rel_path(index, display)
             receipt_abs = os.path.join(os.fspath(repo_root), receipt_rel.replace("/", os.sep))
             if not os.path.isfile(receipt_abs):
                 return "UNBOUND: quality gate command receipt missing during replay"
-            try:
-                receipt_payload = json.loads(read_text_file(receipt_abs))
-            except Exception:
-                return "UNBOUND: quality gate command receipt unreadable during replay"
+            receipt_payload = (validated_receipts or {}).get(index)
+            if receipt_payload is None:
+                try:
+                    receipt_payload = json.loads(read_text_file(receipt_abs))
+                except Exception:
+                    return "UNBOUND: quality gate command receipt unreadable during replay"
             receipt = _normalize_command_receipt_payload(receipt_payload if isinstance(receipt_payload, dict) else {})
-            if str(receipt.get("command_hash") or "").strip() != _stable_json_hash(command):
+            if receipt["schema_version"] == 2 and receipt.get("command_hash") != _stable_json_hash(command):
                 return f"UNBOUND: quality gate command receipt command_hash mismatch during replay: {display}"
             command_field_error = _verify_receipt_command_fields(receipt, command, command)
             if command_field_error:
@@ -669,15 +674,12 @@ def replay_quality_gate_command_plan(
             stdout_log_rel = str(receipt.get("stdout_log_path") or "").replace("\\", "/")
             stderr_log_rel = str(receipt.get("stderr_log_path") or "").replace("\\", "/")
             for log_rel in (stdout_log_rel, stderr_log_rel):
-                if not log_rel:
-                    return f"UNBOUND: quality gate command receipt log missing during replay: {display}"
-                log_abs = os.path.join(os.fspath(repo_root), log_rel.replace("/", os.sep))
-                if not os.path.isfile(log_abs):
+                if not log_rel or not os.path.isfile(os.path.join(os.fspath(repo_root), log_rel.replace("/", os.sep))):
                     return f"UNBOUND: quality gate command receipt log missing during replay: {display}"
             policy = _command_output_policy(command)
-            if receipt.get("stdout_sha256") != _hash_command_output(str(proc.stdout or ""), policy=policy):
+            if receipt.get("stdout_sha256") != _hash_command_output(stdout, policy=policy):
                 return f"UNBOUND: quality gate command receipt stdout replay mismatch: {display}"
-            if receipt.get("stderr_sha256") != _hash_command_output(str(proc.stderr or ""), policy=policy):
+            if receipt.get("stderr_sha256") != _hash_command_output(stderr, policy=policy):
                 return f"UNBOUND: quality gate command receipt stderr replay mismatch: {display}"
             try:
                 stdout_log_text = read_text_file(os.path.join(os.fspath(repo_root), stdout_log_rel.replace("/", os.sep)))
@@ -685,9 +687,9 @@ def replay_quality_gate_command_plan(
             except Exception:
                 return f"UNBOUND: quality gate command receipt log unreadable during replay: {display}"
             if receipt.get("stdout_sha256") != _hash_command_output(stdout_log_text, policy=policy):
-                return f"UNBOUND: quality gate command receipt stdout log mismatch: {display}"
+                return f"UNBOUND: quality gate command receipt stdout log mismatch during replay: {display}"
             if receipt.get("stderr_sha256") != _hash_command_output(stderr_log_text, policy=policy):
-                return f"UNBOUND: quality gate command receipt stderr log mismatch: {display}"
+                return f"UNBOUND: quality gate command receipt stderr log mismatch during replay: {display}"
     return None
 
 
@@ -880,7 +882,6 @@ def build_quality_gate_command_receipt(
             "schema_version": QUALITY_GATE_PROOF_SCHEMA_VERSION,
             "run_id": str(run_id or "").strip(),
             "command_index": int(command_index or 0),
-            "command_hash": _stable_json_hash(normalized_command),
             "display": normalized_command["display"],
             "args": list(normalized_command["args"]),
             "capture_output": bool(normalized_command["capture_output"]),
@@ -979,23 +980,21 @@ def apply_quality_gate_manifest_proof_fields(
     manifest["proof_scope"] = dict(QUALITY_GATE_PROOF_SCOPE)
     required_tests = _normalize_required_tests(manifest.get("required_tests") or iter_quality_gate_required_tests())
     manifest["required_tests"] = required_tests
-    manifest["required_tests_hash"] = hash_required_tests_registry(required_tests)
 
     commands = _normalize_command_rows(manifest.get("commands") or [])
     manifest["commands"] = commands
-    manifest["commands_hash"] = hash_quality_gate_commands(commands)
 
     collection_proof = _normalize_collection_proof(manifest.get("collection_proof") or {})
     manifest["collection_proof"] = collection_proof
-    manifest["collection_proof_hash"] = hash_quality_gate_collection_proof(collection_proof)
 
     command_receipts = _normalize_command_receipt_index(manifest.get("command_receipts") or [])
     manifest["command_receipts"] = command_receipts
-    manifest["command_receipts_hash"] = hash_quality_gate_command_receipts(command_receipts)
 
     gate_sources = _normalize_source_rows(manifest.get("gate_sources") or build_quality_gate_source_proof(repo_root))
     manifest["gate_sources"] = gate_sources
-    manifest["gate_sources_hash"] = hash_quality_gate_source_proof(gate_sources)
+    for field in ("required_tests_hash", "commands_hash", "collection_proof_hash",
+                  "command_receipts_hash", "gate_sources_hash", "planned_commands_hash"):
+        manifest.pop(field, None)
     return manifest
 
 
@@ -1038,7 +1037,7 @@ def _verify_quality_gate_collection_proof(
     )
     if collection_proof != expected_collection_proof:
         return "UNBOUND: quality gate collection proof mismatch"
-    if str(manifest.get("collection_proof_hash") or "") != hash_quality_gate_collection_proof(collection_proof):
+    if manifest.get("schema_version") == 2 and str(manifest.get("collection_proof_hash") or "") != hash_quality_gate_collection_proof(collection_proof):
         return "UNBOUND: quality gate collection_proof_hash mismatch"
     return None
 
@@ -1056,10 +1055,12 @@ def _load_verified_quality_gate_receipt(
     abs_path = os.path.join(os.fspath(repo_root), expected_path.replace("/", os.sep))
     if not os.path.isfile(abs_path):
         return None, "UNBOUND: quality gate command receipt missing"
-    if str(receipt_entry.get("sha256") or "") != _sha256_file(abs_path):
-        return None, "UNBOUND: quality gate command receipt hash mismatch"
     try:
-        payload = json.loads(read_text_file(abs_path))
+        with open(abs_path, "rb") as handle:
+            receipt_bytes = handle.read()
+        if str(receipt_entry.get("sha256") or "") != hashlib.sha256(receipt_bytes).hexdigest():
+            return None, "UNBOUND: quality gate command receipt hash mismatch"
+        payload = json.loads(receipt_bytes)
     except Exception:
         return None, "UNBOUND: quality gate command receipt unreadable"
     if not isinstance(payload, dict) or not payload:
@@ -1074,13 +1075,14 @@ def _verify_receipt_header(
     index: int,
     run_id: str,
 ) -> Optional[str]:
-    if int(receipt.get("schema_version") or 0) != QUALITY_GATE_PROOF_SCHEMA_VERSION:
+    schema_version = int(receipt.get("schema_version") or 0)
+    if schema_version not in (2, QUALITY_GATE_PROOF_SCHEMA_VERSION):
         return "UNBOUND: quality gate command receipt schema_version mismatch"
     if str(receipt.get("run_id") or "").strip() != str(run_id or "").strip() or not str(run_id or "").strip():
         return "UNBOUND: quality gate command receipt run_id mismatch"
     if int(receipt.get("command_index") or 0) != int(index):
         return "UNBOUND: quality gate command receipt command_index mismatch"
-    if str(receipt.get("command_hash") or "").strip() != _stable_json_hash(normalized_command):
+    if schema_version == 2 and receipt.get("command_hash") != _stable_json_hash(normalized_command):
         return "UNBOUND: quality gate command receipt command_hash mismatch"
     return None
 
@@ -1194,11 +1196,12 @@ def _verify_quality_gate_command_receipts(
     run_id: str,
     current_collect_stdout: str,
     current_collect_stderr: str,
+    validated_receipts: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> Optional[str]:
     command_receipts = _normalize_command_receipt_index(manifest.get("command_receipts") or [])
     if len(command_receipts) != len(expected_commands):
         return "UNBOUND: quality gate command receipts mismatch"
-    if str(manifest.get("command_receipts_hash") or "") != hash_quality_gate_command_receipts(command_receipts):
+    if manifest.get("schema_version") == 2 and str(manifest.get("command_receipts_hash") or "") != hash_quality_gate_command_receipts(command_receipts):
         return "UNBOUND: quality gate command_receipts_hash mismatch"
 
     for index, (receipt_entry, command) in enumerate(zip(command_receipts, expected_commands), start=1):
@@ -1220,6 +1223,8 @@ def _verify_quality_gate_command_receipts(
         )
         if payload_error:
             return payload_error
+        if validated_receipts is not None:
+            validated_receipts[index] = cast(Dict[str, Any], receipt_payload)
     return None
 
 
@@ -1237,7 +1242,7 @@ def _verify_manifest_header(
         return "UNBOUND: quality gate git common dir mismatch", ""
     if str(manifest.get("status") or "").strip().lower() != "passed":
         return f"UNBOUND: quality gate status={manifest.get('status') or 'unknown'}", ""
-    if int(manifest.get("schema_version") or 0) != QUALITY_GATE_PROOF_SCHEMA_VERSION:
+    if manifest.get("schema_version") not in (2, QUALITY_GATE_PROOF_SCHEMA_VERSION):
         return "UNBOUND: quality gate schema_version mismatch", ""
     run_id = str(manifest.get("run_id") or "").strip()
     if not run_id:
@@ -1282,14 +1287,14 @@ def _verify_manifest_static_proof(manifest: Dict[str, Any]) -> Tuple[Optional[st
     expected_required_tests = iter_quality_gate_required_tests()
     if required_tests != expected_required_tests:
         return "UNBOUND: quality gate required tests mismatch", [], []
-    if str(manifest.get("required_tests_hash") or "") != hash_required_tests_registry(required_tests):
+    if manifest.get("schema_version") == 2 and str(manifest.get("required_tests_hash") or "") != hash_required_tests_registry(required_tests):
         return "UNBOUND: quality gate required_tests_hash mismatch", [], []
 
     commands = _normalize_command_rows(manifest.get("commands") or [])
     expected_commands = _normalize_command_rows(build_quality_gate_command_plan())
     if commands != expected_commands:
         return "UNBOUND: quality gate commands mismatch", [], []
-    if str(manifest.get("commands_hash") or "") != hash_quality_gate_commands(commands):
+    if manifest.get("schema_version") == 2 and str(manifest.get("commands_hash") or "") != hash_quality_gate_commands(commands):
         return "UNBOUND: quality gate commands_hash mismatch", [], []
     return None, expected_required_tests, expected_commands
 
@@ -1301,6 +1306,7 @@ def _verify_manifest_collection_and_receipts(
     expected_required_tests: Sequence[str],
     expected_commands: Sequence[Dict[str, Any]],
     run_id: str,
+    validated_receipts: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> Optional[str]:
     collect_ok, current_collect_nodeids, current_collect_stdout, current_collect_stderr, collect_note = (
         collect_current_pytest_nodeids(repo_root)
@@ -1323,6 +1329,7 @@ def _verify_manifest_collection_and_receipts(
         run_id=run_id,
         current_collect_stdout=current_collect_stdout,
         current_collect_stderr=current_collect_stderr,
+        validated_receipts=validated_receipts,
     )
     if receipt_error:
         return receipt_error
@@ -1336,9 +1343,54 @@ def _verify_manifest_gate_sources(repo_root: Union[os.PathLike, str], manifest: 
         return "UNBOUND: quality gate gate sources mismatch"
     if not all(bool(row.get("exists")) for row in gate_sources):
         return "UNBOUND: quality gate gate sources missing"
-    if str(manifest.get("gate_sources_hash") or "") != hash_quality_gate_source_proof(gate_sources):
+    if manifest.get("schema_version") == 2 and str(manifest.get("gate_sources_hash") or "") != hash_quality_gate_source_proof(gate_sources):
         return "UNBOUND: quality gate gate_sources_hash mismatch"
     return None
+
+
+def _reusable_quality_gate_results(repo_root, manifest, commands, receipts, *, command_index=None, phase=None):
+    """Reuse only successful evidence that still matches inputs, environment and this run's receipts."""
+    cache_dir = manifest.get("long_gate_cache_dir")
+    if not cache_dir:
+        return {}
+    from tools.long_gate_cache import evaluate_reuse, resolve_cache_dir
+    from tools.long_gate_fingerprint import FingerprintFileSnapshot, LongGateFingerprintError, fingerprint_entry
+    from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
+    from tools.long_gate_schema import long_gate_cache_metadata
+
+    state = phase if phase is not None else {}
+    if not state:
+        try:
+            entries = build_manifest_from_quality_gate_plan(commands, repo_root=os.fspath(repo_root))["entries"]
+        except (OSError, ValueError):
+            return {}
+        state["entries"] = entries
+    results = {}
+    for index, entry in enumerate(state["entries"], start=1):
+        if command_index is not None and index != command_index:
+            continue
+        if not entry.get("reuse_allowed") or index not in receipts:
+            continue
+        try:
+            if "snapshot" not in state:
+                resolved_cache_dir = resolve_cache_dir(os.fspath(repo_root), str(cache_dir))
+                state.update(cache_dir=resolved_cache_dir,
+                             metadata=long_gate_cache_metadata(os.fspath(repo_root), cache_dir=resolved_cache_dir),
+                             snapshot=FingerprintFileSnapshot(os.fspath(repo_root), strict=True))
+            fingerprint = fingerprint_entry(entry, os.fspath(repo_root), strict=True, file_snapshot=state["snapshot"])
+            evaluation = evaluate_reuse(entry, fingerprint, repo_root=os.fspath(repo_root),
+                                        cache_dir=state["cache_dir"], metadata=state["metadata"])
+        except (LongGateFingerprintError, OSError, ValueError):
+            continue
+        if evaluation["decision"]["decision"] != "reuse":
+            continue
+        receipt = receipts[index]
+        policy = _command_output_policy(commands[index - 1])
+        if any(receipt.get(stream + "_sha256") != _hash_command_output(evaluation[stream], policy=policy)
+               for stream in ("stdout", "stderr")):
+            continue
+        results[index] = {"returncode": 0, "stdout": evaluation["stdout"], "stderr": evaluation["stderr"]}
+    return results
 
 
 def _verify_manifest_replay(
@@ -1346,11 +1398,25 @@ def _verify_manifest_replay(
     expected_commands: Sequence[Dict[str, Any]],
     *,
     replay_commands: bool,
+    manifest: Optional[Dict[str, Any]] = None,
+    validated_receipts: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> Optional[str]:
     if not replay_commands:
         return "STRUCTURAL_ONLY: quality gate command replay disabled"
 
-    replay_error = replay_quality_gate_command_plan(repo_root, expected_commands, compare_receipts=True)
+    # Consecutive reused commands share observations. A real command may change a
+    # later command's inputs or output proof, so it ends that observation phase.
+    phase: Dict[str, Any] = {}
+
+    def resolve_reusable_result(index: int) -> Optional[Mapping[str, Any]]:
+        results = _reusable_quality_gate_results(repo_root, manifest or {}, expected_commands,
+                                                validated_receipts or {}, command_index=index, phase=phase)
+        return results.get(index)
+
+    replay_error = replay_quality_gate_command_plan(repo_root, expected_commands, compare_receipts=True,
+                                                   validated_receipts=validated_receipts,
+                                                   resolve_reusable_result=resolve_reusable_result,
+                                                   on_command_executed=phase.clear)
     if replay_error:
         return replay_error
     post_replay_status = git_status_short_lines(repo_root)
@@ -1381,19 +1447,22 @@ def verify_quality_gate_manifest(
     static_error, expected_required_tests, expected_commands = _verify_manifest_static_proof(manifest)
     if static_error:
         return False, static_error
+    validated_receipts: Dict[int, Dict[str, Any]] = {}
     collection_error = _verify_manifest_collection_and_receipts(
         repo_root,
         manifest,
         expected_required_tests=expected_required_tests,
         expected_commands=expected_commands,
         run_id=run_id,
+        validated_receipts=validated_receipts,
     )
     if collection_error:
         return False, collection_error
     gate_source_error = _verify_manifest_gate_sources(repo_root, manifest)
     if gate_source_error:
         return False, gate_source_error
-    replay_error = _verify_manifest_replay(repo_root, expected_commands, replay_commands=replay_commands)
+    replay_error = _verify_manifest_replay(repo_root, expected_commands, replay_commands=replay_commands,
+                                          manifest=manifest, validated_receipts=validated_receipts)
     if replay_error:
         return False, replay_error
     return True, "BOUND"

@@ -1,6 +1,6 @@
 # Shared dev and hosted quality-gate dependencies.
 # Do not use this file for runtime packaging.
-pytest
+pytest>=8.2
 pytest-cov
 pytest-xdist==3.6.1
 execnet>=2.1,<3

@@ -33,6 +33,7 @@ python -m pip install --no-index --find-links offline\win7\wheels --require-hash
 - 主程序安装脚本：`installer\aps_win7.iss`
 - 浏览器运行时安装脚本：`installer\aps_win7_chrome.iss`
 - legacy 全量包脚本（内部应急）：`installer\aps_win7_legacy.iss`
+- 两个安装入口共同引用：`installer\aps_win7_shared.iss`；目录、迁移、停机及清理只改这一份，入口保留包名与内置浏览器卸载行为差异，见 [共同主体说明](SYNC_CHECKLIST.md)
 - 启动器模板：`assets\启动_排产系统_Chrome.bat`
 - 输出目录：`installer\output\`
 
@@ -56,7 +57,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 默认会：
 
 1. 构建主程序 `onedir`
-2. 复制启动器到 `dist`（仅用于直拷目录辅助启动）
+2. 由 `build_win7_onedir.bat` 将启动器投放到 `dist`，后续烟测和安装均使用同一份 payload
 3. 执行 `validate_dist_exe.py`
 4. 清理 `validate_dist_exe.py` 生成的运行时痕迹（`db` / `logs` / `backups` / runtime 契约）
 5. 生成 `APS_Main_Setup.exe`
@@ -237,7 +238,7 @@ ISCC.exe installer\aps_win7_legacy.iss
 
 - `dist\排产系统\` 是最小直拷交付目录，允许直接运行 `排产系统.exe`
 - 最小直拷目录 **不承诺自带浏览器运行时**
-- 如果需要在直拷目录中使用启动器，可额外复制 `assets\启动_排产系统_Chrome.bat` 到 `dist`
+- `build_win7_onedir.bat` 已将 `assets\启动_排产系统_Chrome.bat` 投放到 `dist`，直拷目录可直接使用该启动器
 - 若需要 self-contained 的直拷目录，只能走 legacy 路线（内部/应急）
 
 ## 卸载说明

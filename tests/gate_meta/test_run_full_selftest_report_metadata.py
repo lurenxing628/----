@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import pytest
+
 from tests._support.paths import REPO_ROOT
 
 
@@ -48,6 +50,7 @@ def _write_verified_manifest(
     git_status_short_before: Optional[List[str]] = None,
     git_status_short_after: Optional[List[str]] = None,
     overrides: Optional[Dict[str, object]] = None,
+    legacy: bool = False,
 ) -> Path:
     shared = _load_shared_module()
     for rel_path in shared.QUALITY_GATE_SOURCE_FILES:
@@ -102,6 +105,9 @@ def _write_verified_manifest(
             stdout_log_path=stdout_log_rel,
             stderr_log_path=stderr_log_rel,
         )
+        if legacy:
+            receipt_payload["schema_version"] = 2
+            receipt_payload["command_hash"] = shared._stable_json_hash(shared._normalize_command_rows([command])[0])
         receipt_path.write_text(json.dumps(receipt_payload, ensure_ascii=False), encoding="utf-8")
         command_receipts.append(
             {
@@ -124,16 +130,18 @@ def _write_verified_manifest(
         "tracked_drift_detected": git_status_short_before != git_status_short_after,
         "proof_scope": dict(shared.QUALITY_GATE_PROOF_SCOPE),
         "required_tests": required_tests,
-        "required_tests_hash": shared.hash_required_tests_registry(required_tests),
         "commands": commands,
-        "commands_hash": shared.hash_quality_gate_commands(commands),
         "collection_proof": collection_proof,
-        "collection_proof_hash": shared.hash_quality_gate_collection_proof(collection_proof),
         "command_receipts": command_receipts,
-        "command_receipts_hash": shared.hash_quality_gate_command_receipts(command_receipts),
         "gate_sources": gate_sources,
-        "gate_sources_hash": shared.hash_quality_gate_source_proof(gate_sources),
     }
+    if legacy:
+        manifest.update(schema_version=2,
+                        required_tests_hash=shared.hash_required_tests_registry(required_tests),
+                        commands_hash=shared.hash_quality_gate_commands(commands),
+                        collection_proof_hash=shared.hash_quality_gate_collection_proof(collection_proof),
+                        command_receipts_hash=shared.hash_quality_gate_command_receipts(command_receipts),
+                        gate_sources_hash=shared.hash_quality_gate_source_proof(gate_sources))
     if overrides:
         manifest.update(overrides)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
@@ -184,11 +192,12 @@ def test_run_full_selftest_fails_when_quality_gate_manifest_is_unbound(monkeypat
     assert report_rel == "evidence/FullSelfTest/logs/full_selftest_report.md"
 
 
-def test_quality_gate_binding_status_accepts_clean_proof_manifest(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize("legacy", (False, True))
+def test_quality_gate_binding_status_accepts_clean_proof_manifest(monkeypatch, tmp_path, legacy) -> None:
     module = _load_module()
     shared = _load_shared_module()
     repo_root = tmp_path / "repo"
-    _write_verified_manifest(repo_root)
+    _write_verified_manifest(repo_root, legacy=legacy)
     replayed = []
     monkeypatch.setattr(
         shared,
@@ -490,10 +499,10 @@ def test_quality_gate_binding_status_rejects_missing_or_wrong_proof_scope(tmp_pa
     assert "proof_scope" in note
 
 
-def test_quality_gate_binding_status_rejects_hash_mismatch(tmp_path) -> None:
+def test_legacy_quality_gate_binding_status_rejects_hash_mismatch(tmp_path) -> None:
     module = _load_module()
     repo_root = tmp_path / "repo"
-    manifest_path = _write_verified_manifest(repo_root)
+    manifest_path = _write_verified_manifest(repo_root, legacy=True)
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["required_tests_hash"] = "mismatch"

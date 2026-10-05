@@ -13,6 +13,35 @@ from scripts.portable_release import payload_files
 
 REPO = Path(__file__).resolve().parents[1]
 
+README_TEXT = """APS 排产系统 · 离线分卷交付包
+
+使用步骤（无需另装解压软件）：
+1. 把全部编号 ZIP 保存到同一个本机文件夹，保持文件名不变。
+2. 只需用 Windows 自带“全部提取”解压 01.zip。
+3. 在解压出的文件夹内双击 Install.cmd。它会自动找到旁边的后续 ZIP，校验并完整解压。
+   也可以先把全部 ZIP 解压到同一文件夹，再运行 Install.cmd。
+4. 完成后双击 Application\\Start.cmd；或进入 Application\\APS_Portable，双击启动_排产系统_Chrome.bat。
+
+程序版本、目标运行环境及验收结果见交付人员提供的本次交付记录。
+请完整下载全部 ZIP；任何文件缺失或校验失败都会停止，不会覆盖旧程序或旧数据。
+请在当前账户可读写的本机目录部署，预留解压后程序所需空间，不要直接在 ZIP 内运行。
+
+数据和升级：
+首次启动建立空库，业务数据位于 Application\\APS_Portable\\user-data。
+Excel 模板从各业务页的导入窗口下载，不要求目标机安装 Microsoft Office。
+日常通过系统页面正常退出；备份从系统维护页面操作。
+升级时先在旧系统备份并正常退出，把新包部署到新的空目录，再复制旧 user-data，
+或通过新系统的备份恢复功能导入。不要在运行中复制数据库，也不要覆盖原程序目录。
+迁移时正常退出后复制整个 APS_Portable 文件夹。专用浏览器用于本机 APS 页面。
+仅关闭浏览器窗口不代表后台服务已停止；再次启动会复用健康的本机实例。
+
+遇到启动问题，保留 user-data\\logs\\launcher.log 和 aps_launch_error.txt 联系交付人员。
+请不要删除运行锁来强行启动多个实例，也不要在同一份数据上同时运行多个用户。
+
+本交付附带独立解压工具，工具版本、许可及说明位于 tools 目录。
+7-Zip 官方许可、源码及下载：https://www.7-zip.org/ 。
+"""
+
 
 def digest(file: Path) -> str:
     value = hashlib.sha256()
@@ -52,7 +81,7 @@ def main() -> None:
     parser.add_argument("volumes", type=Path)
     parser.add_argument("sevenzip", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--name", default="APS_Win7_x64_20260928")
+    parser.add_argument("--name", default="APS_Win7_x64")
     parser.add_argument("--maximum-bytes", type=int, default=80_000_000)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -70,7 +99,7 @@ def main() -> None:
     volumes = sorted(args.volumes.glob("APS_Portable.7z.*"))
     if not volumes or [file.suffix for file in volumes] != [f".{i + 1:03d}" for i in range(len(volumes))]:
         raise ValueError("Missing or non-contiguous payload volumes")
-    rows, outputs = [], []
+    rows, checks = [], []
     for index, volume in enumerate(volumes, 1):
         relative = "payload/" + volume.name
         row = dict(record(volume, relative), Zip="", ZipSHA256="", ZipBytes="")
@@ -79,58 +108,27 @@ def main() -> None:
         else:
             output = args.output / (args.name + f"_{index:02d}.zip")
             archive(output, [(volume, relative)], args.maximum_bytes)
-            row.update(Zip=output.name, ZipSHA256=digest(output), ZipBytes=output.stat().st_size)
-            outputs.append(output)
+            archive_record = record(output, output.name)
+            checks.append(archive_record)
+            row.update(Zip=output.name, ZipSHA256=archive_record["SHA256"], ZipBytes=archive_record["Bytes"])
         rows.append(row)
     csv_file(bootstrap / "parts.csv", rows)
-    readme = """APS 排产系统 · Win7 x64 离线交付包 · 2026-09-28
-
-使用步骤（无需另装解压软件）：
-1. 把全部编号 ZIP 保存到同一个本机文件夹，保持文件名不变。
-2. 只需用 Windows 自带“全部提取”解压 01.zip。
-3. 在解压出的文件夹内双击 Install.cmd。它会自动找到旁边的后续 ZIP，校验并完整解压。
-   也可以先把全部 ZIP 解压到同一文件夹，再运行 Install.cmd。
-4. 完成后双击 Application\\Start.cmd；或进入 Application\\APS_Portable，双击启动_排产系统_Chrome.bat。
-
-目标为 Windows 7 SP1 64 位。主程序、Python 3.8 运行时、VC/UCRT DLL、Chrome109、
-中文和英文浏览器资源、Excel 读写依赖、静态页面、字体及解压工具均已包含。
-解压脚本支持 Win7 自带 PowerShell 2.0，不要求安装 Python、浏览器、7-Zip 或联网下载。
-请完整下载全部 ZIP；任何文件缺失或校验失败都会停止，不会覆盖旧程序或旧数据。
-请留出至少 1 GB 可用空间，放在当前账户可读写的本机目录，不要直接在 ZIP 内运行。
-
-数据和升级：
-首次启动建立空库，业务数据位于 Application\\APS_Portable\\user-data。
-Excel 模板从各业务页的导入窗口下载，不要求目标机安装 Microsoft Office。
-日常通过系统页面正常退出；备份从系统维护页面操作。
-升级时先在旧系统备份并正常退出，把新包部署到新的空目录，再复制旧 user-data，
-或通过新系统的备份恢复功能导入。不要在运行中复制数据库，也不要覆盖原程序目录。
-迁移时正常退出后复制整个 APS_Portable 文件夹。专用浏览器用于本机 APS 页面。
-仅关闭浏览器窗口不代表后台服务已停止；再次启动会复用健康的本机实例。
-
-本包程序与 2026-09-27 已完成 Win7 验收的 d1307cb8 完全相同，后续主分支改动为测试和文档。
-验收覆盖 Excel、批次三模式和关联保护、报工、完整试调及重启保存回读。
-已知观察：自动化中出现过字体等待，以及一次尺寸/主题切换截图留白，后续稳定帧未复现。
-遇到启动问题，保留 user-data\\logs\\launcher.log 和 aps_launch_error.txt 联系交付人员。
-请不要删除运行锁来强行启动多个实例，也不要在同一份数据上同时运行多个用户。
-
-本交付附带未修改的 7-Zip 26.03 独立解压工具。许可及说明在 tools 目录，
-GNU LGPL 许可说明、对应源码与官方下载：https://www.7-zip.org/ 。
-对应源码版本：https://github.com/ip7z/7zip/releases/tag/26.03 。
-"""
+    readme = README_TEXT
     (bootstrap / "README.txt").write_text(readme, encoding="utf-8-sig")
     support = [file for file in bootstrap.rglob("*") if file.is_file()
                and file.name != "support.csv" and "payload" not in file.relative_to(bootstrap).parts]
-    csv_file(bootstrap / "support.csv", [record(file, file.relative_to(bootstrap).as_posix()) for file in sorted(support)])
+    support_records = [record(file, file.relative_to(bootstrap).as_posix()) for file in sorted(support)]
+    csv_file(bootstrap / "support.csv", support_records)
     first = args.output / (args.name + "_01.zip")
     archive(first, [(file, file.relative_to(bootstrap).as_posix()) for file in sorted(bootstrap.rglob("*"))
                     if file.is_file()], args.maximum_bytes)
-    outputs.insert(0, first)
-    checks = [record(file, file.name) for file in outputs]
+    checks.insert(0, record(first, first.name))
     (args.output / "SHA256SUMS.txt").write_text("".join(row["SHA256"] + "  " + row["Path"] + "\n" for row in checks), encoding="ascii")
     (args.output / "README.txt").write_text(readme, encoding="utf-8-sig")
     (args.output / "delivery.json").write_text(json.dumps({"maximum_bytes_exclusive": args.maximum_bytes,
         "original_payload_files": len(files), "original_payload_bytes": sum(file.stat().st_size for file in files),
-        "archives": checks, "sevenzip_exe_sha256": digest(bootstrap / "tools/7za.exe")}, indent=2), encoding="utf-8")
+        "archives": checks, "sevenzip_exe_sha256": next(row["SHA256"] for row in support_records
+                                                       if row["Path"] == "tools/7za.exe")}, indent=2), encoding="utf-8")
     print(json.dumps(checks))
 
 

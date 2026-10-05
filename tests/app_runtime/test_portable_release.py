@@ -21,6 +21,7 @@ def payload(tmp_path):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"synthetic payload, not executable")
+    (root / release.LAUNCHER).write_bytes(b"staged by onedir, not executable")
     return root
 
 
@@ -86,3 +87,19 @@ def test_archive_rejects_symlink_without_packaging_external_file(payload, tmp_pa
         pytest.skip("symlinks unavailable on this host")
     with pytest.raises(ValueError, match="symlink"):
         release.write_portable_archive(payload, tmp_path / "portable.zip")
+
+
+def test_portable_preparation_preserves_the_built_launcher(payload):
+    staged = payload / release.LAUNCHER
+    original = staged.read_bytes()
+    timestamp = staged.stat().st_mtime_ns
+    release.prepare_portable_directory(payload)
+    assert staged.read_bytes() == original
+    assert staged.stat().st_mtime_ns == timestamp
+
+
+def test_portable_preparation_requires_the_build_to_stage_its_launcher(payload):
+    (payload / release.LAUNCHER).unlink()
+    with pytest.raises(ValueError, match="built launcher"):
+        release.prepare_portable_directory(payload)
+    assert not (payload / release.LAUNCHER).exists()

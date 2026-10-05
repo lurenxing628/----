@@ -86,3 +86,52 @@ def test_packaging_entrypoint_is_tracked_not_only_present_locally():
                              ".limcode/skills/aps-package-win7/scripts/package_win7.ps1"],
                             cwd=str(REPO_ROOT), capture_output=True, text=True)
     assert result.returncode == 0, "Win7 build entrypoint must be tracked in Git, not only present locally"
+
+
+def test_download_existing_artifact_is_verified_once(tmp_path, monkeypatch):
+    entry = _entry()
+    target = tmp_path / entry['path']
+    target.parent.mkdir()
+    target.write_bytes(b'offline artifact')
+    calls = []
+    original = offline.verify_file
+    def verify(path, metadata):
+        calls.append(path)
+        original(path, metadata)
+    monkeypatch.setattr(offline, 'verify_file', verify)
+    monkeypatch.setattr(offline.urllib.request, 'urlopen', lambda *args, **kwargs: pytest.fail('existing download used network'))
+    offline.prepare('download', tmp_path, [entry])
+    assert calls == [target]
+
+
+def test_delivery_reuses_archive_and_tool_records(tmp_path, monkeypatch):
+    from scripts import portable_delivery as delivery
+    payload, volumes, sevenzip = (tmp_path / name for name in ('app', 'volumes', '7zip'))
+    payload.mkdir()
+    (payload / 'app.exe').write_bytes(b'payload')
+    volumes.mkdir()
+    for index in (1, 2):
+        (volumes / f'APS_Portable.7z.{index:03d}').write_bytes(b'volume')
+    (sevenzip / 'x64').mkdir(parents=True)
+    (sevenzip / 'x64/7za.exe').write_bytes(b'tool')
+    for name in ('License.txt', 'readme.txt'):
+        (sevenzip / name).write_text('tool notice')
+    monkeypatch.setattr(delivery, 'payload_files', lambda root: [payload / 'app.exe'])
+    calls = []
+    original = delivery.digest
+    def digest(path):
+        calls.append(path.name)
+        return original(path)
+    monkeypatch.setattr(delivery, 'digest', digest)
+    monkeypatch.setattr('sys.argv', ['portable_delivery', str(payload), str(volumes), str(sevenzip), str(tmp_path / 'delivery')])
+    delivery.main()
+    assert calls.count('7za.exe') == 1
+    assert calls.count('APS_Win7_x64_02.zip') == 1
+
+
+def test_delivery_readme_keeps_acceptance_with_its_own_release():
+    from scripts.portable_delivery import README_TEXT
+
+    assert 'Install.cmd' in README_TEXT and 'tools 目录' in README_TEXT
+    assert '本次交付记录' in README_TEXT
+    assert not any(value in README_TEXT for value in ('d1307cb8', '2026-09-27', '2026-09-28', '26.03', '完全相同', '验收覆盖'))

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, TextIO, Tuple
 
@@ -283,59 +285,10 @@ def _daily_scope_for_refs(refs: Sequence[PrePushRef], *, remote_name: str) -> Di
     return daily_gate.daily_gate_scope_payload(scope)
 
 
-def _daily_gate_command_for_refs(executable: str, refs: Sequence[PrePushRef], *, remote_name: str) -> List[str]:
+def _daily_gate_command(executable: str, *, scope_file: str = "") -> List[str]:
     command = [executable, "scripts/run_daily_quality_gate.py"]
-    if not refs:
-        return command
-    if len(refs) == 1:
-        ref = refs[0]
-        command.extend(
-            [
-                "--pre-push-from-ref",
-                ref.remote_sha,
-                "--pre-push-to-ref",
-                ref.local_sha,
-                "--pre-push-remote-name",
-                remote_name,
-                "--pre-push-remote-ref",
-                ref.remote_ref,
-            ]
-        )
-        return command
-
-    daily_gate = _daily_gate_module()
-    changed_paths: List[str] = []
-    reasons: List[str] = []
-    scope_known = True
-    for ref in refs:
-        changed = daily_gate._pre_push_diff_paths(
-            ref.remote_sha,
-            ref.local_sha,
-            remote_name,
-            remote_ref=ref.remote_ref,
-        )
-        changed_paths.extend(changed.paths)
-        if changed.reason:
-            reasons.append(changed.reason)
-        if not changed.scope_known:
-            scope_known = False
-    if not scope_known:
-        command.extend(
-            [
-                "--pre-push-from-ref",
-                "",
-                "--pre-push-to-ref",
-                "missing-multi-ref-range",
-                "--pre-push-remote-name",
-                remote_name,
-                "--pre-push-remote-ref",
-                ",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs))),
-            ]
-        )
-        return command
-    for path in daily_gate._dedupe_paths(changed_paths):
-        command.extend(["--pre-push-changed-path", path])
-    command.extend(["--pre-push-scope-reason", "multi-ref pre-push: " + "; ".join(sorted(dict.fromkeys(reasons)))])
+    if scope_file:
+        return [*command, "--pre-push-scope-file", scope_file]
     return command
 
 
@@ -372,8 +325,16 @@ def run_quality_gate(args: argparse.Namespace) -> int:
     except git_hook_cache.HookCacheError as exc:
         print(f"[git-hook-cache] pre-push daily gate cache unavailable: {exc}", flush=True)
 
-    command = _daily_gate_command_for_refs(executable, refs, remote_name=remote_name)
-    returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+    if refs:
+        # Keep argv bounded on Windows even when the reviewed ref contains thousands of paths.
+        with tempfile.TemporaryDirectory(prefix="aps-pre-push-scope-") as scope_dir:
+            scope_file = Path(scope_dir) / "scope.json"
+            scope_file.write_text(json.dumps(scope_payload, ensure_ascii=False), encoding="utf-8")
+            command = _daily_gate_command(executable, scope_file=str(scope_file))
+            returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+    else:
+        command = _daily_gate_command(executable)
+        returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
     if int(returncode) == 0:
         try:
             git_hook_cache.write_pre_push_daily_cache(

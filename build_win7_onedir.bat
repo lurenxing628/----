@@ -70,6 +70,9 @@ if exist vendor (
     --add-data "vendor;vendor" ^
     --add-data "schema.sql;." ^
     --hidden-import networkx ^
+    --hidden-import core.services.scheduler.resource_dispatch.service ^
+    --hidden-import core.services.scheduler.resource_dispatch.execution_service ^
+    --hidden-import core.services.scheduler.resource_dispatch.actual_record_service ^
     --name "排产系统" ^
     app.py
 ) else (
@@ -81,10 +84,18 @@ if exist vendor (
     --add-data "plugins;plugins" ^
     --add-data "schema.sql;." ^
     --hidden-import networkx ^
+    --hidden-import core.services.scheduler.resource_dispatch.service ^
+    --hidden-import core.services.scheduler.resource_dispatch.execution_service ^
+    --hidden-import core.services.scheduler.resource_dispatch.actual_record_service ^
     --name "排产系统" ^
     app.py
 )
 set "RC=%ERRORLEVEL%"
+if %RC%==0 (
+  rem The onedir payload owns the launcher consumed by smoke tests and every installer.
+  copy /y "assets\启动_排产系统_Chrome.bat" "dist\排产系统\启动_排产系统_Chrome.bat" >nul
+  if errorlevel 1 set "RC=8"
+)
 
 echo.
 if %RC%==0 (

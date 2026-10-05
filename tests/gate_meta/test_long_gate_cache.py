@@ -1452,3 +1452,120 @@ def test_fingerprint_component_diff_explains_non_file_changes():
         and change.get("path") == "new.json"
         for change in changes
     )
+
+
+def test_file_snapshot_reuses_observations_only_within_one_decision_phase(tmp_path, monkeypatch):
+    path = tmp_path / 'shared.py'
+    path.write_text('old input\n')
+    source_calls, reads = [], []
+    monkeypatch.setattr(fingerprint_mod, '_git_path_sources',
+                        lambda root, strict: source_calls.append(root) or ({'shared.py'}, set(), 'available'))
+    original = fingerprint_mod._fingerprint_one_file
+    def observed(name, root, tracked, untracked):
+        reads.append(name)
+        return original(name, root, tracked, untracked)
+    monkeypatch.setattr(fingerprint_mod, '_fingerprint_one_file', observed)
+    snapshot = fingerprint_mod.FingerprintFileSnapshot(str(tmp_path), strict=True)
+    first = fingerprint_files(['shared.py'], str(tmp_path), strict=True, file_snapshot=snapshot)
+    path.write_text('new input\n')
+    second = fingerprint_files(['shared.py'], str(tmp_path), strict=True, file_snapshot=snapshot)
+    assert first == second and reads == ['shared.py'] and len(source_calls) == 1
+    refreshed = fingerprint_files(['shared.py'], str(tmp_path), strict=True)
+    assert refreshed != first and reads == ['shared.py', 'shared.py'] and len(source_calls) == 2
+
+
+def test_manifest_replay_reuses_success_bound_to_current_receipt(tmp_path, monkeypatch):
+    from tools import long_gate_manifest
+    entry = _temporary_gate_entry(tmp_path, 'example.py')
+    entry, fingerprint, output = _write_reusable_success(tmp_path, entry=entry)
+    command = {key: entry[key] for key in ('display', 'args', 'capture_output', 'output_policy')}
+    monkeypatch.setattr(long_gate_manifest, 'build_manifest_from_quality_gate_plan',
+                        lambda *args, **kwargs: {'entries': [entry]})
+    monkeypatch.setattr(fingerprint_mod, 'fingerprint_entry', lambda *args, **kwargs: fingerprint)
+    logs = tmp_path / 'evidence/QualityGate/logs'
+    logs.mkdir(parents=True)
+    (logs / 'stdout.log').write_text('ok\n')
+    (logs / 'stderr.log').write_text('')
+    receipt = quality_gate_shared.build_quality_gate_command_receipt(command, run_id='same-head:run', command_index=1,
+        returncode=0, stdout='ok\n', stderr='', stdout_log_path='evidence/QualityGate/logs/stdout.log',
+        stderr_log_path='evidence/QualityGate/logs/stderr.log')
+    receipt_path = tmp_path / quality_gate_shared.build_quality_gate_receipt_rel_path(1, command['display'])
+    receipt_path.parent.mkdir(parents=True)
+    receipt_path.write_text(json.dumps(receipt))
+    manifest = {'long_gate_cache_dir': 'evidence/QualityGate/long_gate'}
+    reusable = quality_gate_shared._reusable_quality_gate_results(tmp_path, manifest, [command], {1: receipt})
+    assert set(reusable) == {1}
+    with monkeypatch.context() as replay_patch:
+        replay_patch.setattr(quality_gate_shared.subprocess, 'run',
+                            lambda *args, **kwargs: pytest.fail('valid bound success must not rerun the command'))
+        assert quality_gate_shared.replay_quality_gate_command_plan(tmp_path, [command], reusable_results=reusable,
+                                                                     validated_receipts={1: receipt}) is None
+    # The same record cannot authorize another output or changed input/environment.
+    receipt['stdout_sha256'] = 'wrong-output'
+    assert quality_gate_shared._reusable_quality_gate_results(tmp_path, manifest, [command], {1: receipt}) == {}
+    receipt['stdout_sha256'] = quality_gate_shared._hash_command_output('ok\n', policy='normalized')
+    fingerprint = _fingerprint('changed input/environment')
+    assert quality_gate_shared._reusable_quality_gate_results(tmp_path, manifest, [command], {1: receipt}) == {}
+
+
+def _temporary_gate_entry(repo_root, filename, *, reuse_allowed=True):
+    script = repo_root / 'tools' / filename
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text("print('ok')\n")
+    relative_path = script.relative_to(repo_root).as_posix()
+    entry = _entry([relative_path])
+    entry.update(entry_id=script.stem, display=f'python {relative_path}', args=['python', relative_path],
+                 reuse_allowed=reuse_allowed)
+    entry['command_hash'] = fingerprint_command(entry)
+    return entry
+
+
+def test_manifest_replay_refreshes_evidence_after_an_executed_predecessor(tmp_path, monkeypatch):
+    from tools import long_gate_manifest
+
+    input_path = tmp_path / 'shared-input.json'
+    input_path.write_text('old')
+    entry = _temporary_gate_entry(tmp_path, 'example.py')
+    entry, _, output = _write_reusable_success(tmp_path, entry=entry, fingerprint=_fingerprint('old'))
+    predecessor = _temporary_gate_entry(tmp_path, 'proof_writer.py', reuse_allowed=False)
+    script_paths = [predecessor['args'][1], entry['args'][1]]
+    entries = [predecessor, entry]
+    commands = [{key: row[key] for key in ('display', 'args', 'capture_output', 'output_policy')} for row in entries]
+    monkeypatch.setattr(long_gate_manifest, 'build_manifest_from_quality_gate_plan',
+                        lambda *args, **kwargs: {'entries': entries})
+    monkeypatch.setattr(fingerprint_mod, 'fingerprint_entry',
+                        lambda *args, **kwargs: _fingerprint(input_path.read_text()))
+    receipts = {}
+    logs = tmp_path / 'evidence/QualityGate/logs'
+    logs.mkdir(parents=True)
+    for index, command in enumerate(commands, start=1):
+        stdout_rel = f'evidence/QualityGate/logs/{index}.stdout.log'
+        stderr_rel = f'evidence/QualityGate/logs/{index}.stderr.log'
+        (tmp_path / stdout_rel).write_text('ok\n')
+        (tmp_path / stderr_rel).write_text('')
+        receipt = quality_gate_shared.build_quality_gate_command_receipt(
+            command, run_id='same-head:run', command_index=index, returncode=0, stdout='ok\n', stderr='',
+            stdout_log_path=stdout_rel, stderr_log_path=stderr_rel)
+        receipts[index] = receipt
+        receipt_path = tmp_path / quality_gate_shared.build_quality_gate_receipt_rel_path(index, command['display'])
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(json.dumps(receipt))
+    manifest = {'long_gate_cache_dir': 'evidence/QualityGate/long_gate'}
+    assert set(quality_gate_shared._reusable_quality_gate_results(tmp_path, manifest, commands, receipts)) == {2}
+    original_run = subprocess.run
+    executions = []
+
+    def execute(args, **kwargs):
+        if len(args) > 1 and args[1] in script_paths:
+            executions.append(args[1])
+            if args[1] == script_paths[0]:
+                input_path.write_text('new')
+                output.write_text('{"status":"refreshed"}')
+            return subprocess.CompletedProcess(args, 0, stdout='ok\n', stderr='')
+        return original_run(args, **kwargs)
+
+    monkeypatch.setattr(quality_gate_shared.subprocess, 'run', execute)
+    monkeypatch.setattr(quality_gate_shared, 'git_status_short_lines', lambda root: [])
+    assert quality_gate_shared._verify_manifest_replay(
+        tmp_path, commands, replay_commands=True, manifest=manifest, validated_receipts=receipts) is None
+    assert executions == script_paths

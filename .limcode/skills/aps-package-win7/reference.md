@@ -53,7 +53,7 @@
 ## 6) 直拷交付现在分三种口径
 
 - 最小直拷：仅 `build_win7_onedir.bat` 产物，不承诺自带浏览器运行时
-- 直拷辅助启动：可额外把 `assets/启动_排产系统_Chrome.bat` 复制到 `dist`
+- 直拷辅助启动：`build_win7_onedir.bat` 已把 `assets/启动_排产系统_Chrome.bat` 投放到 `dist`
 - legacy 自包含直拷：仅内部应急场景，需先 `stage_chrome109_to_dist.bat`
 
 ## 7) 冷启动验收仍然是强制步骤

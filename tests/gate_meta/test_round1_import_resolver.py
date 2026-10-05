@@ -155,12 +155,12 @@ def test_unknown_file_locations_never_become_label_edges(tmp_path: Path, body: s
     assert "spec_from_file_location" in result["unresolved_dynamic_imports"][0]["expression"]
 
 
-@pytest.mark.parametrize("rel,line,target", [
-    ("tests/gate_meta/test_frozen_bundle_contract.py", 175, "web.bootstrap._frozen_import_anchor"),
-    ("tests/workbench/test_pending_build_sources.py", 22, "scripts.workbench.build"),
-    ("tests/workbench/test_process_readiness.py", 134, "core.services.workbench.resource.readiness"),
+@pytest.mark.parametrize("rel,expression,target", [
+    ("tests/gate_meta/test_frozen_bundle_contract.py", "importlib.import_module(_ANCHOR_MODULE)", "web.bootstrap._frozen_import_anchor"),
+    ("tests/workbench/test_pending_build_sources.py", 'importlib.util.spec_from_file_location("workbench_pending_build", TOOLS / "build.py")', "scripts.workbench.build"),
+    ("tests/workbench/test_process_readiness.py", "importlib.import_module(MODULE)", "core.services.workbench.resource.readiness"),
 ])
-def test_known_round1_sources_resolve_without_executing_or_editing_them(rel: str, line: int, target: str) -> None:
+def test_known_round1_sources_resolve_without_executing_or_editing_them(rel: str, expression: str, target: str) -> None:
     roots = scan_import_cycles.PROD_ROOTS + scan_import_cycles.TEST_ROOTS
     file_to_mod, mod_to_file = scan_import_cycles._index_modules(roots, str(REPO_ROOT))
     source = str(REPO_ROOT / rel)
@@ -170,14 +170,20 @@ def test_known_round1_sources_resolve_without_executing_or_editing_them(rel: str
     unresolved: List[dict] = []
     parents: List[dict] = []
 
+    source_text = Path(source).read_text(encoding="utf-8")
+    tree = ast.parse(source_text)
+    expected_lines = {node.lineno for node in ast.walk(tree)
+                      if isinstance(node, ast.Call) and ast.get_source_segment(source_text, node) == expression}
+    assert expected_lines, "实际 import 表达式已经不存在；需要重新核对该引用链"
     scan_import_cycles._collect_module_edges(
-        source, file_to_mod[source], ast.parse(Path(source).read_text(encoding="utf-8")),
+        source, file_to_mod[source], tree,
         file_to_mod, mod_to_file, edges, explicit, directories, unresolved, parents, str(REPO_ROOT),
     )
 
     assert target in mod_to_file
-    assert (rel, line) in explicit["lazy"][(file_to_mod[source], target)]
-    assert not any(row["line"] == line for row in unresolved)
+    resolved_lines = {line for path, line in explicit["lazy"][(file_to_mod[source], target)] if path == rel}
+    assert expected_lines <= resolved_lines
+    assert not any(row["line"] in expected_lines for row in unresolved)
     if target == "scripts.workbench.build":
         assert not parents
 

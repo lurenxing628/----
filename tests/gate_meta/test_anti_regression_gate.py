@@ -90,3 +90,21 @@ def test_live_repo_is_currently_clean() -> None:
     """固化锁:P7 落地时实仓自 d4589d77 以来的新增文件零违规,锁住治理成果不回潮。"""
     result = gate.scan_added(gate.DEFAULT_BASE_REF, str(REPO_ROOT))
     assert result == {"missing_test_function": [], "missing_docstring": [], "uncovered_source": []}
+
+
+def test_added_test_rules_share_one_parse(tmp_path, monkeypatch):
+    from tools import scan_anti_regression_gate as gate
+    path = tmp_path / 'tests' / 'test_new.py'
+    path.parent.mkdir()
+    path.write_text('"""A collected regression."""\ndef test_new():\n    pass\n')
+    relative_path = path.relative_to(tmp_path).as_posix()
+    monkeypatch.setattr(gate, '_git_added_python_files', lambda *args: [relative_path])
+    reads = []
+    original = gate._parse
+    def parse(root, name):
+        reads.append(name)
+        return original(root, name)
+    monkeypatch.setattr(gate, '_parse', parse)
+    assert gate.scan_added('base', str(tmp_path)) == {
+        'missing_test_function': [], 'missing_docstring': [], 'uncovered_source': []}
+    assert reads == [relative_path]

@@ -504,8 +504,9 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
         refreshed_oversize.append(build_oversize_entry(path, current_value, existing=entry))
 
     complexity_paths = sorted({str(entry.get("path")) for entry in complexity_entries})
-    complexity_scan = _cached_complexity_scan_map(complexity_paths)
     complexity_scan_all = _cached_complexity_scan_map(complexity_paths, include_all=True)
+    complexity_scan = {key: item for key, item in complexity_scan_all.items()
+                       if int(item.get("current_value") or 0) > COMPLEXITY_THRESHOLD}
     refreshed_complexity = []
     for entry in complexity_entries:
         key = "{}:{}".format(entry.get("path"), entry.get("symbol"))
