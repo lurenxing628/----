@@ -52,7 +52,7 @@ def test_fallback_serves_on_the_same_reserved_socket(monkeypatch):
         occupier.bind(("127.0.0.1", 0))
         occupier.listen()
         busy_port = occupier.getsockname()[1]
-        monkeypatch.setattr(runtime_server, "_candidate_ports", lambda preferred: [preferred])
+        monkeypatch.setattr(runtime_server, "candidate_ports", lambda preferred: [preferred])
         server = runtime_server.prepare_runtime_server(app, "127.0.0.1", busy_port)
         descriptor = server.socket.fileno()
         host, actual_port = server.server_address

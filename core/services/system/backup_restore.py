@@ -32,6 +32,7 @@ def run_backup_restore(
             return RestoreBackupOutcome(
                 message=result.message,
                 category="warning" if result.code == "busy" else "error",
+                result=result,
             )
 
         result, failure = _verify_restored_database(
@@ -84,6 +85,7 @@ def _verify_restored_database(
         return result, RestoreBackupOutcome(
             message="数据库文件已恢复，但数据表检查没有通过。请先联系管理员排查后再继续使用。",
             category="error",
+            result=result,
         )
     return replace(result, code="verified", message=f"数据库文件已恢复，并确认数据表可以正常使用：{filename}"), None
 
@@ -109,7 +111,7 @@ def _rollback_after_verify_failure(
             message="数据库结构校验失败，且自动回滚也失败了，请立即检查日志并手动校验数据库。",
             before_restore_path=before_restore_path,
         )
-    return RestoreBackupOutcome(message=rollback_result.message, category="error")
+    return RestoreBackupOutcome(message=rollback_result.message, category="error", result=rollback_result)
 
 
 def audit_backup_operation(conn, logger, result):
@@ -117,4 +119,3 @@ def audit_backup_operation(conn, logger, result):
         module="system", action="workbench_" + result["action"], target_type="backup",
         detail={"job_ref": result["job_ref"], "code": result["code"], "state": result["state"]},
     )
-

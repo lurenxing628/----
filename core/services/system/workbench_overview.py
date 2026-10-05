@@ -153,17 +153,16 @@ def _config(conn, backup_keep_days_default: int) -> Dict[str, Any]:
         return result
     try:
         service = SystemConfigService(conn)
-        snapshot = service.get_snapshot_readonly(backup_keep_days_default=backup_keep_days_default)
-        stored = {key: service.get_value_with_presence(key) for key in _CONFIG_FIELDS}
+        snapshot, raw = service.snapshot_with_storage(backup_keep_days_default)
     except _READ_ERRORS as exc:
         result.update(status="error", error=_error(exc))
         return result
-    stored_values = {key: value for key, (present, value) in stored.items() if present}
+    stored_values = {key: raw[key] for key in _CONFIG_FIELDS if key in raw}
     result.update(
         status="partial" if snapshot.dirty_fields else ("available" if stored_values else "empty"),
         values={key: getattr(snapshot, key) for key in _CONFIG_FIELDS},
         stored_values=stored_values, stored_count=len(stored_values),
-        defaulted_fields=[key for key, (present, _) in stored.items() if not present],
+        defaulted_fields=[key for key in _CONFIG_FIELDS if key not in raw],
         dirty_fields=list(snapshot.dirty_fields), dirty_reasons=dict(snapshot.dirty_reasons),
     )
     return result

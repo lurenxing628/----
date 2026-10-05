@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
@@ -87,101 +88,113 @@ class SystemMaintenanceService:
         backup_keep_days_default: int,
         logger=None,
         op_logger=None,
+        admission_window=None,
     ) -> MaintenanceResult:
         if not MaintenanceThrottle.allow_run(cls.CHECK_THROTTLE_SECONDS):
             return MaintenanceResult(ran_any=False, details={"throttled": True})
 
         cfg_svc = SystemConfigService(conn, logger=logger)
-        cfg = cfg_svc.get_snapshot(backup_keep_days_default=int(backup_keep_days_default))
+        cfg = cfg_svc.get_snapshot_readonly(backup_keep_days_default=int(backup_keep_days_default))
         job_repo = SystemJobStateRepository(conn, logger=logger)
 
         now = datetime.now()
-        details: Dict[str, Any] = {"throttled": False, "now": _fmt_db_dt(now)}
-        ran_any = False
+        with ExitStack() as ownership:
+            admitted = False
 
-        # -------------------------
-        # 1) 自动备份
-        # -------------------------
-        auto_backup_failed_this_round = False
-        if cfg.auto_backup_enabled == YesNo.YES.value:
-            ran, d = maybe_run_auto_backup(
-                conn,
-                job_repo=job_repo,
-                now=now,
-                interval_minutes=int(cfg.auto_backup_interval_minutes),
-                db_path=db_path,
-                backup_dir=backup_dir,
-                keep_days=int(cfg.auto_backup_keep_days),
-                job_key=cls.JOB_AUTO_BACKUP,
-                logger=logger,
-                op_logger=op_logger,
-                is_due_fn=cls._is_due,
-                fmt_db_dt_fn=_fmt_db_dt,
-            )
-            details["auto_backup"] = d
-            ran_any = ran_any or ran
-            # 本轮到点执行了自动备份但失败（due=True 且 ran=False）：清理不得继续。
-            auto_backup_failed_this_round = bool(d.get("due")) and not ran
+            def is_due(*args):
+                nonlocal admitted
+                captured = cls._is_due(*args)
+                if captured[0] and admission_window is not None and not admitted:
+                    ownership.enter_context(admission_window())
+                    admitted = True
+                return captured
 
-        # -------------------------
-        # 2) 自动清理备份（保留策略）
-        # -------------------------
-        if cfg.auto_backup_cleanup_enabled == YesNo.YES.value:
-            if auto_backup_failed_this_round:
-                # B01(2)：当轮自动备份失败时跳过本轮自动清理——没有新的好备份落地时
-                # 不修剪历史备份，避免『备份失败 + 清理照跑』把仅存的好备份删光。
-                # 不写 cleanup job_state，下一轮备份成功后清理照常恢复执行。
-                safe_log(
-                    logger,
-                    "warning",
-                    "本轮自动备份失败，已跳过本轮自动清理备份（reason=auto_backup_failed_this_round，"
-                    "失败原因见 auto_backup 的 error 日志与 OperationLogs）。",
-                )
-                details["auto_backup_cleanup"] = {
-                    "skipped": True,
-                    "reason": "auto_backup_failed_this_round",
-                }
-            else:
-                ran, d = maybe_run_auto_backup_cleanup(
+            details: Dict[str, Any] = {"throttled": False, "now": _fmt_db_dt(now)}
+            ran_any = False
+
+            # -------------------------
+            # 1) 自动备份
+            # -------------------------
+            auto_backup_failed_this_round = False
+            if cfg.auto_backup_enabled == YesNo.YES.value:
+                ran, d = maybe_run_auto_backup(
                     conn,
                     job_repo=job_repo,
                     now=now,
-                    interval_minutes=int(cfg.auto_backup_cleanup_interval_minutes),
+                    interval_minutes=int(cfg.auto_backup_interval_minutes),
+                    db_path=db_path,
                     backup_dir=backup_dir,
                     keep_days=int(cfg.auto_backup_keep_days),
-                    max_backup_delete_per_run=int(cls.MAX_BACKUP_DELETE_PER_RUN),
-                    job_key=cls.JOB_AUTO_BACKUP_CLEANUP,
+                    job_key=cls.JOB_AUTO_BACKUP,
                     logger=logger,
                     op_logger=op_logger,
-                    is_due_fn=cls._is_due,
+                    is_due_fn=is_due,
                     fmt_db_dt_fn=_fmt_db_dt,
-                    min_keep_backups=int(cls.MIN_KEEP_BACKUPS),
                 )
-                details["auto_backup_cleanup"] = d
+                details["auto_backup"] = d
+                ran_any = ran_any or ran
+                # 本轮到点执行了自动备份但失败（due=True 且 ran=False）：清理不得继续。
+                auto_backup_failed_this_round = bool(d.get("due")) and not ran
+
+            # -------------------------
+            # 2) 自动清理备份（保留策略）
+            # -------------------------
+            if cfg.auto_backup_cleanup_enabled == YesNo.YES.value:
+                if auto_backup_failed_this_round:
+                    # B01(2)：当轮自动备份失败时跳过本轮自动清理——没有新的好备份落地时
+                    # 不修剪历史备份，避免『备份失败 + 清理照跑』把仅存的好备份删光。
+                    # 不写 cleanup job_state，下一轮备份成功后清理照常恢复执行。
+                    safe_log(
+                        logger,
+                        "warning",
+                        "本轮自动备份失败，已跳过本轮自动清理备份（reason=auto_backup_failed_this_round，"
+                        "失败原因见 auto_backup 的 error 日志与 OperationLogs）。",
+                    )
+                    details["auto_backup_cleanup"] = {
+                        "skipped": True,
+                        "reason": "auto_backup_failed_this_round",
+                    }
+                else:
+                    ran, d = maybe_run_auto_backup_cleanup(
+                        conn,
+                        job_repo=job_repo,
+                        now=now,
+                        interval_minutes=int(cfg.auto_backup_cleanup_interval_minutes),
+                        backup_dir=backup_dir,
+                        keep_days=int(cfg.auto_backup_keep_days),
+                        max_backup_delete_per_run=int(cls.MAX_BACKUP_DELETE_PER_RUN),
+                        job_key=cls.JOB_AUTO_BACKUP_CLEANUP,
+                        logger=logger,
+                        op_logger=op_logger,
+                        is_due_fn=is_due,
+                        fmt_db_dt_fn=_fmt_db_dt,
+                        min_keep_backups=int(cls.MIN_KEEP_BACKUPS),
+                    )
+                    details["auto_backup_cleanup"] = d
+                    ran_any = ran_any or ran
+
+            # -------------------------
+            # 3) 自动清理操作日志（保留策略）
+            # -------------------------
+            if cfg.auto_log_cleanup_enabled == YesNo.YES.value:
+                ran, d = maybe_run_auto_log_cleanup(
+                    conn,
+                    job_repo=job_repo,
+                    now=now,
+                    interval_minutes=int(cfg.auto_log_cleanup_interval_minutes),
+                    keep_days=int(cfg.auto_log_cleanup_keep_days),
+                    min_keep_logs=int(cls.MIN_KEEP_LOGS),
+                    max_log_delete_per_run=int(cls.MAX_LOG_DELETE_PER_RUN),
+                    job_key=cls.JOB_AUTO_LOG_CLEANUP,
+                    logger=logger,
+                    op_logger=op_logger,
+                    is_due_fn=is_due,
+                    fmt_db_dt_fn=_fmt_db_dt,
+                )
+                details["auto_log_cleanup"] = d
                 ran_any = ran_any or ran
 
-        # -------------------------
-        # 3) 自动清理操作日志（保留策略）
-        # -------------------------
-        if cfg.auto_log_cleanup_enabled == YesNo.YES.value:
-            ran, d = maybe_run_auto_log_cleanup(
-                conn,
-                job_repo=job_repo,
-                now=now,
-                interval_minutes=int(cfg.auto_log_cleanup_interval_minutes),
-                keep_days=int(cfg.auto_log_cleanup_keep_days),
-                min_keep_logs=int(cls.MIN_KEEP_LOGS),
-                max_log_delete_per_run=int(cls.MAX_LOG_DELETE_PER_RUN),
-                job_key=cls.JOB_AUTO_LOG_CLEANUP,
-                logger=logger,
-                op_logger=op_logger,
-                is_due_fn=cls._is_due,
-                fmt_db_dt_fn=_fmt_db_dt,
-            )
-            details["auto_log_cleanup"] = d
-            ran_any = ran_any or ran
-
-        return MaintenanceResult(ran_any=ran_any, details=details)
+            return MaintenanceResult(ran_any=ran_any, details=details)
 
     # -------------------------
     # 内部辅助方法

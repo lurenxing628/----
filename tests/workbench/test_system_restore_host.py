@@ -1,6 +1,7 @@
 """Real HTTP restore terminal and rollback proofs, without a bool guard."""
 
 import sqlite3
+import threading
 from contextlib import closing
 
 import pytest
@@ -16,6 +17,215 @@ from tests.workbench.system_restore_host_support import restore_host as _restore
 from web.bootstrap import factory
 
 
+def test_ready_host_requests_do_not_scan_journal_history(restore_host, monkeypatch):
+    from werkzeug.test import Client
+    from werkzeug.wrappers import Response
+
+    from web.bootstrap.launcher_shutdown import RuntimeHostStopTransport
+
+    case = restore_host
+    reads, original = [], case.host.journal.records
+
+    def records():
+        reads.append(True)
+        return original()
+
+    monkeypatch.setattr(case.host.journal, "records", records)
+    assert case.client.get("/static/missing.css", buffered=True).status_code == 404
+    assert reads == []
+    client = Client(RuntimeHostStopTransport(case.app), Response)
+    assert client.get("/system/health", buffered=True).status_code == 200
+    assert case.client.get(BASE + "/config", buffered=True).status_code == 200
+    assert reads == []
+    case.host._set_state("recovery_required", "unconfirmed-request")
+    assert case.client.get("/static/missing.css", buffered=True).status_code == 503
+
+
+def test_managed_workbench_access_drives_due_tasks_before_read_snapshot(restore_host, monkeypatch):
+    from core.services.system.system_maintenance_service import SystemMaintenanceService
+
+    case = restore_host
+    calls = []
+    def maintenance(conn, **kwargs):
+        calls.append((conn.in_transaction, kwargs["db_path"]))
+    monkeypatch.setattr(SystemMaintenanceService, "run_if_due", maintenance)
+    assert case.client.get(BASE + "/config", buffered=True).status_code == 200
+    assert calls == [(False, case.path)]
+    assert case.client.get("/system/health", buffered=True).status_code == 200
+    assert case.client.get("/static/missing.css", buffered=True).status_code == 404
+    assert calls == [(False, case.path)]
+
+
+def test_unexpected_maintenance_driver_failure_stops_request_and_closes_connection(restore_host, monkeypatch):
+    from core.services.system.system_maintenance_service import SystemMaintenanceService
+
+    case = restore_host
+    case.app.config["PROPAGATE_EXCEPTIONS"] = False
+    attempted, routed = [], []
+    @case.app.get("/system-driver-probe")
+    def probe():
+        routed.append(True)
+        return {"ok": True}
+    def failed(conn, **kwargs):
+        attempted.append(conn)
+        raise RuntimeError("unexpected maintenance driver failure")
+    monkeypatch.setattr(SystemMaintenanceService, "run_if_due", failed)
+    assert case.client.get("/system-driver-probe", buffered=True).status_code == 500
+    assert len(attempted) == 1 and routed == []
+    with pytest.raises(sqlite3.ProgrammingError):
+        attempted[0].execute("SELECT 1")
+    assert case.host.status["state"] == "ready" and case.runtime.ready
+
+
+def test_busy_automatic_admission_rejects_request_without_stopping_owner(restore_host, monkeypatch):
+    from contextlib import contextmanager
+
+    from core.infrastructure.backup import maintenance_window
+    from core.services.system.system_maintenance_service import SystemMaintenanceService
+
+    case = restore_host
+    with closing(get_connection(case.path)) as conn:
+        conn.execute("INSERT INTO SystemConfig(config_key,config_value) VALUES ('auto_backup_enabled','yes')")
+        conn.commit()
+    admitted, release = threading.Event(), threading.Event()
+    actual_admission = case.host.automatic_maintenance
+    files_before = list(case.backups.glob("*.db"))
+    def competitor():
+        with maintenance_window(case.path, action="competing_automatic_task"):
+            admitted.set()
+            assert release.wait(10)
+    @contextmanager
+    def racing_admission():
+        competitor_thread = threading.Thread(target=competitor)
+        competitor_thread.start()
+        try:
+            assert admitted.wait(5)
+            with actual_admission():
+                yield
+        finally:
+            release.set()
+            competitor_thread.join(timeout=5)
+            assert not competitor_thread.is_alive()
+    monkeypatch.setattr(case.host, "automatic_maintenance", racing_admission)
+    SystemMaintenanceService.reset_throttle_for_tests()
+    try:
+        assert case.client.get(BASE + "/config", buffered=True).status_code == 503
+        assert case.host.status["state"] == "ready" and case.runtime.ready
+        assert list(case.backups.glob("*.db")) == files_before
+    finally:
+        release.set()
+        SystemMaintenanceService.reset_throttle_for_tests()
+
+
+def test_history_read_during_live_maintenance_does_not_stop_owner(restore_host):
+    from core.infrastructure.backup import MaintenanceWindowError, maintenance_window
+
+    case = restore_host
+    entered, release = threading.Event(), threading.Event()
+    def hold_window():
+        with maintenance_window(case.path, action="live_create"):
+            entered.set()
+            assert release.wait(10)
+    worker = threading.Thread(target=hold_window)
+    worker.start()
+    try:
+        assert entered.wait(5)
+        with pytest.raises(MaintenanceWindowError):
+            case.host.capture_maintenance_records()
+        assert case.host.status["state"] == "ready" and case.runtime.ready
+    finally:
+        release.set()
+        worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert case.host.capture_maintenance_records() == []
+    assert case.host.status["operations_available"]
+
+
+@pytest.mark.parametrize("due", [False, True])
+def test_automatic_tasks_read_journal_only_once_when_any_task_is_due(restore_host, monkeypatch, due):
+    from datetime import datetime, timedelta
+
+    from core.services.system.system_maintenance_service import SystemMaintenanceService
+    from data.repositories.system_job_state_repo import SystemJobStateRepository
+
+    case = restore_host
+    with closing(get_connection(case.path)) as conn:
+        for key in ("auto_backup_enabled", "auto_backup_cleanup_enabled", "auto_log_cleanup_enabled"):
+            conn.execute("INSERT INTO SystemConfig(config_key,config_value) VALUES(?, 'yes')", (key,))
+        if not due:
+            repo = SystemJobStateRepository(conn)
+            for key in ("auto_backup", "auto_backup_cleanup", "auto_log_cleanup"):
+                repo.set_last_run(key, last_run_time=(datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"), last_run_detail="{}")
+        conn.commit()
+    scans, records = [], case.host.journal.records
+    def tracked(**kwargs):
+        scans.append(True)
+        return records(**kwargs)
+    monkeypatch.setattr(case.host.journal, "records", tracked)
+    files_before = list(case.backups.glob("*.db"))
+    SystemMaintenanceService.reset_throttle_for_tests()
+    try:
+        assert case.client.get(BASE + "/config", buffered=True).status_code == 200
+        assert scans == ([True] if due else [])
+        assert len(list(case.backups.glob("*.db"))) == len(files_before) + int(due)
+        assert case.host.status["operations_available"]
+    finally:
+        SystemMaintenanceService.reset_throttle_for_tests()
+
+
+def test_busy_restore_preparation_keeps_owner_ready_even_with_original_terminal_record(restore_host):
+    from types import SimpleNamespace
+
+    from core.infrastructure.backup import MaintenanceWindowError
+
+    case = restore_host
+    row, _ = case.journal.begin(KEY, "restore", {})
+    case.journal.record(row, "failed", code="backup_integrity_failed", database_origin="unchanged")
+    def busy(**kwargs):
+        raise MaintenanceWindowError("maintenance_active", "competing maintenance")
+    with pytest.raises(MaintenanceWindowError):
+        case.host._prepare(SimpleNamespace(prepare_restore=busy), KEY, {}, lambda: None)
+    assert case.host.status["state"] == "ready" and case.runtime.ready
+
+
+def test_uncertain_create_ack_closes_managed_owner_without_repeating_file_work(restore_host, monkeypatch):
+    from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
+
+    case = restore_host
+    data = case.client.get(BASE + "/backups", buffered=True).get_json()["data"]
+    original = SystemMaintenanceJournal.record
+    def fail_ack(self, row, state, **values):
+        original(self, row, state, **values)
+        if row["action"] == "create" and state == "succeeded":
+            raise OSError("create terminal ACK unconfirmed")
+    monkeypatch.setattr(SystemMaintenanceJournal, "record", fail_ack)
+    response = case.client.post(BASE + "/backups/create", json={"request_key": KEY, "input": {},
+        "write_token": data["create_context"]["write_token"]}, buffered=True)
+    assert response.status_code == 500
+    assert case.host.status["state"] == "recovery_required" and not case.runtime.ready
+    assert case.client.get(BASE + "/results/" + KEY, buffered=True).status_code == 200
+    assert case.client.post(BASE + "/backups/create", json={}, buffered=True).status_code == 503
+
+
+@pytest.mark.parametrize("damage", ["pending", "unreadable"])
+def test_restore_admission_with_unknown_history_stops_owner_before_file_work(restore_host, damage):
+    case = restore_host
+    body = case.intent()
+    body["request_key"] = "system-" + "8" * 48
+    row, _ = case.journal.begin(KEY, "restore", {})
+    if damage == "unreadable":
+        from pathlib import Path
+        Path(case.journal.directory, "corrupt.json").write_text("{", encoding="utf-8")
+    response = case.client.post(BASE + "/backups/restore", json=body, buffered=True)
+    assert response.status_code == 503
+    assert response.get_json()["error"]["code"] == ("maintenance_active" if damage == "pending" else "maintenance_unconfirmed")
+    assert case.host.status["state"] == "recovery_required" and not case.runtime.ready
+    assert case.journal.lookup(body["request_key"]) is None
+    assert case.marker() == "current" and not list(case.backups.glob("*before_restore.db"))
+    result = case.client.get(BASE + "/results/" + KEY, buffered=True)
+    assert result.status_code == 200 and result.get_json()["data"]["operation"]["job_ref"] == row["job_ref"]
+
+
 def test_real_http_verified_restore_requires_process_restart_and_external_receipt(restore_host, monkeypatch):
     case = restore_host
     with closing(get_connection(case.path)) as conn:
@@ -26,6 +236,11 @@ def test_real_http_verified_restore_requires_process_restart_and_external_receip
         "write_token": config["write_context"]["write_token"], "input": config["values"]}, buffered=True)
     assert saved.status_code == 200, saved.get_json()
     source_hash = file_fingerprint(case.source)
+    def backup_fingerprint_only(path):
+        if str(path) == str(case.path):
+            raise OSError("terminal diagnostic database read failed")
+        return file_fingerprint(path)
+    monkeypatch.setattr("core.services.workbench.system.files.file_fingerprint", backup_fingerprint_only)
     opened = []
     original = factory.get_connection
     def tracked(path):
@@ -40,7 +255,7 @@ def test_real_http_verified_restore_requires_process_restart_and_external_receip
         assert (result["state"], result["code"]) == ("succeeded", "verified")
         assert result["target_sha256"] == source_hash
         assert result["protection_sha256"] == file_fingerprint(str(case.backups / result["protection_filename"]))
-        assert result["database_after_sha256"] == file_fingerprint(case.path)
+        assert result["database_after_sha256"] is None
         assert result["database_origin"] == "selected_backup"
         assert result["restart_required"] and result["references_require_reload"]
         assert result["result_source"] == "external_maintenance_journal"
@@ -120,14 +335,12 @@ def test_bool_guard_is_not_real_integration(restore_host):
 @pytest.mark.parametrize("code", ["new_rolled_back", "new_rollback_failed", "new_success", "copied_pending_verify"])
 def test_unknown_restore_terminal_never_authorizes_success(code):
     result = RestoreResult(ok=True, code=code, message="unknown")
-    manager = type("Manager", (), {"restore_result": result, "rollback_result": None})()
-    assert restore_outcome(manager, RestoreBackupOutcome("", "success", result))[0] == "recovery_required"
+    assert restore_outcome(RestoreBackupOutcome("", "success", result))[0] == "recovery_required"
 
 
 def test_known_success_code_with_failed_result_is_unconfirmed():
     result = RestoreResult(ok=False, code="verified", message="inconsistent")
-    manager = type("Manager", (), {"restore_result": result, "rollback_result": None})()
-    assert restore_outcome(manager, RestoreBackupOutcome("", "success", result))[0] == "recovery_required"
+    assert restore_outcome(RestoreBackupOutcome("", "success", result))[0] == "recovery_required"
 
 
 def test_failed_protection_keeps_original_database_but_requires_restart(restore_host, monkeypatch):
@@ -149,5 +362,4 @@ def test_failed_protection_keeps_original_database_but_requires_restart(restore_
 @pytest.mark.parametrize("ok,category", [(True, "error"), (False, "success")])
 def test_inconsistent_rollback_flags_are_not_confirmed(ok, category):
     result = RestoreResult(ok=ok, code="verify_failed_rolled_back", message="inconsistent")
-    manager = type("Manager", (), {"restore_result": result, "rollback_result": None})()
-    assert restore_outcome(manager, RestoreBackupOutcome("", category, result))[0] == "recovery_required"
+    assert restore_outcome(RestoreBackupOutcome("", category, result))[0] == "recovery_required"

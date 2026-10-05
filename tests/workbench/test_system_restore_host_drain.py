@@ -82,9 +82,9 @@ def test_restore_waits_for_response_iteration_and_real_worker_before_protection(
     result = payload["data"]["operation"]
     with closing(get_connection(str(case.backups / result["protection_filename"]))) as conn:
         run = WorkbenchRunService(conn).get(ref)
-        assert run["state"] == ("failed" if legacy_request else "complete")
-        if legacy_request:
-            assert run["error"]["code"] == "snapshot_stale"
+        # Ordinary maintenance reads no longer persist configuration defaults.
+        assert run["state"] == "complete" and run["error"] is None
+        assert conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidates WHERE run_ref=?", (ref,)).fetchone()[0] > 0
     assert len(calls) == 1 and protecting.is_set()
 
 

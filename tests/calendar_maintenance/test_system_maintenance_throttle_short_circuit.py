@@ -27,7 +27,7 @@ def test_system_maintenance_throttle_short_circuit(tmp_path) -> None:
                 self.conn = conn
                 self.logger = logger
 
-            def get_snapshot(self, backup_keep_days_default: int):
+            def get_snapshot_readonly(self, backup_keep_days_default: int):
                 calls["snapshot"] += 1
                 return SimpleNamespace(
                     auto_backup_enabled="yes",
@@ -97,4 +97,3 @@ def test_system_maintenance_throttle_short_circuit(tmp_path) -> None:
             conn.close()
         except Exception:
             pass
-

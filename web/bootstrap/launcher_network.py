@@ -116,7 +116,7 @@ def _can_bind(
 _DEFAULT_CAN_BIND = _can_bind
 
 
-def _candidate_ports(preferred: int) -> List[int]:
+def candidate_ports(preferred: int) -> List[int]:
     candidates: List[int] = []
     for p in [preferred, 5000, 5705, 5706, 5707, 5710, 5711, 5712, 5713, 5714, 5715]:
         try:
@@ -197,7 +197,7 @@ def pick_port(
     runtime_dir: Optional[str] = None,
     cfg_log_dir: Optional[str] = None,
 ) -> Tuple[str, int]:
-    candidates = _candidate_ports(preferred)
+    candidates = candidate_ports(preferred)
     fallback_host = "127.0.0.1"
     last_result = BindProbeResult(False, str(host or "").strip() or fallback_host, 0, "no_candidates")
     for p in candidates:

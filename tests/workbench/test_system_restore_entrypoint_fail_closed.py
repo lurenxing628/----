@@ -31,7 +31,7 @@ def test_pending_after_real_runtime_install_stops_worker_before_read_only_http_p
 
 
 @pytest.mark.parametrize("damage", ["pending", "unreadable"])
-def test_running_host_closes_admission_on_unknown_journal_but_keeps_original_lookup(tmp_path, damage):
+def test_history_read_closes_running_host_on_unknown_journal_but_keeps_original_lookup(tmp_path, damage):
     host = ProcessHost(tmp_path)
     seed_database(host)
     try:
@@ -40,6 +40,9 @@ def test_running_host_closes_admission_on_unknown_journal_but_keeps_original_loo
         if damage == "unreadable":
             (host.journal_dir / "corrupt.json").write_text("{", encoding="utf-8")
         before = host.hashes()
+        status, payload = host.request(BASE + "/restore-host")
+        assert status == 200 and payload["data"]["host"]["state"] == "ready"
+        assert host.request(BASE + "/backups")[0] == 503
         status, payload = host.request(BASE + "/restore-host")
         assert status == 200 and payload["data"]["host"]["state"] == "recovery_required"
         assert payload["data"]["host"]["operations_available"] is False

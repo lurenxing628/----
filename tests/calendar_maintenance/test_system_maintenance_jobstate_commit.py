@@ -12,6 +12,25 @@ from core.services.system.maintenance.cleanup_task import maybe_run_auto_log_cle
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 
 
+def test_disabled_automatic_tasks_do_not_persist_configuration_defaults(db_path):
+    conn = get_connection(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM SystemConfig").fetchone()[0] == 0
+        before = conn.total_changes
+        SystemMaintenanceService.reset_throttle_for_tests()
+        def unavailable():
+            raise AssertionError("disabled tasks must not enter maintenance admission")
+        result = SystemMaintenanceService.run_if_due(conn, db_path=db_path,
+            backup_dir=os.path.join(os.path.dirname(db_path), "backups"), backup_keep_days_default=7,
+            admission_window=unavailable)
+        assert result.ran_any is False
+        assert conn.total_changes == before
+        assert conn.execute("SELECT COUNT(*) FROM SystemConfig").fetchone()[0] == 0
+    finally:
+        conn.close()
+        SystemMaintenanceService.reset_throttle_for_tests()
+
+
 def _upsert_system_config(conn: sqlite3.Connection, key: str, value: str, desc: str = "") -> None:
     conn.execute(
         """
@@ -142,4 +161,3 @@ def test_system_maintenance_jobstate_commit(db_path) -> None:
             pass
         # isolation：与前置 reset_throttle 对齐，防节流状态泄漏污染同进程后续测试。
         SystemMaintenanceService.reset_throttle_for_tests()
-

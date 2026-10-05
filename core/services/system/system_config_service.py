@@ -103,7 +103,8 @@ class SystemConfigService:
         self.tx = TransactionManager(conn)
         self.repo = SystemConfigRepository(conn, logger=logger)
 
-    def _read_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
+    def _read_snapshot(self, backup_keep_days_default: int, stored_values=None) -> SystemConfigSnapshot:
+        stored_values = self.repo.read_values() if stored_values is None else stored_values
         dirty_fields: List[str] = []
         dirty_reasons: Dict[str, str] = {}
 
@@ -117,7 +118,8 @@ class SystemConfigService:
             dirty_reasons[field] = text
 
         def _get_yes_no(key: str, default: str) -> str:
-            raw = self.repo.get_value(key, default=default)
+            raw = stored_values.get(key, default)
+            raw = default if raw is None else raw
             normalized = _normalize_yes_no(raw)
             raw_text = "" if raw is None else str(raw).strip()
             if raw_text and raw_text.lower() not in {"yes", "no"}:
@@ -127,7 +129,7 @@ class SystemConfigService:
             return normalized
 
         def _get_int(key: str, default: int, min_v: int, max_v: int) -> int:
-            raw = self.repo.get_value(key, default=None)
+            raw = stored_values.get(key)
             if raw is None:
                 return int(default)
             raw_text = str(raw).strip()
@@ -166,11 +168,12 @@ class SystemConfigService:
             dirty_reasons=dict(dirty_reasons),
         )
 
-    def ensure_defaults(self, backup_keep_days_default: int) -> None:
+    def ensure_defaults(self, backup_keep_days_default: int, stored_values=None) -> None:
         """
         确保必要的 key 已落库（缺失则写入，不覆盖用户已有配置）。
         """
-        existing = {c.config_key for c in self.repo.list_all()}
+        stored_values = self.repo.read_values() if stored_values is None else stored_values
+        existing = set(stored_values)
 
         # 自动任务默认关闭；但保留策略给一个默认值（便于用户一键开启）
         defaults: Dict[str, Tuple[str, str]] = {
@@ -190,13 +193,19 @@ class SystemConfigService:
         with self.tx.transaction():
             for k, v, d in to_set:
                 self.repo.set(k, v, description=d)
+                stored_values[k] = v
 
     def get_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
-        self.ensure_defaults(backup_keep_days_default=backup_keep_days_default)
-        return self._read_snapshot(backup_keep_days_default=backup_keep_days_default)
+        stored = self.repo.read_values()
+        self.ensure_defaults(backup_keep_days_default=backup_keep_days_default, stored_values=stored)
+        return self._read_snapshot(backup_keep_days_default=backup_keep_days_default, stored_values=stored)
+
+    def snapshot_with_storage(self, backup_keep_days_default: int):
+        stored = self.repo.read_values()
+        return self._read_snapshot(backup_keep_days_default, stored), stored
 
     def get_snapshot_readonly(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
-        return self._read_snapshot(backup_keep_days_default=backup_keep_days_default)
+        return self.snapshot_with_storage(backup_keep_days_default)[0]
 
     def get_value(self, config_key: str, default: Optional[str] = None) -> Optional[str]:
         return self.repo.get_value(config_key, default=default)

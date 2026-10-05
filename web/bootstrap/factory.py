@@ -12,9 +12,10 @@ from typing import Any, Optional, cast
 from flask import Flask, current_app, g, request
 from werkzeug.serving import ThreadedWSGIServer
 
-from core.infrastructure.backup import BackupManager, is_maintenance_window_active
+from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
+from core.models.workbench_command import WorkbenchCommandRejected
 from web.bootstrap import _frozen_import_anchor as _scheduler_services_import_anchor
 from web.error_boundary import (
     render_error_template,
@@ -25,7 +26,7 @@ from web.error_handlers import register_error_handlers
 from web.routes.workbench.legacy_blueprints import register_legacy_blueprints
 from web.routes.workbench.legacy_dispatch import install_legacy_retirement
 from web.routes.workbench.registration import bp as workbench_bp
-from web.runtime_host import install_runtime_host
+from web.runtime_host import install_runtime_host, restore_host
 
 from .app_config import config as _config_map
 from .launcher import resolve_shared_data_root
@@ -310,6 +311,7 @@ def create_app_core(
         except Exception as exc:
             g._aps_req_started = None
             _app_log_once(app, "request_started_unavailable", "warning", "请求耗时起点记录失败，当前请求将跳过性能头：%s", exc)
+        req_path = ""
         try:
             req_path = str(request.path or "")
             # 白名单短路路径只允许走“无业务依赖”的轻量请求：
@@ -362,12 +364,16 @@ def create_app_core(
                 conn = get_connection(app.config["DATABASE_PATH"])
                 track_workbench_request_connection(conn)
                 op_logger = OperationLogger(conn, logger=current_app.logger)
+                owner = restore_host(app)
                 try:
                     from core.services.system import SystemMaintenanceService
 
                     workbench_request = ((request.endpoint or "").startswith("workbench.")
-                                         or request.path.startswith("/api/workbench/"))
-                    if not workbench_request:
+                                         or req_path.startswith("/api/workbench/"))
+                    runtime = app.extensions.get("workbench_run_runtime")
+                    managed_request = (runtime is not None and runtime.app is app and runtime.ready
+                                       and owner is not None and owner.status["operations_available"])
+                    if not workbench_request or managed_request:
                         _ = SystemMaintenanceService.run_if_due(
                             conn,
                             db_path=app.config["DATABASE_PATH"],
@@ -375,13 +381,15 @@ def create_app_core(
                             backup_keep_days_default=int(app.config.get("BACKUP_KEEP_DAYS", 7)),
                             logger=app.logger,
                             op_logger=op_logger,
+                            admission_window=owner.automatic_maintenance if owner is not None else None,
                         )
-                except Exception as e:
-                    app.logger.error(
-                        "系统维护任务以非阻塞方式失败（task=run_if_due type=%s error=%s）",
-                        type(e).__name__,
-                        e,
-                    )
+                except (MaintenanceWindowError, WorkbenchCommandRejected) as exc:
+                    # Busy/rejected admission stops this request before services
+                    # are mounted; unexpected failures propagate through cleanup.
+                    if exc.__cause__ is not None:
+                        app.logger.exception("Automatic maintenance admission rejected")
+                    close_workbench_request_connection(conn)
+                    return _maintenance_gate_response()
             except Exception:
                 if conn is not None:
                     try:

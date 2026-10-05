@@ -33,6 +33,15 @@ class _Host(runtime_host.SystemRestoreHost):
     def execute(self, service, *, request_key, intent, guard, audit, restore_runner):
         raise AssertionError("not exercised")
 
+    def execute_file(self, service, *, request_key, action, intent, guard, audit):
+        raise AssertionError("not exercised")
+
+    def capture_maintenance_records(self):
+        raise AssertionError("not exercised")
+
+    def automatic_maintenance(self):
+        raise AssertionError("not exercised")
+
     def audit_restore_result(self, result):
         raise AssertionError("not exercised")
 

@@ -38,29 +38,29 @@ class SystemFileWorkspace:
         if action not in ("create", "delete", "restore"):
             raise WorkbenchCommandRejected("invalid_input", "不支持这个维护动作，没有执行任何操作。", 400)
         with maintenance_window(self.database_path, logger=self.logger, action="workbench_" + action):
-            old = self.journal.lookup(request_key)
+            old = self.journal.admission(request_key)
             if old:
-                row, replayed = self.journal.begin(request_key, action, intent)
+                row, replayed = self.journal.begin(request_key, action, intent, previous=old)
                 return self.journal.public(row, replayed)
             selected = guard()
             path = self.selected_path(selected) if selected else None
-            # Intent and target fingerprint are durable before any destructive operation.
-            row, _ = self.journal.begin(request_key, action, intent)
-            target = {"filename": selected["filename"], "sha256": file_fingerprint(path)} if path else None
+            # Intent and target identity are durable before any destructive operation.
+            row, _ = self.journal.begin(request_key, action, intent, previous=old)
+            target = {"filename": selected["filename"], "sha256": None} if path else None
             self.journal.record(row, "checking", target=target)
             return self._finish(row, action, path, restore_runner, audit)
 
     def prepare_restore(self, *, request_key, intent, guard):
         """Short maintenance section only; release it BEFORE waiting for HTTP/workers."""
         with maintenance_window(self.database_path, logger=self.logger, action="restore_accept"):
-            previous = self.journal.lookup(request_key)
+            previous = self.journal.admission(request_key)
             if previous:
-                row, replayed = self.journal.begin(request_key, "restore", intent)
+                row, replayed = self.journal.begin(request_key, "restore", intent, previous=previous)
                 return row, replayed, None
             selected = guard()
             path = self.selected_path(selected)
             target = {"filename": selected["filename"], "sha256": file_fingerprint(path)}
-            row, _ = self.journal.begin(request_key, "restore", intent)
+            row, _ = self.journal.begin(request_key, "restore", intent, previous=previous)
             self.journal.record(row, "checking", target=target, restart_required=True,
                                 database_origin="unconfirmed", code="host_draining",
                                 message="恢复已接收，正在停止当前操作和排产；请不要关闭页面，稍后在本页查看结果。")
@@ -93,8 +93,6 @@ class SystemFileWorkspace:
         if action == "restore":
             origin = {"succeeded": "selected_backup", "rolled_back": "protection_backup", "failed": "unchanged"}
             evidence["database_origin"] = origin.get(state, "unconfirmed")
-            if state in origin:
-                evidence["database_after_sha256"] = file_fingerprint(self.database_path)
             if state == "succeeded":
                 evidence["data_context_before"] = restored_context_ref(self.journal.database_scope, self.journal.records())
         if confirm_host is not None:
@@ -108,11 +106,11 @@ class SystemFileWorkspace:
                 raise RuntimeError("恢复执行合同尚未接入。")
             manager = SystemRestoreManager(journal=self.journal, record=row, db_path=self.database_path,
                                            backup_dir=self.backup_dir, logger=self.logger)
-            return restore_outcome(manager, restore_runner(manager, path))
+            return restore_outcome(restore_runner(manager, path))
         if action == "delete":
             remove_fixed_file(path, missing_ok=False)
             return "succeeded", "deleted", "已删除所选备份文件，删除不能撤销。"
         manager = BackupManager(self.database_path, self.backup_dir, logger=self.logger)
         path = manager.backup(suffix="manual_" + uuid.uuid4().hex[:12])
-        self.journal.record(row, "checking", target={"filename": os.path.basename(path), "sha256": file_fingerprint(path)})
+        self.journal.record(row, "checking", target={"filename": os.path.basename(path), "sha256": None})
         return "succeeded", "backup_verified", "备份已新增并通过完整性检查；还没有做过恢复演练。"

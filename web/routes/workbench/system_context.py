@@ -90,5 +90,4 @@ def journal():
 
 
 def query_payload(data):
-    return query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
-                                "snapshot_ref": issue_context("query", input_fingerprint(data))})
+    return query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")})

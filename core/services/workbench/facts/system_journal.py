@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 from datetime import datetime
+from typing import Any
 
 from core.infrastructure.safe_files import (
     create_fixed_file_exclusive,
@@ -27,6 +28,7 @@ _RESTORE_TERMINALS = {
     "failed": ("busy", "before_restore_backup_failed", "backup_integrity_failed", "backup_missing",
                "backup_unreadable", "db_target_unreadable"),
 }
+_NOT_CAPTURED = object()
 
 
 def file_fingerprint(path):
@@ -74,28 +76,42 @@ class SystemMaintenanceJournal:
         except FileNotFoundError:
             return None
 
-    def pending(self):
-        return [row for row in self.records() if row["state"] not in TERMINAL_STATES]
+    def pending(self, records=None):
+        captured = self.records() if records is None else records
+        return [row for row in captured if row["state"] not in TERMINAL_STATES]
 
-    def records(self):
-        try:
-            names = os.listdir(self.directory)
-        except FileNotFoundError:
-            return []
+    def records(self, *, names=None):
+        if names is None:
+            try:
+                names = os.listdir(self.directory)
+            except FileNotFoundError:
+                return []
         return [self._read(os.path.join(self.directory, name)) for name in names if name.endswith(".json")]
 
-    def assert_ready(self):
-        if self.pending():
+    def assert_ready(self, records=None):
+        if self.pending(records):
             raise WorkbenchCommandRejected("maintenance_active", "上一次维护还没有确认结果，这次没有执行。请先用操作编号查询上次维护的结果。", 503)
 
-    def begin(self, request_key, action, intent):
-        previous = self.lookup(request_key)
+    def admission(self, request_key):
+        """Capture readiness before guards; the caller owns the maintenance window."""
+        try:
+            previous = self.lookup(request_key)
+            if previous is None:
+                self.assert_ready()
+        except WorkbenchCommandRejected:
+            raise
+        except Exception as exc:
+            raise WorkbenchCommandRejected("maintenance_unconfirmed", "维护记录读不出来，不能提交新的维护。请先查询原操作结果并联系维护人员。", 503) from exc
+        return previous
+
+    def begin(self, request_key, action, intent, *, previous: Any = _NOT_CAPTURED):
+        if previous is _NOT_CAPTURED:
+            previous = self.admission(request_key)
         digest = input_fingerprint({"action": action, "input": intent})
         if previous:
             if previous["input_hash"] != digest:
                 raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的是另一次维护，这次没有执行。请重新提交。")
             return previous, True
-        self.assert_ready()
         row = {"version": 1, "database_scope": self.database_scope, "job_ref": uuid.uuid4().hex,
                "request_key": request_key, "input_hash": digest, "action": action, "state": "accepted",
                "code": "accepted", "message": "维护已接收，还没有完成。", "history": [],

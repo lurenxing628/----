@@ -1,18 +1,19 @@
-"""PyInstaller 冻结导入锚：core.services.scheduler lazy 导出的静态镜像。
+"""PyInstaller 冻结导入锚：scheduler lazy 模块的静态收集通道。
 
 背景（2026-07-19 盲区扫描 B08）：
 - core/services/scheduler/__init__.py 的 _EXPORTS 走 __getattr__ +
   import_module(变量实参) 做 lazy 导出，源码态运行正常，但 PyInstaller 4.10
   的静态分析看不到这些动态导入，冻结包会漏掉服务模块，exe 启动即死。
-- 本模块把 _EXPORTS 全部子模块（含 config 子包的 lazy 导出）显式静态 import
-  一遍，只作冻结收集锚点；由 web/bootstrap/factory.py 的
+- 需要锚点收集的模块（含 config 子包的 lazy 导出）由本模块显式静态 import，
+  只作冻结收集锚点；由 web/bootstrap/factory.py 的
   _PYINSTALLER_IMPORT_ANCHORS 静态引用，保证 PyInstaller 从 app.py 可达。
-- 源码态行为零变化：web 启动路径本来就会在 factory 装配路由与服务时
-  导入全部排产服务；非 web 消费方不导入本模块，包级 lazy 语义保持不变
+- 已退役派工 UI 的三个公开服务由 build_win7_onedir.bat 的 hidden-import
+  收集，不因冻结锚在正常启动时加载；公开 lazy 导出保持不变。
+- 非 web 消费方不导入本模块，包级 lazy 语义保持不变
   （lazy 化取舍见 41ad409c）。
 
 同步契约：__init__._EXPORTS（含 config/__init__._EXPORTS）新增或删除条目时，
-必须同步本文件的静态 import 清单；
+必须同步本文件的静态 import 或 bat 两个分支的 hidden-import 清单；
 tests/gate_meta/test_frozen_bundle_contract.py 会做对账，漂移即红。
 """
 
@@ -23,9 +24,6 @@ import core.services.scheduler.config.config_page_outcome as _config_page_outcom
 import core.services.scheduler.config.config_service as _config_service
 import core.services.scheduler.gantt.service as _gantt_service
 import core.services.scheduler.operation_execution_feedback_service as _operation_execution_feedback_service
-import core.services.scheduler.resource_dispatch.actual_record_service as _resource_dispatch_actual_record_service
-import core.services.scheduler.resource_dispatch.execution_service as _resource_dispatch_execution_service
-import core.services.scheduler.resource_dispatch.service as _resource_dispatch_service
 import core.services.scheduler.schedule_service as _schedule_service
 
 FROZEN_IMPORT_ANCHORS = (
@@ -34,9 +32,6 @@ FROZEN_IMPORT_ANCHORS = (
     _config_service,
     _gantt_service,
     _operation_execution_feedback_service,
-    _resource_dispatch_actual_record_service,
-    _resource_dispatch_execution_service,
-    _resource_dispatch_service,
     _schedule_service,
 )
 

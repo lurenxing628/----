@@ -39,6 +39,10 @@ class SystemConfigRepository(BaseRepository):
         rows = self.fetchall("SELECT id, config_key, config_value, description, updated_at FROM SystemConfig ORDER BY config_key")
         return [SystemConfig.from_row(r) for r in rows]
 
+    def read_values(self):
+        return {row["config_key"]: None if row["config_value"] is None else str(row["config_value"])
+                for row in self.fetchall("SELECT config_key, config_value FROM SystemConfig")}
+
     def set(self, config_key: str, config_value: str, description: Optional[str] = None) -> None:
         self.execute(
             """
@@ -48,10 +52,11 @@ class SystemConfigRepository(BaseRepository):
               config_value = excluded.config_value,
               description = COALESCE(excluded.description, SystemConfig.description),
               updated_at = CURRENT_TIMESTAMP
+            WHERE SystemConfig.config_value IS NOT excluded.config_value
+               OR SystemConfig.description IS NOT COALESCE(excluded.description, SystemConfig.description)
             """,
             (str(config_key), str(config_value), description),
         )
 
     def delete(self, config_key: str) -> None:
         self.execute("DELETE FROM SystemConfig WHERE config_key = ?", (str(config_key),))
-

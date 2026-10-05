@@ -28,7 +28,8 @@ class RuntimeHostStopTransport:
             recovery = bool(self.app.extensions.get("workbench_system_restore_recovery"))
             controller = self.app.extensions.get(RESTORE_HOST_EXTENSION)
             if controller is not None:
-                recovery = recovery or bool(controller.status.get("restart_required"))
+                from .workbench_system_restore_status import request_restore_status
+                recovery = recovery or bool(request_restore_status(environ, controller).get("restart_required"))
             if recovery:
                 payload = {"app": "aps", "status": "recovery_required", "contract_version": 1,
                            "operations_available": False}

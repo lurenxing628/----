@@ -13,11 +13,31 @@ from tests.workbench.system_maintenance_support import system_api as _system_api
 
 
 def test_config_read_does_not_persist_defaults(system_api):
-    data = system_api.read("/config")["data"]
+    response = system_api.read("/config")
+    assert "snapshot_ref" not in response["meta"]
+    data = response["data"]
     assert len(data["defaulted_fields"]) == 8
     conn = system_api.connect()
     assert conn.execute("SELECT COUNT(*) FROM SystemConfig").fetchone()[0] == 0
     conn.close()
+
+
+def test_config_save_generates_only_the_guard_fingerprint(system_api, monkeypatch):
+    from core.services.workbench.system import config
+
+    data = system_api.read('/config')['data']
+    original, calls = config.input_fingerprint, []
+
+    def fingerprint(value):
+        calls.append(1)
+        return original(value)
+
+    monkeypatch.setattr(config, 'input_fingerprint', fingerprint)
+    response = system_api.post('/config/save', {**data['values'], 'auto_backup_interval_minutes': 38},
+                               data['write_context']['write_token'])
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()['data']['config']['values']['auto_backup_interval_minutes'] == 38
+    assert len(calls) == 1
 
 
 def test_config_atomic_save_audit_replay_and_stale_guard(system_api):
@@ -56,13 +76,21 @@ def test_bad_config_rejected_without_writes(system_api, field, value):
     assert system_api.read("/config")["data"]["values"] == data["values"]
 
 
-def test_second_group_failure_rolls_back_first_group_and_receipt(system_api, monkeypatch):
+def test_second_value_failure_rolls_back_first_value_and_receipt(system_api, monkeypatch):
     data = system_api.read("/config")["data"]
-    def fail(*args, **kwargs):
-        raise RuntimeError("injected second group failure")
-    monkeypatch.setattr(SystemConfigService, "update_logs_settings", fail)
+    original = SystemConfigService.set_value
+    writes = []
+
+    def fail(self, key, value, description=None):
+        writes.append(key)
+        if len(writes) == 2:
+            raise RuntimeError("injected second value failure")
+        return original(self, key, value, description)
+
+    monkeypatch.setattr(SystemConfigService, "set_value", fail)
     response = system_api.post("/config/save", data["values"], data["write_context"]["write_token"])
     assert response.status_code == 500
+    assert len(writes) == 2
     conn = system_api.connect()
     assert conn.execute("SELECT COUNT(*) FROM SystemConfig").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM WorkbenchCommandReceipts").fetchone()[0] == 0
@@ -70,7 +98,10 @@ def test_second_group_failure_rolls_back_first_group_and_receipt(system_api, mon
     assert system_api.read("/results/system-test-request-0001")["data"]["kind"] == "not_recorded"
 
 
-def test_real_backup_create_single_delete_replay_and_no_fake_verification(system_api):
+def test_real_backup_create_single_delete_replay_and_no_fake_verification(system_api, monkeypatch):
+    def unused_digest(path):
+        raise AssertionError("create/delete must not read a whole backup for a display digest")
+    monkeypatch.setattr("core.services.workbench.system.files.file_fingerprint", unused_digest)
     def context_ref():
         with closing(system_api.connect()) as conn:
             return RunDataContext(conn, str(system_api.journal_dir), str(system_api.backups)).ref()
@@ -81,6 +112,7 @@ def test_real_backup_create_single_delete_replay_and_no_fake_verification(system
     result = response.get_json()["data"]["operation"]
     assert result["code"] == "backup_verified"
     assert result["terminal"] is True and result["audit_persisted"] is True
+    assert result["target_sha256"] is None and "snapshot_ref" not in response.get_json()["meta"]
     assert context_ref() == before_context
     row = system_api.selected()
     assert row["verification_state"] == "not_checked"
@@ -299,3 +331,26 @@ def test_oversized_log_snapshot_reports_failure_without_partial_export(system_ap
     {"file": "../aps_secret_key.txt"}, {"page_size": "200"}, {"status": "succeeded"}, {"unknown": "x"}])
 def test_invalid_log_query_is_not_silently_changed(system_api, query):
     assert system_api.get("/logs", **query).status_code in (400, 422)
+
+
+def test_maintenance_journal_capacity_rejects_before_parsing(tmp_path, monkeypatch):
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
+    from core.services.workbench.system.maintenance_records import _JOURNAL_LIMIT, capture_maintenance_journal
+
+    directory = tmp_path / "maintenance-journal"
+    directory.mkdir()
+    for index in range(_JOURNAL_LIMIT + 1):
+        (directory / (str(index) + ".json")).write_text("malformed", encoding="utf-8")
+    journal = SystemMaintenanceJournal(str(directory), str(tmp_path / "app.db"))
+    reads = []
+
+    def read(path):
+        reads.append(path)
+        raise AssertionError("over-capacity journals must be rejected before parsing any record")
+
+    monkeypatch.setattr(journal, "_read", read)
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        capture_maintenance_journal(journal)
+    assert error.value.code == "maintenance_record_capacity" and error.value.status == 413
+    assert reads == []

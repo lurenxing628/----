@@ -19,15 +19,17 @@ Integration contract (owned by factory/entrypoint, not this module):
 import math
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 
 from flask import g, has_request_context
 
-from core.infrastructure.backup import is_maintenance_window_active
+from core.infrastructure.backup import MaintenanceWindowError, is_maintenance_window_active, maintenance_window
 from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler import schedule_service
 from core.services.system.backup_restore import audit_backup_operation
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
+from core.services.workbench.system.maintenance_records import capture_maintenance_journal
 from web.runtime_host import RESTORE_HOST_EXTENSION, RESTORE_HOST_GUARD, SystemRestoreHost
 
 from .launcher_paths import _normalize_db_path_for_runtime
@@ -65,35 +67,94 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
 
     @property
     def status(self):
+        return self._status()
+
+    def static_status(self):
+        """Asset requests still respect the owned host state without reading file history."""
+        return self._status()
+
+    def _status(self):
         with self._lock:
-            journal_ready = False
+            available = False
             if self._state == "ready":
                 try:
                     self.verify()
-                    journal_ready = self._journal_ready()
+                    available = not is_maintenance_window_active(self.db_path, logger=self.app.logger)
                 except Exception:
-                    self.app.logger.exception("Restore journal/ownership became unconfirmed; closing admission")
+                    self.app.logger.exception("Restore ownership/maintenance lock became unconfirmed; closing admission")
                     self._stop_unconfirmed(self._request_key)
             return {"state": self._state, "request_key": self._request_key,
                     "restart_required": self._state != "ready", "automatic_resume": False,
-                    "operations_available": (self._state == "ready" and journal_ready and self.runtime.ready
+                    "operations_available": (self._state == "ready" and available and self.runtime.ready
                                              and self.gate.status["state"] == "accepting"),
                     "result_source": "external_maintenance_journal",
                     "references": "reload_from_database_after_process_restart",
                     "receipt_policy": "file_results_from_journal_database_receipts_from_current_database"}
 
-    def _journal_ready(self):
-        pending = self.journal.pending()
-        if not pending:
-            return True
-        # A live non-restore file command owns its maintenance window until the
-        # terminal journal write. It is busy, not an interrupted restore host.
-        if (all(row["action"] in ("create", "delete") and row["state"] in ("accepted", "checking")
-                for row in pending)
-                and is_maintenance_window_active(self.db_path, logger=self.app.logger) is True):
-            return False
-        self.journal.assert_ready()
-        return True
+    def capture_maintenance_records(self):
+        """Historical UI reads are explicit; unreadable/pending evidence closes its owner."""
+        self.verify()
+        # A busy live command is a temporary read rejection. Hold the same
+        # window through capture so an accepted phase cannot appear mid-read.
+        with maintenance_window(self.db_path, logger=self.app.logger, action="maintenance_history_read"):
+            try:
+                records = capture_maintenance_journal(self.journal)
+                self.journal.assert_ready(records)
+            except WorkbenchCommandRejected as exc:
+                if exc.code != "maintenance_record_capacity":
+                    self._stop_unconfirmed(None)
+                raise
+            except Exception as exc:
+                self._stop_unconfirmed(None)
+                raise WorkbenchCommandRejected("maintenance_active", "维护记录读不出来，系统已停下，请联系维护人员。", 503) from exc
+        return records
+
+    def _require_workspace(self, service):
+        self.verify()
+        if (service.database_path != self.app.config["DATABASE_PATH"]
+                or service.journal.directory != self.journal.directory
+                or service.backup_dir != self.app.config["BACKUP_DIR"]):
+            raise RuntimeError("Restore workspace does not belong to this host")
+
+    @contextmanager
+    def automatic_maintenance(self):
+        """Only a due task enters this owner; disabled/not-due reads have no journal scan."""
+        self.verify()
+        if self._state != "ready" or not self.runtime.ready or self.gate.status["state"] != "accepting":
+            raise WorkbenchCommandRejected("maintenance_active", "本软件已停止维护，请先查询原操作结果并重启。", 503)
+        with maintenance_window(self.db_path, logger=self.app.logger, action="automatic_maintenance"):
+            try:
+                self.journal.assert_ready()
+            except WorkbenchCommandRejected:
+                self._stop_unconfirmed(None)
+                raise
+            except Exception as exc:
+                self._stop_unconfirmed(None)
+                raise WorkbenchCommandRejected("maintenance_unconfirmed", "维护记录读不出来，系统已停止维护，请联系维护人员。", 503) from exc
+            yield
+
+    def execute_file(self, service, *, request_key, action, intent, guard, audit):
+        """Own create/delete uncertainty as well as restore; history is checked at acceptance."""
+        self._require_workspace(service)
+        if self._state != "ready" or not self.runtime.ready or self.gate.status["state"] != "accepting":
+            raise WorkbenchCommandRejected("maintenance_active", "本软件已停止普通维护，请先查询结果并重启。", 503)
+        try:
+            result = service.execute(request_key=request_key, action=action, intent=intent, guard=guard, audit=audit)
+        except MaintenanceWindowError:
+            raise
+        except WorkbenchCommandRejected as exc:
+            if exc.code in ("maintenance_active", "maintenance_unconfirmed"):
+                if exc.__cause__ is not None:
+                    self.app.logger.exception("Maintenance journal admission cannot be confirmed")
+                self._stop_unconfirmed(None)
+            raise
+        except Exception:
+            # A read-back cannot turn a failed durable ACK into a confirmed result.
+            self._stop_unconfirmed(request_key)
+            raise
+        if not result["terminal"]:
+            self._stop_unconfirmed(request_key)
+        return result
 
     def _set_state(self, state, request_key):
         with self._lock:
@@ -114,11 +175,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
         runtime.proof.verify()
 
     def execute(self, service, *, request_key, intent, guard, audit, restore_runner):
-        self.verify()
-        if (service.database_path != self.app.config["DATABASE_PATH"]
-                or service.journal.directory != self.journal.directory
-                or service.backup_dir != self.app.config["BACKUP_DIR"]):
-            raise RuntimeError("Restore workspace does not belong to this host")
+        self._require_workspace(service)
         conn = g.get("db")
         if conn is None or conn.in_transaction:
             raise WorkbenchCommandRejected("maintenance_active", "还有没结束的数据库操作，恢复没有执行。请稍后重新点「恢复」。", 503)
@@ -167,7 +224,13 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
     def _prepare(self, service, request_key, intent, guard):
         try:
             return service.prepare_restore(request_key=request_key, intent=intent, guard=guard)
-        except WorkbenchCommandRejected:
+        except MaintenanceWindowError:
+            raise
+        except WorkbenchCommandRejected as exc:
+            if exc.code in ("maintenance_active", "maintenance_unconfirmed"):
+                if exc.__cause__ is not None:
+                    self.app.logger.exception("Restore journal admission cannot be confirmed")
+                self._stop_unconfirmed(None)
             raise
         except Exception:
             # An accepted intent can reach disk before the following fsync ACK

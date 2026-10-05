@@ -37,7 +37,7 @@ def test_writable_real_host_restore_and_fresh_process_replay_preserve_data(tmp_p
         assert result["target_sha256"] == file_fingerprint(str(source))
         protection = host.backups / result["protection_filename"]
         assert result["protection_sha256"] == file_fingerprint(str(protection))
-        assert result["database_after_sha256"] == file_fingerprint(str(host.path))
+        assert result["database_after_sha256"] is None
         assert marker(host.path) == "selected" and marker(protection) == "current"
         assert payload["data"]["host"]["operations_available"] is False
         assert host.request(BASE + "/backups/restore", body, "POST")[0] == 503
@@ -57,6 +57,7 @@ def test_writable_real_host_restore_and_fresh_process_replay_preserve_data(tmp_p
         assert status == 200, replay
         assert replay["data"]["operation"]["replayed"] is True
         assert replay["data"]["operation"]["job_ref"] == result["job_ref"]
+        assert replay["data"]["operation"]["database_after_sha256"] is None
         assert replay["data"]["host"]["restart_required"] is False
         assert len(list(restarted.backups.glob("*before_restore.db"))) == 1
         assert marker(restarted.path) == "selected"
@@ -179,7 +180,12 @@ def test_real_entrypoint_restore_drains_http_and_worker_before_protection(tmp_pa
             assert status == 200 and payload["data"]["operation"]["state"] == "succeeded", payload
         result = payload["data"]["operation"]
         with closing(sqlite3.connect(str(host.backups / result["protection_filename"]))) as conn:
-            assert conn.execute("SELECT state FROM WorkbenchRunJobs").fetchone()[0] == "complete"
+            run = conn.execute("SELECT state,error_json FROM WorkbenchRunJobs").fetchone()
+            assert run == ("complete", "null"), run
+            assert conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidates").fetchone()[0] > 0
+            # The real request-driven backup did run while this worker was held.
+            assert conn.execute("SELECT last_run_time FROM SystemJobState WHERE job_key='auto_backup'").fetchone()[0]
+        assert list(host.backups.glob("*_auto.db"))
         assert host.request(HOST_STOP_PATH, method="GET", token=host.contract["shutdown_token"])[0] == 400
         host.stop()
         assert not list(host.backups.glob("*_exit.db"))

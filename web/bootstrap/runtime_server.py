@@ -10,7 +10,7 @@ from werkzeug.serving import BaseWSGIServer, ThreadedWSGIServer, make_server
 
 from core.infrastructure.logging import safe_log
 
-from .launcher_network import _candidate_ports
+from .launcher_network import candidate_ports
 from .launcher_shutdown import RuntimeHostStopTransport
 from .workbench_request_lifecycle import WorkbenchRequestHandler
 
@@ -65,7 +65,7 @@ def create_runtime_server(app, host, port, *, server_factory=make_runtime_server
 
 
 def prepare_runtime_server(app, host, preferred_port, *, server_factory=make_runtime_server):
-    candidates = [port for port in _candidate_ports(preferred_port) if port <= 65535]
+    candidates = [port for port in candidate_ports(preferred_port) if port <= 65535]
     hosts = [host] if host == "127.0.0.1" else [host, "127.0.0.1"]
     endpoints = [(bind_host, port) for bind_host in hosts for port in candidates]
     endpoints.extend((bind_host, 0) for bind_host in hosts)

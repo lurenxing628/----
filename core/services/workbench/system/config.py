@@ -15,22 +15,25 @@ class SystemConfigWorkspace:
         self.keep_days = keep_days
         self.service = SystemConfigService(conn, logger=logger)
 
-    def snapshot(self):
-        snapshot = self.service.get_snapshot_readonly(self.keep_days).to_dict()
-        stored = {key: self.service.get_value(key) for key in CONFIG_FIELDS}
+    def snapshot(self, *, capture_fingerprint=True):
+        snapshot, raw = self.service.snapshot_with_storage(self.keep_days)
+        snapshot = snapshot.to_dict()
+        stored = {key: raw.get(key) for key in CONFIG_FIELDS}
         return {"values": {key: snapshot[key] for key in CONFIG_FIELDS},
                 "stored_values": stored, "dirty_fields": snapshot["dirty_fields"],
                 "dirty_reasons": snapshot["dirty_reasons"],
-                "defaulted_fields": [key for key in CONFIG_FIELDS if stored[key] is None]}, input_fingerprint(stored)
+                "defaulted_fields": [key for key in CONFIG_FIELDS if stored[key] is None]}, (
+                    input_fingerprint(stored) if capture_fingerprint else None)
 
     def save(self, *, request_key, values, guard):
         values = config_input(values)
         def mutate(before):
             if before["values"] == values and not before["dirty_fields"] and not before["defaulted_fields"]:
                 return WorkbenchCommandOutcome("unchanged", {"config": before, "audit_persisted": False})
-            self.service.update_backup_settings(**{key: values[key] for key in CONFIG_FIELDS[:5]})
-            self.service.update_logs_settings(**{key: values[key] for key in CONFIG_FIELDS[5:]})
-            after, _ = self.snapshot()
+            for key, value in values.items():
+                if before["stored_values"][key] != str(value):
+                    self.service.set_value(key, value)
+            after, _ = self.snapshot(capture_fingerprint=False)
             OperationLogger(self.conn, self.logger).info(
                 module="system", action="workbench_config_save", target_type="system_config",
                 detail={"before": before["stored_values"], "after": after["stored_values"]}, raise_on_fail=True)

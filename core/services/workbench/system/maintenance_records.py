@@ -36,15 +36,28 @@ def _event(kind, source, identity, time, status, summary, detail):
             "file_capabilities": dict(_FILE_ACTIONS)}
 
 
-def _restore_records(journal):
+def _require_journal_capacity(count):
+    if count > _JOURNAL_LIMIT:
+        raise WorkbenchCommandRejected("maintenance_record_capacity", "维护记录条数超过一次能读的上限，这次没有列出。请让维护人员清理维护目录后再看。", 413)
+
+
+def capture_maintenance_journal(journal):
+    """Bound this file snapshot before parsing; reuse its one directory enumeration."""
     try:
         names = os.listdir(journal.directory)
     except FileNotFoundError:
         names = []
-    if sum(name.endswith(".json") for name in names) > _JOURNAL_LIMIT:
-        raise WorkbenchCommandRejected("maintenance_record_capacity", "维护记录条数超过一次能读的上限，这次没有列出。请让维护人员清理维护目录后再看。", 413)
+    _require_journal_capacity(sum(name.endswith(".json") for name in names))
+    return journal.records(names=names)
+
+
+def _restore_records(journal, records=None):
+    if records is None:
+        records = capture_maintenance_journal(journal)
+    else:
+        _require_journal_capacity(len(records))
     rows = []
-    for record in journal.records():
+    for record in records:
         if record["action"] != "restore":
             continue
         event = journal.public(record)
@@ -103,14 +116,14 @@ def _latest_cleanup(conn, audited_actions):
     return rows, issues
 
 
-def maintenance_records(conn, backup_dir, journal):
+def maintenance_records(conn, backup_dir, journal, *, journal_records=None):
     """Caller owns the database read snapshot. Journal validation failures propagate."""
     files, issues = backup_records(backup_dir)
     rows = [{**row, "record_kind": "backup_file"} for row in files]
     if journal is None:
         issues.append({"code": "restore_event_source_unconfigured", "message": "还没有配置维护目录，读不到恢复操作记录；下面只显示备份文件的基本信息。"})
     else:
-        rows.extend(_restore_records(journal))
+        rows.extend(_restore_records(journal, journal_records))
     audits, present, truncated = _cleanup_audits(conn)
     latest, latest_issues = _latest_cleanup(conn, present)
     rows.extend(audits)

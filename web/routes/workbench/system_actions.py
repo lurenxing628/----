@@ -112,6 +112,8 @@ def _execute_file_action(action, body):
         result = host.execute(service, request_key=body["request_key"], intent=body["input"], guard=guard,
                               audit=host.audit_restore_result, restore_runner=_restore_runner)
         return query_payload({"kind": "file_operation", "operation": result, "host": host.status})
-    result = service.execute(request_key=body["request_key"], action=action, intent=body["input"], guard=guard,
-                             audit=_audit_file, restore_runner=None)
+    host = restore_host(current_app)
+    values = {"request_key": body["request_key"], "action": action, "intent": body["input"], "guard": guard,
+              "audit": _audit_file}
+    result = host.execute_file(service, **values) if host is not None else service.execute(**values)
     return query_payload({"kind": "file_operation", "operation": result})

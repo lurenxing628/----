@@ -8,11 +8,12 @@ from core.models.workbench_system import RESTORE_DISABLED, filter_records, query
 from core.services.workbench.facts.system_reads import log_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.system.config import SystemConfigWorkspace
-from core.services.workbench.system.maintenance_records import maintenance_records
+from core.services.workbench.system.maintenance_records import capture_maintenance_journal, maintenance_records
 from web.api_responses import query_success
+from web.runtime_host import restore_host
 
 from .read_context import bind_read_snapshot
-from .system_context import issue_context, journal, system_endpoint
+from .system_context import issue_context, journal, query_payload, system_endpoint
 from .system_log_snapshots import resolve_log_snapshot, retain_log_snapshot
 
 
@@ -20,9 +21,9 @@ def restore_available():
     return callable(current_app.extensions.get("workbench_system_restore_guard"))
 
 
-def file_capabilities():
+def file_capabilities(journal_records=None):
     try:
-        journal().assert_ready()
+        journal().assert_ready(journal_records)
         reason = ""
     except Exception as exc:
         reason = str(exc) if isinstance(exc, WorkbenchCommandRejected) else "维护记录读不出来，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。"
@@ -31,7 +32,7 @@ def file_capabilities():
             "restore_reason": reason or ("" if restore_available() else RESTORE_DISABLED)}
 
 
-def collection(kind):
+def collection(kind, *, event_journal=None, journal_records=None):
     if any(len(request.args.getlist(key)) != 1 for key in request.args):
         raise WorkbenchCommandRejected("invalid_input", "筛选条件有重复项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     query = query_input(request.args.to_dict(), kind)
@@ -41,8 +42,10 @@ def collection(kind):
         rows, sources, snapshot = resolve_log_snapshot(scope, token)
         return rows, sources, query, snapshot
     if kind == "backups":
-        event_journal = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
-        rows, sources = maintenance_records(g.db, current_app.config["BACKUP_DIR"], event_journal)
+        if event_journal is None and current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"):
+            event_journal = journal()
+        rows, sources = maintenance_records(g.db, current_app.config["BACKUP_DIR"], event_journal,
+                                            journal_records=journal_records)
     else:
         rows, sources = log_records(g.db, current_app.config["LOG_DIR"], current_app.logger)
     filtered = filter_records(rows, query)
@@ -53,8 +56,14 @@ def collection(kind):
 
 @system_endpoint
 def system_collection(kind):
+    event_journal = (journal() if kind == "backups" and
+                     current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None)
+    host = restore_host(current_app) if event_journal is not None else None
+    records = None
+    if event_journal is not None:
+        records = host.capture_maintenance_records() if host is not None else capture_maintenance_journal(event_journal)
     with TransactionManager(g.db).transaction():
-        rows, sources, query, snapshot = collection(kind)
+        rows, sources, query, snapshot = collection(kind, event_journal=event_journal, journal_records=records)
     count, size, page = len(rows), query["page_size"], query["page"]
     pages = max(1, (count + size - 1) // size)
     if page > pages:
@@ -70,7 +79,7 @@ def system_collection(kind):
     data = {"rows": public, "page": {"number": page, "size": size, "total": count, "pages": pages},
             "sources": sources, "scope": "backup-files-and-maintenance-events" if kind == "backups" else "bounded-log-windows"}
     if kind == "backups":
-        data.update({"capabilities": file_capabilities(), "create_context": {"write_token": issue_context("create", {})}})
+        data.update({"capabilities": file_capabilities(records), "create_context": {"write_token": issue_context("create", {})}})
     return query_success(data, snapshot)
 
 
@@ -82,5 +91,4 @@ def system_config_read():
         data, fingerprint = SystemConfigWorkspace(g.db, current_app.logger, current_app.config.get("BACKUP_KEEP_DAYS", 7)).snapshot()
     data["stored_values"] = {key: public_system_text(value, 256) if value is not None else None for key, value in data["stored_values"].items()}
     data["write_context"] = {"write_token": issue_context("config", fingerprint)}
-    snapshot = bind_read_snapshot({"kind": "system.config"}, fingerprint)
-    return query_success(data, snapshot)
+    return query_payload(data)

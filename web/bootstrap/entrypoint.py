@@ -318,20 +318,27 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
         else:
             safe_log(app.logger, "info", "开发重载父进程跳过获取运行时锁与运行时契约。")
 
-        if use_reloader:
-            app.run(host=host, port=port, debug=debug, use_reloader=True, request_handler=WorkbenchRequestHandler)
-            return 0
-        if prepared_server is None:
-            deps.serve_runtime_app(app, host, port)
-        else:
-            deps.serve_runtime_app(app, host, port, server=prepared_server)
-        return 0
+        return _serve_selected_endpoint(
+            deps, app, host=host, port=port, debug=debug,
+            use_reloader=use_reloader, prepared_server=prepared_server,
+        )
     finally:
         try:
             if prepared_server is not None:
                 prepared_server.server_close()
         finally:
             stop_run_runtime(runtime or runtime_lock_state.get("runtime"))
+
+
+def _serve_selected_endpoint(deps, app, *, host, port, debug, use_reloader, prepared_server):
+    if use_reloader:
+        app.run(host=host, port=port, debug=debug, use_reloader=True, request_handler=WorkbenchRequestHandler)
+        return 0
+    if prepared_server is None:
+        deps.serve_runtime_app(app, host, port)
+    else:
+        deps.serve_runtime_app(app, host, port, server=prepared_server)
+    return 0
 
 
 def _preferred_listen_port(*, logger) -> int:

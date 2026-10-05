@@ -11,8 +11,6 @@ class SystemRestoreManager(BackupManager):
         super().__init__(**kwargs)
         self.journal = journal
         self.record = record
-        self.restore_result = None
-        self.rollback_result = None
         self.rolling_back = False
 
     def backup(self, suffix=None):
@@ -42,19 +40,14 @@ class SystemRestoreManager(BackupManager):
                 or file_fingerprint(path) != source["sha256"]):
             raise RuntimeError("Restore source no longer matches its durable fingerprint")
 
-    def restore(self, backup_path):
-        self.restore_result = super().restore(backup_path)
-        return self.restore_result
-
     def _auto_rollback(self, before_restore_path, **kwargs):
         self.rolling_back = True
         self.journal.record(self.record, "rolling_back")
-        self.rollback_result = super()._auto_rollback(before_restore_path, **kwargs)
-        return self.rollback_result
+        return super()._auto_rollback(before_restore_path, **kwargs)
 
 
-def restore_outcome(manager, outcome):
-    result = outcome.result or manager.rollback_result or manager.restore_result
+def restore_outcome(outcome):
+    result = outcome.result
     if result is None:
         return "recovery_required", "result_missing", "这次恢复没有留下完整结果，现在不能确认数据库内容。请不要再操作，联系维护人员。"
     code = result.code

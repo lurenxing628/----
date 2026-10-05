@@ -4,7 +4,7 @@ import json
 import os
 import time
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, Tuple, Union
+from typing import Any, Callable, Dict, Tuple
 
 from core.infrastructure.backup import MIN_KEEP_BACKUPS, protected_recent_backup_paths
 from core.infrastructure.logging import safe_log
@@ -12,7 +12,7 @@ from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_fi
 from core.infrastructure.transaction import TransactionManager
 from data.repositories.operation_log_repo import OperationLogRepository
 
-IsDueResult = Union[Tuple[bool, Any], Tuple[bool, Any, str, Any]]
+from .due_info import IsDueResult, unpack_due_info
 
 
 def _safe_logger_emit(logger, level: str, message: str) -> None:
@@ -48,21 +48,6 @@ def _write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_r
     except Exception as e:
         safe_log(logger, "warning", f"系统维护 telemetry 写入 SystemJobState 失败：{e}")
         return False
-
-
-def _unpack_due_info(result) -> Tuple[bool, Any, str, Any]:
-    if not isinstance(result, tuple):
-        return bool(result), None, "missing", None
-    due = bool(result[0]) if len(result) >= 1 else False
-    last_run = result[1] if len(result) >= 2 else None
-    last_run_state = str(result[2]).strip() if len(result) >= 3 else ""
-    last_run_raw = result[3] if len(result) >= 4 else None
-    if last_run_state not in {"valid", "missing", "invalid"}:
-        if last_run is None:
-            last_run_state = "missing"
-        else:
-            last_run_state = "valid"
-    return due, last_run, last_run_state, last_run_raw
 
 
 def _survey_backup_files(backup_dir: str) -> Tuple[list, Dict[str, Any]]:
@@ -193,7 +178,7 @@ def maybe_run_auto_backup_cleanup(
     fmt_db_dt_fn: Callable[[datetime], str],
     min_keep_backups: int = MIN_KEEP_BACKUPS,
 ) -> Tuple[bool, Dict[str, Any]]:
-    due, last_run, last_run_state, last_run_raw = _unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
+    due, last_run, last_run_state, last_run_raw = unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
     if not due:
         return False, {
             "due": False,
@@ -293,7 +278,7 @@ def maybe_run_auto_log_cleanup(
     is_due_fn: Callable[..., IsDueResult],
     fmt_db_dt_fn: Callable[[datetime], str],
 ) -> Tuple[bool, Dict[str, Any]]:
-    due, last_run, last_run_state, last_run_raw = _unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
+    due, last_run, last_run_state, last_run_raw = unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
     if not due:
         return False, {
             "due": False,

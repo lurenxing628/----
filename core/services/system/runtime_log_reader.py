@@ -2,7 +2,7 @@
 
 职责：
 - 尾部块读 + 时间戳锚点切分：把 logs/ 下的文件日志切成倒序条目供运行日志页展示；
-- 诊断包构建：把白名单内的日志文件 + 环境信息 + 操作日志文本流式压缩进 zip。
+- 环境概况复用这里的日志文件识别规则；导出由工作台的已读取日志窗口生成。
 
 读取边界规则（设计决策 2 钉死）：
 - 二进制尾读，锚点匹配在字节层（时间戳锚点纯 ASCII，bytes 正则无歧义）；
@@ -13,14 +13,11 @@
 
 from __future__ import annotations
 
-import fnmatch
 import os
 import re
-import shutil
-import zipfile
 from typing import BinaryIO, Dict, List, Tuple
 
-from core.infrastructure.safe_files import open_fixed_file_for_read_binary, stat_regular_file
+from core.infrastructure.safe_files import open_fixed_file_for_read_binary
 
 # 页面白名单：只认三个固定文件名，严格相等匹配（目录遍历红线）
 LOG_FILE_CHOICES = ("aps_error.log", "aps.log", "launcher.log")
@@ -34,11 +31,10 @@ _ANCHOR_SPAN_WINDOW = 24     # 锚点字节模式长 21，跨块检测窗口取 
 ENTRY_ANCHOR_RE = re.compile(rb"(?m)^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[")
 _HEAD_LEVEL_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[([A-Z]+)\]")
 
-# 诊断包白名单三类：*.log + 轮转分卷（仅数字后缀，拒 x.log.bak）+ 显式列名的启动失败证据
+# 环境概况识别三类：*.log + 轮转分卷（仅数字后缀，拒 x.log.bak）+ 显式列名的启动失败证据
 ROTATED_LOG_RE = re.compile(r"^.+\.log\.[0-9]+$")
 DIAGNOSTIC_EXTRA_FILES = ("aps_launch_error.txt",)
-# 安全红线（roadmap 第 34 条）：同目录 aps_secret_key.txt 永不进诊断包。
-# 白名单本身收不到它；此处仍显式列出供守卫测试与读者对照。
+# 同目录密钥文件不作为日志来源；环境概况用此名称排除它。
 SECRET_FILE_NAME = "aps_secret_key.txt"
 
 TRUNCATION_MARKER = "……（条目过长，中段已截断）"
@@ -51,7 +47,7 @@ def read_log_entries_tail(log_path: str, *, max_entries: int = MAX_ENTRIES) -> L
     返回 [{"head": 首行, "body": 余下行, "level": "ERROR"}, ...]。
     文件不存在返回 []（路由层据此区分空态文案）；IO 失败抛 OSError，由路由层明示。
 
-    拒绝软链接/非普通文件：与诊断包链路 list_diagnostic_log_names 同一道锁——白名单
+    拒绝软链接/非普通文件：文件名白名单
     文件名只挡路径注入，挡不住「白名单名字指向任意文件」的软链接借壳，故读取前先核
     islink/isfile（页面查看日志与诊断打包共用此读原语，纵深防御一处补齐）。
     """
@@ -196,50 +192,3 @@ def _build_entry(region: Tuple) -> Dict[str, str]:
     match = _HEAD_LEVEL_RE.match(head)
     level = match.group(1) if match else "UNKNOWN"
     return {"head": head, "body": body, "level": level}
-
-
-def list_diagnostic_log_names(log_dir: str) -> List[str]:
-    """诊断包白名单内的文件名（按名排序）。白名单是唯一进包通道——
-    aps_secret_key.txt 结构性进不来（红线测试在 logs 目录播种假 secret 断言名单）。"""
-    names = []
-    for name in sorted(os.listdir(log_dir)):
-        path = os.path.join(log_dir, name)
-        # 拒绝 symlink：白名单文件名挡路径注入，islink 挡"白名单名字指向任意文件"
-        if os.path.islink(path) or not os.path.isfile(path):
-            continue
-        if (
-            fnmatch.fnmatch(name, "*.log")
-            or ROTATED_LOG_RE.match(name)
-            or name in DIAGNOSTIC_EXTRA_FILES
-        ):
-            names.append(name)
-    return names
-
-
-def build_diagnostic_zip(
-    log_dir: str,
-    zip_path: str,
-    *,
-    operation_logs_text: str,
-    info_text: str,
-    operation_logs_arcname: str = "operation_logs.txt",
-) -> None:
-    """把白名单日志 + 环境信息 + 操作日志文本写进 zip_path（流式压缩，内存 O(块)）。
-
-    不返回 bytes：launcher.log 无轮转上限、分卷最坏数十 MB，全内存构包不可接受。
-    zip_path 的生命周期由调用方负责（mkstemp + 响应关闭回调清理，见路由层）。
-    operation_logs_arcname 由调用方按读取成败决定（成功 operation_logs.txt /
-    失败 operation_logs_READ_FAILED.txt——纯 ASCII 条目名，Win7 压缩文件夹不识别
-    zip EFS UTF-8 标志，中文条目名会显示乱码；包内明示缺失而不中断导出）。
-    """
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name in list_diagnostic_log_names(log_dir):
-            _write_fixed_file_to_zip(zf, os.path.join(log_dir, name), name)
-        zf.writestr("diagnostic_info.txt", info_text)
-        zf.writestr(operation_logs_arcname, operation_logs_text)
-
-
-def _write_fixed_file_to_zip(zf: zipfile.ZipFile, path: str, arcname: str) -> None:
-    with open_fixed_file_for_read_binary(path) as src:
-        with zf.open(arcname, "w") as dst:
-            shutil.copyfileobj(src, dst, length=TAIL_BLOCK_SIZE)

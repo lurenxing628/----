@@ -14,6 +14,14 @@ from werkzeug.wrappers import Response
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 
 BASE = "/api/workbench/v1/system"
+RESTORE_STATUS_ENV = "aps.restore_host_status"
+
+
+def request_restore_status(environ, controller):
+    """One host observation shared by the health and restore WSGI layers."""
+    if RESTORE_STATUS_ENV not in environ:
+        environ[RESTORE_STATUS_ENV] = controller.status
+    return environ[RESTORE_STATUS_ENV]
 
 
 class RecoveryJournal:
@@ -37,12 +45,13 @@ class RecoveryJournal:
 
 
 class RestoreStatusTransport:
-    def __init__(self, application, journal, status):
+    def __init__(self, application, journal, status, *, static_status=None):
         self.application, self.journal, self.status = application, journal, status
+        self.static_status = static_status
 
     def __call__(self, environ, start_response):
         path = environ.get("PATH_INFO", "")
-        status = self.status()
+        status = self._request_status(environ, path)
         stopped = status["state"] != "ready"
         if stopped and environ.get("REQUEST_METHOD") == "GET" and path in ("/", "/workbench", "/workbench/", "/workbench/trial"):
             from .workbench_system_restore_view import recovery_response
@@ -68,6 +77,13 @@ class RestoreStatusTransport:
         except Exception:
             response = self._error("maintenance_unconfirmed", "维护记录读不出来，不能确认结果。系统已停下，请不要再操作，联系维护人员。", 503)
         return response(environ, start_response)
+
+    def _request_status(self, environ, path):
+        if path.startswith("/static/") and self.static_status is not None:
+            return self.static_status()
+        if RESTORE_STATUS_ENV not in environ:
+            environ[RESTORE_STATUS_ENV] = self.status()
+        return environ[RESTORE_STATUS_ENV]
 
     def _result(self, path, status):
         if path.startswith(BASE + "/results/"):
@@ -96,4 +112,5 @@ class RestoreStatusTransport:
 
 
 def install_restore_status_transport(app, controller):
-    app.wsgi_app = RestoreStatusTransport(app.wsgi_app, controller.journal, lambda: controller.status)
+    app.wsgi_app = RestoreStatusTransport(app.wsgi_app, controller.journal, lambda: controller.status,
+                                        static_status=controller.static_status)

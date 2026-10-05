@@ -50,6 +50,10 @@ class _PathExplodingRequest:
         raise RuntimeError("path boom")
 
     @property
+    def endpoint(self):
+        return self._real_request.endpoint
+
+    @property
     def accept_mimetypes(self):
         return self._real_request.accept_mimetypes
 
