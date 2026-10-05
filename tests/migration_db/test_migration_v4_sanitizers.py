@@ -27,6 +27,26 @@ def _conn() -> sqlite3.Connection:
     return conn
 
 
+@pytest.mark.parametrize("pk_expr,expected", [("CAST(id AS TEXT)", MigrationOutcome.APPLIED),
+                                            ("CAST(missing_pk AS TEXT)", MigrationOutcome.SKIPPED)])
+def test_discarded_samples_do_not_scan_and_missing_pk_cannot_write(monkeypatch, pk_expr, expected):
+    from core.infrastructure.migrations import v4_sanitizers
+    def unexpected_sample(*_args, **_kwargs):
+        raise AssertionError("sample has no consumer")
+    monkeypatch.setattr(v4_sanitizers, "_fetch_changed_sample", unexpected_sample)
+    conn = _conn()
+    try:
+        conn.execute("CREATE TABLE Items(id INTEGER PRIMARY KEY,status TEXT)")
+        conn.execute("INSERT INTO Items VALUES(1,' yes ')")
+        outcome, changed, sample = _sanitize_field(conn, table="Items", field="status", pk_expr=pk_expr,
+                                                   default="no", collect_sample=False)
+        assert outcome == expected and sample == []
+        assert changed == int(expected == MigrationOutcome.APPLIED)
+        assert conn.execute("SELECT status FROM Items").fetchone()[0] == ("yes" if changed else " yes ")
+    finally:
+        conn.close()
+
+
 def test_sanitize_field_keeps_v4_import_path_and_handles_core_values() -> None:
     conn = _conn()
     try:
@@ -39,6 +59,7 @@ def test_sanitize_field_keeps_v4_import_path_and_handles_core_values() -> None:
                 (3, None, "空值走默认值"),
                 (4, "external", "已经规范的值不应变化"),
                 (5, "中文文本", "中文枚举文本不应被破坏"),
+                (6, " yes ", "仅有首尾空格也应清洗"),
             ],
         )
 
@@ -53,14 +74,15 @@ def test_sanitize_field_keeps_v4_import_path_and_handles_core_values() -> None:
 
         rows = conn.execute("SELECT id, status, note FROM Items ORDER BY id").fetchall()
         assert outcome == MigrationOutcome.APPLIED
-        assert changed == 3
-        assert sample == ["1"]
+        assert changed == 4
+        assert sample == ["1", "6"]
         assert [(row["id"], row["status"], row["note"]) for row in rows] == [
             (1, "yes", "中文文本"),
             (2, "normal", "空字符串走默认值"),
             (3, "normal", "空值走默认值"),
             (4, "external", "已经规范的值不应变化"),
             (5, "中文文本", "中文枚举文本不应被破坏"),
+            (6, "yes", "仅有首尾空格也应清洗"),
         ]
     finally:
         conn.close()

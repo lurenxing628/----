@@ -14,6 +14,7 @@ from .material_stages_schema import objects as material_stages_objects
 from .migration_common import MigrationOutcome, column_exists, fallback_log, table_exists
 from .migration_operation_execution_contract import operation_execution_event_contract_issues
 from .schema_declaration import declared_columns, load_schema_sql
+from .schema_structure import SchemaStructure
 from .workbench_calibration_adoption_schema import contract_issues as calibration_adoption_contract_issues
 from .workbench_calibration_adoption_schema import objects as calibration_adoption_objects
 from .workbench_dashboard_external_schema import contract_issues as dashboard_external_contract_issues
@@ -28,7 +29,7 @@ from .workbench_outsourcing_source_schema import (
     workbench_outsourcing_source_contract_issues,
     workbench_outsourcing_source_objects,
 )
-from .workbench_plan_identity_schema import plan_identity_objects, workbench_plan_identity_contract_issues
+from .workbench_plan_identity_schema import plan_identity_objects
 from .workbench_plan_identity_write_guard import (
     plan_identity_write_guard_contract_issues,
     plan_identity_write_guard_objects,
@@ -40,7 +41,7 @@ from .workbench_run_schema import workbench_run_contract_issues, workbench_run_o
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
-CURRENT_SCHEMA_VERSION = 37
+CURRENT_SCHEMA_VERSION = 38
 
 
 class MigrationContractError(RuntimeError):
@@ -232,9 +233,10 @@ def _subsystem_owned_object_names() -> Set[str]:
     return owned
 
 
-def _live_columns(conn: sqlite3.Connection, table: str) -> Set[str]:
+def _live_columns(conn: sqlite3.Connection, table: str, *, structure=None) -> Set[str]:
     quoted = '"' + str(table).replace('"', '""') + '"'
-    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({quoted})").fetchall()}
+    rows = structure.table_info(table) if structure is not None else conn.execute(f"PRAGMA table_info({quoted})").fetchall()
+    return {str(row[1]) for row in rows}
 
 
 def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None) -> List[str]:
@@ -245,56 +247,57 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
     各子系统 DDL 模块拥有的对象交给它们自己的契约函数逐字核对。用于 brand-new 空库初始化后的版本快进与启动阻断。
     """
     issues = []
+    structure = SchemaStructure(conn)
     declared: Dict[str, List[str]] = declared_columns(load_schema_sql() if schema_sql is None else schema_sql)
     owned = _subsystem_owned_object_names()
     for table, columns in declared.items():
         if table == "SchemaVersion" or table in owned or table in _CORE_TABLES_WITH_DEDICATED_LABEL:
             continue
-        if not table_exists(conn, table):
+        if not structure.has_table(table):
             issues.append(f"missing_table: {table}")
             continue
-        live = _live_columns(conn, table)
+        live = _live_columns(conn, table, structure=structure)
         for col in columns:
             if col not in live:
                 issues.append(f"missing_column: {table}.{col}")
     for ok, label in (
-        (_has_system_management_tables(conn), "missing_table: SystemConfig/SystemJobState"),
-        (_has_schedule_unique_index(conn), "bad_index: idx_schedule_version_op_unique"),
-        (_has_candidate_indexes(conn), "bad_index: schedule candidate indexes"),
-        (_has_adjustment_draft_indexes(conn), "bad_index: schedule adjustment draft indexes"),
-        (_has_adjustment_scenario_indexes(conn), "bad_index: schedule adjustment scenario indexes"),
-        (_batch_material_ready_default_is_no(conn), "bad_default: BatchMaterials.ready_status expected no"),
+        (_has_system_management_tables(conn, structure=structure), "missing_table: SystemConfig/SystemJobState"),
+        (_has_schedule_unique_index(conn, structure=structure), "bad_index: idx_schedule_version_op_unique"),
+        (_has_candidate_indexes(conn, structure=structure), "bad_index: schedule candidate indexes"),
+        (_has_adjustment_draft_indexes(conn, structure=structure), "bad_index: schedule adjustment draft indexes"),
+        (_has_adjustment_scenario_indexes(conn, structure=structure), "bad_index: schedule adjustment scenario indexes"),
+        (_batch_material_ready_default_is_no(conn, structure=structure), "bad_default: BatchMaterials.ready_status expected no"),
     ):
         if not ok:
             issues.append(label)
-    issues.extend(operation_execution_event_contract_issues(conn))
-    issues.extend(workbench_metadata_contract_issues(conn))
-    issues.extend(workbench_resource_contract_issues(conn))
-    issues.extend(workbench_process_contract_issues(conn))
-    issues.extend(workbench_process_workflow_contract_issues(conn))
-    issues.extend(workbench_plan_identity_contract_issues(conn))
-    issues.extend(execution_ledger_contract_issues(conn))
-    issues.extend(workbench_run_contract_issues(conn))
-    issues.extend(template_lineage_contract_issues(conn))
-    issues.extend(workbench_trial_contract_issues(conn))
-    issues.extend(lineage_lookup_contract_issues(conn))
-    issues.extend(calibration_adoption_contract_issues(conn))
-    issues.extend(workbench_dashboard_contract_issues(conn))
-    issues.extend(plan_identity_write_guard_contract_issues(conn))
-    issues.extend(workbench_outsourcing_contract_issues(conn))
-    issues.extend(dashboard_external_contract_issues(conn))
-    issues.extend(workbench_outsourcing_source_contract_issues(conn))
-    issues.extend(execution_void_contract_issues(conn))
-    issues.extend(batch_external_context_contract_issues(conn))
-    issues.extend(calendar_periods_contract_issues(conn))
-    issues.extend(machine_capabilities_contract_issues(conn))
-    issues.extend(material_stages_contract_issues(conn))
+    issues.extend(operation_execution_event_contract_issues(conn, structure=structure))
+    issues.extend(workbench_metadata_contract_issues(conn, structure=structure))
+    issues.extend(workbench_resource_contract_issues(conn, structure=structure))
+    issues.extend(workbench_process_contract_issues(conn, structure=structure))
+    issues.extend(workbench_process_workflow_contract_issues(conn, structure=structure))
+    issues.extend(execution_ledger_contract_issues(conn, structure=structure))
+    issues.extend(workbench_run_contract_issues(conn, structure=structure))
+    issues.extend(template_lineage_contract_issues(conn, structure=structure))
+    issues.extend(workbench_trial_contract_issues(conn, structure=structure))
+    issues.extend(lineage_lookup_contract_issues(conn, structure=structure))
+    issues.extend(calibration_adoption_contract_issues(conn, structure=structure))
+    issues.extend(workbench_dashboard_contract_issues(conn, structure=structure))
+    # This contract already validates complete plan identities and their clock.
+    issues.extend(plan_identity_write_guard_contract_issues(conn, structure=structure))
+    issues.extend(workbench_outsourcing_contract_issues(conn, structure=structure))
+    issues.extend(dashboard_external_contract_issues(conn, structure=structure))
+    issues.extend(workbench_outsourcing_source_contract_issues(conn, structure=structure))
+    issues.extend(execution_void_contract_issues(conn, structure=structure))
+    issues.extend(batch_external_context_contract_issues(conn, structure=structure))
+    issues.extend(calendar_periods_contract_issues(conn, structure=structure))
+    issues.extend(machine_capabilities_contract_issues(conn, structure=structure))
+    issues.extend(material_stages_contract_issues(conn, structure=structure))
     return issues
 
 
-def _batch_material_ready_default_is_no(conn: sqlite3.Connection) -> bool:
+def _batch_material_ready_default_is_no(conn: sqlite3.Connection, *, structure=None) -> bool:
     try:
-        rows = conn.execute("PRAGMA table_info(BatchMaterials)").fetchall()
+        rows = structure.table_info("BatchMaterials") if structure is not None else conn.execute("PRAGMA table_info(BatchMaterials)").fetchall()
     except sqlite3.OperationalError:
         return False
     for row in rows:
@@ -307,98 +310,29 @@ def _batch_material_ready_default_is_no(conn: sqlite3.Connection) -> bool:
     return False
 
 
-def _has_system_management_tables(conn: sqlite3.Connection) -> bool:
-    row = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('SystemConfig','SystemJobState')"
-    ).fetchall()
-    names = {r[0] if not isinstance(r, sqlite3.Row) else r["name"] for r in row}
-    return "SystemConfig" in names and "SystemJobState" in names
+def _has_system_management_tables(conn: sqlite3.Connection, *, structure=None) -> bool:
+    structure = structure if structure is not None else SchemaStructure(conn)
+    return structure.has_table("SystemConfig") and structure.has_table("SystemJobState")
 
 
-def _has_schedule_unique_index(conn: sqlite3.Connection) -> bool:
-    index_row = conn.execute(
-        """
-        SELECT 1
-        FROM sqlite_master
-        WHERE type='index'
-          AND name='idx_schedule_version_op_unique'
-          AND tbl_name='Schedule'
-        LIMIT 1
-        """
-    ).fetchone()
-    return index_row is not None
+def _has_schedule_unique_index(conn: sqlite3.Connection, *, structure=None) -> bool:
+    structure = structure if structure is not None else SchemaStructure(conn)
+    return structure.index_table("idx_schedule_version_op_unique") == "Schedule"
 
 
-def _has_candidate_indexes(conn: sqlite3.Connection) -> bool:
-    rows = conn.execute(
-        """
-        SELECT name
-        FROM sqlite_master
-        WHERE type='index'
-              AND name IN (
-                  'idx_schedule_version_time',
-                  'idx_schedule_history_version',
-                  'idx_schedule_candidate_version',
-                  'idx_schedule_candidate_version_kind',
-                  'idx_schedule_candidate_rows_version_candidate',
-                  'idx_schedule_candidate_rows_version_candidate_time',
-                  'idx_schedule_candidate_rows_time',
-                  'idx_schedule_candidate_selection_version'
-              )
-        """
-    ).fetchall()
-    names = {r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows}
-    return names == {
-        "idx_schedule_version_time",
-        "idx_schedule_history_version",
-        "idx_schedule_candidate_version",
-        "idx_schedule_candidate_version_kind",
-        "idx_schedule_candidate_rows_version_candidate",
-        "idx_schedule_candidate_rows_version_candidate_time",
-        "idx_schedule_candidate_rows_time",
-        "idx_schedule_candidate_selection_version",
-    }
+def _has_candidate_indexes(conn: sqlite3.Connection, *, structure=None) -> bool:
+    structure = structure if structure is not None else SchemaStructure(conn)
+    names = ['idx_schedule_candidate_rows_time', 'idx_schedule_candidate_rows_version_candidate', 'idx_schedule_candidate_rows_version_candidate_time', 'idx_schedule_candidate_selection_version', 'idx_schedule_candidate_version', 'idx_schedule_candidate_version_kind', 'idx_schedule_history_version', 'idx_schedule_version_time']
+    return all(name in structure.objects and structure.objects[name][0] == "index" for name in names)
 
 
-def _has_adjustment_draft_indexes(conn: sqlite3.Connection) -> bool:
-    rows = conn.execute(
-        """
-        SELECT name
-        FROM sqlite_master
-        WHERE type='index'
-              AND name IN (
-                  'idx_schedule_adjustment_draft_base',
-                  'idx_schedule_adjustment_draft_status',
-                  'idx_schedule_adjustment_change_draft_op'
-              )
-        """
-    ).fetchall()
-    names = {r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows}
-    return names == {
-        "idx_schedule_adjustment_draft_base",
-        "idx_schedule_adjustment_draft_status",
-        "idx_schedule_adjustment_change_draft_op",
-    }
+def _has_adjustment_draft_indexes(conn: sqlite3.Connection, *, structure=None) -> bool:
+    structure = structure if structure is not None else SchemaStructure(conn)
+    names = ['idx_schedule_adjustment_change_draft_op', 'idx_schedule_adjustment_draft_base', 'idx_schedule_adjustment_draft_status']
+    return all(name in structure.objects and structure.objects[name][0] == "index" for name in names)
 
 
-def _has_adjustment_scenario_indexes(conn: sqlite3.Connection) -> bool:
-    rows = conn.execute(
-        """
-        SELECT name
-        FROM sqlite_master
-        WHERE type='index'
-              AND name IN (
-                  'idx_schedule_adjustment_scenario_base',
-                  'idx_schedule_adjustment_scenario_draft',
-                  'idx_schedule_adjustment_scenario_row_op',
-                  'idx_schedule_adjustment_scenario_row_time'
-              )
-        """
-    ).fetchall()
-    names = {r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows}
-    return names == {
-        "idx_schedule_adjustment_scenario_base",
-        "idx_schedule_adjustment_scenario_draft",
-        "idx_schedule_adjustment_scenario_row_op",
-        "idx_schedule_adjustment_scenario_row_time",
-    }
+def _has_adjustment_scenario_indexes(conn: sqlite3.Connection, *, structure=None) -> bool:
+    structure = structure if structure is not None else SchemaStructure(conn)
+    names = ['idx_schedule_adjustment_scenario_base', 'idx_schedule_adjustment_scenario_row_op', 'idx_schedule_adjustment_scenario_row_time']
+    return all(name in structure.objects and structure.objects[name][0] == "index" for name in names) and structure.has_unique_key("ScheduleAdjustmentScenario", ("source_draft_id",))

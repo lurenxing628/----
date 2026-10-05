@@ -6,8 +6,8 @@ import os
 import time
 
 from .migration_common import fallback_log
-from .safe_files import read_fixed_bytes, remove_fixed_file, stat_regular_file, write_fixed_bytes
-from .sqlite_integrity import validate_sqlite_backup_payload
+from .safe_files import read_fixed_bytes, remove_fixed_file, stat_regular_file
+from .sqlite_integrity import validated_sqlite_backup_stage
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ def restore_db_file_from_backup(
 ) -> None:
     backup_abs = os.path.abspath(backup_path)
     db_abs = os.path.abspath(db_path)
+    # Old rollback versions could leave this fixed file behind; retain its safe cleanup.
     tmp_path = f"{db_abs}.rollback_tmp"
     last = None
     retry_count = int(retries) if retries is not None else 1
@@ -54,15 +55,14 @@ def restore_db_file_from_backup(
         try:
             _remove_tmp_file(tmp_path)
             backup_payload = read_fixed_bytes(backup_abs)
-            validate_sqlite_backup_payload(backup_payload, logger=logger)
-            try:
-                stat_regular_file(db_abs)
-            except FileNotFoundError:
-                pass
-            cleanup_sqlite_sidecars(db_abs, logger=logger)
-            write_fixed_bytes(tmp_path, backup_payload, replace_symlink=False)
-            os.replace(tmp_path, db_abs)
-            cleanup_sqlite_sidecars(db_abs, logger=logger)
+            with validated_sqlite_backup_stage(backup_payload, logger=logger, directory=os.path.dirname(db_abs)) as staged:
+                try:
+                    stat_regular_file(db_abs)
+                except FileNotFoundError:
+                    pass
+                cleanup_sqlite_sidecars(db_abs, logger=logger)
+                os.replace(staged, db_abs)
+                cleanup_sqlite_sidecars(db_abs, logger=logger)
             return
         except Exception as exc:
             last = exc

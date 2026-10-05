@@ -2,6 +2,8 @@
 
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
 
+from .schema_structure import schema_objects
+
 LEGACY_COLUMNS = (
     "id", "schedule_version", "schedule_id", "op_id", "batch_id", "source_table",
     "effective_plan_role", "scenario_id", "event_type", "reported_status", "event_time",
@@ -112,10 +114,9 @@ def execution_ledger_objects(*, legacy_link_unique=False):
     return objects
 
 
-def execution_ledger_contract_issues(conn, *, legacy_link_unique=False):
+def execution_ledger_contract_issues(conn, *, legacy_link_unique=False, structure=None):
     """SELECT-only structural check. Missing/partial schemas are never repaired."""
-    actual = {row[0]: row[1] for row in conn.execute(
-        "SELECT name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger')")}
+    actual = schema_objects(conn, structure=structure)
     issues = []
     declared = execution_ledger_objects(legacy_link_unique=legacy_link_unique)
     for name, sql in declared.items():

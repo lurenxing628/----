@@ -26,7 +26,12 @@ from tests.workbench.dashboard_external_migration_support import (
 )
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
 from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
-from tests.workbench.flexible_migration_support import assert_migrated_legacy_ddl, legacy_ddl, missing_v37_issues
+from tests.workbench.flexible_migration_support import (
+    V38_REMOVED_INDEXES,
+    assert_migrated_legacy_ddl,
+    legacy_ddl,
+    missing_v37_issues,
+)
 from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
@@ -125,7 +130,7 @@ def test_frozen_v25_and_current_schema_share_identical_old_objects(tmp_path, sch
         assert get_schema_version(old) == 25
         old_ddl, current_ddl = source_ddl(old), source_ddl(fresh)
         old_names, current_names = {row[1] for row in old_ddl}, {row[1] for row in current_ddl}
-        assert old_names - current_names == {"sqlite_autoindex_WorkbenchProductionReports_3"}
+        assert old_names - current_names == {"sqlite_autoindex_WorkbenchProductionReports_3"} | V38_REMOVED_INDEXES
         assert current_names - old_names == {"idx_wb_execution_reports_legacy", "wb_execution_legacy_link_active_unique"}
         assert_migrated_legacy_ddl(fresh, old_ddl, preserve_column_order=False)
         assert len(workbench_run_objects()) == 14

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
+from .schema_structure import schema_objects
 from .workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
 from .workbench_process_schema import workbench_process_contract_issues
 from .workbench_resource_schema import workbench_resource_contract_issues
@@ -43,11 +44,9 @@ def workflow_objects() -> Dict[str, str]:
     }
 
 
-def workbench_process_workflow_contract_issues(conn) -> List[str]:
+def workbench_process_workflow_contract_issues(conn, *, structure=None) -> List[str]:
     """Read-only exact contract check, including legal but incorrect DDL."""
-    actual = {row[0]: row[1] for row in conn.execute(
-        "SELECT name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger')"
-    )}
+    actual = schema_objects(conn, structure=structure)
     return [("missing_workbench_process_workflow: " if name not in actual else "bad_workbench_process_workflow: ") + name
             for name, sql in workflow_objects().items()
             if name not in actual or _canonical_sql(actual[name] or "") != _canonical_sql(sql)]

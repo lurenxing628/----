@@ -9,6 +9,7 @@ from unittest.mock import Mock, call
 import pytest
 
 from core.infrastructure import migration_backup as migration_mod
+from core.infrastructure import sqlite_integrity as integrity_mod
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def test_temporary_file_lock_retries_and_restores(restore_files, monkeypatch, st
         error.winerror = winerror
     owner, name = {
         "read": (migration_mod, "read_fixed_bytes"),
-        "write": (migration_mod, "write_fixed_bytes"),
+        "write": (integrity_mod, "write_fixed_bytes"),
         "replace": (migration_mod.os, "replace"),
         "sidecars": (migration_mod, "cleanup_sqlite_sidecars"),
     }[stage]

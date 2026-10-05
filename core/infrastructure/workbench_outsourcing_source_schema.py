@@ -3,6 +3,8 @@
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
 from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
 
+from .schema_structure import schema_objects
+
 
 def workbench_outsourcing_source_objects():
     table = "WorkbenchOutsourcingSourceConfirmations"
@@ -34,8 +36,8 @@ def workbench_outsourcing_source_objects():
     return objects
 
 
-def workbench_outsourcing_source_contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def workbench_outsourcing_source_contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_outsourcing_source_schema:" if name not in actual else "invalid_outsourcing_source_schema:") + name
             for name, sql in workbench_outsourcing_source_objects().items()
             if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]

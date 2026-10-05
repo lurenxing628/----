@@ -38,7 +38,7 @@ def added_tables():
 
 def test_fixed_v29_and_fresh_current_outsourcing_storage(tmp_path, schema_path):
     assert hashlib.sha256(FIXTURE_V29.read_bytes()).hexdigest() == FIXTURE_V29_SHA
-    assert CURRENT_SCHEMA_VERSION == 37 and MIGRATIONS[30] is v30.run
+    assert MIGRATIONS[30] is v30.run
     path = tmp_path / "fresh.db"
     ensure_schema(str(path), schema_path=schema_path)
     with connect(path) as conn:

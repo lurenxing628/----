@@ -10,6 +10,8 @@ from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbe
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_contract_issues
 
+from .schema_structure import schema_objects
+
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
@@ -79,8 +81,8 @@ def workbench_outsourcing_objects():
     return objects
 
 
-def workbench_outsourcing_contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def workbench_outsourcing_contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_outsourcing_schema:" if name not in actual else "invalid_outsourcing_schema:") + name
             for name, sql in workbench_outsourcing_objects().items()
             if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]

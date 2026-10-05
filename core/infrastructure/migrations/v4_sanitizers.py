@@ -68,22 +68,37 @@ def _fetch_changed_sample(conn: sqlite3.Connection, *, table: str, field: str, p
         FROM {table}
         WHERE {field} IS NOT NULL
           AND TRIM(CAST({field} AS TEXT)) <> ''
-          AND LOWER(TRIM(CAST({field} AS TEXT))) <> TRIM(CAST({field} AS TEXT))
+          AND LOWER(TRIM(CAST({field} AS TEXT))) <> CAST({field} AS TEXT)
         LIMIT 10
         """
     ).fetchall()
     return _rows_to_list(rows)
 
 
-def _apply_lower_trim(conn: sqlite3.Connection, *, table: str, field: str) -> int:
+def normalize_enum_text(conn: sqlite3.Connection, *, table: str, field: str, allowed_values=None) -> int:
+    """Normalize enum text; forward repairs may restrict recognized lowercase values."""
+    restriction, params = "", ()
+    if allowed_values is not None:
+        # Forward cleanup only repairs the known lowercase values missed by v4.
+        restriction = " AND typeof(" + field + ")='text' AND TRIM(" + field + ") IN (" + ",".join("?" for _ in allowed_values) + ")"
+        params = tuple(allowed_values)
+        # Even a zero-row UPDATE can initialize sqlite_sequence through compiled
+        # lineage triggers. A forward repair must leave unrelated history intact.
+        needed = conn.execute(f"""SELECT 1 FROM {table}
+            WHERE {field} IS NOT NULL AND TRIM(CAST({field} AS TEXT)) <> ''
+              AND LOWER(TRIM(CAST({field} AS TEXT))) <> CAST({field} AS TEXT)
+            """ + restriction + " LIMIT 1", params).fetchone()
+        if needed is None:
+            return 0
     cur = conn.execute(
         f"""
         UPDATE {table}
         SET {field} = LOWER(TRIM(CAST({field} AS TEXT)))
         WHERE {field} IS NOT NULL
           AND TRIM(CAST({field} AS TEXT)) <> ''
-          AND LOWER(TRIM(CAST({field} AS TEXT))) <> TRIM(CAST({field} AS TEXT))
-        """
+          AND LOWER(TRIM(CAST({field} AS TEXT))) <> CAST({field} AS TEXT)
+        """ + restriction,
+        params,
     )
     return int(getattr(cur, "rowcount", 0) or 0)
 
@@ -109,6 +124,7 @@ def _sanitize_field(
     pk_expr: str,
     default: Optional[str],
     logger=None,
+    collect_sample: bool = True,
 ) -> Tuple[MigrationOutcome, int, List[str]]:
     """
     把枚举/状态字段做一致性清洗：
@@ -136,8 +152,13 @@ def _sanitize_field(
         return MigrationOutcome.PARTIAL, 0, []
 
     try:
-        sample = _fetch_changed_sample(conn, table=t, field=f, pk_expr=pk)
-        changed = _apply_lower_trim(conn, table=t, field=f)
+        if collect_sample:
+            sample = _fetch_changed_sample(conn, table=t, field=f, pk_expr=pk)
+        else:
+            # Keep the helper's missing-PK rejection without scanning for diagnostics.
+            conn.execute(f"SELECT {pk} FROM {t} WHERE 0")
+            sample = []
+        changed = normalize_enum_text(conn, table=t, field=f)
         if default is not None:
             changed += _apply_default(conn, table=t, field=f, default=str(default))
     except Exception as e:

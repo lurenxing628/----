@@ -3,6 +3,8 @@
 from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
+from .schema_structure import schema_objects
+
 TRIAL_TABLES = ("WorkbenchTrialDrafts", "WorkbenchTrialRows", "WorkbenchTrialChanges",
                 "WorkbenchTrialScenarios", "WorkbenchTrialScenarioRows")
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
@@ -73,8 +75,8 @@ def workbench_trial_objects():
     return objects
 
 
-def workbench_trial_contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def workbench_trial_contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_trial_schema:" if name not in actual else "invalid_trial_schema:") + name
             for name, sql in workbench_trial_objects().items()
             if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]

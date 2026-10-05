@@ -15,8 +15,10 @@ def _sanitize_field(
     pk_expr: str,
     default: Optional[str],
     logger=None,
+    collect_sample: bool = True,
 ) -> Tuple[MigrationOutcome, int, List[str]]:
-    return _sanitize_field_impl(conn, table=table, field=field, pk_expr=pk_expr, default=default, logger=logger)
+    return _sanitize_field_impl(conn, table=table, field=field, pk_expr=pk_expr, default=default,
+                                logger=logger, collect_sample=collect_sample)
 
 
 def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
@@ -79,7 +81,8 @@ def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     outcomes = []
     for table, field, pk_expr, default in tasks:
         outcome, _changed, _sample = _sanitize_field(
-            conn, table=table, field=field, pk_expr=pk_expr, default=default, logger=logger
+            conn, table=table, field=field, pk_expr=pk_expr, default=default, logger=logger,
+            collect_sample=logger is not None,
         )
         outcomes.append(outcome)
     return merge_outcomes(*outcomes)

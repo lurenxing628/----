@@ -3,11 +3,13 @@ from __future__ import annotations
 import sqlite3
 from typing import Dict, List, Optional, Tuple
 
-from .migration_common import table_exists
 from .operation_execution_event_data_contract import operation_execution_event_data_issues
+from .schema_structure import SchemaStructure
 
 
-def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
+def _table_sql(conn: sqlite3.Connection, table_name: str, *, structure=None) -> str:
+    if structure is not None:
+        return str(structure.sql.get(table_name) or "")
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
         (table_name,),
@@ -17,7 +19,9 @@ def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
     return str(row["sql"] if isinstance(row, sqlite3.Row) else row[0] or "")
 
 
-def _index_table(conn: sqlite3.Connection, index_name: str) -> str:
+def _index_table(conn: sqlite3.Connection, index_name: str, *, structure=None) -> str:
+    if structure is not None:
+        return structure.index_table(index_name)
     row = conn.execute(
         "SELECT tbl_name FROM sqlite_master WHERE type='index' AND name=?",
         (index_name,),
@@ -27,41 +31,29 @@ def _index_table(conn: sqlite3.Connection, index_name: str) -> str:
     return str(row["tbl_name"] if isinstance(row, sqlite3.Row) else row[0] or "")
 
 
-def _index_columns(conn: sqlite3.Connection, index_name: str, *, table_name: Optional[str] = None) -> List[str]:
-    if table_name is not None and _index_table(conn, index_name) != table_name:
+def _index_columns(conn: sqlite3.Connection, index_name: str, *, table_name: Optional[str] = None, structure=None) -> List[str]:
+    if table_name is not None and _index_table(conn, index_name, structure=structure) != table_name:
         return []
     try:
-        rows = conn.execute(f"PRAGMA index_info({index_name})").fetchall()
+        rows = structure.index_info(index_name) if structure is not None else conn.execute(f"PRAGMA index_info({index_name})").fetchall()
     except sqlite3.OperationalError:
         return []
     return [str(row["name"] if isinstance(row, sqlite3.Row) else row[2]) for row in rows]
 
 
-def _index_is_unique(conn: sqlite3.Connection, index_name: str) -> bool:
-    try:
-        rows = conn.execute("PRAGMA index_list(OperationExecutionEvents)").fetchall()
-    except sqlite3.OperationalError:
-        return False
-    for row in rows:
-        name = str(row["name"] if isinstance(row, sqlite3.Row) else row[1])
-        if name == index_name:
-            unique = row["unique"] if isinstance(row, sqlite3.Row) else row[2]
-            return int(unique or 0) == 1
-    return False
-
-
-def _unique_index_has_columns(conn: sqlite3.Connection, table_name: str, columns: List[str]) -> bool:
+def _unique_index_has_columns(conn: sqlite3.Connection, table_name: str, columns: List[str], *, structure=None) -> bool:
     expected = [str(col) for col in columns]
     try:
-        rows = conn.execute(f"PRAGMA index_list({table_name})").fetchall()
+        rows = structure.index_list(table_name) if structure is not None else conn.execute(f"PRAGMA index_list({table_name})").fetchall()
     except sqlite3.OperationalError:
         return False
     for row in rows:
         name = str(row["name"] if isinstance(row, sqlite3.Row) else row[1])
         unique = row["unique"] if isinstance(row, sqlite3.Row) else row[2]
-        if int(unique or 0) != 1:
+        partial = row["partial"] if isinstance(row, sqlite3.Row) else row[4]
+        if int(unique or 0) != 1 or partial:
             continue
-        if _index_columns(conn, name, table_name=table_name) == expected:
+        if _index_columns(conn, name, table_name=table_name, structure=structure) == expected:
             return True
     return False
 
@@ -69,9 +61,9 @@ def _unique_index_has_columns(conn: sqlite3.Connection, table_name: str, columns
 ForeignKeyGroup = Tuple[Tuple[str, ...], str, Tuple[str, ...], Tuple[str, ...]]
 
 
-def _foreign_key_groups(conn: sqlite3.Connection, table_name: str) -> List[ForeignKeyGroup]:
+def _foreign_key_groups(conn: sqlite3.Connection, table_name: str, *, structure=None) -> List[ForeignKeyGroup]:
     try:
-        rows = conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
+        rows = structure.foreign_keys(table_name) if structure is not None else conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
     except sqlite3.OperationalError:
         return []
     grouped: Dict[int, List[Tuple[int, str, str, str, str]]] = {}
@@ -103,25 +95,25 @@ def _foreign_key_groups(conn: sqlite3.Connection, table_name: str) -> List[Forei
     return out
 
 
-def _foreign_key_pairs(conn: sqlite3.Connection, table_name: str) -> List[tuple]:
+def _foreign_key_pairs(conn: sqlite3.Connection, table_name: str, *, structure=None) -> List[tuple]:
     pairs = []
-    for child_columns, parent_table, parent_columns, _ in _foreign_key_groups(conn, table_name):
+    for child_columns, parent_table, parent_columns, _ in _foreign_key_groups(conn, table_name, structure=structure):
         for child_column, parent_column in zip(child_columns, parent_columns):
             pairs.append((child_column, parent_table, parent_column))
     return pairs
 
 
-def _foreign_key_delete_actions(conn: sqlite3.Connection, table_name: str) -> dict:
+def _foreign_key_delete_actions(conn: sqlite3.Connection, table_name: str, *, structure=None) -> dict:
     actions = {}
-    for child_columns, parent_table, parent_columns, delete_actions in _foreign_key_groups(conn, table_name):
+    for child_columns, parent_table, parent_columns, delete_actions in _foreign_key_groups(conn, table_name, structure=structure):
         for child_column, parent_column, delete_action in zip(child_columns, parent_columns, delete_actions):
             actions[(child_column, parent_table, parent_column)] = delete_action
     return actions
 
 
-def _table_columns_info(conn: sqlite3.Connection, table_name: str) -> dict:
+def _table_columns_info(conn: sqlite3.Connection, table_name: str, *, structure=None) -> dict:
     try:
-        rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        rows = structure.table_info(table_name) if structure is not None else conn.execute(f"PRAGMA table_info({table_name})").fetchall()
     except sqlite3.OperationalError:
         return {}
     out = {}
@@ -136,19 +128,19 @@ def _table_columns_info(conn: sqlite3.Connection, table_name: str) -> dict:
     return out
 
 
-def _column_default_is(conn: sqlite3.Connection, table_name: str, column_name: str, expected: str) -> bool:
-    info = _table_columns_info(conn, table_name).get(column_name) or {}
+def _column_default_is(conn: sqlite3.Connection, table_name: str, column_name: str, expected: str, *, structure=None) -> bool:
+    info = _table_columns_info(conn, table_name, structure=structure).get(column_name) or {}
     normalized = str(info.get("default") or "").strip().strip("'\"").lower()
     return normalized == str(expected or "").strip().lower()
 
 
-def _column_has_no_default(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
-    info = _table_columns_info(conn, table_name).get(column_name) or {}
+def _column_has_no_default(conn: sqlite3.Connection, table_name: str, column_name: str, *, structure=None) -> bool:
+    info = _table_columns_info(conn, table_name, structure=structure).get(column_name) or {}
     return info.get("default") is None
 
 
-def _required_columns_are_not_null(conn: sqlite3.Connection, table_name: str, columns: List[str]) -> bool:
-    info = _table_columns_info(conn, table_name)
+def _required_columns_are_not_null(conn: sqlite3.Connection, table_name: str, columns: List[str], *, structure=None) -> bool:
+    info = _table_columns_info(conn, table_name, structure=structure)
     for column in columns:
         item = info.get(column)
         if not item or int(item.get("notnull") or 0) != 1:
@@ -224,15 +216,6 @@ _OPERATION_EXECUTION_REQUIRED_INDEXES = {
     "idx_operation_execution_events_schedule": ["schedule_id"],
     "idx_operation_execution_events_schedule_op": ["schedule_id", "op_id"],
     "idx_operation_execution_events_batch": ["batch_id"],
-    "idx_operation_execution_events_op_revision_unique": [
-        "schedule_version",
-        "schedule_id",
-        "op_id",
-        "batch_id",
-        "source_table",
-        "effective_plan_role",
-        "previous_state_revision",
-    ],
     "idx_operation_execution_events_latest_exception": ["op_id", "event_type", "id"],
 }
 
@@ -246,15 +229,16 @@ def has_operation_execution_event_contract(conn: sqlite3.Connection) -> bool:
     return not operation_execution_event_contract_issues(conn)
 
 
-def operation_execution_event_contract_issues(conn: sqlite3.Connection) -> List[str]:
-    if not table_exists(conn, "OperationExecutionEvents"):
+def operation_execution_event_contract_issues(conn: sqlite3.Connection, *, structure=None) -> List[str]:
+    structure = structure if structure is not None else SchemaStructure(conn)
+    if not structure.has_table("OperationExecutionEvents"):
         return ["missing_table: OperationExecutionEvents"]
-    normalized_sql = _normalize_sql_contract_text(_table_sql(conn, "OperationExecutionEvents"))
+    normalized_sql = _normalize_sql_contract_text(_table_sql(conn, "OperationExecutionEvents", structure=structure))
     issues = []
     issues.extend(_operation_execution_sql_contract_issues(normalized_sql))
-    issues.extend(_operation_execution_column_contract_issues(conn, normalized_sql))
-    issues.extend(_operation_execution_foreign_key_contract_issues(conn))
-    issues.extend(_operation_execution_index_contract_issues(conn))
+    issues.extend(_operation_execution_column_contract_issues(conn, normalized_sql, structure=structure))
+    issues.extend(_operation_execution_foreign_key_contract_issues(conn, structure=structure))
+    issues.extend(_operation_execution_index_contract_issues(conn, structure=structure))
     issues.extend(_operation_execution_probe_issues(conn))
     issues.extend(operation_execution_event_data_issues(conn))
     return issues
@@ -277,9 +261,9 @@ def _operation_execution_sql_contract_issues(normalized_sql: str) -> List[str]:
     ]
 
 
-def _operation_execution_column_contract_issues(conn: sqlite3.Connection, normalized_sql: str) -> List[str]:
+def _operation_execution_column_contract_issues(conn: sqlite3.Connection, normalized_sql: str, *, structure=None) -> List[str]:
     issues = []
-    info = _table_columns_info(conn, "OperationExecutionEvents")
+    info = _table_columns_info(conn, "OperationExecutionEvents", structure=structure)
     for column in _OPERATION_EXECUTION_REQUIRED_NOT_NULL_COLUMNS:
         item = info.get(column)
         if not item:
@@ -290,19 +274,19 @@ def _operation_execution_column_contract_issues(conn: sqlite3.Connection, normal
     if int(id_info.get("pk") or 0) != 1 or "autoincrement" not in normalized_sql:
         issues.append("bad_column: OperationExecutionEvents.id must be autoincrement primary key")
     for column in ("source_table", "effective_plan_role"):
-        if not _column_has_no_default(conn, "OperationExecutionEvents", column):
+        if not _column_has_no_default(conn, "OperationExecutionEvents", column, structure=structure):
             issues.append(f"bad_default: OperationExecutionEvents.{column} must not have default")
     for column, expected in (("suggest_reschedule", "0"), ("created_at", "current_timestamp")):
-        if not _column_default_is(conn, "OperationExecutionEvents", column, expected):
+        if not _column_default_is(conn, "OperationExecutionEvents", column, expected, structure=structure):
             issues.append(f"bad_default: OperationExecutionEvents.{column} expected {expected}")
     return issues
 
 
-def _operation_execution_foreign_key_contract_issues(conn: sqlite3.Connection) -> List[str]:
+def _operation_execution_foreign_key_contract_issues(conn: sqlite3.Connection, *, structure=None) -> List[str]:
     issues = []
     groups = {
         (child_columns, parent_table, parent_columns)
-        for child_columns, parent_table, parent_columns, _ in _foreign_key_groups(conn, "OperationExecutionEvents")
+        for child_columns, parent_table, parent_columns, _ in _foreign_key_groups(conn, "OperationExecutionEvents", structure=structure)
     }
     for child_columns, parent_table, parent_columns in sorted(_OPERATION_EXECUTION_REQUIRED_FOREIGN_GROUPS):
         if (child_columns, parent_table, parent_columns) not in groups:
@@ -310,30 +294,32 @@ def _operation_execution_foreign_key_contract_issues(conn: sqlite3.Connection) -
                 "bad_fk_group: OperationExecutionEvents."
                 f"{child_columns} -> {parent_table}{parent_columns}"
             )
-    pairs = set(_foreign_key_pairs(conn, "OperationExecutionEvents"))
+    pairs = set(_foreign_key_pairs(conn, "OperationExecutionEvents", structure=structure))
     for pair in sorted(_OPERATION_EXECUTION_REQUIRED_FOREIGN_PAIRS):
         if pair not in pairs:
             issues.append(f"bad_fk: OperationExecutionEvents.{pair[0]} -> {pair[1]}.{pair[2]}")
-    foreign_delete_actions = _foreign_key_delete_actions(conn, "OperationExecutionEvents")
+    foreign_delete_actions = _foreign_key_delete_actions(conn, "OperationExecutionEvents", structure=structure)
     for pair in (("schedule_id", "Schedule", "id"), ("op_id", "BatchOperations", "id")):
         if foreign_delete_actions.get(pair) == "CASCADE":
             issues.append(f"bad_fk_delete: OperationExecutionEvents.{pair[0]} must not cascade")
     return issues
 
 
-def _operation_execution_index_contract_issues(conn: sqlite3.Connection) -> List[str]:
+def _operation_execution_index_contract_issues(conn: sqlite3.Connection, *, structure=None) -> List[str]:
     issues = []
-    if not _unique_index_has_columns(conn, "OperationExecutionEvents", ["idempotency_key"]):
+    if not _unique_index_has_columns(conn, "OperationExecutionEvents", ["idempotency_key"], structure=structure):
         issues.append("bad_index: OperationExecutionEvents.idempotency_key must be unique")
     for name, columns in _OPERATION_EXECUTION_REQUIRED_INDEXES.items():
-        actual = _index_columns(conn, name, table_name="OperationExecutionEvents")
+        actual = _index_columns(conn, name, table_name="OperationExecutionEvents", structure=structure)
         if actual != columns:
             issues.append(f"bad_index: {name} expected {columns} got {actual}")
-    if not _index_is_unique(conn, "idx_operation_execution_events_op_revision_unique"):
-        issues.append("bad_index: idx_operation_execution_events_op_revision_unique must be unique")
+    revision_columns = ["schedule_version", "schedule_id", "op_id", "batch_id", "source_table",
+                        "effective_plan_role", "previous_state_revision"]
+    if not _unique_index_has_columns(conn, "OperationExecutionEvents", revision_columns, structure=structure):
+        issues.append("bad_index: OperationExecutionEvents revision identity must be unique")
     for name, (table_name, columns) in _OPERATION_EXECUTION_REQUIRED_PARENT_INDEXES.items():
-        actual = _index_columns(conn, name, table_name=table_name)
-        if actual != columns or not _unique_index_has_columns(conn, table_name, columns):
+        actual = _index_columns(conn, name, table_name=table_name, structure=structure)
+        if actual != columns or not _unique_index_has_columns(conn, table_name, columns, structure=structure):
             issues.append(f"bad_parent_index: {name} expected {table_name}{columns} got {actual}")
     return issues
 

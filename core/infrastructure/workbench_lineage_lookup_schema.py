@@ -12,12 +12,13 @@ def lineage_lookup_objects():
             "CREATE INDEX idx_wb_lineage_operation_id_text ON BatchOperations(CAST(id AS TEXT))"}
 
 
-def lineage_lookup_contract_issues(conn):
+def lineage_lookup_contract_issues(conn, *, structure=None):
     """Validate only this additive index; do not replace the v27 contract hook."""
-    rows = conn.execute(
-        "SELECT type,tbl_name,sql FROM sqlite_master WHERE name=? COLLATE NOCASE",
-        (LINEAGE_LOOKUP_INDEX,),
-    ).fetchall()
+    rows = ([obj for name, obj in structure.objects.items() if name.lower() == LINEAGE_LOOKUP_INDEX.lower()]
+            if structure is not None else conn.execute(
+                "SELECT type,tbl_name,sql FROM sqlite_master WHERE name=? COLLATE NOCASE",
+                (LINEAGE_LOOKUP_INDEX,),
+            ).fetchall())
     if not rows:
         return ["missing_lineage_lookup:" + LINEAGE_LOOKUP_INDEX]
     expected = lineage_lookup_objects()[LINEAGE_LOOKUP_INDEX]

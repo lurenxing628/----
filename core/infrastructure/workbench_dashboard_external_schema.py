@@ -8,6 +8,8 @@ from core.infrastructure.workbench_dashboard_schema import contract_issues as da
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
 from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
 
+from .schema_structure import schema_objects
+
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
@@ -53,8 +55,8 @@ def workbench_dashboard_external_objects():
     return result
 
 
-def workbench_dashboard_external_contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def workbench_dashboard_external_contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_dashboard_external_schema:" if name not in actual else "invalid_dashboard_external_schema:") + name
             for name, sql in workbench_dashboard_external_objects().items()
             if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]

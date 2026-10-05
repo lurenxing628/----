@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.errors import ValidationError
-from core.shared.compat_parse import parse_compat_float, parse_compat_int
+from core.shared.compat_parse import recover_compat_number
 from core.shared.degradation import DegradationCollector
 from core.shared.field_labels import display_field_label
 from core.shared.strict_parse import parse_required_float, parse_required_int
+from core.shared.value_policies import VALUE_FLOAT, VALUE_INT
 
 _MIN_VIOLATION_USE_DEFAULT = object()
 
@@ -82,9 +83,10 @@ def parse_field_float(
     try:
         parsed = float(parse_required_float(value, field=label))
     except ValidationError:
-        compat_value = parse_compat_float(
+        compat_value = recover_compat_number(
             value,
             field=field,
+            expected_kind=VALUE_FLOAT,
             scope=scope,
             collector=active_collector,
             fallback=fallback,
@@ -134,9 +136,10 @@ def parse_field_int(
     try:
         parsed = int(parse_required_int(value, field=label))
     except ValidationError:
-        compat_value = parse_compat_int(
+        compat_value = recover_compat_number(
             value,
             field=field,
+            expected_kind=VALUE_INT,
             scope=scope,
             collector=active_collector,
             fallback=fallback,

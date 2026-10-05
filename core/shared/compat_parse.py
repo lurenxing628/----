@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Optional
+from typing import Any, Optional, Union, cast
 
 from core.errors import ValidationError
 from core.shared.degradation import DegradationCollector
@@ -137,6 +137,34 @@ def _int_fallback(value: Any, *, field: str, min_value: Optional[int]) -> Option
     return int(parsed)
 
 
+def _number_fallback(policy: FieldPolicy, value: Any, *, scope: str, collector: DegradationCollector,
+                     fallback: Any, min_value: Any, min_inclusive: bool = True,
+                     field_label: Optional[str] = None) -> Optional[Union[float, int]]:
+    label = display_field_label(policy.field, fallback="这项内容") if field_label is None else str(field_label or "这项内容")
+    raw_fallback = _resolve_fallback(policy, fallback)
+    if policy.value_kind == VALUE_FLOAT:
+        compat_value = _float_fallback(raw_fallback, field=label, min_value=min_value, min_inclusive=min_inclusive)
+    else:
+        compat_value = _int_fallback(raw_fallback, field=label, min_value=min_value)
+    _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
+    return compat_value
+
+
+def recover_compat_number(value: Any, *, field: str, expected_kind: str, scope: str,
+                          collector: DegradationCollector, fallback: Any,
+                          field_label: Optional[str] = None) -> Optional[Union[float, int]]:
+    """Apply the declared fallback after the required parser rejected this value.
+
+    Optional blank values remain empty without a degradation, exactly as the
+    ordinary compatibility parser; the fallback itself is still validated.
+    """
+    policy = _resolve_compat_policy(field, expected_kind=expected_kind)
+    if policy.write_mode == WRITE_OPTIONAL and is_blank_input(value):
+        return None
+    return _number_fallback(policy, value, scope=scope, collector=collector, fallback=fallback,
+                            min_value=None, field_label=field_label)
+
+
 def parse_compat_float(
     value: Any,
     *,
@@ -154,11 +182,8 @@ def parse_compat_float(
     try:
         return parser(value, field=label, min_value=min_value, min_inclusive=min_inclusive)
     except ValidationError:
-        compat_value = _float_fallback(
-            _resolve_fallback(policy, fallback), field=label, min_value=min_value, min_inclusive=min_inclusive
-        )
-        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
-        return compat_value
+        return _number_fallback(policy, value, scope=scope, collector=collector, fallback=fallback,
+                                min_value=min_value, min_inclusive=min_inclusive, field_label=label)
 
 
 def parse_compat_int(
@@ -177,6 +202,6 @@ def parse_compat_int(
     try:
         return parser(value, field=label, min_value=min_value)
     except ValidationError:
-        compat_value = _int_fallback(_resolve_fallback(policy, fallback), field=label, min_value=min_value)
-        _emit_event(collector, policy=policy, scope=scope, raw_value=value, fallback=compat_value, field_label=label)
-        return compat_value
+        # _resolve_compat_policy proved VALUE_INT, so this branch uses _int_fallback.
+        return cast(Optional[int], _number_fallback(policy, value, scope=scope, collector=collector,
+                                                    fallback=fallback, min_value=min_value, field_label=label))

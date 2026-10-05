@@ -5,6 +5,8 @@ from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbe
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_template_lineage_schema import contract_issues as lineage_contract_issues
 
+from .schema_structure import schema_objects
+
 ADOPTIONS = "WorkbenchCalibrationAdoptions"
 LOCKS = "WorkbenchCalibrationQuotaLocks"
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
@@ -62,8 +64,8 @@ def objects():
     return result
 
 
-def contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_calibration_adoption:" if name not in actual else "invalid_calibration_adoption:") + name
             for name, sql in objects().items()
             if name not in actual or _canonical_sql(actual[name] or "") != _canonical_sql(sql)]

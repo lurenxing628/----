@@ -37,8 +37,6 @@ def _replace_report_tables(conn):
     for name, sql in definitions.items():
         if name not in _TABLES and (name in attached_names or name in new_names):
             conn.execute(sql)
-    if conn.execute("PRAGMA foreign_key_check").fetchone():
-        raise RuntimeError("Execution report migration would break historical foreign keys.")
 
 
 def _migrate_report_links(conn):

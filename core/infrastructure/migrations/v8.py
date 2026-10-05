@@ -22,6 +22,7 @@ def _migrate_batches(conn: sqlite3.Connection) -> MigrationOutcome:
         UPDATE Batches
         SET ready_status = 'yes',
             ready_date = NULL
+        WHERE ready_status IS NOT 'yes' OR ready_date IS NOT NULL
         """,
     )
 
@@ -38,6 +39,7 @@ def _migrate_batch_materials(conn: sqlite3.Connection) -> MigrationOutcome:
             END,
             ready_status = 'yes'
         WHERE required_qty IS NOT NULL
+          AND (available_qty IS NULL OR available_qty < required_qty OR ready_status IS NOT 'yes')
         """,
     )
 
@@ -50,6 +52,7 @@ def _migrate_enforce_ready_default(conn: sqlite3.Connection) -> MigrationOutcome
         UPDATE ScheduleConfig
         SET config_value = 'no'
         WHERE config_key = 'enforce_ready_default'
+          AND config_value IS NOT 'no'
         """,
     )
 

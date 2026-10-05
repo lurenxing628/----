@@ -211,7 +211,6 @@ CREATE TABLE IF NOT EXISTS OperatorCalendar (
     PRIMARY KEY (operator_id, date),
     FOREIGN KEY (operator_id) REFERENCES Operators(operator_id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_operator_calendar_operator_date ON OperatorCalendar(operator_id, date);
 CREATE INDEX IF NOT EXISTS idx_operator_calendar_date ON OperatorCalendar(date);
 CREATE TABLE IF NOT EXISTS ScheduleConfig (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -450,8 +449,6 @@ CREATE TABLE IF NOT EXISTS ScheduleAdjustmentScenarioRow (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_base
 ON ScheduleAdjustmentScenario(base_version, base_plan_role, status);
-CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_draft
-ON ScheduleAdjustmentScenario(source_draft_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_op
 ON ScheduleAdjustmentScenarioRow(scenario_id, op_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_adjustment_scenario_row_time
@@ -512,7 +509,6 @@ CREATE INDEX IF NOT EXISTS idx_operation_execution_events_op ON OperationExecuti
 CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule ON OperationExecutionEvents(schedule_id);
 CREATE INDEX IF NOT EXISTS idx_operation_execution_events_schedule_op ON OperationExecutionEvents(schedule_id, op_id);
 CREATE INDEX IF NOT EXISTS idx_operation_execution_events_batch ON OperationExecutionEvents(batch_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_operation_execution_events_op_revision_unique ON OperationExecutionEvents(schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role, previous_state_revision);
 CREATE INDEX IF NOT EXISTS idx_operation_execution_events_latest_exception ON OperationExecutionEvents(op_id, event_type, id);
 CREATE TABLE IF NOT EXISTS WorkbenchEntityRefs (
         ref TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*'),
@@ -880,12 +876,6 @@ CREATE TRIGGER IF NOT EXISTS wb_resource_shift_members_update AFTER UPDATE ON Wo
 CREATE TRIGGER IF NOT EXISTS wb_resource_shift_members_delete AFTER DELETE ON WorkbenchOperatorProfiles BEGIN
             UPDATE WorkbenchEntityRefs SET revision = revision + 1
                 WHERE active = 1 AND kind = 'shift_profile' AND entity_key IN (OLD.shift_profile_id);
-        END;
-CREATE TRIGGER IF NOT EXISTS wb_resource_operator_status_reason AFTER UPDATE OF status ON Operators BEGIN
-            UPDATE WorkbenchOperatorProfiles SET inactive_reason = NULL WHERE operator_id = NEW.operator_id AND inactive_reason IS NOT NULL;
-        END;
-CREATE TRIGGER IF NOT EXISTS wb_resource_supplier_status_reason AFTER UPDATE OF status ON Suppliers BEGIN
-            UPDATE WorkbenchSupplierProfiles SET inactive_reason = NULL WHERE supplier_id = NEW.supplier_id AND inactive_reason IS NOT NULL;
         END;
 CREATE TRIGGER IF NOT EXISTS wb_ref_template_operation_insert AFTER INSERT ON "PartOperations" BEGIN
             UPDATE WorkbenchEntityRefs SET active = 0, revision = revision + 1
@@ -1628,5 +1618,11 @@ CREATE TRIGGER IF NOT EXISTS wb_material_quantity_basis
                         WHERE m.batch_id = NEW.batch_id
                             AND (r.batch_quantity IS NULL OR r.batch_quantity IS NOT NEW.quantity));
             END;
+CREATE TRIGGER IF NOT EXISTS wb_resource_operator_status_reason AFTER UPDATE OF status ON Operators BEGIN
+            UPDATE WorkbenchOperatorProfiles SET inactive_reason = NULL WHERE operator_id = NEW.operator_id AND inactive_reason IS NOT NULL;
+        END;
+CREATE TRIGGER IF NOT EXISTS wb_resource_supplier_status_reason AFTER UPDATE OF status ON Suppliers BEGIN
+            UPDATE WorkbenchSupplierProfiles SET inactive_reason = NULL WHERE supplier_id = NEW.supplier_id AND inactive_reason IS NOT NULL;
+        END;
 INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM "WorkbenchPlanSourceRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "WorkbenchTaskRefs" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleHistory" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "BatchOperations" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidate" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateSelection" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenario" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "Schedule" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleCandidateRows" LIMIT 1) AND NOT EXISTS (SELECT 1 FROM "ScheduleAdjustmentScenarioRow" LIMIT 1) THEN 1 ELSE 0 END WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);
 INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) SELECT 1, CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLegacyFacts LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReports LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportRevisions LIMIT 1) AND NOT EXISTS (SELECT 1 FROM OperationExecutionEvents LIMIT 1) AND NOT EXISTS (SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1) THEN 1 ELSE 0 END, 1 WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);

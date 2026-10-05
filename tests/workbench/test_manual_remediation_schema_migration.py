@@ -31,7 +31,7 @@ from tests.workbench.schema32_migration_support import (
 
 
 def test_frozen_v31_step_and_fresh_v32_have_identical_ddl(tmp_path, schema_path, monkeypatch):
-    assert CURRENT_SCHEMA_VERSION == 37 and MIGRATIONS[32] is v32.run
+    assert MIGRATIONS[32] is v32.run
     def forbidden(*args, **kwargs):
         pytest.fail("Fresh schema must not migrate or create historical evidence")
     monkeypatch.setattr(database, "_migrate_with_backup_impl", forbidden)

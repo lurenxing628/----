@@ -163,9 +163,6 @@ def test_migration_runner_reports_integrity_failure_without_changing_database(tm
 def test_validation_failure_is_visible_and_removes_isolated_files(tmp_path, monkeypatch, failure):
     db_path, backup_path = _make_restore_files(tmp_path)
     original_state = _database_state(db_path)
-    scratch = tmp_path / "integrity-scratch"
-    scratch.mkdir()
-    monkeypatch.setattr(integrity_mod.tempfile, "tempdir", str(scratch))
     real_connect = sqlite3.connect
     logger = Mock()
     sleep = Mock()
@@ -202,13 +199,15 @@ def test_validation_failure_is_visible_and_removes_isolated_files(tmp_path, monk
     sleep.assert_not_called()
     assert connect_spy.call_count == 1
     assert _database_state(db_path) == original_state
-    assert list(scratch.iterdir()) == []
+    assert list(tmp_path.glob("aps-rollback-integrity-*")) == []
 
 
 @pytest.mark.parametrize("journal_mode", ["DELETE", "WAL"])
 @pytest.mark.parametrize("page_size", [512, 4096, 65536])
 def test_valid_backup_is_checked_readonly_in_isolation(tmp_path, monkeypatch, page_size, journal_mode):
-    db_path, backup_path = _make_restore_files(tmp_path)
+    db_directory = tmp_path / "same filesystem #?%"
+    db_directory.mkdir()
+    db_path, backup_path = _make_restore_files(db_directory)
     backup_path.unlink()
     with closing(sqlite3.connect(str(backup_path))) as conn:
         conn.execute(f"PRAGMA page_size = {page_size}")
@@ -218,21 +217,22 @@ def test_valid_backup_is_checked_readonly_in_isolation(tmp_path, monkeypatch, pa
         conn.commit()
     payload = backup_path.read_bytes()
     original_state = _database_state(db_path)
-    scratch = tmp_path / "scratch #?%"
-    scratch.mkdir()
-    monkeypatch.setattr(integrity_mod.tempfile, "tempdir", str(scratch))
     real_connect = sqlite3.connect
     observed = []
+    write_payload = Mock(wraps=integrity_mod.write_fixed_bytes)
+    replace = Mock(wraps=migration_mod.os.replace)
+    monkeypatch.setattr(integrity_mod, "write_fixed_bytes", write_payload)
+    monkeypatch.setattr(migration_mod.os, "replace", replace)
 
     def inspect_connect(database, **kwargs):
         uri = urlsplit(database)
         staged_path = Path(url2pathname(uri.path))
-        assert scratch in staged_path.parents
+        assert staged_path.parent.parent == db_directory
         assert staged_path.read_bytes() == payload
         assert _database_state(db_path) == original_state
         assert uri.query == "mode=ro"
         assert kwargs["uri"] is True
-        observed.append(database)
+        observed.append(staged_path)
         conn = real_connect(database, **kwargs)
         try:
             with pytest.raises(sqlite3.OperationalError, match="readonly"):
@@ -246,6 +246,8 @@ def test_valid_backup_is_checked_readonly_in_isolation(tmp_path, monkeypatch, pa
     migration_mod.restore_db_file_from_backup(str(backup_path), str(db_path))
 
     assert len(observed) == 1
+    write_payload.assert_called_once_with(observed[0], payload)
+    replace.assert_called_once_with(observed[0], str(db_path))
     assert db_path.read_bytes() == payload
     assert backup_path.read_bytes() == payload
-    assert list(scratch.iterdir()) == []
+    assert list(db_directory.glob("aps-rollback-integrity-*")) == []

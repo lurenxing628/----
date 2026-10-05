@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
+from typing import Iterator, Optional
 
 from .migration_common import fallback_log
 from .safe_files import write_fixed_bytes
@@ -28,8 +29,9 @@ def run_sqlite_integrity_check(conn, *, logger, check_label: str, execute_failed
         raise BackupIntegrityError(f"{check_label}失败：{rows}")
 
 
-def validate_sqlite_backup_payload(payload: bytes, *, logger=None) -> None:
-    """Validate only the captured bytes, without opening the source or target database."""
+@contextmanager
+def validated_sqlite_backup_stage(payload: bytes, *, logger=None, directory: Optional[str] = None) -> Iterator[Path]:
+    """Yield the validated isolated file, closed and ready for same-filesystem replacement."""
     check_label = "迁移回滚备份完整性检查"
     # Empty files are valid to SQLite; require a complete header and whole pages.
     page_size = int.from_bytes(payload[16:18], "big")
@@ -48,8 +50,8 @@ def validate_sqlite_backup_payload(payload: bytes, *, logger=None) -> None:
 
     # Isolate even WAL-mode payloads from the source/target sidecars. Close the
     # staging file before sqlite3 opens it, and the connection before cleanup.
-    with tempfile.TemporaryDirectory(prefix="aps-rollback-integrity-") as directory:
-        staged_path = Path(directory) / "payload.db"
+    with tempfile.TemporaryDirectory(prefix="aps-rollback-integrity-", dir=directory) as staging_directory:
+        staged_path = Path(staging_directory) / "payload.db"
         write_fixed_bytes(staged_path, payload)
         try:
             with closing(sqlite3.connect(staged_path.as_uri() + "?mode=ro", uri=True)) as conn:
@@ -62,3 +64,4 @@ def validate_sqlite_backup_payload(payload: bytes, *, logger=None) -> None:
         except sqlite3.Error as exc:
             fallback_log(logger, "error", f"{check_label}执行失败：{exc}")
             raise BackupIntegrityError(f"{check_label}执行失败，拒绝恢复：{exc}") from exc
+        yield staged_path

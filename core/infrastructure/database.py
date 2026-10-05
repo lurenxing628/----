@@ -191,16 +191,22 @@ def ensure_schema(
             # 不会修正既有表结构，后续索引/新列依赖会直接失败。
             initial_version = _get_schema_version(conn)
             _ensure_schema_version_not_newer(initial_version, supported_version=CURRENT_SCHEMA_VERSION)
-            _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql)
-            if _has_no_user_tables(conn):
+            if initial_version == CURRENT_SCHEMA_VERSION:
+                # One unchanged current-schema validation owns one transaction.
+                conn.execute("BEGIN")
+                _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql)
+            elif _has_no_user_tables(conn):
                 _ensure_no_user_tables_db_can_bootstrap(conn, initial_version)
                 conn.executescript(script)
 
             # 确保 SchemaVersion 表存在，并获取当前版本
-            _ensure_schema_version(conn, logger=logger, schema_sql=sql)
-            current_version = _get_schema_version(conn)
-            _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
-            _ensure_current_schema_contract(conn, schema_version=current_version, schema_sql=sql)
+            if initial_version == CURRENT_SCHEMA_VERSION:
+                current_version = initial_version
+            else:
+                _ensure_schema_version(conn, logger=logger, schema_sql=sql)
+                current_version = _get_schema_version(conn)
+                _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
+                _ensure_current_schema_contract(conn, schema_version=current_version, schema_sql=sql)
             conn.commit()
             if logger:
                 fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")

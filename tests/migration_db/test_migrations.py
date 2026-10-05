@@ -53,10 +53,18 @@ def _seed_minimal_plan(conn: sqlite3.Connection) -> None:
     )
 
 
-def test_fresh_schema_and_repeated_ensure_schema_are_current(tmp_path: Path) -> None:
+def test_fresh_schema_and_repeated_ensure_schema_are_current(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "fresh_twice.db"
     ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
+    from core.infrastructure import database
+    checked_transactions = []
+    check = database._ensure_current_schema_contract
+    def counted_check(conn, **kwargs):
+        checked_transactions.append(conn.in_transaction)
+        return check(conn, **kwargs)
+    monkeypatch.setattr(database, "_ensure_current_schema_contract", counted_check)
     ensure_schema(str(db_path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
+    assert checked_transactions == [True]
     conn = get_connection(str(db_path))
     try:
         assert int(conn.execute("SELECT version FROM SchemaVersion WHERE id = 1").fetchone()["version"]) == CURRENT_SCHEMA_VERSION

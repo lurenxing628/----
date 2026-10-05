@@ -45,7 +45,7 @@ from tests.workbench.run_schema_migration_support import connect, snapshot, sour
 
 def test_frozen_v30_and_fresh_current_share_exact_thirteen_object_extension(tmp_path, schema_path, monkeypatch):
     assert hashlib.sha256(FIXTURE_V30.read_bytes()).hexdigest() == FIXTURE_V30_SHA
-    assert CURRENT_SCHEMA_VERSION == 37 and MIGRATIONS[31] is v31.run
+    assert MIGRATIONS[31] is v31.run
     definitions = objects()
     assert len(definitions) == 13
     assert {name for name, sql in definitions.items() if sql.startswith("CREATE TABLE")} == set(V31_TABLES)

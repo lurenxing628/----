@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from core.infrastructure.database import ensure_schema
+from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
 from core.infrastructure.material_stages_schema import objects as material_objects
 from core.infrastructure.migration_state import current_schema_contract_issues, set_schema_version
 from core.infrastructure.migrations import v32, v37
@@ -121,7 +121,7 @@ def test_real_v36_upgrade_preserves_every_value_type_clock_and_receipt(old_case,
     path = case.conn.execute("PRAGMA database_list").fetchone()[2]
     backup_dir = tmp_path / "backups"
     ensure_schema(path, backup_dir=str(backup_dir))
-    assert case.conn.execute("SELECT version FROM SchemaVersion").fetchone()[0] == 37
+    assert case.conn.execute("SELECT version FROM SchemaVersion").fetchone()[0] == CURRENT_SCHEMA_VERSION
     assert without_version(snapshot(case.conn)) == without_version(before)
     assert current_schema_contract_issues(case.conn) == []
     assert case.conn.execute("PRAGMA foreign_key_check").fetchall() == []
@@ -138,7 +138,11 @@ def test_real_v36_upgrade_preserves_every_value_type_clock_and_receipt(old_case,
 
 def test_v37_is_idempotent_and_material_review_trigger_preserves_existing_basis(old_case):
     case = old_case
+    trace = []
+    case.conn.set_trace_callback(trace.append)
     v37.run(case.conn)
+    case.conn.set_trace_callback(None)
+    assert sum(sql.strip().lower() == "pragma foreign_key_check" for sql in trace) == 1
     before = list(case.conn.iterdump())
     v37.run(case.conn)
     assert list(case.conn.iterdump()) == before
@@ -146,6 +150,21 @@ def test_v37_is_idempotent_and_material_review_trigger_preserves_existing_basis(
     assert case.conn.execute("SELECT batch_quantity FROM BatchMaterialReviews WHERE requirement_id=1").fetchone()[0] == 10
     assert case.conn.execute("SELECT ready_status FROM Batches WHERE batch_id='B1'").fetchone()[0] == "no"
     case.conn.rollback()
+
+
+def test_v37_final_foreign_key_failure_rolls_back_both_rebuilds(old_case, monkeypatch):
+    case = old_case
+    before = list(case.conn.iterdump())
+    migrate_material = v37._migrate_material_reviews
+    def corrupt_after_material(conn):
+        migrate_material(conn)
+        conn.execute("PRAGMA defer_foreign_keys=ON")
+        conn.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) VALUES(2147483000,10)")
+    monkeypatch.setattr(v37, "_migrate_material_reviews", corrupt_after_material)
+    with pytest.raises(RuntimeError, match="would break historical foreign keys"):
+        v37.run(case.conn)
+    assert list(case.conn.iterdump()) == before
+    assert case.conn.execute("SELECT count(*) FROM sqlite_temp_master").fetchone()[0] == 0
 
 
 def test_v37_failure_after_report_rebuild_rolls_back_all_schema_history_and_clock(old_case, monkeypatch):
@@ -221,7 +240,7 @@ def test_frozen_v25_to_v31_upgrade_preserves_original_history_and_backup(tmp_pat
         for table, rows in before.items():
             if table != "SchemaVersion":
                 assert after[table] == rows, table
-        assert case.conn.execute("SELECT version FROM SchemaVersion").fetchone()[0] == 37
+        assert case.conn.execute("SELECT version FROM SchemaVersion").fetchone()[0] == CURRENT_SCHEMA_VERSION
         assert case.conn.execute("PRAGMA foreign_key_check").fetchall() == []
         backups = list(backup_dir.glob("*.db"))
         assert len(backups) == 1

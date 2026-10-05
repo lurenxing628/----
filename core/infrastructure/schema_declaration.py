@@ -2,12 +2,11 @@
 
 schema.sql 是生成物（python -m tools.generate_schema_sql --write），手写源是 DDL 模块与迁移链；
 运行期需要“声明了哪些表、每张表有哪些列”时，把文本装进一个隔离的 :memory: 库再用 PRAGMA 读，
-不再用正则猜 CREATE TABLE。解析结果按文本哈希缓存，同一份 schema 只解析一次。
+不再用正则猜 CREATE TABLE。解析结果按文本内容缓存，同一份 schema 只解析一次。
 """
 
 from __future__ import annotations
 
-import hashlib
 import os
 import sqlite3
 import sys
@@ -70,7 +69,7 @@ def _parse(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
 
 
 def _declared(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
-    key = hashlib.sha256(str(schema_sql or "").encode("utf-8")).hexdigest()
+    key = str(schema_sql or "")
     cached = _DECLARED_CACHE.get(key)
     if cached is None:
         cached = _parse(str(schema_sql or ""))

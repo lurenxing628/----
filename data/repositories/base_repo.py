@@ -32,11 +32,6 @@ class BaseRepository:
         self.conn = conn
         self.logger = logger
 
-        from .schedule_time_sql import register_schedule_time_sql_functions
-
-        if conn is not None:
-            register_schedule_time_sql_functions(conn)
-
     # -------------------------
     # 基础执行与查询
     # -------------------------

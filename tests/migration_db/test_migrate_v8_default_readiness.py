@@ -54,6 +54,9 @@ def test_v8_migrates_existing_readiness_data_to_default_ready() -> None:
         assert material["ready_status"] == "yes"
         assert enforce_ready["config_value"] == "no"
         assert json.loads(preset["config_value"])["enforce_ready_default"] == "no"
+        changes = conn.total_changes
+        run_v8(conn, logger=None)
+        assert conn.total_changes == changes
     finally:
         conn.close()
 

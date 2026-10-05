@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Tuple
 
+from .schema_structure import schema_objects
+
 RESOURCE_TABLES: Dict[str, Tuple[str, Tuple[str, ...]]] = {
     "part": ("Parts", ("part_no",)),
     "op_type": ("OpTypes", ("op_type_id",)),
@@ -229,10 +231,8 @@ def canonical_sql(sql: str) -> str:
 _canonical_sql = canonical_sql
 
 
-def workbench_metadata_contract_issues(conn) -> List[str]:
-    actual = {row[0]: row[1] for row in conn.execute(
-        "SELECT name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger')"
-    ).fetchall()}
+def workbench_metadata_contract_issues(conn, *, structure=None) -> List[str]:
+    actual = schema_objects(conn, structure=structure)
     issues = []
     for name, sql in metadata_objects().items():
         if name not in actual:

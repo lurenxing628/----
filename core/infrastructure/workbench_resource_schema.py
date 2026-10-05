@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
+from .schema_structure import schema_objects
 from .workbench_metadata_schema import _canonical_sql, identity_triggers
 
 RESOURCE_ENTITY_TABLES = {
@@ -134,9 +135,8 @@ def install_resources(conn) -> None:
                 WHERE r.kind = ? AND r.entity_key = source.{key} AND r.active = 1)""", (kind, kind))
 
 
-def workbench_resource_contract_issues(conn) -> List[str]:
-    rows = conn.execute("SELECT name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger')").fetchall()
-    actual = {row[0]: row[1] for row in rows}
+def workbench_resource_contract_issues(conn, *, structure=None) -> List[str]:
+    actual = schema_objects(conn, structure=structure)
     return [("missing_workbench_resource: " if name not in actual else "bad_workbench_resource: ") + name
             for name, sql in resource_objects().items()
             if name not in actual or _canonical_sql(actual[name] or "") != _canonical_sql(sql)]

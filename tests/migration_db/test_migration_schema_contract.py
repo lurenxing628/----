@@ -85,7 +85,6 @@ def test_detect_schema_rejects_execution_indexes_on_another_table(tmp_path: Path
         conn.executescript(
             """
             DROP INDEX idx_operation_execution_events_latest_exception;
-            DROP INDEX idx_operation_execution_events_op_revision_unique;
             DROP INDEX idx_operation_execution_events_batch;
             DROP INDEX idx_operation_execution_events_schedule_op;
             DROP INDEX idx_operation_execution_events_schedule;
@@ -108,8 +107,6 @@ def test_detect_schema_rejects_execution_indexes_on_another_table(tmp_path: Path
             ON OperationExecutionEventsIndexShadow(schedule_id, op_id);
             CREATE INDEX idx_operation_execution_events_batch
             ON OperationExecutionEventsIndexShadow(batch_id);
-            CREATE UNIQUE INDEX idx_operation_execution_events_op_revision_unique
-            ON OperationExecutionEventsIndexShadow(op_id, previous_state_revision);
             CREATE INDEX idx_operation_execution_events_latest_exception
             ON OperationExecutionEventsIndexShadow(op_id, event_type, id);
             """

@@ -241,7 +241,7 @@ def test_unbound_identical_instances_remain_unbound_after_five_complete_legacy_c
     assert facts["rows"][0]["candidate_count"] == 6
     assert facts["rows"][0]["sample_count"] == facts["rows"][0]["eligible_sample_count"] == 0
     assert facts["rows"][0]["suggested_unit_hours"] is None
-    assert all(sample["template_operation_ref"] is None for sample in facts["samples_by_part"]["P1"])
+    assert all(sample["template_operation_ref"] is None for sample in facts["unbound_samples_by_part"]["P1"])
     assert stored_state(case.conn) == before
 
 

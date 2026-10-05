@@ -2,6 +2,8 @@
 
 from core.infrastructure.workbench_metadata_schema import _canonical_sql
 
+from .schema_structure import schema_objects
+
 
 def execution_void_objects():
     objects = {
@@ -40,8 +42,8 @@ def execution_void_objects():
     return objects
 
 
-def execution_void_contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def execution_void_contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_execution_void:" if name not in actual else "invalid_execution_void:") + name
             for name, sql in execution_void_objects().items()
             if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
+from .schema_structure import schema_objects
 from .workbench_metadata_schema import _canonical_sql, entity_key_sql
 
 _REF = "TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*')"
@@ -191,13 +192,14 @@ def plan_identity_objects() -> Dict[str, str]:
     return objects
 
 
-def _source_issues(conn) -> List[str]:
+def _source_issues(conn, *, structure=None) -> List[str]:
     issues = []
     extras = {"history": ("schedule_time", "version"), "scenario_row": ("op_id",),
               "schedule_row": ("id", "version", "op_id")}
     sources = dict(_SOURCES, history=("ScheduleHistory", "id", (), ()))
     for kind, (table, primary, alternates, rotate_columns) in sources.items():
-        info = conn.execute("SELECT name, pk FROM pragma_table_info(?)", (table,)).fetchall()
+        info = ([(row[1], row[5]) for row in structure.table_info(table)] if structure is not None
+                else conn.execute("SELECT name, pk FROM pragma_table_info(?)", (table,)).fetchall())
         names = {row[0] for row in info}
         required = {primary, *rotate_columns, *extras.get(kind, ())}
         required.update(column for columns in alternates for column in columns)
@@ -208,10 +210,9 @@ def _source_issues(conn) -> List[str]:
     return issues
 
 
-def _structure_issues(conn) -> List[str]:
-    actual = {row[0]: row[1] for row in conn.execute(
-        "SELECT name, sql FROM sqlite_master WHERE type IN ('table', 'index', 'trigger')").fetchall()}
-    issues = _source_issues(conn)
+def _structure_issues(conn, *, structure=None) -> List[str]:
+    actual = schema_objects(conn, structure=structure)
+    issues = _source_issues(conn, structure=structure)
     for name, sql in plan_identity_objects().items():
         if name not in actual:
             issues.append("missing_workbench_plan_identity: " + name)
@@ -229,9 +230,9 @@ def _clock_issues(conn) -> List[str]:
     return []
 
 
-def workbench_plan_identity_contract_issues(conn) -> List[str]:
+def workbench_plan_identity_contract_issues(conn, *, structure=None) -> List[str]:
     """SELECT-only structure and required clock check, not business completeness."""
-    issues = _structure_issues(conn)
+    issues = _structure_issues(conn, structure=structure)
     return issues if issues else _clock_issues(conn)
 
 

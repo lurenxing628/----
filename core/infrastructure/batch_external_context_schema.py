@@ -2,6 +2,8 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
+from .schema_structure import schema_objects
+
 
 def capture_select(operation_sql, origin):
     """Fixed SQL fragments supplied only by this module and its migration."""
@@ -41,8 +43,8 @@ def objects():
     }
 
 
-def contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]

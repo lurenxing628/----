@@ -1,5 +1,6 @@
 """Additional machine work types; the legacy primary capability remains valid."""
 
+from .schema_structure import schema_objects
 from .workbench_metadata_schema import canonical_sql
 
 
@@ -22,8 +23,8 @@ def objects():
     return result
 
 
-def contract_issues(conn):
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+def contract_issues(conn, *, structure=None):
+    actual = schema_objects(conn, structure=structure)
     return [("missing_machine_capabilities:" if name not in actual else "invalid_machine_capabilities:") + name
             for name, sql in objects().items()
             if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]

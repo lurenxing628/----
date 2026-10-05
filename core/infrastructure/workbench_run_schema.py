@@ -3,6 +3,8 @@
 from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
+from .schema_structure import schema_objects
+
 RUN_TABLES = ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunCandidates", "WorkbenchRunCandidateTasks")
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -65,9 +67,9 @@ def workbench_run_objects():
     return objects
 
 
-def workbench_run_contract_issues(conn):
+def workbench_run_contract_issues(conn, *, structure=None):
     """SELECT only, including when the ledger is absent or only partly present."""
-    actual = {row[0]: row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master")}
+    actual = schema_objects(conn, structure=structure)
     return [("missing_run_schema:" if name not in actual else "invalid_run_schema:") + name
             for name, sql in workbench_run_objects().items()
             if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]
