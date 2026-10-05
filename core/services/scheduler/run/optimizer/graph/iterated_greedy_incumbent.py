@@ -28,6 +28,13 @@ class IGIncumbentTracker:
         self.t_begin = t_begin
         self.improvement_trace = improvement_trace
         self.best: Optional[Dict[str, Any]] = None
+        self.best_identity: Any = None
+
+    def adopt_best(self, candidate: Optional[Dict[str, Any]], *, fingerprint: Any = None) -> None:
+        if candidate is self.best and self.best_identity is not None and fingerprint is None:
+            return
+        self.best = candidate
+        self.best_identity = None if candidate is None else fingerprint or self.pool.fingerprint(candidate)
 
     def observe_trial(self, candidate: Dict[str, Any]) -> None:
         """A resumed trial was evaluated, but cannot suppress or replace a subsequently verified solution."""
@@ -45,11 +52,13 @@ class IGIncumbentTracker:
         solution and may still improve the incumbent, counted apart from destroy/repair improvements.
         """
         incumbent = self.best
-        fingerprint = self.pool.fingerprint(candidate, self.pool.fingerprint(incumbent).output_fingerprint)
+        parent = self.best_identity or self.pool.fingerprint(incumbent)
+        fingerprint = self.pool.fingerprint(candidate, parent.output_fingerprint)
         self.pool.seen_outputs.add(fingerprint.output_fingerprint)
         state_fingerprint = None
         if self.report_state is not None:
-            state_fingerprint = self.report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN)
+            state_fingerprint = self.report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
+                                                                          fingerprint=fingerprint)
         if capture_of is not None and self._capture_reproduced(fingerprint, capture_of):
             return False
         event = self._acceptance_event(candidate, incumbent=incumbent, fingerprint=fingerprint,
@@ -57,17 +66,19 @@ class IGIncumbentTracker:
         if event is None:
             return False
         if self.report_state is not None:
-            self.report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN, acceptance_event=event)
+            self.report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
+                                                       acceptance_event=event, fingerprint=fingerprint)
         append_graph_trace(improvement_trace=self.improvement_trace, candidate=candidate, profile=profile,
                            clock=self.clock, t_begin=self.t_begin)
         self.report["accepted"] = True
         self.report["reference_capture_improvements" if capture_of is not None else "improvements"] += 1
-        self.best = candidate
+        self.adopt_best(candidate, fingerprint=fingerprint)
         return True
 
     def _capture_reproduced(self, fingerprint: Any, capture_of: Dict[str, Any]) -> bool:
         """A reference capture that reproduces its source is accounted as a capture; a divergent one goes on."""
-        if fingerprint.output_fingerprint == self.pool.fingerprint(capture_of).output_fingerprint:
+        source = self.best_identity if capture_of is self.best else self.pool.fingerprint(capture_of)
+        if fingerprint.output_fingerprint == source.output_fingerprint:
             self.report["reference_captures"] += 1
             return True
         self.report["reference_capture_divergences"] += 1

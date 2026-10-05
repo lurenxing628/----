@@ -5,8 +5,14 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from core.infrastructure.database import ensure_schema, get_connection
+from core.models.schedule_delay_diagnosis import ConfirmedFact, SuggestedAction
+from core.services.report.delay_diagnosis_presentation import (
+    build_delay_diagnosis_export_rows,
+    build_delay_diagnosis_page_context,
+)
 from tests._support.paths import REPO_ROOT
 
 TESTS_ROOT = REPO_ROOT / "tests"
@@ -124,4 +130,29 @@ def test_overdue_finish_time_uses_parsed_time_order_not_raw_text(tmp_path: Path,
     assert mixed["finish_time"] == "2026-06-03 10:00:00"
     assert float(mixed["delay_hours"]) == 10.0
 
+
+def test_diagnosis_page_and_export_keep_confirmed_facts_separate_from_clues() -> None:
+    fact_text = "批次 B_FACT 的计划完成时间已经晚于交期 2026-05-03，超期 11.00 小时。"
+    trace = SimpleNamespace(generated_at="2026-05-05 12:00:00", plan_identity=SimpleNamespace(version=VERSION))
+    item = SimpleNamespace(
+        batch_id="B_FACT", bucket="scheduled_overdue", delay_hours=11.0, delay_days=11.0 / 24,
+        leading_clue_label="物料待复核", confidence="weak", data_gaps=["当前物料数据不足。"],
+        candidate_clues=[SimpleNamespace(data_gaps=["当前没有物料到货明细。"], plain_text="请核对物料。")],
+        confirmed_facts=[ConfirmedFact(text=fact_text, evidences=[])],
+        suggested_actions=[SuggestedAction(label="核对计划", target_page="甘特图", link=None,
+                                           reason="确认最后工序的计划结束时间。", priority="normal")],
+        evidences=[SimpleNamespace(source_page="甘特图", evidence_label="计划排程明细")], trace_meta=trace,
+    )
+    report = SimpleNamespace(items=[item], generated_at=trace.generated_at, warnings=[])
+
+    public = build_delay_diagnosis_page_context(report)["items_by_batch"]["B_FACT"]
+    exported = build_delay_diagnosis_export_rows(report)[0]
+
+    assert public["confirmed_facts"] == [fact_text]
+    assert exported["check_info"] == fact_text + "；核对计划：确认最后工序的计划结束时间。"
+    assert exported["evidence_sources"] == "甘特图：计划排程明细"
+    assert "当前没有物料到货明细。" in public["data_gaps"]
+    assert "没有现场执行反馈时，不判断现场做慢了。" in exported["data_gaps"]
+    assert "不判断一定是物料造成延期" in exported["data_gaps"]
+    assert not {"trace_meta", "rule_version", "input_fingerprint"}.intersection(public)
 

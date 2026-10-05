@@ -285,7 +285,7 @@ def test_report_and_on_modes_add_summary_without_changing_schedule_payload(monke
         return [_graph_node()]
 
     class FakeGraphService:
-        def analyze_linear_batches(self, nodes: Any, *, metrics_mode: str = "full") -> object:
+        def analyze_precedence(self, nodes: Any, _edges: Any, *, metrics_mode: str = "full") -> object:
             captured[-1]["nodes"] = nodes
             captured[-1]["metrics_mode"] = metrics_mode
             return object()
@@ -377,7 +377,7 @@ def test_known_graph_errors_are_visible_without_changing_schedule(
     from core.services.scheduler.graph import analysis_service
 
     class FailingGraphService:
-        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
+        def analyze_precedence(self, _nodes: Any, _edges: Any, *, metrics_mode: str = "full") -> object:
             raise exception_factory()
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)
@@ -398,7 +398,7 @@ def test_unknown_graph_error_is_not_swallowed(monkeypatch: Any) -> None:
     from core.services.scheduler.graph import analysis_service
 
     class FailingGraphService:
-        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
+        def analyze_precedence(self, _nodes: Any, _edges: Any, *, metrics_mode: str = "full") -> object:
             raise RuntimeError("boom")
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)

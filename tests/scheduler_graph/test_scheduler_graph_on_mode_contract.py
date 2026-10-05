@@ -299,7 +299,7 @@ def cycle_graph(monkeypatch: Any) -> None:
     from core.services.scheduler.graph import analysis_service, exporter
 
     class FakeGraphService:
-        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
+        def analyze_precedence(self, _nodes: Any, _edges: Any, *, metrics_mode: str = "full") -> object:
             return object()
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FakeGraphService)
@@ -354,13 +354,13 @@ def test_on_dag_score_context_uses_single_full_metrics_pass(monkeypatch: Any) ->
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
 
     calls: List[str] = []
-    original = ScheduleGraphAnalysisService.analyze_linear_batches
+    original = ScheduleGraphAnalysisService.analyze_precedence
 
-    def _wrapped(self: Any, nodes: Any, *, metrics_mode: str = "full") -> Any:
+    def _wrapped(self: Any, nodes: Any, edges: Any, *, metrics_mode: str = "full") -> Any:
         calls.append(metrics_mode)
-        return original(self, nodes, metrics_mode=metrics_mode)
+        return original(self, nodes, edges, metrics_mode=metrics_mode)
 
-    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_linear_batches", _wrapped)
+    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_precedence", _wrapped)
 
     preparation = prepare_schedule_graph_for_dispatch(_schedule_input("on"))  # type: ignore[arg-type]
 
@@ -382,18 +382,18 @@ def test_on_dag_zero_graph_weights_keep_ready_queue_but_disable_scoring(monkeypa
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
 
     calls: List[str] = []
-    original = ScheduleGraphAnalysisService.analyze_linear_batches
+    original = ScheduleGraphAnalysisService.analyze_precedence
 
-    def _wrapped(self: Any, nodes: Any, *, metrics_mode: str = "full") -> Any:
+    def _wrapped(self: Any, nodes: Any, edges: Any, *, metrics_mode: str = "full") -> Any:
         calls.append(metrics_mode)
-        return original(self, nodes, metrics_mode=metrics_mode)
+        return original(self, nodes, edges, metrics_mode=metrics_mode)
 
     schedule_input = _schedule_input("on")
     schedule_input.cfg = ensure_schedule_config_snapshot(
         _config(graph_analysis_mode="on", graph_critical_weight=0, graph_impact_weight=0).to_dict(),
         strict_mode=True,
     )
-    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_linear_batches", _wrapped)
+    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_precedence", _wrapped)
 
     preparation = prepare_schedule_graph_for_dispatch(schedule_input)  # type: ignore[arg-type]
 
@@ -1170,21 +1170,21 @@ def test_sgs_graph_ready_context_rejects_mismatched_successor_map() -> None:
 def test_candidate_comparison_reuses_graph_core_across_graph_on_candidates(monkeypatch: Any) -> None:
     """反 N+1 回归：候选对比里多个 graph-on 候选复用同一份权重无关图核心(nodes/edges/payload)。
 
-    5 档 graph-on 候选(+1 个 graph-off baseline)。重构前每候选都重建全图(analyze_linear_batches ×5);
-    复用后核心只建一次,故 analyze_linear_batches 只被调用一次且为 full 口径。
+    5 档 graph-on 候选(+1 个 graph-off baseline)。重构前每候选都重建全图(analyze_precedence ×5);
+    复用后核心只建一次,故 analyze_precedence 只被调用一次且为 full 口径。
     候选数仍为 5 个 critical_chain,逐候选打分各自独立,未被复用污染。
     """
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 
     calls: List[str] = []
-    original = ScheduleGraphAnalysisService.analyze_linear_batches
+    original = ScheduleGraphAnalysisService.analyze_precedence
 
-    def _wrapped(self: Any, nodes: Any, *, metrics_mode: str = "full") -> Any:
+    def _wrapped(self: Any, nodes: Any, edges: Any, *, metrics_mode: str = "full") -> Any:
         calls.append(metrics_mode)
-        return original(self, nodes, metrics_mode=metrics_mode)
+        return original(self, nodes, edges, metrics_mode=metrics_mode)
 
-    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_linear_batches", _wrapped)
+    monkeypatch.setattr(ScheduleGraphAnalysisService, "analyze_precedence", _wrapped)
 
     def _optimize(**kwargs: Any) -> OptimizationOutcome:
         return _optimizer_outcome()
@@ -1196,7 +1196,7 @@ def test_candidate_comparison_reuses_graph_core_across_graph_on_candidates(monke
         strict_mode=True,
     )
 
-    # 5 个 graph-on 候选共享一份图核心 → analyze_linear_batches 仅一次(full);baseline graph-off 不建图。
+    # 5 个 graph-on 候选共享一份图核心 → analyze_precedence 仅一次(full);baseline graph-off 不建图。
     assert calls == ["full"], calls
     critical_chain = [c for c in outcome.candidates if getattr(c, "kind", None) == "critical_chain"]
     assert len(critical_chain) == 5

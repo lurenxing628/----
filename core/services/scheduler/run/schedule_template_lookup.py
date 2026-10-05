@@ -1,7 +1,8 @@
 """Adapt a batch's frozen context to scheduling; never query live templates."""
 
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from types import MappingProxyType
+from typing import Any, List, Mapping, Optional
 
 from core.errors import ValidationError
 from core.models import ExternalGroup, PartOperation
@@ -23,6 +24,12 @@ class TemplateGroupLookupOutcome:
     events: List[DegradationEvent] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class FrozenExternalContext:
+    row: Mapping[str, Any]
+    group_key: Optional[str]
+
+
 def _stored_context(svc, operation_id):
     cache = getattr(svc, "_aps_schedule_input_cache", None)
     if isinstance(cache, dict) and "external_contexts" in cache:
@@ -33,7 +40,7 @@ def _stored_context(svc, operation_id):
     return repo.get(operation_id)
 
 
-def lookup_template_group_context_for_op(svc, op: Any, *, strict_mode=False, scope=None):
+def verified_external_context_for_op(svc, op: Any) -> FrozenExternalContext:
     cache = getattr(svc, "_aps_schedule_input_cache", None)
     if not isinstance(cache, dict):
         cache = {}
@@ -45,8 +52,9 @@ def lookup_template_group_context_for_op(svc, op: Any, *, strict_mode=False, sco
         batches[op.batch_id] = batch
     row = require_context(_stored_context(svc, op.id), operation_id=op.id,
                           part_no=batch.part_no, sequence=op.seq)
+    group_key = context_group_key(row)
     if row["merge_mode"] == "merged":
-        key = (op.batch_id, context_group_key(row), getattr(op, "piece_id", None))
+        key = (op.batch_id, group_key, getattr(op, "piece_id", None))
         checks = cache.setdefault("external_members", {})
         if key not in checks and not cache.get("external_contexts_bound"):
             members = BatchExternalContextRepository(svc.conn).group_members(op.batch_id, row["group_ref"], key[2])
@@ -56,8 +64,14 @@ def lookup_template_group_context_for_op(svc, op: Any, *, strict_mode=False, sco
         problem = merged_supplier_problem(row, getattr(op, "supplier_id", None), checks.get(key))
         if problem:
             raise ValidationError(problem, field="external_context")
+    return FrozenExternalContext(MappingProxyType(dict(row)), group_key)
+
+
+def lookup_template_group_context_for_op(svc, op: Any, *, strict_mode=False, scope=None):
+    """Legacy template-shaped view; frozen facts reject invalid context in both modes."""
+    facts = verified_external_context_for_op(svc, op)
+    row, group_key = facts.row, facts.group_key
     # The permanent group identity prevents a reused business code merging unrelated groups.
-    group_key = context_group_key(row)
     template = PartOperation(id=row["template_operation_id"], part_no=row["part_no"], seq=row["sequence"],
                              source="external", ext_group_id=group_key, status=row["template_status"])
     group = None

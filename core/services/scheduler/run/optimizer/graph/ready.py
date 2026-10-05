@@ -295,6 +295,7 @@ def _run_weight_profiles(
         resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
         schedule_fn=schedule_fn, readiness_gate_enabled=bool(readiness_gate_enabled), version=int(version),
         clock=clock, v2_common_rank_cache=v2_common_rank_cache,
+        topology_cache={},
     )
     pool = EliteRepairPool(limits=repair_limits, objective_name=objective_name, operations=algo_ops_to_schedule,
                            metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=version,

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.algo_stats import capture_algo_stats
 
 from .runtime import OptimizerRuntime
 from .search_budget import OptimizerPhaseBudget, SearchBudget, publish_search_budget
@@ -122,7 +122,7 @@ def _baseline_outcome(
     )
     best_score = (float(summary.failed_ops),) + objective_score(optimizer_cfg.objective_name, best_metrics)
     best_order = build_order(optimizer_cfg.strategy_enum or SortStrategy.PRIORITY_FIRST, used_params or {})
-    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+    algo_stats = capture_algo_stats(scheduler, optimizer_algo_stats)
     baseline = _baseline_candidate(
         results=results,
         summary=summary,
@@ -137,8 +137,8 @@ def _baseline_outcome(
         resource_pool=resource_pool,
         seed_sr_list=seed_sr_list,
     )
-    search_report_state.mark_candidate_evaluated(baseline, origin="baseline")
-    search_report_state.mark_candidate_accepted(baseline, origin="baseline")
+    fingerprint = search_report_state.mark_candidate_evaluated(baseline, origin="baseline")
+    search_report_state.mark_candidate_accepted(baseline, origin="baseline", fingerprint=fingerprint)
     publish_search_budget(
         report_state=search_report_state, attempts=state.attempts, budget=search_budget,
         phases=phases, started_at=t_begin, finished_at=runtime.clock(),

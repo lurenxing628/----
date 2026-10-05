@@ -79,7 +79,7 @@ def _counted(counts: Counter, name: str, function: Any) -> Any:
 def test_comparison_builds_invariant_projections_once_and_validates_scores_once(monkeypatch: pytest.MonkeyPatch) -> None:
     counts: Counter = Counter()
     targets = [
-        (analysis_service.ScheduleGraphAnalysisService, "analyze_linear_batches"),
+        (analysis_service.ScheduleGraphAnalysisService, "analyze_precedence"),
         (projections, "build_graph_health_context"),
         (projections, "build_graph_ready_context"),
         (resource_matching, "summarize_operation_machine_matching"),
@@ -92,7 +92,7 @@ def test_comparison_builds_invariant_projections_once_and_validates_scores_once(
     outcomes = [prepare(_candidate(base, weight=weight)) for weight in range(1, 6)]
 
     assert counts == {
-        "analyze_linear_batches": 1,
+        "analyze_precedence": 1,
         "build_graph_health_context": 1,
         "build_graph_ready_context": 1,
         "summarize_operation_machine_matching": 1,

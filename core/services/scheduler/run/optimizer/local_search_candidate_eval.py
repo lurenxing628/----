@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.algo_stats import capture_algo_stats
 
 from .neighborhood_moves import NeighborhoodMove
 
@@ -55,7 +55,7 @@ def evaluate_local_search_candidate(
         res, batches, expected_operations=algo_ops_to_schedule,
         seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
     )
-    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+    algo_stats = capture_algo_stats(scheduler, optimizer_algo_stats)
     return {
         "algo_stats": algo_stats,
         "results": res,

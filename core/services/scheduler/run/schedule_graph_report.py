@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
+from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch as _NATIVE_LINEAR_EDGES
 
 from .schedule_graph_cached_projection import build_graph_dispatch_projections
 from .schedule_graph_dispatch_context import (
@@ -172,10 +173,12 @@ def _build_schedule_graph_analysis_projection(
             )
             scope = _graph_input_scope(schedule_input, nodes=nodes)
             edges = build_linear_edges_by_batch(nodes)
-            summary = ScheduleGraphAnalysisService().analyze_linear_batches(
-                nodes,
-                metrics_mode=metrics_mode,
-            )
+            analyzer = ScheduleGraphAnalysisService()
+            if build_linear_edges_by_batch is _NATIVE_LINEAR_EDGES:
+                summary = analyzer.analyze_precedence(nodes, edges, metrics_mode=metrics_mode)
+            else:
+                # Unknown edge producers retain the legacy analysis/dispatch contract boundaries.
+                summary = analyzer.analyze_precedence(nodes, _NATIVE_LINEAR_EDGES(nodes), metrics_mode=metrics_mode)
             payload = graph_summary_to_dict(summary)
             if core_cache is not None:
                 core_cache[metrics_mode] = (nodes, edges, payload)

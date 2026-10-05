@@ -63,7 +63,9 @@ def test_report_engine_uses_same_window_for_capacity_and_occupied_hours(schema_c
         assert report[key][0]["utilization"] == 1.0
     assert calls == [dict(
         version=7, plan_role="adopted", scenario_id=None,
+        resolution=resolution,
         start_time=datetime(2026, 9, start_day).strftime("%Y-%m-%d %H:%M:%S"),
         end_time=datetime(2026, 9, end_day + 1).strftime("%Y-%m-%d %H:%M:%S"),
         resource_type="machine", resource_id="M1", batch_id="B1",
     )]
+    assert calls[0]["resolution"] is resolution

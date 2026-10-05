@@ -58,15 +58,22 @@ class EliteRepairPool:
         self.deadline = deadline
         self.elites: List[Dict[str, Any]] = []
         self.parents_by_fingerprint: Dict[str, Dict[str, Any]] = {}
+        self.report_state = report_state
         self.seen_outputs = set(report_state.candidate_fingerprints) if report_state is not None else set()
         if best is not None:
             self.seen_outputs.add(self.fingerprint(best).output_fingerprint)
         self.seen_elites: set = set()
         self.report = new_repair_report(limits, objective_name=objective_name)
 
-    def fingerprint(self, candidate: Dict[str, Any], parent: Optional[str] = None) -> Any:
+    def fingerprint(self, candidate: Dict[str, Any], parent: Optional[str] = None, *, identity: Any = None) -> Any:
+        if identity is None and self.report_state is not None:
+            identity = self.report_state.fingerprint_identity(candidate)
+        if identity is None:
+            identity = next((elite["fingerprint"] for elite in self.parents_by_fingerprint.values()
+                             if elite["candidate"] is candidate), None)
         return build_candidate_fingerprint(candidate, objective_name=self.objective_name,
-                                           parent_fingerprint=parent, seen_output_fingerprints=self.seen_outputs)
+                                           parent_fingerprint=parent, seen_output_fingerprints=self.seen_outputs,
+                                           identity=identity)
 
     def observe(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> Any:
         """Record the decoded output and maybe adopt it as an elite; returns its fingerprint against earlier outputs."""
@@ -90,15 +97,15 @@ class EliteRepairPool:
         if elite is not None:
             self.add_basis_variant(elite, profile)
         else:
-            elite = self.make_elite(candidate, profile)
+            elite = self.make_elite(candidate, profile, fingerprint=fingerprint)
         if not elite["neighborhood"].candidate_count:
             return
         self.parents_by_fingerprint[fingerprint.output_fingerprint] = elite
         self._select_parent_elites()
 
-    def make_elite(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> Dict[str, Any]:
+    def make_elite(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile, *, fingerprint: Any = None) -> Dict[str, Any]:
         neighborhood = ParentRepairPortfolio(((profile, self._build_variant(candidate, profile)),))
-        return {"candidate": candidate, "profile": profile, "fingerprint": self.fingerprint(candidate),
+        return {"candidate": candidate, "profile": profile, "fingerprint": self.fingerprint(candidate, identity=fingerprint),
                 "neighborhood": neighborhood, "decision_offset": 0, "stream_offsets": {}}
 
     def _build_variant(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> RepairPortfolio:
@@ -352,10 +359,13 @@ def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], elite_ind
                                        parent=elite["candidate"], before_decode=before_decode)
         if candidate is not None:
             append_graph_attempt(attempts=attempts, candidate=candidate, profile=profile)
-            event = _acceptance_event(pool, candidate=candidate, elite=elite, best=state.best, report_state=report_state)
+            fingerprint = pool.fingerprint(candidate, elite["fingerprint"].output_fingerprint)
+            event = _acceptance_event(pool, candidate=candidate, elite=elite, best=state.best, report_state=report_state,
+                                      fingerprint=fingerprint)
             if event is not None:
                 if report_state is not None:
-                    report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN, acceptance_event=event)
+                    report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
+                                                          acceptance_event=event, fingerprint=fingerprint)
                 append_graph_trace(improvement_trace=improvement_trace, candidate=candidate, profile=profile, clock=clock, t_begin=t_begin)
                 report["repair_accepted"] = True
                 report["repair_best_origin"] = GRAPH_READY_V2_REPAIRED_ORIGIN
@@ -387,18 +397,15 @@ def _evaluate_neighbor(evaluate: Callable[..., Dict[str, Any]], *, decision: Rep
 
 
 def _acceptance_event(pool: EliteRepairPool, *, candidate: Dict[str, Any], elite: Dict[str, Any],
-                      best: Optional[Dict[str, Any]], report_state: Any) -> Optional[Dict[str, Any]]:
+                      best: Optional[Dict[str, Any]], report_state: Any, fingerprint: Any = None) -> Optional[Dict[str, Any]]:
     pruning = pool.report["repair_pruning_report"]
-    fingerprint = pool.fingerprint(candidate, elite["fingerprint"].output_fingerprint)
+    fingerprint = fingerprint or pool.fingerprint(candidate, elite["fingerprint"].output_fingerprint)
     pool.seen_outputs.add(fingerprint.output_fingerprint)
     state_fingerprint = None
     if report_state is not None:
-        state_fingerprint = report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN)
-    if fingerprint.same_as_parent or fingerprint.same_as_seen:
-        pruning["same_fingerprint_rejected"] += 1
-        pruning["duplicate_output_rejected"] += 1
-        already_recorded = state_fingerprint is not None and (state_fingerprint.same_as_parent or state_fingerprint.same_as_seen)
-        _reject(pruning, "same_fingerprint", None if already_recorded else report_state)
+        state_fingerprint = report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
+                                                                 fingerprint=fingerprint)
+    if _reject_duplicate_output(pruning, fingerprint, state_fingerprint, report_state):
         return None
     if candidate["summary"].failed_ops or not candidate["summary"].success:
         _reject(pruning, "repair_infeasible", report_state)
@@ -415,6 +422,17 @@ def _acceptance_event(pool: EliteRepairPool, *, candidate: Dict[str, Any], elite
         _reject(pruning, "acceptance_rejected", report_state)
         return None
     return event
+
+
+def _reject_duplicate_output(pruning: Dict[str, Any], fingerprint: Any,
+                             state_fingerprint: Any, report_state: Any) -> bool:
+    if not (fingerprint.same_as_parent or fingerprint.same_as_seen):
+        return False
+    pruning["same_fingerprint_rejected"] += 1
+    pruning["duplicate_output_rejected"] += 1
+    already_recorded = state_fingerprint is not None and (state_fingerprint.same_as_parent or state_fingerprint.same_as_seen)
+    _reject(pruning, "same_fingerprint", None if already_recorded else report_state)
+    return True
 
 
 def _prune_duplicate(pruning: Dict[str, Any], *, kind: str, elite_index: int) -> None:

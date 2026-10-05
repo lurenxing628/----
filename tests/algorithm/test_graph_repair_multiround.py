@@ -25,9 +25,9 @@ def test_new_round_decodes_from_accepted_elites_and_improves_known_small_case(mo
     context = smtwt_repair_context()
     original = repair.EliteRepairPool.make_elite
 
-    def check_no_unused_next_round(self, candidate, profile):
+    def check_no_unused_next_round(self, candidate, profile, *, fingerprint=None):
         assert profile.candidate_origin != "graph_ready_v2_repaired"
-        return original(self, candidate, profile)
+        return original(self, candidate, profile, fingerprint=fingerprint)
 
     monkeypatch.setattr(repair.EliteRepairPool, "make_elite", check_no_unused_next_round)
     # Repair-round contracts: a frozen clock would let the iterated greedy stage run to its decode cap.
@@ -246,9 +246,12 @@ def test_basis_diversity_uses_existing_top_k_and_fills_remaining_slots_by_score(
                                   operations=[], metrics_by_op_id={}, start_dt=START_DT,
                                   seed=0, best=None, report_state=None)
     monkeypatch.setattr(pool, "fingerprint", lambda candidate: SimpleNamespace(output_fingerprint=candidate["id"]))
-    monkeypatch.setattr(pool, "make_elite", lambda candidate, profile: {
-        "candidate": candidate, "profile": profile,
-        "neighborhood": SimpleNamespace(candidate_count=1, feature_bases=(profile.feature_basis,))})
+    def make_elite(candidate, profile, *, fingerprint=None):
+        assert fingerprint.output_fingerprint == candidate["id"]
+        return {"candidate": candidate, "profile": profile, "fingerprint": fingerprint,
+                "neighborhood": SimpleNamespace(candidate_count=1, feature_bases=(profile.feature_basis,))}
+
+    monkeypatch.setattr(pool, "make_elite", make_elite)
     for index, score in enumerate((10, 11, 12, 1, 2, 3)):
         template = profiles["v2_edd" if index < 3 else "v2_successor_edd"]
         profile = replace(template, slug="candidate_" + str(index), profile_order=index)

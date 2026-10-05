@@ -255,7 +255,9 @@ def run_local_search(
                                   minimum_decode_seconds=decode_cost),
         readiness_gate_enabled=readiness_gate_enabled, graph_ready_context=graph_ready_context,
         valid_dispatch_rules=_resolve_sgs_dispatch_rules(valid_dispatch_rules, strategy_state[3]),
-        fingerprint_tracker=LocalSearchFingerprintTracker(objective_name=objective_name, initial_best=best),
+        fingerprint_tracker=LocalSearchFingerprintTracker(
+            objective_name=objective_name, initial_best=best,
+            initial_fingerprint=search_report_state.fingerprint_identity(best) if search_report_state is not None else None),
         clock=clock, t_begin=t_begin,
     )
     stop_detail: Optional[str] = None

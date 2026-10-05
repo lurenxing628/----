@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable
 
 from .metrics import build_node_metrics, get_critical_path, get_topological_generations
 from .precedence_builder import build_linear_edges_by_batch, build_precedence_graph
-from .types import GraphAnalysisSummary, GraphWarning, OperationGraphNode
+from .types import GraphAnalysisSummary, GraphWarning, OperationGraphEdge, OperationGraphNode
 from .validators import collect_graph_warnings, find_cycle_edges, is_dag
 
 
@@ -32,7 +32,17 @@ class ScheduleGraphAnalysisService:
         if metrics_mode not in ("basic", "full"):
             raise ValueError(f"metrics_mode 只支持 basic/full：{metrics_mode!r}")
         graph: Any = self._build_graph_for_linear_batches(nodes)
+        return self._analyze_graph(graph, metrics_mode=metrics_mode)
 
+    def analyze_precedence(
+        self, nodes: Iterable[OperationGraphNode], edges: Iterable[OperationGraphEdge], *, metrics_mode: str = "full",
+    ) -> GraphAnalysisSummary:
+        """Analyze the same edges the dispatcher will consume."""
+        if metrics_mode not in ("basic", "full"):
+            raise ValueError(f"metrics_mode 只支持 basic/full：{metrics_mode!r}")
+        return self._analyze_graph(build_precedence_graph(nodes, edges), metrics_mode=metrics_mode)
+
+    def _analyze_graph(self, graph: Any, *, metrics_mode: str) -> GraphAnalysisSummary:
         cycle_edges = find_cycle_edges(graph)
         dag_ok = is_dag(graph)
         warnings = collect_graph_warnings(graph)

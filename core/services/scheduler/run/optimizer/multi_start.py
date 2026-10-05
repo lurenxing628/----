@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional,
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.algo_stats import capture_algo_stats
 from core.services.scheduler.contracts.scheduler_like import SchedulerLike
 
 from .attempt_records import candidate_tag, evaluate_optional_start_candidate
@@ -149,7 +149,7 @@ def _evaluate_multi_start_candidate(
         seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
     )
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
-    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+    algo_stats = capture_algo_stats(scheduler, optimizer_algo_stats)
     return {
         "results": res,
         "summary": summ,

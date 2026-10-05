@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Tuple
 
+from .schedule_config_runtime_fields import list_runtime_config_fields
 
-# 与 services.scheduler.config.config_snapshot.ScheduleConfigSnapshot 双栈锁步；字段增删必须同步。
+
+# 页面服务与算法共同使用的配置值对象。
 @dataclass
 class ScheduleConfigSnapshot:
     sort_strategy: str
@@ -70,4 +72,16 @@ class ScheduleConfigSnapshot:
         }
 
 
-__all__ = ["ScheduleConfigSnapshot"]
+def snapshot_from_values(values, *, degradation_events=(), degradation_counters=None):
+    """Build the shared projection after field coercion, including legacy defaults."""
+    convert = {"int": int, "float": float, "enum": str, "yes_no": str}
+    projected = {spec.key: convert[spec.field_type](values[spec.key]) for spec in list_runtime_config_fields()}
+    downstream = (0 if projected["graph_critical_weight"] == 0 and projected["graph_impact_weight"] == 0
+                  else ScheduleConfigSnapshot.graph_downstream_weight)
+    return ScheduleConfigSnapshot(
+        **projected, graph_downstream_weight=downstream, degradation_events=tuple(degradation_events),
+        degradation_counters={} if degradation_counters is None else degradation_counters,
+    )
+
+
+__all__ = ["ScheduleConfigSnapshot", "snapshot_from_values"]

@@ -332,7 +332,13 @@ def _validate_payload_row(
 
 
 def _duplicate_row_ids(row_ids: List[int]) -> List[int]:
-    return sorted({op_id for op_id in row_ids if row_ids.count(op_id) > 1})
+    seen: Set[int] = set()
+    duplicates: Set[int] = set()
+    for op_id in row_ids:
+        if op_id in seen:
+            duplicates.add(op_id)
+        seen.add(op_id)
+    return sorted(duplicates)
 
 
 def _validate_scheduled_ids(raw_scheduled_op_ids: List[Any]) -> Tuple[Set[int], List[str]]:

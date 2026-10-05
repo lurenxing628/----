@@ -59,6 +59,7 @@ def enrich_graph_ready_v2_metrics(
     inputs = dict(operations=operations, batches=batches, start_dt=start_dt, calendar_service=calendar_service,
                   downtime_map=downtime_map, seed_results=seed_results, resource_pool=resource_pool,
                   strict_mode=strict_mode, objective_name=objective_name, graph_ready_context=graph_ready_context)
+    inputs["prepared"] = _prepare_common_features(metrics_by_op_id, operations=operations, batches=batches)
     out = _enrich_feature_basis(metrics_by_op_id, feature_basis=SUCCESSOR_WORKLOAD_BASIS, **inputs)
     if include_baseline_ordering:
         baseline = _enrich_feature_basis(metrics_by_op_id, feature_basis=BATCH_WORKLOAD_BASIS, **inputs)
@@ -67,25 +68,33 @@ def enrich_graph_ready_v2_metrics(
     return out
 
 
+def _prepare_common_features(metrics_by_op_id, *, operations, batches):
+    op_by_id = {_positive_int(getattr(op, "id", None), field="operation.id"): op for op in list(operations or [])}
+    metrics = _normalize_metrics_by_op_id(metrics_by_op_id)
+    if set(metrics).difference(op_by_id):
+        raise ValidationError("GraphReady v2 特征缺少对应工序。", field="graph_ready_v2_features")
+    durations = _duration_by_op_id_with_zero_total_trace(op_by_id, batches=batches)
+    return {"operations": op_by_id, "metrics": metrics,
+            "durations": {op_id: durations[op_id] for op_id in metrics}}
+
+
 def _enrich_feature_basis(metrics_by_op_id, *, operations, batches, start_dt, calendar_service,
                           downtime_map, seed_results, resource_pool, strict_mode, objective_name,
-                          graph_ready_context, feature_basis):
-    op_by_id = {_positive_int(getattr(op, "id", None), field="operation.id"): op for op in list(operations or [])}
-    metrics_by_op_id = _normalize_metrics_by_op_id(metrics_by_op_id)
+                          graph_ready_context, feature_basis, prepared):
+    op_by_id, metrics_by_op_id, duration_by_op_id = prepared["operations"], prepared["metrics"], prepared["durations"]
     metric_op_ids = set(metrics_by_op_id)
-    missing_op_ids = sorted(metric_op_ids.difference(op_by_id))
-    if missing_op_ids:
-        raise ValidationError("GraphReady v2 特征缺少对应工序。", field="graph_ready_v2_features")
     out: Dict[int, Dict[str, Any]] = {}
-    duration_by_op_id = _duration_by_op_id_with_zero_total_trace(op_by_id, batches=batches)
-    schedulable_duration_by_op_id = {op_id: duration_by_op_id[op_id] for op_id in metric_op_ids}
     remaining_by_op_id, ready_offset_hours_by_op_id = _workload_signals(
-        feature_basis, op_by_id, schedulable_duration_by_op_id, batches=batches, start_dt=start_dt,
+        feature_basis, op_by_id, duration_by_op_id, batches=batches, start_dt=start_dt,
         graph_ready_context=graph_ready_context, seed_results=list(seed_results or []), calendar_service=calendar_service)
-    family_names = sorted({str(getattr(op_by_id[key], "op_type_name", "") or "").strip() for key in metric_op_ids})
-    family_ranks = {name: index for index, name in enumerate(family_names)}
-    processing_ranks = _processing_time_ranks(schedulable_duration_by_op_id)
-    seed_results_by_resource = seed_results_by_resource_id(seed_results or [])
+    if "family_ranks" not in prepared:
+        family_names = sorted({str(getattr(op_by_id[key], "op_type_name", "") or "").strip() for key in metric_op_ids})
+        prepared["family_ranks"] = {name: index for index, name in enumerate(family_names)}
+        prepared["processing_ranks"] = _processing_time_ranks(duration_by_op_id)
+        prepared["resource_seeds"] = seed_results_by_resource_id(seed_results or [])
+    family_ranks, processing_ranks = prepared["family_ranks"], prepared["processing_ranks"]
+    seed_results_by_resource = prepared["resource_seeds"]
+    schedulable_duration_by_op_id = duration_by_op_id
     for op_id, metric in metrics_by_op_id.items():
         op = op_by_id[op_id]
         batch = _batch_for_operation(op, batches=batches)

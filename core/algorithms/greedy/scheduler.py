@@ -447,3 +447,10 @@ _SGS_AUTO_ASSIGN_PROBE = AutoAssignProbeContract(eligible_auto_assign_resources,
 _NATIVE_SGS_CONTEXT_GUARD = make_class_guard(ScheduleRunContext)
 # 派工见证只在 internal_operation 的函数仍是导入时的同一批对象时才有效；快照由本包持有，dispatch 子包不反向 import。
 _NATIVE_INTERNAL_OPERATION_FUNCTIONS = pristine_functions(internal_operation)
+
+
+def native_scheduler_inputs_unchanged(scheduler: Any) -> bool:
+    """Certify the scheduler and its input readers using the package-owned witnesses."""
+    return (_NATIVE_SGS_SCHEDULER_GUARD(scheduler)
+            and all(vars(internal_operation).get(name) is fn
+                    for name, fn in _NATIVE_INTERNAL_OPERATION_FUNCTIONS.items()))

@@ -1,12 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from core.errors import ValidationError
+from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_read import (
+    coerce_degradation_event as _coerce_degradation_event,
+)
+from core.models.schedule_config_runtime_read import (
+    merge_degradation_counters as _merge_degradation_counters,
+)
+from core.models.schedule_config_runtime_read import (
+    read_runtime_cfg_raw_value as _read_runtime_cfg_raw_value,
+)
+from core.models.schedule_config_runtime_read import (
+    seed_snapshot_degradation_collector as _seed_snapshot_degradation_collector,
+)
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot, snapshot_from_values
 from core.shared.degradation import (
     DegradationCollector,
-    DegradationEvent,
     degradation_events_to_dicts,
 )
 from core.shared.field_labels import display_field_label
@@ -19,295 +31,6 @@ from .config_field_spec import (
     list_config_fields,
 )
 from .config_weight_policy import normalize_weight_triplet
-
-
-# 与 core.models.schedule_config_runtime_snapshot.ScheduleConfigSnapshot 双栈锁步；字段增删必须同步。
-@dataclass
-class ScheduleConfigSnapshot:
-    sort_strategy: str
-    priority_weight: float
-    due_weight: float
-    ready_weight: float
-    holiday_default_efficiency: float
-    enforce_ready_default: str
-    prefer_primary_skill: str
-    dispatch_mode: str
-    dispatch_rule: str
-    auto_assign_enabled: str
-    ortools_enabled: str
-    ortools_time_limit_seconds: int
-    algo_mode: str
-    time_budget_seconds: int
-    objective: str
-    freeze_window_enabled: str
-    freeze_window_days: int
-    graph_analysis_mode: str = "on"
-    graph_block_on_cycle: str = "no"
-    graph_critical_weight: int = 500
-    graph_impact_weight: int = 10
-    graph_downstream_weight: int = 1
-    graph_candidate_weight_count: int = 5
-    graph_selection_policy: str = "balanced"
-    graph_overdue_tolerance_count: int = 1
-    graph_tardiness_tolerance_ratio: float = 0.10
-    graph_debug_export: str = "no"
-    auto_assign_persist: str = "yes"
-    degradation_events: Tuple[Dict[str, Any], ...] = field(default_factory=tuple, repr=False)
-    degradation_counters: Dict[str, int] = field(default_factory=dict, repr=False)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "sort_strategy": self.sort_strategy,
-            "priority_weight": float(self.priority_weight),
-            "due_weight": float(self.due_weight),
-            "ready_weight": float(self.ready_weight),
-            "holiday_default_efficiency": float(self.holiday_default_efficiency),
-            "enforce_ready_default": self.enforce_ready_default,
-            "prefer_primary_skill": self.prefer_primary_skill,
-            "dispatch_mode": self.dispatch_mode,
-            "dispatch_rule": self.dispatch_rule,
-            "auto_assign_enabled": self.auto_assign_enabled,
-            "auto_assign_persist": self.auto_assign_persist,
-            "ortools_enabled": self.ortools_enabled,
-            "ortools_time_limit_seconds": int(self.ortools_time_limit_seconds),
-            "algo_mode": self.algo_mode,
-            "time_budget_seconds": int(self.time_budget_seconds),
-            "objective": self.objective,
-            "freeze_window_enabled": self.freeze_window_enabled,
-            "freeze_window_days": int(self.freeze_window_days),
-            "graph_analysis_mode": self.graph_analysis_mode,
-            "graph_block_on_cycle": self.graph_block_on_cycle,
-            "graph_critical_weight": int(self.graph_critical_weight),
-            "graph_impact_weight": int(self.graph_impact_weight),
-            "graph_candidate_weight_count": int(self.graph_candidate_weight_count),
-            "graph_selection_policy": self.graph_selection_policy,
-            "graph_overdue_tolerance_count": int(self.graph_overdue_tolerance_count),
-            "graph_tardiness_tolerance_ratio": float(self.graph_tardiness_tolerance_ratio),
-            "graph_debug_export": self.graph_debug_export,
-        }
-
-
-def _graph_downstream_weight_for_visible_weights(*, critical_weight: int, impact_weight: int) -> int:
-    if int(critical_weight) == 0 and int(impact_weight) == 0:
-        return 0
-    return int(ScheduleConfigSnapshot.graph_downstream_weight)
-
-
-def _read_runtime_cfg_raw_value(cfg: Any, key: str) -> Tuple[bool, Any]:
-    if cfg is None:
-        return True, None
-    if isinstance(cfg, dict):
-        if key in cfg:
-            return False, cfg.get(key)
-        return True, None
-
-    raw_missing = object()
-    try:
-        value = getattr(cfg, key, raw_missing)
-    except ValidationError:
-        raise
-    except Exception as exc:
-        raise _runtime_cfg_read_error(key, exc) from exc
-    if value is raw_missing:
-        missing, value = _read_runtime_cfg_mapping_like_value(cfg, key, raw_missing)
-        if not missing:
-            return False, value
-        return True, None
-    return False, value
-
-
-def _runtime_cfg_read_error(key: str, exc: Exception) -> ValidationError:
-    label = display_field_label(key, fallback="配置项")
-    return ValidationError(f"读取运行期配置“{label}”失败。", field=key)
-
-
-def _read_runtime_cfg_mapping_like_value(cfg: Any, key: str, raw_missing: object) -> Tuple[bool, Any]:
-    getter = getattr(cfg, "get", None)
-    if not callable(getter):
-        return True, None
-    try:
-        value = getter(key, raw_missing)
-    except TypeError:
-        value = _read_runtime_cfg_mapping_like_value_without_default(getter, key, raw_missing)
-    except KeyError:
-        value = raw_missing
-    except ValidationError:
-        raise
-    except Exception as exc:
-        raise _runtime_cfg_read_error(key, exc) from exc
-    if value is raw_missing:
-        return True, None
-    return False, value
-
-
-def _read_runtime_cfg_mapping_like_value_without_default(getter: Any, key: str, raw_missing: object) -> Any:
-    try:
-        return getter(key)
-    except KeyError:
-        return raw_missing
-    except ValidationError:
-        raise
-    except Exception as exc:
-        raise _runtime_cfg_read_error(key, exc) from exc
-
-
-def _coerce_degradation_event(raw: Any) -> Optional[DegradationEvent]:
-    if isinstance(raw, DegradationEvent):
-        return raw
-    if not isinstance(raw, dict):
-        return None
-
-    code = str(raw.get("code") or "").strip()
-    scope = str(raw.get("scope") or "").strip()
-    message = str(raw.get("message") or "").strip()
-    if not code or not scope or not message:
-        return None
-
-    field_value = raw.get("field")
-    field_text = str(field_value).strip() if field_value is not None else ""
-    sample_value = raw.get("sample")
-    try:
-        count = max(1, int(raw.get("count") or 1))
-    except Exception:
-        count = 1
-    return DegradationEvent(
-        code=code,
-        scope=scope,
-        field=field_text or None,
-        message=message,
-        count=count,
-        sample=None if sample_value is None else str(sample_value),
-    )
-
-
-def _seed_snapshot_degradation_collector(snapshot: Any) -> DegradationCollector:
-    collector = DegradationCollector()
-    for raw in getattr(snapshot, "degradation_events", ()) or ():
-        event = _coerce_degradation_event(raw)
-        if event is not None:
-            collector.add(event)
-    return collector
-
-
-def _merge_degradation_counters(*counter_maps: Any) -> Dict[str, int]:
-    merged: Dict[str, int] = {}
-    for counter_map in counter_maps:
-        if not isinstance(counter_map, dict):
-            continue
-        for key, raw_value in counter_map.items():
-            text = str(key or "").strip()
-            if not text:
-                continue
-            try:
-                count = int(raw_value)
-            except Exception:
-                continue
-            if count <= 0:
-                continue
-            merged[text] = max(int(merged.get(text) or 0), count)
-    return merged
-
-
-def _validate_present_runtime_cfg_fields(
-    cfg: Any,
-    *,
-    source: str,
-) -> None:
-    default_map = default_snapshot_values()
-    for spec in list_config_fields():
-        missing, raw = _read_runtime_cfg_raw_value(cfg, spec.key)
-        if missing:
-            continue
-        coerce_config_field(
-            spec.key,
-            raw,
-            strict_mode=True,
-            source=source,
-            collector=DegradationCollector(),
-            missing=False,
-            fallback=default_map[spec.key],
-            missing_policy=MISSING_POLICY_ERROR,
-        )
-
-
-def _build_schedule_config_snapshot_from_runtime_cfg(
-    cfg: Any,
-    *,
-    strict_mode: bool,
-    source: str,
-) -> ScheduleConfigSnapshot:
-    if bool(strict_mode):
-        # Strict mode should surface invalid explicit inputs before unrelated
-        # missing defaults on raw dict/plain-object configs.
-        _validate_present_runtime_cfg_fields(
-            cfg,
-            source=source,
-        )
-    collector = _seed_snapshot_degradation_collector(cfg)
-    default_map = default_snapshot_values()
-    values: Dict[str, Any] = {}
-
-    for spec in list_config_fields():
-        missing, raw = _read_runtime_cfg_raw_value(cfg, spec.key)
-        values[spec.key] = coerce_config_field(
-            spec.key,
-            raw,
-            strict_mode=bool(strict_mode),
-            source=source,
-            collector=collector,
-            missing=missing,
-            fallback=default_map[spec.key],
-            missing_policy=(MISSING_POLICY_ERROR if bool(strict_mode) else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
-        )
-    if bool(strict_mode):
-        values["priority_weight"], values["due_weight"], values["ready_weight"] = normalize_weight_triplet(
-            values["priority_weight"],
-            values["due_weight"],
-            values["ready_weight"],
-            require_sum_1=True,
-            priority_field="优先级权重",
-            due_field="交期权重",
-            ready_field="齐套权重",
-        )
-
-    return ScheduleConfigSnapshot(
-        sort_strategy=str(values["sort_strategy"]),
-        priority_weight=float(values["priority_weight"]),
-        due_weight=float(values["due_weight"]),
-        ready_weight=float(values["ready_weight"]),
-        holiday_default_efficiency=float(values["holiday_default_efficiency"]),
-        enforce_ready_default=str(values["enforce_ready_default"]),
-        prefer_primary_skill=str(values["prefer_primary_skill"]),
-        dispatch_mode=str(values["dispatch_mode"]),
-        dispatch_rule=str(values["dispatch_rule"]),
-        auto_assign_enabled=str(values["auto_assign_enabled"]),
-        auto_assign_persist=str(values["auto_assign_persist"]),
-        ortools_enabled=str(values["ortools_enabled"]),
-        ortools_time_limit_seconds=int(values["ortools_time_limit_seconds"]),
-        algo_mode=str(values["algo_mode"]),
-        time_budget_seconds=int(values["time_budget_seconds"]),
-        objective=str(values["objective"]),
-        freeze_window_enabled=str(values["freeze_window_enabled"]),
-        freeze_window_days=int(values["freeze_window_days"]),
-        graph_analysis_mode=str(values["graph_analysis_mode"]),
-        graph_block_on_cycle=str(values["graph_block_on_cycle"]),
-        graph_critical_weight=int(values["graph_critical_weight"]),
-        graph_impact_weight=int(values["graph_impact_weight"]),
-        graph_downstream_weight=_graph_downstream_weight_for_visible_weights(
-            critical_weight=int(values["graph_critical_weight"]),
-            impact_weight=int(values["graph_impact_weight"]),
-        ),
-        graph_candidate_weight_count=int(values["graph_candidate_weight_count"]),
-        graph_selection_policy=str(values["graph_selection_policy"]),
-        graph_overdue_tolerance_count=int(values["graph_overdue_tolerance_count"]),
-        graph_tardiness_tolerance_ratio=float(values["graph_tardiness_tolerance_ratio"]),
-        graph_debug_export=str(values["graph_debug_export"]),
-        degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
-        degradation_counters=_merge_degradation_counters(
-            getattr(cfg, "degradation_counters", None),
-            collector.to_counters(),
-        ),
-    )
 
 
 def coerce_runtime_config_field(
@@ -334,17 +57,6 @@ def coerce_runtime_config_field(
     )
 
 
-def ensure_schedule_config_snapshot(
-    cfg: Any,
-    *,
-    strict_mode: bool = False,
-    source: str = "scheduler.runtime_config",
-) -> ScheduleConfigSnapshot:
-    return _build_schedule_config_snapshot_from_runtime_cfg(
-        cfg,
-        strict_mode=bool(strict_mode),
-        source=source,
-    )
 
 
 def build_schedule_config_snapshot(
@@ -352,12 +64,16 @@ def build_schedule_config_snapshot(
     *,
     defaults: Optional[Dict[str, Any]] = None,
     strict_mode: bool = False,
+    rows: Optional[List[Any]] = None,
 ) -> ScheduleConfigSnapshot:
     collector = DegradationCollector()
     raw_missing = object()
     default_map = default_snapshot_values()
     if isinstance(defaults, dict):
         default_map.update(defaults)
+    by_key = None if rows is None else {
+        str(row.get("config_key") if isinstance(row, dict) else row.config_key): row for row in rows
+    }
 
     def _raise_repo_get_contract_error(key: str, record: Any) -> None:
         raise TypeError(
@@ -367,8 +83,8 @@ def build_schedule_config_snapshot(
 
     def _read_repo_raw_value(key: str) -> Tuple[bool, Any]:
         repo_get = getattr(repo, "get", None)
-        if callable(repo_get):
-            record = repo_get(key)
+        if by_key is not None or callable(repo_get):
+            record = by_key.get(key) if by_key is not None else cast(Callable[[str], Any], repo_get)(key)
             if record is None:
                 return True, None
             if isinstance(record, dict):
@@ -385,12 +101,13 @@ def build_schedule_config_snapshot(
             return True, None
         return False, raw
 
+    values: Dict[str, Any] = {}
     if bool(strict_mode):
         for spec in list_config_fields():
             missing, raw = _read_repo_raw_value(spec.key)
             if missing:
                 continue
-            coerce_config_field(
+            values[spec.key] = coerce_config_field(
                 spec.key,
                 raw,
                 strict_mode=True,
@@ -401,9 +118,10 @@ def build_schedule_config_snapshot(
                 missing_policy=MISSING_POLICY_ERROR,
             )
 
-    values: Dict[str, Any] = {}
     for spec in list_config_fields():
-        missing, raw = _read_repo_raw_value(spec.key)
+        if bool(strict_mode) and spec.key in values:
+            continue
+        missing, raw = (True, None) if bool(strict_mode) else _read_repo_raw_value(spec.key)
         values[spec.key] = coerce_config_field(
             spec.key,
             raw,
@@ -425,38 +143,7 @@ def build_schedule_config_snapshot(
             ready_field="齐套权重",
         )
 
-    return ScheduleConfigSnapshot(
-        sort_strategy=str(values["sort_strategy"]),
-        priority_weight=float(values["priority_weight"]),
-        due_weight=float(values["due_weight"]),
-        ready_weight=float(values["ready_weight"]),
-        holiday_default_efficiency=float(values["holiday_default_efficiency"]),
-        enforce_ready_default=str(values["enforce_ready_default"]),
-        prefer_primary_skill=str(values["prefer_primary_skill"]),
-        dispatch_mode=str(values["dispatch_mode"]),
-        dispatch_rule=str(values["dispatch_rule"]),
-        auto_assign_enabled=str(values["auto_assign_enabled"]),
-        auto_assign_persist=str(values["auto_assign_persist"]),
-        ortools_enabled=str(values["ortools_enabled"]),
-        ortools_time_limit_seconds=int(values["ortools_time_limit_seconds"]),
-        algo_mode=str(values["algo_mode"]),
-        time_budget_seconds=int(values["time_budget_seconds"]),
-        objective=str(values["objective"]),
-        freeze_window_enabled=str(values["freeze_window_enabled"]),
-        freeze_window_days=int(values["freeze_window_days"]),
-        graph_analysis_mode=str(values["graph_analysis_mode"]),
-        graph_block_on_cycle=str(values["graph_block_on_cycle"]),
-        graph_critical_weight=int(values["graph_critical_weight"]),
-        graph_impact_weight=int(values["graph_impact_weight"]),
-        graph_downstream_weight=_graph_downstream_weight_for_visible_weights(
-            critical_weight=int(values["graph_critical_weight"]),
-            impact_weight=int(values["graph_impact_weight"]),
-        ),
-        graph_candidate_weight_count=int(values["graph_candidate_weight_count"]),
-        graph_selection_policy=str(values["graph_selection_policy"]),
-        graph_overdue_tolerance_count=int(values["graph_overdue_tolerance_count"]),
-        graph_tardiness_tolerance_ratio=float(values["graph_tardiness_tolerance_ratio"]),
-        graph_debug_export=str(values["graph_debug_export"]),
-        degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
+    return snapshot_from_values(
+        values, degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
         degradation_counters=collector.to_counters(),
     )

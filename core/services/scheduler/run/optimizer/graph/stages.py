@@ -86,13 +86,14 @@ class ProfileStage(SearchStage):
                                       attempts=self.attempts, search_report_state=self.search_report_state)
         if candidate is None:
             return 0
-        self._note_output(self.pool.observe(candidate, profile).same_as_seen)
+        fingerprint = self.pool.observe(candidate, profile)
+        self._note_output(fingerprint.same_as_seen)
         if not _candidate_should_replace_best(candidate, profile=profile, best=self.state.best, attempts=self.attempts,
-                                              search_report_state=self.search_report_state):
+                                              search_report_state=self.search_report_state, fingerprint=fingerprint):
             return 0
         improved = score_strictly_better(candidate.get("score"), (self.state.best or {}).get("score"))
         _accept_candidate(candidate, profile=profile, incumbent=self.state.best, version=self.version,
-                          search_report_state=self.search_report_state)
+                          search_report_state=self.search_report_state, fingerprint=fingerprint)
         append_graph_trace(improvement_trace=self.improvement_trace, candidate=candidate, profile=profile, clock=self.clock,
                            t_begin=self.t_begin)
         self.state.best = candidate
@@ -224,10 +225,13 @@ def _candidate_should_replace_best(
     best: Optional[Dict[str, Any]],
     attempts: List[Dict[str, Any]],
     search_report_state: Any,
+    fingerprint: Any = None,
 ) -> bool:
-    fingerprint = None
     if search_report_state is not None:
-        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=profile.candidate_origin)
+        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=profile.candidate_origin,
+                                                                   fingerprint=fingerprint)
+    else:
+        fingerprint = None
     append_graph_attempt(attempts=attempts, candidate=candidate, profile=profile)
     if fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen):
         return False
@@ -254,13 +258,15 @@ def _accept_candidate(
     incumbent: Optional[Dict[str, Any]],
     version: int,
     search_report_state: Any,
+    fingerprint: Any = None,
 ) -> None:
     if search_report_state is not None:
         event = None
         if incumbent is not None:
             event = build_graph_ready_improve_only_acceptance_event(
                 candidate_score=candidate.get("score"), incumbent_score=incumbent.get("score"), seed=int(version))
-        search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin, acceptance_event=event)
+        search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin,
+                                                     acceptance_event=event, fingerprint=fingerprint)
 
 
 __all__ = ["GraphSearchState", "IteratedGreedyStage", "ProfileStage", "RepairStage", "iterated_greedy_parent_profile"]

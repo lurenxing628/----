@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -28,6 +28,13 @@ class CandidateFingerprint:
     same_as_parent: bool
     same_as_seen: bool
     fingerprint_changed: bool
+
+    def with_context(self, *, parent_fingerprint: Optional[str],
+                     seen_output_fingerprints: Iterable[str]) -> CandidateFingerprint:
+        same_as_parent = bool(parent_fingerprint and self.output_fingerprint == parent_fingerprint)
+        return replace(self, parent_fingerprint=parent_fingerprint, same_as_parent=same_as_parent,
+                       same_as_seen=self.output_fingerprint in (seen_output_fingerprints or ()),
+                       fingerprint_changed=not same_as_parent)
 
     def to_report_dict(self) -> Dict[str, Any]:
         return {
@@ -58,13 +65,16 @@ def build_candidate_fingerprint(
     objective_name: str,
     parent_fingerprint: Optional[str],
     seen_output_fingerprints: Iterable[str],
+    identity: Optional[CandidateFingerprint] = None,
 ) -> CandidateFingerprint:
     _validate_candidate(candidate)
+    if identity is not None:
+        return identity.with_context(parent_fingerprint=parent_fingerprint,
+                                     seen_output_fingerprints=seen_output_fingerprints)
     decision_fingerprint = stable_fingerprint(_decision_payload(candidate, objective_name=objective_name))
     output_fingerprint = stable_fingerprint(_output_payload(candidate, objective_name=objective_name))
-    seen = {str(item) for item in seen_output_fingerprints or [] if str(item)}
     same_as_parent = bool(parent_fingerprint and output_fingerprint == parent_fingerprint)
-    same_as_seen = output_fingerprint in seen
+    same_as_seen = output_fingerprint in (seen_output_fingerprints or ())
     return CandidateFingerprint(
         schema_version=CANDIDATE_FINGERPRINT_SCHEMA_VERSION,
         fingerprint_scope=DISTINCT_FINGERPRINT_SCOPE,

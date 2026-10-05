@@ -22,7 +22,13 @@ from tests._support.optimizer_graph_ready_benchmark import (
 )
 
 
-def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downtime():
+def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downtime(monkeypatch):
+    from core.services.scheduler.run.optimizer.graph import candidates
+
+    def unused_ranking(*args, **kwargs):
+        raise AssertionError("Explicit decisions must not prepare discarded profile ranks")
+
+    monkeypatch.setattr(candidates, "_normalized_v2_metrics_by_op_id", unused_ranking)
     operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
     operations[2].machine_id = operations[2].operator_id = ""
     context = graph_ready_benchmark_context()

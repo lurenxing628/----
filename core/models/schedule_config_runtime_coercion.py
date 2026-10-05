@@ -20,15 +20,16 @@ from .schedule_config_runtime_read import (
     read_runtime_cfg_raw_value,
     seed_snapshot_degradation_collector,
 )
-from .schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+from .schedule_config_runtime_snapshot import ScheduleConfigSnapshot, snapshot_from_values
 from .schedule_config_runtime_weights import normalize_weight_triplet
 
+_UNSET = object()
 
 def _format_choice_allow_text(valid_values: Tuple[str, ...]) -> str:
     return " / ".join(valid_values) if valid_values else "<empty>"
 
 
-def _float_matches_choice(value: float, choices: Tuple[str, ...]) -> bool:
+def float_matches_choice(value: float, choices: Tuple[str, ...]) -> bool:
     if not choices:
         return True
     for raw_choice in choices:
@@ -43,10 +44,10 @@ def _float_matches_choice(value: float, choices: Tuple[str, ...]) -> bool:
 def _int_matches_choice(value: int, choices: Tuple[str, ...]) -> bool:
     if not choices:
         return True
-    return str(int(value)) in _normalize_valid_texts(choices)
+    return str(int(value)) in normalize_choice_tokens(choices)
 
 
-def _normalize_valid_texts(values: Tuple[str, ...]) -> Tuple[str, ...]:
+def normalize_choice_tokens(values: Tuple[str, ...]) -> Tuple[str, ...]:
     out = []
     seen = set()
     for item in values or ():
@@ -131,7 +132,7 @@ def _choice_with_degradation(
     missing: bool,
     missing_policy: str,
 ) -> str:
-    normalized_valid = _normalize_valid_texts(valid_values)
+    normalized_valid = normalize_choice_tokens(valid_values)
     fallback_text = str(fallback or "").strip().lower()
     if normalized_valid and fallback_text not in normalized_valid:
         fallback_text = normalized_valid[0]
@@ -250,7 +251,7 @@ def _coerce_float_field(
             field_label=label,
         )
     )
-    if spec.choices and not _float_matches_choice(parsed_float, tuple(spec.choices)):
+    if spec.choices and not float_matches_choice(parsed_float, tuple(spec.choices)):
         if strict_mode:
             raise ValidationError(
                 f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(tuple(spec.choices))}）",
@@ -312,7 +313,7 @@ def _coerce_int_field(
     return parsed_int
 
 
-def _coerce_config_field(
+def coerce_config_field(
     key: str,
     value: Any,
     *,
@@ -320,13 +321,14 @@ def _coerce_config_field(
     source: str,
     collector: Optional[DegradationCollector] = None,
     missing: bool = False,
-    fallback: Any = None,
+    fallback: Any = _UNSET,
     missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
+    field_label: str = "",
 ) -> Any:
     spec = get_field_spec(key)
     active_collector = collector if collector is not None else DegradationCollector()
-    effective_fallback = spec.default if fallback is None else fallback
-    label = display_field_label(spec.key, fallback="配置项")
+    effective_fallback = spec.default if fallback is _UNSET else fallback
+    label = field_label or display_field_label(spec.key, fallback="配置项")
 
     if spec.field_type == "enum":
         return _choice_with_degradation(
@@ -386,13 +388,14 @@ def _validate_present_runtime_cfg_fields(
     cfg: Any,
     *,
     source: str,
-) -> None:
+) -> Dict[str, Any]:
     default_map = default_snapshot_values()
+    values: Dict[str, Any] = {}
     for spec in list_runtime_config_fields():
         missing, raw = read_runtime_cfg_raw_value(cfg, spec.key)
         if missing:
             continue
-        _coerce_config_field(
+        values[spec.key] = coerce_config_field(
             spec.key,
             raw,
             strict_mode=True,
@@ -402,6 +405,7 @@ def _validate_present_runtime_cfg_fields(
             fallback=default_map[spec.key],
             missing_policy=MISSING_POLICY_ERROR,
         )
+    return values
 
 def ensure_schedule_config_snapshot(
     cfg: Any,
@@ -409,18 +413,19 @@ def ensure_schedule_config_snapshot(
     strict_mode: bool = False,
     source: str = "scheduler.runtime_config",
 ) -> ScheduleConfigSnapshot:
+    values: Dict[str, Any] = {}
     if bool(strict_mode):
-        _validate_present_runtime_cfg_fields(
+        values = _validate_present_runtime_cfg_fields(
             cfg,
             source=source,
         )
     collector = seed_snapshot_degradation_collector(cfg)
     default_map = default_snapshot_values()
-    values: Dict[str, Any] = {}
-
     for spec in list_runtime_config_fields():
-        missing, raw = read_runtime_cfg_raw_value(cfg, spec.key)
-        values[spec.key] = _coerce_config_field(
+        if bool(strict_mode) and spec.key in values:
+            continue
+        missing, raw = (True, None) if bool(strict_mode) else read_runtime_cfg_raw_value(cfg, spec.key)
+        values[spec.key] = coerce_config_field(
             spec.key,
             raw,
             strict_mode=bool(strict_mode),
@@ -441,40 +446,9 @@ def ensure_schedule_config_snapshot(
             ready_field="齐套权重",
         )
 
-    return ScheduleConfigSnapshot(
-        sort_strategy=str(values["sort_strategy"]),
-        priority_weight=float(values["priority_weight"]),
-        due_weight=float(values["due_weight"]),
-        ready_weight=float(values["ready_weight"]),
-        holiday_default_efficiency=float(values["holiday_default_efficiency"]),
-        enforce_ready_default=str(values["enforce_ready_default"]),
-        prefer_primary_skill=str(values["prefer_primary_skill"]),
-        dispatch_mode=str(values["dispatch_mode"]),
-        dispatch_rule=str(values["dispatch_rule"]),
-        auto_assign_enabled=str(values["auto_assign_enabled"]),
-        auto_assign_persist=str(values["auto_assign_persist"]),
-        ortools_enabled=str(values["ortools_enabled"]),
-        ortools_time_limit_seconds=int(values["ortools_time_limit_seconds"]),
-        algo_mode=str(values["algo_mode"]),
-        time_budget_seconds=int(values["time_budget_seconds"]),
-        objective=str(values["objective"]),
-        freeze_window_enabled=str(values["freeze_window_enabled"]),
-        freeze_window_days=int(values["freeze_window_days"]),
-        graph_analysis_mode=str(values["graph_analysis_mode"]),
-        graph_block_on_cycle=str(values["graph_block_on_cycle"]),
-        graph_critical_weight=int(values["graph_critical_weight"]),
-        graph_impact_weight=int(values["graph_impact_weight"]),
-        graph_downstream_weight=0 if int(values["graph_critical_weight"]) == 0 and int(values["graph_impact_weight"]) == 0 else int(ScheduleConfigSnapshot.graph_downstream_weight),
-        graph_candidate_weight_count=int(values["graph_candidate_weight_count"]),
-        graph_selection_policy=str(values["graph_selection_policy"]),
-        graph_overdue_tolerance_count=int(values["graph_overdue_tolerance_count"]),
-        graph_tardiness_tolerance_ratio=float(values["graph_tardiness_tolerance_ratio"]),
-        graph_debug_export=str(values["graph_debug_export"]),
-        degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
-        degradation_counters=merge_degradation_counters(
-            getattr(cfg, "degradation_counters", None),
-            collector.to_counters(),
-        ),
+    return snapshot_from_values(
+        values, degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
+        degradation_counters=merge_degradation_counters(getattr(cfg, "degradation_counters", None), collector.to_counters()),
     )
 
 
@@ -490,7 +464,12 @@ def coerce_runtime_config_field(
     default_map = default_snapshot_values()
     missing, raw = read_runtime_cfg_raw_value(cfg, key)
     active_collector = collector if collector is not None else DegradationCollector()
-    return _coerce_config_field(key, raw, strict_mode=bool(strict_mode), source=source, collector=active_collector, missing=missing, fallback=default_map[key], missing_policy=missing_policy)
+    return coerce_config_field(key, raw, strict_mode=bool(strict_mode), source=source, collector=active_collector, missing=missing, fallback=default_map[key], missing_policy=missing_policy)
 
 
 __all__ = ["coerce_runtime_config_field", "ensure_schedule_config_snapshot"]
+
+# Compatibility names used by the existing low-level contracts.
+_coerce_config_field = coerce_config_field
+_float_matches_choice = float_matches_choice
+_normalize_valid_texts = normalize_choice_tokens

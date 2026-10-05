@@ -276,7 +276,7 @@ def test_cycle_block_no_skips_resource_matching_without_fake_available(monkeypat
     from core.services.scheduler.graph import analysis_service, exporter
 
     class FakeGraphService:
-        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
+        def analyze_precedence(self, _nodes: Any, _edges: Any, *, metrics_mode: str = "full") -> object:
             return object()
 
     cycle_payload = {
@@ -311,7 +311,7 @@ def test_networkx_unavailable_uses_top_level_graph_analysis_status(monkeypatch: 
     from core.services.scheduler.graph.nx_runtime import NetworkXUnavailable
 
     class FailingGraphService:
-        def analyze_linear_batches(self, _nodes: Any, *, metrics_mode: str = "full") -> object:
+        def analyze_precedence(self, _nodes: Any, _edges: Any, *, metrics_mode: str = "full") -> object:
             raise NetworkXUnavailable("缺少可选依赖 networkx==3.1")
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)

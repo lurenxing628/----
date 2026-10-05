@@ -93,7 +93,8 @@ class DiagnosisTraceMeta:
     rule_version: str
     ranking_inputs: List[str]
     clue_selection_trace: List[str]
-    input_fingerprint: str
+    # Kept for existing serialized/model callers; production uses the trace facts directly.
+    input_fingerprint: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {

@@ -412,3 +412,33 @@ def test_microsecond_shift_has_distinct_output_fingerprint() -> None:
     fingerprints = [build_candidate_fingerprint(value, objective_name=_OBJECTIVE,
         parent_fingerprint=None, seen_output_fingerprints=set()) for value in (first, second)]
     assert fingerprints[0].output_fingerprint != fingerprints[1].output_fingerprint
+
+
+def test_report_reuses_stable_identity_and_rechecks_comparison_context(monkeypatch) -> None:
+    import core.services.scheduler.run.optimizer.candidate_fingerprint as fingerprints
+
+    class SeenSet(set):
+        def __iter__(self):
+            raise AssertionError("candidate membership must not copy the history set")
+
+    candidate = _candidate(order=["B1", "B2"], results=_base_results(), metrics=_metrics())
+    original = fingerprints.stable_fingerprint
+    calls = []
+
+    def counted(payload):
+        calls.append(payload["fingerprint_scope"])
+        return original(payload)
+
+    monkeypatch.setattr(fingerprints, "stable_fingerprint", counted)
+    state = _state()
+    state.candidate_fingerprints, state.accepted_fingerprints = SeenSet(), SeenSet()
+    identity = state.mark_candidate_evaluated(candidate, origin="baseline")
+    assert not identity.same_as_parent and not identity.same_as_seen
+    state.mark_candidate_accepted(candidate, origin="baseline", fingerprint=identity)
+    again = state.mark_candidate_evaluated(candidate, origin="baseline", fingerprint=identity)
+    assert again.same_as_parent and again.same_as_seen
+    independent = identity.with_context(parent_fingerprint=None, seen_output_fingerprints=())
+    assert not independent.same_as_parent and not independent.same_as_seen
+    assert independent.output_fingerprint == again.output_fingerprint
+    assert independent.decision_fingerprint == again.decision_fingerprint
+    assert calls == ["decision", "decoded_output"]

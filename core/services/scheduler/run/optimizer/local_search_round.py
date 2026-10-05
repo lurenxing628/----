@@ -366,6 +366,7 @@ def _record_acceptance_result(
             search_report_state=search_report_state,
             candidate=candidate,
             acceptance_decision=acceptance_decision,
+            fingerprint=candidate_fingerprint,
         )
         return
     if accepted_current:
@@ -373,6 +374,7 @@ def _record_acceptance_result(
             search_report_state=search_report_state,
             candidate=candidate,
             acceptance_decision=acceptance_decision,
+            fingerprint=candidate_fingerprint,
         )
         return
     mark_acceptance_rejected(

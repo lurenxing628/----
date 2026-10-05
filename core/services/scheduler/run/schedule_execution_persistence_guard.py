@@ -110,15 +110,17 @@ def _validate_execution_revisions(
     *,
     expected_revisions: Dict[int, str],
     execution_facts: Dict[int, ExecutionFact],
+    current_facts: Optional[Dict[int, ExecutionFact]] = None,
 ) -> None:
     if not expected_revisions:
         return
     expected_op_ids = sorted(int(op_id) for op_id in expected_revisions)
-    current = _current_facts_for_expected(
-        svc,
-        expected_op_ids=expected_op_ids,
-        execution_facts=execution_facts,
-    )
+    current = current_facts
+    missing_ids = expected_op_ids if current is None else [op_id for op_id in expected_op_ids if op_id not in current]
+    if missing_ids:
+        loaded = _current_facts_for_expected(svc, expected_op_ids=missing_ids, execution_facts=execution_facts)
+        current = {**(current or {}), **loaded}
+    current = current or {}
     for op_id, expected_revision in expected_revisions.items():
         fact = current.get(int(op_id))
         current_revision = "" if fact is None else str(fact.state_revision or "")
@@ -136,16 +138,16 @@ def _validate_execution_snapshot(
     expected_revision: Optional[str],
     expected_op_ids: Optional[List[int]],
     execution_facts: Dict[int, ExecutionFact],
-) -> None:
+) -> Optional[Dict[int, ExecutionFact]]:
     if str(expected_revision or "").startswith(RESOURCE_SNAPSHOT_PREFIX):
-        _, _, current = collect_resource_execution_facts(
+        current_facts, _, current = collect_resource_execution_facts(
             svc, prev_version=int(svc.history_repo.get_latest_version() or 0),
         )
         if current.revision != expected_revision:
             raise _execution_guard_conflict(
                 "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。", reason="execution_state_changed",
             )
-        return
+        return current_facts
     op_ids = [int(op_id) for op_id in list(expected_op_ids or []) if int(op_id) > 0]
     if not expected_revision or not op_ids:
         return
@@ -160,6 +162,7 @@ def _validate_execution_snapshot(
             "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。",
             reason="execution_state_changed",
         )
+    return current_facts
 
 
 def _validate_processing_seed_row(
@@ -309,7 +312,7 @@ def validate_execution_guard_before_persist(
     execution_snapshot_op_ids: Optional[List[int]] = None,
     payload_validation_operations: Optional[List[Any]] = None,
 ) -> None:
-    _validate_execution_snapshot(
+    current_facts = _validate_execution_snapshot(
         svc,
         expected_revision=execution_snapshot_revision,
         expected_op_ids=execution_snapshot_op_ids,
@@ -326,6 +329,7 @@ def validate_execution_guard_before_persist(
         svc,
         expected_revisions=execution_guard_state_revisions,
         execution_facts=execution_facts,
+        current_facts=current_facts,
     )
     rows = _rows_by_op_id(validated_schedule_payload)
     for op_id in sorted(set(execution_fixed_op_ids or set())):

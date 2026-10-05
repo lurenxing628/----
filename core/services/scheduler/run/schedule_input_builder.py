@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union, overload
+from dataclasses import dataclass
+from typing import Any, List, Optional, Union, overload
 
 try:
     from typing import Literal
@@ -12,12 +12,11 @@ from core.errors import ValidationError
 from core.models.enums import MergeMode, SourceType
 from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo
-from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
-from core.shared.field_labels import user_field_label
+from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float
 from core.shared.strict_parse import parse_required_float
 
-from .schedule_template_lookup import TemplateGroupLookupOutcome, lookup_template_group_context_for_op
+from .schedule_template_lookup import verified_external_context_for_op
 
 
 @dataclass
@@ -26,8 +25,6 @@ class _ExternalMergeContext:
     ext_group_id: Optional[str] = None
     ext_merge_mode: Optional[str] = None
     ext_group_total_days: Optional[float] = None
-    merge_context_degraded: bool = False
-    merge_context_events: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _build_scope(op: Any) -> str:
@@ -39,61 +36,6 @@ def _build_scope(op: Any) -> str:
     return f"schedule_input.batch[{batch_id}].seq[{seq}]"
 
 
-def _merged_total_days(
-    raw_value: Any,
-    *,
-    strict_mode: bool,
-    scope: str,
-    collector: DegradationCollector,
-    op_code: str,
-) -> Optional[float]:
-    try:
-        return float(
-            parse_required_float(
-                raw_value,
-                field=user_field_label("ext_group_total_days") or "合并外协周期",
-                min_value=0.0,
-                min_inclusive=False,
-            )
-        )
-    except ValidationError as exc:
-        if strict_mode:
-            raise ValidationError(exc.message, field="ext_group_total_days") from exc
-        collector.add(
-            code="invalid_number",
-            scope=scope,
-            field="ext_group_total_days",
-            message=f"外协工序 {op_code} 的合并外协周期无效，本次先按单道外协周期继续。",
-            sample=repr(raw_value),
-        )
-        return None
-
-
-def _lookup_template_group_context(svc, op: Any, *, strict_mode: bool, scope: str) -> TemplateGroupLookupOutcome:
-    return lookup_template_group_context_for_op(svc, op, strict_mode=bool(strict_mode), scope=scope)
-
-
-def _ext_group_id_from_template(tmpl: Any, *, merge_context_degraded: bool) -> Optional[str]:
-    if merge_context_degraded or tmpl is None:
-        return None
-    return str(getattr(tmpl, "ext_group_id", None) or "").strip() or None
-
-
-def _merge_mode_from_group(grp: Any, *, merge_context_degraded: bool) -> Optional[str]:
-    if merge_context_degraded or grp is None:
-        return None
-    return str(getattr(grp, "merge_mode", None) or "").strip().lower() or None
-
-
-def _should_use_external_days(
-    *,
-    merge_context_degraded: bool,
-    merge_mode: Optional[str],
-    total_days: Optional[float],
-) -> bool:
-    return bool(merge_context_degraded) or merge_mode != MergeMode.MERGED.value or total_days is None
-
-
 def _build_external_merge_context(
     svc,
     op: Any,
@@ -101,39 +43,14 @@ def _build_external_merge_context(
     strict_mode: bool,
     scope: str,
     collector: DegradationCollector,
-    op_code: str,
 ) -> _ExternalMergeContext:
-    merge_event_collector = DegradationCollector()
-    lookup = _lookup_template_group_context(svc, op, strict_mode=bool(strict_mode), scope=scope)
-    merge_event_collector.extend(lookup.events)
-    collector.extend(lookup.events)
-
-    merge_context_degraded = bool(lookup.merge_context_degraded)
-    ext_group_id = _ext_group_id_from_template(lookup.template, merge_context_degraded=merge_context_degraded)
-    merge_mode = _merge_mode_from_group(lookup.group, merge_context_degraded=merge_context_degraded)
-    total_days: Optional[float] = None
-
-    if merge_mode == MergeMode.MERGED.value:
-        merge_event_count_before = len(merge_event_collector)
-        total_days = _merged_total_days(
-            getattr(lookup.group, "total_days", None),
-            strict_mode=bool(strict_mode),
-            scope=scope,
-            collector=merge_event_collector,
-            op_code=op_code,
-        )
-        if total_days is None:
-            merge_context_degraded = True
-            collector.extend(merge_event_collector.to_list()[merge_event_count_before:])
-            ext_group_id = None
-            merge_mode = None
+    facts = verified_external_context_for_op(svc, op)
+    merge_mode = facts.row["merge_mode"]
+    # require_context already proved a merged total is a finite positive native number.
+    total_days = float(facts.row["total_days"]) if merge_mode == MergeMode.MERGED.value else None
 
     ext_days: Optional[float] = None
-    if _should_use_external_days(
-        merge_context_degraded=merge_context_degraded,
-        merge_mode=merge_mode,
-        total_days=total_days,
-    ):
+    if merge_mode != MergeMode.MERGED.value:
         ext_days = parse_field_float(
             getattr(op, "ext_days", None),
             field="ext_days",
@@ -148,11 +65,9 @@ def _build_external_merge_context(
 
     return _ExternalMergeContext(
         ext_days=ext_days,
-        ext_group_id=ext_group_id,
+        ext_group_id=facts.group_key,
         ext_merge_mode=merge_mode,
         ext_group_total_days=total_days,
-        merge_context_degraded=bool(merge_context_degraded),
-        merge_context_events=degradation_events_to_dicts(merge_event_collector.to_list()),
     )
 
 
@@ -193,8 +108,6 @@ def _make_algo_operation(
         ext_group_id=external_context.ext_group_id,
         ext_merge_mode=external_context.ext_merge_mode,
         ext_group_total_days=external_context.ext_group_total_days,
-        merge_context_degraded=bool(external_context.merge_context_degraded),
-        merge_context_events=list(external_context.merge_context_events),
     )
 
 
@@ -218,7 +131,6 @@ def _build_algo_operations_outcome(
     algo_ops: List[OpForScheduleAlgo] = []
     for op in reschedulable_operations:
         scope = _build_scope(op)
-        op_code = str(getattr(op, "op_code", "") or "").strip() or "-"
         source_key = str(getattr(op, "source", "") or "").strip().lower()
 
         if source_key == SourceType.INTERNAL.value:
@@ -262,7 +174,6 @@ def _build_algo_operations_outcome(
                 strict_mode=bool(strict_mode),
                 scope=scope,
                 collector=collector,
-                op_code=op_code,
             )
         algo_ops.append(
             _make_algo_operation(

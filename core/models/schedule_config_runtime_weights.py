@@ -71,4 +71,34 @@ def normalize_weight_triplet(
     return float(pw), float(dw), float(rw)
 
 
-__all__ = ["normalize_weight_triplet"]
+def normalize_single_weight(value: Any, *, field: str) -> float:
+    raw = _parse_weight(value, field_name=field)
+    normalized = raw / 100.0 if raw > 1.0 else raw
+    if normalized > 1.0:
+        raise ValidationError(f"“{_weight_label(field)}”范围不合理（期望 0~1 或 0~100%）", field=field)
+    return float(normalized)
+
+def derive_ready_weight_from_priority_due(
+    priority_weight: Any,
+    due_weight: Any,
+    *,
+    priority_field: str = "优先级权重",
+    due_field: str = "交期权重",
+) -> Tuple[float, float, float]:
+    raw_pw = _parse_weight(priority_weight, field_name=priority_field)
+    raw_dw = _parse_weight(due_weight, field_name=due_field)
+    percent_mode = float(raw_pw) > 1.0 or float(raw_dw) > 1.0
+    raw_total = float(raw_pw) + float(raw_dw)
+    raw_ready = (100.0 - raw_total) if percent_mode else (1.0 - raw_total)
+    if raw_ready < -1e-9:
+        raise ValidationError("优先级权重 + 交期权重 之和不能超过 1（或 100%）。", field="权重")
+    return normalize_weight_triplet(
+        raw_pw,
+        raw_dw,
+        max(0.0, float(raw_ready)),
+        require_sum_1=True,
+        priority_field=priority_field,
+        due_field=due_field,
+    )
+
+__all__ = ["normalize_weight_triplet", "normalize_single_weight", "derive_ready_weight_from_priority_due"]

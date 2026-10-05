@@ -92,10 +92,10 @@ def _duplicate_class_annotations(path: Path, class_name: str) -> List[str]:
 
 
 def test_schedule_config_snapshot_sources_do_not_duplicate_field_annotations() -> None:
-    targets = [
-        REPO_ROOT / "core" / "services" / "scheduler" / "config" / "config_snapshot.py",
-        REPO_ROOT / "core" / "models" / "schedule_config_runtime_snapshot.py",
-    ]
+    from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot as RuntimeSnapshot
+
+    assert ScheduleConfigSnapshot is RuntimeSnapshot
+    targets = [REPO_ROOT / "core" / "models" / "schedule_config_runtime_snapshot.py"]
     failures = []
 
     for path in targets:

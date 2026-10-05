@@ -417,3 +417,32 @@ def test_plan_identity_builder_rejects_missing_source_table() -> None:
             schedule_lock_status="unlocked",
             detail_saved="yes",
         )
+
+
+@pytest.mark.parametrize("report", ["overdue_batches", "utilization", "downtime_impact", "version_date_range", "execution_review"])
+def test_reports_resolve_plan_once_without_loading_all_history(tmp_path, monkeypatch, report) -> None:
+    from core.services.report.report_engine import ReportEngine
+
+    conn = _connect_fresh_schema(tmp_path)
+    try:
+        _seed_base(conn)
+        engine = ReportEngine(conn)
+        original = engine.plan_query_service.resolve_plan_view
+        calls = []
+
+        def resolve(*args, **kwargs):
+            calls.append(args)
+            return original(*args, **kwargs)
+
+        def unbounded_history():
+            raise AssertionError("resolving the latest identity needs a scalar version, not all history")
+
+        monkeypatch.setattr(engine.plan_query_service, "resolve_plan_view", resolve)
+        monkeypatch.setattr(engine.plan_query_service.repo, "list_history_identity_rows", unbounded_history)
+        kwargs = {"start_date": "2026-05-05", "end_date": "2026-05-05"} if report in ("utilization", "downtime_impact") else {}
+        result = getattr(engine, report)(VERSION, **kwargs)
+        assert result["version"] == VERSION
+        assert calls == [(VERSION, ROLE_ADOPTED if report == "execution_review" else None, None)]
+        assert engine.plan_query_service.repo.latest_version() == VERSION
+    finally:
+        conn.close()

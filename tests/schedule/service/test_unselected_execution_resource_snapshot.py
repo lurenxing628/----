@@ -156,3 +156,26 @@ def test_other_connection_start_is_detected_and_its_event_is_preserved(db_path, 
     finally:
         other.close()
         conn.close()
+
+
+def test_each_execution_guard_reuses_current_facts_for_revision_checks(schema_conn, monkeypatch):
+    import core.services.scheduler.run.schedule_execution_persistence_guard as guards
+
+    seed_plan(schema_conn)
+    collect = guards.collect_resource_execution_facts
+    calls = []
+
+    def current_facts(*args, **kwargs):
+        assert schema_conn.in_transaction
+        calls.append(kwargs["prev_version"])
+        return collect(*args, **kwargs)
+
+    def repeated_read(*args, **kwargs):
+        raise AssertionError("revision validation must reuse the final current facts")
+
+    monkeypatch.setattr(guards, "collect_resource_execution_facts", current_facts)
+    monkeypatch.setattr(guards, "_current_facts_for_expected", repeated_read)
+    result = ScheduleService(schema_conn).run_schedule(["B2"], start_dt="2026-09-08 08:30:00")
+    assert result["version"] == 2
+    # The pre-allocation guard and final persist guard remain separate fresh-read points.
+    assert calls == [1, 1]

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.algo_stats import capture_algo_stats
 from core.errors import ValidationError
 
 from .attempt_records import validation_error_origin
@@ -86,7 +86,7 @@ def _evaluate_candidate(
         res, batches, expected_operations=algo_ops_to_schedule,
         seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
     )
-    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+    algo_stats = capture_algo_stats(scheduler, optimizer_algo_stats)
     return {
         "results": res,
         "summary": summ,
@@ -207,7 +207,7 @@ def _record_candidate(
     ):
         return best
     if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin=origin)
+        search_report_state.mark_candidate_accepted(candidate, origin=origin, fingerprint=fingerprint)
     _append_trace(
         improvement_trace=improvement_trace,
         candidate=candidate,

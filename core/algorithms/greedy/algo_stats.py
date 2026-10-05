@@ -44,6 +44,11 @@ def merge_algo_stats(*sources: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     return merged
 
 
+def capture_algo_stats(target: Any, *sources: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """Produce independent merged statistics directly from the decoder's current facts."""
+    return merge_algo_stats(*sources, ensure_algo_stats(target))
+
+
 def _merge_counter_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> None:
     for bucket in _COUNTER_BUCKETS:
         part = src.get(bucket)
@@ -73,6 +78,6 @@ def _merge_sample_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> Non
             if not isinstance(value, list) or not value:
                 continue
             existing = bucket_out.get(key)
-            existing_list = deepcopy(existing) if isinstance(existing, list) else []
+            existing_list = existing if isinstance(existing, list) else []
             existing_list.extend(deepcopy(value))
             bucket_out[str(key)] = existing_list

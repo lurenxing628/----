@@ -103,14 +103,16 @@ def _mark_report_deadline_skip(search_report_state: Optional[OptimizationSearchR
         search_report_state.mark_phase_skipped(phase, "time_budget")
 
 
-def _mark_report_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str) -> None:
+def _mark_report_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str) -> Any:
     if search_report_state is not None:
-        search_report_state.mark_candidate_evaluated(candidate, origin=origin)
+        return search_report_state.mark_candidate_evaluated(candidate, origin=origin)
+    return None
 
 
-def _mark_report_accepted(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str) -> None:
+def _mark_report_accepted(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str,
+                          fingerprint: Any = None) -> None:
     if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin=origin)
+        search_report_state.mark_candidate_accepted(candidate, origin=origin, fingerprint=fingerprint)
 
 
 def _record_ortools_optional_failure(
@@ -148,11 +150,11 @@ def _record_ortools_candidate(
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
-    _mark_report_evaluated(search_report_state, candidate, "ortools_warmstart")
+    fingerprint = _mark_report_evaluated(search_report_state, candidate, "ortools_warmstart")
     _append_ortools_attempt(attempts=attempts, candidate=candidate)
     if best is not None and candidate["score"] >= best["score"]:
         return best
-    _mark_report_accepted(search_report_state, candidate, "ortools_warmstart")
+    _mark_report_accepted(search_report_state, candidate, "ortools_warmstart", fingerprint)
     _append_ortools_trace(improvement_trace=improvement_trace, candidate=candidate, now=now, t_begin=t_begin)
     return candidate
 
@@ -234,7 +236,7 @@ def _record_multi_start_candidate(
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
-    _mark_report_evaluated(search_report_state, candidate, "multi_start")
+    fingerprint = _mark_report_evaluated(search_report_state, candidate, "multi_start")
     _append_multi_start_attempt(
         attempts=attempts,
         candidate=candidate,
@@ -244,7 +246,7 @@ def _record_multi_start_candidate(
     )
     if best is not None and candidate["score"] >= best["score"]:
         return best
-    _mark_report_accepted(search_report_state, candidate, "multi_start")
+    _mark_report_accepted(search_report_state, candidate, "multi_start", fingerprint)
     _append_multi_start_trace(
         improvement_trace=improvement_trace,
         candidate=candidate,

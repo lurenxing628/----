@@ -13,6 +13,7 @@ def mark_current_candidate_accepted(
     search_report_state: Optional[OptimizationSearchReportState],
     candidate: Optional[Dict[str, Any]],
     acceptance_decision: AcceptanceDecision,
+    fingerprint: Any = None,
 ) -> None:
     if candidate is None or search_report_state is None:
         return
@@ -20,6 +21,7 @@ def mark_current_candidate_accepted(
         candidate,
         origin="local_search",
         acceptance_event=acceptance_decision.to_report_dict(),
+        fingerprint=fingerprint,
     )
 
 
@@ -28,6 +30,7 @@ def mark_best_candidate_accepted(
     search_report_state: Optional[OptimizationSearchReportState],
     candidate: Optional[Dict[str, Any]],
     acceptance_decision: AcceptanceDecision,
+    fingerprint: Any = None,
 ) -> None:
     if candidate is None or search_report_state is None:
         return
@@ -36,6 +39,7 @@ def mark_best_candidate_accepted(
         candidate,
         origin="local_search",
         acceptance_event=acceptance_decision.to_report_dict(),
+        fingerprint=fingerprint,
     )
 
 

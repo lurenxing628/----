@@ -161,15 +161,15 @@ def test_global_deadline_blocks_all_repairs():
 
 def test_budget_spent_during_construction_does_not_start_sgs(monkeypatch):
     now = [0.0]
-    original = candidates.context_for_profile
+    original = candidates._validate_decision_features
 
-    def build_context(**kwargs):
-        result = original(**kwargs)
+    def admit_decision(*args, **kwargs):
+        result = original(*args, **kwargs)
         if kwargs["profile"].candidate_policy == "elite_repair":
             now[0] += 0.010
         return result
 
-    monkeypatch.setattr(candidates, "context_for_profile", build_context)
+    monkeypatch.setattr(candidates, "_validate_decision_features", admit_decision)
     result = run_production_repair_case(limits={"time_budget_ms": 5}, clock=lambda: now[0])
     report = result["repair"]
     assert report["repair_generated_candidates"] == 1

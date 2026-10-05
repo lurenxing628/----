@@ -65,7 +65,7 @@ def _read_runtime_cfg_mapping_like_value_without_default(getter: Any, key: str, 
         raise runtime_cfg_read_error(key, exc) from exc
 
 
-def _coerce_degradation_event(raw: Any) -> Optional[DegradationEvent]:
+def coerce_degradation_event(raw: Any) -> Optional[DegradationEvent]:
     if isinstance(raw, DegradationEvent):
         return raw
     if not isinstance(raw, dict):
@@ -97,7 +97,7 @@ def _coerce_degradation_event(raw: Any) -> Optional[DegradationEvent]:
 def seed_snapshot_degradation_collector(cfg: Any) -> DegradationCollector:
     collector = DegradationCollector()
     for raw in getattr(cfg, "degradation_events", ()) or ():
-        event = _coerce_degradation_event(raw)
+        event = coerce_degradation_event(raw)
         if event is not None:
             collector.add(event)
     return collector
@@ -127,3 +127,6 @@ __all__ = [
     "read_runtime_cfg_raw_value",
     "seed_snapshot_degradation_collector",
 ]
+
+# Preserve the historical private import while the implementation has one owner.
+_coerce_degradation_event = coerce_degradation_event

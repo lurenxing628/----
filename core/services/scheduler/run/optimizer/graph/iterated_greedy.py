@@ -149,7 +149,7 @@ class _IteratedGreedySearch:
 
     @best.setter
     def best(self, candidate: Optional[Dict[str, Any]]) -> None:
-        self.incumbent.best = candidate
+        self.incumbent.adopt_best(candidate)
 
     def _require_best(self) -> Dict[str, Any]:
         """run()/adopt_incumbent() install the incumbent before any pool seeding or decode."""

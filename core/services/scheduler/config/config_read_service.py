@@ -42,7 +42,7 @@ from .config_page_outcome import (
     public_config_notices,
 )
 from .config_preset_service import ConfigPresetService
-from .config_snapshot import ScheduleConfigSnapshot
+from .config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
 from .config_uow import ConfigWriteUnitOfWork
 
 
@@ -69,7 +69,9 @@ class ConfigReadService:
     def get(self, config_key: str) -> Any:
         return self.uow.repo.get_value(str(config_key), default=None)
 
-    def get_snapshot(self, *, strict_mode: bool = False) -> ScheduleConfigSnapshot:
+    def get_snapshot(self, *, strict_mode: bool = False, rows: Optional[List[Any]] = None) -> ScheduleConfigSnapshot:
+        if rows is not None:
+            return build_schedule_config_snapshot(self.uow.repo, strict_mode=bool(strict_mode), rows=rows)
         if not bool(strict_mode):
             self.bootstrap_service.ensure_defaults_if_pristine()
         return self.preset_service.get_snapshot_from_repo(strict_mode=bool(strict_mode))
@@ -432,8 +434,9 @@ class ConfigReadService:
         self,
         *,
         current_snapshot: ScheduleConfigSnapshot,
+        rows: Optional[List[Any]] = None,
     ) -> PageSaveProvenanceState:
-        rows = self.list_config_rows(readonly=True)
+        rows = self.list_config_rows(readonly=True) if rows is None else rows
         by_key, _preset_rows = self.collect_preset_rows(rows)
         provenance_state = self.active_service.provenance_state_from_rows(by_key)
         baseline = self.baseline_probe_state(

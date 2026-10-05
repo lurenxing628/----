@@ -4,7 +4,43 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile, finite_number
+from core.services.scheduler.run.optimizer.graph_ready_profiles import (
+    GraphReadyWeightProfile,
+    finite_number,
+)
+
+_FORMULA_FIELDS = {
+    "edd": ("due_deadline", "sacrifice_penalty", "processing_rank", "jitter"),
+    "spt": ("processing_rank", "due_budget", "sacrifice_penalty", "jitter"),
+    "min_slack": ("slack_hours", "sacrifice_penalty", "processing_rank", "jitter"),
+    "critical_ratio": ("critical_ratio", "sacrifice_penalty", "processing_rank", "jitter"),
+    "atc_like": ("-due_pressure", "sacrifice_penalty", "-saveability", "processing_rank", "jitter"),
+    "saveability": ("-saveability", "sacrifice_penalty", "-due_pressure", "remaining", "processing_rank", "jitter"),
+    "sacrifice_long": ("sacrifice_penalty", "remaining", "-saveability", "due_budget", "processing_rank", "jitter"),
+    "graph_due_hybrid": ("-graph_bonus", "-due_pressure", "sacrifice_penalty", "processing_rank", "jitter"),
+    "bottleneck_due_gated": ("-bottleneck_due_gate", "sacrifice_penalty", "-due_pressure", "processing_rank", "jitter"),
+    "micro_perturbation": ("sacrifice_penalty", "-due_pressure", "jitter", "processing_rank"),
+    "weighted_spt": ("weighted_processing_hours_rank01", "due_deadline", "slack_hours", "jitter"),
+    "weighted_atc": ("-weighted_due_pressure_rank01", "weighted_processing_hours_rank01", "slack_hours", "jitter"),
+    "type_group": ("changeover_family_rank_rank01", "due_deadline", "processing_rank", "jitter"),
+    "type_group_reverse": ("-changeover_family_rank_rank01", "due_deadline", "processing_rank", "jitter"),
+}
+
+
+def validate_v2_formula(formula: str) -> None:
+    if formula not in _FORMULA_FIELDS:
+        raise ValidationError(f"GraphReady v2 不支持候选公式：{formula}", field="graph_ready_v2_formula",
+                              details={"reason": "graph_ready_bad_v2_formula"})
+
+
+def _formula_key(metric, formula, values):
+    validate_v2_formula(formula)
+    result = []
+    for field in _FORMULA_FIELDS[formula]:
+        name = field.lstrip("-")
+        value = values[name] if name in values else _required_non_negative_metric(metric, name)
+        result.append(-value if field.startswith("-") else value)
+    return tuple(result)
 
 
 def _v2_priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWeightProfile) -> Tuple[float, ...]:
@@ -22,47 +58,16 @@ def _v2_priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWe
     graph_bonus = _required_non_negative_metric(metric, "graph_bonus_rank01")
     jitter = _stable_jitter(metric)
 
-    objective_key = _objective_priority_key(metric, formula, due_deadline, slack_hours, processing_rank, jitter)
-    if objective_key is not None:
-        return objective_key
-    if formula == "edd":
-        return (due_deadline, sacrifice_penalty, processing_rank, jitter)
-    if formula == "spt":
-        return (processing_rank, due_budget, sacrifice_penalty, jitter)
-    if formula == "min_slack":
-        return (slack_hours, sacrifice_penalty, processing_rank, jitter)
-    if formula == "critical_ratio":
-        return (critical_ratio, sacrifice_penalty, processing_rank, jitter)
-    if formula == "atc_like":
-        return (-due_pressure, sacrifice_penalty, -saveability, processing_rank, jitter)
-    if formula == "saveability":
-        return (-saveability, sacrifice_penalty, -due_pressure, remaining, processing_rank, jitter)
-    if formula == "sacrifice_long":
-        return (sacrifice_penalty, remaining, -saveability, due_budget, processing_rank, jitter)
-    if formula == "graph_due_hybrid":
-        return (-graph_bonus, -due_pressure, sacrifice_penalty, processing_rank, jitter)
-    if formula == "bottleneck_due_gated":
-        return (-bottleneck_due_gate, sacrifice_penalty, -due_pressure, processing_rank, jitter)
-    if formula == "micro_perturbation":
-        # 小扰动只在两个主交期目标(牺牲度、交期压力)都相同的候选间用 jitter 打破平局(压过次要的工时排名),
-        # 不跨交期分数差异重排,符合"只在分数接近的 ready 候选之间做";同分时不同 seed 产生不同候选以提供多样性。
-        return (sacrifice_penalty, -due_pressure, jitter, processing_rank)
-    raise ValidationError(
-        f"GraphReady v2 不支持候选公式：{formula}",
-        field="graph_ready_v2_formula",
-        details={"reason": "graph_ready_bad_v2_formula"},
-    )
+    return _formula_key(metric, formula, dict(due_deadline=due_deadline, due_budget=due_budget,
+        due_pressure=due_pressure, slack_hours=slack_hours, remaining=remaining, saveability=saveability,
+        processing_rank=processing_rank, sacrifice_penalty=sacrifice_penalty, critical_ratio=critical_ratio,
+        bottleneck_due_gate=bottleneck_due_gate, graph_bonus=graph_bonus, jitter=jitter))
 
 
 def _objective_priority_key(metric, formula, due_deadline, slack_hours, processing_rank, jitter):
-    if formula == "weighted_spt":
-        return (_required_non_negative_metric(metric, "weighted_processing_hours_rank01"), due_deadline, slack_hours, jitter)
-    if formula == "weighted_atc":
-        return (-_required_non_negative_metric(metric, "weighted_due_pressure_rank01"),
-                _required_non_negative_metric(metric, "weighted_processing_hours_rank01"), slack_hours, jitter)
-    if formula in {"type_group", "type_group_reverse"}:
-        family = _required_non_negative_metric(metric, "changeover_family_rank_rank01")
-        return (family if formula == "type_group" else -family, due_deadline, processing_rank, jitter)
+    if formula in {"weighted_spt", "weighted_atc", "type_group", "type_group_reverse"}:
+        return _formula_key(metric, formula, dict(due_deadline=due_deadline, slack_hours=slack_hours,
+                                                processing_rank=processing_rank, jitter=jitter))
     return None
 
 

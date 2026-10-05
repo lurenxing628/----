@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from core.models.schedule_delay_diagnosis import DiagnosisTraceMeta, OverdueDiagnosisItem
@@ -61,12 +60,6 @@ def build_trace_meta(
     clue_selection_trace: List[str],
 ) -> DiagnosisTraceMeta:
     sources = stable_unique(_evidence_source_label(evidence) for evidence in evidences)
-    fingerprint = input_fingerprint(
-        plan_identity=plan_identity,
-        as_of_text=as_of_text,
-        evidences=evidences,
-        ranking_inputs=ranking_inputs,
-    )
     return DiagnosisTraceMeta(
         generated_at=generated_at,
         as_of_time=as_of_text,
@@ -76,34 +69,11 @@ def build_trace_meta(
         rule_version=RULE_VERSION,
         ranking_inputs=ranking_inputs,
         clue_selection_trace=clue_selection_trace,
-        input_fingerprint=fingerprint,
     )
 
 
 def _evidence_source_label(evidence: EvidenceLink) -> str:
     return text(evidence.source_table) or text(evidence.expected_source) or text(evidence.source_page)
-
-
-def input_fingerprint(
-    *,
-    plan_identity: PlanIdentity,
-    as_of_text: str,
-    evidences: Sequence[EvidenceLink],
-    ranking_inputs: Sequence[str],
-) -> str:
-    parts = [
-        f"version={plan_identity.version}",
-        f"role={plan_identity.requested_plan_role}",
-        f"scenario={plan_identity.scenario_id or ''}",
-        f"as_of={as_of_text}",
-    ]
-    for evidence in evidences:
-        parts.append(
-            f"{evidence.evidence_scope}:{evidence.source_table or ''}:"
-            f"{evidence.source_row_id or ''}:{evidence.aggregation_key or evidence.missing_data_key or ''}"
-        )
-    parts.extend(str(item) for item in ranking_inputs)
-    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
 def top_clues(items: Sequence[OverdueDiagnosisItem]) -> List[Dict[str, Any]]:

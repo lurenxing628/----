@@ -1,13 +1,77 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Tuple, cast
 
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
 from .sgs_scoring import _collect_sgs_candidates
+
+_TOPOLOGY_FIELD = "_prepared_graph_ready_topology"
+
+
+@dataclass(frozen=True)
+class PreparedGraphReadyTopology:
+    """Decode-independent facts; progress and priority belong to each decode."""
+
+    schedulable_ids: FrozenSet[int]
+    fixed_ids: FrozenSet[int]
+    predecessors: Mapping[int, FrozenSet[int]]
+    successors: Mapping[int, FrozenSet[int]]
+    sort_keys: Mapping[int, Tuple[int, int, int]]
+    fixed_sources: Optional[Mapping[int, str]]
+
+    def matches(self, context: Any, op_ids: Any) -> bool:
+        if type(context) is not dict or set(op_ids) != self.schedulable_ids:
+            return False
+        for name in ("schedulable_op_ids", "fixed_op_ids"):
+            value = context.get(name)
+            if type(value) not in (set, frozenset):
+                return False
+            if any(type(item) is not int for item in cast(AbstractSet[Any], value)):
+                return False
+        for name in ("predecessor_op_ids_by_op_id", "successor_op_ids_by_op_id"):
+            value = context.get(name)
+            if (type(value) is not dict or any(type(key) is not int or type(links) not in (set, frozenset)
+                    or any(type(item) is not int for item in links) for key, links in value.items())):
+                return False
+        keys = context.get("sort_key_by_op_id")
+        if (type(keys) is not dict or any(type(key) is not int or type(value) is not tuple
+                or any(type(item) is not int for item in value) for key, value in keys.items())):
+            return False
+        sources = context.get("fixed_op_sources_by_op_id")
+        if sources is not None and (type(sources) is not dict or any(type(key) is not int or type(value) is not str
+                                                                  for key, value in sources.items())):
+            return False
+        fields = (("schedulable_op_ids", self.schedulable_ids), ("fixed_op_ids", self.fixed_ids),
+                  ("predecessor_op_ids_by_op_id", self.predecessors),
+                  ("successor_op_ids_by_op_id", self.successors), ("sort_key_by_op_id", self.sort_keys),
+                  ("fixed_op_sources_by_op_id", self.fixed_sources))
+        # Compare contents, not object identity: mutating a raw input returns to its full validation path.
+        return all(context.get(name) == value for name, value in fields)
+
+
+def prepare_graph_ready_topology(context, operations) -> PreparedGraphReadyTopology:
+    raw = dict(context)
+    raw.pop(_TOPOLOGY_FIELD, None)
+    grouped: Dict[str, List[Any]] = {}
+    for op in operations:
+        grouped.setdefault(str(op.batch_id), []).append(op)
+    state = _prepare_graph_ready_state(raw, ops_by_batch=grouped)
+    if state is None:
+        raise ValidationError("图 ready 队列上下文无效，不能启用图排产候选。", field="graph_ready_context")
+    sources = context.get("fixed_op_sources_by_op_id")
+    return PreparedGraphReadyTopology(
+        frozenset(state["op_by_id"]), state["input_fixed_op_ids"],
+        MappingProxyType({key: frozenset(value) for key, value in state["predecessor_op_ids_by_op_id"].items()}),
+        MappingProxyType({key: frozenset(value) for key, value in state["successor_op_ids_by_op_id"].items()}),
+        MappingProxyType(dict(state["sort_key_by_op_id"])),
+        MappingProxyType(dict(sources)) if sources is not None else None,
+    )
 
 
 def _op_id(op: Any) -> int:
@@ -49,9 +113,17 @@ def _prepare_graph_ready_state(
                 raise ValidationError(f"图 ready 队列上下文发现重复 op_id：{op_id}", field="graph_ready_context")
             op_by_id[op_id] = (batch_id, op)
 
-    schedulable_ids = _graph_ready_op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
-    fixed_op_ids = _graph_ready_op_id_set(graph_ready_context.get("fixed_op_ids"), field="fixed_op_ids")
-    _validate_fixed_op_sources(graph_ready_context.get("fixed_op_sources_by_op_id"), fixed_op_ids=fixed_op_ids)
+    topology: Any = graph_ready_context.get(_TOPOLOGY_FIELD)
+    prepared: Optional[PreparedGraphReadyTopology] = (
+        cast(PreparedGraphReadyTopology, topology)
+        if type(topology) is PreparedGraphReadyTopology and topology.matches(graph_ready_context, op_by_id) else None
+    )
+    if prepared is not None:
+        schedulable_ids, fixed_op_ids = set(prepared.schedulable_ids), set(prepared.fixed_ids)
+    else:
+        schedulable_ids = _graph_ready_op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
+        fixed_op_ids = _graph_ready_op_id_set(graph_ready_context.get("fixed_op_ids"), field="fixed_op_ids")
+        _validate_fixed_op_sources(graph_ready_context.get("fixed_op_sources_by_op_id"), fixed_op_ids=fixed_op_ids)
     overlap = sorted(schedulable_ids.intersection(fixed_op_ids))
     if overlap:
         sample = overlap[:20]
@@ -66,18 +138,15 @@ def _prepare_graph_ready_state(
         )
     if schedulable_ids != set(op_by_id):
         raise ValidationError("图 ready 队列上下文和本次待排工序不一致。", field="graph_ready_context")
-    predecessor_map = graph_ready_context.get("predecessor_op_ids_by_op_id")
-    successor_map = graph_ready_context.get("successor_op_ids_by_op_id")
-    predecessor_map, successor_map = _validate_graph_ready_links(
-        op_ids=set(op_by_id).union(fixed_op_ids),
-        predecessor_map=predecessor_map,
-        successor_map=successor_map,
-    )
-    _detect_graph_ready_cycle(
-        schedulable_ids=set(op_by_id),
-        predecessor_map=predecessor_map,
-        successor_map=successor_map,
-    )
+    if prepared is not None:
+        predecessor_map, successor_map = prepared.predecessors, prepared.successors
+    else:
+        predecessor_map, successor_map = _validate_graph_ready_links(
+            op_ids=set(op_by_id).union(fixed_op_ids),
+            predecessor_map=graph_ready_context.get("predecessor_op_ids_by_op_id"),
+            successor_map=graph_ready_context.get("successor_op_ids_by_op_id"),
+        )
+        _detect_graph_ready_cycle(schedulable_ids=set(op_by_id), predecessor_map=predecessor_map, successor_map=successor_map)
     score_enabled = _graph_score_enabled(graph_ready_context.get("score_enabled", False))
     graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]] = {}
     if score_enabled:
@@ -85,7 +154,7 @@ def _prepare_graph_ready_state(
             graph_ready_context.get("graph_priority_key_by_op_id"),
             schedulable_ids=set(op_by_id),
         )
-    sort_key_by_op_id = _graph_sort_key_map(
+    sort_key_by_op_id = prepared.sort_keys if prepared is not None else _graph_sort_key_map(
         graph_ready_context.get("sort_key_by_op_id"),
         schedulable_ids=set(op_by_id),
     )
@@ -279,7 +348,7 @@ def _initialize_graph_ready_frontier(
     *,
     schedulable_ids: set,
     completed_or_fixed_op_ids: set,
-    predecessor_op_ids_by_op_id: Dict[int, set],
+    predecessor_op_ids_by_op_id: Mapping[int, AbstractSet[int]],
 ) -> Tuple[Dict[int, int], set]:
     remaining_predecessor_count_by_op_id: Dict[int, int] = {}
     ready_op_ids = set()

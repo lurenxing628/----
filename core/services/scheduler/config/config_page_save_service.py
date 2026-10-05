@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.services.common.safe_logging import safe_warning
 
@@ -76,8 +76,9 @@ class ConfigPageSaveService(ConfigPageSavePolicy):
             source="scheduler.config_service.save_page_config",
         )
 
-    def current_provenance_state(self, *, current_snapshot: ScheduleConfigSnapshot) -> PageSaveProvenanceState:
-        return self.read_service.get_page_save_provenance_state(current_snapshot=current_snapshot)
+    def current_provenance_state(self, *, current_snapshot: ScheduleConfigSnapshot,
+                                 rows: Optional[List[Any]] = None) -> PageSaveProvenanceState:
+        return self.read_service.get_page_save_provenance_state(current_snapshot=current_snapshot, rows=rows)
 
     def hidden_repair_decision(
         self,
@@ -257,9 +258,9 @@ class ConfigPageSaveService(ConfigPageSavePolicy):
             )
         return plan
 
-    def raw_persisted_state(self) -> Tuple[Dict[str, Any], List[str]]:
-        rows = self.uow.repo.list_all()
-        by_key = {str(getattr(row, "config_key", "") or ""): row for row in rows}
+    def raw_persisted_state(self, rows: Optional[List[Any]] = None) -> Tuple[Dict[str, Any], List[str]]:
+        rows = self.uow.repo.list_all() if rows is None else rows
+        by_key = {str(getattr(row, "config_key", "") or ""): row for row in cast(List[Any], rows)}
         keys = [spec.key for spec in list_config_fields()]
         keys.extend([ACTIVE_PRESET_KEY, ACTIVE_PRESET_REASON_KEY, ACTIVE_PRESET_META_KEY])
         raw_values: Dict[str, Any] = {}
@@ -278,12 +279,15 @@ class ConfigPageSaveService(ConfigPageSavePolicy):
 
     def save_page_config(self, form_values: Any) -> ConfigPageSaveOutcome:
         self.bootstrap_service.ensure_defaults_if_pristine()
-        active_meta_raw = self.uow.repo.get_value(ACTIVE_PRESET_META_KEY, default=None)
+        current_rows = self.uow.repo.list_all()
+        by_key = {row.config_key: row for row in current_rows}
+        meta_row = by_key.get(ACTIVE_PRESET_META_KEY)
+        active_meta_raw = meta_row.config_value if meta_row is not None else None
         meta_parse_warning = self.active_service.meta_parse_warning(active_meta_raw)
         if meta_parse_warning:
             safe_warning(self.uow.logger, str(meta_parse_warning["message"]))
-        current_snapshot = self.read_service.get_snapshot(strict_mode=False)
-        provenance_state = self.current_provenance_state(current_snapshot=current_snapshot)
+        current_snapshot = self.read_service.get_snapshot(strict_mode=False, rows=current_rows)
+        provenance_state = self.current_provenance_state(current_snapshot=current_snapshot, rows=current_rows)
         current_active_preset = str(provenance_state.active_preset or "").strip() or None
         current_active_reason = str(provenance_state.active_preset_reason or "").strip() or None
         current_active_meta = dict(provenance_state.active_preset_meta or {})
@@ -319,8 +323,9 @@ class ConfigPageSaveService(ConfigPageSavePolicy):
         if plan.updates:
             with self.uow.tx_manager.transaction():
                 self.uow.repo.set_batch(plan.updates)
-        post_save_snapshot = self.read_service.get_snapshot(strict_mode=False)
-        raw_values, raw_missing = self.raw_persisted_state()
+        saved_rows = self.uow.repo.list_all()
+        post_save_snapshot = self.read_service.get_snapshot(strict_mode=False, rows=saved_rows)
+        raw_values, raw_missing = self.raw_persisted_state(saved_rows)
         return ConfigPageSaveOutcome(
             snapshot=post_save_snapshot,
             status=self.save_status(plan),

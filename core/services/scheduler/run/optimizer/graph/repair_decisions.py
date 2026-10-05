@@ -5,9 +5,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
+from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.errors import ValidationError
+from core.models.batch_operation import BatchOperation
+from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo
 
 from .repair_neighbors import repair_priority_context
+
+_READONLY_OPERATION_GUARDS = {kind: make_class_guard(kind) for kind in (BatchOperation, OpForScheduleAlgo)}
 
 
 @dataclass(frozen=True)
@@ -36,7 +41,7 @@ class RepairDecision:
 
 def apply_repair_decision(
     context: Dict[str, Any], operations: List[Any], decision: RepairDecision,
-    resource_pool: Optional[Dict[str, Any]],
+    resource_pool: Optional[Dict[str, Any]], *, share_unchanged: bool = False,
 ) -> Tuple[Dict[str, Any], List[Any]]:
     """Copy a decision into decoder inputs; precedence and fixed results stay intact."""
     if not isinstance(decision, RepairDecision):
@@ -55,7 +60,9 @@ def apply_repair_decision(
             for rank, op_id in enumerate(decision.operation_order)
         }
     overrides = _validated_overrides(decision.resource_overrides, by_id, resource_pool)
-    copied = [copy(op) for op in operations]
+    # Standalone/injected decoders retain independent input records. A certified native
+    # decoder only reads them, so its unchanged records belong to the common run input.
+    copied = [op if share_unchanged and op.id not in overrides else copy(op) for op in operations]
     for op in copied:
         if op.id in overrides:
             machine_id, operator_id = overrides[op.id]
@@ -65,6 +72,25 @@ def apply_repair_decision(
             if not fixed_operator:
                 op.operator_id = operator_id
     return out, copied
+
+
+def native_readonly_inputs(schedule_fn: Any, scheduler: Any, operations: List[Any]) -> bool:
+    from core.algorithms.greedy.scheduler import native_scheduler_inputs_unchanged
+    from core.services.scheduler.run.optimizer.signature_support import schedule_with_optional_strict_mode
+
+    return (
+        schedule_fn is schedule_with_optional_strict_mode
+        and native_scheduler_inputs_unchanged(scheduler)
+        and type(operations) is list
+        and _native_operation_classes(operations)
+    )
+
+
+def _native_operation_classes(operations):
+    representatives = {type(op): op for op in operations}
+    # Record methods are never called by SGS; certify each class once, including its accessors.
+    return all(kind in _READONLY_OPERATION_GUARDS and _READONLY_OPERATION_GUARDS[kind](op)
+               for kind, op in representatives.items())
 
 
 def iter_resource_decisions(

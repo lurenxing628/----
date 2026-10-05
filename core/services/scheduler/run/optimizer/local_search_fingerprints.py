@@ -10,7 +10,8 @@ if TYPE_CHECKING:
 
 
 class LocalSearchFingerprintTracker:
-    def __init__(self, *, objective_name: str, initial_best: Dict[str, Any]) -> None:
+    def __init__(self, *, objective_name: str, initial_best: Dict[str, Any],
+                 initial_fingerprint: Optional[CandidateFingerprint] = None) -> None:
         self.objective_name = str(objective_name)
         self.best_output_fingerprint: Optional[str] = None
         self.seen_output_fingerprints: Set[str] = set()
@@ -19,6 +20,7 @@ class LocalSearchFingerprintTracker:
             objective_name=self.objective_name,
             parent_fingerprint=None,
             seen_output_fingerprints=set(),
+            identity=initial_fingerprint,
         )
         self.best_output_fingerprint = initial.output_fingerprint
         self.seen_output_fingerprints.add(initial.output_fingerprint)

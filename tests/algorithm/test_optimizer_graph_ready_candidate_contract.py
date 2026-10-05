@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from copy import deepcopy
 from datetime import datetime, time, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List
@@ -1784,6 +1785,25 @@ def test_graph_ready_v2_rank01_cache_preserves_priority_keys_for_all_profiles() 
         )["graph_priority_key_by_op_id"]
 
         assert cached == uncached
+
+
+@pytest.mark.parametrize("field", ["impact_count", "downstream_critical_minutes", "bottleneck_machine_score", "is_on_critical_path"])
+def test_explicit_decision_admits_supplied_cache_values_before_checking_feature_sources(field):
+    from core.services.scheduler.run.optimizer.graph.candidates import _validate_decision_features
+
+    metrics = {1: _graph_v2_priority_metric()}
+    cache = build_v2_common_rank_cache(metrics)
+    cache[field] = {1: -1.0}
+    profile = _v2_profile("edd")
+    before = deepcopy((metrics, cache))
+    with pytest.raises(ValidationError) as scored:
+        context_for_profile(graph_ready_context={}, metrics_by_op_id=metrics, profile=profile, v2_common_rank_cache=cache)
+    with pytest.raises(ValidationError) as explicit:
+        _validate_decision_features(metrics, profile=profile, v2_common_rank_cache=cache)
+    assert explicit.value.message == scored.value.message
+    assert explicit.value.field == scored.value.field == "graph_ready_v2_features"
+    assert explicit.value.details == scored.value.details
+    assert (metrics, cache) == before
 
 
 @pytest.mark.parametrize(

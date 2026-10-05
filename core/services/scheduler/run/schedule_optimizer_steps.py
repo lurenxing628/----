@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import merge_algo_stats, snapshot_algo_stats
+from core.algorithms.greedy.algo_stats import capture_algo_stats
 from core.errors import ValidationError
 from core.services.scheduler.contracts.scheduler_like import SchedulerLike
 
@@ -122,7 +122,7 @@ def _evaluate_ortools_candidate(
         seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
     )
     score = (float(summ.failed_ops),) + objective_score(objective_name, metrics)
-    algo_stats = merge_algo_stats(optimizer_algo_stats, snapshot_algo_stats(scheduler))
+    algo_stats = capture_algo_stats(scheduler, optimizer_algo_stats)
     return {
         "results": res,
         "summary": summ,

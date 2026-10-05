@@ -325,7 +325,8 @@ def test_delay_diagnosis_reports_overdue_clues_and_stays_readonly(tmp_path) -> N
         assert report.plan_identity.source_table == SOURCE_SCHEDULE
         assert report.trace_meta.rule_version == "delay-diagnosis-v1"
         assert report.trace_meta.evidence_count >= 1
-        assert len(report.trace_meta.input_fingerprint) == 64
+        assert report.trace_meta.input_fingerprint == ""
+        assert all(item.trace_meta.input_fingerprint == "" for item in report.items)
         assert any("没有现场执行反馈" in text for text in report.warnings)
 
         scheduled = _item_by_batch(report, "B_SCHEDULED")
