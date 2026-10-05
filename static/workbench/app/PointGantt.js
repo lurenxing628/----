@@ -1,9 +1,6 @@
 (function () {
   'use strict';
 
-  function Styles() {
-    return null;
-  }
   function Marker({
     task,
     x,
@@ -34,7 +31,6 @@
     });
   }
   window.PointGantt = {
-    Styles,
     Marker
   };
 })();

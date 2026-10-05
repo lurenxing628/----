@@ -306,7 +306,7 @@
       className: "plana run-job-panel",
       "data-run-job-panel": "true",
       "aria-label": "\u5019\u9009\u6392\u4EA7"
-    }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "\u5019\u9009\u6392\u4EA7"), /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"

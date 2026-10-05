@@ -63,7 +63,7 @@
           warnings: [] } };
       }
     }), [spec]);
-    return <main className="plana batch-workspace"><window.BatchControls.Styles />
+    return <main className="plana batch-workspace">
       {opened && <window.BatchFiles adapter={adapter} mode="import" scope={{}} selected={[]} snapshot="az-memory-only"
         command={command} onClose={() => { window.az.cancelled++; setOpened(false); }} onCommitted={() => {}} disabled={false} />}
     </main>;

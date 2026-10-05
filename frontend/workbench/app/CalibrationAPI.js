@@ -133,10 +133,7 @@
       const filename = match ? decodeURIComponent(match[1]) : '';
       if (!/^工时校准明细-[\wT-]+\.(csv|xlsx)$/.test(filename) || !filename.endsWith('.' + format)) throw failure('导出文件名不正确，文件未保存。');
       if (controller.signal.aborted) throw failure('导出已取消，文件未保存。');
-      const url = URL.createObjectURL(blob), link = document.createElement('a');
-      link.href = url; link.download = filename;
-      try { document.body.appendChild(link); link.click(); }
-      finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+      window.APSWorkbenchTransport.saveBlob(filename, blob);
       return { filename, rows: result.data.summary.total, snapshot_ref: query.snapshot_ref, bytes: blob.size };
     } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
   }

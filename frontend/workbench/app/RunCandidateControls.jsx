@@ -81,9 +81,6 @@
         <Reasons rows={task.data_gaps} /></>}
     </aside>;
   }
-  function Styles() {
-    return null;
-  }
   function Delivery({ data, onLast }) {
     const M = window.RunCandidateModel;
     const [page, setPage] = React.useState(1), summary = data.summary;
@@ -111,5 +108,5 @@
       <Pager page={current} pages={pages} onPage={setPage} label="候选交付风险" />
     </section>;
   }
-  window.RunCandidateControls = { Button, Icon, ErrorBox, Reasons, Pager, Metric, Status, Catalog, Generation, Detail, Delivery, Styles };
+  window.RunCandidateControls = { Button, Icon, ErrorBox, Reasons, Pager, Metric, Status, Catalog, Generation, Detail, Delivery };
 })();

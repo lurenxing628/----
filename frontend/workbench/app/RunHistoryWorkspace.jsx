@@ -3,17 +3,11 @@
   const A = window.RunHistoryAPI, C = window.RunHistoryControls;
   const adapterIds = new WeakMap(); let nextAdapter = 0;
   function useRead(adapter, query, revision) {
-    const identity = React.useMemo(() => ({}), [adapter, query, revision]);
-    const [state, setState] = React.useState({});
-    React.useEffect(() => {
-      const controller = new AbortController(); let active = true;
-      setState({ identity, busy: true, result: null, error: null });
-      Promise.resolve().then(() => adapter.catalog(query, controller.signal)).then(result => {
-        A.catalog(result, query); if (active) setState({ identity, busy: false, result, error: null });
-      }).catch(error => { if (active) setState({ identity, busy: false, result: null, error }); });
-      return () => { active = false; controller.abort(); };
-    }, [identity]);
-    return state.identity === identity ? state : { busy: true, result: null, error: null };
+    const api = React.useMemo(() => A.adapter(adapter), [adapter]);
+    const read = window.APSResourceSession.useQuery(async signal => {
+      return api.catalog(query, signal);
+    }, [adapter, query, revision]);
+    return { ...read, busy: read.loading };
   }
   function Session({ adapter, start, onNavigate }) {
     const [query, setQuery] = React.useState(start.query), [revision, refresh] = React.useReducer(v => v + 1, 0);
@@ -31,7 +25,7 @@
       if (Object.keys(start.returnPlan).length) context.return_plan_context = start.returnPlan;
       onNavigate('analysis', context);
     }
-    return <div className="plana run-history-workspace" data-run-history-workspace aria-busy={read.busy}><C.Styles />
+    return <div className="plana run-history-workspace" data-run-history-workspace aria-busy={read.busy}>
       <header className="rh-heading"><div><h2 className="wb-page-title">排产记录</h2><span className="rh-muted wb-page-context">历次排产 · 只读</span></div><div className="rh-tools">
         {typeof onNavigate === 'function' && <C.Button icon="chevron-left" aria-label="返回正式计划" onClick={() => onNavigate('analysis', start.returnPlan)}>返回正式计划</C.Button>}
         <C.Button icon="refresh-cw" aria-label="刷新排产记录" busy={read.busy} onClick={reload} /></div></header>
@@ -54,7 +48,7 @@
     const fallback = React.useMemo(() => A.create(), []), active = adapter || fallback;
     let start;
     try { start = A.context(initialContext); A.check(active && typeof active.catalog === 'function', 'dependency not wired: adapter.catalog'); }
-    catch (error) { return <div className="plana run-history-workspace" data-run-history-workspace><C.Styles /><h2 className="wb-page-title">排产记录</h2><C.ErrorBox error={error} /></div>; }
+    catch (error) { return <div className="plana run-history-workspace" data-run-history-workspace><h2 className="wb-page-title">排产记录</h2><C.ErrorBox error={error} /></div>; }
     if (!adapterIds.has(active)) adapterIds.set(active, ++nextAdapter);
     return <Session key={adapterIds.get(active) + ':' + JSON.stringify(start)} adapter={active} start={start} onNavigate={onNavigate} />;
   }

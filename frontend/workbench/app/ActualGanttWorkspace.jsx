@@ -2,7 +2,7 @@
   'use strict';
   const M = window.ActualGanttModel, C = window.ActualGanttContract, W = window.ActualGanttWindow;
   const { Button, ErrorBox, Modal } = window.ResourceControls;
-  const { Styles, Toolbar, Range, Chain, describe } = window.ActualGanttControls;
+  const { Toolbar, Range, Chain, describe } = window.ActualGanttControls;
   // Remembered view positions per navigation context; capped so a long session does not keep growing this map.
   const sessions = new Map(), SESSION_LIMIT = 20;
   function remember(key, value) {
@@ -49,7 +49,7 @@
   }
   function Content({ onNavigate, initialContext = {}, adapter: supplied }) {
     const seed = React.useMemo(() => initial(initialContext), []), key = JSON.stringify(initialContext), saved = sessions.get(key);
-    const api = React.useMemo(() => supplied || window.ActualGanttAPI.create(), [supplied]);
+    const api = React.useMemo(() => window.ActualGanttAPI.adapter(supplied || window.ActualGanttAPI.create()), [supplied]);
     const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope), [refresh, setRefresh] = React.useState(0);
     const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null);
     const [view, setView] = React.useState(saved ? saved.view : seed.persisted ? seed.persisted.view : { mode: seed.scope.resource_type || 'machine', query: seed.query, selected: seed.selected,
@@ -83,7 +83,7 @@
             return;
           }
           input = C.scope(input);
-          const response = C.workspace(await api.load(input, controller.signal), input);
+          const response = await api.load(input, controller.signal);
           if (initialContext.operation_ref && seed.selected) {
             const task = response.data.items.find(item => item.task.task_ref === seed.selected);
             if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，未改指其他安排。');
@@ -103,7 +103,11 @@
       version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
-    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, view, result]);
+    const selectedFilter = view.onlySelected ? view.selected : null;
+    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null,
+      [data, result && result.meta.as_of, view.query, view.late, view.onlySelected, selectedFilter, view.mode, view.collapsed]);
+    const stats = React.useMemo(() => data ? M.metrics(data) : null, [data]);
+    const taskIndex = React.useMemo(() => data ? new Map(data.items.map(item => [item.task.task_ref, item])) : null, [data]);
     const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
     window.WorkbenchPageContext.useSnapshot(data ? {
       plan_ref: data.plan.plan_ref, scope: data.scope, task_ref: view.selected,
@@ -182,11 +186,11 @@
       setResult(null); setLoading(true); setScope(next); setRefresh(n => n + 1); setExportNotice('');
     }
     function select(item, report) { patch({ selected: item.task.task_ref, report: report ? report.report_ref : null }); }
-    const selected = data && data.items.find(item => item.task.task_ref === view.selected);
-    const stats = data && M.metrics(data);
+    const selected = taskIndex && taskIndex.get(view.selected);
     const report = selected && selected.execution && selected.execution.reports.find(r => r.report_ref === view.report);
-    const targetTask = data && chainTarget && data.items.map(item => item.task).filter(task => chainTarget.includes(task.task_ref))
-      .sort((a, b) => a.end.localeCompare(b.end) || a.task_ref.localeCompare(b.task_ref)).pop();
+    const targetTask = React.useMemo(() => taskIndex && chainTarget && Array.from(new Set(chainTarget))
+      .map(ref => taskIndex.get(ref)).filter(Boolean).map(item => item.task)
+      .sort((a, b) => a.end.localeCompare(b.end) || a.task_ref.localeCompare(b.task_ref)).pop(), [taskIndex, chainTarget]);
     const targetRef = targetTask ? targetTask.task_ref : null;
     React.useEffect(() => {
       if (!view.chain || !targetRef || !data) return;
@@ -237,7 +241,7 @@
         operation_ref: selected ? selected.task.operation_ref : undefined,
         scope: destinationScope, return_to: { view: 'fieldgantt', context: returnContext } });
     }
-    return <div className="plana fg-page fg-live" data-actual-gantt><Styles />
+    return <div className="plana fg-page fg-live" data-actual-gantt>
       <div className="fg-heading"><div><h2 className="wb-page-title">现场实际甘特</h2><span className="fg-muted wb-page-context">{data ? data.plan.display_name + ' · ' + window.WorkbenchTerms.data_as_of(M.time(result.meta.as_of)) : loading ? '正在读取计划与现场记录' : '计划与现场记录'}</span></div>
         <div className="wb-actions"><Button icon="refresh-cw" aria-label="刷新实际甘特" busy={loading} onClick={reload} />
           {onNavigate && <><Button icon="chart-gantt" onClick={() => navigate('gantt')}>计划甘特</Button><Button icon="arrow-right" onClick={() => navigate('field')}>现场记录</Button></>}

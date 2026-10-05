@@ -123,7 +123,7 @@
     }
     const title = ({ import: '批量导入', export: '批量导出', bulk: '批量删除' }[effectiveMode] || '操作') + ' · ' + label;
     const refs = Array.isArray(original.refs) ? original.refs : [];
-    return <div className={'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')}><Preview.Styles />
+    return <div className={'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')}>
       <Modal title={title} icon={effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input'} onClose={close} guardOwner={guardOwner} locked={command.locked}
         footer={<><Button onClick={() => close()} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done || download.name ? '完成' : '取消'}</Button>
           {!done && !command.locked && !recovery && <Button icon="check" onClick={preflight} busy={activeRead} disabled={download.busy}>{data || query.error || command.phase === 'rejected' ? '重新预检' : '开始预检'}</Button>}

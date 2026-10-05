@@ -73,7 +73,7 @@
     check(d.tasks_complete === true && count(d.task_count) && d.task_count > 0 && d.task_count <= 10000 && Array.isArray(d.tasks) && d.tasks.length === d.task_count);
     check(Array.isArray(d.unplanned_operations) && typeof d.scope_complete === 'boolean' && d.scope_complete === (d.unplanned_operations.length === 0));
     d.unplanned_operations.forEach(r => { check(ref(r.operation_ref) && fields(r, ['reason', 'status', 'sequence', 'piece_id'])); issues([r.reason]); });
-    const seen = new Set(), rows = new Set();
+    const seen = new Set(), rows = new Set(), historyOwners = new Map();
     d.tasks.forEach(t => {
       check(fields(t, ['task_ref', 'row_ref', 'operation_ref', 'source_row_ref', 'source_task_ref', 'batch_ref', 'batch_id', 'part_no', 'part_name',
         'process_label', 'sequence', 'piece_id', 'source', 'quantity', 'batch_quantity', 'priority', 'due_date', 'original', 'hours', 'execution',
@@ -95,6 +95,9 @@
         && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');
       if (d.status !== 'editing') check(t.edit_context.can_change === false);
       issues(t.issues); issues(t.data_gaps); issues(t.edit_context.blocked_reasons);
+      [t.task_ref, ...(d.scenario_ref && t.source_task_ref ? [t.source_task_ref] : [])].forEach(key => {
+        if (!historyOwners.has(key)) historyOwners.set(key, t);
+      });
     });
     d.tasks.forEach(t => check(t.predecessor_refs.every(r => seen.has(r))));
     check(object(d.resources) && ['machines', 'operators', 'authorizations'].every(k => Array.isArray(d.resources[k])));
@@ -117,7 +120,7 @@
     check(time(d.time_scope.start) && time(d.time_scope.end) && d.time_scope.selection === 'complete_base'
       && d.tasks.every(t => t.start >= d.time_scope.start && t.end <= d.time_scope.end));
     d.change_history.forEach(r => {
-      const owner = d.tasks.find(t => t.task_ref === r.task_ref || d.scenario_ref && t.source_task_ref === r.task_ref);
+      const owner = historyOwners.get(r.task_ref);
       check(ref(r.change_ref) && ref(r.task_ref) && !!owner);
       arrangement(r.before, owner); arrangement(r.after, owner); validation(r.validation);
     });

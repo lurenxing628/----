@@ -10,7 +10,7 @@ const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const files = ['WorkbenchGuards.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchControlBridge.js',
   'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchDetailPanel.jsx', 'WorkbenchGuardHost.jsx', 'ResourceTables.jsx', 'ResourceForms.jsx',
   'BatchContract.js', 'BatchControls.jsx', 'BatchForms.jsx', 'BatchOperationEditor.jsx', 'BatchDetail.jsx', 'BatchTable.jsx', 'BatchFiles.jsx', 'BatchWorkspace.jsx',
-  'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanLayout.jsx', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanCatalogUI.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx',
+  'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js', 'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanCatalogUI.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx',
   'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchNumberControls.jsx'];
 const sources = files.map(file => ({ path: 'frontend/workbench/app/' + file, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8') }));
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources, check_combined: true });

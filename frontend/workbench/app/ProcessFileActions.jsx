@@ -88,7 +88,7 @@
       finally { if (abort.current === controller) abort.current = null; }
     }
     const allSkipped = data && importing && kind === 'hours' && data.skipped_count === data.rows.length;
-    return <div className={'plana rm-actions' + ((data || saved) && importing ? ' rm-wide' : '')}><window.ResourceMaterialPreview.Styles />
+    return <div className={'plana rm-actions' + ((data || saved) && importing ? ' rm-wide' : '')}>
       <Modal title={(importing ? '导入' : '导出') + label} icon={importing ? 'file-input' : 'file-output'} locked={locked} suspended={discard} onClose={() => close()}
         footer={<><Button disabled={locked} onClick={() => close()}>{done || !importing && download.name ? '完成' : '取消'}</Button>
           {!done && !recovery && <Button icon="check" disabled={disabled || locked} busy={busy} onClick={preflight}>{job ? '重新预检' : '开始预检'}</Button>}

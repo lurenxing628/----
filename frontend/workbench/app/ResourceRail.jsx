@@ -166,7 +166,7 @@
         <div className="hb-block hero hb-ops"><div className="hb-bhead"><span className="hb-bdot fk" /><span className="hb-bname">工序 · 两条链</span><span className="hb-bnum">5 环节</span></div>
           <div className="hb-bbody">{lane('自制链', 'int', ['op_int', 'machine', 'operator'])}{lane('外协链', 'ext', ['op_ext', 'supplier'])}</div></div>
         <div className="hb-flowarr"><Icon name="arrow-right" /></div>
-        <CalendarSummary value={value.calendar} loading={summary.loading} error={summary.error || value.calendar_error} node={node} disabled={disabled} onNode={onNode} />
+        <CalendarSummary value={value.calendar} loading={summary.loading} error={summary.error ? C.message(summary.error) : value.calendar_error} node={node} disabled={disabled} onNode={onNode} />
       </div></div>
       <div className="rail-foot"><div className="hb-r-top" style={{ flexWrap: 'wrap' }}>
         <span className="hb-r-spacer" />

@@ -42,14 +42,11 @@
       try { if (H) H.remember(data.scenario_ref, { tab: next }); setEntry({ tab: next, error: null }); }
       catch (_) { setEntry({ tab: next, error: new Error('本页试调页签记录保存失败，返回后可能无法恢复。') }); }
     }
-    // A malformed page-history entry keeps the recovery notice in place of the results (contract: the entry must be cleared first);
-    // an unreadable local preference no longer hides the results: they render with defaults under the notice.
-    if (entry.error) return <section className="tt-results" aria-label="试调结果恢复">
-      <V.Notice state={preferences} label="试调结果查看偏好" /><U.ErrorBox error={entry.error} /><div className="tt-tools">
-        <U.Button icon="refresh-cw" onClick={() => setEntry(readEntry())}>刷新本页页签记录</U.Button>
-        <U.Button icon="rotate-ccw" onClick={clearEntry}>清除本页页签记录</U.Button></div></section>;
     const arrangement = r => <>{name(r.machine_ref)}<br />{name(r.operator_ref)}<br />{U.timeLabel(r.start)}<br />{U.timeLabel(r.end)}</>;
     return <section className="tt-results"><V.Notice state={preferences} label="试调结果查看偏好" />
+      {entry.error && <div className="tt-notice" role="region" aria-label="试调页签记录恢复"><U.ErrorBox error={entry.error} /><div className="tt-tools">
+        <U.Button icon="refresh-cw" onClick={() => setEntry(readEntry())}>刷新本页页签记录</U.Button>
+        <U.Button icon="rotate-ccw" onClick={clearEntry}>清除本页页签记录</U.Button></div></div>}
       <U.Tabs value={tab} onChange={selectTab} label="试调结果" idPrefix="tt-result-tab-" panelId="tt-result-panel" options={[
       ['delivery', '批次对比'], ['capacity', '资源占用'], ['history', '调整记录'], ['adoptions', '采用记录'], ['issues', '约束问题'], ['tasks', '完整任务'], ['unplanned', '未排工序']]} />
       <div role="tabpanel" id="tt-result-panel" aria-labelledby={'tt-result-tab-' + tab}>

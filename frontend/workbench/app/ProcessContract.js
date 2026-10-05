@@ -69,8 +69,9 @@
     const ordered = (a, b) => a.length < b.length || a.length === b.length && a <= b;
     return [value, start, end].every(sequence) && ordered(String(start), String(value)) && ordered(String(value), String(end));
   }
+  const groupIndex = groups => new Map(groups.map(row => [row.ref, row]));
   function cycleReferences(entity) {
-    const groups = new Map(entity.external_groups.map(row => [row.ref, row])), invalid = new Set();
+    const groups = groupIndex(entity.external_groups), invalid = new Set();
     for (const row of entity.operations) {
       if (row.external_group_ref === null) continue;
       const group = groups.get(row.external_group_ref);
@@ -85,7 +86,7 @@
   }
   function groupCycle(row, groups) {
     if (row.external_days_source !== 'group') return null;
-    const group = groups.find(item => item.ref === row.external_group_ref);
+    const group = groups.get(row.external_group_ref);
     if (!group || group.merge_mode !== 'merged' || !Number.isFinite(group.total_days) || group.total_days <= 0 || group.issues.length
         || row.external_days !== null || row.source !== 'external' || row.status !== 'active' || !within(row.sequence, group.start_sequence, group.end_sequence))
       throw C.failure('工序周期和指定外协组不一致，请刷新后重试。');
@@ -197,5 +198,5 @@
   }
   function stageLabel(key) { return own(stageNames, key) ? stageNames[key] : '阶段未明确'; }
   const own = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
-  window.APSProcessContract = { stages, sorts, columns, ordering, externalGroup, groupCycle, list, detail, preview, stagePreview, previewBody, reason, sourceLabel, valueText, workflowStateLabel, stageLabel };
+  window.APSProcessContract = { stages, sorts, columns, ordering, externalGroup, groupIndex, groupCycle, list, detail, preview, stagePreview, previewBody, reason, sourceLabel, valueText, workflowStateLabel, stageLabel };
 })();

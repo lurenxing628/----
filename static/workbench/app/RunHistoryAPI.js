@@ -123,7 +123,7 @@
     return d;
   }
   function create(fetcher = window.fetch.bind(window)) {
-    return {
+    return window.APSReadBoundary.verified({
       async catalog(query = {}, signal) {
         const q = scope(query),
           controller = new AbortController(),
@@ -167,10 +167,16 @@
           if (signal) signal.removeEventListener('abort', abort);
         }
       }
-    };
+    }, ['catalog']);
+  }
+  function adapter(value) {
+    return window.APSReadBoundary.checked(value, {
+      catalog: (result, query) => catalog(result, query)
+    });
   }
   window.RunHistoryAPI = {
     create,
+    adapter,
     check,
     scope,
     context,

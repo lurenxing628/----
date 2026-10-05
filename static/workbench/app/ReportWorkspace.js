@@ -16,8 +16,7 @@
       Page,
       Button,
       ErrorBox,
-      useRead,
-      Styles
+      useRead
     } = window.ReportControls;
     const {
       Table,
@@ -267,7 +266,7 @@
       "aria-label": title,
       "data-source": "production",
       "data-ready": !!data
-    }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "rw-header"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"

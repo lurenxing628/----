@@ -9,6 +9,7 @@ const headers = () => ({ 'Content-Type': 'application/vnd.sqlite3', 'Content-Len
 const document = { body: { appendChild() {} }, createElement() { return { click() { clicked++; }, remove() {} }; } };
 const host = { window: {}, Blob, AbortController, URLSearchParams, setTimeout: () => 1, clearTimeout() {}, document,
   URL: { createObjectURL() { return 'blob:private-test'; }, revokeObjectURL() {} } };
+vm.runInNewContext(fs.readFileSync('frontend/workbench/app/transport.js', 'utf8'), host);
 vm.runInNewContext(source, host);
 async function fetcher(url) {
   fetched++;

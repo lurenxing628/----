@@ -63,8 +63,7 @@ async function workspace(ref, scope = {}) {
   return result;
 }
 async function fillTime(label, value) {
-  const normalized = value.length === 19 && value.endsWith(':00') ? value.slice(0, 16) : value;
-  await page.getByLabel(label, { exact: true }).fill(normalized);
+  await page.getByLabel(label, { exact: true }).fill(value);
 }
 async function layout() {
   assert.equal(await page.getByRole('checkbox', { name: '初始计划', exact: true }).isChecked(), false);
@@ -130,6 +129,13 @@ async function contracts() {
 async function baseline() {
   assert.equal(report.requests.filter(r => r.variant === variant).length, 0); await page.getByText(/尚未指定排产或候选方案/).waitFor(); done('no-source-no-latest-no-request');
   await mount(null, { candidate_ref: 'latest' }); await page.getByRole('alert').waitFor(); assert.equal(report.requests.filter(r => r.variant === variant).length, 0); done('invalid-ref-no-request');
+  const beforeDiscovery = report.requests.length;
+  await mount(null, { candidate_ref: fixtures.complete.candidate_ref, candidate_tab: 'history' });
+  await page.getByText('这个候选方案还没有采用记录。', { exact: true }).waitFor();
+  await page.locator('[data-candidate-ref]').first().waitFor({ state: 'attached' });
+  for (const endpoint of ['analysis', 'adoptions']) assert.equal(report.requests.slice(beforeDiscovery)
+    .filter(row => row.path.endsWith('/' + fixtures.complete.candidate_ref + '/' + endpoint)).length, 1);
+  done('candidate-only-run-discovery-keeps-one-analysis-and-history-read');
   await mount(null, { run_ref: fixtures.complete.run_ref }); await catalogState(true); await page.locator('[data-candidate-ref]').first().waitFor();
   report.catalog_checks.push({ variant, name: 'no-selection-opens-catalog', passed: true });
   assert.equal(await page.getByRole('heading', { name: '候选工作区', exact: true }).count(), 0); await button('查看候选 ' + fixtures.complete.candidate_ref).click();
@@ -188,8 +194,12 @@ async function baseline() {
   await page.getByLabel('搜索候选工序').fill(full.data.tasks[0].row_ref); assert.equal(await page.locator('[data-candidate-task-list] [data-row-ref]').count(), 1);
   await download('csv', full); await download('xlsx', full); done('search-does-not-truncate-export');
   await page.getByLabel('搜索候选工序').fill('');
-  await button('读取范围').click(); await page.getByLabel('候选读取开始', { exact: true }).focus(); await page.keyboard.press('Alt+ArrowDown');
-  await page.getByRole('dialog').waitFor(); await shot('workbench-date-picker'); await page.keyboard.press('Escape'); done('shared-workbench-date-picker');
+  await button('读取范围').click();
+  // Text timestamps retain six fractional digits; the native picker supports only milliseconds.
+  assert.equal(await page.getByLabel('候选读取开始', { exact: true }).getAttribute('type'), 'text');
+  const preciseEnd = '2026-09-13T08:30:00.800000'; await fillTime('候选读取结束', preciseEnd);
+  assert.equal(await page.getByLabel('候选读取结束', { exact: true }).inputValue(), preciseEnd);
+  done('exact-timestamp-input-preserves-microseconds');
   await fillTime('候选读取开始', '2026-10-01T00:00:00');
   await fillTime('候选读取结束', '2026-09-01T00:00:00'); await button('应用范围').click(); await page.getByRole('alert').waitFor(); done('reversed-range-rejected');
   await fillTime('候选读取开始', '2026-09-01T00:00:00'); await fillTime('候选读取结束', full.data.tasks[0].end);

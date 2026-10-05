@@ -36,7 +36,7 @@ runtime.React = Object.assign({}, realReact, {
 for (const name of ['resource-contract', 'WorkbenchFormat', 'WorkbenchTerms', 'WorkbenchReferences',
   'PointContract', 'PointGanttModel', 'PlanProcessOrder', 'PlanContract', 'ResourceControls',
   'WorkbenchControlBridge', 'WorkbenchControls', 'WorkbenchListControls',
-  'PointGantt', 'PlanGanttModel', 'PlanGanttCanvas', 'PlanGantt', 'PlanDetailsUI', 'PlanLayout', 'resource-api']) {
+  'PointGantt', 'PlanGanttModel', 'PlanGanttCanvas', 'PlanGantt', 'PlanDetailsUI', 'resource-api']) {
   load('static/workbench/app/' + name + '.js');
 }
 function expand(element) {

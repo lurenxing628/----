@@ -3,9 +3,6 @@
   const { Button, Icon, TimelineZoom } = window.ResourceControls, M = window.ActualGanttModel;
   // 工序说明只有 ActualGanttModel 那一份写法，这里不再改写措辞。
   const describe = M.describe;
-  function Styles() {
-    return <window.PointGantt.Styles />;
-  }
   function Toolbar({ view, patch, model, data, zoom, width, onZoom, onFit, onLocate, onExport, busy }) {
     const allCollapsed = model.groups.length > 0 && model.groups.every(g => view.collapsed[g.id]);
     const counts = Object.fromEntries(Object.keys(M.lateLabels).map(key => [key, key === 'all' ? data.items.length : data.items.filter(item => M.deadlines(item, M.wire(model.asOf))[key]).length]));
@@ -67,5 +64,5 @@
       <Button type="submit" icon="search" busy={busy}>应用范围</Button><Button icon="x" aria-label="清除来源范围" disabled={busy} onClick={() => onApply({ plan_ref: scope.plan_ref })} />
     </form>;
   }
-  window.ActualGanttControls = { Styles, Toolbar, Range, Chain, describe };
+  window.ActualGanttControls = { Toolbar, Range, Chain, describe };
 })();

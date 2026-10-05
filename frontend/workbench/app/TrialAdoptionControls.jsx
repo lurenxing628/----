@@ -55,8 +55,5 @@
         <Records value={value} saved={s.saved} result={s.result} />
       </div></Modal>;
   }
-  function Styles() {
-    return null;
-  }
-  window.TrialAdoptionControls = { Button, Dialog, Styles };
+  window.TrialAdoptionControls = { Button, Dialog };
 })();

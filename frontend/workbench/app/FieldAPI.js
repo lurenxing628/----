@@ -15,22 +15,51 @@
     if (invalid) throw window.APSResourceContract.failure('读到的现场数据与原计划、页码或数据版本不一致，没有替换原来的任务。');
     return value;
   }
+  function taskScopeMatches(scope, input) {
+    const expected = { ...input }, actual = { ...scope };
+    ['page', 'size', 'snapshot_ref', 'task_ref', 'operation_ref', 'source'].forEach(key => delete expected[key]);
+    Object.keys(expected).forEach(key => { if (expected[key] === undefined || expected[key] === null || expected[key] === '') delete expected[key]; });
+    if (!expected.plan_ref) delete actual.plan_ref;
+    if (expected.state === 'all') delete expected.state;
+    // Match normalize_scope's Python str.strip, including control separators;
+    // JavaScript trim also removes BOM, which the backend keeps as query text.
+    if (typeof expected.query === 'string') expected.query = expected.query.replace(
+      /^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/g, '');
+    if (typeof expected.batch_ids === 'string') {
+      try { expected.batch_ids = JSON.parse(expected.batch_ids); } catch (_) { return false; }
+    }
+    [expected, actual].forEach(value => {
+      if (Array.isArray(value.batch_ids)) value.batch_ids = Array.from(new Set(value.batch_ids)).sort();
+    });
+    const keys = Object.keys(expected).sort();
+    return JSON.stringify(keys) === JSON.stringify(Object.keys(actual).sort())
+      && keys.every(key => JSON.stringify(expected[key]) === JSON.stringify(actual[key]));
+  }
   async function readView(api, input, signal) {
     if (input.snapshot_ref) return checked(await api.list(input, signal), input);
     if (input.operation_ref && !input.task_ref) throw window.APSResourceContract.failure('核对原工序时缺少明确任务，没有改选其他任务。');
     if (input.page !== undefined && (!Number.isInteger(input.page) || input.page < 1 || input.page > 100000))
       throw window.APSResourceContract.failure('现场原页码无效，未切换到其他页。');
+    if (input.task_ref) {
+      // The backend locates the task within this one freshly captured scope.
+      // Start at page 1 because an unbound explicit later page requires a snapshot.
+      const query = { ...input, page: 1 };
+      delete query.snapshot_ref;
+      const result = checked(await api.list(query, signal), input);
+      const original = result.data.tasks.find(task => task.task_ref === input.task_ref);
+      if (input.page !== undefined && result.data.page.number !== input.page || !original
+        || input.operation_ref && original.operation_ref !== input.operation_ref || !taskScopeMatches(result.data.scope, input))
+        throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
+      return result;
+    }
     const firstQuery = { ...input, page: 1 };
     delete firstQuery.snapshot_ref; delete firstQuery.task_ref; delete firstQuery.operation_ref;
     const first = checked(await api.list(firstQuery, signal), firstQuery);
-    if (!input.task_ref && (input.page === undefined || input.page === 1)) return first;
+    if (input.page === undefined || input.page === 1) return first;
     const bound = { ...first.data.scope, page: input.page || 1, size: input.size,
-      task_ref: input.task_ref, operation_ref: input.operation_ref, snapshot_ref: first.meta.snapshot_ref };
+      snapshot_ref: first.meta.snapshot_ref };
     const result = checked(await api.list(bound, signal), bound);
-    const original = input.task_ref && result.data.tasks.find(task => task.task_ref === input.task_ref);
-    if (input.page !== undefined && result.data.page.number !== input.page || input.task_ref && !original
-      || original && input.operation_ref && original.operation_ref !== input.operation_ref
-      || JSON.stringify(result.data.scope) !== JSON.stringify(first.data.scope))
+    if (JSON.stringify(result.data.scope) !== JSON.stringify(first.data.scope))
       throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
     return result;
   }

@@ -179,7 +179,7 @@
       }
     }), source.kind === 'outsourcing_receipt' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u7269\u6D41\u767B\u8BB0\u8BB0\u5F55"), source.receipt && window.OutsourcingControls ? /*#__PURE__*/React.createElement("div", {
       className: "outsourcing-live"
-    }, /*#__PURE__*/React.createElement(window.OutsourcingStyles, null), /*#__PURE__*/React.createElement(window.OutsourcingControls.Facts, {
+    }, /*#__PURE__*/React.createElement(window.OutsourcingControls.Facts, {
       facts: source.receipt
     })) : /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning"

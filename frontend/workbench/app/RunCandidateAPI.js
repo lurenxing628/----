@@ -242,7 +242,7 @@
           snapshot_ref: response.headers.get('X-Workbench-Snapshot-Ref'), task_count: headerCount('X-Workbench-Task-Count'), row_count: headerCount('X-Workbench-Row-Count') };
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
     }
-    return {
+    return window.APSReadBoundary.verified({
       async catalog(runRef, query = {}, signal) { check(ref(runRef)); const q = catalogScope(query);
         const v = await request('/runs/' + runRef + '/candidates?' + new URLSearchParams(q), signal); catalog(v, runRef, q); return v; },
       async workspace(candidateRef, query = {}, signal) { const q = workspaceScope(candidateRef, query);
@@ -251,7 +251,13 @@
         check(token(snapshotRef) && ['csv', 'xlsx'].includes(fmt)); const q = workspaceScope(candidateRef, { ...query, snapshot_ref: snapshotRef });
         return request('/candidates/' + candidateRef + '/export?' + new URLSearchParams({ ...q, format: fmt }), signal, fmt);
       }
-    };
+    }, ['catalog', 'workspace']);
   }
-  window.RunCandidateAPI = { create, check, ref, time, shape, envelope, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
+  function adapter(value) {
+    return window.APSReadBoundary.checked(value, {
+      catalog: (result, runRef, query) => catalog(result, runRef, query),
+      workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
+    });
+  }
+  window.RunCandidateAPI = { create, adapter, check, ref, time, shape, envelope, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
 })();

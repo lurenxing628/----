@@ -508,7 +508,7 @@
       setRefreshState({
         loading: true
       });
-      refresh();
+      counts.summary.reload();
       try {
         if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
@@ -521,7 +521,14 @@
           delete readScope.status;
           readScope.category = intent.category;
         }
-        const refreshedList = await readList(adapter, intent.kind, readScope, new AbortController().signal);
+        let refreshedList;
+        if (sameView) {
+          setScope(readScope);
+          refreshedList = await list.reloadAndWait(signal => readList(adapter, intent.kind, readScope, signal));
+        } else {
+          list.reload();
+          refreshedList = await readList(adapter, intent.kind, readScope, new AbortController().signal);
+        }
         let fresh = null;
         if (intent.action !== 'delete') {
           const ref = C.resultRef(command.result, intent.ref);
@@ -662,6 +669,7 @@
       className: "muted"
     }, "\u5DE5\u827A\u5DE5\u4F5C\u533A\u5C1A\u672A\u5F00\u901A\u3002") : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({
       onCommitted: refresh,
+      summaryState: counts.summary,
       rememberEnabled: rememberEnabled && !navigationError && !deferred,
       initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined
     }) : /*#__PURE__*/React.createElement(Calendar, {

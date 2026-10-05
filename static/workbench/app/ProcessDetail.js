@@ -64,7 +64,7 @@
     focusRef = null
   }) {
     const paging = E.usePage(entity.operations, focusRef),
-      groups = new Map(entity.external_groups.map(row => [row.ref, row])),
+      groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]),
       root = React.useRef(null);
     E.useFocus(root, focusRef, paging.page.number);
     return /*#__PURE__*/React.createElement("div", {
@@ -116,7 +116,7 @@
         value: row.ref
       })), /*#__PURE__*/React.createElement("td", null, row.op_type_label || '未选工种'), /*#__PURE__*/React.createElement("td", null, P.sourceLabel(row.source)), /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? '不适用' : row.supplier_label || '未选供应商', group && /*#__PURE__*/React.createElement("div", null, "\u5916\u534F\u7EC4 ", group.start_sequence, " \u81F3 ", group.end_sequence)), hours && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? E.value(row.setup_hours) : '不适用'), /*#__PURE__*/React.createElement("td", null, row.source === 'internal' ? E.value(row.unit_hours) : '不适用'), /*#__PURE__*/React.createElement("td", {
         "data-process-cycle-group": row.external_days_source === 'group' ? row.external_group_ref : undefined
-      }, row.source === 'external' ? P.groupCycle(row, entity.external_groups) || E.value(row.external_days) : '不适用')), /*#__PURE__*/React.createElement("td", null, row.status === 'active' ? '有效' : '已停用工序', /*#__PURE__*/React.createElement("div", {
+      }, row.source === 'external' ? P.groupCycle(row, groups) || E.value(row.external_days) : '不适用')), /*#__PURE__*/React.createElement("td", null, row.status === 'active' ? '有效' : '已停用工序', /*#__PURE__*/React.createElement("div", {
         className: "muted"
       }, /*#__PURE__*/React.createElement(E.Confirmation, {
         record: row.confirmation[hours ? 'hours' : 'source']
@@ -233,7 +233,8 @@
       if (request.current) request.current.abort();
     }, []);
     const intent = command.intent,
-      fileKind = intent && intent.action === 'confirm' && typeof intent.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(intent.ref) && ['process_route_import', 'process_hours_import'].includes(intent.kind) ? intent.kind === 'process_route_import' ? 'route' : 'hours' : null;
+      restored = window.APSProcessActions.restored(intent),
+      fileKind = restored && restored.fileKind || null;
     const expectedStage = intent && intent.kind === 'process' && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action) ? intent.action.replace('_confirm', '') : null;
     const receiptMatches = command.phase === 'done' && expectedStage && command.intent.kind === 'process' && command.intent.ref === partRef && C.object(command.result.data) && command.result.data.entity_ref === partRef && command.result.data.stage === expectedStage && ['committed', 'unchanged'].includes(command.result.result);
     const needsReceiptCheck = command.phase === 'done' && !fileKind && !receiptMatches;

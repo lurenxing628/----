@@ -77,7 +77,7 @@
       catch (error) { return { name, value: null, error }; }
     }
     const [state, setState] = React.useState(loaded), current = state.name === name ? state : loaded();
-    const notify = () => window.dispatchEvent(new CustomEvent(EVENT, { detail: { key: name } }));
+    const notify = value => window.dispatchEvent(new CustomEvent(EVENT, { detail: { key: name, value, source: pending } }));
     function change(patch) {
       if (active.current !== name || !current.value) return false;
       let merged, value;
@@ -88,7 +88,7 @@
       pending.current.patch = merged;
       try {
         const saved = write(target, initial, merged);
-        pending.current.patch = {}; setState({ name, value: saved, error: null }); notify(); return true;
+        pending.current.patch = {}; setState({ name, value: saved, error: null }); notify(saved); return true;
       } catch (error) { setState({ name, value, error }); return false; }
     }
     function reload() {
@@ -102,14 +102,17 @@
       catch (error) { setState(previous => ({ ...previous, error })); }
     }
     React.useEffect(() => {
-      function refresh() {
+      function refresh(value) {
         if (active.current !== name) return;
-        const next = loaded();
+        const next = value === undefined ? loaded() : { name, value, error: null };
         setState(previous => Object.keys(pending.current.patch).length && previous.name === name
           ? { name, value: next.value ? { ...next.value, ...pending.current.patch } : previous.value, error: next.error || previous.error }
           : next);
       }
-      const local = event => { if (event.detail && event.detail.key === name) refresh(); };
+      const local = event => {
+        const detail = event.detail;
+        if (detail && detail.key === name && detail.source !== pending) refresh(detail.value);
+      };
       const external = event => { if (event.key === name || event.key === null) refresh(); };
       refresh(); window.addEventListener(EVENT, local); window.addEventListener('storage', external);
       return () => { window.removeEventListener(EVENT, local); window.removeEventListener('storage', external); };

@@ -112,8 +112,11 @@
         check(response.status === 200 && json); validate(value, candidateRef, runRef); return value;
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
     }
-    return { ...A.create(fetcher), analysis: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'analysis', analysis, signal),
-      adoptions: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'adoptions', history, signal) };
+    return window.APSReadBoundary.verified({ ...A.create(fetcher), analysis: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'analysis', analysis, signal),
+      adoptions: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'adoptions', history, signal) }, ['analysis', 'adoptions']);
   }
-  window.RunCandidateAnalysisAPI = { create, analysis, history, keys };
+  function adapter(value) {
+    return window.APSReadBoundary.checked(A.adapter(value), { analysis, adoptions: history });
+  }
+  window.RunCandidateAnalysisAPI = { create, adapter, analysis, history, keys };
 })();

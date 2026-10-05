@@ -360,7 +360,7 @@
     return /*#__PURE__*/React.createElement("section", {
       className: "plana master-overview",
       "aria-label": "\u8D44\u6599\u603B\u89C8"
-    }, /*#__PURE__*/React.createElement(window.MasterOverviewStyles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "mo-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"

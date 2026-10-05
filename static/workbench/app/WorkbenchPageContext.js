@@ -1,14 +1,21 @@
 (function () {
   'use strict';
 
-  const Remember = React.createContext(null);
+  const Remember = React.createContext(null),
+    Navigate = React.createContext(null);
   function Provider({
     remember,
+    navigate,
     children
   }) {
     return /*#__PURE__*/React.createElement(Remember.Provider, {
       value: remember
-    }, children);
+    }, /*#__PURE__*/React.createElement(Navigate.Provider, {
+      value: navigate
+    }, children));
+  }
+  function useNavigate() {
+    return React.useContext(Navigate);
   }
   function useSnapshot(value, enabled = true) {
     const remember = React.useContext(Remember),
@@ -19,6 +26,7 @@
   }
   window.WorkbenchPageContext = {
     Provider,
-    useSnapshot
+    useSnapshot,
+    useNavigate
   };
 })();

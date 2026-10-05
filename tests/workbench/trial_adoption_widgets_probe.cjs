@@ -4,9 +4,9 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), http = re
 const { chromium } = require('playwright'), { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
 const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchHandlerMemory.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js', 'WorkbenchCaption.jsx', 'WorkbenchPageContext.jsx', 'resource-contract.js', 'resource-api.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx', 'WorkbenchControlStyles.jsx', 'WorkbenchControlBridge.js', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js', 'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx',  'PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx',
-  'TrialContract.js', 'TrialAPI.js', 'TrialSession.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialCatalog.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialResults.jsx', 'TrialStyles.jsx', 'TrialWorkspace.jsx',
+  'TrialContract.js', 'TrialAPI.js', 'TrialSession.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialCatalog.jsx', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialResults.jsx', 'TrialWorkspace.jsx',
   'TrialAdoptionAPI.js', 'TrialAdoptionState.js', 'TrialAdoptionControls.jsx', 'TrialAdoptionAction.jsx',
-  'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js', 'PlanLayout.jsx', 'PlanSelectionModel.js', 'PlanCatalogUI.jsx', 'PlanGanttModel.js', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx'];
+  'PlanProcessOrder.js', 'PlanContract.js', 'PlanAPI.js', 'PlanSelectionModel.js', 'PlanCatalogUI.jsx', 'PlanGanttModel.js', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx', 'PlanExportUI.jsx', 'PlanWorkspace.jsx'];
 const styleSources = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json'), 'utf8')).styles.map(name => {
   const file = 'frontend/workbench/app/styles/' + name; return { path: file, code: fs.readFileSync(path.join(root, file), 'utf8') };
 });

@@ -54,13 +54,9 @@
       title: value.range
     }, value.range));
   }
-  function Styles() {
-    return null;
-  }
   window.WorkbenchCaption = {
     Provider,
     Caption,
-    Styles,
     useCaption
   };
 })();

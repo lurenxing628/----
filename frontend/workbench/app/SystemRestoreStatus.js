@@ -60,9 +60,7 @@
       query_error: error ? error.message : null, database_checked_by_page: false,
       note: '导出当前维护状态。' };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob), link = document.createElement('a');
-    link.href = url; link.download = DIAGNOSTIC_FILENAME;
-    try { document.body.appendChild(link); link.click(); } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    window.APSWorkbenchTransport.saveBlob(DIAGNOSTIC_FILENAME, blob);
   }
   window.SystemRestoreStatus = { validateHost, envelope, host, operation, referencePath, describe, download, labels, origins, DIAGNOSTIC_FILENAME };
 })();

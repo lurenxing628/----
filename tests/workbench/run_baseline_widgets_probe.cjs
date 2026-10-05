@@ -16,7 +16,7 @@ const report = { browser: null, variants: [], checks: [], screenshots: [], error
   compile: { global_build: false, target: 'chrome109' }, sources: sources.map(row => ({ path: row.path, sha256: crypto.createHash('sha256').update(row.code).digest('hex') })) };
 const boot = `let fixtureRoot;function Fixture(props){const [data,setData]=React.useState(props.data),[selected,setSelected]=React.useState(null),[query,setQuery]=React.useState('');
 window.setBaselineData=d=>{window.fixtureData=d;setData(d);setSelected(null);};window.setBaselineSearch=setQuery;window.fixtureData=data;
-return React.createElement('div',{className:'plana run-candidate-workspace'},React.createElement(RunCandidateControls.Styles),React.createElement(RunCandidateGantt,{data,query,selected,onSelect:setSelected}),
+return React.createElement('div',{className:'plana run-candidate-workspace'},React.createElement(RunCandidateGantt,{data,query,selected,onSelect:setSelected}),
 React.createElement(RunCandidateControls.Detail,{task:selected,onClose:()=>setSelected(null)}));}
 window.mountBaseline=async(ref,scope={})=>{const result=await RunCandidateAPI.create().workspace(ref,scope);window.workspaceEnvelope=result;
 if(fixtureRoot)fixtureRoot.unmount();fixtureRoot=ReactDOM.createRoot(document.getElementById('fixture-root'));fixtureRoot.render(React.createElement(Fixture,{data:result.data}));};

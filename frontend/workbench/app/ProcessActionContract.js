@@ -81,7 +81,7 @@
           || data.workflow.origin !== 'managed' || data.workflow.ready !== false || data.workflow.stage !== 'route')
         throw C.failure('新增结果不完整，没有自动打开这条零件。请点「查询结果」核对，不要重复提交。');
       if (intent.input && data.business_code !== intent.input.business_code) throw C.failure('新增结果的图号和录入的不一致。请点「查询结果」核对，不要重复提交。');
-    } else if (intent.kind === 'process_bulk' && intent.action === 'confirm' && token(intent.ref)) {
+    } else if (intent.kind === 'process_bulk' && intent.action === 'confirm' && (intent.ref === undefined || token(intent.ref))) {
       if (!Number.isSafeInteger(data.deleted_count) || data.deleted_count < 1 || !Array.isArray(data.rows) || data.rows.length !== data.deleted_count
           || !data.rows.every(row => C.object(row) && ref(row.entity_ref) && row.result === 'committed')
           || new Set(data.rows.map(row => row.entity_ref)).size !== data.rows.length
@@ -93,8 +93,8 @@
   function restored(intent) {
     if (!intent) return null;
     if (intent.kind === 'process' && intent.action === 'create' && intent.ref === null) return { mode: 'create', recovery: true };
-    if (intent.kind === 'process_bulk' && intent.action === 'confirm' && token(intent.ref)) return { mode: 'bulk', recovery: true };
-    if (['process_route_import', 'process_hours_import'].includes(intent.kind) && intent.action === 'confirm' && token(intent.ref))
+    if (intent.kind === 'process_bulk' && intent.action === 'confirm' && (intent.ref === undefined || token(intent.ref))) return { mode: 'bulk', recovery: true };
+    if (['process_route_import', 'process_hours_import'].includes(intent.kind) && intent.action === 'confirm' && (intent.ref === undefined || token(intent.ref)))
       return { mode: 'import', fileKind: intent.kind === 'process_route_import' ? 'route' : 'hours', recovery: true };
     if (intent.kind === 'process' && ref(intent.ref) && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action)) return { ref: intent.ref };
     return null;

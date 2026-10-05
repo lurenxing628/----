@@ -40,6 +40,14 @@
     return adapter;
   }
   function recovery(adapters) {
+    function readPending(adapter) {
+      try {
+        return typeof adapter.readPending === 'function' && adapter.readPending();
+      } catch (error) {
+        if (error.intent) return error.intent;
+        throw error;
+      }
+    }
     const pending = [{
       type: 'base',
       adapter: adapters.base
@@ -62,7 +70,7 @@
       adapter: adapters.process
     }].map(item => ({
       ...item,
-      intent: typeof item.adapter.readPending === 'function' && item.adapter.readPending()
+      intent: readPending(item.adapter)
     })).find(item => item.intent);
     if (!pending) return null;
     const intent = pending.intent,
@@ -243,12 +251,14 @@
       renderCalendar: ({
         onCommitted,
         initialContext,
-        rememberEnabled
+        rememberEnabled,
+        summaryState
       }) => /*#__PURE__*/React.createElement(window.ResourceCalendar, {
         adapter: adapters.calendar,
         onCommitted: onCommitted,
         initialContext: initialContext,
         rememberEnabled: rememberEnabled,
+        summaryState: summaryState,
         onNavigationReady: setNavigationReady,
         onOpenFile: (mode, context) => adapters.base.openCalendarFile(mode, {
           refs: [],

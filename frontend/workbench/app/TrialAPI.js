@@ -42,8 +42,9 @@
       throw error;
     } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
   }
-  async function read(path, q = {}, signal) {
+  async function read(path, q = {}, signal, validate) {
     const value = await request(ROOT + path + (Object.keys(q).length ? '?' + new URLSearchParams(q) : ''), { signal });
+    if (validate) return validate(value);
     C.envelope(value, q); return value;
   }
   async function preview(input, signal) {

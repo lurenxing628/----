@@ -101,12 +101,13 @@ def test_css_change_during_compile_preserves_published_payload(builder, tmp_path
     for name in ("build.py", "asset_sources.py", "build-order.json", "compile.cjs", "ds-projection.cjs"):
         (tool_copy / name).write_text("fixture", encoding="utf-8")
     monkeypatch.setattr(builder, "TOOLS", tool_copy)
-    monkeypatch.setattr(builder, "read_inputs", lambda root: (prototype, snapshot, set(), order))
-    monkeypatch.setattr(builder, "verify_snapshot", lambda *args: set())
+    captured = {notice.relative_to(prototype).as_posix(): notice.read_bytes()}
+    monkeypatch.setattr(builder, "read_inputs", lambda root, order_bytes=None: (prototype, snapshot, captured, order))
+    monkeypatch.setattr(builder, "verify_snapshot", lambda *args: {})
     monkeypatch.setattr(builder, "style_assets", lambda *args: ({}, []))
     monkeypatch.setattr(builder, "asset_records", lambda *args: [])
 
-    def compile_and_change(node, prototype, order, sources, combined=False):
+    def compile_and_change(node, prototype, order, sources, combined=False, captured=None):
         source = app / "styles/00-tokens.css"
         if change == "content":
             source.write_text(".changed {}", encoding="utf-8")

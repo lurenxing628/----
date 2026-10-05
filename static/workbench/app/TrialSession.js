@@ -3,33 +3,10 @@
 
   const A = window.TrialAPI;
   function useRead(load, deps, enabled = true) {
-    const identity = React.useMemo(() => ({}), deps),
-      [state, set] = React.useState({});
-    React.useEffect(() => {
-      let active = true;
-      const controller = new AbortController();
-      set({
-        identity,
-        busy: enabled
-      });
-      if (enabled) Promise.resolve().then(() => load(controller.signal)).then(result => {
-        if (active) set({
-          identity,
-          result
-        });
-      }).catch(error => {
-        if (active) set({
-          identity,
-          error
-        });
-      });
-      return () => {
-        active = false;
-        controller.abort();
-      };
-    }, [identity, enabled]);
-    return state.identity === identity ? state : {
-      busy: enabled
+    const read = window.APSResourceSession.useQuery(load, deps, enabled);
+    return {
+      ...read,
+      busy: read.loading
     };
   }
   function useCommands(onReceipt) {

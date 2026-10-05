@@ -448,7 +448,7 @@
       className: "rc-gantt",
       "aria-label": "\u5019\u9009\u7518\u7279\u56FE",
       onKeyDown: zoomKeys
-    }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
       role: "group",

@@ -85,10 +85,7 @@
         const filename = /filename\*=UTF-8''([^;]+)/i.exec(result.disposition) || /filename="?([^";]+)/i.exec(result.disposition);
         let name = 'workbench-report.' + input.format;
         if (filename) { try { name = decodeURIComponent(filename[1]); } catch (_) { throw new Error('下载文件名无效。'); } }
-        const url = URL.createObjectURL(result.blob), link = document.createElement('a');
-        link.href = url; link.download = name;
-        try { document.body.appendChild(link); link.click(); }
-        finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+        window.APSWorkbenchTransport.saveBlob(name, result.blob);
         return { filename: name, bytes: result.blob.size };
       }
     };

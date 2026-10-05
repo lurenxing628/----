@@ -262,7 +262,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "plana batch-workspace wb-fill-viewport",
       "data-batch-workspace": true
-    }, /*#__PURE__*/React.createElement(window.BatchControls.Styles, null), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: initial.error || error
     }), busy && /*#__PURE__*/React.createElement("p", {
       role: "status"

@@ -45,13 +45,13 @@
       const load = async () => {
         if (!choice.range_start || !choice.range_end) {
           const first = await api.workspace(choice.candidate_ref, {}, controller.signal);
-          A.workspace(first, choice.candidate_ref, {}, choice.run_ref);
+          C.check(first.data.candidate.run_ref === choice.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
           if (!controller.signal.aborted) setChoice(previous => JSON.stringify(previous) === signature ? { ...previous, ...rangeFor(first.data.generation.input) } : previous);
           return;
         }
         const scope = { range_start: choice.range_start, range_end: choice.range_end, ...(choice.batch_ref ? { batch_ref: choice.batch_ref } : {}) };
         const workspace = await api.workspace(choice.candidate_ref, scope, controller.signal);
-        A.workspace(workspace, choice.candidate_ref, scope, choice.run_ref);
+        C.check(workspace.data.candidate.run_ref === choice.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
         const baseline = await baselineApi.read(workspace.data, controller.signal);
         const comparison = await comparisonApi.read(workspace.data, baseline.data, controller.signal);
         if (!controller.signal.aborted) setRead({ signature, data: { workspace, baseline, comparison }, error: null, loading: false });

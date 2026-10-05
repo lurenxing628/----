@@ -48,13 +48,14 @@
     return Number(text);
   }
   function input(entity, draft, pageSize) {
-    const merged = new Set(mergedGroups(entity).map(row => row.ref));
+    const merged = new Set(mergedGroups(entity).map(row => row.ref)),
+      groups = P.groupIndex(entity.external_groups);
     const operations = E.active(entity).map(row => {
       const current = draft.operations[row.ref];
       try {
         if (row.source === 'external') return {
           ref: row.ref,
-          external_days: P.groupCycle(row, entity.external_groups) || merged.has(row.external_group_ref) && current.external_days.trim() === '' && !row.issues.some(item => item.code === 'value_invalid') ? null : number(current.external_days, '工序 ' + row.sequence + ' 外协周期', true)
+          external_days: P.groupCycle(row, groups) || merged.has(row.external_group_ref) && current.external_days.trim() === '' && !row.issues.some(item => item.code === 'value_invalid') ? null : number(current.external_days, '工序 ' + row.sequence + ' 外协周期', true)
         };
         if (row.source !== 'internal') throw C.failure('工序 ' + row.sequence + ' 请先选定归属。');
         return {
@@ -109,6 +110,7 @@
       paging = E.usePage(entity.operations),
       [zero, setZero] = React.useState(null),
       [groupsOpen, setGroupsOpen] = React.useState(false);
+    const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
     const blocked = disabled || command.locked || command.phase === 'done',
       stageReason = E.reason(model, adapter, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
@@ -304,7 +306,7 @@
     }, "\u5468\u671F\uFF08\u5929\uFF09"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
     }, "\u4FDD\u5B58\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, external.map(row => {
-      const cycle = P.groupCycle(row, entity.external_groups);
+      const cycle = P.groupCycle(row, groups);
       return /*#__PURE__*/React.createElement("tr", {
         key: row.ref
       }, /*#__PURE__*/React.createElement("td", null, operation(row)), /*#__PURE__*/React.createElement("td", null, row.supplier_label || '未选供应商'), /*#__PURE__*/React.createElement("td", null, cycle ? /*#__PURE__*/React.createElement("span", {

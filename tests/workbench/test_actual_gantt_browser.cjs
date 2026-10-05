@@ -194,6 +194,8 @@ async function main() {
       });
       for (const label of ['计划完工开始日', '计划完工结束日']) {
         const input = page.getByLabel(label);
+        // Seed the tested month explicitly; an empty date opens today's month.
+        await input.fill('2026-09-01');
         await page.mouse.move(1300, 110); await page.mouse.wheel(0, -2000);
         await page.waitForFunction(() => scrollY === 0);
         await input.focus();

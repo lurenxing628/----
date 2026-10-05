@@ -276,16 +276,12 @@
       }
     }))))))));
   }
-  function Styles() {
-    return null;
-  }
   window.PreflightControls = {
     Button,
     ErrorBox,
     Rules,
     Metrics,
     Reasons,
-    HoldSummary,
-    Styles
+    HoldSummary
   };
 })();

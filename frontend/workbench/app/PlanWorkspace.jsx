@@ -23,7 +23,7 @@
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
       P.workspaceScope(selection.plan_ref, scope);
-      return P.workspace(await adapter.workspace(selection.plan_ref, scope, signal), selection.plan_ref, scope);
+      return adapter.workspace(selection.plan_ref, scope, signal);
     }, [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result, data = result && result.data;
     const chosen = selected && selected.result === result ? selected : null;
@@ -87,7 +87,6 @@
       range: scopeCaption,
     } : null);
     return <div className="plana plan-workspace" data-plan-workspace>
-      <window.PlanLayout />
       <section className="plan-scope wb-surface" aria-label="方案与范围">
       <div className="wb-surface-row plan-scope-heading"><div><h3>方案与范围</h3>{data && <Identity plan={data.plan} />}</div>{navigation}</div>
       <Catalog adapter={adapter} selectedRef={selection && selection.plan_ref} onSelect={choose} autoSelect={!planRef && Object.keys(initialContext).length === 0} disabled={disabled}
@@ -126,7 +125,7 @@
     </div>;
   }
   function PlanWorkspace(props) {
-    const adapter = React.useMemo(() => props.adapter || (window.APSPlanAPI ? window.APSPlanAPI.create() : {}), [props.adapter]);
+    const adapter = React.useMemo(() => window.APSPlanAPI.adapter(props.adapter || window.APSPlanAPI.create()), [props.adapter]);
     const context = props.initialContext || {};
     const navigation = [props.planRef || context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
     return <WorkspaceSession key={adapterId(adapter) + ':' + JSON.stringify(navigation)} {...props} adapter={adapter} />;

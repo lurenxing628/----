@@ -200,7 +200,7 @@
       className: "plana dashboard-live",
       "data-dashboard-outsourcing": true,
       "data-return-item": outsourcing.return_to.context.item_ref
-    }, /*#__PURE__*/React.createElement(window.DashboardStyles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "dy-heading"
     }, /*#__PURE__*/React.createElement("h2", null, "\u5916\u534F\u7269\u6D41\u767B\u8BB0"), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
@@ -224,7 +224,7 @@
       "data-ready": !!data,
       "data-analysis-ready": !!analysisData && !analysisRead.loading && !analysisRead.error,
       "aria-busy": list.loading
-    }, /*#__PURE__*/React.createElement(window.DashboardStyles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "dy-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
@@ -452,7 +452,7 @@
     } catch (error) {
       return /*#__PURE__*/React.createElement("div", {
         className: "plana dashboard-live"
-      }, /*#__PURE__*/React.createElement(window.DashboardStyles, null), /*#__PURE__*/React.createElement("h2", {
+      }, /*#__PURE__*/React.createElement("h2", {
         className: "wb-page-title"
       }, "\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement(ErrorBox, {
         error: error

@@ -109,15 +109,17 @@
         });
       }
     }
-    // A malformed page-history entry keeps the recovery notice in place of the results (contract: the entry must be cleared first);
-    // an unreadable local preference no longer hides the results: they render with defaults under the notice.
-    if (entry.error) return /*#__PURE__*/React.createElement("section", {
-      className: "tt-results",
-      "aria-label": "\u8BD5\u8C03\u7ED3\u679C\u6062\u590D"
+    const arrangement = r => /*#__PURE__*/React.createElement(React.Fragment, null, name(r.machine_ref), /*#__PURE__*/React.createElement("br", null), name(r.operator_ref), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.start), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.end));
+    return /*#__PURE__*/React.createElement("section", {
+      className: "tt-results"
     }, /*#__PURE__*/React.createElement(V.Notice, {
       state: preferences,
       label: "\u8BD5\u8C03\u7ED3\u679C\u67E5\u770B\u504F\u597D"
-    }), /*#__PURE__*/React.createElement(U.ErrorBox, {
+    }), entry.error && /*#__PURE__*/React.createElement("div", {
+      className: "tt-notice",
+      role: "region",
+      "aria-label": "\u8BD5\u8C03\u9875\u7B7E\u8BB0\u5F55\u6062\u590D"
+    }, /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: entry.error
     }), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
@@ -127,14 +129,7 @@
     }, "\u5237\u65B0\u672C\u9875\u9875\u7B7E\u8BB0\u5F55"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "rotate-ccw",
       onClick: clearEntry
-    }, "\u6E05\u9664\u672C\u9875\u9875\u7B7E\u8BB0\u5F55")));
-    const arrangement = r => /*#__PURE__*/React.createElement(React.Fragment, null, name(r.machine_ref), /*#__PURE__*/React.createElement("br", null), name(r.operator_ref), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.start), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.end));
-    return /*#__PURE__*/React.createElement("section", {
-      className: "tt-results"
-    }, /*#__PURE__*/React.createElement(V.Notice, {
-      state: preferences,
-      label: "\u8BD5\u8C03\u7ED3\u679C\u67E5\u770B\u504F\u597D"
-    }), /*#__PURE__*/React.createElement(U.Tabs, {
+    }, "\u6E05\u9664\u672C\u9875\u9875\u7B7E\u8BB0\u5F55"))), /*#__PURE__*/React.createElement(U.Tabs, {
       value: tab,
       onChange: selectTab,
       label: "\u8BD5\u8C03\u7ED3\u679C",

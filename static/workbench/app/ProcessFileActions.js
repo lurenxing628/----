@@ -219,7 +219,7 @@
     const allSkipped = data && importing && kind === 'hours' && data.skipped_count === data.rows.length;
     return /*#__PURE__*/React.createElement("div", {
       className: 'plana rm-actions' + ((data || saved) && importing ? ' rm-wide' : '')
-    }, /*#__PURE__*/React.createElement(window.ResourceMaterialPreview.Styles, null), /*#__PURE__*/React.createElement(Modal, {
+    }, /*#__PURE__*/React.createElement(Modal, {
       title: (importing ? '导入' : '导出') + label,
       icon: importing ? 'file-input' : 'file-output',
       locked: locked,

@@ -6,12 +6,11 @@ assert(!output.startsWith(root + path.sep), 'Never publish shared assets');
 fs.mkdirSync(output, {recursive: true});
 const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchReferences.jsx', 'WorkbenchGuards.js',
   'resource-contract.js', 'WorkPeriods.js', 'WorkPeriodFields.jsx', 'CalendarContract.js', 'PointContract.js', 'PlanProcessOrder.js', 'PlanContract.js', 'resource-session.js', 'ResourceControls.jsx', 'WorkbenchGuardHost.jsx',
-  'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanLayout.jsx', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx',
+  'PointGanttModel.js', 'PointGantt.jsx', 'PlanGanttModel.js', 'PlanGanttCanvas.jsx', 'PlanGantt.jsx', 'PlanDetailsUI.jsx',
   'RunCandidateAPI.js', 'RunCandidateModel.js', 'RunCandidateControls.jsx', 'RunBaselineAPI.js', 'RunBaselineModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx',
   // TrialDetails 通过 FieldContract 与 RunCandidateModel 给执行依据配中文标签（2026-09-21 起）。
   'FieldContract.js',
-  'TrialContract.js', 'TrialAPI.js', 'TrialExport.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialGantt.jsx', 'TrialDetails.jsx', 'TrialStyles.jsx',
-  'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
+  'TrialContract.js', 'TrialAPI.js', 'TrialExport.js', 'TrialControls.jsx', 'TrialViewState.js', 'TrialGantt.jsx', 'TrialDetails.jsx', 'WorkbenchControlBridge.js', 'WorkbenchControlStyles.jsx', 'WorkbenchSelectMenu.jsx', 'WorkbenchDatePickerModel.js',
   'WorkbenchDatePicker.jsx', 'WorkbenchControls.jsx', 'WorkbenchListControls.jsx', 'WorkbenchNumberControls.jsx'];
 const sources = files.map(name => ({path: 'app/' + name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 sources.push({path: 'point_browser_host.jsx', code: fs.readFileSync(path.join(__dirname, 'point_browser_host.jsx'), 'utf8')});

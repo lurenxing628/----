@@ -35,8 +35,8 @@
     }
     return text.map(value => value == null ? '' : value).join(' ').toLowerCase();
   }
-  function filter(data, view, asOf) {
-    const labels = names(data), query = view.query.trim().toLowerCase();
+  function filter(data, view, asOf, labels = names(data)) {
+    const query = view.query.trim().toLowerCase();
     return data.items.filter(item => (!query || searchText(item, labels).includes(query)) &&
       (view.late === 'all' || deadlines(item, asOf)[view.late]) && (!view.onlySelected || item.task.task_ref === view.selected));
   }
@@ -71,7 +71,7 @@
     return result;
   }
   function layout(data, view, asOf) {
-    const labels = names(data), items = filter(data, view, asOf), groups = new Map(), locations = new Map(), reportLocations = new Map();
+    const labels = names(data), items = filter(data, view, asOf, labels), groups = new Map(), locations = new Map(), reportLocations = new Map();
     function group(item, owner) {
       const ref = view.mode === 'batch' ? item.task.batch_id : owner[view.mode + '_ref'] || 'unbound';
       if (!groups.has(ref)) groups.set(ref, { id: ref, label: view.mode === 'batch' ? ref : labels.get(ref) || views[view.mode] + '未填写', members: new Map() });
@@ -154,7 +154,7 @@
   }
   function describe(item, labels, report) {
     const t = item.task, e = item.execution;
-    const result = [taskLabel(t), '计划应做：' + number(t.quantity) + ' 件 · 批次：' + number(t.batch_quantity) + ' 件',
+    const result = [taskLabel(t), '计划应做：' + window.FieldContract.quantity(t.quantity, { digits: 2 }) + ' 件 · 批次：' + window.FieldContract.quantity(t.batch_quantity, { digits: 2 }) + ' 件',
       '原计划：' + time(t.start) + ' 至 ' + time(t.end),
       '计划资源：' + (labels.get(t.machine_ref) || '设备未填写') + ' / ' + (labels.get(t.operator_ref) || '人员未填写')];
     if (window.PointContract.isPoint(t)) result.push('零工时工序，无资源占用。');
@@ -175,11 +175,17 @@
   function metrics(data) {
     const available = data.availability.state === 'available';
     if (!available) return { complete: null, reported: null, pending: null, average: null };
-    const complete = data.items.filter(item => item.execution.execution_state === 'complete');
-    const deltas = complete.map(item => (instant(item.execution.confirmed_finish) - instant(item.task.end)) / 60000).filter(Number.isFinite);
-    return { complete: complete.length, reported: data.items.filter(item => !['complete', 'unreported'].includes(item.execution.execution_state)).length,
-      pending: data.items.filter(item => item.execution.execution_state === 'unreported').length,
-      average: deltas.length ? deltas.reduce((sum, n) => sum + n, 0) / deltas.length : null };
+    let complete = 0, reported = 0, pending = 0, deltaCount = 0, deltaTotal = 0;
+    data.items.forEach(item => {
+      const state = item.execution.execution_state;
+      if (state === 'complete') {
+        complete++;
+        const delta = (instant(item.execution.confirmed_finish) - instant(item.task.end)) / 60000;
+        if (Number.isFinite(delta)) { deltaCount++; deltaTotal += delta; }
+      } else if (state === 'unreported') pending++;
+      else reported++;
+    });
+    return { complete, reported, pending, average: deltaCount ? deltaTotal / deltaCount : null };
   }
   window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, deadlines, searchText, filter, tracks, layout, visibleRows, marks, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

@@ -111,8 +111,5 @@
       </p>}
     </section>;
   }
-  function Styles() {
-    return null;
-  }
-  window.RunJobControls = { Button, Confirmation, Scope, Reasons, Record, Styles };
+  window.RunJobControls = { Button, Confirmation, Scope, Reasons, Record };
 })();

@@ -31,7 +31,7 @@ def _entry_paths(manifest):
     return paths
 
 
-def _validate_file(root: Path, value: str) -> None:
+def _validate_file(root: Path, workbench_root: Path, value: str) -> None:
     relative = PurePosixPath(value)
     invalid = (not value.startswith("workbench/") or value != relative.as_posix() or "\\" in value
                or ".." in relative.parts or "?" in value or "#" in value)
@@ -39,7 +39,7 @@ def _validate_file(root: Path, value: str) -> None:
         raise WorkbenchAssetsUnavailable("页面文件不在本机安装位置内，页面没有打开。请联系维护人员重新安装本机程序。")
     target = root / str(relative)
     try:
-        target.resolve().relative_to((root / "workbench").resolve())
+        target.resolve().relative_to(workbench_root)
     except ValueError as exc:
         raise WorkbenchAssetsUnavailable("页面文件位置超出本机安装位置，页面没有打开。请联系维护人员重新安装本机程序。") from exc
     if not target.is_file():
@@ -55,6 +55,7 @@ def read_asset_manifest(static_root: Optional[str]) -> Dict[str, Any]:
     except (OSError, ValueError) as exc:
         raise WorkbenchAssetsUnavailable("页面文件清单读不到，页面没有打开。请联系维护人员重新安装本机程序。") from exc
     paths = _entry_paths(manifest)
+    workbench_root = (root / "workbench").resolve()
     for value in paths:
-        _validate_file(root, value)
+        _validate_file(root, workbench_root, value)
     return manifest

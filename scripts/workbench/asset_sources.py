@@ -16,7 +16,9 @@ def digest(data):
 
 def write_json(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    data = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if not path.is_file() or path.read_bytes() != data:
+        path.write_bytes(data)
 
 
 def local_path(root, parent, reference):
@@ -64,9 +66,9 @@ class EntryParser(HTMLParser):
             self.capture = None
 
 
-def parse_entry(path, root):
+def parse_entry(path, root, data=None):
     parser = EntryParser()
-    parser.feed(path.read_text(encoding="utf-8"))
+    parser.feed(path.read_text(encoding="utf-8") if data is None else data.decode("utf-8"))
     parser.close()
     def relative(ref):
         return local_path(root, path.parent, ref).relative_to(root).as_posix()
@@ -89,17 +91,17 @@ def css_references(text):
 
 
 def verify_snapshot(root, manifest):
-    seen = set()
+    captured = {}
     for item in manifest["files"]:
         name = item["path"]
-        if name in seen:
+        if name in captured:
             raise ValueError("Duplicate snapshot asset: " + name)
-        seen.add(name)
         file = local_path(root, root, name)
         data = file.read_bytes()
         if digest(data) != item["sha256"] or len(data) != item["size"]:
             raise ValueError("Snapshot hash mismatch: " + name)
-    return seen
+        captured[name] = data
+    return captured
 
 
 def load_json(path):
@@ -134,7 +136,8 @@ def stylesheet_dependencies(name, data, published):
 _SCRIPT_GLOBALS = r"""
 try {
 const fs=require('node:fs'), request=JSON.parse(fs.readFileSync(0,'utf8'));
-const babel=require(request.babel_path);
+const context={};require('node:vm').runInNewContext(request.babel_code,context,{filename:request.babel_path});
+const babel=context.Babel;
 if(babel.version!=='7.29.0')throw Error('Unexpected dependency analyzer Babel version');
 const browser=new Set(('window self globalThis document location history navigator console localStorage sessionStorage '+
   'setTimeout clearTimeout setInterval clearInterval requestAnimationFrame cancelAnimationFrame queueMicrotask getComputedStyle '+
@@ -252,12 +255,12 @@ process.stdout.write(JSON.stringify(result));
 """
 
 
-def script_dependencies(node, babel_path, payload, load_order, vendor_scripts):
+def script_dependencies(node, babel_path, payload, load_order, vendor_scripts, babel_data=None):
     if len(vendor_scripts) != 2:
         raise ValueError("Expected exactly the pinned React and ReactDOM UMD assets")
     known = {vendor_scripts[0]: {"provides": ["React"], "reads": []},
              vendor_scripts[1]: {"provides": ["ReactDOM"], "reads": ["React"]}}
-    request = {"babel_path": str(babel_path), "sources": [
+    request = {"babel_path": str(babel_path), "babel_code": (babel_path.read_bytes() if babel_data is None else babel_data).decode("utf-8"), "sources": [
         {"path": name, "code": payload[name].decode("utf-8"), "known": known.get(name)} for name in load_order]}
     result = subprocess.run([node, "-e", _SCRIPT_GLOBALS], input=json.dumps(request),
                             text=True, encoding="utf-8", capture_output=True)
@@ -273,8 +276,8 @@ def script_dependencies(node, babel_path, payload, load_order, vendor_scripts):
     return evidence
 
 
-def license_origin(root, component, identifiers, source, distributed, scope, provenance=None):
-    data = (root / source).read_bytes()
+def license_origin(root, component, identifiers, source, distributed, scope, provenance=None, data=None):
+    data = (root / source).read_bytes() if data is None else data
     for identifier in identifiers:
         if identifier.encode("ascii") not in data:
             raise ValueError("License identifier not found in local notice: " + source)

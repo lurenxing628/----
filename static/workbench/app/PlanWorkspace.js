@@ -60,7 +60,7 @@
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
       P.workspaceScope(selection.plan_ref, scope);
-      return P.workspace(await adapter.workspace(selection.plan_ref, scope, signal), selection.plan_ref, scope);
+      return adapter.workspace(selection.plan_ref, scope, signal);
     }, [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result,
       data = result && result.data;
@@ -194,7 +194,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "plana plan-workspace",
       "data-plan-workspace": true
-    }, /*#__PURE__*/React.createElement(window.PlanLayout, null), /*#__PURE__*/React.createElement("section", {
+    }, /*#__PURE__*/React.createElement("section", {
       className: "plan-scope wb-surface",
       "aria-label": "\u65B9\u6848\u4E0E\u8303\u56F4"
     }, /*#__PURE__*/React.createElement("div", {
@@ -351,7 +351,7 @@
     })));
   }
   function PlanWorkspace(props) {
-    const adapter = React.useMemo(() => props.adapter || (window.APSPlanAPI ? window.APSPlanAPI.create() : {}), [props.adapter]);
+    const adapter = React.useMemo(() => window.APSPlanAPI.adapter(props.adapter || window.APSPlanAPI.create()), [props.adapter]);
     const context = props.initialContext || {};
     const navigation = [props.planRef || context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
     return /*#__PURE__*/React.createElement(WorkspaceSession, {

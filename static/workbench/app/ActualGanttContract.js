@@ -1,6 +1,7 @@
 (function () {
   'use strict';
 
+  const C = window.APSResourceContract;
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
@@ -23,7 +24,7 @@
   const nullableRef = value => value === null || ref(value);
   const quantity = value => value === null || Number.isSafeInteger(value) && value >= 0;
   function planQuantity(t) {
-    if (!(t.piece_id === null || typeof t.piece_id === 'string' && t.piece_id.trim() && !t.piece_id.includes('\0')) || !quantity(t.quantity) || !quantity(t.batch_quantity)) return false;
+    if (!(t.piece_id === null || typeof t.piece_id === 'string' && t.piece_id.trim() && !t.piece_id.includes('\0')) || ![t.quantity, t.batch_quantity].every(value => value === null || C.nonnegativeInt64(value))) return false;
     if (t.quantity_basis === 'unknown') return t.quantity === null && t.batch_quantity === null && ['plan_target_not_recorded', 'plan_target_unavailable'].includes(t.quantity_reason);
     return ['run_admission', 'trial_creation'].includes(t.quantity_basis) && (t.quantity_reason === null ? t.quantity !== null && t.batch_quantity !== null : t.quantity_reason === 'plan_target_invalid');
   }
@@ -55,16 +56,19 @@
   function execution(e, task) {
     return object(e) && e.operation_ref === task.operation_ref && e.comparison_task_ref === task.task_ref && nullableRef(e.current_task_ref) && quantity(e.target_quantity) && quantity(e.remaining_quantity) && quantity(e.known_completed_quantity) && e.known_completed_quantity !== null && Number.isSafeInteger(e.unknown_record_count) && e.unknown_record_count >= 0 && typeof e.quantity_complete === 'boolean' && typeof e.records_complete === 'boolean' && ['batch', 'piece'].includes(e.target_basis) && own(window.ActualGanttModel.states, e.execution_state) && [null, 'complete_reports', 'legacy_finish_event'].includes(e.completion_basis) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(e.data_quality) && nullableTime(e.first_actual_start) && nullableTime(e.confirmed_finish) && (e.remaining_plan === null || interval(e.remaining_plan)) && Array.isArray(e.reports) && e.reports.every(r => report(r, task.operation_ref)) && new Set(e.reports.map(r => r.report_ref)).size === e.reports.length && Array.isArray(e.legacy_facts) && e.legacy_facts.every(fact => object(fact) && ref(fact.legacy_fact_ref) && nullableRef(fact.actual_machine_ref) && nullableRef(fact.actual_operator_ref)) && Array.isArray(e.data_gaps);
   }
+  function scopeMatches(value, query) {
+    return object(value) && cohortKeys.every(key => {
+      const expected = key === 'source' ? query.source || 'production' : key === 'batch_ids' ? (query[key] || []).slice().sort() : query[key] == null ? null : query[key];
+      return JSON.stringify(value[key]) === JSON.stringify(expected);
+    });
+  }
   function workspace(result, input) {
     const query = scope(input),
       d = result && result.data,
       meta = result && result.meta;
     if (!result || result.ok !== true || result.schema_version !== 1 || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !local(meta.as_of) || typeof meta.snapshot_ref !== 'string' || !meta.snapshot_ref || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref || !object(d)) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
     if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span) || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state) || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !Array.isArray(d.resources) || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string')) || !object(d.critical_chain) || !Array.isArray(d.critical_chain.task_refs) || !Array.isArray(d.critical_chain.edges)) fail('读到的现场实际甘特范围不完整，请刷新重试。');
-    for (const key of cohortKeys) {
-      const expected = key === 'source' ? query.source || 'production' : key === 'batch_ids' ? (query[key] || []).slice().sort() : query[key] == null ? null : query[key];
-      if (JSON.stringify(d.scope[key]) !== JSON.stringify(expected)) fail('返回的范围与上次查询不同，没有自动扩大范围。');
-    }
+    if (!scopeMatches(d.scope, query)) fail('返回的范围与上次查询不同，没有自动扩大范围。');
     const resourceRefs = new Set(d.resources.map(row => row.ref)),
       taskRefs = new Set();
     let count = 0;
@@ -93,7 +97,7 @@
       if (chain.state !== 'available' || !chain.engine_evidence_ref || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref || chain.source !== 'core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows' || chain.semantics !== 'selected_plan_control_predecessor_chain' || chain.scope !== 'full_plan' || chain.gap_unit !== 'minute' || !['global', 'related'].includes(chain.mode) || (chain.mode === 'global' ? chain.target_task_ref !== null : !ref(chain.target_task_ref)) || chain.time_basis !== 'factory_local' || chain.gap_rounding !== 'floor' || !local(chain.makespan_end) || !Number.isInteger(chain.omitted_point_count) || chain.omitted_point_count < 0 || chain.partial !== chain.omitted_point_count > 0 || !Array.isArray(chain.nodes) || !chain.nodes.length || chain.task_refs.length !== chain.nodes.length || new Set(chain.task_refs).size !== chain.task_refs.length || chain.edges.length !== chain.nodes.length - 1) fail('关键链和本次读到的数据版本对不上，没有显示。');
       const nodes = new Map();
       chain.nodes.forEach((node, index) => {
-        if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || node.task_ref !== chain.task_refs[index] || !local(node.start) || !local(node.end) || node.start >= node.end || node.in_scope !== taskRefs.has(node.task_ref) || typeof node.batch_id !== 'string' || typeof node.process_label !== 'string' || !Number.isInteger(node.sequence)) fail('关键链节点与当前计划或范围不一致。');
+        if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || node.task_ref !== chain.task_refs[index] || !local(node.start) || !local(node.end) || node.start >= node.end || node.in_scope !== taskRefs.has(node.task_ref) || typeof node.batch_id !== 'string' || typeof node.process_label !== 'string' || !C.positiveInt64(node.sequence)) fail('关键链节点与当前计划或范围不一致。');
         nodes.set(node.task_ref, node);
       });
       chain.edges.forEach((edge, index) => {
@@ -110,8 +114,15 @@
     const d = result && result.data,
       meta = result && result.meta,
       query = scope(context);
-    if (!ref(target) || !query.snapshot_ref || !result || result.ok !== true || result.schema_version !== 1 || !d || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !local(meta.as_of) || meta.snapshot_ref !== query.snapshot_ref || !d.plan || d.plan.plan_ref !== query.plan_ref || !d.scope || cohortKeys.some(key => JSON.stringify(d.scope[key]) !== JSON.stringify(original.scope[key])) || !d.critical_chain || d.critical_chain.plan_ref !== query.plan_ref || d.critical_chain.snapshot_ref !== query.snapshot_ref || d.critical_chain.mode !== 'related' || d.critical_chain.target_task_ref !== target) fail('关联链与原计划、目标或数据版本不一致，没有改用整版链。');
-    return validateChain(d.critical_chain, original, query, meta);
+    if (!ref(target) || !query.snapshot_ref || !result || result.ok !== true || result.schema_version !== 1 || !d || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !local(meta.as_of) || meta.snapshot_ref !== query.snapshot_ref || !d.plan || d.plan.plan_ref !== query.plan_ref || !d.scope || cohortKeys.some(key => JSON.stringify(d.scope[key]) !== JSON.stringify(original.scope[key]))) fail('关联链与原计划、目标或数据版本不一致，没有改用整版链。');
+    return relatedChain(d.critical_chain, query, original, target);
+  }
+  // Both native and injected readers return a chain; the request scope is already normalized at their boundary.
+  function relatedChain(chain, query, original, target) {
+    if (!ref(target) || !query.snapshot_ref || !scopeMatches(original.scope, query) || !object(chain) || chain.plan_ref !== query.plan_ref || chain.snapshot_ref !== query.snapshot_ref || chain.mode !== 'related' || chain.target_task_ref !== target || !Array.isArray(chain.task_refs) || !Array.isArray(chain.edges)) fail('关联链与原计划、目标或数据版本不一致，没有改用整版链。');
+    return validateChain(chain, original, query, {
+      snapshot_ref: query.snapshot_ref
+    });
   }
   function transport(value) {
     const result = {
@@ -124,6 +135,7 @@
     scope,
     workspace,
     related,
+    relatedChain,
     transport,
     local,
     ref

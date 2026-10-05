@@ -28,9 +28,11 @@ TOOLS = Path(__file__).resolve().parent
 FOUNDATION_ASSET = re.compile(r"foundation-[a-f0-9]{16}\.js\Z")
 
 
-def compile_sources(node, prototype, order, sources, combined=False):
+def compile_sources(node, prototype, order, sources, combined=False, captured=None):
     request = {"babel_path": str(prototype / order["babel"]["path"]),
                "sources": sources, "check_combined": combined}
+    if captured is not None:
+        request["babel_code"] = captured[order["babel"]["path"]].decode("utf-8")
     result = subprocess.run([node, str(TOOLS / "compile.cjs")], input=json.dumps(request),
                             text=True, encoding="utf-8", capture_output=True)
     if result.returncode:
@@ -38,27 +40,27 @@ def compile_sources(node, prototype, order, sources, combined=False):
     return json.loads(result.stdout)["outputs"]
 
 
-def read_inputs(root):
+def read_inputs(root, order_bytes=None):
     prototype = root / "frontend/workbench/prototype"
     snapshot = load_json(prototype / "source-manifest.json")
     paths = verify_snapshot(prototype, snapshot)
-    order = load_json(TOOLS / "build-order.json")
+    order = json.loads((TOOLS / "build-order.json").read_bytes() if order_bytes is None else order_bytes)
     if order["target"] != "chrome109" or order["babel"]["version"] != "7.29.0":
         raise ValueError("Build target/compiler must remain pinned")
     if order["babel"]["path"] not in paths:
         raise ValueError("Compiler is missing from the imported snapshot")
     for entry in snapshot["entries"].values():
-        if parse_entry(prototype / entry["path"], prototype) != entry:
+        if parse_entry(prototype / entry["path"], prototype, paths[entry["path"]]) != entry:
             raise ValueError("Imported entry manifest no longer matches HTML: " + entry["path"])
     return prototype, snapshot, paths, order
 
 
 def check_prototype(root, node):
     prototype, snapshot, paths, order = read_inputs(root)
-    sources = [{"path": name, "code": (prototype / name).read_text(encoding="utf-8"),
+    sources = [{"path": name, "code": paths[name].decode("utf-8"),
                 "source_type": "module" if name.startswith("components/") else "script"}
                for name in sorted(paths) if Path(name).suffix in (".js", ".jsx") and "/vendor/" not in name]
-    outputs = compile_sources(node, prototype, order, sources)
+    outputs = compile_sources(node, prototype, order, sources, captured=paths)
     return {"status": "prototype_compile_checked", "target": "chrome109", "compiled": len(outputs),
             "snapshot_files": len(snapshot["files"]), "live_published": False}
 
@@ -77,7 +79,7 @@ def live_inputs(root, order):
     missing, extra = sorted(set(required) - found), sorted(found - set(required) - set(pending))
     if missing or extra:
         raise ValueError("Live sources not ready; missing=" + ",".join(missing) + "; unlisted=" + ",".join(extra))
-    return [{"path": "app/" + name, "code": local_path(app, app, name).read_text(encoding="utf-8")}
+    return [{"path": "app/" + name, "code": local_path(app, app, name).read_bytes().decode("utf-8")}
             for name in required]
 
 
@@ -118,7 +120,7 @@ def retired_generated_assets(output, payload):
                   if path.relative_to(output).as_posix() not in expected)
 
 
-def style_assets(prototype, snapshot):
+def style_assets(prototype, snapshot, captured):
     payload, ordered = {}, []
     pending = []
     for entry in snapshot["entries"].values():
@@ -143,22 +145,21 @@ def style_assets(prototype, snapshot):
         if public in payload:
             continue
         file = local_path(prototype, prototype, name)
-        payload[public] = file.read_bytes()
+        payload[public] = captured[name]
         if file.suffix == ".css":
             pending += [local_path(prototype, file.parent, ref).relative_to(prototype).as_posix()
                         for ref in css_references(payload[public].decode("utf-8"))]
     return payload, ordered
 
 
-def asset_records(root, payload, scripts, theme_script, foundation_path, order, snapshot, vendor_manifest, node):
+def asset_records(root, payload, scripts, theme_script, foundation_path, order, snapshot, vendor_manifest, node, source_bytes):
     prototype = root / "frontend/workbench/prototype"
 
     def source_hash(source):
-        file = TOOLS / source[len("scripts/workbench/"):] if source.startswith("scripts/workbench/") else root / source
-        return digest(file.read_bytes())
+        return digest(source_bytes[source])
 
     script_refs = script_dependencies(node, prototype / order["babel"]["path"], payload,
-                                      [theme_script] + scripts, scripts[:2])
+                                      [theme_script] + scripts, scripts[:2], source_bytes["frontend/workbench/prototype/" + order["babel"]["path"]])
     inline_origins = {"workbench/prototype/" + Path(entry["path"]).with_suffix(".inline.css").as_posix():
                       ["frontend/workbench/prototype/" + entry["path"]]
                       for entry in snapshot["entries"].values() if entry["inline_styles"]}
@@ -174,14 +175,16 @@ def asset_records(root, payload, scripts, theme_script, foundation_path, order, 
             raise ValueError("Pinned UMD filename/package order mismatch")
         notice = license_origin(root, name, ["MIT"], "frontend/workbench/vendor/" + name + ".LICENSE",
                                 "workbench/vendor/" + name + ".LICENSE", f"Distributed {name} package payload/notice only.",
-                                {"path": vendor_source, "sha256": digest((root / vendor_source).read_bytes()),
-                                 "package": name, "version": package["version"], "integrity": package["integrity"]})
+                                {"path": vendor_source, "sha256": digest(source_bytes[vendor_source]),
+                                 "package": name, "version": package["version"], "integrity": package["integrity"]},
+                                data=source_bytes["frontend/workbench/vendor/" + name + ".LICENSE"])
         vendor_licenses[public] = notice
         vendor_licenses[notice["source"]["asset_path"]] = notice
     lucide_path = "workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE"
     lucide = license_origin(root, "Lucide icon subset", ["ISC", "MIT"],
                             "frontend/workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE", lucide_path,
-                            "Embedded Lucide icon data only. The local notice also retains Feather-derived icon MIT terms; it does not license project code.")
+                            "Embedded Lucide icon data only. The local notice also retains Feather-derived icon MIT terms; it does not license project code.",
+                            data=source_bytes["frontend/workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE"])
     records = []
     for name, data in sorted(payload.items()):
         mime = asset_mime(name)
@@ -221,7 +224,7 @@ def asset_records(root, payload, scripts, theme_script, foundation_path, order, 
 
 def build(root, output, node):
     order_bytes = (TOOLS / "build-order.json").read_bytes()
-    prototype, snapshot, paths, order = read_inputs(root)
+    prototype, snapshot, paths, order = read_inputs(root, order_bytes)
     live = live_inputs(root, order)
     live_styles = live_style_inputs(root, order)
     forbidden = set(order["never_live"])
@@ -229,24 +232,25 @@ def build(root, output, node):
     for item in order["foundation"]:
         if item["path"] in forbidden or item["path"] not in paths:
             raise ValueError("Forbidden or unimported foundation source: " + item["path"])
-        sources.append(dict(item, code=(prototype / item["path"]).read_text(encoding="utf-8")))
-    compiled = compile_sources(node, prototype, order, sources + live, combined=True)
+        sources.append(dict(item, code=paths[item["path"]].decode("utf-8")))
+    compiled = compile_sources(node, prototype, order, sources + live, combined=True, captured=paths)
     foundation = "\n;\n".join(item["code"] for item in compiled[:len(sources)]).encode("utf-8")
     foundation_path = "workbench/assets/foundation-" + digest(foundation)[:16] + ".js"
-    payload, styles = style_assets(prototype, snapshot)
+    payload, styles = style_assets(prototype, snapshot, paths)
     for item in live_styles:
         public = "workbench/" + item["path"]
         payload[public] = item["data"]
         styles.append(public)
     vendor = root / "frontend/workbench/vendor"
-    vendor_manifest = load_json(vendor / "vendor-manifest.json")
-    verify_snapshot(vendor, vendor_manifest)
+    vendor_manifest_bytes = (vendor / "vendor-manifest.json").read_bytes()
+    vendor_manifest = json.loads(vendor_manifest_bytes)
+    vendor_bytes = verify_snapshot(vendor, vendor_manifest)
     if [(item["name"], item["version"]) for item in vendor_manifest["packages"]] != [
             ("react", "18.3.1"), ("react-dom", "18.3.1")]:
         raise ValueError("React packages must remain pinned to 18.3.1")
     for item in vendor_manifest["files"]:
         if item["path"].endswith((".js", ".LICENSE")):
-            payload["workbench/vendor/" + item["path"]] = (vendor / item["path"]).read_bytes()
+            payload["workbench/vendor/" + item["path"]] = vendor_bytes[item["path"]]
     scripts = ["workbench/vendor/" + name for name in vendor_manifest["scripts"]] + [foundation_path]
     payload[foundation_path] = foundation
     theme_script = "workbench/app/theme.js"
@@ -256,8 +260,14 @@ def build(root, output, node):
         if public != theme_script:
             scripts.append(public)
     lucide = "ui_kits/workbench/assets/lucide-LICENSE"
-    payload["workbench/prototype/" + lucide] = (prototype / lucide).read_bytes()
-    files = asset_records(root, payload, scripts, theme_script, foundation_path, order, snapshot, vendor_manifest, node)
+    payload["workbench/prototype/" + lucide] = paths[lucide]
+    source_bytes = {"frontend/workbench/prototype/" + name: data for name, data in paths.items()}
+    source_bytes.update({"frontend/workbench/vendor/" + name: data for name, data in vendor_bytes.items()})
+    source_bytes["frontend/workbench/vendor/vendor-manifest.json"] = vendor_manifest_bytes
+    source_bytes.update({"frontend/workbench/" + item["path"]: item["code"].encode("utf-8") for item in live})
+    source_bytes.update({"frontend/workbench/" + item["path"]: item["data"] for item in live_styles})
+    source_bytes["scripts/workbench/build-order.json"] = order_bytes
+    files = asset_records(root, payload, scripts, theme_script, foundation_path, order, snapshot, vendor_manifest, node, source_bytes)
     input_records = [{"path": item["target"], "sha256": item["sha256"]} for item in snapshot["files"]]
     input_records += [{"path": "frontend/workbench/" + item["path"],
                        "sha256": digest(item["code"].encode("utf-8"))} for item in live]
@@ -290,9 +300,10 @@ def build(root, output, node):
     for name, data in payload.items():
         target = output / name[len("workbench/"):]
         target.parent.mkdir(parents=True, exist_ok=True)
-        temp = target.with_name(target.name + ".building")
-        temp.write_bytes(data)
-        os.replace(str(temp), str(target))
+        if not target.is_file() or target.read_bytes() != data:
+            temp = target.with_name(target.name + ".building")
+            temp.write_bytes(data)
+            os.replace(str(temp), str(target))
     for retired in retired_generated_assets(output, payload):
         retired.unlink()
     output.mkdir(parents=True, exist_ok=True)

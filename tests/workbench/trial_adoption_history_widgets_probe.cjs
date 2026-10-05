@@ -5,7 +5,7 @@ const { chromium } = require('playwright'), { compile } = require('../../scripts
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], backend = process.argv[3];
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'static/workbench/asset-manifest.json')));
 const assetRows = new Map(manifest.files.map(row => [row.path, row]));
-const additions = ['TrialAdoptionHistoryAPI.js', 'TrialAdoptionHistoryState.js', 'TrialAdoptionHistoryStyles.jsx', 'TrialAdoptionHistory.jsx'];
+const additions = ['TrialAdoptionHistoryAPI.js', 'TrialAdoptionHistoryState.js', 'TrialAdoptionHistory.jsx'];
 const pointDependencies = ['PointContract.js', 'PointGanttModel.js', 'PointGantt.jsx'];
 const sourceNames = pointDependencies.map(name => 'frontend/workbench/app/' + name);
 for (const file of manifest.scripts.filter(name => name.startsWith('workbench/app/'))) {
@@ -109,6 +109,25 @@ async function basic() {
   assert.equal((await evidence()).receipts.length, 2); done('same-key-replay-no-duplicate-history');
   await tab('调整记录').click(); await page.getByRole('table', { name: '调整记录', exact: true }).waitFor();
   await tab('调整记录').focus(); await page.keyboard.press('ArrowRight'); await historyReady(); assert.equal(await tab('采用记录').getAttribute('aria-selected'), 'true'); done('keyboard-tabs-adjustments-retained');
+  const originalHistory = await page.evaluate(() => history.state.workbench);
+  const receiptsBeforeRecovery = (await evidence()).receipts;
+  await page.evaluate(scenario => history.replaceState({ ...history.state, trialAdoptionHistory: {
+    scenario_ref: scenario, tab: 'adoptions', status: 'all', page: 0, size: 20
+  } }, '', location.href), refs.scenario_ref);
+  await page.reload(); await ready();
+  await page.getByRole('region', { name: '试调页签记录恢复', exact: true }).waitFor();
+  await page.getByRole('tablist', { name: '试调结果', exact: true }).waitFor();
+  await tab('完整任务').click(); await page.getByRole('table', { name: '完整任务明细', exact: true }).waitFor();
+  assert.equal(await page.locator('[data-trial-workspace]').getAttribute('data-open-ref'), refs.scenario_ref);
+  await page.getByRole('region', { name: '试调页签记录恢复', exact: true }).scrollIntoViewIfNeeded();
+  await shot('history-recovery-with-results');
+  await button('清除本页页签记录').click();
+  assert.equal(await page.getByRole('region', { name: '试调页签记录恢复', exact: true }).count(), 0);
+  assert.equal(await tab('完整任务').getAttribute('aria-selected'), 'true');
+  assert.deepEqual(await page.evaluate(() => history.state.workbench), originalHistory);
+  assert.equal(await page.evaluate(() => history.state.trialAdoptionHistory || null), null);
+  assert.deepEqual((await evidence()).receipts, receiptsBeforeRecovery);
+  done('corrupt-history-paging-keeps-scenario-results-and-targeted-recovery');
 }
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = 'http://127.0.0.1:' + server.address().port;

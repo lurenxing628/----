@@ -39,7 +39,8 @@
     initialContext,
     onNavigationReady,
     onOpenFile,
-    rememberEnabled = true
+    rememberEnabled = true,
+    summaryState
   }) {
     const [target] = React.useState(() => {
       if (initialContext == null) return {
@@ -78,8 +79,8 @@
     if (result) last.current = result;
     const previous = last.current && last.current.data;
     const view = data || (request.loading && previous && previous.year === month.year && previous.month === month.month ? previous : null);
-    const [summaryRevision, bumpSummary] = React.useReducer(value => value + 1, 0);
-    const summary = S.useSummary(adapter, summaryRevision),
+    const localSummary = S.useSummary(adapter, 0, !summaryState);
+    const summary = summaryState || localSummary,
       rules = summary.result && summary.result.data;
     window.WorkbenchPageContext.useSnapshot({
       source: 'production',
@@ -112,7 +113,7 @@
         });
       }
     }, [data, source, command.phase, deferred, target]);
-    function refresh() {
+    function refresh(refreshSummary = true) {
       awaitingRefresh.current = {
         previous: request.result
       };
@@ -120,12 +121,12 @@
         loading: true
       });
       request.reload();
-      bumpSummary();
+      if (refreshSummary) summary.reload();
     }
     React.useEffect(() => {
       if (command.phase !== 'done' || handled.current === command.result.receipt_ref) return;
       handled.current = command.result.receipt_ref;
-      refresh();
+      refresh(!summaryState);
       if (typeof onCommitted === 'function') onCommitted(command.result);
     }, [command.phase, command.result]);
     React.useEffect(() => {

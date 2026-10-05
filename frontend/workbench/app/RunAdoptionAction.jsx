@@ -14,9 +14,10 @@
     const alive = React.useRef(false), lock = React.useRef(false), previewRequest = React.useRef(null), active = React.useRef(intent), notified = React.useRef(null);
     const callback = React.useRef(onAdopted); callback.current = onAdopted; active.current = intent;
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; if (previewRequest.current) previewRequest.current.abort(); }; }, []);
-    function readStorage() {
+    function readStorage(event) {
       try {
-        const saved = A.pending().read();
+        const saved = event && event.type === A.EVENT ? event.detail : A.pending().read();
+        if (event && event.type === A.EVENT && saved !== null && !A.validIntent(saved)) throw new Error('本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。');
         if (JSON.stringify(saved) !== JSON.stringify(active.current)) {
           active.current = saved; setIntent(saved); setResult(null); setPreview(null); setConsent(false);
           if (saved) setDraft(saved.input);
@@ -25,7 +26,7 @@
       } catch (e) { setStorageError(e.message); }
     }
     React.useEffect(() => {
-      const changed = e => { if (!e.key || e.key === A.PENDING_KEY) readStorage(); };
+      const changed = e => { if (!e.key || e.key === A.PENDING_KEY) readStorage(e); };
       window.addEventListener('storage', changed); window.addEventListener(A.EVENT, changed);
       return () => { window.removeEventListener('storage', changed); window.removeEventListener(A.EVENT, changed); };
     }, []);
@@ -108,7 +109,7 @@
     const pending = intent && intent.phase === 'pending';
     const label = result ? '查看采用结果' : pending ? '查询采用结果' : intent ? '重新核对采用' : '采用方案';
     const display = preview && preview.validation.can_adopt ? preview : intent ? intent.preview : { candidate_ref: candidateRef || '未指定' };
-    return <span className="plana run-adoption-action" data-run-adoption-action="true"><U.Styles />
+    return <span className="plana run-adoption-action" data-run-adoption-action="true">
       <U.Button icon={pending ? 'refresh-cw' : 'check'} className="btn primary" disabled={!intent && (!A.ref(candidateRef) || !!storageError)} onClick={() => {
         if (intent) { setOpen(true); if (pending && !result) refresh(); }
         else inspect();

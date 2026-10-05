@@ -8,8 +8,7 @@
       Rules,
       Metrics,
       Reasons,
-      HoldSummary,
-      Styles
+      HoldSummary
     } = window.PreflightControls;
   const labels = {
     eligible: '资料有效',
@@ -199,7 +198,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "plana preflight-workspace",
       "data-preflight-workspace": true
-    }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "pf-heading"
     }, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"

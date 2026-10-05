@@ -22,7 +22,13 @@ function selectDeclarations(source, names, babel, filename) {
 }
 
 function compile(request) {
-  const babel = require(request.babel_path);
+  let babel;
+  if (request.babel_code === undefined) babel = require(request.babel_path);
+  else {
+    const context = {};
+    vm.runInNewContext(request.babel_code, context, { filename: request.babel_path });
+    babel = context.Babel;
+  }
   if (babel.version !== '7.29.0') throw new Error('Unexpected Babel version: ' + babel.version);
   const outputs = request.sources.map(item => {
     let source = item.component_only ? componentOnly(item.code, babel) : item.code;

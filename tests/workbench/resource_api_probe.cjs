@@ -11,12 +11,12 @@ const receipt = () => ({ok:true,result:'committed',data:{entity_ref:ref},receipt
 const response = (value, status=200, mime='application/json') => ({ok:status>=200&&status<300,status,
   headers:{get:name=>name==='content-type'?mime:null},json:async()=>value,blob:async()=>new Blob([value],{type:mime})});
 let checks=0;
-function runtime(fetcher, {storage=new Map(),delay=20000,storageFailure=false}={}) {
+function runtime(fetcher, {storage=new Map(),delay=20000,storageFailure=false,storageWriteFailure=false}={}) {
   let timers=0, requests=0;
   const context=vm.createContext({URL,AbortController,FormData,Blob,console,
     location:{origin:'http://127.0.0.1:8222',href:'http://127.0.0.1:8222/workbench?view=process'},
     sessionStorage:{getItem:k=>{if(storageFailure)throw new Error('denied');return storage.has(k)?storage.get(k):null;},
-      setItem:(k,v)=>{if(storageFailure)throw new Error('denied');storage.set(k,v);},removeItem:k=>storage.delete(k)},
+      setItem:(k,v)=>{if(storageFailure||storageWriteFailure)throw new Error('denied');storage.set(k,v);},removeItem:k=>storage.delete(k)},
     fetch:async(...args)=>{requests++;return fetcher(...args);},setTimeout:(fn,ms)=>{assert.equal(ms,20000);timers++;return setTimeout(fn,delay);},
     clearTimeout:t=>{timers--;clearTimeout(t);}});
   context.window=context;vm.runInContext(source,context);
@@ -85,6 +85,7 @@ async function main() {
       ...(kind==='op_type'?{category:'external'}:{}),input:{private:'never-persist'},write_token:'never-store'};
     api.savePending(intent);
     assert.equal(api.readPending().kind,intent.kind);assert.equal(api.readPending().category,intent.category);
+    assert.equal(api.readPending().ref,undefined);assert(![...isolated.storage.values()].join('').includes(intent.ref));checks++;
     assert.equal(isolated.api.readPending(),null);assert(![...isolated.storage.values()].join('').includes('never-'));checks++;
     const restored=runtime(async()=>response(receipt()),{storage:isolated.storage}).create(kind+'_files');
     assert.equal(restored.readPending().request_key,key);restored.clearPending();assert.equal(api.readPending(),null);checks++;
@@ -104,7 +105,9 @@ async function main() {
     api.savePending(intent);assert.equal(api.readPending().request_key,key);
     assert(![...fixture.storage.values()].join('').includes('never-persist'));checks++;
     const fresh=runtime(async url=>{assert(url.endsWith('/commands/'+key));return response(receipt());},{storage:fixture.storage}).create(namespace);
-    assert.deepEqual(JSON.parse(JSON.stringify(fresh.readPending())),{...shape,request_key:key});assert.deepEqual(await fresh.lookup(key),receipt());checks++;
+    const expected={...shape,request_key:key};
+    if(typeof shape.ref==='string'&&shape.ref.length===32)delete expected.ref;
+    assert.deepEqual(JSON.parse(JSON.stringify(fresh.readPending())),expected);assert.deepEqual(await fresh.lookup(key),receipt());checks++;
     for(const foreign of namespaces.filter(value=>value!==namespace)) {
       assert.throws(()=>fixture.create(foreign).savePending(intent),e=>e.committed===false);
       const storage=new Map([['aps_workbench_resource_pending_v1'+(foreign==='resources'?'':'_'+foreign),JSON.stringify(intent)]]);
@@ -115,6 +118,25 @@ async function main() {
     for(const id of badRefs) {assert.throws(()=>api.savePending({...intent,ref:id}),e=>e.committed===false);checks++;}
     for(const action of ['unknown','confirm_all','import','upsert']) {assert.throws(()=>api.savePending({...intent,action}),e=>e.committed===false);checks++;}
     fresh.clearPending();assert.equal(api.readPending(),null);checks++;
+  }
+  for(const [namespace,shape] of [
+    ['machine_files',{kind:'machine_import',action:'confirm'}], ['material_files',{kind:'material_bulk',action:'confirm'}],
+    ['process',{kind:'process_route_import',action:'confirm'}], ['work_calendar_files',{kind:'work_calendar_import',action:'confirm'}],
+    ['operator_calendar_files',{kind:'operator_calendar_import',action:'confirm'}], ['operator_machine_files',{kind:'operator_machine_import',action:'confirm'}],
+    ['execution',{kind:'execution',action:'import_confirm'}], ['batches',{kind:'batch',action:'bulk_confirm'}],
+    ['batches',{kind:'batch',action:'import_confirm'}], ['calendar',{kind:'calendar',action:'confirm'}]
+  ]) {
+    const credential='c'.repeat(32), storageKey='aps_workbench_resource_pending_v1_'+namespace;
+    const original={...shape,ref:credential,request_key:key};
+    const storage=new Map([[storageKey,JSON.stringify(original)]]), recovered=runtime(async()=>response(receipt()),{storage}).create(namespace);
+    assert.deepEqual(JSON.parse(JSON.stringify(recovered.readPending())),{...shape,request_key:key});
+    assert(!storage.get(storageKey).includes(credential));checks+=2;
+    const deniedStorage=new Map([[storageKey,JSON.stringify(original)]]);
+    const denied=runtime(async url=>{assert(url.endsWith('/commands/'+key));return response(receipt());},{storage:deniedStorage,storageWriteFailure:true}).create(namespace);
+    let known;
+    assert.throws(()=>denied.readPending(),error=>{known=error.intent;return error.committed==='unknown'&&known.request_key===key&&known.ref===undefined;});
+    assert.deepEqual(await denied.lookup(known.request_key),receipt());
+    assert.equal(deniedStorage.get(storageKey),JSON.stringify(original));denied.clearPending();assert.equal(denied.readPending(),null);checks+=3;
   }
   for(const namespace of ['batch','process_files','process_route_import','process_other','unknown','resources_files',null,{}]) {
     assert.throws(()=>good.create(namespace),e=>e.committed===false);checks++;
@@ -204,7 +226,9 @@ async function main() {
     const instance = runtime(async()=>response(receipt())), api = instance.create('execution');
     const intent = {kind:'execution',action,ref:action==='import_confirm'?'p_-'.repeat(10)+'xy':ref,request_key:key};
     api.savePending({...intent,input:{hidden:'do-not-persist'},write_token:'do-not-persist'});
-    assert.deepEqual(JSON.parse(JSON.stringify(api.readPending())),intent);
+    const persisted={...intent};if(action==='import_confirm')delete persisted.ref;
+    assert.deepEqual(JSON.parse(JSON.stringify(api.readPending())),persisted);
+    if(action==='import_confirm')assert(![...instance.storage.values()].join('').includes(intent.ref));
     assert(![...instance.storage.values()].join('').includes('do-not-persist'));checks+=2;
     assert.equal(instance.api.readPending(),null);checks++;
     for(const namespace of ['resources','process','batches','calendar','catalog','material_files']) {

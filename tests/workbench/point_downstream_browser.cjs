@@ -216,8 +216,7 @@ async function main() {
       const row = model.rows.find(row => row.baseline);
       const onSelect = (item, report) => { window.ekDenseSelected = report ? report.report_ref : item.task.task_ref; }, onHover = () => {};
       const renderMark = (mark, canvasPainted) => React.createElement(ActualGanttBar, { key: mark.key, mark, row, model, width: 1000, onSelect, onHover, canvasPainted });
-      ReactDOM.createRoot(host).render(React.createElement(React.Fragment, null, React.createElement(ActualGanttControls.Styles),
-        React.createElement(ActualGanttCanvas.DenseRow, { row, model, width: 1000, viewport: 1000, left: 0, onSelect, onHover, renderMark })));
+      ReactDOM.createRoot(host).render(React.createElement(React.Fragment, null, React.createElement(ActualGanttCanvas.DenseRow, { row, model, width: 1000, viewport: 1000, left: 0, onSelect, onHover, renderMark })));
     });
     const densePoint = page.locator('#ek-dense-real [data-actual-mark="plan-point"]'); await densePoint.waitFor();
     await densePoint.focus(); await page.keyboard.press('Enter');

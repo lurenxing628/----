@@ -170,12 +170,8 @@
       result: s.result
     })));
   }
-  function Styles() {
-    return null;
-  }
   window.TrialAdoptionControls = {
     Button,
-    Dialog,
-    Styles
+    Dialog
   };
 })();

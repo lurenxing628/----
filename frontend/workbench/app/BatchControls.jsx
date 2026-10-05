@@ -30,6 +30,5 @@
         : select('ready_status', '齐套显示', B.ready)}{input('ready_date', '齐套日期', 'date')}{input('remark', '备注')}
     </div>;
   }
-  function Styles() { return null; }
-  window.BatchControls = { Field, BaseFields, Styles, display };
+  window.BatchControls = { Field, BaseFields, display };
 })();

@@ -231,6 +231,7 @@
       rows = entity.operations,
       paging = E.usePage(rows, focusRef),
       root = React.useRef(null);
+    const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
     E.useFocus(root, focusRef, paging.page.number);
     const [picker, setPicker] = React.useState(null),
       [create, setCreate] = React.useState(null);
@@ -433,7 +434,7 @@
     }, "\u4FDD\u5B58\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, paging.rows.map(row => {
       const current = draft[row.ref] || row,
         inactive = row.status !== 'active',
-        cycle = current.source === row.source && P.groupCycle(row, entity.external_groups);
+        cycle = current.source === row.source && P.groupCycle(row, groups);
       return /*#__PURE__*/React.createElement("tr", {
         key: row.ref,
         "data-process-location": row.ref,

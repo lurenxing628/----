@@ -122,10 +122,12 @@
     return { windowTop: position(value.windowTop), windowLeft: position(value.windowLeft),
       mainTop: position(value.mainTop), mainLeft: position(value.mainLeft), containers };
   }
-  function remember(boot, page, captured) {
+  function remember(boot, page, captured, context) {
     const current = read(boot);
     check(current.view === page.view && current.key === page.key);
-    const saved = { ...current, scroll: captured === undefined ? captureScroll() : normalizedScroll(captured) };
+    check(context === undefined || object(context));
+    const saved = { ...current, context: context === undefined ? current.context : context,
+      scroll: captured === undefined ? captureScroll() : normalizedScroll(captured) };
     const state = history.state || {};
     check(!own(state, 'workbenchPages') || object(state.workbenchPages));
     const pages = state.workbenchPages || {};
@@ -133,9 +135,9 @@
     history.replaceState({ ...state, workbench: saved, workbenchPages: nextPages }, '', location.href);
     return nextPages;
   }
-  function navigate(boot, page, target, supplied, preferSaved = false) {
+  function navigate(boot, page, target, supplied, preferSaved = false, pending = {}) {
     check(own(boot.titles, target) && (supplied === undefined || object(supplied)) && typeof preferSaved === 'boolean');
-    const pages = remember(boot, page), saved = pages[target];
+    const pages = remember(boot, page, pending.scroll, pending.context), saved = pages[target];
     if (saved !== undefined) check(object(saved) && saved.view === target && object(saved.context));
     const resume = saved && (supplied === undefined || preferSaved);
     // Resuming restores the target's own view state wholesale (scope, topic, table, selection, scroll):

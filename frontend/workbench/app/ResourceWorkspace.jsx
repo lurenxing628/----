@@ -226,14 +226,21 @@
       if (command.phase !== 'done') return;
       const generation = ++refreshGeneration.current, intent = command.intent;
       if (intent.action === 'delete') setSelected(current => current.filter(ref => ref !== intent.ref));
-      setRefreshState({ loading: true }); refresh();
+      setRefreshState({ loading: true }); counts.summary.reload();
       try {
         if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
         const sameView = config && config.kind === intent.kind && (intent.kind !== 'op_type' || config.category === intent.category);
         const readScope = { ...(sameView ? scope : scopeFor(intentNode)), snapshot_ref: undefined };
         if (intent.kind === 'op_type') { delete readScope.status; readScope.category = intent.category; }
-        const refreshedList = await readList(adapter, intent.kind, readScope, new AbortController().signal);
+        let refreshedList;
+        if (sameView) {
+          setScope(readScope);
+          refreshedList = await list.reloadAndWait(signal => readList(adapter, intent.kind, readScope, signal));
+        } else {
+          list.reload();
+          refreshedList = await readList(adapter, intent.kind, readScope, new AbortController().signal);
+        }
         let fresh = null;
         if (intent.action !== 'delete') {
           const ref = C.resultRef(command.result, intent.ref);
@@ -280,7 +287,7 @@
           <div className="chead wb-page-heading"><h2>{config.label}{node === 'material' ? ' · 基础资料' : ''}</h2></div></>}
           <ErrorBox error={external.error} />{external.busy && <p role="status">正在打开维护向导…</p>}
           {external.result && <Forms.Feedback command={{ phase: 'done', result: external.result }} action={external.action} />}
-          {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
+          {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
             <window.ResourceMetrics node={node} data={data} />
             {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && <> · <span>含非当前页记录</span></>}</p>}
             <Toolbar config={config} scope={scope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}

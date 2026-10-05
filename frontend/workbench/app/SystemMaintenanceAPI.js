@@ -15,9 +15,10 @@
   const count = value => Number.isSafeInteger(value) && value >= 0;
   const context = value => object(value) && nonempty(value.write_token);
   function check(valid, message = '读到的维护数据不完整，页面没有改动。请刷新后重试。') { if (!valid) throw new Error(message); }
-  function envelope(value) {
+  function envelope(value, snapshot = true) {
     check(object(value) && value.ok === true && value.schema_version === 1 && object(value.data) && object(value.meta)
-      && value.meta.source === 'production' && value.meta.time_basis === 'factory_local' && nonempty(value.meta.snapshot_ref)
+      && value.meta.source === 'production' && value.meta.time_basis === 'factory_local'
+      && (snapshot ? nonempty(value.meta.snapshot_ref) : /^[a-f0-9]{32}$/.test(value.meta.request_ref))
       && nonempty(value.meta.as_of) && Array.isArray(value.warnings));
     return value.data;
   }
@@ -73,7 +74,7 @@
   }
   function result(value, intent) {
     const external = object(value) && object(value.meta) && value.meta.result_source === 'external_maintenance_journal';
-    const data = external ? window.SystemRestoreStatus.envelope(value) : envelope(value);
+    const data = external ? window.SystemRestoreStatus.envelope(value) : envelope(value, false);
     if (data.host) window.SystemRestoreStatus.validateHost(data.host);
     if (data.kind === 'not_recorded') { check(text(data.message)); return { ...data, terminal: false }; }
     if (data.kind === 'config') { check(intent.action === 'config'); return receipt(data.command); }
@@ -203,7 +204,7 @@
       async read(kind, input, signal) {
         check(['backups', 'logs', 'config'].includes(kind));
         const value = await request('/' + kind + parameters(input), { signal });
-        if (kind === 'config') config(envelope(value)); else {
+        if (kind === 'config') config(envelope(value, false)); else {
           collection(value, kind);
           const query = input || {};
           check(value.data.page.number === (query.page === undefined ? 1 : query.page)
@@ -218,9 +219,9 @@
           { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_key: intent.request_key, write_token: token, input }) });
         return intent.action === 'config' ? receipt(payload) : result(payload, intent);
       },
-      async lookup(intent, jobRef, signal) {
-        check(validIntent(intent) && (!jobRef || /^[a-f0-9]{32}$/.test(jobRef)));
-        return result(await request(jobRef ? '/jobs/' + jobRef : '/results/' + intent.request_key, { signal }), intent);
+      async lookup(intent, signal) {
+        check(validIntent(intent));
+        return result(await request('/results/' + intent.request_key, { signal }), intent);
       },
       async lookupReference(reference, kind = 'request', signal) {
         const path = window.SystemRestoreStatus.referencePath(reference, kind);
@@ -244,8 +245,7 @@
           check(format === 'zip' ? magic[0] === 80 && magic[1] === 75 && magic[2] === 3 && magic[3] === 4
             : magic[0] === 239 && magic[1] === 187 && magic[2] === 191 && prefix.startsWith('来源,时间,'), '下载内容与日志文件格式不符。');
           const filename = format === 'csv' ? '系统日志片段.csv' : '诊断包.zip';
-          const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = filename;
-          try { document.body.appendChild(link); link.click(); } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+          window.APSWorkbenchTransport.saveBlob(filename, blob);
           return { filename, bytes: blob.size };
         });
       },
@@ -266,8 +266,7 @@
           check(/^attachment;/i.test(disposition) && match && decodeURIComponent(match[1]) === row.filename
             && response.headers.get('X-APS-Backup-Ref') === row.backup_ref, '下载到的不是刚才选中的备份文件，没有保存。');
           check((await blob.slice(0, 16).text()) === 'SQLite format 3\u0000', '下载内容不是备份数据库文件，没有保存。');
-          const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = row.filename;
-          try { document.body.appendChild(link); link.click(); } finally { link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+          window.APSWorkbenchTransport.saveBlob(row.filename, blob);
           return { filename: row.filename, bytes: blob.size };
         });
       }

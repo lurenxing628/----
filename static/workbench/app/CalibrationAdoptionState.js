@@ -36,9 +36,12 @@
     } catch (_) {
       throw new Error('无法保存这次采用操作的记录，没有开始新的采用。');
     }
-    A.check(A.equal(read(), value), '这次操作没有完整保存，不能开始新的采用。');
-    window.dispatchEvent(new Event(EVENT));
-    return value;
+    const stored = read();
+    A.check(A.equal(stored, value), '这次操作没有完整保存，不能开始新的采用。');
+    window.dispatchEvent(new CustomEvent(EVENT, {
+      detail: stored
+    }));
+    return stored;
   }
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
@@ -108,9 +111,10 @@
       setConsent(false);
       if (request.current) request.current.abort();
     }, [identity, stale]);
-    function sync() {
+    function sync(event) {
       try {
-        const value = read();
+        const value = event && event.type === EVENT ? event.detail : read();
+        if (event && event.type === EVENT) A.check(value === null || valid(value), '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。');
         active.current = value;
         setSaved(value);
         setStorageError('');
@@ -120,7 +124,7 @@
     }
     React.useEffect(() => {
       const changed = e => {
-        if (!e.key || e.key === KEY) sync();
+        if (!e.key || e.key === KEY) sync(e);
       };
       window.addEventListener('storage', changed);
       window.addEventListener(EVENT, changed);

@@ -31,8 +31,5 @@
       {value.range && <span className="cap-muted wb-current-range" title={value.range}>{value.range}</span>}
     </div>;
   }
-  function Styles() {
-    return null;
-  }
-  window.WorkbenchCaption = { Provider, Caption, Styles, useCaption };
+  window.WorkbenchCaption = { Provider, Caption, useCaption };
 })();

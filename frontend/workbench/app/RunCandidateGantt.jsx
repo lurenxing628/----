@@ -171,7 +171,7 @@
     // Leave room for the last printed tick label; the exact end remains in the range heading above.
     const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport)
       .filter(tick => !printing || tick.x <= width * 0.85);
-    return <section ref={host} className="rc-gantt" aria-label="候选甘特图" onKeyDown={zoomKeys}><window.PointGantt.Styles /><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
+    return <section ref={host} className="rc-gantt" aria-label="候选甘特图" onKeyDown={zoomKeys}><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
       <Button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</Button>)}</div>
       <div className="rc-tools"><BC.Toggle state={baseline} /><TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="候选" onZoom={setZoom} onFit={fit} /></div></div>
       <BC.Panel state={baseline} rows={model.comparisons || []} chosen={chosen} onChoose={selectBaseline} workspace={data} />

@@ -38,7 +38,7 @@
       document.addEventListener('visibilitychange', visibility); visibility();
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };
     }, [runRef, api, revision]);
-    return <section className="plana run-job-panel" aria-label="这次排产"><U.Styles />
+    return <section className="plana run-job-panel" aria-label="这次排产">
       <div className="rj-heading"><h2>这次排产</h2><U.Button icon="refresh-cw" aria-label="刷新这次排产" busy={checking} disabled={!A.ref(runRef)} onClick={refresh} /></div>
       {!A.ref(runRef) ? <p role="alert">这条排产记录已失效，页面没有切换。请点「排产记录」重新选择。</p> : <>
         <window.WorkbenchReference entries={{ '排产编号': runRef }} />{error && <div className="rj-notice" role="alert">{error}</div>}

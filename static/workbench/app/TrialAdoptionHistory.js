@@ -26,6 +26,7 @@
   function History({
     data
   }) {
+    const navigate = window.WorkbenchPageContext.useNavigate();
     const ref = data.scenario_ref;
     const [query, setQuery] = React.useState(() => {
       try {
@@ -85,7 +86,7 @@
     return /*#__PURE__*/React.createElement("section", {
       className: "trial-adoption-history",
       "aria-label": "\u672C\u8BD5\u8C03\u65B9\u6848\u7684\u91C7\u7528\u8BB0\u5F55"
-    }, /*#__PURE__*/React.createElement(window.TrialAdoptionHistoryStyles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "tah-toolbar"
     }, /*#__PURE__*/React.createElement("label", null, "\u91C7\u7528\u72B6\u6001", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u91C7\u7528\u72B6\u6001",
@@ -149,9 +150,9 @@
     }, labels[item.current_state]), /*#__PURE__*/React.createElement("span", null, item.committed_plan.row_count, " \u9053\u5DE5\u5E8F"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "arrow-right",
       disabled: item.current_state === 'unavailable',
-      onClick: () => {
+      onClick: async () => {
         try {
-          S.openPlan(ref, item.committed_plan.plan_ref);
+          await S.openPlan(ref, item.committed_plan.plan_ref, navigate);
         } catch (error) {
           setError(error);
         }

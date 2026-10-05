@@ -6,42 +6,13 @@
   const adapterIds = new WeakMap();
   let nextAdapter = 0;
   function useRead(adapter, query, revision) {
-    const identity = React.useMemo(() => ({}), [adapter, query, revision]);
-    const [state, setState] = React.useState({});
-    React.useEffect(() => {
-      const controller = new AbortController();
-      let active = true;
-      setState({
-        identity,
-        busy: true,
-        result: null,
-        error: null
-      });
-      Promise.resolve().then(() => adapter.catalog(query, controller.signal)).then(result => {
-        A.catalog(result, query);
-        if (active) setState({
-          identity,
-          busy: false,
-          result,
-          error: null
-        });
-      }).catch(error => {
-        if (active) setState({
-          identity,
-          busy: false,
-          result: null,
-          error
-        });
-      });
-      return () => {
-        active = false;
-        controller.abort();
-      };
-    }, [identity]);
-    return state.identity === identity ? state : {
-      busy: true,
-      result: null,
-      error: null
+    const api = React.useMemo(() => A.adapter(adapter), [adapter]);
+    const read = window.APSResourceSession.useQuery(async signal => {
+      return api.catalog(query, signal);
+    }, [adapter, query, revision]);
+    return {
+      ...read,
+      busy: read.loading
     };
   }
   function Session({
@@ -91,7 +62,7 @@
       className: "plana run-history-workspace",
       "data-run-history-workspace": true,
       "aria-busy": read.busy
-    }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "rh-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
@@ -168,7 +139,7 @@
       return /*#__PURE__*/React.createElement("div", {
         className: "plana run-history-workspace",
         "data-run-history-workspace": true
-      }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("h2", {
+      }, /*#__PURE__*/React.createElement("h2", {
         className: "wb-page-title"
       }, "\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement(C.ErrorBox, {
         error: error

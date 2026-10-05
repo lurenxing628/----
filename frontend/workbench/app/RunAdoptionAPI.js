@@ -93,8 +93,8 @@
       check(same(read(), previous), '上次采用记录已变化，没有覆盖其他操作。');
       try { if (value === null) storage.removeItem(PENDING_KEY); else storage.setItem(PENDING_KEY, JSON.stringify(value)); }
       catch (_) { throw new Error('存不下采用的操作记录，没有开始新的采用。请重新打开页面。'); }
-      check(same(read(), value), '采用的操作记录没有保存，不要重新采用。');
-      window.dispatchEvent(new Event(EVENT)); return value;
+      const stored = read(); check(same(stored, value), '采用的操作记录没有保存，不要重新采用。');
+      window.dispatchEvent(new CustomEvent(EVENT, { detail: stored })); return stored;
     }
     return { read,
       begin(value, values, previous = null) {
@@ -132,5 +132,5 @@
       async lookup(intent, signal) { check(validIntent(intent)); const v = await request('commands/' + intent.request_key, undefined, signal, intent.request_key); lookup(v, intent); return v; }
     };
   }
-  window.RunAdoptionAPI = { create, preview, receipt, lookup, input, pending, ref, overview, PENDING_KEY, EVENT, isRejected: e => rejections.has(e) };
+  window.RunAdoptionAPI = { create, preview, receipt, lookup, input, pending, ref, overview, validIntent, PENDING_KEY, EVENT, isRejected: e => rejections.has(e) };
 })();

@@ -94,7 +94,7 @@
     return /*#__PURE__*/React.createElement("section", {
       className: "plana run-job-panel",
       "aria-label": "\u8FD9\u6B21\u6392\u4EA7"
-    }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rj-heading"
     }, /*#__PURE__*/React.createElement("h2", null, "\u8FD9\u6B21\u6392\u4EA7"), /*#__PURE__*/React.createElement(U.Button, {
       icon: "refresh-cw",

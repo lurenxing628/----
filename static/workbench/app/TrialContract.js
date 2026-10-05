@@ -88,7 +88,8 @@
       issues([r.reason]);
     });
     const seen = new Set(),
-      rows = new Set();
+      rows = new Set(),
+      historyOwners = new Map();
     d.tasks.forEach(t => {
       check(fields(t, ['task_ref', 'row_ref', 'operation_ref', 'source_row_ref', 'source_task_ref', 'batch_ref', 'batch_id', 'part_no', 'part_name', 'process_label', 'sequence', 'piece_id', 'source', 'quantity', 'batch_quantity', 'priority', 'due_date', 'original', 'hours', 'execution', 'execution_at_creation', 'predecessor_refs', 'predecessor_operation_refs', 'edit_context', 'issues', 'data_gaps', 'changed']));
       check(ref(t.task_ref) && ref(t.row_ref) && ref(t.operation_ref) && ref(t.source_row_ref) && (t.source_task_ref === null || ref(t.source_task_ref)) && !seen.has(t.task_ref) && !rows.has(t.row_ref) && t.draft_ref === d.draft_ref);
@@ -106,6 +107,9 @@
       issues(t.issues);
       issues(t.data_gaps);
       issues(t.edit_context.blocked_reasons);
+      [t.task_ref, ...(d.scenario_ref && t.source_task_ref ? [t.source_task_ref] : [])].forEach(key => {
+        if (!historyOwners.has(key)) historyOwners.set(key, t);
+      });
     });
     d.tasks.forEach(t => check(t.predecessor_refs.every(r => seen.has(r))));
     check(object(d.resources) && ['machines', 'operators', 'authorizations'].every(k => Array.isArray(d.resources[k])));
@@ -124,7 +128,7 @@
     });
     check(time(d.time_scope.start) && time(d.time_scope.end) && d.time_scope.selection === 'complete_base' && d.tasks.every(t => t.start >= d.time_scope.start && t.end <= d.time_scope.end));
     d.change_history.forEach(r => {
-      const owner = d.tasks.find(t => t.task_ref === r.task_ref || d.scenario_ref && t.source_task_ref === r.task_ref);
+      const owner = historyOwners.get(r.task_ref);
       check(ref(r.change_ref) && ref(r.task_ref) && !!owner);
       arrangement(r.before, owner);
       arrangement(r.after, owner);

@@ -11,7 +11,7 @@
     return /*#__PURE__*/React.createElement("span", {
       className: "plana trial-adoption-action",
       "data-trial-adoption-action": true
-    }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement(U.Button, {
+    }, /*#__PURE__*/React.createElement(U.Button, {
       icon: s.saved ? 'refresh-cw' : 'check',
       reason: reason,
       busy: s.busy && !s.saved,

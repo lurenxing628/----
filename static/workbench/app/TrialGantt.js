@@ -144,7 +144,7 @@
     return /*#__PURE__*/React.createElement("section", {
       className: 'tt-gantt' + (expanded ? ' tt-expanded' : ''),
       "aria-label": "\u8BD5\u8C03\u7518\u7279"
-    }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement(V.Notice, {
+    }, /*#__PURE__*/React.createElement(V.Notice, {
       state: preferences,
       label: "\u8BD5\u8C03\u7518\u7279\u67E5\u770B\u504F\u597D"
     }), /*#__PURE__*/React.createElement("div", {

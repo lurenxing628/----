@@ -23,16 +23,19 @@
     C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。'); C.check(v === null || valid(v));
     try { if (v === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(v)); }
     catch (_) { throw new Error('上次操作记录保存不了，不能开始登记。请重新打开页面。'); }
-    C.check(C.equal(read(), v)); window.dispatchEvent(new Event(EVENT)); return v;
+    const stored = read(); C.check(C.equal(stored, v));
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: stored })); return stored;
   }
   function useCommand(api) {
     const [initial] = React.useState(() => { try { return { saved: read() }; } catch (error) { return { saved: null, error }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error || null);
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [busy, setBusy] = React.useState(false);
     const active = React.useRef(saved), running = React.useRef(false), mounted = React.useRef(false); active.current = saved;
-    function sync() { try { const v = read(); active.current = v; setSaved(v); setStorageError(null); } catch (e) { setStorageError(e); } }
+    function sync(event) { try { const v = event && event.type === EVENT ? event.detail : read();
+      if (event && event.type === EVENT) C.check(v === null || valid(v), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
+      active.current = v; setSaved(v); setStorageError(null); } catch (e) { setStorageError(e); } }
     React.useEffect(() => {
-      mounted.current = true; const changed = e => { if (!e.key || e.key === KEY) sync(); };
+      mounted.current = true; const changed = e => { if (!e.key || e.key === KEY) sync(e); };
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);

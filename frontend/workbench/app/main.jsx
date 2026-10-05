@@ -102,9 +102,9 @@
     const [messages, setMessages] = React.useState(boot.messages || []);
     const [navigationError, setNavigationError] = React.useState('');
     const activePage = React.useRef(page), restoring = React.useRef(true), historyGuard = React.useRef(null), scrollMemory = React.useRef(null);
-    // History cannot replace the entry that the browser just left. Keep the newest scroll snapshot by history key so an
+    // History cannot replace the entry that the browser just left. Keep the newest page snapshot by history key so an
     // immediate Back/Forward inside the 200 ms throttle window can apply it when that exact entry becomes current again.
-    const scrollSnapshots = React.useRef(new Map());
+    const pageSnapshots = React.useRef(new Map());
     activePage.current = page;
     const { view, context } = page;
     const initialContext = Object.keys(context).length ? context : undefined;
@@ -120,20 +120,29 @@
     React.useEffect(() => {
       const previous = history.scrollRestoration; history.scrollRestoration = 'manual';
       const save = () => {
-        if (restoring.current || activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
-        const captured = scrollSnapshots.current.get(activePage.current.key);
-        try { window.WorkbenchNavigation.remember(boot, activePage.current, captured); if (historyGuard.current) historyGuard.current.sync(); }
+        if (activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
+        const captured = pageSnapshots.current.get(activePage.current.key) || {};
+        try {
+          if (restoring.current) {
+            // Persist selections even when pagehide interrupts viewport restoration.
+            // Its in-progress scroll must not replace the entry's saved position.
+            if (captured.context === undefined) return;
+            window.WorkbenchNavigation.replaceContext(boot, activePage.current, captured.context);
+          } else window.WorkbenchNavigation.remember(boot, activePage.current, captured.scroll, captured.context);
+          if (historyGuard.current) historyGuard.current.sync();
+        }
         catch (error) { setPage(old => ({ ...old, error: error.message })); }
       };
       const memory = window.WorkbenchNavigation.scrollMemory(save); scrollMemory.current = memory;
       const scroll = () => {
         if (restoring.current || activePage.current.error || historyGuard.current && historyGuard.current.busy()) return;
-        scrollSnapshots.current.set(activePage.current.key, window.WorkbenchNavigation.captureScroll()); memory.schedule();
+        const key = activePage.current.key;
+        pageSnapshots.current.set(key, { ...pageSnapshots.current.get(key), scroll: window.WorkbenchNavigation.captureScroll() }); memory.schedule();
       };
       const restore = () => { restoring.current = true; memory.cancel(); setMessages([]); setNavigationError('');
         let next = currentPage();
-        const captured = !next.error && scrollSnapshots.current.get(next.key);
-        if (captured) { window.WorkbenchNavigation.remember(boot, next, captured); next = currentPage(); }
+        const captured = !next.error && pageSnapshots.current.get(next.key);
+        if (captured) { window.WorkbenchNavigation.remember(boot, next, captured.scroll, captured.context); next = currentPage(); }
         activePage.current = next; setPage(next); };
       if (!activePage.current.error) historyGuard.current = window.WorkbenchNavigation.guardHistory(boot, {
         hasDirty: () => window.WorkbenchGuards.hasDirty(), confirmLeave: () => window.WorkbenchGuards.confirmLeave(),
@@ -151,7 +160,10 @@
     React.useEffect(() => {
       restoring.current = true;
       if (page.error) { restoring.current = false; return undefined; }
-      return window.WorkbenchNavigation.restore(page, () => { restoring.current = false; });
+      return window.WorkbenchNavigation.restore(page, () => {
+        restoring.current = false;
+        if (scrollMemory.current && pageSnapshots.current.has(page.key)) scrollMemory.current.schedule();
+      });
     }, [page.view, page.key, page.error]);
     React.useEffect(() => { document.title = window.WorkbenchNavigation.title(boot, page) + ' · APS 智能排产'; }, [view, page.key]);
     const navigate = async (target, nextContext, preferSaved = false) => {
@@ -163,16 +175,16 @@
         if (!await window.WorkbenchGuards.confirmLeave() || activePage.current !== origin) return;
         // navigate() remembers the current page itself; a pending throttled write would only repeat it.
         if (scrollMemory.current) scrollMemory.current.cancel();
-        const next = window.WorkbenchNavigation.navigate(boot, page, target, nextContext, preferSaved);
+        const next = window.WorkbenchNavigation.navigate(boot, page, target, nextContext, preferSaved, pageSnapshots.current.get(page.key));
         // pushState truncates the Forward branch. Drop snapshots whose numeric keys can now be reused by the new branch.
-        for (const key of scrollSnapshots.current.keys()) if (key >= next.key) scrollSnapshots.current.delete(key);
+        for (const key of pageSnapshots.current.keys()) if (key >= next.key) pageSnapshots.current.delete(key);
         if (historyGuard.current) historyGuard.current.sync();
         restoring.current = true; activePage.current = next; setMessages([]); setNavigationError(''); setPage(next);
       } catch (error) { setNavigationError(error.message); }
     };
     const switchTab = target => {
       if (target === view) return;
-      try { navigate(target, window.WorkbenchNavigation.read(boot).context); }
+      try { navigate(target, (pageSnapshots.current.get(page.key) || {}).context || window.WorkbenchNavigation.read(boot).context); }
       catch (error) { setNavigationError(error.message); }
     };
     const openHelp = async () => {
@@ -184,17 +196,25 @@
       window.TrialContract.target(nextContext);
       const entry = currentPage();
       if (entry.view !== 'trial' || entry.key !== page.key) throw new Error('当前页面已变化，没有保存这次选择。请刷新后重新选择。');
-      window.WorkbenchNavigation.replaceContext(boot, entry, nextContext);
+      const captured = pageSnapshots.current.get(entry.key) || {};
+      pageSnapshots.current.set(entry.key, { ...captured, context: nextContext });
+      if (scrollMemory.current) scrollMemory.current.cancel();
+      if (restoring.current) window.WorkbenchNavigation.replaceContext(boot, entry, nextContext);
+      else window.WorkbenchNavigation.remember(boot, entry, captured.scroll, nextContext);
       if (historyGuard.current) historyGuard.current.sync();
     };
     const rememberPage = React.useCallback(nextContext => {
       if (activePage.current.view !== view || activePage.current.key !== page.key) return;
       if (historyGuard.current && historyGuard.current.busy()) return;
-      try { window.WorkbenchNavigation.replaceContext(boot, activePage.current, nextContext); if (historyGuard.current) historyGuard.current.sync(); }
+      try {
+        const key = activePage.current.key;
+        pageSnapshots.current.set(key, { ...pageSnapshots.current.get(key), context: nextContext });
+        if (scrollMemory.current) scrollMemory.current.schedule();
+      }
       catch (error) { setPage(old => ({ ...old, error: error.message })); }
     }, [view, page.key]);
-    return <><window.WorkbenchControlStyles /><window.WorkbenchControls /><window.WorkbenchNumberControls /><window.WorkbenchCaption.Styles /><window.WorkbenchGuardHost />
-    <window.WorkbenchPageContext.Provider key={view + ':' + page.key} remember={rememberPage}>
+    return <><window.WorkbenchControlStyles /><window.WorkbenchControls /><window.WorkbenchNumberControls /><window.WorkbenchGuardHost />
+    <window.WorkbenchPageContext.Provider key={view + ':' + page.key} remember={rememberPage} navigate={navigate}>
     <window.WorkbenchCaption.Provider key={view + ':' + page.key}>
     <WorkbenchShell page={page} theme={preference.theme} density={density.density} navigate={navigate} switchTab={switchTab} openHelp={openHelp} messages={messages} navigationError={navigationError}
       dismissMessage={index => setMessages(items => items.filter((_value, current) => current !== index))}>

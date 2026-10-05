@@ -42,7 +42,7 @@
     }), [collection, pages, index]);
     const read = S.useQuery(async signal => {
       if (typeof adapter.catalog !== 'function') throw C.failure('dependency not wired: PlanAPI.catalog');
-      return P.catalog(await adapter.catalog(scope, signal), scope);
+      return adapter.catalog(scope, signal);
     }, [adapter, scope], !paused);
     const result = read.result,
       data = result && result.data;

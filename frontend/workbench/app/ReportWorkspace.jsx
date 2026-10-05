@@ -2,7 +2,7 @@
   'use strict';
   let pendingViewFocus = null;
   function Workspace({ adapter, mode = 'reports', initialContext = {}, onNav, onOpenOperation }) {
-    const { Scope, Tabs, Sort, Page, Button, ErrorBox, useRead, Styles } = window.ReportControls;
+    const { Scope, Tabs, Sort, Page, Button, ErrorBox, useRead } = window.ReportControls;
     const { Table, Metrics } = window.ReportTable;
     const api = React.useMemo(() => adapter || window.ReportAPI.create(), [adapter]);
     const initialTopic = mode === 'review' ? 'delivery' : window.ReportAPI.topics.includes(initialContext.topic) ? initialContext.topic : 'delivery';
@@ -101,7 +101,7 @@
         ...(reportRef ? { report_ref: reportRef } : {}), return_to: { view: mode, context: currentContext() } });
     }
     return <section ref={root} className={review ? 'er-workbench rw-workbench' : 'rw-workbench'} aria-label={title} data-source="production" data-ready={!!data}>
-      <Styles />
+
       <header className="rw-header"><div><h2 className="wb-page-title">{title}</h2><p className="wb-page-context">{data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划'}{response && <span className="rw-asof">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(response.meta.as_of))}</span>}</p></div>
         <div className="rw-actions">{initialContext.returnTo && initialContext.returnTo.view === 'calib' && <Button icon="arrow-left"
           disabled={typeof onNav !== 'function'} onClick={() => go('calib')}>返回工时校准</Button>}

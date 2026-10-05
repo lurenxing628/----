@@ -3,10 +3,10 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const input = JSON.parse(fs.readFileSync(0, 'utf8')), context = {window: null}; context.window = context; vm.createContext(context);
 for (const name of ['resource-contract.js', 'ProcessContract.js'])
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', name), 'utf8'), context);
-const P = context.APSProcessContract, raw = input.raw, checks = [];
+const P = context.APSProcessContract, raw = input.raw, checks = [], groups = P.groupIndex(raw.data.external_groups);
 assert.equal(P.detail(raw, raw.data.ref), raw);
 for (const row of raw.data.operations) {
-  const label = P.groupCycle(row, raw.data.external_groups);
+  const label = P.groupCycle(row, groups);
   assert.equal(!!label, row.external_days_source === 'group');
   if (label) { const g = raw.data.external_groups.find(g => g.ref === row.external_group_ref); assert(label.includes(g.start_sequence + ' 至 ' + g.end_sequence)); }
 }
@@ -45,7 +45,7 @@ if (input.mutate) {
   const large = JSON.parse(JSON.stringify(raw)), row = large.data.operations.find(r => r.sequence === 40);
   const group = large.data.external_groups.find(g => g.ref === row.external_group_ref);
   row.sequence = group.start_sequence = group.end_sequence = '9223372036854775807';
-  P.detail(large, large.data.ref); assert(P.groupCycle(row, large.data.external_groups).includes(row.sequence));
+  P.detail(large, large.data.ref); assert(P.groupCycle(row, P.groupIndex(large.data.external_groups)).includes(row.sequence));
   group.end_sequence = '9223372036854775806';
   assert.throws(() => P.detail(large, large.data.ref)); checks.push('sqlite_int64_exact_range');
 }

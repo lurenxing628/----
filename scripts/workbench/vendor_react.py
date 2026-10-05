@@ -51,7 +51,7 @@ def checked_payload(name):
     if b"Permission is hereby granted" not in files[name + ".LICENSE"]:
         raise ValueError("Missing MIT license text")
     return {"name": name, "version": VERSION, "license": "MIT", "metadata_url": metadata_url,
-            "tarball": tarball, "integrity": integrity, "tarball_sha256": digest(data)}, files
+            "tarball": tarball, "integrity": integrity}, files
 
 
 def main():
@@ -61,14 +61,17 @@ def main():
         package, payload = checked_payload(name)
         packages.append(package)
         files.update(payload)
-    records = []
+    records, existing = [], set()
     for name, data in sorted(files.items()):
         target = destination / name
-        if target.exists() and target.read_bytes() != data:
-            raise ValueError("Existing pinned vendor differs; refusing overwrite: " + name)
+        if target.exists():
+            if target.read_bytes() != data:
+                raise ValueError("Existing pinned vendor differs; refusing overwrite: " + name)
+            existing.add(name)
     destination.mkdir(parents=True, exist_ok=True)
     for name, data in sorted(files.items()):
-        (destination / name).write_bytes(data)
+        if name not in existing:
+            (destination / name).write_bytes(data)
         records.append({"path": name, "sha256": digest(data), "size": len(data)})
     manifest = {"schema_version": 1, "packages": packages, "files": records,
                 "scripts": [name + "-" + VERSION + ".production.min.js" for name in PINS]}

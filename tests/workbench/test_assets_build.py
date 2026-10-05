@@ -1,18 +1,24 @@
 """Asset-only tests. No Flask, database, npm install or external services."""
 
 import ast
+import base64
+import hashlib
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / "scripts/workbench"
 sys.path.insert(0, str(TOOLS))
+import build as builder
 from asset_sources import (
     asset_mime,
     css_references,
@@ -26,6 +32,42 @@ from asset_sources import (
 from build import build, check_prototype, read_inputs
 from import_prototype import import_snapshot
 from vendor_react import PINS
+
+
+def test_vendor_import_retains_pinned_integrity_without_an_unused_tarball_digest():
+    import vendor_react
+    package = "react"
+    payload = {
+        "umd/react.production.min.js": b"synthetic React payload",
+        "LICENSE": b"Permission is hereby granted",
+        "package.json": json.dumps({"name": package, "version": vendor_react.VERSION, "license": "MIT"}).encode(),
+    }
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+        for path, content in payload.items():
+            entry = tarfile.TarInfo("package/" + path)
+            entry.size = len(content)
+            archive.addfile(entry, io.BytesIO(content))
+    data = stream.getvalue()
+    integrity = "sha512-" + base64.b64encode(hashlib.sha512(data).digest()).decode("ascii")
+    tarball = f"https://registry.npmjs.org/{package}/-/{package}-{vendor_react.VERSION}.tgz"
+    metadata = json.dumps({"name": package, "version": vendor_react.VERSION, "license": "MIT",
+                           "dist": {"integrity": integrity, "tarball": tarball}}).encode()
+    with mock.patch.dict(vendor_react.PINS, {package: integrity}), \
+            mock.patch.object(vendor_react, "digest", side_effect=AssertionError("unused tarball SHA256")), \
+            mock.patch.object(vendor_react, "read_url", side_effect=[metadata, data]):
+        record, files = vendor_react.checked_payload(package)
+        assert "tarball_sha256" not in record
+        assert record["integrity"] == integrity
+        assert files["react.LICENSE"] == payload["LICENSE"]
+    with mock.patch.dict(vendor_react.PINS, {package: integrity}), \
+            mock.patch.object(vendor_react, "read_url", side_effect=[metadata, data + b"changed"]):
+        try:
+            vendor_react.checked_payload(package)
+        except ValueError as exc:
+            assert "integrity mismatch" in str(exc)
+        else:
+            raise AssertionError("Changed tarball passed pinned integrity")
 
 
 class WorkbenchAssetsBuildTest(unittest.TestCase):
@@ -97,6 +139,59 @@ class WorkbenchAssetsBuildTest(unittest.TestCase):
         for row in self.manifest["files"]:
             self.assertEqual(self.asset(row["path"]).read_bytes(),
                              (target / row["path"][len("workbench/"):]).read_bytes())
+
+    def test_publishes_verified_prototype_and_vendor_bytes_after_sources_change(self):
+        changed, expected = {}, {}
+        order = load_json(TOOLS / "build-order.json")
+        def capture(root, manifest):
+            captured = verify_snapshot(root, manifest)
+            names = ([order["babel"]["path"], order["foundation"][0]["path"], manifest["entries"]["index"]["styles"][0]]
+                     if root.name == "prototype" else [manifest["scripts"][0], "react.LICENSE"])
+            for name in names:
+                path = root / name
+                changed[path] = captured[name]
+                path.write_bytes(b"invalid replacement after verification")
+                if name.endswith(".css") or root.name == "vendor":
+                    expected["workbench/" + root.name + "/" + name] = captured[name]
+            return captured
+        target = self.root / "captured-output"
+        try:
+            with mock.patch.object(builder, "verify_snapshot", side_effect=capture):
+                build(self.root, target, self.node)
+            for name, data in expected.items():
+                self.assertEqual((target / name[len("workbench/"):]).read_bytes(), data)
+            self.assertEqual((target / "asset-manifest.json").read_bytes(), (self.output / "asset-manifest.json").read_bytes())
+        finally:
+            for path, data in changed.items():
+                path.write_bytes(data)
+
+    def test_unchanged_payload_keeps_files_and_still_commits_manifest_last(self):
+        times = {row["path"]: self.asset(row["path"]).stat().st_mtime_ns for row in self.manifest["files"]}
+        with mock.patch.object(builder.os, "replace", wraps=builder.os.replace) as replace:
+            build(self.root, self.output, self.node)
+        self.assertEqual([Path(call.args[1]).name for call in replace.call_args_list], ["asset-manifest.json"])
+        self.assertEqual(times, {name: self.asset(name).stat().st_mtime_ns for name in times})
+
+    def test_default_and_injected_readers_share_one_response_boundary(self):
+        probe = r"""
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const root=process.argv[1], F=require(path.join(root,'tests/workbench/plan_ui_fixtures.cjs'));
+const context=vm.createContext({console});context.window=context;
+for(const name of ['WorkbenchFormat.js','WorkbenchTerms.js','resource-contract.js','PointContract.js','PlanProcessOrder.js','PlanContract.js','PlanAPI.js'])
+  vm.runInContext(fs.readFileSync(path.join(root,'frontend/workbench/app',name),'utf8'),context,{filename:name});
+context.APSResourceAPI={create:()=>({query:async()=>F.workspace(F.ref(1))})};
+let checks=0;const workspace=context.APSPlanContract.workspace;
+context.APSPlanContract.workspace=(...args)=>{checks++;return workspace(...args);};
+(async()=>{
+ const api=context.APSPlanAPI.adapter(context.APSPlanAPI.create());
+ const result=await api.workspace(F.ref(1));assert.equal(result.data.plan.plan_ref,F.ref(1));assert.equal(checks,1);
+ const raw={workspace:async()=>F.workspace(F.ref(1))};
+ await context.APSPlanAPI.adapter(context.APSPlanAPI.adapter(raw)).workspace(F.ref(1));assert.equal(checks,2);
+ await assert.rejects(context.APSPlanAPI.adapter({workspace:async()=>({ok:true,data:{unexpected:true}})}).workspace(F.ref(1)));
+ assert.equal(checks,3);
+})().catch(error=>{console.error(error);process.exitCode=1;});
+"""
+        subprocess.run([self.node, "-e", probe, str(ROOT)], check=True, capture_output=True, text=True, timeout=30)
 
     def test_host_manifest_contract(self):
         self.assertEqual(self.manifest["schema_version"], 1)

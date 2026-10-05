@@ -61,7 +61,7 @@
     React.useEffect(() => {
       if (expanded) { const handler = e => { if (e.key === 'Escape') setExpanded(false); }; document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler); }
     }, [expanded]);
-    return <section className={'tt-gantt' + (expanded ? ' tt-expanded' : '')} aria-label="试调甘特"><window.PointGantt.Styles />
+    return <section className={'tt-gantt' + (expanded ? ' tt-expanded' : '')} aria-label="试调甘特">
       <V.Notice state={preferences} label="试调甘特查看偏好" /><div className="tt-heading"><h3>试调排程图</h3>
       <span className="tt-muted">含夜间</span></div><div className="tt-tools tt-gantt-tools"><U.Tabs value={view} label="甘特分组"
       options={[["machine", '设备'], ['operator', '人员'], ['batch', '批次']]} onChange={v => { setView(v); setPage(1); }} />

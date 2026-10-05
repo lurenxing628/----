@@ -12,6 +12,14 @@ check('typical real DTO shape admitted', () => {
     [task.piece_id, task.quantity, task.batch_quantity, task.quantity_basis, task.quantity_reason],
     [null, null, null, 'unknown', 'plan_target_not_recorded']);
 });
+check('captured quantities keep the shared lossless int64 representation', () => {
+  for (const quantity of [0, '9007199254740993', '9223372036854775807']) {
+    const response = F.workspace(F.ref(1)), task = response.data.tasks[0];
+    Object.assign(task, { quantity, batch_quantity: quantity, quantity_basis: 'run_admission', quantity_reason: null });
+    assert.equal(P.workspace(response, F.ref(1), {}), response);
+    task.quantity = '9223372036854775808'; assert.throws(() => P.workspace(response, F.ref(1), {}));
+  }
+});
 check('current resource labels from directory', () => assert.equal(M.names(admitted(F.ref(1))).get(F.ref(500)), '数控车床 C01'));
 check('null name preserves actual business code', () => assert.equal(M.names(admitted(F.ref(1), {}, { nullLabels: true })).get(F.ref(500)), 'M-0'));
 check('unknown capacity remains null', () => assert.equal(admitted(F.ref(1), {}, { unknown: true }).projections.occupancy.resources[0].available_hours, null));

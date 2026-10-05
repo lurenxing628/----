@@ -90,8 +90,5 @@
           {objectLabel(item) && <strong>{objectLabel(item)}： </strong>}{item.message}<window.WorkbenchReference entries={{ '原因编号': item.code, '工序编号': item.operation_ref, '批次编号': item.batch_ref }} /></div>)}</div>)}</div>
       </details></div>;
   }
-  function Styles() {
-    return null;
-  }
-  window.PreflightControls = { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary, Styles };
+  window.PreflightControls = { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary };
 })();

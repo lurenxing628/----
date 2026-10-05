@@ -8,7 +8,15 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import reject
-from core.models.workbench_trial_codec import dump, fingerprint, load, load_object, require_object
+from core.models.workbench_trial_codec import (
+    dump,
+    dump_and_fingerprint,
+    fingerprint,
+    load,
+    load_object,
+    require_object,
+    same,
+)
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.trial import base as trial_base
 from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
@@ -25,12 +33,21 @@ def test_lossless_nested_sqlite_snapshot_keeps_encoding_fingerprint_and_types():
     value = {"blob": b"\x00\xff", "rows": [None, True, 3, 3.0, -0.0, "2026-09-10"],
              "legacy_reals": {"positive": float("inf"), "negative": float("-inf"), "nan": float("nan")}}
     text = dump(value)
+    assert dump_and_fingerprint(value) == (text, fingerprint(value))
     restored = load_object(text, fingerprint(value))
     assert dump(restored) == text and fingerprint(restored) == fingerprint(value)
     assert type(restored["blob"]) is bytes and restored["blob"] == value["blob"]
     assert [type(item) for item in restored["rows"]] == [type(item) for item in value["rows"]]
     assert math.copysign(1, restored["rows"][4]) == -1
     assert math.isnan(restored["legacy_reals"]["nan"])
+    assert same(value, restored)
+
+
+def test_lossless_equality_preserves_canonical_storage_types():
+    assert not same(True, 1)
+    assert not same(1, 1.0)
+    assert not same(-0.0, 0.0)
+    assert same((b"raw", float("nan")), [b"raw", float("nan")])
 
 
 @pytest.mark.parametrize("value", [None, False, 0, 1.5, "text", [], [1], b"raw", float("inf")])
@@ -174,7 +191,8 @@ def test_capacity_keeps_unknown_zero_and_point_semantics(state, point):
     calendar = {"state": "unavailable" if state == "unavailable" else "available",
                 "windows": [{"start": start.isoformat(), "end": end.isoformat(),
                              "allow_normal": True, "allow_urgent": True}] if state == "available" else []}
-    result = _resource("machine", "f" * 48, [(start, start if point else start + timedelta(hours=1))], calendar)
+    result = _resource("machine", "f" * 48,
+        [(start, start if point else start + timedelta(hours=1))], calendar, start, end)
     assert result["utilization"] == ((0 if point else 0.5) if state == "available" else None)
     assert result["occupied_hours"] == (0 if point else 1)
     assert result["available_hours"] == (None if state == "unavailable" else 2 if state == "available" else 0)

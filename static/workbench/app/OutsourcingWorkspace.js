@@ -172,7 +172,7 @@
       "aria-label": "\u5916\u534F\u767B\u8BB0",
       "data-outsourcing-workspace": true,
       "data-ready": !!data
-    }, /*#__PURE__*/React.createElement(window.OutsourcingStyles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "os-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5916\u534F\u53D1\u51FA\u4E0E\u56DE\u5382\u767B\u8BB0"), /*#__PURE__*/React.createElement("div", {
       className: "os-tools"

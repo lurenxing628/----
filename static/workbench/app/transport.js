@@ -59,10 +59,7 @@
       if (signal) signal.removeEventListener('abort', abort);
     }
   }
-  function downloadJSON(filename, value) {
-    var blob = new Blob([JSON.stringify(value, null, 2)], {
-      type: 'application/json;charset=utf-8'
-    });
+  function saveBlob(filename, blob) {
     var url = URL.createObjectURL(blob),
       link = document.createElement('a');
     link.href = url;
@@ -77,8 +74,14 @@
       }, 1000);
     }
   }
+  function downloadJSON(filename, value) {
+    saveBlob(filename, new Blob([JSON.stringify(value, null, 2)], {
+      type: 'application/json;charset=utf-8'
+    }));
+  }
   window.APSWorkbenchTransport = {
     read: read,
-    downloadJSON: downloadJSON
+    downloadJSON: downloadJSON,
+    saveBlob: saveBlob
   };
 })();

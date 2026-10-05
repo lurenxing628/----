@@ -121,9 +121,12 @@
       } catch (_) {
         throw new Error('存不下采用的操作记录，没有开始新的采用。请重新打开页面。');
       }
-      check(same(read(), value), '采用的操作记录没有保存，不要重新采用。');
-      window.dispatchEvent(new Event(EVENT));
-      return value;
+      const stored = read();
+      check(same(stored, value), '采用的操作记录没有保存，不要重新采用。');
+      window.dispatchEvent(new CustomEvent(EVENT, {
+        detail: stored
+      }));
+      return stored;
     }
     return {
       read,
@@ -225,6 +228,7 @@
     pending,
     ref,
     overview,
+    validIntent,
     PENDING_KEY,
     EVENT,
     isRejected: e => rejections.has(e)

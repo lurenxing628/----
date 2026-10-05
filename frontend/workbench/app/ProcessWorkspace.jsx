@@ -90,7 +90,11 @@
         const restored = A.restored(intent);
         if (restored) setDialog({ ...restored, adapter });
         setRecoveryError(null);
-      } catch (error) { setRecoveryError(error); }
+      } catch (error) {
+        const restored = A.restored(error.intent);
+        if (restored) setDialog({ ...restored, adapter });
+        setRecoveryError(error);
+      }
     }, [adapter]);
     React.useEffect(() => {
       const restored = A.restored(command.intent);

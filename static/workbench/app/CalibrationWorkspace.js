@@ -124,7 +124,7 @@
       "data-ready": !!data,
       "data-source": "production",
       "data-stale": stale
-    }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "ca-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
@@ -309,7 +309,7 @@
     } catch (error) {
       return /*#__PURE__*/React.createElement("section", {
         className: "calibration-live"
-      }, /*#__PURE__*/React.createElement(window.CalibrationControls.Styles, null), /*#__PURE__*/React.createElement("h2", {
+      }, /*#__PURE__*/React.createElement("h2", {
         className: "wb-page-title"
       }, "\u5DE5\u65F6\u5B9A\u989D\u6821\u51C6"), /*#__PURE__*/React.createElement(window.ResourceControls.ErrorBox, {
         error: error

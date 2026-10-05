@@ -16,7 +16,8 @@ const env=data=>({ok:true,schema_version:1,data,meta:{source:'production',time_b
 function entity(kind){return kind==='operator'?{ref:R(1),business_code:'OP1',label:fixture.person,status:fixture.status,fields:{},relationships:{skill_refs:[],skills:[],shift_profile_ref:fixture.shiftRef,shift_profile:fixture.shiftRef?{ref:R(2),label:fixture.shift}:null,machine_authorization_count:0},issues:[],write_context:wc(kind)}:
  {ref:R(2),business_code:'SHIFT1',label:fixture.shift,status:'active',fields:{anchor_date:'2026-09-15',cycle_days:2,pattern:[{day_offset:0,is_rest:false,shift_start:'22:00',shift_end:'06:00'},{day_offset:1,is_rest:true,shift_start:'22:00',shift_end:'06:00'}]},relationships:{operator_count:1},issues:[],write_context:wc(kind)};}
 function adapter(){return {
- list:async(kind,scope)=>env({entities:[entity(kind)],page:{number:scope.page,size:scope.size,total:1,pages:1,sort:[]},create_context:wc(kind)}),
+ list:async(kind,scope)=>{fixture.listReads++;return env({entities:[entity(kind)],page:{number:scope.page,size:scope.size,total:1,pages:1,sort:[]},create_context:wc(kind)});},
+ query:async()=>env({periods:APSWorkPeriods.defaults()}),
  detail:async kind=>{fixture.reads++;return env(entity(kind));},
  choices:async(kind,scope)=>env({entities:kind==='shift_profile'?[entity(kind)]:[],page:{number:scope.page,size:scope.size,total:kind==='shift_profile'?1:0,pages:1,sort:[]}}),
  summary:async()=>env({counts:{part:0,material:0,internal_op_types:0,machine:0,operator:1,external_op_types:0,supplier:0}}),
@@ -24,7 +25,7 @@ function adapter(){return {
   if(kind==='shift_profile')fixture.shift=body.input.label||fixture.shift;else{if(body.input.label)fixture.person=body.input.label;if(body.input.relationships&&Object.hasOwn(body.input.relationships,'shift_profile_ref'))fixture.shiftRef=body.input.relationships.shift_profile_ref;}
   fixture.version++;return {ok:true,result:'committed',receipt_ref:'test-receipt-'+fixture.version,data:{entity_ref:ref},warnings:[]};}
 };}
-window.mountFixture=()=>{if(mounted)mounted.unmount();window.fixture={version:1,person:'原人员',status:'active',shift:'原两日班',shiftRef:R(2),writes:[],reads:0};
+window.mountFixture=()=>{if(mounted)mounted.unmount();window.fixture={version:1,person:'原人员',status:'active',shift:'原两日班',shiftRef:R(2),writes:[],reads:0,listReads:0};
  function Harness(){const [catalog,setCatalog]=React.useState(null);const base=React.useMemo(()=>({...adapter(),openCatalog:(kind,request)=>{setCatalog({kind,request});return {state:'opened'};}}),[]),cat=React.useMemo(adapter,[]);
  return h(React.Fragment,null,h(WorkbenchControlStyles),h(WorkbenchControls),h(WorkbenchNumberControls),h(WorkbenchGuardHost),h(ResourceWorkspace,{adapter:base,initialContext:{source:'production',kind:'operator',entity_ref:R(1)}}),
   catalog&&h(ResourceCatalog,{kind:catalog.kind,adapter:cat,onClose:()=>{setCatalog(null);catalog.request.onClosed();},onCommitted:result=>{setCatalog(null);catalog.request.onCommitted(result);}}));}
@@ -37,7 +38,7 @@ const report={production_db:false,global_build:false,scope:'current parent and c
 let page,browser;const button=name=>page.getByRole('button',{name,exact:true}),parent=()=>page.getByRole('dialog',{name:'编辑人员',exact:true});
 async function run(name,action){await action();report.cases.push({name,passed:true});}
 async function edit(){await button('编辑').click();await parent().waitFor();await parent().getByLabel('班次',{exact:true}).waitFor();}
-async function save(){await parent().getByRole('button',{name:'保存',exact:true}).click();await page.getByText('保存已完成。',{exact:true}).waitFor();}
+async function save(){const before=await page.evaluate(()=>fixture.listReads);await parent().getByRole('button',{name:'保存',exact:true}).click();await page.getByText('保存已完成。',{exact:true}).waitFor();await page.getByText('已刷新到最新数据。',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.listReads)-before,1);}
 async function refresh(){await button('刷新最新资料').click();await page.getByText('最新资料已刷新。已修改的内容保留，未修改的项已更新；下方显示当前已保存的资料。',{exact:true}).waitFor();assert.equal(await button('已核对，继续编辑').count(),0);}
 async function rename(){await button('维护班次').click();await button('编辑 SHIFT1').click();const modal=page.getByRole('dialog',{name:'编辑班次档',exact:true});await modal.getByLabel('名称',{exact:true}).fill('两日班更新');await modal.getByRole('button',{name:'保存',exact:true}).click();await button('完成并返回').click();await parent().waitFor();await page.locator('.wb-resource-review').waitFor();}
 (async()=>{try{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));browser=await chromium.launch({executablePath:process.env.WORKBENCH_BROWSER,headless:true});report.browser=browser.version();page=await browser.newPage({viewport:{width:1392,height:924}});page.setDefaultTimeout(10000);page.on('pageerror',error=>report.errors.push(error.message));await page.goto('http://127.0.0.1:'+server.address().port);

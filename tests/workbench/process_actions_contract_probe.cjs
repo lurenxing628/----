@@ -41,6 +41,16 @@ assert.throws(() => A.receipt({ ...bulk, data: { ...bulk.data, deleted_count: 1 
 assert.throws(() => A.receipt({ ...bulk, data: { deleted_count: 2, rows: [bulk.data.rows[0], bulk.data.rows[0]] } }, bulkIntent));
 assert.deepEqual(plain(A.restored(intent)), { mode: 'create', recovery: true });
 assert.deepEqual(plain(A.restored(bulkIntent)), { mode: 'bulk', recovery: true });
+const restoredBulkIntent = { kind: 'process_bulk', action: 'confirm', request_key: 'resource-' + 'a'.repeat(48) };
+assert.deepEqual(plain(A.restored(restoredBulkIntent)), { mode: 'bulk', recovery: true });
+assert.equal(A.receipt(bulk, restoredBulkIntent, request.refs).deleted_count, 2);
+assert.throws(() => A.receipt(bulk, restoredBulkIntent, request.refs.slice().reverse()));
+for (const invalid of [{ ...restoredBulkIntent, kind: 'unknown' }, { ...restoredBulkIntent, action: 'delete' },
+  { ...restoredBulkIntent, ref: null }, { kind: 'process', action: 'route_confirm' }]) {
+  assert.equal(A.restored(invalid), null);
+  assert.throws(() => A.receipt(bulk, invalid));
+}
+assert.deepEqual(plain(A.restored({ kind: 'process', action: 'route_confirm', ref: r(1) })), { ref: r(1) });
 context.APSResourceAPI = { create: () => Object.fromEntries(['query', 'execute', 'preview', 'lookup', 'readPending', 'savePending', 'clearPending', 'choices', 'download'].map(method => [method, (...args) => { calls.push({ method, args }); return args; }])) };
 vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/ProcessAPI.js'), 'utf8'), context);
 const api = context.APSProcessAPI.create();
@@ -60,6 +70,7 @@ api.command('process_bulk', 'confirm', t, { input: { preview_ref: t } });
 assert.equal(calls.at(-1).args[0], 'process/parts/bulk-confirm');
 assert.throws(() => api.command('process', 'delete', r(1), {}));
 assert.throws(() => api.command('process_bulk', 'confirm', t, { input: { preview_ref: 'y'.repeat(32) } }));
+assert.throws(() => api.command(restoredBulkIntent.kind, restoredBulkIntent.action, restoredBulkIntent.ref, { input: {} }));
 api.bulkPreview(A.deleteBody(request));
 assert.equal(calls.at(-1).args[0], 'process/parts/bulk-preview');
 api.filePreview('hours', 'export', { format: 'csv', selection: 'filtered' });
@@ -82,6 +93,18 @@ assert.deepEqual(plain(F.confirmInput({ preview_ref: t, affected_groups: [{ ref:
 const fileReceipt = { ...receipt, data: { kind: 'hours', rows: [{ row: 2, result: 'committed', entity_ref: r(2), business_code: '00001', sequence: '9223372036854775807' }], summary: { new: 0, update: 1, unchanged: 0, delete: 0, rejected: 0 }, affected_refs: [r(2)], skipped_count: 0, skipped_refs: [], skipped_rows: [] } };
 const fileIntent = { kind: 'process_hours_import', action: 'confirm', ref: t };
 assert.equal(F.receipt(fileReceipt, fileIntent, 'hours').rows[0].sequence, '9223372036854775807');
+for (const fileKind of ['route', 'hours']) {
+  const restoredFileIntent = { kind: 'process_' + fileKind + '_import', action: 'confirm', request_key: restoredBulkIntent.request_key };
+  const restoredReceipt = { ...fileReceipt, data: { ...fileReceipt.data, kind: fileKind } };
+  assert.deepEqual(plain(A.restored(restoredFileIntent)), { mode: 'import', fileKind, recovery: true });
+  assert.equal(F.receipt(restoredReceipt, restoredFileIntent, fileKind, undefined, r(2)).affected_refs[0], r(2));
+  assert.throws(() => F.receipt(restoredReceipt, restoredFileIntent, fileKind, undefined, r(1)));
+  for (const invalid of [{ ...restoredFileIntent, kind: 'unknown' }, { ...restoredFileIntent, action: 'delete' }, { ...restoredFileIntent, ref: null }]) {
+    assert.equal(A.restored(invalid), null);
+    assert.throws(() => F.receipt(restoredReceipt, invalid, fileKind));
+  }
+  assert.throws(() => api.command(restoredFileIntent.kind, restoredFileIntent.action, restoredFileIntent.ref, { input: {} }));
+}
 assert.throws(() => F.receipt({ ...fileReceipt, result: 'partial' }, fileIntent, 'hours'));
 assert.throws(() => F.receipt(fileReceipt, fileIntent, 'hours', undefined, r(1)));
 assert.throws(() => F.receipt({ ...fileReceipt, data: { ...fileReceipt.data, affected_refs: [r(1)] } }, fileIntent, 'hours'));

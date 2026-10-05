@@ -28,11 +28,11 @@
     return Number(text);
   }
   function input(entity, draft, pageSize) {
-    const merged = new Set(mergedGroups(entity).map(row => row.ref));
+    const merged = new Set(mergedGroups(entity).map(row => row.ref)), groups = P.groupIndex(entity.external_groups);
     const operations = E.active(entity).map(row => {
       const current = draft.operations[row.ref];
       try {
-        if (row.source === 'external') return { ref: row.ref, external_days: P.groupCycle(row, entity.external_groups) || merged.has(row.external_group_ref)
+        if (row.source === 'external') return { ref: row.ref, external_days: P.groupCycle(row, groups) || merged.has(row.external_group_ref)
           && current.external_days.trim() === '' && !row.issues.some(item => item.code === 'value_invalid') ? null : number(current.external_days, '工序 ' + row.sequence + ' 外协周期', true) };
         if (row.source !== 'internal') throw C.failure('工序 ' + row.sequence + ' 请先选定归属。');
         return { ref: row.ref, setup_hours: number(current.setup_hours, '工序 ' + row.sequence + ' 换型工时', false), unit_hours: number(current.unit_hours, '工序 ' + row.sequence + ' 单件工时', false) };
@@ -51,6 +51,7 @@
   function ProcessHoursEditor({ adapter, result, command, disabled, saved, groupSaved = 0, onDirty, onOverlay, onFileAction }) {
     const model = E.useDraft({ result, adapter, stage: 'hours', build, reconcile, saved, onDirty });
     const entity = model.base.data, draft = model.draft, paging = E.usePage(entity.operations), [zero, setZero] = React.useState(null), [groupsOpen, setGroupsOpen] = React.useState(false);
+    const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
     const blocked = disabled || command.locked || command.phase === 'done', stageReason = E.reason(model, adapter, 'hours');
     const editBlocked = blocked || entity.workflow.source.state !== 'confirmed' || entity.capabilities.stage_confirm !== true;
     const originalTypes = new Map(entity.operations.map(row => [row.ref, row]));
@@ -94,7 +95,7 @@
       <section className="process-hours-section" aria-label="外协周期"><div className="toolbar"><h3>外协周期</h3><span className="tb-spacer" /><Button icon="square-pen" disabled={blocked || entity.workflow.route.state !== 'confirmed' || entity.capabilities.stage_confirm !== true} onClick={() => setGroupsOpen(true)}>管理外协段</Button></div><p className="muted">同一次送出的连续外协工序可设为一段，整段只计算一次统一周期。中间回厂加工后再送出的工序请另建一段。</p>
         <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="外协周期明细"><caption className="wb-visually-hidden">外协周期明细</caption><colgroup><col style={{ width: '32%' }} /><col style={{ width: '22%' }} /><col style={{ width: '22%' }} /><col style={{ width: '24%' }} /></colgroup>
           <thead><tr><th scope="col">工序 / 工种</th><th scope="col">供应商</th><th scope="col">周期（天）</th><th scope="col">保存记录</th></tr></thead>
-          <tbody>{external.map(row => { const cycle = P.groupCycle(row, entity.external_groups); return <tr key={row.ref}><td>{operation(row)}</td><td>{row.supplier_label || '未选供应商'}</td>
+          <tbody>{external.map(row => { const cycle = P.groupCycle(row, groups); return <tr key={row.ref}><td>{operation(row)}</td><td>{row.supplier_label || '未选供应商'}</td>
             <td>{cycle ? <span className="process-group-cycle" data-process-cycle-group={row.external_group_ref}>{cycle}<small>在下方外协组填写统一周期</small></span> : cell(row, 'external_days', '外协周期', true)}</td><td>{record(row)}</td></tr>; })}
             {!external.length && <tr><td colSpan={4}>当前页没有外协工序。</td></tr>}</tbody></table></div>
         {!!mergedGroups(entity).length && <E.Groups rows={mergedGroups(entity)} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} title="外协段统一周期" />}</section>

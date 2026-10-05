@@ -18,18 +18,13 @@
   function initialTab(scenarioRef) {
     try { return restore(scenarioRef).tab; } catch (_) { return 'adoptions'; }
   }
-  function openPlan(scenarioRef, planRef) {
+  function openPlan(scenarioRef, planRef, navigate) {
     C.check(C.ref(scenarioRef) && C.ref(planRef));
     const entry = history.state && history.state.workbench;
-    const node = document.getElementById('workbench-boot');
-    C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef && node,
+    C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef
+      && typeof navigate === 'function',
       '无法打开正式计划，请刷新后重试。');
-    const boot = JSON.parse(node.textContent), url = new URL(boot.entry_url, location.origin);
-    C.check(url.origin === location.origin && Number.isSafeInteger(entry.key), '正式计划的跳转地址无效。');
-    url.searchParams.set('view', 'gantt');
-    history.pushState({ workbench: { view: 'gantt', context: { plan_ref: planRef }, key: entry.key + 1 } }, '', url.pathname + url.search);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    // The shell restores scrolling only after its history guard accepts the new entry.
+    return navigate('gantt', { plan_ref: planRef });
   }
   window.TrialAdoptionHistoryState = { restore, remember, initialTab, openPlan };
 })();

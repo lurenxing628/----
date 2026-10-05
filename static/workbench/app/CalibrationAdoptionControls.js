@@ -216,12 +216,8 @@
       }
     }))));
   }
-  function Styles() {
-    return null;
-  }
   window.CalibrationAdoptionControls = {
     Button,
-    Dialog,
-    Styles
+    Dialog
   };
 })();

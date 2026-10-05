@@ -314,15 +314,11 @@
       role: "status"
     }, lastChecked && /*#__PURE__*/React.createElement("span", null, "\u6700\u8FD1\u67E5\u8BE2\uFF1A", window.WorkbenchFormat.dateTime(new Date(lastChecked).toLocaleString('sv-SE').replace(' ', 'T'))), retryPaused ? /*#__PURE__*/React.createElement("span", null, "\u5DF2\u6682\u505C\u81EA\u52A8\u67E5\u8BE2\u3002", retryHint) : !A.terminal(run) && /*#__PURE__*/React.createElement("span", null, paused ? '页面已切走，返回后继续查询。' : checking ? '正在读取排产记录。' : '等待下次查询。')));
   }
-  function Styles() {
-    return null;
-  }
   window.RunJobControls = {
     Button,
     Confirmation,
     Scope,
     Reasons,
-    Record,
-    Styles
+    Record
   };
 })();

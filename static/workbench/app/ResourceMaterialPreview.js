@@ -171,9 +171,5 @@
       }
     }));
   }
-  function Styles() {
-    return null;
-  }
   window.ResourceMaterialPreview = Preview;
-  window.ResourceMaterialPreview.Styles = Styles;
 })();

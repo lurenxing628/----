@@ -11,7 +11,7 @@
     const holidayText = holiday.status === 'known' ? window.WorkbenchFormat.number(holiday.value * 100, { digits: 1, trim: true }) + '%' : statusLabels[holiday.status] || '暂无数据';
     return <><p>未单独设置的日期按默认规则排产。标准工时 / 日：{standardText}；假期录入默认效率：{holidayText}。</p><p className="muted">{value.basis}</p></>;
   }
-  function ResourceCalendar({ adapter, onCommitted, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true }) {
+  function ResourceCalendar({ adapter, onCommitted, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true, summaryState }) {
     const [target] = React.useState(() => {
       if (initialContext == null) return { context: null };
       const parsed = window.ResourceWorkspace.navigation(initialContext);
@@ -29,8 +29,8 @@
     const last = React.useRef(null); if (result) last.current = result;
     const previous = last.current && last.current.data;
     const view = data || (request.loading && previous && previous.year === month.year && previous.month === month.month ? previous : null);
-    const [summaryRevision, bumpSummary] = React.useReducer(value => value + 1, 0);
-    const summary = S.useSummary(adapter, summaryRevision), rules = summary.result && summary.result.data;
+    const localSummary = S.useSummary(adapter, 0, !summaryState);
+    const summary = summaryState || localSummary, rules = summary.result && summary.result.data;
     window.WorkbenchPageContext.useSnapshot({ source: 'production', kind: 'calendar', month: String(month.year).padStart(4, '0') + '-' + String(month.month).padStart(2, '0'),
       ...(dialog && dialog.mode === 'view' ? { date: dialog.day.date } : {}) },
       rememberEnabled && !!data && !request.loading && !request.error && !navigationError && !deferred && command.phase === 'idle'
@@ -46,10 +46,10 @@
         setDialog({ mode: 'view', day, source });
       }
     }, [data, source, command.phase, deferred, target]);
-    function refresh() { awaitingRefresh.current = { previous: request.result }; setRefreshState({ loading: true }); request.reload(); bumpSummary(); }
+    function refresh(refreshSummary = true) { awaitingRefresh.current = { previous: request.result }; setRefreshState({ loading: true }); request.reload(); if (refreshSummary) summary.reload(); }
     React.useEffect(() => {
       if (command.phase !== 'done' || handled.current === command.result.receipt_ref) return;
-      handled.current = command.result.receipt_ref; refresh();
+      handled.current = command.result.receipt_ref; refresh(!summaryState);
       if (typeof onCommitted === 'function') onCommitted(command.result);
     }, [command.phase, command.result]);
     React.useEffect(() => {

@@ -23,7 +23,7 @@
       C.check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '读到的数据不完整，请刷新后重试。');
       const payload = await response.json();
       if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '影响分析读取失败，请刷新后重试。');
-      C.check(response.status === 200); envelope(payload); return payload;
+      C.check(response.status === 200); return payload;
     } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
   }
   function pressure(value) {

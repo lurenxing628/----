@@ -3,7 +3,7 @@
   function CalibrationAdoptionAction({ detail, stale = false, onRefresh, adapter }) {
     const U = window.CalibrationAdoptionControls, s = window.CalibrationAdoptionState.useSession({ detail, stale, adapter });
     const label = s.saved ? s.saved.phase === 'committed' ? '查看采用结果' : s.saved.phase === 'pending' ? '查询上次采用结果' : '重新核对采用' : '预检采用';
-    return <div className="plana calibration-adoption" data-calibration-adoption="true"><U.Styles />
+    return <div className="plana calibration-adoption" data-calibration-adoption="true">
       <U.Button icon={s.saved ? 'refresh-cw' : 'check'} aria-label={label} reasonDisplay="tooltip" reason={!s.saved && (!detail || stale) ? '请先读取有效的所选模板和完工记录。' : ''}
         onClick={() => s.setOpen(true)} aria-expanded={s.open}>{label}</U.Button>
       {s.saved && !s.open && <span className="cad-inline">{s.saved.phase === 'committed' ? '上次采用结果已找回。' : '上次操作已保留，请先查询结果。'}</span>}

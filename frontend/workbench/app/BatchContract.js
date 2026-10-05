@@ -68,9 +68,12 @@
     let valid = object(result) && result.ok === true && result.schema_version === 1 && object(result.meta) && result.meta.source === 'production'
       && object(data) && data.operation === name && text(data.preview_ref) && /^[A-Za-z0-9_-]{32}$/.test(data.preview_ref)
       && context(data.write_context) && data.write_context && data.write_context.capabilities[name] === true && data.commit_policy === 'atomic';
-    if (valid && action === 'bulk') valid = data.action === input.action && Array.isArray(data.rows) && data.count === input.refs.length && data.rows.length === data.count
-      && new Set(data.rows.map(row => row.entity_ref)).size === data.count && data.rows.every(row => input.refs.includes(row.entity_ref)
-        && entity(row.before) && row.before.ref === row.entity_ref && (input.action === 'delete' ? row.after === null : object(row.after) && object(row.after.fields) && Array.isArray(row.after.operations)));
+    if (valid && action === 'bulk') {
+      const selected = new Set(input.refs);
+      valid = data.action === input.action && Array.isArray(data.rows) && data.count === input.refs.length && data.rows.length === data.count
+        && new Set(data.rows.map(row => row.entity_ref)).size === data.count && data.rows.every(row => selected.has(row.entity_ref)
+          && entity(row.before) && row.before.ref === row.entity_ref && (input.action === 'delete' ? row.after === null : object(row.after) && object(row.after.fields) && Array.isArray(row.after.operations)));
+    }
     if (valid && action === 'sync') valid = data.entity_ref === expectedRef && data.completeness_checked === true && Array.isArray(data.before) && data.before.every(operation)
       && Array.isArray(data.after) && data.after.every(row => object(row) && text(row.label) && ['setup_hours', 'unit_hours', 'external_days'].every(key => finite(row[key])))
       && object(data.change_counts) && ['added', 'removed', 'updated', 'unchanged'].every(key => count(data.change_counts[key]))

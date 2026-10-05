@@ -97,7 +97,7 @@
     }
     function reload() { commands.restore(); refresh(); }
     const title = data ? data.name || U.sourceLabel(data.base_identity) : '尚未选择试调草稿或试调方案';
-    return <div className="plana trial-workspace" data-trial-workspace data-open-ref={key} data-open-kind={isScenario ? 'scenario' : 'draft'}><window.TrialStyles />
+    return <div className="plana trial-workspace" data-trial-workspace data-open-ref={key} data-open-kind={isScenario ? 'scenario' : 'draft'}>
       <header className="tt-heading"><div><h2 className="wb-page-title">试调排产方案</h2><span className="tt-muted wb-page-context">{title}{data && ' · ' + U.statusLabel(data.status)}</span></div><div className="tt-tools">
         {onNavigate && <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>}
         <U.Button icon="folder-open" onClick={() => setDirectory(!directory)} aria-expanded={directory}>草稿 / 试调方案列表</U.Button>
@@ -133,12 +133,12 @@
       {data && ['save', 'discard'].includes(modal) && <Finish data={data} kind={modal} commands={actions} onClose={() => setModal(null)} onRecheck={reload} />}
     </div>;
   }
-  // Load after TrialContract/API/Session/Controls/Catalog/Gantt/Details/Results/Styles.
+  // Load after TrialContract/API/Session/Controls/Catalog/Gantt/Details/Results.
   // initialTarget: {} | {draft_ref} | {scenario_ref} | {base:{plan_ref|candidate_ref},scope?}.
   // task_origin stays in navigation only; saved scenarios clear the original-task focus.
   function WorkbenchTrialWorkspace({ initialTarget = {}, onNavigate, renderAdoption, onTargetChange }) {
     try { C.target(initialTarget); }
-    catch (error) { return <div className="trial-workspace"><window.TrialStyles /><U.ErrorBox error={error} /></div>; }
+    catch (error) { return <div className="trial-workspace"><U.ErrorBox error={error} /></div>; }
     return <Session key={JSON.stringify(initialTarget)} initialTarget={initialTarget} onNavigate={onNavigate} renderAdoption={renderAdoption} onTargetChange={onTargetChange} />;
   }
   window.WorkbenchTrialWorkspace = WorkbenchTrialWorkspace;

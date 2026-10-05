@@ -18,8 +18,9 @@
     A.check(A.equal(read(), previous), '上次采用操作的记录已变化，没有覆盖其他页面的记录。'); A.check(value === null || valid(value));
     try { if (value === null) window.localStorage.removeItem(KEY); else window.localStorage.setItem(KEY, JSON.stringify(value)); }
     catch (_) { throw new Error('存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。'); }
-    A.check(A.equal(read(), value), '这次采用操作的记录没有完整存上，不能开始提交。');
-    window.dispatchEvent(new Event(EVENT)); return value;
+    const stored = read();
+    A.check(A.equal(stored, value), '这次采用操作的记录没有完整存上，不能开始提交。');
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: stored })); return stored;
   }
   function begin(preview, values, previous) {
     const scope = A.overview(preview), input = A.input(values);
@@ -47,15 +48,16 @@
     current.current = { original, disabled }; const identity = JSON.stringify(original);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; if (request.current) request.current.abort(); }; }, []);
     React.useEffect(() => { setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, disabled]);
-    function sync() {
+    function sync(event) {
       try {
-        const value = read();
+        const value = event && event.type === EVENT ? event.detail : read();
+        if (event && event.type === EVENT) A.check(value === null || valid(value), '上次采用操作的记录不完整。请不要再操作，联系维护人员。');
         if (!A.equal(value, active.current)) { active.current = value; setSaved(value); setPreview(null); setConsent(false); if (value) setDraft(value.input); }
         setStorageError('');
       } catch (e) { setStorageError(e.message); }
     }
     React.useEffect(() => {
-      const changed = e => { if (!e.key || e.key === KEY) sync(); };
+      const changed = e => { if (!e.key || e.key === KEY) sync(e); };
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);

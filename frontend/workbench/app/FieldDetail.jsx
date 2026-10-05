@@ -15,7 +15,7 @@
       const rect = event.currentTarget.getBoundingClientRect();
       setTip({ title, x: rect.left, y: rect.bottom });
     }
-    return <div className="field-timeline" role="region" aria-label="作业时间线"><window.PointGantt.Styles /><div className="field-timeline-axis"><span>{C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))}</span><span>{C.date(new Date(Math.max(...points)).toISOString().slice(0, 19))}</span></div>
+    return <div className="field-timeline" role="region" aria-label="作业时间线"><div className="field-timeline-axis"><span>{C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))}</span><span>{C.date(new Date(Math.max(...points)).toISOString().slice(0, 19))}</span></div>
       {rows.map(row => {
         const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
           + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');

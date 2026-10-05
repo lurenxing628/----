@@ -10,7 +10,7 @@
       try {
         const intent = typeof adapter.readPending === 'function' && adapter.readPending();
         if (intent) state = { phase: 'pending', intent, restored: true };
-      } catch (error) { state = { phase: 'pending', error }; }
+      } catch (error) { state = { phase: 'pending', error, ...(error.intent ? { intent: error.intent, restored: true } : {}) }; }
       sessions.set(adapter, { state, listeners: new Set(), running: false });
     }
     return sessions.get(adapter);
@@ -21,17 +21,27 @@
   function useQuery(load, dependencies, enabled = true) {
     const [state, setState] = React.useState({ loading: enabled, result: null, error: null });
     const [revision, setRevision] = React.useState(0);
+    const requested = React.useRef(null);
     const identity = React.useMemo(() => ({}), dependencies.concat([revision, enabled]));
     React.useEffect(() => {
-      let active = true; const controller = new AbortController();
-      if (!enabled) { setState({ identity, loading: false, result: null, error: null }); return () => controller.abort(); }
+      let active = true; const controller = new AbortController(), next = requested.current;
+      requested.current = null;
+      if (!enabled) { setState({ identity, loading: false, result: null, error: null }); if (next) next.reject(new DOMException('读取已取消', 'AbortError')); return () => controller.abort(); }
       setState({ identity, loading: true, result: null, error: null });
-      Promise.resolve().then(() => load(controller.signal)).then(result => {
-        if (active) setState({ identity, loading: false, result, error: null });
-      }, error => { if (active) setState({ identity, loading: false, result: null, error }); });
-      return () => { active = false; controller.abort(); };
+      Promise.resolve().then(() => (next ? next.load : load)(controller.signal)).then(result => {
+        if (active) { setState({ identity, loading: false, result, error: null }); if (next) next.resolve(result); }
+      }, error => { if (active) { setState({ identity, loading: false, result: null, error }); if (next) next.reject(error); } });
+      return () => { active = false; controller.abort(); if (next) next.reject(new DOMException('读取已取消', 'AbortError')); };
     }, [identity]);
-    return { ...(state.identity === identity ? state : { loading: enabled, result: null, error: null }), reload: () => setRevision(value => value + 1) };
+    React.useEffect(() => () => {
+      const next = requested.current; requested.current = null;
+      if (next) next.reject(new DOMException('读取已取消', 'AbortError'));
+    }, []);
+    return { ...(state.identity === identity ? state : { loading: enabled, result: null, error: null }), reload: () => setRevision(value => value + 1),
+      reloadAndWait: nextLoad => new Promise((resolve, reject) => {
+        if (requested.current) requested.current.reject(new DOMException('读取已取消', 'AbortError'));
+        requested.current = { load: nextLoad, resolve, reject }; setRevision(value => value + 1);
+      }) };
   }
   function useCommand(adapter) {
     const store = session(adapter);
@@ -129,21 +139,21 @@
       value.basis === 'static_resource_facts_not_schedule_precheck' && typeof value.message === 'string' && object(value.items) &&
       Object.keys(C.nodes).every(key => object(value.items[key]) && object(value.items[key].counts) && issues(value.items[key].issues));
   }
-  function useSummary(adapter, revision) {
+  function useSummary(adapter, revision, enabled = true) {
     return useQuery(async signal => {
       if (typeof adapter.summary !== 'function') throw C.failure('dependency not wired: adapter.summary');
       const result = C.query(await adapter.summary(signal), 'summary'), data = { ...result.data };
       if (!calendarSummary(data.calendar)) { data.calendar = null; data.calendar_error = '读到的班表汇总不完整，请刷新后重试。'; }
       if (!readinessSummary(data.readiness)) { data.readiness = null; data.readiness_error = '读到的就绪度数据不完整，请刷新后重试。'; }
       return { ...result, data };
-    }, [adapter, revision]);
+    }, [adapter, revision], enabled);
   }
   function useCounts(adapter, revision) {
     const read = useSummary(adapter, revision), data = read.result && read.result.data;
     const names = { process: 'part', op_int: 'internal_op_types', op_ext: 'external_op_types' };
     const error = read.error ? C.message(read.error) : null;
     const counts = Object.fromEntries(Object.keys(C.nodes).map(node => [node, { total: data ? data.counts[names[node] || node] : null, error }]));
-    counts.summary = { data, loading: read.loading, error, reload: read.reload };
+    counts.summary = { ...read, data };
     return counts;
   }
   window.APSResourceSession = { useQuery, useCommand, useCounts, useSummary };

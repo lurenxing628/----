@@ -10,7 +10,6 @@
     Modal
   } = window.ResourceControls;
   const {
-    Styles,
     Toolbar,
     Range,
     Chain,
@@ -72,7 +71,7 @@
     const seed = React.useMemo(() => initial(initialContext), []),
       key = JSON.stringify(initialContext),
       saved = sessions.get(key);
-    const api = React.useMemo(() => supplied || window.ActualGanttAPI.create(), [supplied]);
+    const api = React.useMemo(() => window.ActualGanttAPI.adapter(supplied || window.ActualGanttAPI.create()), [supplied]);
     const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope),
       [refresh, setRefresh] = React.useState(0);
     const [result, setResult] = React.useState(null),
@@ -150,7 +149,7 @@
             return;
           }
           input = C.scope(input);
-          const response = C.workspace(await api.load(input, controller.signal), input);
+          const response = await api.load(input, controller.signal);
           if (initialContext.operation_ref && seed.selected) {
             const task = response.data.items.find(item => item.task.task_ref === seed.selected);
             if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，未改指其他安排。');
@@ -186,7 +185,10 @@
       version: captionPlan.kind === 'official' && Number.isSafeInteger(captionPlan.version) ? window.WorkbenchTerms.plan_version(captionPlan.version) : undefined,
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
-    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, view, result]);
+    const selectedFilter = view.onlySelected ? view.selected : null;
+    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, result && result.meta.as_of, view.query, view.late, view.onlySelected, selectedFilter, view.mode, view.collapsed]);
+    const stats = React.useMemo(() => data ? M.metrics(data) : null, [data]);
+    const taskIndex = React.useMemo(() => data ? new Map(data.items.map(item => [item.task.task_ref, item])) : null, [data]);
     const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
     window.WorkbenchPageContext.useSnapshot(data ? {
       plan_ref: data.plan.plan_ref,
@@ -355,10 +357,9 @@
         report: report ? report.report_ref : null
       });
     }
-    const selected = data && data.items.find(item => item.task.task_ref === view.selected);
-    const stats = data && M.metrics(data);
+    const selected = taskIndex && taskIndex.get(view.selected);
     const report = selected && selected.execution && selected.execution.reports.find(r => r.report_ref === view.report);
-    const targetTask = data && chainTarget && data.items.map(item => item.task).filter(task => chainTarget.includes(task.task_ref)).sort((a, b) => a.end.localeCompare(b.end) || a.task_ref.localeCompare(b.task_ref)).pop();
+    const targetTask = React.useMemo(() => taskIndex && chainTarget && Array.from(new Set(chainTarget)).map(ref => taskIndex.get(ref)).filter(Boolean).map(item => item.task).sort((a, b) => a.end.localeCompare(b.end) || a.task_ref.localeCompare(b.task_ref)).pop(), [taskIndex, chainTarget]);
     const targetRef = targetTask ? targetTask.task_ref : null;
     React.useEffect(() => {
       if (!view.chain || !targetRef || !data) return;
@@ -480,7 +481,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "plana fg-page fg-live",
       "data-actual-gantt": true
-    }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "fg-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"

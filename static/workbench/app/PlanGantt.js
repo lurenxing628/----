@@ -341,7 +341,7 @@
           locate();
         }
       }
-    }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "plan-toolbar"
     }, /*#__PURE__*/React.createElement(Segment, {
       value: mode,

@@ -14,19 +14,8 @@
   const writeReason = '请先检查所选模板是否可采用。';
   const viewReason = '当前来源暂不能查看。';
   function useRead(load, identity, adapter, enabled = true) {
-    const [state, setState] = React.useState({ result: null, error: null, busy: true, identity });
-    React.useEffect(() => {
-      const controller = new AbortController(); let active = true;
-      setState({ result: null, error: null, busy: enabled, identity });
-      if (enabled) Promise.resolve().then(() => load(controller.signal)).then(result => {
-        if (active) setState({ result, error: null, busy: false, identity });
-      }, error => { if (active) setState({ result: null, error, busy: false, identity }); });
-      return () => { active = false; controller.abort(); };
-    }, [identity, adapter, enabled]);
-    return state.identity === identity ? state : { result: null, error: null, busy: enabled };
-  }
-  function Styles() {
-    return null;
+    const read = window.APSResourceSession.useQuery(load, [identity, adapter], enabled);
+    return { ...read, busy: read.loading };
   }
   function Filters({ value, onChange, disabled }) {
     const [query, setQuery] = React.useState(value.query);
@@ -69,5 +58,5 @@
         disabled={disabled} reasonDisplay="tooltip" reason={canView && row.capabilities.view === true ? '' : viewReason} onClick={() => onSelect(row.suggestion_ref)} /></td>
     </tr>)}</tbody></table>{!rows.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前筛选没有记录" hint="调整图号、工序来源或建议状态后重新查询。" />}</div>;
   }
-  window.CalibrationControls = { Button, Icon, ErrorBox, Styles, Filters, Page, Table, useRead, text, amount, hours, unitHours, percent, source, statusText, writeReason, viewReason };
+  window.CalibrationControls = { Button, Icon, ErrorBox, Filters, Page, Table, useRead, text, amount, hours, unitHours, percent, source, statusText, writeReason, viewReason };
 })();

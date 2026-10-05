@@ -111,7 +111,7 @@
     check(new Set(d.runs.map(r => r.run_ref)).size === d.runs.length); return d;
   }
   function create(fetcher = window.fetch.bind(window)) {
-    return { async catalog(query = {}, signal) {
+    return window.APSReadBoundary.verified({ async catalog(query = {}, signal) {
       const q = scope(query), controller = new AbortController(), abort = () => controller.abort();
       if (signal) { if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true }); }
       const timer = setTimeout(abort, 60000);
@@ -129,7 +129,10 @@
         if (controller.signal.aborted && !(signal && signal.aborted)) { const timeout = new Error('排产记录读取超时，请刷新重试。'); timeout.code = 'timeout'; throw timeout; }
         throw error;
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
-    } };
+    } }, ['catalog']);
   }
-  window.RunHistoryAPI = { create, check, scope, context, returnContext, catalog, ref, date, time, states };
+  function adapter(value) {
+    return window.APSReadBoundary.checked(value, { catalog: (result, query) => catalog(result, query) });
+  }
+  window.RunHistoryAPI = { create, adapter, check, scope, context, returnContext, catalog, ref, date, time, states };
 })();

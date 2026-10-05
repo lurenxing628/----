@@ -1,6 +1,5 @@
 """Current React components + real Flask routes, restricted to disposable SQLite."""
 
-import hashlib
 import json
 import os
 import subprocess
@@ -45,6 +44,11 @@ def run_browser(api, scenario):
     assert 0 < server.server_port == server.socket.getsockname()[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     node, browser, modules = runtime_tools()
+    source = ROOT / "frontend/workbench/app"
+    source_names = ("SystemRestoreStatus.js", "SystemMaintenanceAPI.js", "SystemMaintenanceControls.jsx",
+                    "SystemRestorePanel.jsx", "SystemMaintenanceRecords.jsx", "SystemMaintenanceConfig.jsx",
+                    "SystemMaintenanceWorkspace.jsx")
+    source_bytes = {name: (source / name).read_bytes() for name in source_names}
     thread.start()
     print("SYSTEM_CONFIG_SAVED_ARTIFACTS " + str(output), flush=True)
     try:
@@ -74,8 +78,7 @@ def run_browser(api, scenario):
     assert report["errors"] == [] and report["external"] == []
     assert report["cases"] and all(row["passed"] for row in report["cases"])
     assert report["data_source"] == "real-temporary-flask-api"
-    for name, digest in report["source_sha256"].items():
-        assert hashlib.sha256((ROOT / "frontend/workbench/app" / name).read_bytes()).hexdigest() == digest
+    assert source_bytes == {name: (source / name).read_bytes() for name in source_names}
     assert {row[1] for row in after["SystemConfig"]} == set(values)
     if scenario == "minimal":
         assert api.read("/config")["data"]["values"]["auto_backup_interval_minutes"] == 121

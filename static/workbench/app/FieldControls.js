@@ -23,9 +23,6 @@
       icon: iconAliases[icon] || icon
     });
   }
-  function Styles() {
-    return null;
-  }
   function State({
     value
   }) {
@@ -57,7 +54,6 @@
     }, "\u5237\u65B0\u5DF2\u786E\u8BA4\u7ED3\u679C")));
   }
   window.FieldControls = {
-    Styles,
     Button,
     Icon,
     ErrorBox,

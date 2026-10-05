@@ -110,13 +110,9 @@
       value: B.label('ready_status', entity.display_ready_status)
     })) : select('ready_status', '齐套显示', B.ready), input('ready_date', '齐套日期', 'date'), input('remark', '备注'));
   }
-  function Styles() {
-    return null;
-  }
   window.BatchControls = {
     Field,
     BaseFields,
-    Styles,
     display
   };
 })();

@@ -24,7 +24,7 @@ function freeze(value) {
 // Inspect parser and button wiring without executing reads or fabricating successful API data.
 let renderState;
 const Button = Symbol('Button'), ErrorBox = Symbol('ErrorBox');
-const window = {ResourceControls: {Button, ErrorBox}, BatchControls: {Styles: Symbol('Styles')}, BatchTable: Symbol('BatchTable'),
+const window = {ResourceControls: {Button, ErrorBox}, BatchControls: {}, BatchTable: Symbol('BatchTable'),
   WorkbenchGuards: {useDirtyGuard: () => 'batch-contract-test'},
   WorkbenchTerms: {outcomes: {unavailable: '此功能尚未开通。'}},
   APSResourceSession: {

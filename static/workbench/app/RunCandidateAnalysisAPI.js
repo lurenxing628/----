@@ -128,14 +128,21 @@
         if (signal) signal.removeEventListener('abort', abort);
       }
     }
-    return {
+    return window.APSReadBoundary.verified({
       ...A.create(fetcher),
       analysis: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'analysis', analysis, signal),
       adoptions: (candidateRef, runRef, signal) => read(candidateRef, runRef, 'adoptions', history, signal)
-    };
+    }, ['analysis', 'adoptions']);
+  }
+  function adapter(value) {
+    return window.APSReadBoundary.checked(A.adapter(value), {
+      analysis,
+      adoptions: history
+    });
   }
   window.RunCandidateAnalysisAPI = {
     create,
+    adapter,
     analysis,
     history,
     keys

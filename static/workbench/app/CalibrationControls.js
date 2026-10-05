@@ -31,49 +31,11 @@
   const writeReason = '请先检查所选模板是否可采用。';
   const viewReason = '当前来源暂不能查看。';
   function useRead(load, identity, adapter, enabled = true) {
-    const [state, setState] = React.useState({
-      result: null,
-      error: null,
-      busy: true,
-      identity
-    });
-    React.useEffect(() => {
-      const controller = new AbortController();
-      let active = true;
-      setState({
-        result: null,
-        error: null,
-        busy: enabled,
-        identity
-      });
-      if (enabled) Promise.resolve().then(() => load(controller.signal)).then(result => {
-        if (active) setState({
-          result,
-          error: null,
-          busy: false,
-          identity
-        });
-      }, error => {
-        if (active) setState({
-          result: null,
-          error,
-          busy: false,
-          identity
-        });
-      });
-      return () => {
-        active = false;
-        controller.abort();
-      };
-    }, [identity, adapter, enabled]);
-    return state.identity === identity ? state : {
-      result: null,
-      error: null,
-      busy: enabled
+    const read = window.APSResourceSession.useQuery(load, [identity, adapter], enabled);
+    return {
+      ...read,
+      busy: read.loading
     };
-  }
-  function Styles() {
-    return null;
   }
   function Filters({
     value,
@@ -288,7 +250,6 @@
     Button,
     Icon,
     ErrorBox,
-    Styles,
     Filters,
     Page,
     Table,

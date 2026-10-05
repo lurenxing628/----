@@ -43,9 +43,6 @@
     resource_ref: '已选资源'
   };
   const focuses = [['all', '全部工序'], ['unreported', '待报工'], ['unclosed', '到期未确认完成'], ['late_open', '超时未确认完成'], ['finish_late', '已确认晚完成'], ['complete', '已确认整道完工'], ['data_gaps', '数据待补']];
-  function Styles() {
-    return null;
-  }
   function Scope({
     value,
     onChange,
@@ -275,31 +272,10 @@
     }, "\u964D\u5E8F"))));
   }
   function useRead(load, identity) {
-    const [result, setResult] = React.useState(null),
-      [error, setError] = React.useState(null),
-      [busy, setBusy] = React.useState(true);
-    React.useEffect(() => {
-      const controller = new AbortController();
-      let active = true;
-      setBusy(true);
-      setError(null);
-      setResult(null);
-      Promise.resolve().then(() => load(controller.signal)).then(value => {
-        if (active) setResult(value);
-      }, failure => {
-        if (active) setError(failure);
-      }).finally(() => {
-        if (active) setBusy(false);
-      });
-      return () => {
-        active = false;
-        controller.abort();
-      };
-    }, [identity]);
+    const read = window.APSResourceSession.useQuery(load, [identity]);
     return {
-      result,
-      error,
-      busy
+      ...read,
+      busy: read.loading
     };
   }
   window.ReportControls = {
@@ -310,7 +286,6 @@
     useRead,
     Button,
     Icon,
-    ErrorBox,
-    Styles
+    ErrorBox
   };
 })();

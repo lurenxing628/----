@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const S = window.APSResourceSession, { Styles, Button, ErrorBox, Feedback } = window.FieldControls;
+  const S = window.APSResourceSession, { Button, ErrorBox, Feedback } = window.FieldControls;
   let productionAdapter;
   function FieldWorkspace({ adapter, onNavigate, initialContext = {} }) {
     const api = React.useMemo(() => adapter || (productionAdapter || (productionAdapter = window.FieldAPI.create())), [adapter]);
@@ -77,7 +77,7 @@
     const returnTarget = initialContext.return_to;
     const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget && returnTarget.view;
     const canReturn = ['analysis', 'gantt', 'fieldgantt', 'reports', 'review', 'dashboard'].includes(returnView);
-    return <section className="plana field-workspace" data-field-workspace aria-label="现场记录"><Styles />
+    return <section className="plana field-workspace" data-field-workspace aria-label="现场记录">
       <div className="field-toolbar"><h2 className="wb-page-title">现场记录</h2><span className="field-note wb-page-context">{data ? data.plan ? data.plan.display_name : '暂无正式计划' : read.loading ? '正在读取计划' : '计划未读取'}</span><span className="field-space" />
         {canReturn && onNavigate && <Button icon="arrow-left" disabled={blocked} onClick={() => onNavigate(returnView, typeof returnTarget === 'object' ? returnTarget.context || {} : { plan_ref: effectiveScope.plan_ref })}>返回</Button>}
         <Button icon="refresh-cw" aria-label="刷新现场记录" disabled={blocked || read.loading} onClick={refresh} />

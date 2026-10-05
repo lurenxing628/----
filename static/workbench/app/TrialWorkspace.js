@@ -264,7 +264,7 @@
       "data-trial-workspace": true,
       "data-open-ref": key,
       "data-open-kind": isScenario ? 'scenario' : 'draft'
-    }, /*#__PURE__*/React.createElement(window.TrialStyles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "tt-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
@@ -421,7 +421,7 @@
       onRecheck: reload
     }));
   }
-  // Load after TrialContract/API/Session/Controls/Catalog/Gantt/Details/Results/Styles.
+  // Load after TrialContract/API/Session/Controls/Catalog/Gantt/Details/Results.
   // initialTarget: {} | {draft_ref} | {scenario_ref} | {base:{plan_ref|candidate_ref},scope?}.
   // task_origin stays in navigation only; saved scenarios clear the original-task focus.
   function WorkbenchTrialWorkspace({
@@ -435,7 +435,7 @@
     } catch (error) {
       return /*#__PURE__*/React.createElement("div", {
         className: "trial-workspace"
-      }, /*#__PURE__*/React.createElement(window.TrialStyles, null), /*#__PURE__*/React.createElement(U.ErrorBox, {
+      }, /*#__PURE__*/React.createElement(U.ErrorBox, {
         error: error
       }));
     }

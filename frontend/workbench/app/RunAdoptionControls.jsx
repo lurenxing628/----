@@ -48,8 +48,5 @@
         <Records value={value} intent={intent} result={result} />
       </div></Modal>;
   }
-  function Styles() {
-    return null;
-  }
-  window.RunAdoptionControls = { Button, Dialog, Styles };
+  window.RunAdoptionControls = { Button, Dialog };
 })();

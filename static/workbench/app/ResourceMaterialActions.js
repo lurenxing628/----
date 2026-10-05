@@ -290,7 +290,7 @@
     const refs = Array.isArray(original.refs) ? original.refs : [];
     return /*#__PURE__*/React.createElement("div", {
       className: 'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')
-    }, /*#__PURE__*/React.createElement(Preview.Styles, null), /*#__PURE__*/React.createElement(Modal, {
+    }, /*#__PURE__*/React.createElement(Modal, {
       title: title,
       icon: effectiveMode === 'bulk' ? 'trash-2' : isExport ? 'file-output' : 'file-input',
       onClose: close,

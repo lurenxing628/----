@@ -22,9 +22,6 @@
       name: "rotate-ccw"
     }), children);
   }
-  function Styles() {
-    return null;
-  }
   function ErrorBox({
     error
   }) {
@@ -33,43 +30,13 @@
     }) : null;
   }
   function useRead(api, kind, input, revision, enabled = true) {
-    const [state, setState] = React.useState({
-      data: null,
-      error: null,
-      loading: true
-    });
     const signature = JSON.stringify(input);
-    React.useEffect(() => {
-      if (!enabled) {
-        setState({
-          data: null,
-          error: null,
-          loading: false
-        });
-        return;
-      }
-      const controller = new AbortController();
-      setState({
-        data: null,
-        error: null,
-        loading: true
-      });
-      api.read(kind, input, controller.signal).then(data => {
-        if (!controller.signal.aborted) setState({
-          data,
-          error: null,
-          loading: false
-        });
-      }).catch(error => {
-        if (!controller.signal.aborted) setState({
-          data: null,
-          error,
-          loading: false
-        });
-      });
-      return () => controller.abort();
-    }, [api, kind, signature, revision, enabled]);
-    return state;
+    const query = window.APSResourceSession.useQuery(signal => api.read(kind, input, signal), [api, kind, signature, revision], enabled);
+    return {
+      data: query.result,
+      error: query.error,
+      loading: query.loading
+    };
   }
   function Confirm({
     action,
@@ -224,7 +191,6 @@
   }
   window.SystemMaintenanceControls = {
     Button,
-    Styles,
     ErrorBox,
     useRead,
     Confirm,

@@ -34,10 +34,14 @@
     return adapter;
   }
   function recovery(adapters) {
+    function readPending(adapter) {
+      try { return typeof adapter.readPending === 'function' && adapter.readPending(); }
+      catch (error) { if (error.intent) return error.intent; throw error; }
+    }
     const pending = [{ type: 'base', adapter: adapters.base }, ...fileKinds.map(kind => ({ type: 'file', kind, adapter: adapters.files[kind] })),
       ...importOnlyKinds.map(kind => ({ type: 'file_only', kind, adapter: adapters.imports[kind] })),
       { type: 'catalog', adapter: adapters.catalog }, { type: 'calendar', adapter: adapters.calendar }, { type: 'process', adapter: adapters.process }]
-      .map(item => ({ ...item, intent: typeof item.adapter.readPending === 'function' && item.adapter.readPending() })).find(item => item.intent);
+      .map(item => ({ ...item, intent: readPending(item.adapter) })).find(item => item.intent);
     if (!pending) return null;
     const intent = pending.intent, kind = pending.kind || intent.kind;
     const node = pending.type === 'process' ? 'process' : pending.type === 'calendar' ? 'calendar'
@@ -127,7 +131,7 @@
         rememberEnabled={!auxiliary && !deferred && !hostError && !boot.error && !boot.target.error}
         initialContext={deferred || boot.error ? undefined : boot.target.context} onNavigationReady={setNavigationReady}
         renderPart={({ onRefresh, initialContext, rememberEnabled }) => <window.ProcessWorkspace adapter={adapters.process} onCommitted={onRefresh} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady} />}
-        renderCalendar={({ onCommitted, initialContext, rememberEnabled }) => <window.ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady}
+        renderCalendar={({ onCommitted, initialContext, rememberEnabled, summaryState }) => <window.ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} initialContext={initialContext} rememberEnabled={rememberEnabled} summaryState={summaryState} onNavigationReady={setNavigationReady}
           onOpenFile={(mode, context) => adapters.base.openCalendarFile(mode, { refs: [], scope: {}, ...context, onCommitted })} />} />
       {auxiliary && (auxiliary.type === 'catalog' ? <window.ResourceCatalog kind={auxiliary.kind} adapter={adapters.catalog} onClose={close} onCommitted={committed} /> :
         calendarFileKinds.includes(auxiliary.kind) ? <window.CalendarFileActions kind={auxiliary.kind} month={auxiliary.request.month} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.imports[auxiliary.kind]} onClose={close} onCommitted={committed} /> :

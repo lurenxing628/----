@@ -30,8 +30,7 @@
   }
   async function read(scenarioRef, q, signal) {
     C.check(C.ref(scenarioRef) && states.includes(q.status) && Number.isSafeInteger(q.page) && q.page > 0 && Number.isSafeInteger(q.size) && q.size > 0 && q.size <= 50);
-    const value = await window.TrialAPI.read('/trial/scenarios/' + scenarioRef + '/adoption-history', q, signal);
-    return validate(value, scenarioRef, q);
+    return window.TrialAPI.read('/trial/scenarios/' + scenarioRef + '/adoption-history', q, signal, value => validate(value, scenarioRef, q));
   }
   window.TrialAdoptionHistoryAPI = {
     read,

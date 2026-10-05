@@ -15,6 +15,7 @@
     </dl></details>;
   }
   function History({ data }) {
+    const navigate = window.WorkbenchPageContext.useNavigate();
     const ref = data.scenario_ref;
     const [query, setQuery] = React.useState(() => { try { return S.restore(ref); } catch (error) { return { error }; } });
     const [error, setError] = React.useState(null), [revision, refresh] = React.useReducer(n => n + 1, 0);
@@ -34,7 +35,7 @@
       setError(null); setQuery(next); refresh();
     }
     const result = read.result, d = result && result.data;
-    return <section className="trial-adoption-history" aria-label="本试调方案的采用记录"><window.TrialAdoptionHistoryStyles />
+    return <section className="trial-adoption-history" aria-label="本试调方案的采用记录">
       <div className="tah-toolbar"><label>采用状态<select aria-label="采用状态" value={query.status || 'all'} disabled={read.busy || !!query.error}
         onChange={e => update({ status: e.target.value, page: 1 })}>{Object.keys(labels).map(key => <option value={key} key={key}>{labels[key]}</option>)}</select></label>
         <label>每页<select aria-label="采用记录每页" value={query.size || 20} disabled={read.busy || !!query.error} onChange={e => update({ size: Number(e.target.value), page: 1 })}>
@@ -48,7 +49,7 @@
         <ol className="tah-list">{d.items.map(item => <li key={item.receipt_ref} data-adoption-receipt={item.receipt_ref}>
           <div className="tah-head"><strong>正式计划第 {item.committed_plan.version} 版</strong><span className={'tah-state tah-' + item.current_state}>{labels[item.current_state]}</span>
             <span>{item.committed_plan.row_count} 道工序</span><U.Button icon="arrow-right" disabled={item.current_state === 'unavailable'}
-              onClick={() => { try { S.openPlan(ref, item.committed_plan.plan_ref); } catch (error) { setError(error); } }}>查看正式计划</U.Button></div>
+              onClick={async () => { try { await S.openPlan(ref, item.committed_plan.plan_ref, navigate); } catch (error) { setError(error); } }}>查看正式计划</U.Button></div>
           <p>采用人：{text(item.adoption.application_operator)} · 经办人：{text(item.adoption.declared_operator)}</p>
           <p>采用原因：{text(item.adoption.reason)}</p><p className="tah-meta">{U.timeLabel(item.adoption.adopted_at)} · 当时的正式计划 {d.source.baseline.plan_ref ? '第 ' + d.source.baseline.version + ' 版' : '无'}</p>
           {item.evidence_gaps.map((issue, index) => <p className="tah-gap" key={index}>{issue.message}</p>)}<Evidence item={item} source={d.source} />

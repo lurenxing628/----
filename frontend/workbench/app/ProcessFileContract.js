@@ -126,7 +126,7 @@
     return result;
   }
   function receipt(result, intent, requestedKind, previewData, targetRef) {
-    if (!intent || intent.kind !== 'process_' + kind(requestedKind) + '_import' || intent.action !== 'confirm' || !A.token(intent.ref)
+    if (!intent || intent.kind !== 'process_' + kind(requestedKind) + '_import' || intent.action !== 'confirm' || intent.ref !== undefined && !A.token(intent.ref)
         || C.receipt(result) !== 'terminal' || !['committed', 'unchanged'].includes(result.result) || result.data.kind !== requestedKind
         || !Array.isArray(result.data.rows) || !result.data.rows.every(row => C.object(row) && count(row.row) && row.row > 0 && A.ref(row.entity_ref)
           && text(row.business_code) && ['committed', 'unchanged'].includes(row.result) && (!C.own(row, 'sequence') || sequence(row.sequence)))

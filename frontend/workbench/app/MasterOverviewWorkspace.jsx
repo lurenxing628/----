@@ -131,7 +131,7 @@
     }
     const overview = summary && summary.overview, metrics = overview && overview.stats;
     const empty = { scope, rows: [], page: { number: 1, size: scope.size, total: 0, pages: 1 } };
-    return <section className="plana master-overview" aria-label="资料总览"><window.MasterOverviewStyles />
+    return <section className="plana master-overview" aria-label="资料总览">
       <header className="mo-heading"><div><h2 className="wb-page-title">资料总览</h2><p className="wb-page-context">{summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料 · 未读取'}</p></div>
         <div className="mo-actions"><Button reasonDisplay="inline" className="btn mo-icon" icon="refresh-cw" aria-label="刷新资料" onClick={refresh} />
           <Button reasonDisplay="inline" transfer="export" disabled={!data || !data.page.total || pending || exporting} onClick={exportRows}>导出筛选结果</Button>

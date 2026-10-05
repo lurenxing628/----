@@ -11,12 +11,13 @@
   const validTime = value => typeof value === 'string' && time(value) && Number.isFinite(Date.parse(value + 'Z')) && new Date(value + 'Z').toISOString().slice(0, 19) === value;
   // 计划应做数量缺失的三种说法：现场记录、现场实际甘特、计划甘特提示共用，不再各写一份。
   const quantityReasons = { plan_target_not_recorded: '原计划未记录应做数量', plan_target_unavailable: '原计划应做数量读不到', plan_target_invalid: '原计划应做数量无效' };
-  const quantity = value => window.WorkbenchFormat.number(value, { digits: 0 });
+  const quantity = (value, options = { digits: 0 }) => typeof value === 'string'
+    ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, options);
   // 有效工时按录入精度最多显示三位小数；单位由表头或调用处补。
   const hours = value => value === null || value === undefined || value === '' ? '未知' : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
   const pieceLabel = value => value.piece_id === null ? '共同工序' : '分件 ' + value.piece_id;
   function planQuantity(value) {
-    const valid = n => Number.isSafeInteger(n) && n >= 0;
+    const valid = C.nonnegativeInt64;
     if (!(value.piece_id === null || typeof value.piece_id === 'string' && value.piece_id.trim() && !value.piece_id.includes('\0'))
       || ![value.quantity, value.batch_quantity].every(n => n === null || valid(n))) return false;
     if (value.quantity_basis === 'unknown') return value.quantity === null && value.batch_quantity === null

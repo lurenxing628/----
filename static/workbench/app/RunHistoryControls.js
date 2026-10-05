@@ -269,16 +269,12 @@
       }, true)
     }));
   }
-  function Styles() {
-    return null;
-  }
   window.RunHistoryControls = {
     Button,
     ErrorBox,
     Filters,
     Table,
     Pager,
-    Styles,
     timeLabel
   };
 })();

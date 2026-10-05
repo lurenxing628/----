@@ -277,9 +277,6 @@
       rows: task.data_gaps
     })));
   }
-  function Styles() {
-    return null;
-  }
   function Delivery({
     data,
     onLast
@@ -352,7 +349,6 @@
     Catalog,
     Generation,
     Detail,
-    Delivery,
-    Styles
+    Delivery
   };
 })();

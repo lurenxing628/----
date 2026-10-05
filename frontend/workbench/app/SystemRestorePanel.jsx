@@ -1,9 +1,6 @@
 (function () {
   'use strict';
   const C = window.SystemMaintenanceControls, R = window.SystemRestoreStatus;
-  function Styles() {
-    return null;
-  }
   function Panel({ command, api, theme, onSetTheme }) {
     const { host, intent } = command;
     const original = intent && intent.request_key || host && host.request_key || '';
@@ -41,7 +38,7 @@
       ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']
     ];
     return ReactDOM.createPortal(<div className="sm-workbench sm-maintenance-workspace plana sm-restore-screen" data-restore-maintenance="warm" ref={screen} tabIndex={-1}>
-      <Styles /><C.Styles />
+
       <header className="sm-restore-bar"><strong>APS 智能排产 · 系统维护</strong><fieldset className="sm-choice"><legend>主题</legend>{[['light', '浅色'], ['dark', '深色']].map(([value, label]) =>
         <label key={value}><input type="radio" name="restore-theme" checked={theme === value} onChange={() => onSetTheme(value)} />{label}</label>)}</fieldset></header>
       <main className="sm-restore-content"><h1>{command.hostError ? '无法读取维护状态' : description.title}</h1><p className="sm-meta">维护状态</p>

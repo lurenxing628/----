@@ -3,9 +3,6 @@
 
   const C = window.SystemMaintenanceControls,
     R = window.SystemRestoreStatus;
-  function Styles() {
-    return null;
-  }
   function Panel({
     command,
     api,
@@ -85,7 +82,7 @@
       "data-restore-maintenance": "warm",
       ref: screen,
       tabIndex: -1
-    }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("header", {
+    }, /*#__PURE__*/React.createElement("header", {
       className: "sm-restore-bar"
     }, /*#__PURE__*/React.createElement("strong", null, "APS \u667A\u80FD\u6392\u4EA7 \xB7 \u7CFB\u7EDF\u7EF4\u62A4"), /*#__PURE__*/React.createElement("fieldset", {
       className: "sm-choice"

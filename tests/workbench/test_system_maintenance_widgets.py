@@ -1,7 +1,6 @@
 """Disposable V backend DTOs plus independent Chromium 109 component evidence."""
 
 import base64
-import hashlib
 import json
 import os
 import subprocess
@@ -107,9 +106,9 @@ def test_system_maintenance_widgets(restore_host, system_api):
     dto_path = output / "temporary-backend-dto.json"
     dto_path.write_text(json.dumps(dto, ensure_ascii=False, indent=2), encoding="utf-8")
     source = HERE.parents[1] / "frontend" / "workbench" / "app"
-    hashes = {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in NAMES}
+    source_bytes = {name: (source / name).read_bytes() for name in NAMES}
     manifest = HERE.parents[1] / "static" / "workbench" / "asset-manifest.json"
-    before_manifest = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    before_manifest = manifest.read_bytes()
     node, browser, modules = runtime_tools()
     print("SYSTEM_MAINTENANCE_WIDGET_ARTIFACTS " + str(output), flush=True)
     result = subprocess.run([node, str(HERE / "system_maintenance_widgets_probe.cjs"), str(output)],
@@ -126,10 +125,8 @@ def test_system_maintenance_widgets(restore_host, system_api):
     assert all(item["passed"] for item in report["cases"])
     # SystemLiveFiles 已随管理样例一起删除（2026-09-21）：文件大小格式只在本机维护记录表里核对。
     assert "maintenance-backup-size-format-preserves-event-and-dto" in {item["name"] for item in report["cases"]}
-    assert hashes == {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in NAMES}
-    report["source_sha256"] = hashes
-    report["asset_manifest_sha256_at_start"] = before_manifest
-    report["asset_manifest_sha256_at_end"] = hashlib.sha256(manifest.read_bytes()).hexdigest()
+    assert source_bytes == {name: (source / name).read_bytes() for name in NAMES}
+    assert manifest.read_bytes() == before_manifest
     report["temporary_backend_restore"] = {"state": dto["restore"]["data"]["operation"]["state"],
                                             "protection_created": True, "sqlite_fixture_guard": "directory-only"}
     (output / "system-maintenance-ui-result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

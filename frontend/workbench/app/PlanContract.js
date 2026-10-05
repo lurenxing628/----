@@ -10,12 +10,7 @@
   const exact = (value, keys) => object(value) && Reflect.ownKeys(value).length === keys.length && keys.every(key => own(value, key));
   const issues = value => Array.isArray(value) && value.every(row => exact(row, ['code', 'message']) && label(row.code) && label(row.message));
   const projections = ['baseline', 'calendar', 'occupancy', 'delivery_risks', 'process_order'];
-  function int64(value) {
-    if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0;
-    return typeof value === 'string' && /^[1-9][0-9]*$/.test(value)
-      && (value.length > 16 || value.length === 16 && value > '9007199254740991')
-      && (value.length < 19 || value.length === 19 && value <= '9223372036854775807');
-  }
+  const int64 = C.positiveInt64;
   function localTime(value) {
     if (typeof value !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.(?!000000$)[0-9]{6})?(?![\s\S])/.test(value)) return false;
     const [year, month, day, hour, minute, second] = value.slice(0, 19).split(/[-T:]/).map(Number);
@@ -126,7 +121,7 @@
       && (!timeScope || P.overlaps(row, timeScope.range_start, timeScope.range_end));
   }
   function taskQuantities(row) {
-    const valid = value => value === 0 || int64(value);
+    const valid = C.nonnegativeInt64;
     if (![row.quantity, row.batch_quantity].every(value => value === null || valid(value))) return false;
     if (row.quantity_basis === 'unknown') return row.quantity === null && row.batch_quantity === null
       && ['plan_target_not_recorded', 'plan_target_unavailable'].includes(row.quantity_reason);
@@ -247,7 +242,7 @@
     const all = [value.global, ...value.resources];
     return value.state === (all.every(row => row.state === 'available') ? 'available' : all.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial');
   }
-  function occupancyRow(row, data) {
+  function occupancyRow(row, data, calendars) {
     const known = ['arranged_hours', 'occupied_hours', 'overlap_hours', 'excess_arranged_hours'];
     const capacity = ['available_hours', 'available_occupied_hours', 'outside_available_hours', 'capacity_shortfall_hours'];
     if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis',
@@ -256,8 +251,7 @@
         || !projectionIssues(row.issues) || typeof row.has_overlap !== 'boolean' || row.has_overlap !== (row.overlap_hours > 0)
         || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0)) return false;
     const expected = row.kind === 'machine' ? 'global_calendar_machine_availability' : 'personal_or_operator_shift_calendar';
-    const calendars = data.projections.calendar.resources;
-    const source = calendars && calendars.find(item => item.resource_ref === row.resource_ref);
+    const source = calendars.get(row.resource_ref);
     if (row.capacity_basis !== (source ? expected : 'unknown')) return false;
     if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null)
       && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
@@ -268,7 +262,9 @@
   function occupancy(value, data) {
     if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state)
         || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only'
-        || !projectedResources(value.resources, data) || !projectionIssues(value.issues, true) || !value.resources.every(row => occupancyRow(row, data))) return false;
+        || !projectedResources(value.resources, data) || !projectionIssues(value.issues, true)) return false;
+    const calendars = new Map((data.projections.calendar.resources || []).map(row => [row.resource_ref, row]));
+    if (!value.resources.every(row => occupancyRow(row, data, calendars))) return false;
     const unknown = value.issues.some(row => row.code === 'assignment_source_unknown');
     const state = unknown ? value.resources.length ? 'partial' : 'unavailable' : value.resources.every(row => row.state === 'available')
       ? 'available' : value.resources.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial';

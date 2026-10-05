@@ -67,8 +67,5 @@
             ...(saved ? { '操作编号': saved.request_key } : {}) }} /></div>
       </div></Modal>;
   }
-  function Styles() {
-    return null;
-  }
-  window.CalibrationAdoptionControls = { Button, Dialog, Styles };
+  window.CalibrationAdoptionControls = { Button, Dialog };
 })();

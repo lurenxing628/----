@@ -59,7 +59,8 @@ async function resourceCases(resource){
     assert(!(await page.getByRole('checkbox').isChecked()));assert(await page.getByRole('button',{name:/^确认导入/}).isDisabled());
     await page.getByRole('checkbox').check();await shot('import-confirm');await page.getByRole('button',{name:'确认导入',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);
     const call=await page.evaluate(()=>fixture.commands[0]);assert.equal(call.kind,resource.kind+'_import');assert.equal(call.action,'confirm');assert.deepEqual(Object.keys(call.body).sort(),['input','request_key','write_token']);assert.deepEqual(call.body.input,{preview_ref:call.ref});
-    const intent=await page.evaluate(kind=>JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1_'+kind+'_files')),resource.kind);assert.equal(intent.category,resource.category);assert(!('input' in intent));assert(!('acknowledged' in intent));assert(!('write_token' in intent));
+    const intent=await page.evaluate(kind=>JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1_'+kind+'_files')),resource.kind);assert.equal(intent.category,resource.category);assert(!('ref' in intent));assert(!('input' in intent));assert(!('acknowledged' in intent));assert(!('write_token' in intent));
+    assert(!await page.evaluate(kind=>sessionStorage.getItem('aps_workbench_resource_pending_v1_'+kind+'_files').includes(fixture.commands[0].body.write_token),resource.kind));
     await page.getByRole('button',{name:'完成',exact:true}).click();
   });
   await run(name+'-pagination-reject-is-atomic',async()=>{
@@ -76,10 +77,15 @@ async function resourceCases(resource){
   });
   for(const mode of ['import','bulk'])await run(name+'-'+mode+'-unknown-reload-same-key',async()=>{
     await mount({...resource,mode,rows:2,pending:true});if(mode==='import')await file();await start();await page.getByRole('checkbox').check();await page.getByRole('button',{name:mode==='import'?'确认导入':'确认删除',exact:true}).click();await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();
-    const intent=await page.evaluate(kind=>JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1_'+kind+'_files')),resource.kind);assert.equal(intent.category,resource.category);
+    const intent=await page.evaluate(kind=>JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1_'+kind+'_files')),resource.kind);assert.equal(intent.category,resource.category);assert(!('ref' in intent));
+    if(resource.kind==='machine'&&mode==='bulk')await page.evaluate(kind=>{
+      const key='aps_workbench_resource_pending_v1_'+kind+'_files', saved=JSON.parse(sessionStorage.getItem(key));
+      sessionStorage.setItem(key,JSON.stringify({...saved,ref:fixture.commands[0].ref}));
+    },resource.kind);
     assert(await page.getByRole('button',{name:/^取消/}).isDisabled());await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>fixture.closed),0);
     await page.evaluate(()=>mountFixture({...JSON.parse(sessionStorage.getItem('fixture-resume')),recovery:true},true));await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.commands.length+fixture.previews.length),0);assert.equal(await page.evaluate(()=>sessionStorage.getItem('fixture-command-count')),'1');
     await page.reload();await page.getByRole('button',{name:'查询结果',exact:true}).waitFor();assert.equal(await page.evaluate(()=>fixture.lookups[0]),intent.request_key);assert.equal(await page.evaluate(()=>fixture.commands.length+fixture.previews.length),0);assert.equal(await page.evaluate(()=>sessionStorage.getItem('fixture-command-count')),'1');
+    assert(!('ref' in await page.evaluate(kind=>JSON.parse(sessionStorage.getItem('aps_workbench_resource_pending_v1_'+kind+'_files')),resource.kind)));
     assert((await page.locator('.modal-h2').innerText()).includes(resource.label));assert.equal(await page.locator('[role="dialog"] input').count(),0);assert.equal(await page.getByText(/当前为示例数据|尚未读取生产资料|本次勾选了/).count(),0);
     await shot(mode+'-recovery');await page.evaluate(()=>{fixture.ready=true;});await page.getByRole('button',{name:'查询结果',exact:true}).click();await page.waitForFunction(()=>fixture.committed.length===1);assert.equal(await page.evaluate(()=>fixture.commands.length),0);await page.getByRole('button',{name:'完成',exact:true}).click();
   });

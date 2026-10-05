@@ -1,18 +1,17 @@
 /* Compile current components in memory. All API requests use a dedicated guarded Flask fixture. */
 'use strict';
-const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), crypto = require('node:crypto');
+const fs = require('node:fs'), path = require('node:path'), http = require('node:http');
 const assert = require('node:assert/strict'), { chromium } = require('playwright');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), output = process.argv[2], scenario = process.argv[3], backend = new URL(process.argv[4]);
 assert.equal(backend.hostname, '127.0.0.1'); assert(Number(backend.port) > 0);
-const names = ['WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchListControls.jsx', 'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx',
+const names = ['WorkbenchFormat.js', 'WorkbenchReferences.jsx', 'ResourceControls.jsx', 'WorkbenchListControls.jsx', 'transport.js', 'resource-session.js', 'SystemRestoreStatus.js', 'SystemMaintenanceAPI.js', 'SystemMaintenanceControls.jsx', 'SystemRestorePanel.jsx',
   'SystemMaintenanceRecords.jsx', 'SystemMaintenanceConfig.jsx', 'SystemMaintenanceWorkspace.jsx'];
-const report = { data_source: 'real-temporary-flask-api', scenario, cases: [], errors: [], external: [], requests: [], source_sha256: {} };
+const report = { data_source: 'real-temporary-flask-api', scenario, cases: [], errors: [], external: [], requests: [] };
 const order = JSON.parse(fs.readFileSync(path.join(root, 'scripts/workbench/build-order.json')));
 const compiled = compile({ babel_path: path.join(root, 'frontend/workbench/prototype', order.babel.path), check_combined: true,
   sources: names.map(name => {
     let code = fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8');
-    report.source_sha256[name] = crypto.createHash('sha256').update(code).digest('hex');
     if (name === 'SystemMaintenanceConfig.jsx' && process.env.SYSTEM_CONFIG_SAVED_REPLAY_OLD_EFFECT === '1') {
       assert(code.includes('(!changed || matchesDraft)'));
       code = code.replace('(!changed || matchesDraft)', '!changed');

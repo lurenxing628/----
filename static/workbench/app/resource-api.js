@@ -125,20 +125,32 @@
     if (!object(result) || result.ok !== true || result.schema_version !== 1 || !object(result.data) || !object(result.meta) || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || typeof result.meta.snapshot_ref !== 'string' || !result.meta.snapshot_ref || typeof result.meta.request_ref !== 'string' || !result.meta.request_ref || typeof result.meta.as_of !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(result.meta.as_of) || !Array.isArray(result.warnings)) throw problem('读到的数据不完整，请刷新重试。', false);
     return result;
   }
-  function validIntent(value) {
+  function validIntent(value, recovery = false) {
     if (!object(value) || typeof value.request_key !== 'string' || !/^resource-[0-9a-f]{48}$/.test(value.request_key)) return false;
+    const previewRef = pattern => recovery && value.ref === undefined || typeof value.ref === 'string' && pattern.test(value.ref);
     if (value.kind === 'operator' && (value.action === 'machine_permissions' || calendarActions.has(value.action))) return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
     if (value.kind === 'machine' && ['downtime_create', 'downtime_update', 'downtime_cancel'].includes(value.action)) return value.category === undefined && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref);
-    if (value.kind === 'calendar') return typeof value.ref === 'string' && (['upsert', 'delete'].includes(value.action) && /^\d{4}-\d{2}-\d{2}$/.test(value.ref) || value.action === 'confirm' && /^[0-9a-f]{32}$/.test(value.ref) || value.action === 'defaults' && value.ref === 'calendar-defaults');
+    if (value.kind === 'calendar') return ['upsert', 'delete'].includes(value.action) && typeof value.ref === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.ref) || value.action === 'confirm' && previewRef(/^[0-9a-f]{32}$/) || value.action === 'defaults' && value.ref === 'calendar-defaults';
     if (value.kind === 'process') return value.category === undefined && (value.action === 'create' && value.ref === null || ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref));
-    if (['process_bulk', 'process_route_import', 'process_hours_import'].includes(value.kind)) return value.action === 'confirm' && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref) && value.category === undefined;
-    if (value.kind === 'batch') return value.category === undefined && (value.action === 'create' && value.ref === null || ['update', 'delete', 'operation_update', 'materials_update', 'split_confirm', 'sync_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref) || ['bulk_confirm', 'import_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref));
-    if (value.kind === 'execution') return value.category === undefined && typeof value.ref === 'string' && (['create', 'supplement', 'correct', 'report_void'].includes(value.action) && /^[0-9a-f]{48}$/.test(value.ref) || value.action === 'import_confirm' && /^[A-Za-z0-9_-]{32}$/.test(value.ref));
+    if (['process_bulk', 'process_route_import', 'process_hours_import'].includes(value.kind)) return value.action === 'confirm' && previewRef(/^[A-Za-z0-9_-]{32}$/) && value.category === undefined;
+    if (value.kind === 'batch') return value.category === undefined && (value.action === 'create' && value.ref === null || ['update', 'delete', 'operation_update', 'materials_update', 'split_confirm', 'sync_confirm'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref) || ['bulk_confirm', 'import_confirm'].includes(value.action) && previewRef(/^[A-Za-z0-9_-]{32}$/));
+    if (value.kind === 'execution') return value.category === undefined && (['create', 'supplement', 'correct', 'report_void'].includes(value.action) && typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref) || value.action === 'import_confirm' && previewRef(/^[A-Za-z0-9_-]{32}$/));
     const importOnly = typeof value.kind === 'string' && /^(.+)_import$/.exec(value.kind);
-    if (importOnly && importOnlyKinds.has(importOnly[1])) return value.action === 'confirm' && value.category === undefined && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref);
+    if (importOnly && importOnlyKinds.has(importOnly[1])) return value.action === 'confirm' && value.category === undefined && previewRef(/^[A-Za-z0-9_-]{32}$/);
     const file = typeof value.kind === 'string' && /^(material|op_type|machine|operator|supplier)_(import|bulk)$/.exec(value.kind);
-    if (file) return value.action === 'confirm' && typeof value.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(value.ref) && (file[1] === 'op_type' ? ['internal', 'external'].includes(value.category) : value.category === undefined);
+    if (file) return value.action === 'confirm' && previewRef(/^[A-Za-z0-9_-]{32}$/) && (file[1] === 'op_type' ? ['internal', 'external'].includes(value.category) : value.category === undefined);
     return kinds.has(value.kind) && ['create', 'update', 'delete'].includes(value.action) && (value.action === 'create' ? value.ref === null : typeof value.ref === 'string' && /^[0-9a-f]{48}$/.test(value.ref)) && (value.category === undefined || ['internal', 'external', 'both'].includes(value.category));
+  }
+  function pendingRecord(intent) {
+    const stored = {
+      kind: intent.kind,
+      action: intent.action,
+      request_key: intent.request_key
+    };
+    // A retained preview ref is also its confirmation credential; recovery only looks up the request key.
+    if (intent.ref !== undefined && !(typeof intent.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(intent.ref))) stored.ref = intent.ref;
+    if (intent.category !== undefined) stored.category = intent.category;
+    return stored;
   }
   function matchesNamespace(namespace, intent) {
     if (namespace === 'resources') return kinds.has(intent.kind);
@@ -237,21 +249,26 @@
           const raw = sessionStorage.getItem(pendingKey);
           if (raw === null) return null;
           const intent = JSON.parse(raw);
-          if (!validIntent(intent) || !matchesNamespace(namespace, intent)) throw new Error('invalid');
-          return intent;
-        } catch (_) {
+          if (!validIntent(intent, true) || !matchesNamespace(namespace, intent)) throw new Error('invalid');
+          const stored = pendingRecord(intent);
+          if (Object.keys(intent).some(key => !Object.prototype.hasOwnProperty.call(stored, key))) {
+            try {
+              sessionStorage.setItem(pendingKey, JSON.stringify(stored));
+            } catch (_) {
+              const error = problem('旧预检编号尚未从本机记录清除，请先查询这次操作的结果，勿重复提交。', 'unknown');
+              error.intent = stored;
+              throw error;
+            }
+          }
+          return stored;
+        } catch (error) {
+          if (error.intent) throw error;
           throw problem('读不到上次操作记录，请重新打开页面；暂时不能继续保存。', 'unknown');
         }
       },
       savePending(intent) {
         if (!validIntent(intent) || !matchesNamespace(namespace, intent)) throw problem('操作编号无法保存，本次没有提交。', false);
-        const stored = {
-          kind: intent.kind,
-          action: intent.action,
-          ref: intent.ref,
-          request_key: intent.request_key
-        };
-        if (intent.category !== undefined) stored.category = intent.category;
+        const stored = pendingRecord(intent);
         try {
           sessionStorage.setItem(pendingKey, JSON.stringify(stored));
         } catch (_) {

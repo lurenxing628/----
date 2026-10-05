@@ -42,7 +42,7 @@
           </div></div>{validated && !validation.valid && <p className="sm-error" role="alert">有几项填得不对，配置没有保存。请修正标红的项。</p>}
         </form>}
         <details className="sm-rules sm-config-help"><summary>生效范围与自动维护规则</summary>
-          <p>打开页面时系统才会检查一次备份和清理，没有后台定时任务。间隔只是检查周期，不保证在指定时刻执行；正常退出时的备份也受自动备份开关控制。</p>
+          <p>软件正常运行时，打开工作台页面或操作数据会按间隔检查备份和清理；静态文件和健康检查不会触发维护。没有后台定时任务，不保证在指定时刻执行；正常退出时的备份另行执行，也受自动备份开关控制。</p>
           <p>日志清理只清操作记录，不清除运行文件日志。备份失败时会跳过本轮备份清理，保底规则不会删掉全部近期副本。</p></details>
       </section>
       {replace && <window.ResourceControls.Modal title="放弃当前草稿并刷新？" icon="history" onClose={() => setReplace(false)}

@@ -19,7 +19,7 @@
     async function lookup() {
       const original = current.current; if (!original || running.current) return;
       running.current = true; setBusy(true); setError(null);
-      try { settle(await api.lookup(original, found.current && found.current.kind === 'file_operation' ? found.current.operation.job_ref : null)); }
+      try { settle(await api.lookup(original)); }
       catch (problem) { if (mounted.current) setError(problem); }
       finally { await inspectHost(); running.current = false; if (mounted.current) setBusy(false); }
     }
@@ -79,7 +79,7 @@
     const [visited, setVisited] = React.useState({});
     React.useEffect(() => { if (enabled && ['backups', 'logs', 'config'].includes(tab)) setVisited(value => ({ ...value, [tab]: true })); }, [enabled, tab]);
     return <div className="sm-maintenance-workspace sm-maintenance-workspace-flush plana" data-system-maintenance="v1">
-      <C.Styles />
+
       {suspended && !(command.hostBusy && !command.intent && !command.hostError && !command.storageError && !command.host)
         ? <window.SystemRestorePanel command={command} api={api} theme={theme} onSetTheme={onSetTheme} /> : <C.Outcome command={command} />}
       {suspended && command.hostBusy && !command.intent && <p className="sm-note" role="status">正在核对软件维护状态，还没有读取数据库。</p>}

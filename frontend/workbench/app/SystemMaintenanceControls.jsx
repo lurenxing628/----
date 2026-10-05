@@ -9,23 +9,13 @@
       title={props.reason || props.title || label} aria-label={props['aria-label'] || (props.reason && label ? label + '：' + props.reason : undefined)}
       reasonDisplay={props.reason ? 'inline' : props.reasonDisplay} className={className + ' sm-button' + (children ? '' : ' sm-icon-button')}>{icon === 'rotate-ccw' && <SMIcon name="rotate-ccw" />}{children}</window.ResourceControls.Button>;
   }
-  function Styles() {
-    return null;
-  }
   function ErrorBox({ error }) {
     return error ? <window.WorkbenchError error={error} /> : null;
   }
   function useRead(api, kind, input, revision, enabled = true) {
-    const [state, setState] = React.useState({ data: null, error: null, loading: true });
     const signature = JSON.stringify(input);
-    React.useEffect(() => {
-      if (!enabled) { setState({ data: null, error: null, loading: false }); return; }
-      const controller = new AbortController(); setState({ data: null, error: null, loading: true });
-      api.read(kind, input, controller.signal).then(data => { if (!controller.signal.aborted) setState({ data, error: null, loading: false }); })
-        .catch(error => { if (!controller.signal.aborted) setState({ data: null, error, loading: false }); });
-      return () => controller.abort();
-    }, [api, kind, signature, revision, enabled]);
-    return state;
+    const query = window.APSResourceSession.useQuery(signal => api.read(kind, input, signal), [api, kind, signature, revision], enabled);
+    return { data: query.result, error: query.error, loading: query.loading };
   }
   function Confirm({ action, row, reason, onClose, onConfirm }) {
     const [checked, setChecked] = React.useState(false), [typed, setTyped] = React.useState('');
@@ -76,5 +66,5 @@
       <label className="sm-inline-label" title="应用于全工作台表格"><input type="checkbox" checked={compact} onChange={event => onCompact(event.target.checked)} />紧凑表格</label>
     </div></section>;
   }
-  window.SystemMaintenanceControls = { Button, Styles, ErrorBox, useRead, Confirm, Outcome, Preferences };
+  window.SystemMaintenanceControls = { Button, ErrorBox, useRead, Confirm, Outcome, Preferences };
 })();

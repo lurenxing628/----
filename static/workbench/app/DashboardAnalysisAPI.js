@@ -36,7 +36,6 @@
       const payload = await response.json();
       if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '影响分析读取失败，请刷新后重试。');
       C.check(response.status === 200);
-      envelope(payload);
       return payload;
     } finally {
       clearTimeout(timer);

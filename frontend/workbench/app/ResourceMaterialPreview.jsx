@@ -52,9 +52,5 @@
         onPage={setPage} onSize={next => { setSize(next); setPage(1); }} />
     </section>;
   }
-  function Styles() {
-    return null;
-  }
   window.ResourceMaterialPreview = Preview;
-  window.ResourceMaterialPreview.Styles = Styles;
 })();

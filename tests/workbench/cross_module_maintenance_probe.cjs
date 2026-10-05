@@ -22,11 +22,39 @@ async function close() {
   await dialog().locator('.modal-f').getByRole('button', {name: /^(关闭|完成)$/}).first().click();
   await dialog().waitFor({state: 'detached'});
 }
-async function resource(kind, code) {
+async function resourceHome() {
   await page.goto(ready.resource_url);
+  const rail = page.locator('[data-rail-node="operator"]');
+  await rail.waitFor({state: 'visible'});
+  if (await rail.isDisabled()) {
+    // Reload can restore the last read_view, including a read-only detail.
+    // Close that normal view through the UI; uncertain commands remain blocked.
+    const restored = page.getByRole('dialog', {name: /^(设备|人员)详情$/});
+    await restored.waitFor({state: 'visible'});
+    const dismiss = restored.locator('.modal-f').getByRole('button', {name: '关闭', exact: true});
+    assert.equal(await dismiss.isDisabled(), false, '不能关闭未确认操作来切换资料');
+    await dismiss.click(); await restored.waitFor({state: 'detached'});
+  }
+  await rail.waitFor({state: 'visible'});
+}
+async function resource(kind, code) {
+  await resourceHome();
   await page.locator('[data-rail-node="' + kind + '"]').click();
   await page.getByRole('searchbox', {name: '搜索编号或名称'}).fill(code);
   await button(page, '搜索').click(); await button(page, code).click();
+}
+async function calendarMonth(year, month) {
+  const title = page.locator('.resource-calendar .cal-title');
+  await title.waitFor({state: 'visible'});
+  const shown = /^(\d+) 年 (\d+) 月$/.exec((await title.innerText()).trim());
+  assert(shown, '必须先读到当前工作日历月份');
+  let current = Number(shown[1]) * 12 + Number(shown[2]) - 1;
+  const target = year * 12 + month - 1, direction = target < current ? -1 : 1;
+  while (current !== target) {
+    await button(page, direction < 0 ? '上一月' : '下一月').click();
+    current += direction;
+    await title.getByText(Math.floor(current / 12) + ' 年 ' + (current % 12 + 1) + ' 月', {exact: true}).waitFor();
+  }
 }
 async function shot(name) {
   const file = path.join(ready.root, name + '.png'); await page.screenshot({path: file, fullPage: true}); report.screenshots.push(file);
@@ -102,7 +130,8 @@ async function main() {
     await button(dialog(),'完成并返回').click(); await button(dialog(),'取消').click();
   });
   await run('global-night-shift-hours-and-window-edit', async () => {
-    await page.goto(ready.resource_url); await page.locator('[data-rail-node="calendar"]').click();
+    await resourceHome(); await page.locator('[data-rail-node="calendar"]').click();
+    await calendarMonth(2026, 9);
     await page.locator('[data-calendar-date="2026-09-09"]').click();
     assert.equal(await dialog().getByLabel('班次开始',{exact:true}).inputValue(),'22:30');
     await dialog().getByLabel('可排工时（小时）',{exact:true}).fill('9');

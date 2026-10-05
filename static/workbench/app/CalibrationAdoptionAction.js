@@ -17,7 +17,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "plana calibration-adoption",
       "data-calibration-adoption": "true"
-    }, /*#__PURE__*/React.createElement(U.Styles, null), /*#__PURE__*/React.createElement(U.Button, {
+    }, /*#__PURE__*/React.createElement(U.Button, {
       icon: s.saved ? 'refresh-cw' : 'check',
       "aria-label": label,
       reasonDisplay: "tooltip",

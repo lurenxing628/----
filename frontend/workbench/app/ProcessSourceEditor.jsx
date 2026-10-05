@@ -82,6 +82,7 @@
   function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirty, onOverlay, onResourceCommitted, focusRef = null }) {
     const model = E.useDraft({ result, adapter, stage: 'source', build, reconcile, saved, onDirty });
     const entity = model.base.data, draft = model.draft, rows = entity.operations, paging = E.usePage(rows, focusRef), root = React.useRef(null);
+    const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
     E.useFocus(root, focusRef, paging.page.number);
     const [picker, setPicker] = React.useState(null), [create, setCreate] = React.useState(null);
     const [preflightResult, setPreview] = React.useState(null), [discarded, setDiscarded] = React.useState([]), [checking, setChecking] = React.useState(false);
@@ -150,7 +151,7 @@
         onClick={() => { invalidate(); setCreate({}); onOverlay(true); }}>新增工种</Button></div>
       <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="归属明细" style={{ minWidth: 950, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"归属明细"}</caption>
         <thead><tr><th scope="col" style={{ width: 150 }}>工序</th><th scope="col" style={{ width: 160 }}>工种</th><th scope="col" style={{ width: 160 }}>归属</th><th scope="col" style={{ width: 190 }}>供应商</th><th scope="col">保存记录</th></tr></thead><tbody>{paging.rows.map(row => {
-          const current = draft[row.ref] || row, inactive = row.status !== 'active', cycle = current.source === row.source && P.groupCycle(row, entity.external_groups);
+          const current = draft[row.ref] || row, inactive = row.status !== 'active', cycle = current.source === row.source && P.groupCycle(row, groups);
           return <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}><td><b>{row.sequence}</b> {row.label}{cycle && <div className="muted" data-process-cycle-group={row.external_group_ref}>{cycle}</div>}</td><td>{current.op_type_label || '未选工种'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 工种'} disabled={editBlocked || inactive || !current.source} onClick={() => openPicker(row, 'op_type')} /></div></td>
             <td><span className="segm" role="group" aria-label={'工序 ' + row.sequence + ' 归属'}>{['internal', 'external'].map(source => <Button key={source} className={current.source === source ? 'on ' + (source === 'internal' ? 'int' : 'ext') : ''}
               aria-pressed={current.source === source} disabled={editBlocked || inactive} onClick={() => { if (source !== current.source) change(row.ref, { source, op_type_ref: null, op_type_label: null, supplier_ref: null, supplier_label: null }); }}>{P.sourceLabel(source)}</Button>)}</span>{!current.source && <div>未归类</div>}</td>

@@ -81,8 +81,9 @@ def test_base_header_mounts_plan_workbench_menu() -> None:
     assert "WorkbenchNavigation.historyView(page)" in source and "WorkbenchNavigation.helpUrl(boot, page)" in source
     # Scroll events capture immediately by history key; the 200 ms writer remains throttled, and a pop target only
     # consumes the snapshot stored for that exact entry instead of receiving the outgoing page's position.
-    assert "scrollSnapshots.current.set(activePage.current.key, window.WorkbenchNavigation.captureScroll())" in source
-    assert "scrollSnapshots.current.get(next.key)" in source
+    assert "const key = activePage.current.key" in source
+    assert "pageSnapshots.current.set(key" in source and "scroll: window.WorkbenchNavigation.captureScroll()" in source
+    assert "pageSnapshots.current.get(next.key)" in source
     assert not (REPO_ROOT / "templates/base.html").exists()
 
 

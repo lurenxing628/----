@@ -6,8 +6,8 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex'), p
 const checks = [], check = (name, run) => { run(); checks.push(name); }, ref = n => n.toString(16).padStart(48, '0');
 function memory() {
   const values = new Map();
-  return { values, writes: [], removed: [], failRead: false, failWrite: false, failClear: false,
-    getItem(key) { if (this.failRead) throw new Error('read denied'); return values.has(key) ? values.get(key) : null; },
+  return { values, reads: 0, writes: [], removed: [], failRead: false, failWrite: false, failClear: false,
+    getItem(key) { this.reads++; if (this.failRead) throw new Error('read denied'); return values.has(key) ? values.get(key) : null; },
     setItem(key, value) { if (this.failWrite) throw new Error('write denied'); this.writes.push(key); values.set(key, value); },
     removeItem(key) { if (this.failClear) throw new Error('clear denied'); this.removed.push(key); values.delete(key); } };
 }
@@ -121,11 +121,72 @@ check('Only an actual matching explicit history entry overrides LS', () => {
 });
 check('Malformed matching history is visible and clearing it preserves other history', () => {
   context.history.state = { workbench: { key: 17 }, trialAdoptionHistory: { scenario_ref: sameRefScenario.scenario_ref, tab: 'bad' } };
-  const { tree, tab } = selectedTab(sameRefScenario); assert.equal(tab, undefined);
+  const { tree, tab } = selectedTab(sameRefScenario); assert.equal(tab, 'tasks');
   assert(nodes(tree, node => node.type === context.TrialControls.ErrorBox).length);
+  assert(nodes(tree, node => node.type === context.TrialControls.Table && node.props.label === '完整任务明细').length);
   const reset = nodes(tree, node => node.type === context.TrialControls.Button && text(node) === '清除本页页签记录')[0];
   assert(reset); reset.props.onClick(); assert.deepEqual(plain(context.history.state), { workbench: { key: 17 } });
   assert.equal(selectedTab(sameRefScenario).tab, 'tasks');
+});
+check('Invalid adoption-history paging cannot hide valid scenario results', () => {
+  for (const patch of [{ status: 'bad' }, { page: 0 }, { size: 0 }, { snapshot_ref: 'bad' }]) {
+    const saved = { scenario_ref: sameRefScenario.scenario_ref, tab: 'history', status: 'all', page: 1, size: 20, ...patch };
+    context.history.state = { trialAdoptionHistory: saved };
+    const { tree, tab } = selectedTab(sameRefScenario);
+    assert.equal(tab, 'tasks');
+    assert(nodes(tree, node => node.type === context.TrialControls.ErrorBox).length);
+    assert(nodes(tree, node => node.type === context.TrialControls.Table && node.props.label === '完整任务明细').length);
+    assert.equal(context.history.state.trialAdoptionHistory, saved);
+  }
+  context.history.state = null;
+});
+check('Same-page preference hooks reuse saved values while external storage reads fresh state', () => {
+  const listeners = new Map(), internals = context.React.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED;
+  const before = [context.addEventListener, context.removeEventListener, context.dispatchEvent];
+  context.addEventListener = (type, listener) => { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(listener); };
+  context.removeEventListener = (type, listener) => listeners.get(type).delete(listener);
+  context.dispatchEvent = event => { for (const listener of listeners.get(event.type) || []) listener(event); };
+  function hook() {
+    const slots = [], cleanups = []; let at;
+    return { read() {
+      at = 0; const old = internals.ReactCurrentDispatcher.current;
+      internals.ReactCurrentDispatcher.current = {
+        useRef(value) { const i = at++; if (!slots[i]) slots[i] = { current: value }; return slots[i]; },
+        useState(value) { const i = at++; if (!(i in slots)) slots[i] = typeof value === 'function' ? value() : value;
+          return [slots[i], value => { slots[i] = typeof value === 'function' ? value(slots[i]) : value; }]; },
+        useEffect(run) { const i = at++; if (!(i in slots)) { slots[i] = true; cleanups.push(run()); } }
+      };
+      try { return V.useView(draft); } finally { internals.ReactCurrentDispatcher.current = old; }
+    }, close() { cleanups.forEach(cleanup => cleanup()); } };
+  }
+  const first = hook(), second = hook();
+  try {
+    first.read(); second.read(); store.reads = 0;
+    assert.equal(first.read().change({ query: 'same-page saved' }), true);
+    assert.equal(store.reads, 2, 'Only write-time merge and readback read storage');
+    assert.equal(first.read().value.query, 'same-page saved');
+    assert.equal(second.read().value.query, 'same-page saved');
+    const stored = JSON.parse(store.values.get(V.key(target))); stored.preferences.result_tab = 'issues';
+    store.values.set(V.key(target), JSON.stringify(stored)); store.reads = 0;
+    context.dispatchEvent({ type: 'storage', key: V.key(target) });
+    assert.equal(store.reads, 2, 'External changes are read by both mounted hooks');
+    assert.equal(first.read().value.result_tab, 'issues'); assert.equal(second.read().value.result_tab, 'issues');
+    store.failWrite = true; assert.equal(first.read().change({ query: 'pending local draft' }), false); store.failWrite = false;
+    stored.preferences.query = 'other tab query'; stored.preferences.result_tab = 'capacity';
+    store.values.set(V.key(target), JSON.stringify(stored)); context.dispatchEvent({ type: 'storage', key: V.key(target) });
+    assert.equal(first.read().value.query, 'pending local draft'); assert.equal(first.read().pending, true);
+    assert.equal(second.read().value.query, 'other tab query');
+    first.read().reload(); assert.equal(first.read().pending, false);
+    assert.equal(first.read().value.query, 'pending local draft'); assert.equal(second.read().value.query, 'pending local draft');
+    assert.equal(second.read().value.result_tab, 'capacity');
+    first.read().reset();
+    assert.deepEqual(plain(first.read().value), plain(initial));
+    assert.deepEqual(plain(second.read().value), plain(initial));
+    assert.equal(V.read(target, store), null);
+  } finally {
+    store.failWrite = false; first.close(); second.close();
+    [context.addEventListener, context.removeEventListener, context.dispatchEvent] = before;
+  }
 });
 
 function plan(state = 'available', count = 2) {

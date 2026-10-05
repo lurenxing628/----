@@ -73,7 +73,7 @@
         else command.submit('process_bulk', 'confirm', data.preview_ref, data.write_context, { preview_ref: data.preview_ref });
       } catch (failure) { setError(failure); }
     }
-    return <div className={'plana rm-actions' + (data ? ' rm-wide' : '')}><window.ResourceMaterialPreview.Styles />
+    return <div className={'plana rm-actions' + (data ? ' rm-wide' : '')}>
       <Modal title={create ? '新增零件' : original.refs && original.refs.length === 1 ? '删除零件' : '批量删除零件'} icon={create ? 'plus' : 'trash-2'} locked={locked} suspended={discard} onClose={() => close()}
         footer={<><Button disabled={locked} onClick={() => close()}>{done ? '完成' : '取消'}</Button>
           {!create && !recovery && !done && <Button icon="check" disabled={disabled || locked} busy={!!job && preview.loading} onClick={preflight}>{job ? '重新预检' : '检查删除范围'}</Button>}

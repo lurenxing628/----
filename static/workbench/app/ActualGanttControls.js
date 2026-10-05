@@ -9,9 +9,6 @@
     M = window.ActualGanttModel;
   // 工序说明只有 ActualGanttModel 那一份写法，这里不再改写措辞。
   const describe = M.describe;
-  function Styles() {
-    return /*#__PURE__*/React.createElement(window.PointGantt.Styles, null);
-  }
   function Toolbar({
     view,
     patch,
@@ -283,7 +280,6 @@
     }));
   }
   window.ActualGanttControls = {
-    Styles,
     Toolbar,
     Range,
     Chain,

@@ -55,7 +55,7 @@
     const shownError = request.error || error, staleOnly = !!(stale && shownError && shownError.message === window.WorkbenchTerms.outcomes.stale);
     const viewError = selected && data && data.capabilities.view !== true ? A.failure(C.viewReason + '没有读取完工记录来源。') : null;
     return <section className="calib-workbench calibration-live" aria-label="工时定额校准" data-ready={!!data} data-source="production" data-stale={stale}>
-      <C.Styles /><header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of)) : ''}</p></div>
+      <header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of)) : ''}</p></div>
         <div className="ca-actions"><Button icon="refresh-cw" aria-label="刷新校准数据" busy={request.busy} disabled={downloading} onClick={reload} />
           {window.CalibrationAdoptionAction && <window.CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.busy} onRefresh={reload} />}
           {typeof onNavigate === 'function' && <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { returnTo: { view: 'calib', context: {
@@ -94,7 +94,7 @@
   function CalibrationWorkspace(props) {
     window.WorkbenchCaption.useCaption(null);
     try { window.CalibrationAPI.initial(props.initialContext || {}); }
-    catch (error) { return <section className="calibration-live"><window.CalibrationControls.Styles /><h2 className="wb-page-title">工时定额校准</h2><window.ResourceControls.ErrorBox error={error} /></section>; }
+    catch (error) { return <section className="calibration-live"><h2 className="wb-page-title">工时定额校准</h2><window.ResourceControls.ErrorBox error={error} /></section>; }
     return <Workspace key={JSON.stringify(props.initialContext || {})} {...props} />;
   }
   window.CalibrationWorkspace = CalibrationWorkspace;

@@ -36,9 +36,12 @@
     } catch (_) {
       throw new Error('上次操作记录保存不了，不能开始处置。请重新打开页面。');
     }
-    C.check(C.equal(read(), value));
-    window.dispatchEvent(new Event(EVENT));
-    return value;
+    const stored = read();
+    C.check(C.equal(stored, value));
+    window.dispatchEvent(new CustomEvent(EVENT, {
+      detail: stored
+    }));
+    return stored;
   }
   function useCommand(api) {
     const [initial] = React.useState(() => {
@@ -63,9 +66,10 @@
       running = React.useRef(false),
       active = React.useRef(saved);
     active.current = saved;
-    function sync() {
+    function sync(event) {
       try {
-        const v = read();
+        const v = event && event.type === EVENT ? event.detail : read();
+        if (event && event.type === EVENT) C.check(v === null || valid(v), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
         active.current = v;
         setSaved(v);
         setStorageError(null);
@@ -76,7 +80,7 @@
     React.useEffect(() => {
       mounted.current = true;
       const changed = e => {
-        if (!e.key || e.key === KEY) sync();
+        if (!e.key || e.key === KEY) sync(e);
       };
       window.addEventListener('storage', changed);
       window.addEventListener(EVENT, changed);
@@ -164,7 +168,8 @@
         running.current = false;
         if (mounted.current) setBusy(false);
       }
-      if (original && read() && read().phase === 'pending') await lookup();
+      const stored = original && read();
+      if (stored && stored.phase === 'pending') await lookup();
     }
     function finish() {
       if (running.current) return false;

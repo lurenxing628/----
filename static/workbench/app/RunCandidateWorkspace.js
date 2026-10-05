@@ -6,45 +6,10 @@
   const adapterIds = new WeakMap();
   let nextAdapter = 0;
   function useRead(load, deps, enabled) {
-    const identity = React.useMemo(() => ({}), deps);
-    const [state, setState] = React.useState({
-      result: null,
-      error: null,
-      busy: false
-    });
-    React.useEffect(() => {
-      const controller = new AbortController();
-      let active = true;
-      setState({
-        identity,
-        result: null,
-        error: null,
-        busy: enabled
-      });
-      if (enabled) Promise.resolve().then(() => load(controller.signal)).then(result => {
-        if (active) setState({
-          identity,
-          result,
-          error: null,
-          busy: false
-        });
-      }).catch(error => {
-        if (active) setState({
-          identity,
-          result: null,
-          error,
-          busy: false
-        });
-      });
-      return () => {
-        active = false;
-        controller.abort();
-      };
-    }, deps);
-    return state.identity === identity ? state : {
-      result: null,
-      error: null,
-      busy: enabled
+    const read = window.APSResourceSession.useQuery(load, deps, enabled);
+    return {
+      ...read,
+      busy: read.loading
     };
   }
   function returnContext(value) {
@@ -87,14 +52,7 @@
       try {
         const file = A.download(await adapter.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result, fmt);
         if (controller.signal.aborted) return;
-        const url = URL.createObjectURL(file.blob),
-          link = document.createElement('a');
-        link.href = url;
-        link.download = file.filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
         setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + (d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count) + '）。');
         setFormat(null);
       } catch (e) {
@@ -160,8 +118,7 @@
     renderTrial
   }) {
     const M = window.RunCandidateModel,
-      Analysis = window.RunCandidateAnalysis,
-      AnalysisAPI = window.RunCandidateAnalysisAPI;
+      Analysis = window.RunCandidateAnalysis;
     const invalid = initialContext.run_ref !== undefined && !A.ref(initialContext.run_ref) || initialContext.candidate_ref !== undefined && !A.ref(initialContext.candidate_ref);
     const [runRef, setRunRef] = React.useState(initialContext.run_ref || null),
       [candidateRef, setCandidateRef] = React.useState(initialContext.candidate_ref || null);
@@ -183,14 +140,10 @@
     const [tab, setTab] = React.useState((view === 'delay' ? ['tasks', 'unplanned'] : ['tasks', 'unplanned', 'delivery', 'history']).includes(initialContext.candidate_tab) ? initialContext.candidate_tab : 'tasks'),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
     const [analysisPaused, setAnalysisPaused] = React.useState(false);
-    const directory = useRead(async signal => {
-      const v = await adapter.catalog(runRef, catalogQuery, signal);
-      A.catalog(v, runRef, catalogQuery);
-      return v;
-    }, [adapter, runRef, catalogQuery, revision], !!runRef && !invalid);
+    const directory = useRead(signal => adapter.catalog(runRef, catalogQuery, signal), [adapter, runRef, catalogQuery, revision], !!runRef && !invalid);
     const read = useRead(async signal => {
       const v = await adapter.workspace(candidateRef, scope, signal);
-      A.workspace(v, candidateRef, scope, initialContext.run_ref);
+      A.check(!initialContext.run_ref || v.data.candidate.run_ref === initialContext.run_ref, '候选方案不属于所选排产记录。');
       return v;
     }, [adapter, candidateRef, scope, revision], !!candidateRef && !invalid);
     const result = read.result,
@@ -201,17 +154,14 @@
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
     const analysisRead = useRead(async signal => {
       if (typeof adapter.analysis !== 'function') throw new Error('dependency not wired: adapter.analysis');
-      const value = await adapter.analysis(candidateRef, runRef, signal);
-      AnalysisAPI.analysis(value, candidateRef, runRef);
-      return value;
-    }, [adapter, candidateRef, runRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused);
+      return adapter.analysis(candidateRef, runRef, signal);
+    }, [adapter, candidateRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused);
     const historyRead = useRead(async signal => {
       if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
-      const value = await adapter.adoptions(candidateRef, runRef, signal);
-      AnalysisAPI.history(value, candidateRef, runRef);
-      return value;
-    }, [adapter, candidateRef, runRef, tab, revision, analysisPaused], !!candidateRef && !invalid && tab === 'history' && !analysisPaused);
+      return adapter.adoptions(candidateRef, runRef, signal);
+    }, [adapter, candidateRef, tab, revision, analysisPaused], !!candidateRef && !invalid && tab === 'history' && !analysisPaused);
     const analysis = shown && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
+    const ownershipError = readState => shown && readState.result && readState.result.data.run_ref !== shown.candidate.run_ref ? new Error('读到的数据不属于所选候选方案的排产记录。') : readState.error;
     window.WorkbenchCaption.useCaption(shown && !read.busy && !read.error && shown.candidate.label ? {
       reference: shown.candidate.candidate_ref,
       label: '当前候选',
@@ -314,7 +264,7 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "plana run-candidate-workspace",
       "data-run-candidate-workspace": true
-    }, /*#__PURE__*/React.createElement(C.Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
@@ -416,7 +366,7 @@
     }), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: result.warnings
     }), /*#__PURE__*/React.createElement(C.ErrorBox, {
-      error: analysisRead.error
+      error: ownershipError(analysisRead)
     }), /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("div", {
@@ -533,8 +483,8 @@
       id: "rc-detail-panel",
       "aria-labelledby": 'rc-detail-tab-' + tab
     }, tab === 'history' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.ErrorBox, {
-      error: historyRead.error
-    }), historyRead.result && /*#__PURE__*/React.createElement(Analysis.History, {
+      error: ownershipError(historyRead)
+    }), historyRead.result && !ownershipError(historyRead) && /*#__PURE__*/React.createElement(Analysis.History, {
       data: historyRead.result.data,
       onPlan: onNavigate && (plan => onNavigate('analysis', {
         plan_ref: plan.plan_ref
@@ -568,7 +518,7 @@
     })));
   }
   function RunCandidateWorkspace(props) {
-    const adapter = React.useMemo(() => props.adapter || window.RunCandidateAnalysisAPI.create(), [props.adapter]);
+    const adapter = React.useMemo(() => window.RunCandidateAnalysisAPI.adapter(props.adapter || window.RunCandidateAnalysisAPI.create()), [props.adapter]);
     if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter);
     const context = props.initialContext || {},
       identity = [context.run_ref, context.candidate_ref, context.range_start, context.range_end, context.batch_ref];

@@ -31,6 +31,29 @@ def test_asset_manifest_requires_local_complete_files(tmp_path):
         read_asset_manifest(str(tmp_path))
 
 
+def test_asset_manifest_reuses_request_root_and_rejects_symlink_escape(tmp_path, monkeypatch):
+    expected = _manifest(tmp_path)
+    workbench_root = tmp_path / "workbench"
+    resolved = []
+    original = Path.resolve
+
+    def counted(path, *args, **kwargs):
+        resolved.append(path)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", counted)
+    assert read_asset_manifest(str(tmp_path)) == expected
+    assert resolved.count(workbench_root) == 1
+    assert len(resolved) == 1 + len(expected["styles"] + expected["scripts"]) + 1
+    outside = tmp_path / "outside.js"
+    outside.write_text("/* outside the workbench root */", encoding="utf-8")
+    target = workbench_root / "entry.js"
+    target.unlink()
+    target.symlink_to(outside)
+    with pytest.raises(WorkbenchAssetsUnavailable, match="位置超出"):
+        read_asset_manifest(str(tmp_path))
+
+
 def test_entry_loads_maintained_css_after_prototype_before_scripts(app_client, tmp_path, monkeypatch):
     static = tmp_path / "static"
     manifest = _manifest(static)

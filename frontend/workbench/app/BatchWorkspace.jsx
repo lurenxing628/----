@@ -122,7 +122,7 @@
     const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget.view;
     const openEditor = entity => { command.reset(); setDialog({ type: 'base', entity }); };
     const deletion = entity => preview('bulk', { action: 'delete', refs: [entity.ref], patch: {} });
-    return <div className="plana batch-workspace wb-fill-viewport" data-batch-workspace><window.BatchControls.Styles />
+    return <div className="plana batch-workspace wb-fill-viewport" data-batch-workspace>
       <ErrorBox error={initial.error || error} />{busy && <p role="status">正在核对批次资料…</p>}
       {deferred && <div role="status"><p>上次操作还没处理完，暂时没有恢复上次的查看范围。</p><Button disabled={command.phase !== 'idle' || !!dialog || busy}
         onClick={() => { setScope(initial.scope); setQuery(initial.scope.query); setSelected(initial.selected); setOpened(initial.opened); setSort(initial.sort); setDeferred(false); }}>继续上次范围</Button></div>}

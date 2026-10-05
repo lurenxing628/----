@@ -153,11 +153,13 @@
       containers
     };
   }
-  function remember(boot, page, captured) {
+  function remember(boot, page, captured, context) {
     const current = read(boot);
     check(current.view === page.view && current.key === page.key);
+    check(context === undefined || object(context));
     const saved = {
       ...current,
+      context: context === undefined ? current.context : context,
       scroll: captured === undefined ? captureScroll() : normalizedScroll(captured)
     };
     const state = history.state || {};
@@ -177,9 +179,9 @@
     }, '', location.href);
     return nextPages;
   }
-  function navigate(boot, page, target, supplied, preferSaved = false) {
+  function navigate(boot, page, target, supplied, preferSaved = false, pending = {}) {
     check(own(boot.titles, target) && (supplied === undefined || object(supplied)) && typeof preferSaved === 'boolean');
-    const pages = remember(boot, page),
+    const pages = remember(boot, page, pending.scroll, pending.context),
       saved = pages[target];
     if (saved !== undefined) check(object(saved) && saved.view === target && object(saved.context));
     const resume = saved && (supplied === undefined || preferSaved);

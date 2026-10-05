@@ -18,23 +18,41 @@ async function main() {
     const original = JSON.stringify(saved);
     assert.deepEqual(plain(field.initial(saved)), input); assert.equal(JSON.stringify(saved), original);
   });
-  await test('field-new-read-first-page-without-selector-then-original-page-and-selector', async () => {
+  await test('field-new-read-locates-original-task-in-one-request', async () => {
     const calls = [], original = JSON.stringify(input);
-    const actual = await field.readView({ list: async query => { calls.push(plain(query)); return result(query.page); } }, input);
+    const signal = { aborted: false };
+    const actual = await field.readView({ list: async (query, receivedSignal) => { calls.push(plain(query)); assert.equal(receivedSignal, signal); return result(2); } }, input, signal);
     assert.equal(actual.data.page.number, 2); assert.equal(JSON.stringify(input), original);
-    assert.deepEqual(calls, [{ ...scope, page: 1, size: 10 }, { ...input, snapshot_ref: 'fresh-token' }]);
+    assert.deepEqual(calls, [{ ...input, page: 1 }]);
   });
   await test('field-permanent-plan-page-scope-and-original-ref-mismatches-rejected', async () => {
-    await assert.rejects(field.readView({ list: async () => result(1, { ...scope, plan_ref: '5'.repeat(48) }) }, input));
+    await assert.rejects(field.readView({ list: async () => result(2, { ...scope, plan_ref: '5'.repeat(48) }) }, input));
     await assert.rejects(field.readView({ list: async () => result(1) }, input));
-    await assert.rejects(field.readView({ list: async query => result(query.page, scope, []) }, input));
-    await assert.rejects(field.readView({ list: async query => result(query.page, query.snapshot_ref ? { ...scope, query: 'other' } : scope) }, input));
+    await assert.rejects(field.readView({ list: async () => result(2, scope, []) }, input));
+    await assert.rejects(field.readView({ list: async () => result(2, { ...scope, query: 'other' }) }, input));
+    await assert.rejects(field.readView({ list: async () => result(2, scope, [{ task_ref: task, operation_ref: '6'.repeat(48) }]) }, input));
     await assert.rejects(field.readView({ list: async () => { throw new Error('must not read'); } }, { operation_ref: operation }), /缺少明确任务/);
   });
   await test('field-new-navigation-without-explicit-page-can-locate-original-task', async () => {
     const calls = [], { page, ...navigation } = input;
     const actual = await field.readView({ list: async query => { calls.push(plain(query)); return result(query.task_ref ? 2 : 1); } }, navigation);
-    assert.equal(actual.data.page.number, 2); assert.equal(calls.length, 2); assert.equal(calls[1].task_ref, task);
+    assert.equal(actual.data.page.number, 2); assert.deepEqual(calls, [{ ...navigation, page: 1 }]);
+  });
+  await test('field-located-task-keeps-normalized-filters-and-inferred-plan', async () => {
+    const navigation = { ...input, page: undefined, plan_ref: undefined, query: ' original ', state: 'all', batch_ids: ['B2', 'B1', 'B2'] };
+    const original = JSON.stringify(navigation), calls = [];
+    const actual = await field.readView({ list: async query => { calls.push(plain(query)); return result(2); } }, navigation);
+    assert.equal(actual.data.page.number, 2); assert.equal(calls.length, 1); assert.equal(JSON.stringify(navigation), original);
+    const jsonBatches = await field.readView({ list: async () => result(2) }, { ...navigation, batch_ids: '["B2","B1"]' });
+    assert.equal(jsonBatches.data.page.number, 2);
+    await field.readView({ list: async () => result(2) }, { ...navigation, query: '\u0085\u001coriginal\u001f\u0085' });
+    await field.readView({ list: async () => result(2, { ...scope, query: '\ufefforiginal' }) }, { ...navigation, query: '\ufefforiginal' });
+  });
+  await test('field-restored-page-without-task-still-binds-fresh-snapshot', async () => {
+    const navigation = { ...scope, page: 2, size: 10 }, calls = [];
+    const actual = await field.readView({ list: async query => { calls.push(plain(query)); return result(query.page); } }, navigation);
+    assert.equal(actual.data.page.number, 2);
+    assert.deepEqual(calls, [{ ...navigation, page: 1 }, { ...navigation, snapshot_ref: 'fresh-token' }]);
   });
   const saved = { scope: { query: 'P1', source: 'internal', part_ref: '6'.repeat(48), snapshot_ref: 'expired' },
     table: { page: 3, size: 10, sort: 'sample_count', direction: 'desc', snapshot_ref: 'expired' }, snapshot_ref: 'expired', selected: task, sample_ref: operation };

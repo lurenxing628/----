@@ -80,17 +80,7 @@
     }
   }
   function save(file) {
-    const objectUrl = URL.createObjectURL(file.blob),
-      anchor = document.createElement('a');
-    anchor.href = objectUrl;
-    anchor.download = file.filename;
-    try {
-      document.body.appendChild(anchor);
-      anchor.click();
-    } finally {
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    }
+    window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
   }
   window.APSMasterOverviewAPI = {
     create,

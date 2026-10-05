@@ -396,7 +396,7 @@
     })), /*#__PURE__*/React.createElement(CalendarSummary, {
       value: value.calendar,
       loading: summary.loading,
-      error: summary.error || value.calendar_error,
+      error: summary.error ? C.message(summary.error) : value.calendar_error,
       node: node,
       disabled: disabled,
       onNode: onNode

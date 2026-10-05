@@ -3,7 +3,6 @@
 
   const S = window.APSResourceSession,
     {
-      Styles,
       Button,
       ErrorBox,
       Feedback
@@ -150,7 +149,7 @@
       className: "plana field-workspace",
       "data-field-workspace": true,
       "aria-label": "\u73B0\u573A\u8BB0\u5F55"
-    }, /*#__PURE__*/React.createElement(Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "field-toolbar"
     }, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"

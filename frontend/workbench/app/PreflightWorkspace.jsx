@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.PreflightContract, { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary, Styles } = window.PreflightControls;
+  const C = window.PreflightContract, { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary } = window.PreflightControls;
   const labels = { eligible: '资料有效', auto_assign_required: '自动分配待补', skipped: '本次跳过', blocked: '缺资料', protected: '已开工保护' };
   function contextState(value) {
     try { return { value: C.initial(value), error: null }; }
@@ -78,7 +78,7 @@
       ['工时 / 工艺 / 外协', counts ? counts.blocked_tasks + ' 道缺资料，' + counts.no_route_batches + ' 批未生成工艺。' : '尚未检查必填资料。', 'gaps', '处理缺项'],
       ['班表与产能', '本次不检查。夜班、停机和产能是否够用，请到「工作日历」核对。', null, null]
     ];
-    return <div className="plana preflight-workspace" data-preflight-workspace><Styles />
+    return <div className="plana preflight-workspace" data-preflight-workspace>
       <div className="pf-heading"><h2 className="wb-page-title">执行排产</h2><span className="pf-muted wb-page-context">当前生产资料 · 单次排产范围</span>{actions && <div className="pf-tools">{actions}</div>}</div>
       <section className="pf-scope" aria-label="排产范围">
       <ol className="pf-stepper" aria-label="执行排产步骤">{['选批次和日期', '检查', '计算'].map((label, index) => <li key={label} aria-current={currentStep === index + 1 ? 'step' : undefined} data-step-state={currentStep > index + 1 ? 'complete' : currentStep === index + 1 ? 'current' : 'upcoming'}><span aria-hidden="true">{index + 1}</span>{label}</li>)}</ol>

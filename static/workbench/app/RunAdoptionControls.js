@@ -174,12 +174,8 @@
       result: result
     })));
   }
-  function Styles() {
-    return null;
-  }
   window.RunAdoptionControls = {
     Button,
-    Dialog,
-    Styles
+    Dialog
   };
 })();

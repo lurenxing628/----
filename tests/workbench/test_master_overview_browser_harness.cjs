@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), http = require('node:http'), crypto = require('node:crypto'), assert = require('node:assert/strict');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), base = '/api/workbench/v1/master-overview';
-const names = ['MasterOverviewContract.js', 'MasterOverviewAPI.js', 'MasterOverviewStyles.jsx', 'MasterOverviewTable.jsx', 'MasterOverviewDetail.jsx', 'MasterOverviewWorkspace.jsx'];
+const names = ['MasterOverviewContract.js', 'MasterOverviewAPI.js', 'MasterOverviewTable.jsx', 'MasterOverviewDetail.jsx', 'MasterOverviewWorkspace.jsx'];
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const defaults = { view: 'issues', domain: 'all', status: 'all', query: '', sort: 'issue_count', direction: 'desc', size: 20, column_filters: {} };
 const clone = value => JSON.parse(JSON.stringify(value));

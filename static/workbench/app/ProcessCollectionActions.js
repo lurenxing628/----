@@ -169,7 +169,7 @@
     }
     return /*#__PURE__*/React.createElement("div", {
       className: 'plana rm-actions' + (data ? ' rm-wide' : '')
-    }, /*#__PURE__*/React.createElement(window.ResourceMaterialPreview.Styles, null), /*#__PURE__*/React.createElement(Modal, {
+    }, /*#__PURE__*/React.createElement(Modal, {
       title: create ? '新增零件' : original.refs && original.refs.length === 1 ? '删除零件' : '批量删除零件',
       icon: create ? 'plus' : 'trash-2',
       locked: locked,

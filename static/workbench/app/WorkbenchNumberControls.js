@@ -134,8 +134,22 @@
     });
     React.useLayoutEffect(() => {
       const classes = acquire(input, parent);
+      const entry = {
+        refresh,
+        position: refreshPosition,
+        scrollDependent: false
+      };
+      function refreshPosition() {
+        entry.scrollDependent = ['fixed', 'sticky'].includes(getComputedStyle(input).position);
+        const box = readBox(input, parent);
+        setState(previous => JSON.stringify(previous.box) === JSON.stringify(box) ? previous : {
+          ...previous,
+          box
+        });
+      }
       function refresh() {
         classes.ensure();
+        entry.scrollDependent = ['fixed', 'sticky'].includes(getComputedStyle(input).position);
         const next = {
           box: readBox(input, parent),
           name: window.APSWorkbenchControlBridge.label(input),
@@ -144,10 +158,10 @@
         };
         setState(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
       }
-      const observer = new ResizeObserver(refresh);
+      const observer = new ResizeObserver(refreshPosition);
       observer.observe(input);
       observer.observe(parent);
-      refreshers.set(input, refresh);
+      refreshers.set(input, entry);
       refresh();
       return () => {
         observer.disconnect();
@@ -160,8 +174,8 @@
       event.stopPropagation();
       const value = nextValue(input, direction);
       if (value !== null) window.APSWorkbenchControlBridge.setValue(input, value);
-      const refresh = refreshers.get(input);
-      if (refresh) refresh();
+      const entry = refreshers.get(input);
+      if (entry) entry.refresh();
     }
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("span", {
       className: "wb-number-stepper",
@@ -189,7 +203,9 @@
       refreshers = React.useRef(new Map());
     React.useEffect(() => {
       let frame = 0,
+        positionFrame = 0,
         sequence = 0;
+      const scrollTargets = new Set();
       const identities = new WeakMap();
       function scan() {
         frame = 0;
@@ -203,7 +219,7 @@
           };
         });
         setEntries(previous => previous.length === next.length && previous.every((item, index) => item.input === next[index].input && item.parent === next[index].parent) ? previous : next);
-        refreshers.current.forEach(refresh => refresh());
+        refreshers.current.forEach(entry => entry.refresh());
       }
       const schedule = () => {
         if (!frame) frame = requestAnimationFrame(scan);
@@ -220,8 +236,25 @@
         attributeFilter: ['type', 'min', 'max', 'step', 'value', 'readonly', 'disabled', 'class', 'style', 'hidden', 'inert', 'aria-label', 'aria-labelledby', 'title', 'id', 'name', 'data-wb-step']
       });
       function refreshInput(event) {
-        const refresh = refreshers.current.get(event.target);
-        if (refresh) refresh();
+        const entry = refreshers.current.get(event.target);
+        if (entry) entry.refresh();
+      }
+      function refreshScroll(event) {
+        scrollTargets.add(event.target);
+        if (positionFrame) return;
+        positionFrame = requestAnimationFrame(() => {
+          positionFrame = 0;
+          // Portals use parent content coordinates; ordinary ancestor scrolling
+          // translates input and parent together. Only fixed/sticky inputs move
+          // within those coordinates, and scrolling never changes their values.
+          refreshers.current.forEach((entry, input) => {
+            if (entry.scrollDependent && Array.from(scrollTargets).some(target => target === document || target === window || target.contains && target.contains(input))) entry.position();
+          });
+          scrollTargets.clear();
+        });
+      }
+      function refreshPositions() {
+        refreshers.current.forEach(entry => entry.position());
       }
       function keydown(event) {
         const input = event.target;
@@ -235,18 +268,19 @@
       document.addEventListener('change', refreshInput, true);
       document.addEventListener('keydown', keydown);
       document.addEventListener('reset', schedule, true);
-      document.addEventListener('scroll', schedule, true);
-      window.addEventListener('resize', schedule);
+      document.addEventListener('scroll', refreshScroll, true);
+      window.addEventListener('resize', refreshPositions);
       scan();
       return () => {
         observer.disconnect();
         cancelAnimationFrame(frame);
+        cancelAnimationFrame(positionFrame);
         document.removeEventListener('input', refreshInput, true);
         document.removeEventListener('change', refreshInput, true);
         document.removeEventListener('keydown', keydown);
         document.removeEventListener('reset', schedule, true);
-        document.removeEventListener('scroll', schedule, true);
-        window.removeEventListener('resize', schedule);
+        document.removeEventListener('scroll', refreshScroll, true);
+        window.removeEventListener('resize', refreshPositions);
       };
     }, []);
     return /*#__PURE__*/React.createElement(React.Fragment, null, entries.map(entry => /*#__PURE__*/React.createElement(Stepper, {

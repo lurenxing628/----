@@ -20,7 +20,11 @@
       } catch (error) {
         state = {
           phase: 'pending',
-          error
+          error,
+          ...(error.intent ? {
+            intent: error.intent,
+            restored: true
+          } : {})
         };
       }
       sessions.set(adapter, {
@@ -42,10 +46,13 @@
       error: null
     });
     const [revision, setRevision] = React.useState(0);
+    const requested = React.useRef(null);
     const identity = React.useMemo(() => ({}), dependencies.concat([revision, enabled]));
     React.useEffect(() => {
       let active = true;
-      const controller = new AbortController();
+      const controller = new AbortController(),
+        next = requested.current;
+      requested.current = null;
       if (!enabled) {
         setState({
           identity,
@@ -53,6 +60,7 @@
           result: null,
           error: null
         });
+        if (next) next.reject(new DOMException('读取已取消', 'AbortError'));
         return () => controller.abort();
       }
       setState({
@@ -61,33 +69,54 @@
         result: null,
         error: null
       });
-      Promise.resolve().then(() => load(controller.signal)).then(result => {
-        if (active) setState({
-          identity,
-          loading: false,
-          result,
-          error: null
-        });
+      Promise.resolve().then(() => (next ? next.load : load)(controller.signal)).then(result => {
+        if (active) {
+          setState({
+            identity,
+            loading: false,
+            result,
+            error: null
+          });
+          if (next) next.resolve(result);
+        }
       }, error => {
-        if (active) setState({
-          identity,
-          loading: false,
-          result: null,
-          error
-        });
+        if (active) {
+          setState({
+            identity,
+            loading: false,
+            result: null,
+            error
+          });
+          if (next) next.reject(error);
+        }
       });
       return () => {
         active = false;
         controller.abort();
+        if (next) next.reject(new DOMException('读取已取消', 'AbortError'));
       };
     }, [identity]);
+    React.useEffect(() => () => {
+      const next = requested.current;
+      requested.current = null;
+      if (next) next.reject(new DOMException('读取已取消', 'AbortError'));
+    }, []);
     return {
       ...(state.identity === identity ? state : {
         loading: enabled,
         result: null,
         error: null
       }),
-      reload: () => setRevision(value => value + 1)
+      reload: () => setRevision(value => value + 1),
+      reloadAndWait: nextLoad => new Promise((resolve, reject) => {
+        if (requested.current) requested.current.reject(new DOMException('读取已取消', 'AbortError'));
+        requested.current = {
+          load: nextLoad,
+          resolve,
+          reject
+        };
+        setRevision(value => value + 1);
+      })
     };
   }
   function useCommand(adapter) {
@@ -255,7 +284,7 @@
   function readinessSummary(value) {
     return object(value) && value.status === 'unknown' && value.ratio === null && value.basis === 'static_resource_facts_not_schedule_precheck' && typeof value.message === 'string' && object(value.items) && Object.keys(C.nodes).every(key => object(value.items[key]) && object(value.items[key].counts) && issues(value.items[key].issues));
   }
-  function useSummary(adapter, revision) {
+  function useSummary(adapter, revision, enabled = true) {
     return useQuery(async signal => {
       if (typeof adapter.summary !== 'function') throw C.failure('dependency not wired: adapter.summary');
       const result = C.query(await adapter.summary(signal), 'summary'),
@@ -274,7 +303,7 @@
         ...result,
         data
       };
-    }, [adapter, revision]);
+    }, [adapter, revision], enabled);
   }
   function useCounts(adapter, revision) {
     const read = useSummary(adapter, revision),
@@ -290,10 +319,8 @@
       error
     }]));
     counts.summary = {
-      data,
-      loading: read.loading,
-      error,
-      reload: read.reload
+      ...read,
+      data
     };
     return counts;
   }

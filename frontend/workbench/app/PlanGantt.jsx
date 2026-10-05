@@ -141,7 +141,7 @@
       if (zoomAction === 'fit') { event.preventDefault(); fit(); }
       if (event.key.toLowerCase() === 'l') { event.preventDefault(); locate(); }
     }}>
-      <window.PointGantt.Styles /><div className="plan-toolbar">
+      <div className="plan-toolbar">
         <Segment value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="甘特分组" disabled={disabled} />
         <label className="plan-check" title={showBaseline ? '和初始计划对照' : before.reason || '初始计划暂无数据'}><input type="checkbox" aria-label="显示初始计划" checked={displayBaseline} disabled={!showBaseline || disabled}
           onChange={event => setBaseline(event.target.checked)} />{window.WorkbenchTerms.initial_plan}</label>

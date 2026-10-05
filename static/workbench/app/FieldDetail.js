@@ -50,7 +50,7 @@
       className: "field-timeline",
       role: "region",
       "aria-label": "\u4F5C\u4E1A\u65F6\u95F4\u7EBF"
-    }, /*#__PURE__*/React.createElement(window.PointGantt.Styles, null), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "field-timeline-axis"
     }, /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))), /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.max(...points)).toISOString().slice(0, 19)))), rows.map(row => {
       const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段') + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');

@@ -1,5 +1,35 @@
 (function () {
   'use strict';
+  const verifiedReader = Symbol('verified workbench response reader');
+  // Factories validate responses once. Injected readers enter that same boundary.
+  function verified(adapter, names) {
+    names.forEach(name => Object.defineProperty(adapter[name], verifiedReader, { value: true }));
+    return adapter;
+  }
+  function checked(adapter, validators) {
+    const result = { ...adapter };
+    Object.entries(validators).forEach(([name, validate]) => {
+      const method = adapter[name];
+      if (typeof method === 'function' && !method[verifiedReader]) {
+        result[name] = async (...args) => {
+          const value = await method.apply(adapter, args);
+          validate(value, ...args);
+          return value;
+        };
+        verified(result, [name]);
+      }
+    });
+    return result;
+  }
+  window.APSReadBoundary = { verified, checked };
+  // Plan integers keep safe values as numbers and larger SQLite int64 values as decimal text.
+  function nonnegativeInt64(value) {
+    if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0;
+    return typeof value === 'string' && /^[1-9][0-9]*(?![\s\S])/.test(value)
+      && (value.length > 16 || value.length === 16 && value > '9007199254740991')
+      && (value.length < 19 || value.length === 19 && value <= '9223372036854775807');
+  }
+  const positiveInt64 = value => value !== 0 && nonnegativeInt64(value);
   // Classic scripts: contract -> controls/session -> forms/tables -> workspace.
   // Queries keep QuerySuccess envelopes; failures may be returned or thrown.
   // choices(kind, {query,category,page,size,snapshot_ref}, signal) uses real refs.
@@ -228,6 +258,6 @@
     const data = result && result.data || {};
     return data.entity_ref || data.ref || data.entity && data.entity.ref || fallback;
   }
-  window.APSResourceContract = { nodes, statuses, relations, object, own, entity, query, blocked, requestKey,
+  window.APSResourceContract = { nodes, statuses, relations, object, own, entity, query, blocked, requestKey, nonnegativeInt64, positiveInt64,
     message, fieldErrors, failure, statusLabel, resourceName, codeLabel, nameLabel, fieldLabels, fieldValue, availability, draft, rebaseDraft, input, receipt, resultRef };
 })();

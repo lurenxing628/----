@@ -226,7 +226,7 @@
         if (signal) signal.removeEventListener('abort', abort);
       }
     }
-    return {
+    return window.APSReadBoundary.verified({
       async catalog(runRef, query = {}, signal) {
         check(ref(runRef));
         const q = catalogScope(query);
@@ -251,10 +251,17 @@
           format: fmt
         }), signal, fmt);
       }
-    };
+    }, ['catalog', 'workspace']);
+  }
+  function adapter(value) {
+    return window.APSReadBoundary.checked(value, {
+      catalog: (result, runRef, query) => catalog(result, runRef, query),
+      workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
+    });
   }
   window.RunCandidateAPI = {
     create,
+    adapter,
     check,
     ref,
     time,

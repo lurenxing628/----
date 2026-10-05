@@ -322,6 +322,11 @@
         });
         setRecoveryError(null);
       } catch (error) {
+        const restored = A.restored(error.intent);
+        if (restored) setDialog({
+          ...restored,
+          adapter
+        });
         setRecoveryError(error);
       }
     }, [adapter]);

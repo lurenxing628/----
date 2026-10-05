@@ -138,9 +138,11 @@
     }
     const [state, setState] = React.useState(loaded),
       current = state.name === name ? state : loaded();
-    const notify = () => window.dispatchEvent(new CustomEvent(EVENT, {
+    const notify = value => window.dispatchEvent(new CustomEvent(EVENT, {
       detail: {
-        key: name
+        key: name,
+        value,
+        source: pending
       }
     }));
     function change(patch) {
@@ -172,7 +174,7 @@
           value: saved,
           error: null
         });
-        notify();
+        notify(saved);
         return true;
       } catch (error) {
         setState({
@@ -202,9 +204,13 @@
       }
     }
     React.useEffect(() => {
-      function refresh() {
+      function refresh(value) {
         if (active.current !== name) return;
-        const next = loaded();
+        const next = value === undefined ? loaded() : {
+          name,
+          value,
+          error: null
+        };
         setState(previous => Object.keys(pending.current.patch).length && previous.name === name ? {
           name,
           value: next.value ? {
@@ -215,7 +221,8 @@
         } : next);
       }
       const local = event => {
-        if (event.detail && event.detail.key === name) refresh();
+        const detail = event.detail;
+        if (detail && detail.key === name && detail.source !== pending) refresh(detail.value);
       };
       const external = event => {
         if (event.key === name || event.key === null) refresh();

@@ -23,7 +23,7 @@
         <span className="stp-n">{index + 1}</span><span className="stp-b"><span className="stp-t">{title}</span><span className="stp-s">{key === 'ready' ? '已就绪' : subtitle(key)}</span></span></Button>)}</div>;
   }
   function Operations({ entity, hours, focusRef = null }) {
-    const paging = E.usePage(entity.operations, focusRef), groups = new Map(entity.external_groups.map(row => [row.ref, row])), root = React.useRef(null);
+    const paging = E.usePage(entity.operations, focusRef), groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]), root = React.useRef(null);
     E.useFocus(root, focusRef, paging.page.number);
     return <div ref={root}><div className="toolbar"><E.Search paging={paging} /><span>全部记录 {entity.operations.length} · 有效工序 {entity.relationships.operation_count}</span></div>
       <div className="wb-table-frame"><table className="tbl wb-table" aria-label={hours ? '已就绪工序汇总' : '路线工序明细'} style={{ minWidth: hours ? 1000 : 850, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{hours ? '已就绪工序汇总' : '路线工序明细'}</caption>
@@ -32,7 +32,7 @@
         <tbody>{paging.rows.map(row => { const group = groups.get(row.external_group_ref); return <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}>
           <td><b>{row.sequence}</b> {row.label}{row.ref === focusRef && <window.WorkbenchReference value={row.ref} />}</td><td>{row.op_type_label || '未选工种'}</td><td>{P.sourceLabel(row.source)}</td>
           <td>{row.source === 'internal' ? '不适用' : row.supplier_label || '未选供应商'}{group && <div>外协组 {group.start_sequence} 至 {group.end_sequence}</div>}</td>
-          {hours && <><td>{row.source === 'internal' ? E.value(row.setup_hours) : '不适用'}</td><td>{row.source === 'internal' ? E.value(row.unit_hours) : '不适用'}</td><td data-process-cycle-group={row.external_days_source === 'group' ? row.external_group_ref : undefined}>{row.source === 'external' ? P.groupCycle(row, entity.external_groups) || E.value(row.external_days) : '不适用'}</td></>}
+          {hours && <><td>{row.source === 'internal' ? E.value(row.setup_hours) : '不适用'}</td><td>{row.source === 'internal' ? E.value(row.unit_hours) : '不适用'}</td><td data-process-cycle-group={row.external_days_source === 'group' ? row.external_group_ref : undefined}>{row.source === 'external' ? P.groupCycle(row, groups) || E.value(row.external_days) : '不适用'}</td></>}
           <td>{row.status === 'active' ? '有效' : '已停用工序'}<div className="muted"><E.Confirmation record={row.confirmation[hours ? 'hours' : 'source']} /></div><Issues issues={row.issues} /></td></tr>; })}
           {!paging.rows.length && <tr><td colSpan={hours ? 8 : 5}>{entity.operations.length ? '没有匹配的工序。' : '尚无工序记录。'}</td></tr>}</tbody></table></div><E.Pager paging={paging} />
     </div>;
@@ -66,8 +66,7 @@
     const detail = S.useQuery(loadPart, [adapter, partRef]);
     React.useEffect(() => { if (detail.result) setCurrent(old => old || detail.result); }, [detail.result]);
     React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
-    const intent = command.intent, fileKind = intent && intent.action === 'confirm' && typeof intent.ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(intent.ref) &&
-      ['process_route_import', 'process_hours_import'].includes(intent.kind) ? intent.kind === 'process_route_import' ? 'route' : 'hours' : null;
+    const intent = command.intent, restored = window.APSProcessActions.restored(intent), fileKind = restored && restored.fileKind || null;
     const expectedStage = intent && intent.kind === 'process' && ['route_confirm', 'source_confirm', 'hours_confirm', 'groups_confirm'].includes(intent.action) ? intent.action.replace('_confirm', '') : null;
     const receiptMatches = command.phase === 'done' && expectedStage && command.intent.kind === 'process' && command.intent.ref === partRef &&
       C.object(command.result.data) && command.result.data.entity_ref === partRef && command.result.data.stage === expectedStage && ['committed', 'unchanged'].includes(command.result.result);
