@@ -46,7 +46,7 @@ def test_parse_field_float_min_violation_uses_precise_reason_and_single_parse(mo
         raise AssertionError("最小值违反不应再回流到 parse_compat_float")
 
     monkeypatch.setattr(field_parse_mod, "parse_required_float", fake_required_float)
-    monkeypatch.setattr(field_parse_mod, "parse_compat_float", fake_compat_float)
+    monkeypatch.setattr(field_parse_mod, "recover_compat_number", fake_compat_float)
 
     collector = DegradationCollector()
     result = field_parse_mod.parse_field_float(
@@ -108,3 +108,26 @@ def test_parse_field_requires_collector() -> None:
             fallback=0,
             collector=cast(DegradationCollector, None),
         )
+
+
+@pytest.mark.parametrize("kind,field,fallback,reason", [("float", "setup_hours", 0.0, "invalid_number"),
+                                                       ("int", "freeze_window_days", 0, "freeze_seed_unavailable")])
+def test_invalid_original_is_parsed_once_and_fallback_still_validated(kind, field, fallback, reason):
+    class InvalidNumber:
+        calls = 0
+
+        def __float__(self):
+            self.calls += 1
+            raise ValueError("invalid stored number")
+
+    value, collector = InvalidNumber(), DegradationCollector()
+    parse = getattr(field_parse_mod, "parse_field_" + kind)
+    assert parse(value, field=field, strict_mode=False, scope="schedule_input", fallback=fallback,
+                 collector=collector) == fallback
+    assert value.calls == 1
+    assert collector.to_counters() == {reason: 1}
+    collector = DegradationCollector()
+    with pytest.raises(ValidationError):
+        parse(value, field=field, strict_mode=False, scope="schedule_input", fallback="broken fallback",
+              collector=collector)
+    assert collector.to_counters() == {}

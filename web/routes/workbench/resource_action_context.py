@@ -19,7 +19,7 @@ from web.public_token_registry import issue_public_token_with_expiry, resolve_pu
 
 from .api_responses import api_endpoint
 from .material_actions_context import json_body, opaque_ref
-from .write_context import issue_write_context, validate_write_context
+from .write_context import preview_write_context, validate_preview_confirmation
 
 PREVIEW_SCOPE = "workbench-resource-preview-v1"
 EXPORT_SCOPE = "workbench-resource-export-v1"
@@ -94,7 +94,7 @@ def issue_preview(kind, preview, content=None):
     ref, expires_at = retain_context(PREVIEW_SCOPE, preview.document, content)
     body = preview.as_dict()
     action = body["operation"]
-    context = issue_write_context(ref, [action], preview.intent())
+    context = preview_write_context(ref, expires_at, [action])
     rejected = body["summary"]["rejected"] != 0
     if rejected:
         context["capabilities"][action] = False
@@ -115,7 +115,7 @@ def issue_file_preview(preview, content, *, columns, instructions, template_vers
     ref, expires_at = retain_context(PREVIEW_SCOPE, preview.document, content)
     body = preview.as_dict()
     action = body["operation"]
-    context = issue_write_context(ref, [action], preview.intent())
+    context = preview_write_context(ref, expires_at, [action])
     rejected = body["summary"]["rejected"] != 0
     if rejected:
         context["capabilities"][action] = False
@@ -194,7 +194,7 @@ def resolve_import_preview(ref, action, write_token):
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != action:
         raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作对不上，数据没有改动。请点「重新预检」。")
-    validate_write_context(write_token, ref, action, preview.intent())
+    validate_preview_confirmation(write_token, ref)
     return preview, content
 
 
@@ -205,5 +205,5 @@ def resolve_preview(ref, action, write_token):
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != action:
         raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作或这条记录对不上，数据没有改动。请点「重新预检」。")
-    validate_write_context(write_token, ref, action, preview.intent())
+    validate_preview_confirmation(write_token, ref)
     return preview, content

@@ -143,6 +143,9 @@ def _preview_request(client, route):
         snapshot = detail(client)["meta"]["snapshot_ref"]
         return lambda: client.post(BASE + "/" + ref_for(client) + "/split-preview", json={"snapshot_ref": snapshot, "input": {"as_of_date": "2026-09-28"}})
     if route == "sync":
+        # The current instance is internal; its replacement template is external.
+        client.batch_conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='OT1'")
+        client.batch_conn.commit()
         snapshot = detail(client)["meta"]["snapshot_ref"]
         return lambda: client.post(BASE + "/" + ref_for(client) + "/sync-preview", json={"snapshot_ref": snapshot, "input": {}})
     snapshot = list_data(client)["meta"]["snapshot_ref"]

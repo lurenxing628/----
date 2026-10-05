@@ -11,14 +11,15 @@ from data.repositories.workbench_process_query_repo import WorkbenchProcessQuery
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 
 
-def create_group(conn, part_no, members, supplier_id, total_days):
+def create_group(conn, part_no, members, supplier_id, total_days, *, attach=True):
     group_id = "WB-" + uuid4().hex
     ExternalGroupRepository(conn).create({"group_id": group_id, "part_no": part_no,
         "start_seq": members[0]["seq"], "end_seq": members[-1]["seq"], "merge_mode": "merged",
         "total_days": total_days, "supplier_id": supplier_id})
-    repo = PartOperationRepository(conn)
-    for row in members:
-        repo.update(part_no, row["seq"], {"ext_group_id": group_id})
+    if attach:
+        repo = PartOperationRepository(conn)
+        for row in members:
+            repo.update(part_no, row["seq"], {"ext_group_id": group_id})
     return group_id
 
 

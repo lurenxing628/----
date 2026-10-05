@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Union
 
 from core.errors import BusinessError, ErrorCode
-from core.infrastructure.logging import safe_log
 from core.models import ExternalGroup
 
 from .base_repo import BaseRepository
@@ -72,14 +71,6 @@ class ExternalGroupRepository(BaseRepository):
         if not set_parts:
             return
 
-        # 兼容：部分库/旧 schema 可能没有 updated_at；存在则更新（最佳努力）
-        try:
-            cols = self.fetchall("PRAGMA table_info(ExternalGroups)")
-            if any(str(r.get("name")) == "updated_at" for r in (cols or [])):
-                set_parts.append("updated_at = CURRENT_TIMESTAMP")
-        except Exception as exc:
-            safe_log(self.logger, "warning", f"检查 ExternalGroups.updated_at 字段失败，已继续保存外协工序组：{exc}")
-
         params.append(group_id)
         sql = f"UPDATE ExternalGroups SET {', '.join(set_parts)} WHERE group_id = ?"
         cur = self.execute(sql, tuple(params))
@@ -92,7 +83,7 @@ class ExternalGroupRepository(BaseRepository):
         return int(cursor.rowcount)
 
     def set_total_days(self, group_id: str, total_days: Any) -> int:
-        """只改合并组总周期，不触发 updated_at 与存在性裁决（工时确认场景原语义）。"""
+        """只改合并组总周期，不做存在性裁决（工时确认场景原语义）。"""
         cursor = self.execute("UPDATE ExternalGroups SET total_days=? WHERE group_id=?", (total_days, group_id))
         return int(cursor.rowcount)
 

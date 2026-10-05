@@ -42,16 +42,15 @@ def _page_request():
                                direction=request.args.get("direction", "asc"))
 
 
-def _entity_with_context(record, domain):
+def _entity_with_context(record):
     entity = dict(record.entity)
-    snapshot = domain.snapshot(record.identity)
     actions = ["material.update"]
     blocked = []
     if entity["relationships"]["batch_requirement_count"] == 0:
         actions.append("material.delete")
     else:
         blocked.append({"action": "material.delete", "code": "constraint_conflict", "message": "这条物料已经被批次的物料需求用到，不能删除。请先处理相关批次的物料需求，再删除物料。"})
-    context = issue_write_context(record.identity.ref, actions, snapshot)
+    context = issue_write_context(record.identity.ref, actions, record.state)
     context["capabilities"]["material.delete"] = "material.delete" in actions
     context["blocked_reasons"] = blocked
     entity["write_context"] = context
@@ -61,12 +60,12 @@ def _entity_with_context(record, domain):
 @api_endpoint
 def material_list():
     scope = _page_request()
-    reader, domain = _services()
+    reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(scope.scope(), fingerprint, request.args.get("snapshot_ref"))
         records, page = reader.page(scope)
-        data = {"entities": [_entity_with_context(record, domain) for record in records], "page": page, "metrics": reader.metrics(scope),
-                "create_context": issue_write_context(_COLLECTION, ["material.create"], fingerprint)}
+        data = {"entities": [_entity_with_context(record) for record in records], "page": page, "metrics": reader.metrics(scope),
+                "create_context": issue_write_context(_COLLECTION, ["material.create"], None)}
     return query_success(data, snapshot)
 
 
@@ -74,10 +73,10 @@ def material_list():
 def material_detail(ref):
     if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
         raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
-    reader, domain = _services()
+    reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot({"kind": "material", "entity_ref": ref}, fingerprint, request.args.get("snapshot_ref"))
-        entity = _entity_with_context(reader.detail(ref), domain)
+        entity = _entity_with_context(reader.detail(ref))
     return query_success(entity, snapshot)
 
 
@@ -108,13 +107,13 @@ def material_command(action, ref=None):
 
     def guard():
         identity = None if action == "create" else reader.resolve(ref)
-        state = reader.state_fingerprint() if identity is None else domain.snapshot(identity)
+        state = None if identity is None else domain.snapshot(identity)
         validate_write_context(body["write_token"], subject, command, state)
-        return identity
+        return state
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=normalized,
-        guard=guard, mutate=lambda identity: domain.apply(action, normalized, identity))
+        guard=guard, mutate=lambda checked: domain._apply_checked(action, normalized, checked))
     return jsonify(outcome)
 
 

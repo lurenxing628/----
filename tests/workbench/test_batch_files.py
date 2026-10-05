@@ -133,40 +133,30 @@ def test_file_confirm_stale_rolls_back_and_duplicate_rejected(batch_client):
     assert state(client) == before
 
 
-def test_import_write_token_binds_the_preview_ref_and_is_issued_after_the_read_slot(batch_client, monkeypatch):
+def test_import_confirmation_shares_preview_context_and_is_retained_after_the_read_slot(batch_client, monkeypatch):
     from web.routes.workbench import batch_files, read_budget
 
     client = batch_client
-    original_issue, original_validate, original_save = batch_files.issue_write_context, batch_files.validate_write_context, batch_files.save_preview
+    original_save = batch_files.save_preview
     calls = []
 
-    def issue(subject, actions, snapshot):
-        calls.append(("issue", sorted(snapshot), read_budget.BATCH_READ_SLOTS._available))
-        return original_issue(subject, actions, snapshot)
+    def save(*args, **kwargs):
+        calls.append(("save", read_budget.BATCH_READ_SLOTS._available))
+        return original_save(*args, **kwargs)
 
-    def validate(token, subject, action, snapshot):
-        calls.append(("validate", sorted(snapshot), None))
-        return original_validate(token, subject, action, snapshot)
-
-    def save(*args):
-        calls.append(("save", None, read_budget.BATCH_READ_SLOTS._available))
-        return original_save(*args)
-
-    monkeypatch.setattr(batch_files, "issue_write_context", issue)
-    monkeypatch.setattr(batch_files, "validate_write_context", validate)
     monkeypatch.setattr(batch_files, "save_preview", save)
     first = uploaded(client, [["FREE-001", "P1", 5, None, None, None, None, "first"]]).get_json()["data"]
     second = uploaded(client, [["FREE-001", "P1", 5, None, None, None, None, "second"]]).get_json()["data"]
-    # Both tokens are issued once the shared batch read slot is free again, and the write token never
-    # serializes the document (every row carries its whole batch); the preview ref names it instead.
-    assert calls == [("save", None, 1), ("issue", ["fingerprint", "preview_ref"], 1)] * 2
+    assert calls == [("save", 1)] * 2
+    for document in (first, second):
+        assert document["write_context"]["write_token"] == document["preview_ref"]
+        assert document["write_context"]["expires_at"] == document["expires_at"]
     before = state(client)
     crossed = client.post(BASE + "/import-confirm", json=body(first["write_context"], {"preview_ref": second["preview_ref"]},
                                                                "batch-file-crossed-0001"))
     assert_error(crossed, "stale_write")
     assert state(client) == before
     assert confirm(client, second).status_code == 200
-    assert calls[-1] == ("validate", ["fingerprint", "preview_ref"], None)
     assert detail(client)["data"]["fields"]["remark"] == "second"
 
 

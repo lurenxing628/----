@@ -1,6 +1,7 @@
 """Real isolated SQLite: explicit permissions, stale previews and atomic rollback."""
 
 import sqlite3
+from contextlib import contextmanager
 from uuid import uuid4
 
 import pytest
@@ -28,6 +29,55 @@ def _ref(conn, kind, code):
 
 def _row(ref, skill="normal", primary="no"):
     return {"machine_ref": ref, "skill_level": skill, "is_primary": primary}
+
+
+def test_editing_existing_primary_writes_its_final_fields_once(qualification_conn, monkeypatch):
+    from data.repositories.operator_machine_repo import OperatorMachineRepository
+    conn = qualification_conn
+    OperatorMachineService(conn).add_link("O1", "M1", is_primary="yes")
+    svc = WorkbenchOperatorMachinePermissions(conn)
+    person, machine = _ref(conn, "operator", "O1"), _ref(conn, "machine", "M1")
+    preview = svc.preview(person, [_row(machine, "expert", "yes")])
+    writes, original = [], OperatorMachineRepository.update_fields
+    def recorded(self, operator_id, machine_id, **fields):
+        writes.append((operator_id, machine_id, fields))
+        return original(self, operator_id, machine_id, **fields)
+    monkeypatch.setattr(OperatorMachineRepository, "update_fields", recorded)
+    _execute(conn, preview)
+    assert writes == [("O1", "M1", {"skill_level": "expert", "is_primary": "yes"})]
+
+
+def test_standalone_primary_update_reads_other_links_after_entering_its_transaction(qualification_conn, tmp_path, monkeypatch):
+    conn = sqlite3.connect(str(tmp_path / 'primary-update.db'))
+    conn.row_factory = sqlite3.Row
+    qualification_conn.backup(conn)
+    conn.execute('PRAGMA foreign_keys=ON')
+    insert_row(conn, 'Machines', {'machine_id': 'M2', 'name': 'second', 'op_type_id': 'TURN'})
+    conn.commit()
+    service = OperatorMachineService(conn)
+    service.add_link('O1', 'M1')
+    service.add_link('O1', 'M2')
+    path = conn.execute('PRAGMA database_list').fetchone()[2]
+    other = sqlite3.connect(path)
+    original = service.tx_manager.transaction
+
+    @contextmanager
+    def transaction(**kwargs):
+        # A real second writer commits immediately before the command opens its transaction.
+        other.execute("UPDATE OperatorMachine SET is_primary='yes' WHERE operator_id='O1' AND machine_id='M2'")
+        other.commit()
+        with original(**kwargs):
+            yield
+
+    try:
+        monkeypatch.setattr(service.tx_manager, 'transaction', transaction)
+        service.update_link_fields('O1', 'M1', skill_level='expert', is_primary='yes', preserve_unchanged=True)
+        rows = {row['machine_id']: row['is_primary'] for row in conn.execute(
+            "SELECT machine_id,is_primary FROM OperatorMachine WHERE operator_id='O1'")}
+        assert rows == {'M1': 'yes', 'M2': 'no'}
+    finally:
+        other.close()
+        conn.close()
 
 
 def _execute(conn, preview, service=None, key=None):
@@ -145,11 +195,17 @@ def test_api_roundtrip_changes_preserves_skills_and_replays_without_preview_stor
     response = _preview(app_client, person, [_row(first, "expert", "yes"), _row(second)])
     assert response.status_code == 200, response.get_data(as_text=True)
     preview = response.get_json()["data"]
+    assert preview["write_context"]["write_token"] == preview["preview_ref"]
+    assert preview["write_context"]["expires_at"] == preview["expires_at"]
     assert preview["summary"]["new"] == 2
     assert _detail(app_client, "operator", person)["relationships"]["machine_permissions"] == []
     body = {"request_key": "permissions-api-000001", "write_token": preview["write_context"]["write_token"],
             "input": {"preview_ref": preview["preview_ref"]}}
     url = BASE + "operator/" + person + "/machine-permissions/confirm"
+    another = _preview(app_client, person, [_row(first)]).get_json()["data"]
+    crossed = app_client.post(url, json={**body, "write_token": another["write_context"]["write_token"]})
+    assert crossed.status_code == 409 and crossed.get_json()["error"]["code"] == "stale_write"
+    assert _detail(app_client, "operator", person)["relationships"]["machine_permissions"] == []
     assert app_client.post(url, json=body).status_code == 200
     after = _detail(app_client, "operator", person)
     assert len(after["relationships"]["machine_permissions"]) == 2

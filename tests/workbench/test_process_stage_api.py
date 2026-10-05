@@ -21,6 +21,17 @@ _stage_fixture = stage_api_fixture
 ACTIONS = ("route_confirm", "source_confirm", "hours_confirm")
 
 
+def test_command_consumes_guarded_template_without_reloading_it(stage_api, monkeypatch):
+    from core.services.workbench.process.mutations import WorkbenchProcessMutationService
+
+    body = stage_api.intent('route_confirm')
+    monkeypatch.setattr(WorkbenchProcessMutationService, '_snapshot',
+                        lambda *args: pytest.fail('the command already owns the guarded template'))
+    result = success(stage_api.post('route_confirm', body))
+    assert result['result'] == 'committed'
+    assert stage_api.detail()['data']['workflow']['route']['state'] == 'confirmed'
+
+
 @pytest.mark.parametrize("mode", ("text", "rows"))
 def test_detail_preview_and_three_confirmations_preserve_every_business_row(stage_api, mode):
     api = stage_api

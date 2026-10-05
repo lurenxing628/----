@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.infrastructure.transaction import TransactionManager
 from core.models.enums import SourceType
 from core.models.resource_capabilities import supports_source
 from core.services.common.safe_logging import safe_info
@@ -33,6 +35,7 @@ from core.services.process.route_parser_tokens import (
     route_tokens,
     serialize_route_rows,
 )
+from data.repositories.op_type_repo import OpTypeRepository
 
 
 class ParseStatus(Enum):
@@ -168,8 +171,15 @@ class RouteParser:
 
     def build_parse_context(self) -> RouteParseContext:
         """一次性构建解析纯数据（工种名映射 + 供应商映射/问题/全局问题），供批量解析循环外复用。"""
-        op_types = {ot.name: ot for ot in (self.op_types_repo.list() or [])}
-        suppliers, supplier_issues, supplier_global_issues = self._build_supplier_map_with_global_issues()
+        concrete = type(self.op_types_repo) is OpTypeRepository
+        scope = TransactionManager(self.op_types_repo.conn).transaction() if concrete else nullcontext()
+        with scope:
+            records = self.op_types_repo.list() or []
+            op_types = {ot.name: ot for ot in records}
+            # Injected readers retain their own get semantics, including mapping
+            # failures. Concrete SQL rows are captured in one actual read snapshot.
+            by_id = {ot.op_type_id: ot for ot in records} if concrete else None
+            suppliers, supplier_issues, supplier_global_issues = self._build_supplier_map_with_global_issues(by_id)
         return RouteParseContext(
             op_types=op_types,
             suppliers=suppliers,
@@ -185,16 +195,29 @@ class RouteParser:
         strict_mode: bool = False,
         context: Optional[RouteParseContext] = None,
     ) -> ParseResult:
-        warnings: List[str] = []
         errors: List[str] = []
-        original_input = route_string or ""
         normalized, explicit = self._read_route_input(route_string, errors)
+        return self._parse_input(route_string, part_no, normalized, explicit, errors,
+                                 strict_mode=strict_mode, context=context)
+
+    def parse_with_format_check(self, route_string, part_no, *, strict_mode=False, context=None) -> Tuple[bool, str, Optional[ParseResult]]:
+        """Template saves consume the same decoded input as the early format check."""
+        errors = []
+        normalized, explicit = self._read_route_input(route_string, errors)
+        ok, message = self._input_format(route_string, normalized, explicit, errors)
+        if not ok:
+            return False, message, None
+        result = self._parse_input(route_string, part_no, normalized, explicit, errors,
+                                   strict_mode=strict_mode, context=context, format_checked=True)
+        return True, message, result
+
+    def _parse_input(self, route_string, part_no, normalized, explicit, errors, *, strict_mode, context, format_checked=False) -> ParseResult:
+        warnings: List[str] = []
+        original_input = route_string or ""
         if not normalized and not errors:
             return _empty_parse_result(original_input, "", [], [EMPTY_ROUTE_ERROR])
-        if explicit is None:
-            errors.extend(route_format_errors(normalized))
-        else:
-            errors.extend(_explicit_format_errors(explicit))
+        if not format_checked:
+            errors.extend(route_format_errors(normalized) if explicit is None else _explicit_format_errors(explicit))
         # 单次解析 context=None → 每次重建（行为与历史逐字一致）；批量解析传入循环外构建的 context 复用，消除 N+1。
         ctx = context if context is not None else self.build_parse_context()
         op_types = ctx.op_types
@@ -280,11 +303,13 @@ class RouteParser:
 
     def _build_supplier_map_with_global_issues(
         self,
+        op_types_by_id=None,
     ) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]], List[SupplierGlobalIssue]]:
         resolver = SupplierConstraintResolver(
             self.op_types_repo,
             self.suppliers_repo,
             logger=self.logger,
+            op_types_by_id=op_types_by_id,
         )
         supplier_map, supplier_issues = resolver.build_supplier_map()
         return supplier_map, supplier_issues, list(resolver.global_issues)
@@ -436,15 +461,18 @@ class RouteParser:
         Returns:
             (是否有效, 提示信息)
         """
+        errors = []
+        normalized, explicit = self._read_route_input(route_string, errors)
+        return self._input_format(route_string, normalized, explicit, errors)
+
+    @staticmethod
+    def _input_format(route_string, normalized, explicit, errors):
         if not route_string or not str(route_string).strip():
             return False, "工艺路线不能为空"
-
-        try:
-            explicit = parse_explicit_route(route_string)
-        except ValueError as exc:
-            return False, str(exc)
+        if errors:
+            return False, errors[0]
         if explicit is not None:
             if _explicit_format_errors(explicit):
                 return False, "工序号必须为不重复的正整数，每道工序都要有名称。"
             return True, f"格式有效，识别到 {len(explicit)} 道工序"
-        return _validate_compact_format(self._preprocess(route_string))
+        return _validate_compact_format(normalized)

@@ -103,8 +103,10 @@ def test_later_file_insert_failure_restores_all_rows_and_receipts(batch_client, 
 
 
 def template_facts(groups=()):
-    return {"ExternalGroups": list(groups), "OpTypes": [{"op_type_id": "T"}],
-            "Suppliers": [{"supplier_id": "S", "status": "active"}]}
+    return {"ExternalGroups": [dict(start_seq=1, end_seq=1, supplier_id=None, **group) for group in groups],
+            "OpTypes": [{"op_type_id": "T", "name": "Work", "category": "both"}],
+            "Suppliers": [{"supplier_id": "S", "op_type_id": "T", "status": "active"}],
+            "WorkbenchSupplierProfiles": [], "WorkbenchSupplierOpTypes": []}
 
 
 def test_template_missing_hours_remain_missing_and_hidden_external_values_are_not_normalized():

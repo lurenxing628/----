@@ -68,6 +68,8 @@ def test_new_report_invalidates_old_token_list_snapshot_and_bulk_preview(batch_l
 def test_sync_preview_drift_when_reporting_other_current_operation(batch_ledger):
     case = batch_ledger
     # FREE has no plan or execution; another operation can report after its preview.
+    # Keep the external replacement template valid for this internal work type.
+    case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='OT1'")
     case.conn.execute("DELETE FROM Schedule WHERE op_id=?", (case.op_id,))
     case.conn.commit()
     source = detail(case.client)

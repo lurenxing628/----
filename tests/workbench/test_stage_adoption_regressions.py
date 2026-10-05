@@ -164,8 +164,10 @@ def test_ready_date_policy_survives_compute_adoption_and_trial(candidate_case, p
     case.conn.commit()
     run, refs = compute(case, case.settings(ready_check=ready_check, material_strategy="strict"))
     expected_day = "2026-09-15" if ready_check else "2026-09-09"
-    for item in CandidateStore(case.conn).candidates(run):
-        assert min(row["start_time"] for row in item["artifact"]["results"])[:10] == expected_day
+    store = CandidateStore(case.conn)
+    for item in store.candidates(run):
+        tasks = store.tasks(item["candidate_ref"])
+        assert min(row["payload"]["start_time"] for row in tasks)[:10] == expected_day
         assert service(case.conn).preview(item["candidate_ref"])["validation"]["can_adopt"] is True
     base = {"candidate_ref": refs[0]}
     if origin == "official":

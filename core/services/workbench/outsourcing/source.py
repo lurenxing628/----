@@ -128,22 +128,21 @@ class WorkbenchOutsourcingSourceService:
                 "facts": bounded(raw_facts({"batch": batch, "part": part, "supplier": supplier,
                                            "operations": operations, "source_clock": clock}))}
 
-    def _target_entity_labels(self, row, kind):
+    @staticmethod
+    def _target_entity_labels(row, kind, source):
         ref = row[kind + "_ref"]
         # A registered member must not display a same-number replacement as its original object.
         if row["outsourcing_ref"] is not None and row["receipt_" + kind + "_ref"] != ref:
             return None
-        try:
-            source = self.entity(ref, kind)["row"]
-        except WorkbenchCommandRejected as exc:
-            if exc.code not in ("entity_not_found", "identity_missing"):
-                raise
-            return None
-        code, name = ("batch_id", "part_name") if kind == "batch" else ("supplier_id", "name")
-        return {"ref": ref, "business_code": _target_text(source[code]), "label": _target_text(source[name])}
+        public = source["public"][kind]
+        return {"ref": ref, "business_code": _target_text(public["business_code"]), "label": _target_text(public["label"])}
 
     def targets(self, batch_ref=None, query=""):
         """Add nullable batch/supplier {ref, business_code, label}; unknown text stays null."""
+        return [item for item, source in self.load_targets(batch_ref, query)]
+
+    def load_targets(self, batch_ref=None, query=""):
+        """Read each target and its verified source once in the caller's snapshot."""
         batch_id = None
         if batch_ref is not None:
             batch_id = self.entity(batch_ref, "batch")["row"]["batch_id"]
@@ -152,6 +151,7 @@ class WorkbenchOutsourcingSourceService:
             reject("外协工序超过10000项，请按批次号或工序查找，缩小范围。", "query_too_large", 413)
         result = []
         for row in rows:
+            source = None
             item = {"operation_ref": row["operation_ref"], "business_code": label(row["op_code"]),
                     "sequence": label(row["seq"]), "piece": label(row["piece_id"]),
                     "label": label(row["op_type_name"]), "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
@@ -165,11 +165,12 @@ class WorkbenchOutsourcingSourceService:
                     source = self.load({"kind": "single", "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
                                         "operation_refs": [row["operation_ref"]]})
                     item["can_register"] = row["outsourcing_ref"] is None
-                    item["batch"] = self._target_entity_labels(row, "batch")
-                    item["supplier"] = self._target_entity_labels(row, "supplier")
+                    item["batch"] = self._target_entity_labels(row, "batch", source)
+                    item["supplier"] = self._target_entity_labels(row, "supplier", source)
                     item["part"] = source["public"]["part"]
                     item["source_resolution"] = source["public"]["source_resolution"]
                 except WorkbenchCommandRejected as exc:
                     item["issues"] = [{"code": exc.code, "message": str(exc)}]
-            result.append(item)
-        return bounded(result)
+            result.append((item, source))
+        bounded([item for item, source in result])
+        return result

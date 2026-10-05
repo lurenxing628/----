@@ -12,11 +12,12 @@ from core.infrastructure.workbench_outsourcing_schema import objects
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_dashboard import bounded, payload_size
 from core.models.workbench_outsourcing import STATES
+from core.models.workbench_outsourcing import bounded as receipt_bounded
 from core.models.workbench_outsourcing_input import next_values
 from core.services.workbench.outsourcing.projection import values
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 
-from .external_sources import gap, latest_fact, subject, target_source, unknown_sources
+from .external_sources import gap, latest_fact, subject, unknown_sources
 from .facts import source_issue, typed
 from .projection import category
 
@@ -33,9 +34,10 @@ def summary(state, issues=None):
 
 
 def _receipts(reader, now, result):
-    snapshots = []
+    snapshots, captured = [], {}
     for ref in reader.refs():
         latest = latest_fact(reader, ref)
+        captured[ref] = {"latest": latest}
         try:
             if latest["confirmed_state"] not in STATES:
                 raise WorkbenchCommandRejected("invalid_input", "外协确认状态无效。")
@@ -47,7 +49,9 @@ def _receipts(reader, now, result):
             result["evaluation_gaps"].append(gap(ref, "外协原登记", issues))
             snapshots.append({"latest": latest, "issues": issues})
             continue
-        item, snapshot = reader._entry(ref, now)
+        header = reader.header(ref)
+        item, snapshot = reader.entry_from_facts(header, receipt_bounded(latest), now)
+        captured[ref].update(header=header, receipt=item, snapshot=snapshot)
         snapshots.append({"source": snapshot, "receipt": item})
         if item["source_state"] != "current":
             title = subject(item["target"]["batch"]["business_code"], "外协原登记")
@@ -61,17 +65,18 @@ def _receipts(reader, now, result):
         result["awaiting_confirmation_count"] += int(pending)
         result["known_risk_count"] += int(item["overdue"] or pending)
     result["receipt_count"] = len(snapshots)
-    return snapshots
+    return snapshots, captured
 
 
 def _targets(reader, result):
-    targets = reader.sources.targets()
+    entries = reader.sources.load_targets()
+    targets = [item for item, source in entries]
     snapshots = []
-    for item in targets:
+    for item, source in entries:
         if item["outsourcing_ref"] is not None:
             continue  # Registered membership is evaluated once, at the receipt.
         result["unregistered_count"] += 1
-        source, issues = target_source(reader, item)
+        issues = item["issues"]
         snapshots.append({"target": item, "source": source, "issues": issues})
         if not issues:
             issues = [source_issue("outsourcing_unregistered", "尚未登记外协发出或回厂信息，请补充物流登记。")]
@@ -91,6 +96,12 @@ def _targets(reader, result):
 
 
 def external(conn, now):
+    result, fingerprint, receipts = load_external(conn, now)
+    return result, fingerprint
+
+
+def load_external(conn, now):
+    """Capture receipt facts once for the dashboard summary and handling projection."""
     if not conn.in_transaction:
         raise RuntimeError("External dashboard reads require a caller-owned snapshot")
     definitions = objects()
@@ -104,9 +115,9 @@ def external(conn, now):
         recorded = reader.repo.has_confirm_receipts()
         state = "unavailable" if schema or recorded else "not_connected"
         result = summary(state, [source_issue(exc.code, str(exc))])
-        return result, input_fingerprint({"schema": schema, "recorded": recorded, "summary": result})
+        return result, input_fingerprint({"schema": schema, "recorded": recorded, "summary": result}), {}
     result = summary("loaded")
-    receipts = _receipts(reader, now, result)
+    receipts, captured = _receipts(reader, now, result)
     targets = _targets(reader, result)
     gaps = bounded(result["evaluation_gaps"])
     result["unknown_count"] = len(gaps)
@@ -117,4 +128,4 @@ def external(conn, now):
         result["state"] = "no_data"
     fingerprint = input_fingerprint(payload_size(typed({"schema": schema, "receipts": receipts,
                                                         "targets": targets, "summary": result})))
-    return result, fingerprint
+    return result, fingerprint, captured

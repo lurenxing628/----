@@ -45,12 +45,14 @@ def relation_import_preview(kind):
     relation_kind(kind)
     content, fmt, mode = upload_body()
     reader = _reader()
-    with reader.read_snapshot() as fingerprint:
-        preview = _service(kind).preview_import(content, file_format=fmt, mode=mode)
-        data = issue_file_preview(preview, content, columns=public_columns(kind),
+    service = _service(kind)
+    source = service.prepare_import(content, file_format=fmt, mode=mode)
+    with reader.read_snapshot(capture_fingerprint=False):
+        preview = service.preview_import(source, file_format=fmt, mode=mode)
+        data = issue_file_preview(preview, source, columns=public_columns(kind),
                                   instructions=INSTRUCTIONS, template_version=TEMPLATE_VERSION)
         snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import",
-                                       "preview_ref": data["preview_ref"]}, fingerprint)
+                                       "preview_ref": data["preview_ref"]}, data["preview_ref"])
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 

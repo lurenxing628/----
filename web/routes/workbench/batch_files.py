@@ -19,7 +19,7 @@ from .api_responses import api_endpoint
 from .batch_context import command_body, json_body, load_preview, retry_message, save_preview
 from .read_budget import batch_read_snapshot
 from .read_context import bind_read_snapshot
-from .write_context import issue_write_context, validate_write_context
+from .write_context import preview_write_context, validate_preview_confirmation
 
 
 def download(content, name, count):
@@ -58,23 +58,13 @@ def batch_import_preview():
     with batch_read_snapshot(reader) as fingerprint:
         bind_read_snapshot(snapshot_scope(scope), fingerprint, request.form["snapshot_ref"])
         document = WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).preview(content, request.form["mode"], parsed)
-    # Issuing the tokens needs only the finished document, so other batch reads need not queue behind it.
-    token = save_preview("import_confirm", None, document, fingerprint)
-    data = {**document, "preview_ref": token, "write_context": None}
+    # Retaining the finished document needs no read slot or second write token.
+    token, expires_at = save_preview("import_confirm", None, document, fingerprint, with_expiry=True)
+    data = {**document, "preview_ref": token, "expires_at": expires_at, "write_context": None}
     if document["can_confirm"]:
-        data["write_context"] = issue_write_context(token, ["batch.import_confirm"], _write_snapshot(fingerprint, token))
+        data["write_context"] = preview_write_context(token, expires_at, ["batch.import_confirm"])
     snapshot = bind_read_snapshot({"kind": "batch_import_preview", "preview_ref": token}, fingerprint)
     return query_success(data, snapshot)
-
-
-def _write_snapshot(fingerprint, token):
-    """What an import write token is bound to: the ledger fingerprint and the preview it confirms.
-
-    A preview token always resolves to the one document saved under it, so naming the token binds
-    that document too, without serializing every row (each carries its whole batch) once more here
-    and again in the confirm guard under the write lock.
-    """
-    return {"fingerprint": fingerprint, "preview_ref": token}
 
 
 @api_endpoint
@@ -91,7 +81,7 @@ def batch_import_confirm():
         fingerprint = reader.fingerprint()
         if binding["fingerprint"] != fingerprint:
             raise WorkbenchCommandRejected("stale_write", retry_message("import_confirm", "预检之后批次资料有变化"))
-        validate_write_context(body["write_token"], token, "batch.import_confirm", _write_snapshot(fingerprint, token))
+        validate_preview_confirmation(body["write_token"], token)
         return binding["input"]
 
     with reader.command_snapshot():

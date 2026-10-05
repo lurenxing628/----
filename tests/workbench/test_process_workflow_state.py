@@ -29,6 +29,23 @@ from tests.workbench.process_workflow_support import (
 )
 
 
+def test_process_and_master_workflows_use_their_captured_catalog(workflow_conn, monkeypatch):
+    from core.services.workbench.master.overview_facts import MasterOverviewFacts
+    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+    from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
+    conn = workflow_conn
+    confirm_all(conn)
+    expected = workflow_snapshot(conn)
+    monkeypatch.setattr(WorkbenchProcessWorkflowRepository, "active_operations",
+                        lambda *args: pytest.fail("captured catalog was read a second time"))
+    reader = WorkbenchProcessQueryService(conn)
+    with reader.read_snapshot():
+        assert reader.facts()["workflow"] == expected
+    overview = MasterOverviewFacts(conn)
+    with overview.read_snapshot():
+        assert overview.workflow == expected
+
+
 def test_legacy_get_never_infers_confirmations_even_for_source_and_zero_hours(workflow_conn):
     conn = workflow_conn
     before, changes = stored_state(conn), conn.total_changes

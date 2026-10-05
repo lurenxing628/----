@@ -20,7 +20,7 @@ from web.public_token_registry import issue_public_token_with_expiry, resolve_pu
 from .api_responses import api_endpoint
 from .material_actions_previews import retain_preview, stored_preview
 from .read_context import bind_read_snapshot
-from .write_context import issue_write_context, validate_write_context
+from .write_context import preview_write_context, validate_preview_confirmation
 
 PREVIEW_SCOPE = "workbench-material-preview-v1"
 EXPORT_SCOPE = "workbench-material-export-v1"
@@ -96,7 +96,7 @@ def issue_preview(preview, content=None):
     expires_at = datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
     document = preview.as_dict()
     action = document["operation"]
-    context = issue_write_context(ref, [action], preview.intent())
+    context = preview_write_context(ref, expires_at, [action])
     rejected = document["summary"]["rejected"] != 0
     if rejected:
         context["capabilities"][action] = False
@@ -115,7 +115,7 @@ def resolve_preview(ref, action, write_token):
     preview, content = stored_preview(binding["preview_key"])
     if preview.as_dict()["operation"] != action:
         raise WorkbenchCommandRejected("stale_write", "预检结果不适用于这次操作，物料没有改动。请点「重新预检」。")
-    validate_write_context(write_token, ref, action, preview.intent())
+    validate_preview_confirmation(write_token, ref)
     return preview, content
 
 

@@ -1,6 +1,8 @@
 """Maintain batch material requirements inside the guarded command transaction."""
 
+from collections import defaultdict
 from datetime import date
+from typing import cast
 
 from core.models.enums import ReadyStatus
 from core.models.workbench_batch import number
@@ -23,8 +25,16 @@ class WorkbenchBatchMaterialService:
         self.stages = BatchMaterialStageRepository(conn, logger)
 
     def _proposed(self, ref, payload, batch, facts):
-        old = {material_row_key(ref, row): {**row, **self.stages.details(row["id"])}
-               for row in facts["BatchMaterials"] if row["batch_id"] == batch["batch_id"]}
+        requirements = [row for row in facts["BatchMaterials"] if row["batch_id"] == batch["batch_id"]]
+        requirement_ids = {row["id"] for row in requirements}
+        bindings = {row["requirement_id"]: row["operation_id"] for row in facts["BatchMaterialStages"]}
+        arrivals = defaultdict(list)
+        rows = [row for row in facts["BatchMaterialArrivals"] if row["requirement_id"] in requirement_ids]
+        # Match SQLite's TEXT-before-BLOB order without comparing unrelated storage types.
+        for row in sorted(rows, key=lambda row: (isinstance(row["arrival_date"], bytes), row["arrival_date"], row["id"])):
+            arrivals[row["requirement_id"]].append({key: row[key] for key in ("arrival_date", "quantity")})
+        old = {material_row_key(ref, row): dict(row, operation_id=bindings.get(row["id"]), arrivals=arrivals[row["id"]])
+               for row in requirements}
         if set(payload["removed_keys"]) - set(old):
             raise WorkbenchCommandRejected("stale_write", "要移除的物料需求已变化，请刷新后重新核对。")
         final = {key: dict(row) for key, row in old.items() if key not in payload["removed_keys"]}
@@ -87,17 +97,18 @@ class WorkbenchBatchMaterialService:
             raise WorkbenchCommandRejected("constraint_conflict", "请先在批次基础信息中填好数量，再核对物料需求。")
         old, final = self._proposed(ref, payload, batch, facts)
         ready = self._ready(list(final.values()))
-        changed = ready != batch["ready_status"] or bool(payload["removed_keys"])
+        changed = bool(payload["removed_keys"])
         for key in payload["removed_keys"]:
-            self.repo.delete(old[key]["id"])
+            self.repo.delete(cast(int, old[key]["id"]))
         reviewed = {item["requirement_id"]: item["batch_quantity"] for item in facts.get("BatchMaterialReviews", [])}
         touched = {item["row_key"] for item in payload["rows"]}
         changed = self._save_requirements(batch, old, final, touched, reviewed) or changed
         if any(key not in touched and key in old and reviewed.get(row["id"], batch["quantity"]) != batch["quantity"]
                for key, row in final.items()):
             ready = "no"
-        if changed:
+        if ready != batch["ready_status"]:
             self.batches.update(batch["batch_id"], {"ready_status": ready})
+            changed = True
         return WorkbenchCommandOutcome("committed" if changed else "unchanged", {
             "entity_ref": ref, "business_code": batch["batch_id"], "material_count": len(final), "ready_status": ready})
 
@@ -114,13 +125,19 @@ class WorkbenchBatchMaterialService:
         fields = {name: row[name] for name in ("required_qty", "available_qty", "ready_status")}
         if row["id"] is None:
             row["id"] = self.repo.add(batch["batch_id"], row["material_id"], **fields).id
-            self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
+            if row["operation_id"] is not None:
+                self.stages.replace_operation(row["id"], row["operation_id"])
+            if row["arrivals"]:
+                self.stages.replace_arrivals(row["id"], row["arrivals"])
             return True
         changed = False
         if any(previous[name] != value for name, value in fields.items()):
             self.repo.update_qty(row["id"], **fields)
             changed = True
-        if any(previous[name] != row[name] for name in ("operation_id", "arrivals")):
-            self.stages.replace(row["id"], row["operation_id"], row["arrivals"])
+        if previous["operation_id"] != row["operation_id"]:
+            self.stages.replace_operation(row["id"], row["operation_id"])
+            changed = True
+        if previous["arrivals"] != row["arrivals"]:
+            self.stages.replace_arrivals(row["id"], row["arrivals"])
             changed = True
         return changed

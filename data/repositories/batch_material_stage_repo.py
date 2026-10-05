@@ -8,15 +8,12 @@ class BatchMaterialStageRepository(BaseRepository):
         self.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) VALUES(?,?) ON CONFLICT(requirement_id) DO UPDATE SET batch_quantity=excluded.batch_quantity",
                      (requirement_id, batch_quantity))
 
-    def details(self, requirement_id):
-        stage = self.fetchone("SELECT operation_id FROM BatchMaterialStages WHERE requirement_id=?", (requirement_id,))
-        arrivals = self.fetchall("SELECT arrival_date,quantity FROM BatchMaterialArrivals WHERE requirement_id=? ORDER BY arrival_date,id", (requirement_id,))
-        return {"operation_id": stage["operation_id"] if stage else None, "arrivals": arrivals}
-
-    def replace(self, requirement_id, operation_id, arrivals):
+    def replace_operation(self, requirement_id, operation_id):
         self.execute("DELETE FROM BatchMaterialStages WHERE requirement_id=?", (requirement_id,))
         if operation_id is not None:
             self.execute("INSERT INTO BatchMaterialStages(requirement_id,operation_id) VALUES(?,?)", (requirement_id, operation_id))
+
+    def replace_arrivals(self, requirement_id, arrivals):
         self.execute("DELETE FROM BatchMaterialArrivals WHERE requirement_id=?", (requirement_id,))
         for row in arrivals:
             self.execute("INSERT INTO BatchMaterialArrivals(requirement_id,arrival_date,quantity) VALUES(?,?,?)",

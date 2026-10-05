@@ -3,7 +3,10 @@
 import csv
 import io
 import json
+import shutil
+import subprocess
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 
@@ -41,6 +44,92 @@ def test_same_snapshot_plan_reports_resource_switch_unknown_and_readonly(actual_
     assert read(actual_api, snapshot_ref=response["meta"]["snapshot_ref"])["meta"]["as_of"] == response["meta"]["as_of"]
     assert actual_api.state() == before
     assert not any(sql.lstrip().split(" ")[0].upper() in {"INSERT", "UPDATE", "DELETE", "CREATE", "ALTER"} for sql in actual_api.statements)
+
+
+@pytest.mark.parametrize("sequence", [9007199254740991, 9007199254740993, 9223372036854775807])
+def test_lossless_sequence_remains_bound_to_real_plan_chain(actual_api, sequence):
+    with actual_api.db() as conn:
+        conn.execute("UPDATE BatchOperations SET seq=? WHERE id=1", (sequence,))
+    before = actual_api.state()
+    response = read(actual_api)
+    task, chain = response["data"]["items"][0]["task"], response["data"]["critical_chain"]
+    expected = sequence if sequence <= 9007199254740991 else str(sequence)
+    assert task["sequence"] == expected
+    assert chain["state"] == "available"
+    assert chain["nodes"][0]["sequence"] == expected
+    assert actual_api.state() == before
+
+    node = shutil.which("node")
+    assert node, "Node is required to verify the actual Gantt response contract"
+    script = (
+        "const fs=require('fs'),vm=require('vm'),window={},context=vm.createContext({window,Date});"
+        "for(const name of ['resource-contract.js','PointContract.js','PointGanttModel.js','WorkbenchTerms.js',"
+        "'WorkbenchFormat.js','FieldContract.js','ActualGanttModel.js','ActualGanttContract.js'])"
+        "vm.runInContext(fs.readFileSync('frontend/workbench/app/'+name,'utf8'),context);"
+        "const value=JSON.parse(fs.readFileSync(0,'utf8'));"
+        "window.ActualGanttContract.workspace(value,{plan_ref:value.data.plan.plan_ref});"
+        "const large=JSON.parse(JSON.stringify(value)),task=large.data.items[0].task;"
+        "Object.assign(task,{quantity:'9007199254740993',batch_quantity:'9223372036854775807',"
+        "quantity_basis:'run_admission',quantity_reason:null});"
+        "window.ActualGanttContract.workspace(large,{plan_ref:large.data.plan.plan_ref});"
+        "task.quantity='9223372036854775808';"
+        "require('assert').throws(()=>window.ActualGanttContract.workspace(large,{plan_ref:large.data.plan.plan_ref}));"
+    )
+    checked = subprocess.run([node, "-e", script], cwd=str(Path(__file__).resolve().parents[2]),
+        input=json.dumps(response), capture_output=True, text=True, timeout=30)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+def test_injected_related_reader_keeps_chain_return_contract(actual_api):
+    original = read(actual_api)
+    target = original["data"]["items"][0]["task"]["task_ref"]
+    response = actual_api.client.get(BASE + "/chain", query_string={
+        "plan_ref": actual_api.ref(), "snapshot_ref": original["meta"]["snapshot_ref"], "target_task_ref": target,
+    })
+    assert response.status_code == 200, response.get_data(as_text=True)
+    related = response.get_json()
+    assert related["data"]["critical_chain"]["state"] == "available"
+    node = shutil.which("node")
+    assert node, "Node is required to verify the actual Gantt reader contract"
+    script = """
+const fs = require('fs'), vm = require('vm'), assert = require('assert/strict');
+const input = JSON.parse(fs.readFileSync(0, 'utf8')), window = {}, context = vm.createContext({window, Date});
+for (const name of ['resource-contract.js', 'PointContract.js', 'ActualGanttContract.js', 'ActualGanttAPI.js'])
+  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
+const original = input.original.data, target = input.target, envelope = input.related;
+const query = {plan_ref: original.plan.plan_ref, snapshot_ref: input.original.meta.snapshot_ref};
+const chain = window.ActualGanttContract.related(envelope, query, original, target);
+const clone = value => JSON.parse(JSON.stringify(value));
+async function check() {
+  const supplied = {async related(scope, ref, data, signal) {
+    assert.equal(this, supplied); assert.equal(scope, query); assert.equal(ref, target); assert.equal(data, original);
+    assert.equal(signal, 'original-signal'); return chain;
+  }};
+  assert.equal(await window.ActualGanttAPI.adapter(supplied).related(query, target, original, 'original-signal'), chain);
+  window.APSResourceAPI = {create: () => ({query: async () => envelope})};
+  assert.equal(await window.ActualGanttAPI.create().related(query, target, original), chain);
+  const patches = [value => { value.plan_ref = 'f'.repeat(48); }, value => { value.snapshot_ref = 'other'; },
+    value => { value.target_task_ref = 'f'.repeat(48); }, value => { value.mode = 'global'; },
+    value => { value.nodes[0].in_scope = false; }, value => { value.task_refs = []; }];
+  for (const patch of patches) {
+    const bad = clone(chain); patch(bad);
+    const api = window.ActualGanttAPI.adapter({related: async () => bad});
+    await assert.rejects(api.related(query, target, original));
+  }
+  const api = window.ActualGanttAPI.adapter({related: async () => chain});
+  await assert.rejects(api.related({...query, batch_ids: ['other-batch']}, target, original));
+  await assert.rejects(api.related({...query, typo: true}, target, original));
+  const unavailable = {...chain, state: 'unavailable', reason: '历史计划未保留关键链证据'};
+  assert.equal(await window.ActualGanttAPI.adapter({related: async () => unavailable}).related(query, target, original), unavailable);
+  unavailable.reason = '';
+  await assert.rejects(window.ActualGanttAPI.adapter({related: async () => unavailable}).related(query, target, original));
+}
+check().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    checked = subprocess.run([node, "-e", script], cwd=str(Path(__file__).resolve().parents[2]),
+        input=json.dumps({"original": original, "related": related, "target": target}),
+        capture_output=True, text=True, timeout=30)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
 
 
 def test_product_get_connection_date_timestamp_and_capacity(actual_api):

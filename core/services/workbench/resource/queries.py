@@ -50,14 +50,14 @@ class WorkbenchResourceQueryService:
             self.domain = WorkbenchResourceService(conn, kind, logger=logger)
 
     @contextmanager
-    def read_snapshot(self):
+    def read_snapshot(self, *, capture_fingerprint=True):
         with TransactionManager(self.conn).transaction():
             previous = (self._snapshot_metrics, self._table_facts, self._table_indexes, self._table_identities)
             try:
                 self._snapshot_metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
                 self._table_facts, self._table_indexes = None, {}
-                self._table_identities = WorkbenchResourceTableRepository(self.conn, self.logger).identities()
-                yield self.state_fingerprint()
+                self._table_identities = self._read_identities() if capture_fingerprint else None
+                yield self.state_fingerprint() if capture_fingerprint else None
             finally:
                 self._snapshot_metrics, self._table_facts, self._table_indexes, self._table_identities = previous
 
@@ -66,8 +66,14 @@ class WorkbenchResourceQueryService:
 
     def state_fingerprint(self):
         return input_fingerprint({"scope": self.repo.scope_state(self.kind),
-                                  "metric_facts": self._metrics_reader().fingerprint_facts(self.kind), "counts": self.repo.summary(),
-                                  "table_refs": self._table_identities if self._table_identities is not None else WorkbenchResourceTableRepository(self.conn, self.logger).identities()})
+                                  "metric_facts": self._metrics_reader().fingerprint_facts(self.kind),
+                                  "table_refs": self._table_identities if self._table_identities is not None else self._read_identities()})
+
+    def _read_identities(self):
+        return WorkbenchResourceTableRepository(self.conn, self.logger).identities(self._metrics_reader().identity_kinds(self.kind))
+
+    def create_snapshot(self):
+        return self.repo.create_relations(self.kind)
 
     def summary(self):
         return self.repo.summary()
@@ -144,7 +150,7 @@ class WorkbenchResourceQueryService:
     def _table_reader(self):
         if self._table_facts is not None:
             return self._table_facts
-        identities = self._table_identities if self._table_identities is not None else WorkbenchResourceTableRepository(self.conn, self.logger).identities()
+        identities = self._table_identities if self._table_identities is not None else self._read_identities()
         facts = ResourceTableFacts(self._metrics_reader(), identities)
         if self._table_indexes is not None:
             self._table_facts = facts

@@ -5,9 +5,8 @@ explicit nulls survive as None for the domain to validate. Assertion columns
 are parsed, never resolved here. Row diagnostics do not authorize partial apply.
 """
 
-from dataclasses import dataclass
-
 from core.errors import ValidationError
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_resource_file import IMPORT_ROW_LIMIT
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -162,12 +161,7 @@ def public_columns(kind):
     return [{"key": field, "label": LABELS[field]} for field in file_columns(kind)]
 
 
-@dataclass(frozen=True)
-class ProcessFileDownload:
-    filename: str
-    mime_type: str
-    content: bytes
-    row_count: int
+ProcessFileDownload = FileDownload
 
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。工艺路线与工序工时各一份。

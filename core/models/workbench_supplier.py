@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict
 
 from core.errors import ValidationError
+from core.models.workbench_resource_status import reasoned_resource_state
 
 #: 解析器认的状态代号。描述符那份在 workbench_resource_file.ENUMS，两份是有意分开的：
 #: 下拉给什么、解析器认什么如果悄悄分叉，用户照着下拉选就会被拒，
@@ -92,10 +93,4 @@ def normalize_supplier_input(action: str, payload: Any) -> Dict[str, Any]:
 
 def supplier_state(status, profile) -> Dict[str, Any]:
     """Keep legacy inactive-without-reason distinct from explicit pending review."""
-    reason = profile["inactive_reason"] if profile else None
-    if status == "active":
-        return {"status": "active", "inactive_reason": None}
-    if status == "inactive":
-        return {"status": "pending_review" if reason == "pending_review" else "inactive",
-                "inactive_reason": reason if reason in ("pending_review", "disabled") else "unknown"}
-    return {"status": "unknown", "inactive_reason": "unknown"}
+    return reasoned_resource_state("supplier", status, profile)

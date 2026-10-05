@@ -302,7 +302,7 @@ def test_unknown_headers_are_rejected(calendar_env):
 @pytest.mark.parametrize("value", ("2026-10-01", "2026/10/1", "2026-1-1", "2026-02-30", "2026-13-01",
                                    "2026-10-01 08:00", "2026-10-01T08:00", "", "  ", "not a date"))
 def test_date_reading_matches_the_batch_import_rule(value):
-    """日期口径必须与批次导入一致；那边的错误文案带停用词，所以只比判定不比文案。"""
+    """年月日文本与批次采用相同格式；原生非午夜 datetime 另有日历拒绝规则。"""
     expected = _normalize_batch_date_cell(value, "日期")
     try:
         assert read_date(value) == expected["value"]

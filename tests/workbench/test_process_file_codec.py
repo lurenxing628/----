@@ -341,6 +341,7 @@ def test_no_database_access_and_python38_syntax(monkeypatch, fmt):
         "core.services.workbench.process.file_reader",
         "core.services.workbench.process.file_values",
         "core.services.workbench.process.file_writer",
+        "core.services.workbench.facts.file_source",
         "core.services.workbench.facts.process_file_xml",
     }
     pure_services = codec_modules | {

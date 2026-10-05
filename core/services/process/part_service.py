@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -245,11 +245,13 @@ class PartService:
         self, *, part_no: str, route_raw: Any, strict_mode: bool = False, context: Optional[RouteParseContext] = None
     ) -> ParseResult:
         rr = str(route_raw) if route_raw is not None else ""
-        ok, msg = self.route_parser.validate_format(rr)
+        ok, msg, result = self.route_parser.parse_with_format_check(
+            rr, part_no=part_no, strict_mode=bool(strict_mode), context=context)
         if not ok:
             raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, f"工艺路线解析失败：{msg}")
 
-        result = self.route_parser.parse(rr, part_no=part_no, strict_mode=bool(strict_mode), context=context)
+        # The successful format branch always returns the completed parse.
+        result = cast(ParseResult, result)
         if result.status == ParseStatus.FAILED:
             raise BusinessError(
                 ErrorCode.ROUTE_PARSE_ERROR,

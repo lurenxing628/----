@@ -1,6 +1,8 @@
 """EI fixture extends existing real ledger helpers; no fabricated HTTP payloads."""
 
-from tests.workbench.execution_ledger_support import LedgerCase
+from datetime import datetime, timedelta
+
+from tests.workbench.execution_ledger_support import END, LedgerCase
 
 LONG_REMARK = "复核记录：尺寸、设备与人员已经核对；保留完整原始备注供追溯。" * 14
 LONG_CODE = "EI-LONG-" + "连续加工工序长名称" * 7
@@ -33,12 +35,22 @@ def seed(api):
         for number in range(12):
             create(case.values(0, effective_processing_hours=.125, remark="=1+1" if number == 0 else f"EI-{number:02d}"))
         create({"actual_start": "2026-09-09T08:00:00"}, op=ids[0])
+        # The planned overlap remains the report fixture's load evidence. Actual
+        # completions must follow the route's already-confirmed upstream finish.
+        cursor = datetime.fromisoformat(END)
         for op in ids[1:13]:
-            create(case.values(10, effective_processing_hours=.5, remark="实际完整报工"), op=op)
-        create(case.values(0, effective_processing_hours=0, remark=LONG_REMARK), op=ids[-1])
+            end = cursor + timedelta(minutes=30)
+            create(case.values(10, actual_start=cursor.isoformat(), actual_end=end.isoformat(),
+                effective_processing_hours=.5, remark="实际完整报工"), op=op)
+            cursor = end
         for op in ids[13:16]:
-            case.event(op, "start")
-            case.event(op, "finish", quantity=10)
+            end = cursor + timedelta(minutes=30)
+            case.event(op, "start", time=cursor.isoformat())
+            case.event(op, "finish", quantity=10, time=end.isoformat())
+            cursor = end
+        create(case.values(0, actual_start=cursor.isoformat(),
+            actual_end=(cursor + timedelta(minutes=30)).isoformat(),
+            effective_processing_hours=0, remark=LONG_REMARK), op=ids[-1])
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     return {"operations": 66, "reports": 27, "legacy_events": 6, "records": 33,
             "long_code": LONG_CODE, "long_remark": LONG_REMARK,

@@ -19,7 +19,7 @@ from core.infrastructure.workbench_run_schema import RUN_TABLES, workbench_run_o
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
-from tests.workbench.flexible_migration_support import CALENDARS, legacy_ddl, legacy_rows
+from tests.workbench.flexible_migration_support import CALENDARS, V38_REMOVED_INDEXES, legacy_ddl, legacy_rows
 from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
 from tests.workbench.flexible_migration_support import missing_issues as missing_flexible_issues
 from tests.workbench.identity_metadata_support import insert_row, seed_resources, table_rows
@@ -155,7 +155,10 @@ def assert_old_tables_preserved(conn, before, objects):
                 actual_state = (actual_state[0][:-1], actual_state[1], old_rows)
             assert actual_state == state, table
     actual, current = ddl_snapshot(conn), process_objects()
+    assert set(objects) - set(actual) == V38_REMOVED_INDEXES & set(objects)
     for name, value in objects.items():
+        if name in V38_REMOVED_INDEXES:
+            continue
         if name in current:
             assert actual[name][:2] == value[:2]
             assert _canonical_sql(actual[name][2]) == _canonical_sql(current[name]), name

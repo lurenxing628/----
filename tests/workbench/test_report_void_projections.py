@@ -1,8 +1,13 @@
 """Consumer checks: no actual timeline, recap, risk hours or calibration sample survives voiding."""
 
+import json
 from types import SimpleNamespace
 
+import pytest
+
 from core.models.workbench_calibration import CalibrationCandidate, CalibrationLineage
+from core.models.workbench_calibration_adoption import CalibrationAdoptionEvidence
+from core.models.workbench_command import canonical_json
 from core.services.workbench.calibration.samples import review_sample
 from core.services.workbench.dashboard.execution import _hours
 from core.services.workbench.execution.actual_gantt import ActualGanttService
@@ -89,8 +94,18 @@ def test_candidate_baseline_reprojects_its_captured_voids_not_current_reports(ca
     assert baseline(case, refs[0]) == original
 
 
-def test_previously_adopted_calibration_sample_is_a_visible_void_dependency(ready_adoption_case):
+@pytest.mark.parametrize('legacy_document', [False, True])
+def test_previously_adopted_calibration_sample_is_a_visible_void_dependency(ready_adoption_case, monkeypatch, legacy_document):
     case = ready_adoption_case
+    if legacy_document:
+        current_document = CalibrationAdoptionEvidence.audit_document
+
+        def historical_document(evidence):
+            body = json.loads(current_document(evidence))
+            body['suggestion'] = evidence.suggestion
+            return canonical_json(body)
+
+        monkeypatch.setattr(CalibrationAdoptionEvidence, 'audit_document', historical_document)
     row = case.reports[-1]
     preview = case.writer.preview('report_void', row['report_ref'], intent(row))
     assert preview['can_confirm']

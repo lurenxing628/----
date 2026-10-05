@@ -1,4 +1,4 @@
-"""Receipt replay and injected failures prove original-byte atomic commands."""
+"""Receipt replay and injected failures prove source-bound atomic commands."""
 
 from dataclasses import replace
 
@@ -82,8 +82,8 @@ def test_response_loss_recovers_actual_committed_receipt(file_api, monkeypatch, 
 
 
 @pytest.mark.parametrize("kind", ["route", "hours"])
-@pytest.mark.parametrize("change", ["part", "hidden-operation", "group", "supplier", "workflow", "new-batch", "same-number", "bytes", "expired"])
-def test_confirm_repreviews_bytes_and_all_facts(file_api, kind, change):
+@pytest.mark.parametrize("change", ["part", "hidden-operation", "group", "supplier", "workflow", "new-batch", "same-number", "source", "expired"])
+def test_confirm_repreviews_source_and_all_facts(file_api, kind, change):
     if change == "workflow" and kind == "route":
         file_api.prepare()
     preview, body = file_api.file_intent(kind)
@@ -109,7 +109,9 @@ def test_confirm_repreviews_bytes_and_all_facts(file_api, kind, change):
         else:
             for key, value in list(store.items()):
                 if value.content is not None:
-                    store[key] = replace(value, content=value.content + b"\r\n")
+                    # A server-side source replacement must not use the approved proposal.
+                    source = replace(value.content, _rows=())
+                    store[key] = replace(value, content=source)
     before = file_api.snapshot()
     rejected(file_api.file_post(kind, "confirm", body), "stale_write")
     assert file_api.snapshot() == before

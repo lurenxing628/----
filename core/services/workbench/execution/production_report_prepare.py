@@ -212,6 +212,28 @@ class ReportBatchPreparation:
         return {"row_number": index, "action": action or row["action"], "ref": item["ref"], "report_ref": row["report_ref"],
                 "report_no": row["report_no"], "revision_ref": row["revision_ref"], "operation_ref": row["operation_ref"], "result": result}
 
+    def materialize(self, now, actor):
+        """Convert this checked simulation into commit identities and current server timestamps."""
+        if not isinstance(actor, str) or not actor.strip():
+            raise ValueError("Local application operator must be supplied by the server")
+        stamp = now.isoformat(timespec="seconds")
+        report_refs, revision_refs = {}, {}
+        for row in self.appended:
+            validate_actual_values(row["values"], now)
+            if row["sequence"] == 1:
+                report_refs[row["report_ref"]] = new_ref()
+            revision_refs[row["revision_ref"]] = new_ref()
+        for row in self.appended:
+            row["report_ref"] = report_refs.get(row["report_ref"], row["report_ref"])
+            row["revision_ref"] = revision_refs[row["revision_ref"]]
+            row["previous_revision_ref"] = revision_refs.get(row["previous_revision_ref"], row["previous_revision_ref"])
+            if row["sequence"] == 1:
+                row["recorded_at"] = stamp
+            row["revision_at"], row["local_operator"] = stamp, actor
+        for row in self.rows:
+            row["report_ref"] = report_refs.get(row["report_ref"], row["report_ref"])
+            row["revision_ref"] = revision_refs.get(row["revision_ref"], row["revision_ref"])
+
     def public(self):
         return {"rows": self.rows, "summary": {"total": len(self.rows), "changed": len(self.appended),
                 "unchanged": len(self.rows) - len(self.appended)}, "can_confirm": True, "snapshot": self.snapshot,

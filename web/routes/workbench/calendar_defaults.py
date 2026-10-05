@@ -42,7 +42,7 @@ def calendar_defaults_write():
 
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTION, context_ref=SUBJECT, normalized_input=payload,
-        guard=guard, mutate=lambda state: service.apply(payload, state))
+        guard=guard, mutate=lambda state: service._apply_checked(payload, state))
     return jsonify(result)
 
 

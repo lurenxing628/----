@@ -213,11 +213,10 @@ def test_operation_execution_schema_contract_in_fresh_database(tmp_path: Path) -
             "idx_operation_execution_events_schedule",
             "idx_operation_execution_events_schedule_op",
             "idx_operation_execution_events_batch",
-            "idx_operation_execution_events_op_revision_unique",
             "idx_operation_execution_events_latest_exception",
         } <= _index_names(conn)
         assert _index_columns(conn, "idx_operation_execution_events_op") == ["op_id", "event_time"]
-        assert _index_columns(conn, "idx_operation_execution_events_op_revision_unique") == [
+        revision_columns = [
             "schedule_version",
             "schedule_id",
             "op_id",
@@ -226,6 +225,8 @@ def test_operation_execution_schema_contract_in_fresh_database(tmp_path: Path) -
             "effective_plan_role",
             "previous_state_revision",
         ]
+        assert any(row[2] and not row[4] and _index_columns(conn, row[1]) == revision_columns
+                   for row in conn.execute("PRAGMA index_list(OperationExecutionEvents)"))
         assert {"Schedule", "BatchOperations"} <= _foreign_targets(conn, "OperationExecutionEvents")
         assert detect_schema_is_current(conn)
     finally:

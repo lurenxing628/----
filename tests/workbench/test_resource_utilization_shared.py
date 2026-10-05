@@ -62,6 +62,23 @@ def test_three_overlaps_are_excess_load_not_clamped_or_double_counted_outside(sc
     assert machine["utilization"] == 1
 
 
+def test_trial_uses_span_overlap_and_preserves_unrounded_precision():
+    from core.services.workbench.trial.capacity import _resource
+
+    start, end = dt("2026-09-07T08:00:00"), dt("2026-09-07T10:00:00")
+    calendar = {"state": "available", "windows": [{"start": start.isoformat(), "end": end.isoformat(),
+                                                    "allow_normal": True, "allow_urgent": True}]}
+    short = dt("2026-09-07T08:00:01")
+    intervals = [(start, end), (start, short), (start, short)]
+    result = _resource("machine", "m", intervals, calendar, start, end)
+    assert result["overlap_hours"] == 1 / 3600  # one overlap span, not two excess loads
+    assert result["arranged_hours"] == 7202 / 3600
+    assert result["available_occupied_hours"] == 2 and result["utilization"] == 1
+    assert result["segments"][0]["concurrent_operations"] == 3
+    result = _resource("operator", "o", [(start, short)], calendar, start, end)
+    assert result["utilization"] == 1 / 7200 and result["utilization"] != round(1 / 7200, 6)
+
+
 @pytest.mark.parametrize("change,reason", [
     ("UPDATE Machines SET status='inactive'", "zero_available_capacity"),
     ("INSERT INTO WorkCalendar(date,day_type,shift_hours) VALUES ('2026-09-07','holiday',0)", "zero_available_capacity"),

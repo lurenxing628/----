@@ -358,6 +358,19 @@ class WorkbenchCalendarService:
         before = self.snapshot(payload["date"])
         if checked != before:
             raise WorkbenchCommandRejected("stale_write", "日历已变化，请刷新后重新核对。")
+        return self._apply_day(action, payload, before)
+
+    def _apply_checked(self, action, normalized_input, checked):
+        """Consume the guard's current facts in its same outer command transaction."""
+        self._require_write_transaction()
+        payload = self.normalize(action, normalized_input)
+        if action == "confirm":
+            return self.confirm(payload, checked)
+        if action not in ("upsert", "delete"):
+            raise ValidationError("「预览变更」不能当成保存操作。", field="action")
+        return self._apply_day(action, payload, checked)
+
+    def _apply_day(self, action, payload, before):
         after = self._window_checked(payload["date"], self._proposed(payload["fields"], before)) if action == "upsert" else None
         return self._write(before, after)
 

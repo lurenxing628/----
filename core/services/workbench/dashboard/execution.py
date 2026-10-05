@@ -65,7 +65,7 @@ def _uncertain(projection, operation, hours):
     return hours["overrun"] is None
 
 
-def _operation(facts, task, raw_task):
+def _operation(facts, task, raw_task, unresolved):
     ref = task["operation_ref"]
     p, operation = facts.execution[ref], facts.execution_facts["operations"][ref]
     hours = _hours(p, operation)
@@ -73,12 +73,19 @@ def _operation(facts, task, raw_task):
     uncertain = _uncertain(p, operation, hours)
     active = True if codes else None if uncertain else False
     source = _source(task, p, hours, codes, late)
+    histories = facts.execution_facts["reports"].get(ref, {})
     item = observation("actual", task["task_ref"], task["batch_id"] + " · " + task["process_label"], source,
                                  active, codes[0] if codes else "execution_unknown" if uncertain else "no_deviation",
                                  "暂无报工记录。" if missing else "报工记录显示有偏差或异常。" if codes else
                                  "报工或有效工时的数据不够，还评估不全。" if uncertain else "已读取报工记录，这次检查没发现偏差。",
                                  {"task": raw_task, "operation": operation, "projection": p,
-                                  "reports": facts.execution_facts["reports"].get(ref),
+                                  "reports": histories,
+                                  "voids": {report_ref: facts.execution_facts["voids"][report_ref]
+                                            for report_ref in histories if report_ref in facts.execution_facts["voids"]},
+                                  "current_task": facts.execution_facts["current_tasks"].get(ref),
+                                  "comparison_task": facts.execution_facts["comparison_tasks"].get(ref),
+                                  "plan": facts.execution_facts["plan"],
+                                  "unresolved": ref in unresolved,
                                   "legacy": facts.execution_facts["legacy"].get(ref),
                                   "legacy_source": {"hash": facts.execution_facts["legacy_source"]["hashes"].get(ref),
                                                     "changes": facts.execution_facts["legacy_source"]["changes"].get(ref)}})
@@ -91,8 +98,9 @@ def actual(facts):
     if facts.execution is None:
         return [], category("unavailable", issues=facts.execution_issues)
     items, unknown = [], 0
+    unresolved = set(facts.execution_facts["unresolved"])
     for task, raw_task in zip(facts.tasks, facts.task_rows):
-        item, uncertain = _operation(facts, task, raw_task)
+        item, uncertain = _operation(facts, task, raw_task, unresolved)
         items.append(item)
         unknown += uncertain
     return items, category("loaded" if items else "no_data", assessed=len(items) - unknown, unknown=unknown)

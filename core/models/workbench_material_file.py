@@ -15,11 +15,11 @@ material column, and full BatchMaterials rows, or None for a new material.
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
 from typing import Any, Dict
 
 from core.errors import ValidationError
+from core.models.workbench_action_values import AtomicActionPreview, FileDownload
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT, UPSERT_ONLY
@@ -133,31 +133,8 @@ def file_request(content: Any, file_format: str, mode: str, scope: Any):
 
 
 @dataclass(frozen=True)
-class MaterialPreview:
-    document: str
-
-    @classmethod
-    def build(cls, operation, request, rows, notices=()):
-        """notices 是整批级的告知，不是行错误；进文档让确认时的逐字比对也盖住它。"""
-        summary = {key: sum(row["result"] == key for row in rows)
-                   for key in ("new", "update", "unchanged", "delete", "rejected")}
-        try:
-            return cls(canonical_json({"version": 1, "operation": operation, "request": request,
-                                       "commit_policy": "atomic", "rows": rows, "summary": summary,
-                                       "notices": list(notices)}))
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise WorkbenchCommandRejected("storage_failure", "这批物料数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。", 500) from exc
-
-    def as_dict(self):
-        return json.loads(self.document)
-
-    @property
-    def digest(self):
-        return hashlib.sha256(self.document.encode("utf-8")).hexdigest()
-
-    def intent(self):
-        body = self.as_dict()
-        return {"preview_hash": self.digest, "operation": body["operation"], "request": body["request"]}
+class MaterialPreview(AtomicActionPreview):
+    storage_failure_message = "这批物料数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。"
 
 
 def check_request(preview, operation, request):
@@ -186,9 +163,4 @@ def reject_row(row, message, *, field="business_code", code="invalid_input"):
     row["errors"].append({"row": row["row"], "field": field, "code": code, "message": message})
 
 
-@dataclass(frozen=True)
-class MaterialFileDownload:
-    filename: str
-    mime_type: str
-    content: bytes
-    row_count: int
+MaterialFileDownload = FileDownload

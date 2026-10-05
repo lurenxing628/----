@@ -1,14 +1,16 @@
 """Exact-set bulk preview and atomic application; no partial success claims."""
 
 import re
+from collections import defaultdict
 
 from core.models.workbench_batch import MAX_INTEGER, normalize_batch_input, object_fields, public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from core.models.workbench_template_lineage import operation_code
 from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from data.repositories.batch_material_repo import BatchMaterialRepository
 
 from .facts import BatchFacts, require_deletable
-from .operations import insert_operation, operation_code
+from .operations import insert_operation
 from .projection import BatchProjection
 from .service import WorkbenchBatchService
 
@@ -111,28 +113,45 @@ class WorkbenchBatchBulkService:
         plan, projection = self._plan(payload)
         if payload["action"] == "delete":
             return self._delete(payload, plan, projection.relations)
+        if payload["action"] == "update":
+            return self._update(payload, plan)
+        return self._copy(payload, plan, projection)
+
+    def _update(self, payload, plan):
+        outcomes = []
+        for row in plan["rows"]:
+            ref = row["entity_ref"]
+            result = self.domain.apply("update", {"fields": payload["patch"]}, ref)
+            outcomes.append({"entity_ref": ref, "result": result.result, "business_code": row["before"]["business_code"]})
+        return self._outcome(payload, outcomes)
+
+    def _copy(self, payload, plan, projection):
         source_batches = {row["batch_id"]: row for row in projection.facts["Batches"]}
         source_relations = projection.relations
+        requirements = defaultdict(list)
+        bindings = {row["requirement_id"]: row["operation_id"] for row in projection.facts["BatchMaterialStages"]}
+        for row in projection.facts["BatchMaterials"]:
+            requirements[row["batch_id"]].append(dict(row, operation_id=bindings.get(row["id"])))
         writer = TemplateLineageWriter(self.conn)
         outcomes = []
         for row in plan["rows"]:
             ref = row["entity_ref"]
-            if payload["action"] != "copy":
-                body = {"fields": payload["patch"]} if payload["action"] == "update" else {}
-                result = self.domain.apply(payload["action"], body, ref)
-                outcomes.append({"entity_ref": ref, "result": result.result, "business_code": row["before"]["business_code"]})
-            else:
-                batch = source_batches[row["before"]["business_code"]]
-                code = row["after"]["business_code"]
-                fields = {key: batch[key] for key in ("quantity", "due_date", "priority", "remark", "part_name")}
-                self.domain.domain.create(code, batch["part_no"], **fields, ready_status="no", ready_date=None)
-                mapping = {op["id"]: insert_operation(self.conn, code, op, writer=writer)
-                           for op in source_relations[batch["batch_id"]]["operations"]}
-                BatchMaterialRepository(self.conn).copy_requirements(batch["batch_id"], code, mapping)
-                identity = self.reader.identities.find_active("batch", code)
-                if identity is None:
-                    raise RuntimeError("复制批次缺少永久引用。")
-                outcomes.append({"entity_ref": identity.ref, "source_ref": ref, "business_code": code, "result": "committed"})
+            batch = source_batches[row["before"]["business_code"]]
+            code = row["after"]["business_code"]
+            fields = {key: batch[key] for key in ("quantity", "due_date", "priority", "remark", "part_name")}
+            self.domain.domain.create(code, batch["part_no"], **fields, ready_status="no", ready_date=None)
+            mapping = {op["id"]: insert_operation(self.conn, code, op, writer=writer)
+                       for op in source_relations[batch["batch_id"]]["operations"]}
+            BatchMaterialRepository(self.conn).copy_requirements(batch["batch_id"], code, mapping,
+                                                               requirements=requirements[batch["batch_id"]])
+            identity = self.reader.identities.find_active("batch", code)
+            if identity is None:
+                raise RuntimeError("复制批次缺少永久引用。")
+            outcomes.append({"entity_ref": identity.ref, "source_ref": ref, "business_code": code, "result": "committed"})
+        return self._outcome(payload, outcomes)
+
+    @staticmethod
+    def _outcome(payload, outcomes):
         result = "committed" if any(row["result"] == "committed" for row in outcomes) else "unchanged"
         return WorkbenchCommandOutcome(result, {"items": outcomes, "count": len(outcomes), "commit_policy": "atomic", "action": payload["action"],
-            "deleted_refs": payload["refs"] if payload["action"] == "delete" else []})
+                                               "deleted_refs": []})

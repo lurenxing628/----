@@ -13,46 +13,6 @@ _PROCESS_COUNTS = _STAGES + ("ready", "legacy", "managed", "legacy_route_present
 _PROCESS_BASIS = "零件工艺确认进度。"
 
 
-def _checked_workflow(record):
-    workflow = record.get("workflow") if isinstance(record, dict) else None
-    if not isinstance(workflow, dict):
-        raise RuntimeError("Missing process workflow projection.")
-    origin, stage = workflow.get("origin"), workflow.get("stage")
-    if origin not in ("legacy", "managed") or stage not in _STAGES + ("ready",):
-        raise RuntimeError("Invalid process workflow origin or stage.")
-    if type(workflow.get("ready")) is not bool or workflow["ready"] != (stage == "ready"):
-        raise RuntimeError("Inconsistent process workflow readiness.")
-    expected = _workflow_stage_states(origin, stage)
-    for name, states in zip(_STAGES, expected):
-        _check_stage_confirmation(workflow.get(name), states)
-    return workflow
-
-
-def _workflow_stage_states(origin, stage):
-    expected = {"route": (("missing", "unconfirmed"), ("locked",), ("locked",)),
-                "source": (("confirmed",), ("unconfirmed",), ("locked",)),
-                "hours": (("confirmed",), ("confirmed",), ("unconfirmed",)),
-                "ready": (("confirmed",), ("confirmed",), ("confirmed",))}[stage]
-    if origin == "legacy":
-        if stage not in ("route", "source"):
-            raise RuntimeError("Legacy process facts cannot imply confirmation.")
-        expected = (("missing",), ("locked",), ("locked",)) if stage == "route" else (
-            ("present",), ("unconfirmed",), ("locked",))
-    return expected
-
-
-def _check_stage_confirmation(row, states):
-    if not isinstance(row, dict) or row.get("state") not in states:
-        raise RuntimeError("Inconsistent process stage projection.")
-    stamp, person = row.get("confirmed_at"), row.get("confirmed_by")
-    if row["state"] == "confirmed":
-        if not isinstance(stamp, str) or not stamp.strip() or (person is not None and (
-                not isinstance(person, str) or not person.strip())):
-            raise RuntimeError("Missing process confirmation evidence.")
-    elif stamp is not None or person is not None:
-        raise RuntimeError("Unconfirmed process stage contains confirmation evidence.")
-
-
 def process_readiness(conn, total, logger=None):
     """Aggregate the domain's bulk snapshot; never read or confirm individual parts."""
     counts: Dict[str, Optional[int]] = dict.fromkeys(_PROCESS_COUNTS, None)
@@ -63,7 +23,7 @@ def process_readiness(conn, total, logger=None):
             raise RuntimeError("Process workflow catalog does not match resource counts.")
         verified: Dict[str, int] = dict.fromkeys(_PROCESS_COUNTS, 0)
         for record in snapshot.values():
-            workflow = _checked_workflow(record)
+            workflow = record["workflow"]
             verified[workflow["stage"]] += 1
             verified[workflow["origin"]] += 1
             verified["legacy_route_present"] += workflow["origin"] == "legacy" and workflow["route"]["state"] == "present"

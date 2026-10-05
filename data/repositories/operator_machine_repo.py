@@ -166,6 +166,11 @@ class OperatorMachineRepository(BaseRepository):
         )
         return int(getattr(cur, "rowcount", 0) or 0)
 
-    def clear_primary_for_operator(self, operator_id: str) -> int:
-        cur = self.execute("UPDATE OperatorMachine SET is_primary = 'no' WHERE operator_id = ?", (operator_id,))
+    def clear_primary_for_operator(self, operator_id: str, *, exclude_machine=None) -> int:
+        sql = "UPDATE OperatorMachine SET is_primary = 'no' WHERE operator_id = ?"
+        params = (operator_id,)
+        if exclude_machine is not None:
+            sql += " AND machine_id<>?"
+            params += (exclude_machine,)
+        cur = self.execute(sql, params)
         return int(getattr(cur, "rowcount", 0) or 0)

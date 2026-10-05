@@ -21,8 +21,15 @@ class WorkbenchResourceMetricsRepository(BaseRepository):
             "authorizations": ("OperatorMachine", "operator_id,machine_id"),
             "capabilities": ("WorkbenchSupplierOpTypes", "supplier_id,op_type_id"),
         }
-        return {name: self.fetchall(f"SELECT * FROM {sources[name][0]} ORDER BY {sources[name][1]}")
-                for name in names}
+        result = {}
+        for name in names:
+            if name == "shift_pattern":
+                result[name] = self.fetchall("""SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d
+                    LEFT JOIN WorkbenchShiftDayPeriods p ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset
+                    ORDER BY d.profile_id,d.day_offset""")
+            else:
+                result[name] = self.fetchall(f"SELECT * FROM {sources[name][0]} ORDER BY {sources[name][1]}")
+        return result
 
     def op_type_dependencies(self, codes):
         if not codes:

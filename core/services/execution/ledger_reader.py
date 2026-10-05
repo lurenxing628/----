@@ -46,14 +46,19 @@ class ExecutionLedgerReader:
         self.current_plan_provider = current_plan_provider
         self.clock = datetime.now if clock is None else clock
         self.repo = WorkbenchExecutionRepository(conn)
+        self._snapshot_clock = None
 
     # ---- judgement over repository facts ----
 
     def require_schema(self):
+        if self._snapshot_clock is not None:
+            return
         if self.repo.schema_issues():
             raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工数据库结构不完整，请联系维护人员升级数据库。")
 
     def revision_clock(self):
+        if self._snapshot_clock is not None:
+            return dict(self._snapshot_clock)
         clock = self.repo.clock()
         if clock is None:
             reject("报工或计划状态资料缺失，请联系维护人员核对。", "execution_ledger_unavailable", 409)
@@ -100,9 +105,16 @@ class ExecutionLedgerReader:
 
     @contextmanager
     def read_snapshot(self):
+        if self._snapshot_clock is not None:
+            yield dict(self._snapshot_clock)
+            return
         with TransactionManager(self.conn).transaction():
             self.require_schema()
-            yield self.revision_clock()
+            self._snapshot_clock = self.revision_clock()
+            try:
+                yield dict(self._snapshot_clock)
+            finally:
+                self._snapshot_clock = None
 
     def _current_plan(self):
         return self.current_plan_provider(self.conn)

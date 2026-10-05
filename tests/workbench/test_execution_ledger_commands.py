@@ -3,6 +3,7 @@
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, input_fingerprint
+from core.models.workbench_execution_input import public_ref
 from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository
 from tests.workbench.execution_ledger_support import all_rows
@@ -112,6 +113,9 @@ def test_same_file_preview_accumulates_without_writes_and_confirms_same_snapshot
     preview = case.writer.preview_batch(items)
     assert preview["projections"][0]["execution_state"] == "complete"
     assert [row["row_number"] for row in preview["rows"]] == [1, 2]
+    for row in preview["rows"]:
+        assert public_ref(row["report_ref"]) == row["report_ref"]
+        assert public_ref(row["revision_ref"]) == row["revision_ref"]
     assert all_rows(case.conn) == before
     case.conn.execute("PRAGMA query_only=OFF")
     seen = []
@@ -154,6 +158,42 @@ def test_import_replay_survives_lost_bytes_but_different_preview_conflicts(ledge
     with pytest.raises(WorkbenchCommandRejected) as error:
         restarted.execute_import("preview_" + "2" * 24, request_key="ledger-import-000001", load_items=lost, validate_context=lambda *_: lost())
     assert error.value.code == "request_key_conflict"
+
+
+def test_import_reuses_checked_facts_but_records_commit_time_and_identities(ledger_case, monkeypatch):
+    from datetime import timedelta
+
+    from core.services.workbench.execution.production_report_prepare import ReportBatchPreparation
+    from tests.workbench.execution_ledger_support import NOW
+
+    case = ledger_case
+    case.install()
+    items = [{"action": "create", "ref": case.task(1, case.op_id),
+              "payload": case.values(4, source="excel", report_no="PREPARED-FILE")}]
+    prepared_calls, provisional_refs, original = [], [], ReportBatchPreparation.prepare
+
+    def prepare(self):
+        prepared_calls.append(self.conn.in_transaction)
+        return original(self)
+
+    monkeypatch.setattr(ReportBatchPreparation, "prepare", prepare)
+    commit_time = NOW + timedelta(minutes=5)
+
+    def loaded():
+        prepared = case.writer.prepare_batch(items)
+        provisional_refs.append((prepared.rows[0]["report_ref"], prepared.rows[0]["revision_ref"]))
+        case.writer.ledger.clock = lambda: commit_time
+        return prepared
+
+    saved = case.writer.execute_import("preview_" + "3" * 24, request_key="ledger-prepared-import-0001",
+        load_items=loaded, validate_context=lambda *_: None)
+    row = saved["data"]["rows"][0]
+    report = case.ledger.get_report(row["report_ref"])
+    assert prepared_calls == [True]
+    assert len(row["report_ref"]) == len(row["revision_ref"]) == 48
+    assert (row["report_ref"], row["revision_ref"]) != provisional_refs[0]
+    assert report.recorded_at == commit_time.isoformat(timespec="seconds")
+    assert report.correction_history[0]["recorded_at"] == report.recorded_at
 
 
 def test_excel_same_number_supplements_across_version_without_rebinding(ledger_case):

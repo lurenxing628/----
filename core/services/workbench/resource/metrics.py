@@ -6,6 +6,7 @@ from typing import Dict
 
 from core.models.resource_capabilities import OP_TYPE_CATEGORIES, machine_type_index, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_status import public_resource_status
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
 
@@ -16,10 +17,10 @@ _INTERNAL = {"op_type", "machine_capabilities", "machine", "operator", "operator
 _EXTERNAL = {"op_type", "supplier", "supplier_profiles", "capabilities", "policies"}
 _READ_FACTS = {
     "machine": {"machine", "machine_capabilities", "op_type", "groups", "machine_group"},
-    "operator": {"operator", "operator_profiles", "skills", "authorizations", "op_type", "shift_profile"},
+    "operator": {"operator", "operator_profiles", "skills", "authorizations", "op_type", "machine", "shift_profile", "shift_pattern"},
     "supplier": _EXTERNAL,
     "machine_group": {"machine_group", "groups", "machine"},
-    "shift_profile": {"shift_profile", "operator_profiles", "operator"},
+    "shift_profile": {"shift_profile", "shift_pattern", "operator_profiles", "operator"},
 }
 _READ_FACTS["op_type"] = set().union(_INTERNAL, _EXTERNAL, *_READ_FACTS.values())
 _BASIS = {
@@ -60,17 +61,7 @@ def _relation(value, records, label, *, nullable=False):
 
 
 def _status(kind, raw, profile=None):
-    value = raw["status"]
-    if kind not in ("operator", "supplier"):
-        allowed = ("active", "inactive", "maintain") if kind == "machine" else ("active", "inactive")
-        return value if value in allowed else "unknown"
-    if value == "active":
-        return "active"
-    reason = profile["inactive_reason"] if profile else None
-    special = "leave" if kind == "operator" else "pending_review"
-    if value == "inactive":
-        return special if reason == special else "inactive" if reason == "disabled" else "unknown"
-    return "unknown"
+    return public_resource_status(kind, raw["status"], profile)
 
 
 class WorkbenchResourceMetricsService:
@@ -94,6 +85,10 @@ class WorkbenchResourceMetricsService:
         names = _READ_FACTS[kind]
         self._load(names)
         return {name: self.facts[name] for name in sorted(names)}
+
+    @staticmethod
+    def identity_kinds(kind):
+        return sorted(_READ_FACTS[kind] & set(_KEYS))
 
     def _records(self, kind):
         if kind not in self.records:
@@ -136,6 +131,17 @@ class WorkbenchResourceMetricsService:
             _relation(row["supplier_id"], self.records["supplier"], "供应商能力")
             self._work_type(row["op_type_id"], "external")
 
+    def _active_qualifications(self, qualification):
+        active = {code for code, status in self._statuses("operator").items() if status == "active"}
+        profiles = [{"operator_id": code, "profile_operator_id": code if code in self.profiles["operator"] else None,
+                     "skills_declared": self.profiles["operator"].get(code, {}).get("skills_declared")}
+                    for code in self.records["operator"]]
+        stored_skills = [dict(row, category=self.records["op_type"].get(row["op_type_id"], {}).get("category"))
+                         for row in self.facts["skills"]]
+        # The planning service interprets the already captured qualification facts once.
+        all_skills = qualification.project_facts(sorted(self.records["operator"]), profiles, stored_skills)
+        return active, {code: all_skills[code] for code in active}
+
     def _internal_capacity(self):
         if "internal" in self._computed:
             return
@@ -153,12 +159,7 @@ class WorkbenchResourceMetricsService:
             if row["status"] == "active":
                 machines.append(SimpleNamespace(machine_id=code, op_type_id=row["op_type_id"], op_type_ids=tuple(capabilities[code])))
         qualification = OperatorQualificationService(self.conn, logger=self.logger)
-        active = {code for code, status in self._statuses("operator").items() if status == "active"}
-        others = sorted(set(self.records["operator"]) - active)
-        if others:
-            qualification.load(others)
-        # The planning service remains the sole interpreter of explicit/legacy skills.
-        skills = qualification.load(sorted(active))
+        active, skills = self._active_qualifications(qualification)
         links = qualification.eligible_links(self.facts["authorizations"], machines, active, [], qualifications=skills)
         for link in links:
             for work_type in capabilities[link["machine_id"]]:
@@ -181,7 +182,9 @@ class WorkbenchResourceMetricsService:
 
     def op_type_records(self):
         self._load(["op_type", "policies"])
-        self.policies = _index(self.facts["policies"], "op_type_id")
+        if "policies" not in self._computed:
+            self.policies = _index(self.facts["policies"], "op_type_id")
+            self._computed.add("policies")
         return self._records("op_type")
 
     def availability(self, code):

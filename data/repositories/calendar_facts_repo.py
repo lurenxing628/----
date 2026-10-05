@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Sequence
 
 from .base_repo import BaseRepository
-from .schedule_time_sql import overlap_or_bad_time_sql
+from .schedule_time_sql import overlap_or_bad_time_sql, register_schedule_time_sql_functions
 
 _DOWNTIMES_SQL = ("SELECT machine_id,start_time,end_time,status FROM MachineDowntimes md "
                   "WHERE machine_id IN ({marks}) AND (status='active' OR status IS NULL OR status NOT IN ('active','cancelled')) "
@@ -17,6 +17,10 @@ _DOWNTIMES_SQL = ("SELECT machine_id,start_time,end_time,status FROM MachineDown
 
 
 class CalendarFactsRepository(BaseRepository):
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
+        register_schedule_time_sql_functions(conn)
+
     def schema_version(self):
         if not hasattr(self, "_read_schema_version"):
             self._read_schema_version = self.fetchvalue("SELECT version FROM SchemaVersion WHERE id=1")

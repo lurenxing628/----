@@ -12,7 +12,6 @@ from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.models.workbench_resource_table_query import TABLE_KINDS, toolbar_scope, validate_facet_request
 from core.services.workbench.material.queries import WorkbenchMaterialQueryService
-from core.services.workbench.material.service import WorkbenchMaterialService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import query_success
 
@@ -109,11 +108,10 @@ def _material_table_query(query: MaterialPageRequest, token):
         records, page = reader.page(query)
         if query.number > page["pages"]:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
-        domain = WorkbenchMaterialService(g.db, current_app.logger)
-        entities = [_entity_with_context(record, domain) for record in records]
+        entities = [_entity_with_context(record) for record in records]
         metrics = reader.metrics(query)
         data = {"entities": entities, "page": page, "metrics": metrics,
-                "create_context": issue_write_context("material:create", ["material.create"], state)}
+                "create_context": issue_write_context("material:create", ["material.create"], None)}
         return query_success(data, snapshot)
 
 
@@ -128,7 +126,7 @@ def _resource_table_query(query: ResourcePageRequest, token):
         entities = [_with_context(kind, record) for record in records]
         metrics = page.pop("metrics")
         data = {"entities": entities, "page": page, "metrics": metrics,
-                "create_context": issue_write_context(kind + ":create", [kind + ".create"], state)}
+                "create_context": issue_write_context(kind + ":create", [kind + ".create"], reader.create_snapshot())}
         return query_success(data, snapshot)
 
 

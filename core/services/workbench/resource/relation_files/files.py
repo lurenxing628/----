@@ -26,6 +26,7 @@ from core.models.workbench_resource_action import (
     resource_refs,
     resource_scope,
 )
+from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.personnel.operator_machine_normalizers import (
@@ -64,9 +65,16 @@ class WorkbenchRelationFileService:
 
     # ---------- 导入 ----------
 
-    def preview_import(self, content, *, file_format, mode="upsert"):
+    def prepare_import(self, content, *, file_format, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode)
         source, notices = read_relation_file(self.kind, content, file_format)
+        return PreparedImportSource.build(self.kind + ".import", request, source, notices)
+
+    def preview_import(self, content, *, file_format, mode="upsert"):
+        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
+            content, file_format=file_format, mode=mode)
+        request = prepared.request_for(self.kind + ".import", file_format, mode)
+        source, notices = prepared.parsed()
         with self.tx.transaction():
             return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices)
 
@@ -280,10 +288,6 @@ class WorkbenchRelationFileService:
                     "stale_write", "文件或相关资料已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             body = current.as_dict()
-            if body["summary"]["rejected"]:
-                # 整批原子：只要还有一行不能提交，就一行都不写，不靠调用方记得看 can_confirm。
-                raise WorkbenchCommandRejected(
-                    "constraint_conflict", "这一批里有不能导入的行，一行都没有导入。请修好标红的行后重新预检。")
             rows = body["rows"]
             # 主操那一行最后写：底层写入主操时会清掉同一个人其他设备的主操标记。
             for row in sorted(rows, key=lambda item: (item.get("after") or {}).get("is_primary") == "yes"):

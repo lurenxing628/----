@@ -34,6 +34,100 @@ def test_real_preview_original_bytes_replay_and_no_duplicate(field_api):
     assert api.task()['execution']['known_completed_quantity'] == 3
 
 
+def test_confirm_reuses_first_parse_and_digest_for_automatic_number(field_api, monkeypatch):
+    from core.models import workbench_field_report_source as source_model
+    from core.services.workbench.execution import field_report_files
+    from web.routes.workbench import execution_files
+
+    api = field_api
+    value = rows()
+    value[0]['report_no'] = ''
+    content = encode_reports(value)
+    parse, digest = execution_files.decode_reports, source_model.sha256
+    calls = []
+
+    def decoded(original):
+        calls.append('decode')
+        return parse(original)
+
+    def hashed(original):
+        calls.append('digest')
+        return digest(original)
+
+    monkeypatch.setattr(execution_files, 'decode_reports', decoded)
+    monkeypatch.setattr(source_model, 'sha256', hashed)
+    preview = success(api.upload(content))
+    assert calls == ['decode', 'digest']
+    assert preview['data']['file_sha256'] == digest(content).hexdigest()
+
+    def reparsed(_):
+        raise AssertionError('confirmation must consume the retained parsed source')
+
+    monkeypatch.setattr(field_report_files, 'decode_reports', reparsed)
+    body = api.confirm_body(preview)
+    committed = success(api.client.post(BASE + '/files/confirm', json=body))
+    assert calls == ['decode', 'digest']
+    assert committed['data']['rows'][0]['report_no'] == 'BG-X-' + preview['data']['file_sha256'][:32] + '-2'
+    assert success(api.client.post(BASE + '/files/confirm', json={**body, 'write_token': 'expired'}))['replayed']
+
+    # A subsequent preview gets fresh row diagnostics and keeps the original file identity.
+    again = success(api.upload(content))
+    assert again['data']['summary']['unchanged'] == 1
+    assert calls == ['decode', 'digest', 'decode', 'digest']
+
+
+def test_confirmation_token_must_match_the_retained_preview(field_api):
+    api = field_api
+    first = success(api.upload(encode_reports(rows())))
+    values = rows()
+    values[0]['report_no'] = 'BG-ANOTHER-PREVIEW'
+    second = success(api.upload(encode_reports(values)))
+    body = api.confirm_body(second)
+    body['write_token'] = first['data']['write_context']['write_token']
+    before = all_rows(api.case.conn)
+    response = api.client.post(BASE + '/files/confirm', json=body)
+    assert response.status_code == 409
+    assert response.get_json()['error']['code'] == 'stale_write'
+    assert all_rows(api.case.conn) == before
+
+
+def test_preview_expiring_after_prefetch_is_rejected_by_the_locked_guard(field_api, monkeypatch):
+    import time
+
+    from core.services.workbench.execution.field_report_files import FieldReportFileService
+    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
+    from web.routes.workbench.execution_files import PREVIEW_NAMESPACE
+
+    api = field_api
+    preview = success(api.upload(encode_reports(rows())))
+    ref = preview['data']['preview_ref']
+    prepare, execute = FieldReportFileService.prepare_source, WorkbenchProductionReportService._execute
+    prepared, waiting = [], []
+
+    def source(self, original, cohort):
+        prepared.append(ref)
+        return prepare(self, original, cohort)
+
+    def expire_before_write(self, items, request_key, action, context_ref, guard):
+        assert prepared == [ref] and action == 'execution.import_confirm' and not self.conn.in_transaction
+        entry = api.app.extensions['aps_public_opaque_tokens'][PREVIEW_NAMESPACE]['tokens'][ref]
+        assert entry['expires_at'] > time.time()
+        # Prefetch has checked the live preview; its lifetime ends while waiting for the write lock.
+        entry['expires_at'] = 0
+        waiting.append(ref)
+        return execute(self, items, request_key, action, context_ref, guard)
+
+    monkeypatch.setattr(FieldReportFileService, 'prepare_source', source)
+    monkeypatch.setattr(WorkbenchProductionReportService, '_execute', expire_before_write)
+    before = all_rows(api.case.conn)
+    body = api.confirm_body(preview)
+    response = api.client.post(BASE + '/files/confirm', json=body)
+    assert response.status_code == 409, response.get_json()
+    assert response.get_json()['error']['code'] == 'stale_write'
+    assert prepared == waiting == [ref]
+    assert all_rows(api.case.conn) == before
+
+
 def test_file_known_conflict_atomic_and_unknown_supplement(field_api):
     api = field_api
     source = rows(); source[0].pop('completed_quantity'); source[0].pop('effective_processing_hours')
@@ -148,20 +242,28 @@ def _other_writer_can_lock(path):
 
 def test_confirm_rebuilds_the_cohort_outside_the_write_lock_and_reuses_it(field_api, monkeypatch):
     from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+    from core.services.workbench.execution.production_report_prepare import ReportBatchPreparation
 
     api = field_api
     preview = success(api.upload(encode_reports(rows())))
     built, original = [], FieldWorkspaceService.cohort
+    checked, prepare_original = [], ReportBatchPreparation.prepare
 
     def cohort(self, scope):
         built.append(_other_writer_can_lock(api.path))
         return original(self, scope)
 
+    def prepare(self):
+        checked.append(_other_writer_can_lock(api.path))
+        return prepare_original(self)
+
     monkeypatch.setattr(FieldWorkspaceService, 'cohort', cohort)
+    monkeypatch.setattr(ReportBatchPreparation, 'prepare', prepare)
     result = success(api.client.post(BASE + '/files/confirm', json=api.confirm_body(preview)))
     assert result['result'] == 'committed'
     # 整份现场范围只在写锁外重建一次（这时别的连接仍能拿写锁）；写锁里库没变就直接沿用，只核对并写入报工。
     assert built == [True]
+    assert checked == [True]
 
 
 def test_preview_parses_before_the_slot_and_export_writes_after_it(field_api, monkeypatch):

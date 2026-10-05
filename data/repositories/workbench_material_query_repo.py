@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from .base_repo import BaseRepository
 
-_SELECT = """SELECT m.material_id, m.name, m.spec, m.unit, m.stock_qty, m.status,
-    m.remark, m.created_at, r.ref, r.revision,
+_SELECT = """SELECT m.*, r.ref, r.revision,
     (SELECT COUNT(*) FROM BatchMaterials AS b WHERE b.material_id = m.material_id) AS requirement_count
     FROM Materials AS m LEFT JOIN WorkbenchEntityRefs AS r
     ON r.kind = 'material' AND r.active = 1 AND r.entity_key = m.material_id"""

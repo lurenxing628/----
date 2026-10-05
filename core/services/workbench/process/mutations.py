@@ -42,20 +42,41 @@ class WorkbenchProcessMutationService:
         self._check_template(operations, groups, current.entity_key)
         return part, operations, groups
 
-    def _check_template(self, operations, groups, part_no):
+    def _check_template(self, operations, groups, part_no, all_operations=None):
         group_keys = {row["group_id"] for row in groups}
+        self._check_operations(operations, group_keys)
+        self._check_group_ranges(groups)
+        foreign_use = (self.repo.foreign_group_use_exists(part_no) if all_operations is None else
+                       any(row["part_no"] != part_no and row["ext_group_id"] in group_keys for row in all_operations))
+        if foreign_use:
+            raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在当前零件解除。请先到那些零件上解除。", 422)
+
+    @staticmethod
+    def _check_operations(operations, group_keys):
         for row in operations:
             require_ref(row["ref"], "模板工序")
             if row["status"] not in ("active", "deleted") or type(row["seq"]) is not int or row["seq"] <= 0:
                 raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态说不清。请到基础资料核对工序。", 422)
             if row["ext_group_id"] is not None and row["ext_group_id"] not in group_keys:
                 raise WorkbenchCommandRejected("group_invalid", "原工序关联外协组不存在或属于其他零件，请先核对资料。", 422)
+
+    @staticmethod
+    def _check_group_ranges(groups):
         for row in groups:
             require_ref(row["ref"], "模板外协组")
             if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
                 raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围说不清，算不准影响面。请到基础资料核对外协组起止序。", 422)
-        if self.repo.foreign_group_use_exists(part_no):
-            raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在当前零件解除。请先到那些零件上解除。", 422)
+
+    def checked_facts(self, identity, facts):
+        """Select command facts from the reader's current guarded snapshot."""
+        part_no = identity.entity_key
+        part = next((row for row in facts["parts"] if row["part_no"] == part_no), None)
+        if part is None:
+            raise WorkbenchCommandRejected("entity_not_found", "这个零件不存在。请刷新列表后重新选择。", 404)
+        operations = [row for row in facts["operations"] if row["part_no"] == part_no]
+        groups = [row for row in facts["groups"] if row["part_no"] == part_no]
+        self._check_template(operations, groups, part_no, facts["operations"])
+        return identity, part, operations, groups, facts["workflow"][part_no]["workflow"]
 
     def _prepare(self, action, payload, operations, groups):
         if action == "route_confirm":
@@ -115,10 +136,18 @@ class WorkbenchProcessMutationService:
         payload = self.normalize(action, input)
         part, operations, groups = self._snapshot(identity)
         # Separate owner installs the schema and implements signature revalidation.
-        from core.services.process.workflow_state import read_workflow, record_confirmation
-
-        stage = action[:-len("_confirm")]
+        from core.services.process.workflow_state import read_workflow
         workflow = read_workflow(self.conn, part["part_no"])
+        return self._apply_checked(action, payload, (identity, part, operations, groups, workflow))
+
+    def _apply_checked(self, action, payload, checked):
+        """Continue the same command after its identity, template and workflow checks."""
+        if not self.conn.in_transaction:
+            raise RuntimeError("工艺动作必须在外层BEGIN IMMEDIATE命令事务内执行。")
+        from core.services.process.workflow_state import record_confirmation
+
+        identity, part, operations, groups, workflow = checked
+        stage = action[:-len("_confirm")]
         if stage == "groups":
             return self._apply_group_action(payload, identity, part, operations, groups, workflow)
         if stage != "route":

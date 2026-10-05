@@ -61,6 +61,13 @@ class OperatorQualificationService:
             profiles, skills = self.repo.read_skill_facts(sorted(ids))
         except AppError as exc:
             raise _invalid_facts("人员技能或登记资料无法读取，请检查数据库；本次不会退回旧授权名单排产。") from exc
+        return self.project_facts(sorted(ids), profiles, skills)
+
+    @staticmethod
+    def project_facts(operator_ids: Sequence[str], profiles: List[Dict[str, Any]],
+                      skills: List[Dict[str, Any]]) -> Dict[str, Optional[Set[str]]]:
+        """Interpret supplied qualification facts using the same rules as planning reads."""
+        ids = {_identifier(value) for value in operator_ids}
         qualifications: Dict[str, Optional[Set[str]]] = {}
         for row in profiles:
             oid = _identifier(row["operator_id"])
@@ -121,6 +128,12 @@ def validate_fixed_operator_qualifications(conn, operations: List[Any], logger=N
         return
     service = OperatorQualificationService(conn, logger=logger)
     facts = service.load([op.operator_id for op in selected])
+    checked_pairs = set()
     for op in selected:
+        machine_id = getattr(op, "machine_id", None)
+        pair = (op.operator_id, machine_id)
+        if pair not in checked_pairs:
+            require_machine_authorization(service.authorizations, op.operator_id, machine_id)
+            checked_pairs.add(pair)
         service.require(operator_id=op.operator_id, op_type_id=getattr(op, "op_type_id", None),
-                        machine_id=getattr(op, "machine_id", None), qualifications=facts)
+                        machine_id=None, qualifications=facts)

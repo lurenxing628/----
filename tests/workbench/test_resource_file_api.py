@@ -67,6 +67,8 @@ def new_preview(client, kind, category=None):
 def test_real_registration_public_preview_and_committed_restart_replay(client, kind, category):
     before = snapshot(client)
     preview = new_preview(client, kind, category)
+    assert preview["write_context"]["write_token"] == preview["preview_ref"]
+    assert preview["write_context"]["expires_at"] == preview["expires_at"]
     assert snapshot(client) == before
     assert preview["operation"] == kind + ".import" and preview["commit_policy"] == "atomic"
     assert preview["scope"]["category"] == category

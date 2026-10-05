@@ -12,7 +12,7 @@ from web.api_responses import query_success
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 from .resource_action_context import json_body, opaque_ref, read_endpoint, resolve_context, retain_context
-from .write_context import issue_write_context, validate_write_context
+from .write_context import preview_write_context, validate_preview_confirmation, validate_write_context
 
 SCOPE = "workbench-operator-machine-permissions-v1"
 
@@ -29,7 +29,7 @@ def operator_machine_preview(ref):
         value = preview.as_dict()
         data = {"operator_ref": ref, "preview_ref": preview_ref, "expires_at": expiry,
                 "rows": value["rows"], "summary": value["summary"], "commit_policy": "atomic",
-                "write_context": issue_write_context(ref, [OPERATION], preview.intent())}
+                "write_context": preview_write_context(preview_ref, expiry, [OPERATION])}
         snapshot = bind_read_snapshot({"kind": "operator", "ref": ref, "action": OPERATION}, fingerprint)
     return query_success(data, snapshot)
 
@@ -40,7 +40,7 @@ def _resolve(ref, preview_ref, write_token):
     body = preview.as_dict()
     if body["operation"] != OPERATION or body["request"]["operator_ref"] != ref:
         raise WorkbenchCommandRejected("stale_write", "预检与所选人员不一致，请重新预检。")
-    validate_write_context(write_token, ref, OPERATION, preview.intent())
+    validate_preview_confirmation(write_token, preview_ref)
     return preview
 
 

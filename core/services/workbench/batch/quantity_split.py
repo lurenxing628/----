@@ -92,34 +92,36 @@ class WorkbenchQuantitySplitService:
         batch, facts = self.reader.batch(ref), self.reader.load()
         code = plan["child_code"]
         fields = {key: batch[key] for key in ("due_date", "priority", "remark", "part_name")}
+        source_rows, child_rows = [], []
+        for row in plan["materials"]:
+            for target, prefix in ((source_rows, "source"), (child_rows, "child")):
+                target.append({"material_id": row["material_id"], "operation_id": row["operation_id"],
+                    "required_qty": row[prefix + "_required"], "available_qty": row[prefix + "_available"],
+                    "arrivals": row[prefix + "_arrivals"]})
+        source_ready = WorkbenchBatchMaterialService._ready(source_rows)
+        child_ready = WorkbenchBatchMaterialService._ready(child_rows)
         ready_day = stored_date(batch["ready_date"])
         if batch["ready_date"] is not None and ready_day is None:
             raise WorkbenchCommandRejected("constraint_conflict", "原批次齐套日期无效，请先核对后再拆分。")
         WorkbenchBatchService(self.conn).domain.create(code, batch["part_no"], **fields, quantity=plan["quantity"],
-            ready_status="yes", ready_date=max(filter(None, (ready_day, plan["as_of_date"]))))
+            ready_status=child_ready, ready_date=max(filter(None, (ready_day, plan["as_of_date"]))))
         writer = TemplateLineageWriter(self.conn)
         mapping = {op["id"]: insert_operation(self.conn, code, op, writer=writer) for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]}
         repo, stages = BatchMaterialRepository(self.conn), BatchMaterialStageRepository(self.conn)
-        source_rows, child_rows = [], []
-        for row in plan["materials"]:
-            created = repo.add(code, row["material_id"], required_qty=row["child_required"], available_qty=row["child_available"], ready_status="yes")
+        for index, row in enumerate(plan["materials"]):
+            created = repo.add(code, row["material_id"], required_qty=row["child_required"], available_qty=row["child_available"],
+                               ready_status=child_rows[index]["ready_status"])
             operation_id = row["operation_id"]
-            stages.replace(created.id, mapping[operation_id] if operation_id is not None else None, row["child_arrivals"])
+            if operation_id is not None:
+                stages.replace_operation(created.id, mapping[operation_id])
+            if row["child_arrivals"]:
+                stages.replace_arrivals(created.id, row["child_arrivals"])
             stages.review(created.id, plan["quantity"])
-            repo.update_qty(row["requirement_id"], required_qty=row["source_required"], available_qty=row["source_available"], ready_status="no")
-            stages.replace(row["requirement_id"], operation_id, row["source_arrivals"])
+            repo.update_qty(row["requirement_id"], required_qty=row["source_required"], available_qty=row["source_available"],
+                            ready_status=source_rows[index]["ready_status"])
+            stages.replace_arrivals(row["requirement_id"], row["source_arrivals"])
             stages.review(row["requirement_id"], plan["remaining_quantity"])
-            for target, prefix in ((source_rows, "source"), (child_rows, "child")):
-                target.append({"id": row["requirement_id"] if prefix == "source" else created.id,
-                    "material_id": row["material_id"], "operation_id": operation_id,
-                    "required_qty": row[prefix + "_required"], "available_qty": row[prefix + "_available"],
-                    "arrivals": row[prefix + "_arrivals"]})
-        for rows, batch_id in ((source_rows, batch["batch_id"]), (child_rows, code)):
-            ready = WorkbenchBatchMaterialService._ready(rows)
-            for row in rows:
-                repo.update_qty(row["id"], ready_status=row["ready_status"])
-            BatchRepository(self.conn).update(batch_id, {"ready_status": ready})
-        BatchRepository(self.conn).update(batch["batch_id"], {"quantity": plan["remaining_quantity"]})
+        BatchRepository(self.conn).update(batch["batch_id"], {"quantity": plan["remaining_quantity"], "ready_status": source_ready})
         stages.record_split(batch["batch_id"], code, plan["original_quantity"], plan["quantity"], plan["as_of_date"])
         identity = self.reader.identities.find_active("batch", code)
         if identity is None:

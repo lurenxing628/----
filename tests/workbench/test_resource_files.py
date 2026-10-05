@@ -12,6 +12,8 @@ from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCom
 from core.models.workbench_resource_file import public_columns
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.files import WorkbenchResourceFileService
+from core.services.workbench.resource.states import WorkbenchResourceStateService
+from core.services.workbench.resource.suppliers import WorkbenchSupplierService
 from tests.workbench.identity_metadata_support import business_snapshot
 from tests.workbench.resource_entity_support import create_catalog
 from tests.workbench.resource_file_support import (
@@ -27,6 +29,24 @@ from tests.workbench.resource_file_support import (
     snapshot,
 )
 from tests.workbench.resource_file_support import existing_raw as raw
+
+
+@pytest.mark.parametrize('kind,code', [('machine', 'M1'), ('supplier', 'S1')])
+def test_import_writes_current_checked_resource_without_second_state_read(resource_conn, monkeypatch, kind, code):
+    content = file_bytes([[code, 'checked once']], 'csv', ['business_code', 'label'])
+    preview = WorkbenchResourceFileService(resource_conn, kind).preview_import(content, file_format='csv', scope={})
+    original = WorkbenchResourceStateService.current
+
+    def current(self, identity, resource_kind):
+        if resource_kind == kind:
+            pytest.fail('this import already checked the resource identity and row')
+        return original(self, identity, resource_kind)
+
+    monkeypatch.setattr(WorkbenchResourceStateService, 'current', current)
+    monkeypatch.setattr(WorkbenchSupplierService, '_current_supplier',
+                        lambda *args: pytest.fail('this import already checked the supplier identity and row'))
+    result = confirm(resource_conn, kind, preview, content)
+    assert result['result'] == 'committed' and raw(resource_conn, kind, code)['name'] == 'checked once'
 
 
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
@@ -178,14 +198,14 @@ def test_import_rollback_and_receipt_before_dead_preview(resource_conn, failure)
     service = WorkbenchResourceFileService(resource_conn, "machine")
     preview = service.preview_import(content, file_format="csv", scope={})
     command = WorkbenchCommandService(resource_conn)
-    original = type(service.adapter).apply
-    def fail(adapter, action, payload, identity=None):
-        result = original(adapter, action, payload, identity)
+    original = type(service.adapter)._apply_checked
+    def fail(adapter, action, payload, checked):
+        result = original(adapter, action, payload, checked)
         if failure == "last_write" and payload.get("business_code") == "NEW":
             raise RuntimeError("after last write")
         return result
     before = snapshot(resource_conn)
-    with patch.object(type(service.adapter), "apply", fail):
+    with patch.object(type(service.adapter), "_apply_checked", fail):
         if failure == "receipt":
             command.repo.insert = lambda **_: (_ for _ in ()).throw(RuntimeError("receipt failure"))
         with pytest.raises(WorkbenchCommandUncertain):

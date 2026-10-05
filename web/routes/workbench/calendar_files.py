@@ -75,8 +75,10 @@ def _range_input(body):
 def calendar_import_preview(kind):
     calendar_kind(kind)
     content, fmt, mode = upload_body()
-    preview = _service(kind).preview_import(content, file_format=fmt, mode=mode)
-    data = issue_file_preview(preview, content, columns=public_columns(kind),
+    service = _service(kind)
+    source = service.prepare_import(content, file_format=fmt, mode=mode)
+    preview = service.preview_import(source, file_format=fmt, mode=mode)
+    data = issue_file_preview(preview, source, columns=public_columns(kind),
                               instructions=INSTRUCTIONS[kind], template_version=TEMPLATE_VERSION)
     # 预检文档本身就是这次读到的全部日历事实，拿它的摘要当读快照指纹。
     snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import",

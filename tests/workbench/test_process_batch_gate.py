@@ -9,7 +9,7 @@ import pytest
 
 from core.errors import BusinessError
 from core.infrastructure.transaction import TransactionManager
-from core.services.batch.template_ops import ensure_template_ops_in_tx, probe_template_ops_readonly
+from core.services.batch.template_ops import ensure_template_ops_in_tx
 from core.services.process.workflow_state import record_confirmation, start_workflow
 from data.repositories import PartOperationRepository, PartRepository
 from tests.workbench.process_workflow_support import confirm_all, stored_state, workflow_database
@@ -46,11 +46,9 @@ def test_managed_new_route_cannot_be_automatically_resolved(workflow_conn):
         start_workflow(conn, "P1")
     svc, part = _service(conn), PartRepository(conn).get("P1")
     before = stored_state(conn)
-    probe = probe_template_ops_readonly(svc, "P1", part)
-    assert not probe["has_template_ops"] and probe["route_raw"]
     with pytest.raises(BusinessError):
         with TransactionManager(conn).transaction():
-            ensure_template_ops_in_tx(svc, "P1", part, probe=probe)
+            ensure_template_ops_in_tx(svc, "P1", part)
     svc._template_resolver.assert_not_called()
     assert stored_state(conn) == before
 
@@ -85,13 +83,12 @@ def test_legacy_no_template_retains_automatic_parse_behavior(workflow_conn):
     svc._template_resolver.assert_called_once()
 
 
-def test_old_modification_after_probe_is_rechecked_in_transaction(workflow_conn):
+def test_old_modification_is_rechecked_in_transaction(workflow_conn):
     conn = workflow_conn
     confirm_all(conn)
     svc, part = _service(conn), PartRepository(conn).get("P1")
-    probe = probe_template_ops_readonly(svc, "P1", part)
     conn.execute("UPDATE PartOperations SET unit_hours=9 WHERE seq=1")
     conn.commit()
     with pytest.raises(BusinessError):
         with TransactionManager(conn).transaction():
-            ensure_template_ops_in_tx(svc, "P1", part, probe=probe)
+            ensure_template_ops_in_tx(svc, "P1", part)

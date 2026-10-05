@@ -15,7 +15,7 @@ from core.services.process.workflow_state import record_confirmation, workflow_s
 from core.services.workbench.master.overview import MasterOverviewService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from core.services.workbench.process.route_preview import ProcessRoutePreviewService
-from core.services.workbench.resource.readiness import _checked_workflow, process_readiness
+from core.services.workbench.resource.readiness import process_readiness
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_quota_protection_support import locked_quota_case as _locked_quota_case  # noqa: F401
 from tests.workbench.process_quota_protection_support import quota_case as _quota_case  # noqa: F401
@@ -78,7 +78,6 @@ def test_real_stage_evidence_is_readonly_and_never_inferred(private_process_db):
         conn.execute("PRAGMA query_only=ON")
         try:
             record = workflow_snapshot(conn)["PROC-001"]
-            assert _checked_workflow(record) is record["workflow"]
             assert record["workflow"]["stage"] == expected
             assert record["workflow"]["ready"] is (expected == "ready")
             readiness = process_readiness(conn, 5)
@@ -90,18 +89,31 @@ def test_real_stage_evidence_is_readonly_and_never_inferred(private_process_db):
 
 @pytest.mark.parametrize("stage,patch", [
     ("route", {"confirmed_at": None}), ("route", {"confirmed_at": " "}),
-    ("source", {"confirmed_by": " "}), ("source", {"confirmed_by": 1}),
-    ("hours", {"state": "unconfirmed"}),
+    ("source", {"confirmed_by": " "}), ("source", {"confirmed_by": sqlite3.Binary(b"not-text")}),
+    ("hours", {"signature": "0" * 64}),
 ])
 def test_damaged_confirmation_evidence_cannot_mean_ready(private_process_db, stage, patch):
     conn = private_process_db
     with TransactionManager(conn).transaction(begin_immediate=True):
         for name in ("route", "source", "hours"):
             record_confirmation(conn, "PROC-001", name, "R1-H")
-    record = deepcopy(workflow_snapshot(conn)["PROC-001"])
-    record["workflow"][stage].update(patch)
-    with pytest.raises(RuntimeError):
-        _checked_workflow(record)
+    # Corrupt stored evidence, rather than inventing a malformed domain DTO.
+    # TEXT affinity converts integer names to text; BLOB is an actual nontext value.
+    conn.execute("PRAGMA ignore_check_constraints=ON")
+    conn.execute("UPDATE WorkbenchProcessWorkflow SET " + ",".join(stage + "_" + name + "=?" for name in patch),
+                 tuple(patch.values()))
+    conn.commit()
+    conn.execute("PRAGMA ignore_check_constraints=OFF")
+    before = all_table_snapshot(conn)
+    conn.execute("PRAGMA query_only=ON")
+    try:
+        workflow = workflow_snapshot(conn)["PROC-001"]["workflow"]
+        readiness = process_readiness(conn, 5)
+    finally:
+        conn.execute("PRAGMA query_only=OFF")
+    assert workflow["ready"] is False and workflow[stage]["state"] != "confirmed"
+    assert readiness["counts"]["ready"] == 0
+    assert all_table_snapshot(conn) == before
 
 
 @pytest.mark.parametrize("mode", ["text", "rows"])

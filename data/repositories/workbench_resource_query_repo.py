@@ -1,19 +1,23 @@
 """SQL filtering before pagination; no implicit entity or relationship creation."""
 
+from core.models.workbench_resource_status import RAW_RESOURCE_STATUSES, SPECIAL_INACTIVE_REASONS
+
 from .base_repo import BaseRepository
+from .workbench_resource_dependencies import DEPENDENCIES
 from .workbench_resource_state_repo import RESOURCE_KEYS
 
 _TABLES = {**RESOURCE_KEYS, "supplier": ("Suppliers", "supplier_id")}
 
 
 def _public_status(kind):
+    """Project the shared status vocabulary inside a SQL filtering scope."""
     if kind == "op_type":
         return "NULL"
-    if kind in ("operator", "supplier"):
-        special, label = ("leave", "leave") if kind == "operator" else ("pending_review", "pending_review")
-        return ("CASE WHEN source.status='active' THEN 'active' WHEN source.status='inactive' AND profile.inactive_reason='" + special + "' THEN '" + label
-                + "' WHEN source.status='inactive' AND profile.inactive_reason='disabled' THEN 'inactive' ELSE 'unknown' END")
-    options = "'active','maintain','inactive'" if kind == "machine" else "'active','inactive'"
+    if kind in SPECIAL_INACTIVE_REASONS:
+        special = SPECIAL_INACTIVE_REASONS[kind]
+        return ("CASE WHEN source.status='active' THEN 'active' WHEN source.status='inactive' AND profile.inactive_reason='" + special
+                + "' THEN '" + special + "' WHEN source.status='inactive' AND profile.inactive_reason='disabled' THEN 'inactive' ELSE 'unknown' END")
+    options = ",".join("'" + status + "'" for status in RAW_RESOURCE_STATUSES.get(kind, ("active", "inactive")))
     return f"CASE WHEN source.status IN ({options}) THEN source.status ELSE 'unknown' END"
 
 
@@ -52,16 +56,37 @@ class WorkbenchResourceQueryRepository(BaseRepository):
         return rows, total
 
     def scope_state(self, kind):
-        refs = self.fetchall("""SELECT kind,COUNT(*) AS instances,coalesce(SUM(revision),0) AS revisions
-            FROM WorkbenchEntityRefs WHERE kind IN ('part','material','batch','op_type','machine','operator','supplier','machine_group','shift_profile','resource_team')
-            GROUP BY kind ORDER BY kind""")
-        dependencies = {"op_type": (("PartOperations", "op_type_id"), ("BatchOperations", "op_type_id")),
-                        "machine": (("BatchOperations", "machine_id"), ("Schedule", "machine_id")),
-                        "operator": (("BatchOperations", "operator_id"), ("Schedule", "operator_id")),
-                        "supplier": (("PartOperations", "supplier_id"), ("BatchOperations", "supplier_id"), ("ExternalGroups", "supplier_id"))}
-        counts = {table: self.fetchall(f"SELECT {key} AS resource_key,COUNT(*) AS amount FROM {table} GROUP BY {key} ORDER BY {key}")
-                  for table, key in dependencies.get(kind, ())}
-        return {"identities": refs, "dependencies": counts}
+        counts = {table + "." + key: self.fetchall(f"SELECT {key} AS resource_key,COUNT(*) AS amount FROM {table} "
+                                                 f"WHERE {key} IS NOT NULL GROUP BY {key} ORDER BY {key}")
+                  for table, key in DEPENDENCIES.get(kind, ())}
+        return {"dependencies": counts}
+
+    def create_relations(self, kind):
+        """Only choice facts that can affect this kind's new record.
+
+        New business-code/name uniqueness is checked in the write transaction;
+        existing entities and unrelated collection counts are not prerequisites.
+        """
+        relations = {"machine": ("op_type", "machine_group"),
+                     "operator": ("op_type", "shift_profile"), "supplier": ("op_type",)}.get(kind, ())
+        if not relations:
+            return None
+        result = {}
+        for relation in relations:
+            table, key = _TABLES[relation]
+            condition = ""
+            if relation == "op_type":
+                category = "external" if kind == "supplier" else "internal"
+                condition = " WHERE source.category IN ('" + category + "','both')"
+            result[relation] = self.fetchall(
+                f"SELECT source.*,refs.ref,refs.revision FROM {table} source LEFT JOIN WorkbenchEntityRefs refs "
+                f"ON refs.kind=? AND refs.active=1 AND refs.entity_key=source.{key}"
+                + condition + f" ORDER BY source.{key}", (relation,))
+        if kind == "operator":
+            result["shift_pattern"] = self.fetchall("""SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d
+                LEFT JOIN WorkbenchShiftDayPeriods p ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset
+                ORDER BY d.profile_id,d.day_offset""")
+        return result
 
     def summary(self):
         result = {kind: int(self.fetchvalue(f"SELECT COUNT(*) FROM {table}", default=0)) for kind, (table, _) in _TABLES.items()}

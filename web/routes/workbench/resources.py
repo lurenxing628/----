@@ -53,7 +53,7 @@ def resource_list(kind):
         records, page = reader.page(query)
         metrics = page.pop("metrics")
         data = {"entities": [_with_context(kind, record) for record in records], "page": page, "metrics": metrics,
-                "create_context": issue_write_context(kind + ":create", [kind + ".create"], state)}
+                "create_context": issue_write_context(kind + ":create", [kind + ".create"], reader.create_snapshot())}
     return query_success(data, snapshot)
 
 
@@ -82,13 +82,13 @@ def resource_command(kind, action, ref=None):
 
     def guard():
         identity = None if action == "create" else reader.resolve(ref)
-        state = reader.state_fingerprint() if identity is None else reader.domain.snapshot(identity)
+        state = reader.create_snapshot() if identity is None else reader.domain.snapshot(identity)
         validate_write_context(body["write_token"], subject, command, state)
-        return identity
+        return state if identity is not None else None
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=normalized,
-        guard=guard, mutate=lambda identity: reader.domain.apply(action, normalized, identity))
+        guard=guard, mutate=lambda checked: reader.domain._apply_checked(action, normalized, checked))
     return jsonify(outcome)
 
 

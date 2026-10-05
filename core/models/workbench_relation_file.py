@@ -1,10 +1,10 @@
 """可操作设备关系文件的列目录。只读列是参考资料，不写入；文件不删除任何已有关系。"""
 
 import hashlib
-from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
 from core.errors import ValidationError
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -155,12 +155,7 @@ def table_descriptor(kind: str) -> Dict[str, Any]:
     }
 
 
-@dataclass(frozen=True)
-class RelationFileDownload:
-    filename: str
-    mime_type: str
-    content: bytes
-    row_count: int
+RelationFileDownload = FileDownload
 
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。

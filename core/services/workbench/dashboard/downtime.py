@@ -11,8 +11,11 @@ from .projection import category, observation
 
 def _index(raw, refs):
     identities = {row["source_id"]: row for row in refs if row["active"] == 1}
-    by_machine, invalid = defaultdict(list), set()
+    by_machine, all_rows, identity_rows, invalid = defaultdict(list), defaultdict(list), defaultdict(list), set()
+    for row in refs:
+        identity_rows[row["source_id"]].append(row)
     for row in raw:
+        all_rows[row["machine_id"]].append(row)
         if row["status"] == "cancelled":
             continue
         try:
@@ -23,7 +26,8 @@ def _index(raw, refs):
         except (TypeError, ValueError):
             invalid.add(row["machine_id"])
     indexes = {key: IntervalIndex(union([(low, high) for low, high, _ in values])) for key, values in by_machine.items()}
-    return {"identities": identities, "windows": by_machine, "invalid": invalid, "indexes": indexes}
+    return {"identities": identities, "windows": by_machine, "invalid": invalid, "indexes": indexes,
+            "all_rows": all_rows, "identity_rows": identity_rows}
 
 
 def _overlaps(windows, identities, low, high):
@@ -55,8 +59,9 @@ def _task(task, raw_task, resource_rows, index):
                      None: ("downtime_unknown", "停机记录或设备资料填得不对，还判断不了。"),
                      False: ("no_overlap", "正式安排与已登记有效停机无重叠。")}[active]
     result = observation("downtime", task["task_ref"], task["batch_id"] + " · " + task["process_label"], source, active, code, message,
-                         {"task": raw_task, "resource": resource, "downtimes": [row for _, _, row in windows],
-                          "identity": [identities[row["id"]] for _, _, row in windows]})
+                         {"task": raw_task, "resource": resource, "downtimes": index["all_rows"][key],
+                          "identity": [identity for row in index["all_rows"][key]
+                                       for identity in index["identity_rows"][row["id"]]]})
     return result, bad, len(details)
 
 

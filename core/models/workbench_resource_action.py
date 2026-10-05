@@ -1,12 +1,11 @@
 """Immutable server previews and explicit non-material collection selections."""
 
-import hashlib
-import json
 from dataclasses import dataclass
 
 from core.errors import ValidationError
 from core.models.resource_capabilities import supports_source
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_action_values import AtomicActionPreview
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
 
 ACTION_KINDS = ("op_type", "machine", "operator", "supplier")
@@ -43,34 +42,8 @@ def check_category(kind, raw, scope):
 
 
 @dataclass(frozen=True)
-class ResourceActionPreview:
-    document: str
-
-    @classmethod
-    def build(cls, operation, request, rows, notices=()):
-        """notices 是整批级的告知，不是行错误：例如"文件里还有别的工作表，只读了第一张"。
-
-        它进文档而不是只进响应，这样确认时的逐字比对也盖住它，用户看到的提示和最终写入的依据同源。
-        """
-        summary = {key: sum(row["result"] == key for row in rows)
-                   for key in ("new", "update", "unchanged", "delete", "rejected")}
-        try:
-            return cls(canonical_json({"version": 1, "operation": operation, "request": request,
-                                       "commit_policy": "atomic", "rows": rows, "summary": summary,
-                                       "notices": list(notices)}))
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise WorkbenchCommandRejected("storage_failure", "这批数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。", 500) from exc
-
-    def as_dict(self):
-        return json.loads(self.document)
-
-    @property
-    def digest(self):
-        return hashlib.sha256(self.document.encode("utf-8")).hexdigest()
-
-    def intent(self):
-        body = self.as_dict()
-        return {"preview_hash": self.digest, "operation": body["operation"], "request": body["request"]}
+class ResourceActionPreview(AtomicActionPreview):
+    pass
 
 
 def check_resource_preview(original, current):

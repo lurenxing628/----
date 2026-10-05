@@ -1,8 +1,12 @@
 """Real equipment groups and fully specified fixed/rotating shift catalogs."""
 
+from dataclasses import asdict
+from typing import Any, Dict, Optional
+
 from core.errors import ValidationError
 from core.models.calendar_periods import shift_pattern_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_input import normalize_resource_input
 
 from .states import WorkbenchResourceStateService
@@ -23,27 +27,41 @@ class WorkbenchResourceCatalogService:
         return normalize_resource_input(self.kind, action, payload)
 
     def snapshot(self, identity):
-        self.state.current(identity, self.kind)
-        return self.state.snapshot(identity)
+        return self.state.snapshot(identity, kind=self.kind)
 
     def apply(self, action, normalized_input, identity=None):
         if not self.conn.in_transaction:
             raise RuntimeError("资源目录写入必须由外层工作台事务负责。")
         payload = self.normalize_input(action, normalized_input)
+        checked: Optional[Dict[str, Any]] = None
         if action == "create":
             if identity is not None:
                 raise WorkbenchCommandRejected("invalid_input", "新增" + _KIND_NAMES[self.kind] + "时不能指定已有记录，没有保存。请重新点「新增」。", 400)
+        else:
+            current, raw = self.state.current(identity, self.kind)
+            checked = {"identity": asdict(current), "record": raw}
+            if action == "delete":
+                checked["members"] = self.repo.group_members(current.entity_key) if self.kind == "machine_group" else self.repo.shift_members(current.entity_key)
+            elif self.kind == "shift_profile":
+                checked["pattern"] = self.repo.pattern(current.entity_key)
+        return self._apply_checked(action, payload, checked)
+
+    def _apply_checked(self, action, payload, checked):
+        """Use the catalog row, members and pattern checked in this command transaction."""
+        if not self.conn.in_transaction:
+            raise RuntimeError("资源目录写入必须由外层工作台事务负责。")
+        if action == "create":
             return self._create(payload)
-        current, raw = self.state.current(identity, self.kind)
+        current = WorkbenchEntityIdentity(**checked["identity"])
+        raw = checked["record"]
         code = current.entity_key
         if action == "delete":
-            members = self.repo.group_members(code) if self.kind == "machine_group" else self.repo.shift_members(code)
-            if members:
+            if checked["members"]:
                 raise WorkbenchCommandRejected("constraint_conflict", "还有资源在用这个" + _KIND_NAMES[self.kind] + "，没有删除。请先把这些资源改到别处。")
             self.repo.delete_catalog(self.kind, code)
             changed = True
         else:
-            changed = self._update(code, raw, payload)
+            changed = self._update(code, raw, payload, checked.get("pattern", []))
         return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"entity_ref": current.ref, "business_code": code})
 
     def _create(self, payload):
@@ -62,13 +80,12 @@ class WorkbenchResourceCatalogService:
             raise RuntimeError("新目录记录缺少永久引用。")
         return WorkbenchCommandOutcome("committed", {"entity_ref": identity.ref, "business_code": code})
 
-    def _update(self, code, raw, payload):
+    def _update(self, code, raw, payload, old_pattern):
         fields = dict(payload["fields"])
         pattern = fields.pop("pattern", None)
         if "label" in payload:
             fields["name"] = payload["label"]
             self._check_name(code, fields["name"])
-        old_pattern = self.repo.pattern(code) if self.kind == "shift_profile" else []
         self._check_pattern({**raw, **fields}, pattern if pattern is not None else old_pattern)
         changes = {key: value for key, value in fields.items() if raw[key] != value}
         changed_pattern = pattern is not None and pattern != [shift_pattern_fields(row) for row in old_pattern]

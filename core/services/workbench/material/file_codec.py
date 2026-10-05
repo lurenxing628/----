@@ -18,7 +18,6 @@ import codecs
 import csv
 import math
 import re
-from io import BytesIO, StringIO
 from tempfile import SpooledTemporaryFile
 
 import openpyxl
@@ -40,12 +39,12 @@ from core.models.workbench_material_file import (
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
-from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import (
     add_enum_dropdowns,
     append_instruction_sheet,
     close_write_only_sheets,
 )
+from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 from core.services.workbench.facts.table_cells import number_text
 
 _NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
@@ -55,6 +54,13 @@ _CLEARABLE = ("spec", "unit", "remark")
 XLSX_MAX_ROWS = 1_048_576
 XLSX_MAX_CELL_CHARACTERS = 32767
 _SPOOL_BYTES = 4 * 1024 * 1024
+_READ_MESSAGES = FileReadMessages(
+    csv_encoding="请将 CSV 保存为 UTF-8 编码。",
+    csv_format="CSV 格式错误，请核对引号和分隔符。",
+    xlsx_empty="这个 XLSX 里没有工作表，请核对文件格式和内容。",
+    xlsx_read="XLSX 文件读取失败，请核对文件格式和内容。",
+    xlsx_cell="不接受公式或 Excel 错误单元格，请提供实际值。",
+)
 
 
 def _file_error(message, row=1, field="file"):
@@ -72,45 +78,6 @@ def _headers(values):
     if len(set(fields)) != len(fields):
         raise _file_error("表头里有重复的列（中文列名和英文列名指同一项也算重复）。", field="headers")
     return fields
-
-
-def _csv_rows(content):
-    try:
-        reader = csv.reader(StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
-        while True:
-            number = reader.line_num + 1
-            row = next(reader, None)
-            if row is None:
-                break
-            yield number, row, {}
-    except UnicodeDecodeError as exc:
-        raise _file_error("请将 CSV 保存为 UTF-8 编码。") from exc
-    except csv.Error as exc:
-        raise _file_error("CSV 格式错误，请核对引号和分隔符。", reader.line_num) from exc
-
-
-def _xlsx_rows(content, state):
-    wb = None
-    try:
-        wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-        if not wb.worksheets:
-            raise _file_error("这个 XLSX 里没有工作表，请核对文件格式和内容。")
-        # 只读第一张表，其余忽略；模板和导出文件本身就带一张「填写说明」。
-        state["sheets"] = len(wb.worksheets)
-        ws = wb.worksheets[0]
-        # Do not trust a producer's cached dimensions to hide later rows/columns.
-        ws.reset_dimensions()
-        for number, cells in enumerate(ws.iter_rows(), 1):
-            errors = {index: "不接受公式或 Excel 错误单元格，请提供实际值。"
-                      for index, cell in enumerate(cells) if is_formula_or_error(cell)}
-            yield number, [cell_value(cell) for cell in cells], errors
-    except ValidationError:
-        raise
-    except Exception as exc:
-        raise _file_error("XLSX 文件读取失败，请核对文件格式和内容。") from exc
-    finally:
-        if wb is not None:
-            wb.close()
 
 
 def _decode_value(value, field, file_format):
@@ -149,7 +116,7 @@ def read_material_file(content: bytes, file_format: str):
     if type(content) is not bytes or file_format not in ("csv", "xlsx"):
         raise _file_error("必须提供 CSV/XLSX 的原始文件字节。")
     state = {"sheets": 1}
-    source = _csv_rows(content) if file_format == "csv" else _xlsx_rows(content, state)
+    source = source_rows(content, file_format, state, error=_file_error, messages=_READ_MESSAGES)
     try:
         header = next(source, None)
         if header is None or header[2]:

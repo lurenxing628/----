@@ -81,7 +81,7 @@ def process_bulk_confirm():
 
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="process_bulk.confirm", context_ref=ref, normalized_input=body["input"],
-        guard=lambda: checked_preview(ref, "part.bulk_delete", "process_bulk.confirm", body["write_token"]), mutate=apply)
+        guard=lambda: checked_preview(ref, "part.bulk_delete", body["write_token"]), mutate=apply)
     return jsonify(result)
 
 

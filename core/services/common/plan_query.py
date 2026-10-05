@@ -94,7 +94,7 @@ class SchedulePlanQueryService:
             scenario_display_name=resolution.scenario_display_name,
             schedule_result_status=history_row.get("result_status"),
             result_summary=history_row.get("result_summary"),
-            latest_official_version=latest_official_version(self.repo.list_history_identity_rows()),
+            latest_official_version=self.repo.latest_version(),
             schedule_lock_status=source_row.get("lock_status"),
             detail_saved=getattr(option, "detail_saved", None),
         )

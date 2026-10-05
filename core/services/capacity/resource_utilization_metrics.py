@@ -6,6 +6,7 @@ Efficiency-weighted processing hours are deliberately outside this definition.
 """
 
 from bisect import bisect_right
+from typing import Optional
 
 from .plan_calendar_intervals import IntervalIndex, intersection, segments, union
 
@@ -70,13 +71,14 @@ class ResourceUtilizationMetrics:
             raise ValueError("Invalid resource task interval")
         self.source = source
         occupied, swept = union(intervals), segments(intervals)
+        self.segments = swept
         self.span = IntervalIndex(occupied)
         self.span_load = _WeightedIndex(swept)
         self.span_overlap = IntervalIndex([(start, end) for start, end, count in swept if count > 1])
         # None means the resource's calendar is unknown, never that it has zero capacity.
         self.calendar = _CalendarIndexes(available, occupied, swept) if available is not None else None
 
-    def window(self, start, end):
+    def window(self, start, end, *, precision: Optional[int] = 6):
         if start > end:
             raise ValueError("Invalid utilization window")
         span = self.span.hours_between(start, end)
@@ -95,6 +97,7 @@ class ResourceUtilizationMetrics:
             "span_occupied_hours": span, "span_summed_hours": self.span_load.hours_between(start, end),
             "span_overlap_hours": self.span_overlap.hours_between(start, end),
         }
-        return {**{key: round(value, 6) if value is not None else None for key, value in result.items()},
+        return {**{key: round(value, precision) if value is not None and precision is not None else value
+                   for key, value in result.items()},
                 "metric_version": METRIC_VERSION, "source": self.source,
                 "reason": "calendar_unavailable" if capacity is None else "zero_available_capacity" if capacity == 0 else None}

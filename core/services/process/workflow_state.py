@@ -17,6 +17,8 @@ from core.infrastructure.workbench_resource_schema import workbench_resource_con
 from core.models.resource_capabilities import supports_source
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 
+from .template_source import source_issues, valid_external_group, valid_supplier
+
 _STAGES = ("route", "source", "hours")
 
 
@@ -69,7 +71,7 @@ def _supplier(suppliers, supplier_id, op_type_id):
         return None, False
     fact = {"ref": _ref(row["ref"]), "status": row["status"], "inactive_reason": row["inactive_reason"],
             "capable": op_type_id is not None and op_type_id in row["capabilities"]}
-    return fact, fact["status"] == "active" and fact["capable"] and fact["inactive_reason"] is None
+    return fact, valid_supplier(fact)
 
 
 def _groups(groups, operations):
@@ -89,11 +91,7 @@ def _groups(groups, operations):
 def _group_facts(group, part_no):
     if group is None:
         return None, True
-    valid_range = (type(group["start_seq"]) is int and type(group["end_seq"]) is int
-                   and 0 < group["start_seq"] <= group["end_seq"])
-    valid = (group["part_no"] == part_no and group["merge_mode"] in ("separate", "merged") and valid_range
-             and all(source == "external" and type(seq) is int and group["start_seq"] <= seq <= group["end_seq"]
-                     for _, seq, source in group["members"]))
+    valid = valid_external_group(group, part_no, [(seq, source) for _, seq, source in group["members"]])
     return {key: group[key] for key in ("ref", "start_seq", "end_seq", "merge_mode", "supplier_id", "members")}, valid
 
 
@@ -110,17 +108,11 @@ def _group_source(group, part_no, op_type_id, suppliers):
 
 def _source_facts(part, op, group, suppliers):
     group_fact, group_supplier, valid_group = _group_source(group, part["part_no"], op["op_type_id"], suppliers)
-    source_valid = (op["source"] in ("internal", "external") and op["type_name"] is not None
-                    and supports_source(op["category"], op["source"]))
     if op["type_name"] is not None:
         _ref(op["type_ref"])
     supplier, valid_supplier = _supplier(suppliers, op["supplier_id"], op["op_type_id"])
-    if op["source"] == "external":
-        source_valid = source_valid and valid_supplier and valid_group and (op["ext_group_id"] is None or group is not None)
-        if group is not None and group["supplier_id"] is not None:
-            source_valid = source_valid and group["supplier_id"] == op["supplier_id"]
-    else:
-        source_valid = source_valid and op["supplier_id"] is None and op["ext_group_id"] is None
+    source_valid = not source_issues(op, type_name=op["type_name"], category=op["category"],
+                                    supplier_valid=valid_supplier, group=group, group_valid=valid_group)
     # This slot used to contain the resource's default policy. Defaults only seed
     # new groups; the actual group facts above govern existing confirmations.
     values = [op["source"], op["op_type_id"], op["type_ref"], op["type_name"], op["source"] if supports_source(op["category"], op["source"]) else op["category"],
@@ -280,11 +272,50 @@ def operation_confirmations(conn, part_no) -> dict:
         return _operation_states(per_op, records)
 
 
-def workflow_snapshot(conn) -> dict:
+def workflow_snapshot(conn, *, tables=None) -> dict:
     """Load JSON-safe workflow and per-operation states for the whole part catalog."""
     with TransactionManager(conn).transaction():
-        raw = load_workflow_snapshot(conn)
+        if tables is None:
+            raw = load_workflow_snapshot(conn)
+        else:
+            _schema(conn)
+            raw = _workflow_inputs_from_tables(tables)
     return project_workflow_snapshot(raw)
+
+
+def _workflow_inputs_from_tables(tables):
+    """Join the caller's captured raw collections; do not read a second catalog."""
+    refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
+    types = {row["op_type_id"]: row for row in tables["OpTypes"]}
+    policies = {row["op_type_id"]: row for row in tables["WorkbenchOpTypePolicies"]}
+    profiles = {row["supplier_id"]: row for row in tables["WorkbenchSupplierProfiles"]}
+    operations = []
+    for row in tables["PartOperations"]:
+        if row["status"] != "active":
+            continue
+        kind = types.get(row["op_type_id"], {})
+        operations.append(dict(row, ref=refs.get(("template_operation", str(row["id"]))),
+            type_name=kind.get("name"), category=kind.get("category"),
+            type_ref=refs.get(("op_type", row["op_type_id"])),
+            default_merge_mode=policies.get(row["op_type_id"], {}).get("default_merge_mode")))
+    def sql_order(value):
+        if value is None:
+            return (0, "")
+        if isinstance(value, (int, float)):
+            return (1, value)
+        return (2 if isinstance(value, str) else 3, value)
+    operations.sort(key=lambda row: tuple(sql_order(row[key]) for key in ("part_no", "seq", "id")))
+    used = {row["ext_group_id"] for row in operations if row["ext_group_id"] is not None}
+    return {"parts": [dict(row, ref=refs.get(("part", row["part_no"]))) for row in tables["Parts"]],
+            "stored": tables["WorkbenchProcessWorkflow"], "facts": {
+                "operations": operations,
+                "groups": [dict(row, ref=refs.get(("template_external_group", row["group_id"])))
+                           for row in tables["ExternalGroups"] if row["group_id"] in used],
+                "suppliers": [dict(row, ref=refs.get(("supplier", row["supplier_id"])),
+                                   inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
+                              for row in tables["Suppliers"]],
+                "capabilities": tables["WorkbenchSupplierOpTypes"],
+                "records": tables["WorkbenchProcessOperationConfirmations"]}}
 
 
 def load_workflow_snapshot(conn) -> dict:
@@ -321,7 +352,8 @@ def start_workflow(conn, part_no, *, contracts=None) -> dict:
         part, stored = _part(conn, part_no, contracts)
         if stored is None:
             WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
-        return read_workflow(conn, part_no, contracts=contracts)
+            stored = {stage + "_" + key: None for stage in _STAGES for key in ("signature", "confirmed_at", "confirmed_by")}
+        return _view(stored, _facts(part, _load_facts(conn, part_no)))
 
 
 def _save_operations(conn, part_ref, stage, per_op, records, stamp, person):
@@ -336,6 +368,7 @@ def _save_operations(conn, part_ref, stage, per_op, records, stamp, person):
         else:
             repo.update_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, signature=values[stage],
                                      confirmed_at=stamp, confirmed_by=person)
+        records[(ref, stage)] = {"signature": values[stage], "confirmed_at": stamp, "confirmed_by": person}
 
 
 def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=None) -> dict:
@@ -359,6 +392,7 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=No
         repo = WorkbenchProcessWorkflowRepository(conn)
         if stored is None:
             repo.insert_workflow(part["ref"])
+            stored = {name + "_" + key: None for name in _STAGES for key in ("signature", "confirmed_at", "confirmed_by")}
         stamp = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
         if stage == "route":
             repo.delete_confirmations_outside_active_route(part["ref"], part_no)
@@ -367,7 +401,9 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=No
         if _confirmation(stored, signature, stage + "_")["state"] != "confirmed":
             repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, signature=signature,
                                         confirmed_at=stamp, confirmed_by=confirmed_by)
-        return read_workflow(conn, part_no, contracts=contracts)
+            stored = dict(stored, **{stage + "_signature": signature, stage + "_confirmed_at": stamp,
+                                     stage + "_confirmed_by": confirmed_by})
+        return _view(stored, facts)
 
 
 def require_template_ready(conn, part_no) -> None:

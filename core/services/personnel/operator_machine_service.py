@@ -59,10 +59,6 @@ class OperatorMachineService:
     def _normalize_yes_no_stored(value: Any) -> str:
         return om_normalizers.normalize_yes_no_stored(value)
 
-    @classmethod
-    def _normalize_link(cls, link: OperatorMachine) -> OperatorMachine:
-        return om_normalizers.normalize_link_record(link)
-
     def _ensure_operator_exists(self, operator_id: str) -> None:
         if not self.operator_repo.exists(operator_id):
             raise BusinessError(ErrorCode.OPERATOR_NOT_FOUND, f"人员“{operator_id}”不存在")
@@ -270,7 +266,7 @@ class OperatorMachineService:
             if mode == ImportMode.APPEND:
                 return "skip"
             if new_primary == YesNo.YES.value:
-                self.repo.clear_primary_for_operator(op_id)
+                self.repo.clear_primary_for_operator(op_id, exclude_machine=mc_id)
             self.repo.update_fields(op_id, mc_id, skill_level=new_skill, is_primary=new_primary)
             existing_map[key] = {"skill_level": new_skill, "is_primary": new_primary}
             return "update"
@@ -285,13 +281,13 @@ class OperatorMachineService:
         op_id = self._normalize_text(operator_id)
         if not op_id:
             raise ValidationError("“工号”不能为空", field="工号")
-        return [self._normalize_link(link) for link in self.repo.list_by_operator(op_id)]
+        return [om_normalizers.normalize_link_record(link) for link in self.repo.list_by_operator(op_id)]
 
     def list_by_machine(self, machine_id: str) -> List[OperatorMachine]:
         mc_id = self._normalize_text(machine_id)
         if not mc_id:
             raise ValidationError("“设备编号”不能为空", field="设备编号")
-        return [self._normalize_link(link) for link in self.repo.list_by_machine(mc_id)]
+        return [om_normalizers.normalize_link_record(link) for link in self.repo.list_by_machine(mc_id)]
 
     def add_link(
         self,
@@ -325,12 +321,12 @@ class OperatorMachineService:
                 self._clear_primary(op_id, preserve_unchanged)
             return self.repo.add(op_id, mc_id, skill_level=skill_norm, is_primary=primary_norm)
 
-    def _clear_primary(self, operator_id, preserve_unchanged):
+    def _clear_primary(self, operator_id, preserve_unchanged, *, exclude_machine=None, rows=None):
         if not preserve_unchanged:
-            self.repo.clear_primary_for_operator(operator_id)
+            self.repo.clear_primary_for_operator(operator_id, exclude_machine=exclude_machine)
             return
-        for row in self.repo.list_simple_rows_for_operators([operator_id]):
-            if self._normalize_yes_no_stored(row["is_primary"]) == YesNo.YES.value:
+        for row in rows if rows is not None else self.repo.list_simple_rows_for_operators([operator_id]):
+            if row["machine_id"] != exclude_machine and self._normalize_yes_no_stored(row["is_primary"]) == YesNo.YES.value:
                 self.repo.update_fields(operator_id, row["machine_id"], skill_level=row["skill_level"], is_primary=YesNo.NO.value)
 
     def remove_link(self, operator_id: Any, machine_id: Any) -> None:
@@ -366,18 +362,20 @@ class OperatorMachineService:
             raise ValidationError("“工号”不能为空", field="工号")
         if not mc_id:
             raise ValidationError("“设备编号”不能为空", field="设备编号")
-        if not self.repo.exists(op_id, mc_id):
-            raise BusinessError(ErrorCode.NOT_FOUND, "未找到该人员与该设备的关联记录。")
-
-        current = next((row for row in self.repo.list_simple_rows_for_operators([op_id])
-                        if row["machine_id"] == mc_id), {}) if preserve_unchanged else {}
-        skill_norm = current["skill_level"] if preserve_unchanged and skill_level == current.get("skill_level") else self._normalize_skill_level_optional(skill_level) or "normal"
-        primary_norm = current["is_primary"] if preserve_unchanged and is_primary == current.get("is_primary") else self._normalize_yes_no_optional(is_primary, field="主操设备") or YesNo.NO.value
-
         with self.tx_manager.transaction():
+            rows, current = self._current_link_for_update(op_id, mc_id, preserve_unchanged)
+            skill_norm, primary_norm = om_normalizers.updated_link_values(current, skill_level, is_primary, preserve_unchanged)
             if primary_norm == YesNo.YES.value:
-                self._clear_primary(op_id, preserve_unchanged)
+                self._clear_primary(op_id, preserve_unchanged, exclude_machine=mc_id, rows=rows)
             self.repo.update_fields(op_id, mc_id, skill_level=skill_norm, is_primary=primary_norm)
+
+    def _current_link_for_update(self, op_id, mc_id, preserve_unchanged):
+        rows = self.repo.list_simple_rows_for_operators([op_id]) if preserve_unchanged else None
+        current = next((row for row in rows if row["machine_id"] == mc_id), None) if rows is not None else None
+        exists = current is not None if rows is not None else self.repo.exists(op_id, mc_id)
+        if not exists:
+            raise BusinessError(ErrorCode.NOT_FOUND, "未找到该人员与该设备的关联记录。")
+        return rows, current or {}
 
     # -------------------------
     # Excel 导入预览（复合键：工号|设备编号）

@@ -75,6 +75,7 @@ def test_template_changes_after_preview_reject_without_replacing_operations(batc
 
 def test_merged_cycle_uses_group_value_and_does_not_require_hidden_internal_hours(batch_client):
     client, conn = batch_client, batch_client.batch_conn
+    conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='OT1'")
     conn.execute("UPDATE PartOperations SET setup_hours=NULL,unit_hours=NULL,ext_days=NULL")
     conn.execute("UPDATE ExternalGroups SET merge_mode='merged',total_days=2")
     conn.commit()
@@ -106,6 +107,10 @@ def test_protected_batch_explains_each_blocked_action(batch_client):
 @pytest.mark.parametrize("sql,expected", [
     ("UPDATE PartOperations SET op_type_id=NULL", "缺少明确工种"),
     ("UPDATE Suppliers SET status='inactive'", "供应商不存在或已停用"),
+    ("UPDATE OpTypes SET category='internal'", "工种不支持本序归属"),
+    ("UPDATE Suppliers SET op_type_id=NULL", "未登记本序能力"),
+    ("INSERT INTO WorkbenchSupplierProfiles(supplier_id,inactive_reason) SELECT supplier_id,'pending_review' FROM Suppliers",
+     "供应商不存在或已停用"),
     ("UPDATE PartOperations SET status='inactive'", "尚未录入有效工序"),
 ])
 def test_missing_source_facts_disable_preview_and_preserve_batch(batch_client, sql, expected):

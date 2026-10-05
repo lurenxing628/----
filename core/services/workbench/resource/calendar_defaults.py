@@ -32,6 +32,11 @@ class WorkbenchCalendarDefaultsService:
         current = self.snapshot()
         if current != checked:
             raise WorkbenchCommandRejected("stale_write", "默认工作时间已变化，请刷新后重新核对。")
+        return self._apply_checked(payload, current)
+
+    def _apply_checked(self, payload, current):
+        if not self.conn.in_transaction or not in_transaction_context(self.conn):
+            raise RuntimeError("Default calendar writes require a workbench command transaction.")
         periods = self.normalize(payload)["periods"]
         if periods == current["periods"]:
             return WorkbenchCommandOutcome("unchanged", {"subject": "calendar-defaults"})

@@ -7,6 +7,42 @@ from tests.workbench.execution_ledger_support import END, START, all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture
 
 
+def test_nested_snapshot_shares_schema_and_clock_then_refreshes_next_read(ledger_case, monkeypatch):
+    case = ledger_case
+    case.install()
+    calls = []
+    schema, clock = case.ledger.repo.schema_issues, case.ledger.repo.clock
+    monkeypatch.setattr(case.ledger.repo, "schema_issues", lambda: (calls.append("schema"), schema())[1])
+    monkeypatch.setattr(case.ledger.repo, "clock", lambda: (calls.append("clock"), clock())[1])
+    task = case.task(1, case.op_id)
+    case.ledger.get_task(task)
+    assert calls == ["schema", "clock"]
+    case.ledger.get_task(task)
+    assert calls == ["schema", "clock", "schema", "clock"]
+
+
+def test_find_report_reuses_its_header_and_keeps_voided_history(ledger_case, monkeypatch):
+    case = ledger_case
+    case.install()
+    saved = case.command("create", case.task(1, case.op_id), case.values(1))["data"]["rows"][0]
+    header, reads = case.ledger.repo.report_header, []
+
+    def read(**lookup):
+        reads.append(lookup)
+        return header(**lookup)
+
+    monkeypatch.setattr(case.ledger.repo, "report_header", read)
+    report = case.ledger.find_report(saved["report_no"])
+    assert report.report_ref == saved["report_ref"]
+    assert reads == [{"report_ref": None, "report_no": saved["report_no"]}]
+    case.command("report_void", report.report_ref,
+                 {"original_revision_ref": report.revision_ref, "reason": "Wrong operation"})
+    reads.clear()
+    assert case.ledger.find_report(saved["report_no"]).correction_history == report.correction_history
+    assert reads == [{"report_ref": None, "report_no": saved["report_no"]}]
+    assert case.ledger.find_report("missing-report-number") is None
+
+
 def test_partial_end_and_complete_cumulative(ledger_case):
     case = ledger_case
     case.install()

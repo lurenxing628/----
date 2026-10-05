@@ -2,6 +2,7 @@
 
 import re
 from datetime import date, datetime, timedelta
+from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
@@ -12,7 +13,7 @@ OPTIONAL_FIELDS = frozenset(("material_strategy", "hold_window"))
 _HOLD_MESSAGE = "不重排时段要填完整的开始和结束时刻（精确到分），开始要早于结束，并且在排产日期范围内。"
 
 
-def reject(message):
+def reject(message) -> NoReturn:
     raise WorkbenchCommandRejected("invalid_input", message, 422)
 
 

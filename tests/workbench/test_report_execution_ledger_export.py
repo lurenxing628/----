@@ -7,6 +7,8 @@ import json
 import openpyxl
 import pytest
 
+from core.services.report.execution_review import ExecutionReviewMixin
+from core.services.scheduler import operation_execution_feedback_service, schedule_delay_diagnosis_service
 from tests.workbench.plan_read_support import assert_error
 from tests.workbench.report_execution_ledger_support import report_ledger_api as _fixture
 
@@ -58,8 +60,14 @@ def test_plan_finish_date_selects_whole_operation_not_event_time(report_ledger_a
         plan_finish_date_from="2026-09-08", plan_finish_date_to="2026-09-08"), "snapshot_stale")
 
 
-def test_official_review_sheet_reads_new_completion_not_legacy_events(report_ledger_api):
+def test_official_review_sheet_reads_new_completion_not_legacy_events(report_ledger_api, monkeypatch):
     api = report_ledger_api
+    def old_projection_not_used(*args, **kwargs):
+        pytest.fail("Workbench review reads the ledger and must not create unused legacy projections or services")
+
+    monkeypatch.setattr(ExecutionReviewMixin, "_execution_review_row", old_projection_not_used)
+    monkeypatch.setattr(operation_execution_feedback_service, "OperationExecutionFeedbackService", old_projection_not_used)
+    monkeypatch.setattr(schedule_delay_diagnosis_service, "ScheduleDelayDiagnosisService", old_projection_not_used)
     api.create(api.values(10))
     reading = api.read()
     path = "/api/workbench/v1/reports/official-review/export"

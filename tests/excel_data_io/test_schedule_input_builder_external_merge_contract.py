@@ -21,7 +21,14 @@ def test_internal_op_does_not_access_external_context():
 
 
 @pytest.mark.parametrize("mode", [None, "separate", "merged"])
-def test_algorithm_uses_frozen_context_and_never_active_template(mode):
+def test_algorithm_uses_frozen_context_and_never_active_template(mode, monkeypatch):
+    from core.services.scheduler.run import schedule_template_lookup
+
+    def legacy_object(*args, **kwargs):
+        raise AssertionError("Algorithm input consumes frozen facts directly")
+
+    monkeypatch.setattr(schedule_template_lookup, "PartOperation", legacy_object)
+    monkeypatch.setattr(schedule_template_lookup, "ExternalGroup", legacy_object)
     row = snapshot() if mode is None else merged_snapshot(merge_mode=mode)
     outcome = build_algo_operations(SnapshotService(row), [external_operation()], return_outcome=True)
     op = outcome.value[0]

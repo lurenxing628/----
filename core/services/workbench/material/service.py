@@ -26,7 +26,7 @@ class WorkbenchMaterialService:
     def normalize_input(action: str, payload: Any) -> Dict[str, Any]:
         return normalize_material_input(action, payload)
 
-    def _current_material(self, identity: Optional[WorkbenchEntityIdentity]) -> Tuple[WorkbenchEntityIdentity, Dict[str, Any]]:
+    def _current_material(self, identity: Optional[WorkbenchEntityIdentity], material=None) -> Tuple[WorkbenchEntityIdentity, Dict[str, Any]]:
         if not isinstance(identity, WorkbenchEntityIdentity) or identity.kind != "material":
             raise WorkbenchCommandRejected("invalid_input", "要先选中一条已核对过的物料。", 400)
         if not identity.active:
@@ -36,7 +36,7 @@ class WorkbenchMaterialService:
             raise WorkbenchCommandRejected("entity_not_found", "这条物料记录已失效，请刷新后重新选择。", 404)
         if current != identity:
             raise WorkbenchCommandRejected("stale_write", "物料已变化，请刷新后重新核对。")
-        material = self._query.get_by_ref(current.ref)
+        material = self._query.get_by_ref(current.ref) if material is None else material
         if material is None:
             raise WorkbenchCommandRejected("entity_not_found", "该物料已不存在，请刷新。", 404)
         if (material["material_id"], material["ref"], material["revision"]) != (
@@ -44,10 +44,18 @@ class WorkbenchMaterialService:
             raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
         return current, material
 
-    def snapshot(self, identity: WorkbenchEntityIdentity) -> Dict[str, Any]:
+    def snapshot(self, identity: WorkbenchEntityIdentity, *, material=None) -> Dict[str, Any]:
         """Internal full model state for a guard, not a public DTO or a ref repair."""
-        current, material = self._current_material(identity)
+        current, material = self._current_material(identity, material)
         return {"identity": asdict(current), "material": material}
+
+    @staticmethod
+    def _snapshot_from_current(identity, material):
+        """Project an identity and full material row already read in this transaction."""
+        if (material["material_id"], material["ref"], material["revision"]) != (
+                identity.entity_key, identity.ref, identity.revision):
+            raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
+        return {"identity": asdict(identity), "material": material}
 
     def apply(self, action: str, normalized_input: Dict[str, Any],
               identity: Optional[WorkbenchEntityIdentity] = None) -> WorkbenchCommandOutcome:
@@ -62,12 +70,24 @@ class WorkbenchMaterialService:
         if action == "create":
             if identity is not None:
                 raise WorkbenchCommandRejected("invalid_input", "新增物料时不能指定一条已有记录。", 400)
+            checked = None
+        else:
+            current, material = self._current_material(identity)
+            checked = {"identity": asdict(current), "material": material}
+        return self._apply_checked(action, payload, checked)
+
+    def _apply_checked(self, action, payload, checked):
+        """Consume facts checked in this command transaction, before this row was written."""
+        if not self.conn.in_transaction:
+            raise RuntimeError("物料操作必须在外层工作台命令事务中执行。")
+        if action == "create":
             created = self._materials.create(payload["business_code"], payload["label"], **payload["fields"])
             current = self._identities.find_active("material", created.material_id)
             if current is None:
                 raise RuntimeError("新增物料缺少永久引用，不能确认保存。")
         else:
-            current, material = self._current_material(identity)
+            current = WorkbenchEntityIdentity(**checked["identity"])
+            material = checked["material"]
             # Legacy keys must not be redirected by MaterialService's text trimming.
             if current.entity_key != current.entity_key.strip():
                 raise WorkbenchCommandRejected("constraint_conflict", "这个物料编号首尾有空格，现在改不了。请先核对原记录。")

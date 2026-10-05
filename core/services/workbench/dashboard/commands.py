@@ -71,7 +71,8 @@ class WorkbenchDashboardCommandService:
             history_ref = None
             if changed:
                 history_ref = self.reader.append_handling(item=item, before=before, after=after,
-                    facts={"facts": item["_facts"], "guard": item["_snapshot"]}, actor=actor, action=action,
+                    facts={"facts": item["_facts"], "guard": {key: value for key, value in item["_snapshot"].items() if key != "facts"}},
+                    actor=actor, action=action,
                     reason=normalized.get("reason"), request_key=request_key, now=now)
             result = payload_size({"item_ref": item_ref, "handling": after, "history_ref": history_ref,
                                    "risk": item["risk"], "source": item["source"], "refresh_required": True})

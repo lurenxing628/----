@@ -2,6 +2,7 @@
 
 import math
 from dataclasses import asdict
+from typing import Any, Dict
 
 from core.errors import ValidationError
 from core.models.resource_capabilities import supports_source
@@ -48,7 +49,8 @@ class ResourceFileInput:
         changes = self._changes(values, before, scope)
         self._clear_fields(changes)
         self._status_choice(changes)
-        payload, related = {"fields": {}}, {}
+        payload: Dict[str, Any] = {"fields": {}}
+        related = {}
         if action == "create":
             payload["business_code"] = code
             self._new_fields(changes, scope)
@@ -136,8 +138,7 @@ class ResourceFileInput:
         identity = self.reader.identities.find_active(kind, code)
         if identity is None:
             raise ValidationError(_column(field) + "里的编号 " + code + " 在资料里找不到，这一行没有导入。请先在资料总览新增它，或者改填已有编号。", field=field)
-        self.state.selected(kind, identity.ref, category=category)
-        return identity, self.repo.raw(kind, code)
+        return self.state.selected_record(kind, identity, category=category)
 
     def _unique_name(self, code, payload):
         if self.kind == "op_type" and "label" in payload:

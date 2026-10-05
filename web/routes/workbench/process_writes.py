@@ -89,12 +89,12 @@ def process_stage_command(ref, action):
             identity = reader.resolve(ref)
             binding = state if action == "hours_confirm" else {"state": state, "input": reviewed_input(action, normalized)}
             validate_write_context(body["write_token"], ref, "process." + action, binding)
-            return identity
+            return domain.checked_facts(identity, reader.facts())
 
     try:
         outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
             request_key=body["request_key"], action="process." + action, context_ref=ref,
-            normalized_input=normalized, guard=guard, mutate=lambda identity: domain.apply(action, normalized, identity))
+            normalized_input=normalized, guard=guard, mutate=lambda checked: domain._apply_checked(action, normalized, checked))
     except WorkbenchCommandRejected as exc:
         if not exc.operation_refs:
             raise

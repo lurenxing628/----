@@ -3,6 +3,7 @@
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_batch import normalize_operation_input, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from core.models.workbench_template_lineage import operation_code as operation_code
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.process.workflow_state import require_template_ready
 from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
@@ -13,10 +14,6 @@ from .facts import BatchFacts, require_unreferenced
 from .projection import BatchProjection
 from .template_preview import template_after, template_changes
 from .template_validation import template_status
-
-
-def operation_code(batch_id, sequence, piece):
-    return batch_id + "_" + str(sequence).zfill(2) + ("_" + piece if piece is not None else "")
 
 
 def insert_operation(conn, batch_id, row, *, template=False, writer=None):

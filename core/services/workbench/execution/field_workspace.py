@@ -28,9 +28,9 @@ class FieldWorkspaceService:
 
     @contextmanager
     def read_snapshot(self):
-        self.ledger.require_schema()
         with self.plans.read_snapshot():
-            yield
+            with self.ledger.read_snapshot():
+                yield
 
     def _plan_ref(self, scope):
         if scope.get('plan_ref'):
@@ -49,7 +49,10 @@ class FieldWorkspaceService:
     def cohort(self, scope):
         if not self.conn.in_transaction:
             raise RuntimeError('Field cohort requires caller read snapshot.')
-        self.ledger.require_schema()
+        with self.ledger.read_snapshot():
+            return self._cohort(scope)
+
+    def _cohort(self, scope):
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
             return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, input_fingerprint(self.ledger.revision_clock())
@@ -77,9 +80,9 @@ class FieldWorkspaceService:
         tasks.sort(key=lambda item: (item['batch_id'], int(item['sequence']), item['planned_start'], item['task_ref']))
         effective = dict(scope, plan_ref=plan_ref)
         # Tokens have expiries and must not become part of the business fingerprint.
-        facts = self.ledger.snapshot(refs[0]) if len(refs) == 1 else self.ledger.revision_clock()
+        state_facts = self.ledger.fact_snapshot(facts, refs[0]) if len(refs) == 1 else facts['clock']
         summary = self._summary(tasks, scope_tasks)
-        state = input_fingerprint({'scope': effective, 'plan': plan_state, 'execution': plain_plan_facts(facts),
+        state = input_fingerprint({'scope': effective, 'plan': plan_state, 'execution': plain_plan_facts(state_facts),
                                    'data': self._without_context(tasks), 'summary': summary})
         return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state
 

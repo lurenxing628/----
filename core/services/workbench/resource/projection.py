@@ -3,7 +3,7 @@
 from core.models.calendar_periods import shift_pattern_fields
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_supplier import supplier_state
+from core.models.workbench_resource_status import public_resource_status
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
 
 
@@ -13,18 +13,11 @@ def _related(value):
     return {"ref": value["identity"]["ref"], "business_code": value["identity"]["entity_key"], "label": value["record"]["name"]}
 
 
-def _operator_status(raw, profile):
-    if raw["status"] == "active":
-        return "active"
-    if raw["status"] == "inactive" and profile:
-        return {"leave": "leave", "disabled": "inactive"}.get(profile["inactive_reason"], "unknown")
-    return "unknown"
-
-
 def project_resource(kind, identity, state, *, availability=None, availability_issues=()):
     raw = state["supplier"] if kind == "supplier" else state["record"]
     entity = {"ref": identity.ref, "business_code": identity.entity_key, "label": raw["name"],
-              "status": raw.get("status"), "fields": {"remark": raw.get("remark")}, "relationships": {}, "issues": []}
+              "status": public_resource_status(kind, raw.get("status"), state.get("profile")),
+              "fields": {"remark": raw.get("remark")}, "relationships": {}, "issues": []}
     if kind == "supplier":
         return _supplier(entity, raw)
     {"op_type": _op_type, "machine": _machine, "operator": _operator,
@@ -47,8 +40,6 @@ def _op_type(entity, raw, state):
 
 def _machine(entity, raw, state):
     entity["fields"]["category"] = raw["category"]
-    if raw["status"] not in ("active", "maintain", "inactive"):
-        entity["status"] = "unknown"
     relations = entity["relationships"]
     relations["counts"] = state["dependencies"]
     for name in ("op_type", "group"):
@@ -62,7 +53,6 @@ def _machine(entity, raw, state):
 
 
 def _operator(entity, raw, state):
-    entity["status"] = _operator_status(raw, state["profile"])
     relations = entity["relationships"]
     relations["counts"] = state["dependencies"]
     relations["skills"] = [_related(item) for item in state["skill_types"]]
@@ -84,22 +74,17 @@ def _operator(entity, raw, state):
 
 
 def _machine_group(entity, raw, state):
-    if raw["status"] not in ("active", "inactive"):
-        entity["status"] = "unknown"
     entity["relationships"]["machine_count"] = len(state["members"])
 
 
 def _shift_profile(entity, raw, state):
-    if raw["status"] not in ("active", "inactive"):
-        entity["status"] = "unknown"
     entity["fields"].update({key: raw[key] for key in ("anchor_date", "cycle_days")})
     entity["fields"]["pattern"] = [shift_pattern_fields(row) for row in state["pattern"]]
     entity["relationships"]["operator_count"] = len(state["members"])
 
 
 def _supplier(entity, raw):
-    state = supplier_state(raw["status"], raw["profile"])
-    entity["status"] = "unknown" if state["inactive_reason"] == "unknown" else state["status"]
+    entity["status"] = public_resource_status("supplier", raw["status"], raw["profile"])
     entity["fields"]["default_days"] = raw["default_days"]
     refs = []
     for row in raw["op_types"]:

@@ -47,6 +47,7 @@ from core.models.workbench_material_file import (
     reject_row,
 )
 from core.models.workbench_material_query import MaterialPageRequest
+from core.models.workbench_resource_file_source import PreparedImportSource
 from core.services.workbench import messages
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
@@ -85,9 +86,16 @@ class WorkbenchMaterialFileService:
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
-    def preview_import(self, content, *, file_format, scope, mode="upsert"):
+    def prepare_import(self, content, *, file_format, scope, mode="upsert"):
         request = file_request(content, file_format, mode, scope)
         source, notices = read_material_file(content, file_format)
+        return PreparedImportSource.build("material.import", request, source, notices)
+
+    def preview_import(self, content, *, file_format, scope, mode="upsert"):
+        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
+            content, file_format=file_format, scope=scope, mode=mode)
+        request = prepared.request_for("material.import", file_format, mode, normalize_scope(scope))
+        source, notices = prepared.parsed()
         with self.tx.transaction():
             rows = [self._import_row(item) for item in source]
             duplicates = {}
@@ -120,7 +128,7 @@ class WorkbenchMaterialFileService:
                 identity = self.identities.get(raw["ref"]) if raw["ref"] else None
                 if identity is None:
                     raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，请联系维护人员核对资料。", 500)
-                row["expected"] = full_material_snapshot(self.adapter, self.repo, identity)
+                row["expected"] = full_material_snapshot(self.adapter, self.repo, identity, material=raw)
                 if code != raw["material_id"] or raw["material_id"] != raw["material_id"].strip():
                     raise ValidationError("原来的物料编号首尾有空格，不能安全更新。请先核对原记录。", field="business_code")
             if not row["errors"]:
@@ -172,17 +180,18 @@ class WorkbenchMaterialFileService:
         if not self.conn.in_transaction:
             raise RuntimeError("物料导入确认必须在外层工作台写事务中执行。")
         try:
-            request = file_request(content, file_format, mode, scope)
+            prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
+                content, file_format=file_format, scope=scope, mode=mode)
+            request = prepared.request_for("material.import", file_format, mode, normalize_scope(scope))
         except (ValidationError, WorkbenchCommandRejected) as exc:
             raise WorkbenchCommandRejected("stale_write", "文件内容、模式或范围已变化，请重新预检。") from exc
         check_request(preview, "material.import", request)
         with self.tx.transaction():
-            current = self.preview_import(content, file_format=file_format, scope=scope, mode=mode)
+            current = self.preview_import(prepared, file_format=file_format, scope=scope, mode=mode)
             check_preview(preview, current)
             results = []
             for row in current.as_dict()["rows"]:
-                identity = row["expected"]["identity"]
-                outcome = self.adapter.apply(row["action"], row["input"], WorkbenchEntityIdentity(**identity) if identity else None)
+                outcome = self.adapter._apply_checked(row["action"], row["input"], row["expected"])
                 results.append({"row": row["row"], "result": outcome.result, **outcome.data})
             result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
             return WorkbenchCommandOutcome(result, {"rows": results, "summary": current.as_dict()["summary"]})

@@ -7,8 +7,9 @@ import pytest
 from core.errors import AppError, ErrorCode
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
+from core.services.personnel.operator_qualification import OperatorQualificationService
 from data.repositories.operator_qualification_repo import OperatorQualificationRepository
+from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
 from tests.workbench.resource_metrics_support import (
     detail,
     measured_read,
@@ -45,6 +46,13 @@ def test_qualification_is_shared_and_read_once_per_population(metrics_conn, monk
     assert len(rows) == 3 and len(calls) == 1
     assert calls[0][2] == {"LEG", "OK", "EMPTY", "WRONG", "UNAUTH"}
     assert calls[0][3] == []
+
+
+def test_qualification_reuses_captured_metric_facts(metrics_conn, monkeypatch):
+    monkeypatch.setattr(OperatorQualificationRepository, "read_skill_facts",
+                        lambda *args: pytest.fail("metric qualification facts were queried a second time"))
+    record = detail(metrics_conn)
+    assert record.entity["availability"]["operators"] == 2
 
 
 def test_filtered_metrics_cover_all_matching_rows_not_the_current_page(metrics_conn):
@@ -252,7 +260,7 @@ def test_summary_and_list_share_one_graph_read_inside_snapshot(metrics_conn):
     sql = measured["statements"]
     assert sum("SELECT * FROM OperatorMachine" in statement for statement in sql) == 1
     assert sum("SELECT * FROM OperatorSkill" in statement for statement in sql) == 1
-    assert sum("FROM Operators AS o" in statement for statement in sql) == 2  # Active and inactive populations.
+    assert not any("FROM Operators AS o" in statement for statement in sql)  # Qualifications use captured graph facts.
 
 
 @pytest.mark.parametrize("statement,kind,filters", [
@@ -373,16 +381,19 @@ def test_summary_keeps_other_domains_when_capacity_or_group_facts_are_invalid(me
     assert groups["operator"]["counts"]["active"] == 5
 
 
-def test_database_errors_wrapped_by_primary_qualification_are_not_hidden(metrics_conn, monkeypatch):
-    def fail(self, operator_ids):
-        raise AppError(ErrorCode.DB_QUERY_ERROR, "injected database read failure")
+def test_database_errors_reading_qualification_facts_are_not_hidden(metrics_conn, monkeypatch):
+    original = WorkbenchResourceMetricsRepository.facts
 
-    monkeypatch.setattr(OperatorQualificationRepository, "read_skill_facts", fail)
+    def fail(self, names):
+        if "skills" in names:
+            raise AppError(ErrorCode.DB_QUERY_ERROR, "injected database read failure")
+        return original(self, names)
+
+    monkeypatch.setattr(WorkbenchResourceMetricsRepository, "facts", fail)
     before = stored_state(metrics_conn)
-    with pytest.raises(OperatorQualificationError) as error:
+    with pytest.raises(AppError) as error:
         page(metrics_conn, category="internal")
-    assert isinstance(error.value.__cause__, AppError)
-    assert error.value.__cause__.code == ErrorCode.DB_QUERY_ERROR
+    assert error.value.code == ErrorCode.DB_QUERY_ERROR
     assert stored_state(metrics_conn) == before
 
 

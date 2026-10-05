@@ -158,3 +158,39 @@ def test_resource_search_filter_and_choice_refs_are_not_names(app_client):
 def test_bad_resource_query_is_not_an_internal_error(app_client, query):
     response = app_client.get(BASE + "machine", query_string=query)
     assert response.status_code == 400 and response.get_json()["error"]["code"] == "invalid_input"
+
+
+@pytest.mark.parametrize("kind,category", (("machine", "internal"), ("operator", "internal"), ("supplier", "external")))
+def test_create_context_ignores_unrelated_material_but_guards_relation_revision(app_client, kind, category):
+    relation, _ = _create(app_client, "op_type", "CREATE-REL", fields={"category": category})
+    token = _list(app_client, kind)["data"]["create_context"]["write_token"]
+    relation_key = {"machine": "op_type_refs", "operator": "skill_refs", "supplier": "op_type_refs"}[kind]
+    payload = {"business_code": "CREATE-OK", "label": "Created", "relationships": {relation_key: [relation]}}
+    if kind == "supplier":
+        payload["fields"] = {"default_days": 2}
+    with sqlite3.connect(app_client.application.config["DATABASE_PATH"]) as conn:
+        conn.execute("INSERT INTO Materials(material_id,name) VALUES ('UNRELATED','Unrelated')")
+    result = app_client.post(BASE + kind + "/create", json={"request_key": "create-scope-ok-" + kind,
+                           "write_token": token, "input": payload})
+    assert result.status_code == 200, result.get_data(as_text=True)
+    token = _list(app_client, kind)["data"]["create_context"]["write_token"]
+    assert _command(app_client, "op_type", relation, "update", {"label": "Changed relation"},
+                    key="create-scope-relation-" + kind).status_code == 200
+    result = app_client.post(BASE + kind + "/create", json={"request_key": "create-scope-stale-" + kind,
+                           "write_token": token, "input": {**payload, "business_code": "CREATE-STALE"}})
+    assert result.status_code == 409 and result.get_json()["error"]["code"] == "stale_write"
+    with sqlite3.connect(app_client.application.config["DATABASE_PATH"]) as conn:
+        table, key = {"machine": ("Machines", "machine_id"), "operator": ("Operators", "operator_id"),
+                      "supplier": ("Suppliers", "supplier_id")}[kind]
+        assert conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {key}='CREATE-STALE'").fetchone()[0] == 0
+
+
+def test_operator_create_context_keeps_shift_pattern_facts_without_parent_revision(app_client):
+    shift, _ = _create(app_client, "shift_profile", "CREATE-SHIFT", fields={"anchor_date": "2026-09-09", "cycle_days": 1,
+        "pattern": [{"day_offset": 0, "is_rest": False, "shift_start": "08:00", "shift_end": "16:00"}]})
+    token = _list(app_client, "operator")["data"]["create_context"]["write_token"]
+    with sqlite3.connect(app_client.application.config["DATABASE_PATH"]) as conn:
+        conn.execute("UPDATE WorkbenchShiftPatternDays SET shift_end='17:00' WHERE profile_id='CREATE-SHIFT'")
+    result = app_client.post(BASE + "operator/create", json={"request_key": "create-shift-pattern-stale",
+        "write_token": token, "input": {"business_code": "O", "label": "Person", "relationships": {"shift_profile_ref": shift}}})
+    assert result.status_code == 409 and result.get_json()["error"]["code"] == "stale_write"

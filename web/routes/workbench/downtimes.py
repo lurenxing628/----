@@ -21,7 +21,7 @@ def machine_downtimes(ref):
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "停机记录不接受额外查询条件，请重新打开设备详情。", 400)
     service = WorkbenchDowntimeService(g.db, current_app.logger)
-    with service.reader.read_snapshot():
+    with service.reader.read_snapshot(capture_fingerprint=False):
         state = service.snapshot(ref)
         data = {"entity_ref": ref, **service.public(state), "write_context": issue_write_context(ref, ACTIONS, state)}
         snapshot = bind_read_snapshot({"kind": "machine_downtimes", "ref": ref}, input_fingerprint(state))

@@ -19,7 +19,12 @@ from .api_responses import api_endpoint
 from .batch_context import command_body, json_body, load_preview, read_scope, retry_hint, retry_message, save_preview
 from .read_budget import batch_read_snapshot
 from .read_context import bind_read_snapshot
-from .write_context import issue_write_context, validate_write_context
+from .write_context import (
+    issue_write_context,
+    preview_write_context,
+    validate_preview_confirmation,
+    validate_write_context,
+)
 
 COLLECTION = "batch:create"
 
@@ -166,9 +171,10 @@ def batch_preview(action, ref=None):
             data = WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).plan(payload)
             if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
                 raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有保存。请刷新页面后" + retry_hint(action, payload) + "。", 400)
-        preview = save_preview(action, ref, payload, fingerprint)
-        data.update(preview_ref=preview, write_context=issue_write_context(ref or preview, ["batch." + action],
-                    {"fingerprint": fingerprint, "input": payload}), warnings=data.get("warnings", []))
+        preview, expires_at = save_preview(action, ref, payload, fingerprint, with_expiry=True)
+        data.update(preview_ref=preview, expires_at=expires_at,
+                    write_context=preview_write_context(preview, expires_at, ["batch." + action]),
+                    warnings=data.get("warnings", []))
         snapshot = bind_read_snapshot({"kind": "batch_preview", "preview_ref": preview}, fingerprint)
     return query_success(data, snapshot)
 
@@ -208,7 +214,7 @@ def batch_confirm(action, ref=None):
         fingerprint = reader.fingerprint()
         if binding["fingerprint"] != fingerprint:
             raise WorkbenchCommandRejected("stale_write", retry_message(action, "预检之后资料有变化", binding["input"]))
-        validate_write_context(body["write_token"], ref or token, "batch." + action, {"fingerprint": fingerprint, "input": binding["input"]})
+        validate_preview_confirmation(body["write_token"], token)
         return binding["input"]
 
     def mutate(payload):

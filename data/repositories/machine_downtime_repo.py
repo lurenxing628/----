@@ -5,11 +5,20 @@ from typing import Any, Dict, List, Optional, Set
 from core.models import MachineDowntime
 
 from .base_repo import BaseRepository
-from .schedule_time_sql import overlap_or_bad_time_sql, require_dt_for_sql, time_dt
+from .schedule_time_sql import (
+    overlap_or_bad_time_sql,
+    register_schedule_time_sql_functions,
+    require_dt_for_sql,
+    time_dt,
+)
 
 
 class MachineDowntimeRepository(BaseRepository):
     """设备停机时间段仓库（MachineDowntimes）。"""
+
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
+        register_schedule_time_sql_functions(conn)
 
     def get(self, downtime_id: int) -> Optional[MachineDowntime]:
         row = self.fetchone(

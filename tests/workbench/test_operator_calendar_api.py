@@ -93,6 +93,24 @@ def test_save_one_day_then_clear_it(client):
     assert stored(client, "OP001", DAY) is None
 
 
+def test_single_day_command_reads_snapshot_only_after_writing(client, monkeypatch):
+    from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
+
+    ref = ref_of(client, 'OP001')
+    token = month(client, ref)['write_context']['write_token']
+    original, states = WorkbenchOperatorCalendarService.snapshot, []
+
+    def snapshot(self, day):
+        result = original(self, day)
+        states.append(result['row'])
+        return result
+
+    monkeypatch.setattr(WorkbenchOperatorCalendarService, 'snapshot', snapshot)
+    response = command(client, ref, 'upsert', {'date': DAY, 'fields': WORK}, token)
+    assert response.status_code == 200, response.get_json()
+    assert len(states) == 1 and states[0]['shift_start'] == '09:00'
+
+
 def test_replayed_request_key_does_not_write_twice(client):
     ref = ref_of(client, "OP001")
     token = month(client, ref)["write_context"]["write_token"]

@@ -21,14 +21,29 @@ def observation(category_name, source_ref, subject, source, active, code, messag
             "source": source, "risk": {"active": active, "code": code, "message": message}, "_facts": facts}
 
 
+def _delivery_sources(facts):
+    """Group complete delivery inputs by batch without broadening each item's scope."""
+    by_batch, operations, schedule_rows = defaultdict(list), defaultdict(list), defaultdict(list)
+    for row in facts.delivery_facts["tasks"]:
+        by_batch[row["batch_id"]].append(row)
+    operation_batches = {}
+    for row in facts.delivery_facts["operations"]:
+        operations[row["batch_id"]].append(row)
+        operation_batches[row["op_id"]] = row["batch_id"]
+    for row in facts.raw["Schedule"]:
+        schedule_rows[operation_batches[row["op_id"]]].append(row)
+    batch_identities = {row[0]: row for row in facts.delivery_facts["batch_identities"]}
+    batches = {row["batch_id"]: row for row in facts.raw["Batches"] or []}
+    return {key: {"batch": batches.get(key), "tasks": by_batch[key], "operations": operations[key],
+                  "schedule_rows": schedule_rows[key], "batch_identity": batch_identities[key],
+                  "plan_identity": facts.delivery_facts["identity"],
+                  "completion_record": facts.delivery_facts["completion_record"]} for key in by_batch}
+
+
 def delivery(facts):
     if facts.plan_state != "loaded":
         return [], category(facts.plan_state, issues=facts.plan_issues)
-    items = []
-    by_batch = defaultdict(list)
-    for row in facts.delivery_facts["tasks"]:
-        by_batch[row["batch_id"]].append(row)
-    batches = {row["batch_id"]: row for row in facts.raw["Batches"] or []}
+    items, sources = [], _delivery_sources(facts)
     for row in facts.delivery["items"]:
         active = row["is_overdue"]
         source = {"kind": "planned_delivery", "batch_ref": row["batch_ref"], "plan_ref": facts.plan["plan_ref"],
@@ -36,8 +51,7 @@ def delivery(facts):
         items.append(observation("delivery", row["batch_ref"], row["batch_id"] + " · " + (row["part_label"] or "未填写名称"),
                                  source, active, "planned_overdue" if active else "delivery_unknown" if active is None else "on_time",
                                  "正式计划预计超期。" if active else "交期或排产数据不够，还判断不了。" if active is None else "正式计划预计按期完成。",
-                                 {"batch": batches.get(row["batch_id"]), "tasks": by_batch[row["batch_id"]],
-                                  "completion_record": facts.delivery_facts["completion_record"]}))
+                                 sources[row["batch_id"]]))
     unknown = sum(row["risk"]["active"] is None for row in items)
     return items, category("loaded" if items else "no_data", assessed=len(items) - unknown, unknown=unknown)
 
@@ -71,7 +85,7 @@ def _material_requirement(row, value, material_refs):
                 value is None or required is None or available is None or status is None)
 
 
-def _material_batch(batch, checks, refs, by_material, material_refs):
+def _material_batch(batch, checks, refs, by_material, material_refs, source_facts):
     reasons = checks.readiness(batch, True)
     rows = checks.materials[batch["batch_id"]]
     projected = [_material_requirement(row, by_material.get(row["material_id"]), material_refs) for row in rows]
@@ -89,8 +103,24 @@ def _material_batch(batch, checks, refs, by_material, material_refs):
                      False: ("ready", "当前齐套检查无缺口。")}[active]
     label = batch["part_name"] if type(batch["part_name"]) is str else "未填写名称"
     return observation("material", ref, batch["batch_id"] + " · " + label, source, active, code, message,
-                       {"batch": batch, "requirements": rows, "identity": refs[batch["batch_id"]],
+                       {**source_facts[batch["batch_id"]], "identity": refs[batch["batch_id"]],
+                        "material_identities": [material_refs[row["material_id"]] for row in rows if row["material_id"] in by_material],
                         "materials": [by_material.get(row["material_id"]) for row in rows]})
+
+
+def _material_sources(raw):
+    """Keep stored requirements, reviews and every dated arrival for their own batch."""
+    requirements, reviews, arrivals = defaultdict(list), defaultdict(list), defaultdict(list)
+    requirement_batches = {}
+    for row in raw["BatchMaterials"]:
+        requirements[row["batch_id"]].append(row)
+        requirement_batches[row["id"]] = row["batch_id"]
+    for table, selected in (("BatchMaterialReviews", reviews), ("BatchMaterialArrivals", arrivals)):
+        for row in raw[table] or []:
+            selected[requirement_batches.get(row["requirement_id"])].append(row)
+    return {row["batch_id"]: {"batch": row, "requirements": requirements[row["batch_id"]],
+                             "reviews": reviews[row["batch_id"]], "arrivals": arrivals[row["batch_id"]]}
+            for row in raw["Batches"]}
 
 
 def material(facts):
@@ -108,7 +138,8 @@ def material(facts):
     facts.raw["material_refs"] = material_refs
     by_material = {row["material_id"]: row for row in materials}
     checks = _MaterialChecks(requirements, facts.raw["Batches"])
-    items = [_material_batch(batch, checks, refs, by_material, material_refs) for batch in batches]
+    source_facts = _material_sources(facts.raw)
+    items = [_material_batch(batch, checks, refs, by_material, material_refs, source_facts) for batch in batches]
     unknown = sum(row["risk"]["active"] is None for row in items)
     return items, category("loaded" if items else "no_data", assessed=len(items) - unknown, unknown=unknown)
 

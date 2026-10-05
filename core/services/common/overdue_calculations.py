@@ -10,7 +10,7 @@ def parse_dt(value: Any) -> Optional[datetime]:
     return parse_local_datetime(value)
 
 
-def due_exclusive(due_dt: Optional[datetime]) -> datetime:
+def due_exclusive(due_dt: Optional[date]) -> datetime:
     if due_dt is None:
         return datetime.max
     if isinstance(due_dt, date) and not isinstance(due_dt, datetime):

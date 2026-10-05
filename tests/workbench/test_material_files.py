@@ -35,6 +35,32 @@ from tests.workbench.material_file_support import (
 from tests.workbench.material_support import identity_for, material_database, material_row, stored_state
 
 
+def test_retained_parsed_source_is_reused_but_current_material_facts_are_rechecked(material_conn, monkeypatch):
+    from core.services.workbench.material import files
+    conn = material_conn
+    service = WorkbenchMaterialFileService(conn)
+    content = file_bytes([["MAT1", "new label"]], "csv", headers=HEADERS[:2])
+    source = service.prepare_import(content, file_format="csv", scope={})
+    monkeypatch.setattr(files, "read_material_file", lambda *args: pytest.fail("retained source was parsed again"))
+    preview = service.preview_import(source, file_format="csv", scope={})
+    conn.execute("UPDATE Materials SET name='changed after preview' WHERE material_id='MAT1'")
+    conn.commit()
+    with pytest.raises(WorkbenchCommandRejected, match="更新"):
+        confirm_import(conn, preview, source, "csv")
+    current = service.preview_import(source, file_format="csv", scope={})
+    result = confirm_import(conn, current, source, "csv")
+    assert result["result"] == "committed" and material_row(conn)["name"] == "new label"
+
+
+def test_import_writes_the_complete_checked_material_without_second_current_read(material_conn, monkeypatch):
+    content = file_bytes([["MAT1", "changed once"]], 'csv', headers=HEADERS[:2])
+    preview = WorkbenchMaterialFileService(material_conn).preview_import(content, file_format='csv', scope={})
+    monkeypatch.setattr(WorkbenchMaterialService, '_current_material',
+                        lambda *args, **kwargs: pytest.fail('the current import proposal already owns this row'))
+    result = confirm_import(material_conn, preview, content, 'csv')
+    assert result['result'] == 'committed' and material_row(material_conn)['name'] == 'changed once'
+
+
 @pytest.mark.parametrize("fmt", ("csv", "xlsx"))
 def test_upsert_full_preview_and_atomic_confirm_preserve_hidden_and_batch_columns(material_conn, fmt):
     conn = material_conn
@@ -254,16 +280,16 @@ def test_atomic_savepoint_survives_late_failure_even_when_outer_catches(material
     content = file_bytes([["MAT2", "new"], ["MAT1", "renamed"]], "csv", headers=HEADERS[:2])
     service = WorkbenchMaterialFileService(material_conn)
     preview = service.preview_import(content, file_format="csv", scope={})
-    original = service.adapter.apply
+    original = service.adapter._apply_checked
 
-    def fail_second(action, normalized, identity):
-        outcome = original(action, normalized, identity)
+    def fail_second(action, normalized, checked):
+        outcome = original(action, normalized, checked)
         if action == "update":
             raise RuntimeError("fixture later domain failure")
         return outcome
 
     before = stored_state(material_conn)
-    with patch.object(service.adapter, "apply", side_effect=fail_second):
+    with patch.object(service.adapter, "_apply_checked", side_effect=fail_second):
         with TransactionManager(material_conn).transaction(begin_immediate=True):
             with pytest.raises(RuntimeError, match="fixture later"):
                 service.confirm_import(preview, content, file_format="csv", scope={})

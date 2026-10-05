@@ -10,10 +10,12 @@ from core.errors import AppError, ErrorCode, ValidationError
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
-from core.models.workbench_supplier import normalize_supplier_input, supplier_state
+from core.models.workbench_supplier import normalize_supplier_input
 from core.services.process.supplier_service import SupplierService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_supplier_state_repo import WorkbenchSupplierStateRepository
+
+from .state_projection import supplier_write_state
 
 
 class WorkbenchSupplierService:
@@ -44,8 +46,16 @@ class WorkbenchSupplierService:
 
     def snapshot(self, identity: WorkbenchEntityIdentity) -> Dict[str, Any]:
         current, supplier = self._current_supplier(identity)
-        return {"identity": asdict(current), "supplier": supplier,
-                "state": supplier_state(supplier["status"], supplier["profile"])}
+        return supplier_write_state(current, supplier)
+
+    def _snapshot_from_current(self, identity):
+        supplier = self._query.get_by_ref(identity.ref)
+        if supplier is None:
+            raise WorkbenchCommandRejected("entity_not_found", "供应商已不存在，请刷新。", 404)
+        if (supplier["supplier_id"], supplier["ref"], supplier["revision"]) != (
+                identity.entity_key, identity.ref, identity.revision):
+            raise WorkbenchCommandRejected("stale_write", "供应商资料已更新，这次操作没有保存。请刷新后重新核对。")
+        return supplier_write_state(identity, supplier)
 
     def _resolve_op_types(self, payload):
         if "relationships" not in payload:
@@ -68,6 +78,17 @@ class WorkbenchSupplierService:
         if action == "create":
             if identity is not None:
                 raise WorkbenchCommandRejected("invalid_input", "新增供应商时不能选中已有供应商。请点「新增」后重新填写。", 400)
+            checked = None
+        else:
+            current, supplier = self._current_supplier(identity)
+            checked = {"identity": asdict(current), "supplier": supplier}
+        return self._apply_checked(action, payload, checked)
+
+    def _apply_checked(self, action, payload, checked):
+        """Consume the current supplier state checked inside this command transaction."""
+        if not self.conn.in_transaction:
+            raise RuntimeError("供应商操作必须在外层工作台命令事务中执行。")
+        if action == "create":
             selected = self._resolve_op_types(payload)
             fields = dict(payload["fields"])
             status, reason = self._stored_status(fields.pop("status", "active"))
@@ -78,7 +99,8 @@ class WorkbenchSupplierService:
             self._query.replace_op_types(current.entity_key, (), selected or ())
             self._query.set_reason(current.entity_key, reason)
         else:
-            current, supplier = self._current_supplier(identity)
+            current = WorkbenchEntityIdentity(**checked["identity"])
+            supplier = checked["supplier"]
             if not current.entity_key or current.entity_key != current.entity_key.strip():
                 raise WorkbenchCommandRejected("constraint_conflict", "供应商编号含首尾空白，无法按当前领域规则修改。")
             if action == "delete":

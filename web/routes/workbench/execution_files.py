@@ -1,12 +1,12 @@
 """Retained original bytes and read-only preflight; one atomic ledger command."""
 
-import hashlib
 import json
 from io import BytesIO
 
 from flask import g, jsonify, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_field_report_source import PreparedFieldReportSource
 from core.services.workbench import messages
 from core.services.workbench.execution.field_report_files import FieldReportFileService
 from core.services.workbench.execution.field_report_files_codec import BYTE_LIMIT, MIME, decode_reports, encode_issues
@@ -17,9 +17,9 @@ from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_budget import PLAN_READ_SLOTS
 from web.routes.workbench.read_context import bind_read_snapshot
 from web.routes.workbench.resource_action_context import read_endpoint, resolve_context, retain_context
-from web.routes.workbench.write_context import issue_write_context, validate_write_context
+from web.routes.workbench.write_context import preview_write_context, validate_preview_confirmation
 
-from .execution import arguments, command_body, field_context, validate_field_context
+from .execution import arguments, command_body, field_context
 
 # 报工文件弹窗：没有预检结果时按钮叫「开始预检」，出了预检结果后改为「重新预检」；换文件要点「选择文件」。
 PREVIEW_NAMESPACE = 'workbench-field-file-preview-v1'
@@ -41,15 +41,16 @@ def field_file_preview():
         raise WorkbenchCommandRejected('snapshot_required', messages.STALE, 400)
     # 文件先在读事务外解析，再排队读取整份现场范围。
     decoded = decode_reports(content)
+    source = PreparedFieldReportSource.build(content, decoded)
     reader = FieldWorkspaceService(g.db)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             cohort, state = reader.cohort(scope)
             snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, token)
-            preview = FieldReportFileService(g.db).preview(content, cohort, decoded)
+            preview, _ = FieldReportFileService(g.db).prepare_source(source, cohort)
     document = {'preview': preview, 'read_state': state, 'read_snapshot': token}
-    ref, expiry = retain_context(PREVIEW_NAMESPACE, canonical_json(document), content)
-    context = field_context(ref, ['import_confirm'], preview['snapshot'])
+    ref, expiry = retain_context(PREVIEW_NAMESPACE, canonical_json(document), source)
+    context = preview_write_context(ref, expiry, ['import_confirm'])
     if not preview['can_confirm']:
         context.update(capabilities={'import_confirm': False}, blocked_reasons=[{'code': 'constraint_conflict', 'message': '文件里有问题行或没有可导入的记录，一条报工都没有写入。请修好文件后点「选择文件」重新选择，再点「开始预检」。'}])
     public = {key: value for key, value in preview.items() if key not in ('snapshot', 'items')}
@@ -70,20 +71,22 @@ def field_file_confirm():
     # Replay must remain possible after retained bytes and edit tokens expire.
     service = WorkbenchProductionReportService(g.db, context_factory=field_context)
     def load_items():
-        document, content = resolve_context(PREVIEW_NAMESPACE, ref, 'stale_write')
+        document, source = resolve_context(PREVIEW_NAMESPACE, ref, 'stale_write')
         stored = json.loads(document)
         preview = stored['preview']
-        if not preview['can_confirm'] or hashlib.sha256(content).hexdigest() != preview['file_sha256']:
+        if not preview['can_confirm'] or source.file_digest != preview['file_sha256']:
             raise WorkbenchCommandRejected('stale_write', '预检结果已过期，报工还没有写入，也没有替换任何内容。请点「重新预检」。')
         cohort, read_state = FieldWorkspaceService(g.db).cohort(preview['scope'])
         bind_read_snapshot({'kind': 'field', **cohort['scope']}, read_state, stored['read_snapshot'])
-        checked = FieldReportFileService(g.db).preview(content, cohort)
+        checked, prepared = FieldReportFileService(g.db).prepare_source(source, cohort)
         if checked['items'] != preview['items'] or checked['snapshot'] != preview['snapshot'] or not checked['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
-        return checked['items']
+        return prepared
 
     def guard(subject, action, state):
-        validate_field_context(body['write_token'], subject, 'import_confirm', state)
+        # Database facts may be unchanged while the preview expires waiting for this write lock.
+        resolve_context(PREVIEW_NAMESPACE, subject, 'stale_write')
+        validate_preview_confirmation(body['write_token'], subject)
 
     # 整份现场范围和文件复核在拿写锁前的读快照里做；写锁里库没变就直接沿用，只核对并写入报工。
     response = jsonify(service.execute_import(ref, request_key=body['request_key'], load_items=load_items, validate_context=guard,

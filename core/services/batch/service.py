@@ -390,11 +390,9 @@ class BatchService:
         self._validate_enum(priority_text, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
         self._validate_enum(ready_status_text, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
 
-        part = self.part_repo.get(part_no_text)
-        if not part:
+        if not self.part_repo.get(part_no_text):
             raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
 
-        template_probe = batch_template_ops.probe_template_ops_readonly(self, part_no_text, part)
         with self.tx_manager.transaction():
             self.create_batch_from_template_no_tx(
                 batch_id=batch_id_text,
@@ -407,7 +405,6 @@ class BatchService:
                 remark=self._normalize_text(remark),
                 rebuild_ops=rebuild_ops,
                 strict_mode=bool(strict_mode),
-                template_probe=template_probe,
             )
         return self._get_or_raise(batch_id_text)
 
@@ -423,7 +420,6 @@ class BatchService:
         remark: Optional[str],
         rebuild_ops: bool = False,
         strict_mode: bool = False,
-        template_probe: Optional[Dict[str, Any]] = None,
     ) -> None:
         batch_template_ops.create_batch_from_template_no_tx(
             self,
@@ -437,7 +433,6 @@ class BatchService:
             remark=remark,
             rebuild_ops=rebuild_ops,
             strict_mode=bool(strict_mode),
-            template_probe=template_probe,
         )
 
     def list_operations(self, batch_id: Any) -> List[BatchOperation]:

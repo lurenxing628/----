@@ -50,8 +50,13 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     @staticmethod
     def fact_snapshot(facts, operation_ref):
-        return plain_plan_facts({**facts["clock"], "operation": facts["operations"][operation_ref],
+        reports = facts["reports"].get(operation_ref, {})
+        return plain_plan_facts({"operation": facts["operations"][operation_ref],
                 "current_task": facts["current_tasks"].get(operation_ref), "plan": facts["plan"],
+                "reports": reports,
+                "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]},
+                "legacy": facts["legacy"].get(operation_ref, []),
+                "unresolved": operation_ref in facts["unresolved"],
                 "legacy_source_hash": facts["legacy_source"]["hashes"].get(operation_ref, EMPTY_SOURCE_HASH)})
 
     def project_loaded(self, facts, *, contexts=True):
@@ -85,19 +90,22 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             row = self.report_header(report_ref=report_ref)
             if row is None:
                 reject("报工不存在，旧单号不会改指其他记录。", "entity_not_found", 404)
-            projections = self.project_operations([row["operation_ref"]])
-            projection = projections[0]
-            active = next((report for report in projection.reports if report.report_ref == report_ref), None)
-            if active is not None:
-                return active
-            from core.models.workbench_execution import ProductionReport
-            archived = next(row["report"] for row in projection.voided_reports if row["report"]["report_ref"] == report_ref)
-            return ProductionReport(**archived)
+            return self._report_from_header(row)
+
+    def _report_from_header(self, header):
+        projection = self.project_operations([header["operation_ref"]])[0]
+        report_ref = header["report_ref"]
+        active = next((report for report in projection.reports if report.report_ref == report_ref), None)
+        if active is not None:
+            return active
+        from core.models.workbench_execution import ProductionReport
+        archived = next(row["report"] for row in projection.voided_reports if row["report"]["report_ref"] == report_ref)
+        return ProductionReport(**archived)
 
     def find_report(self, report_no):
         with self.read_snapshot():
             row = self.report_header(report_no=report_no)
-            return self.get_report(row["report_ref"]) if row else None
+            return self._report_from_header(row) if row else None
 
     def snapshot(self, operation_ref):
         with self.read_snapshot():

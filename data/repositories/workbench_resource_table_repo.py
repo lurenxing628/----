@@ -7,10 +7,10 @@ from .workbench_resource_dependencies import DEPENDENCIES
 
 
 class WorkbenchResourceTableRepository(BaseRepository):
-    def identities(self):
-        return self.fetchall("""SELECT ref,kind,entity_key,revision,active FROM WorkbenchEntityRefs
-            WHERE kind IN ('op_type','machine','operator','supplier','machine_group','shift_profile')
-            ORDER BY kind,entity_key,ref""")
+    def identities(self, kinds=("op_type", "machine", "operator", "supplier", "machine_group", "shift_profile")):
+        marks = ",".join("?" for _ in kinds)
+        return self.fetchall("SELECT ref,kind,entity_key,revision,active FROM WorkbenchEntityRefs "
+                             f"WHERE active=1 AND kind IN ({marks}) ORDER BY kind,entity_key,ref", kinds)
 
     def assigned_counts(self, kind, codes):
         names = {"BatchOperations": "batch_operations", "Schedule": "schedule"}

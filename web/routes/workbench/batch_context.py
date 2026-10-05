@@ -2,6 +2,7 @@
 
 import json
 import re
+from datetime import datetime
 from typing import Dict, Union
 
 from flask import g, request
@@ -10,7 +11,7 @@ from core.errors import ValidationError
 from core.models.workbench_batch import object_fields
 from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, validate_request_key
-from web.public_token_registry import issue_public_token, resolve_public_token
+from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 PREVIEW_SCOPE = "workbench-batch-preview-v1"
 
@@ -43,8 +44,11 @@ def command_body():
     return body
 
 
-def save_preview(action, ref, payload, fingerprint):
-    return issue_public_token(PREVIEW_SCOPE, canonical_json({"action": action, "ref": ref, "input": payload, "fingerprint": fingerprint}), ttl_seconds=900)
+def save_preview(action, ref, payload, fingerprint, *, with_expiry=False):
+    token, expiry = issue_public_token_with_expiry(
+        PREVIEW_SCOPE, canonical_json({"action": action, "ref": ref, "input": payload, "fingerprint": fingerprint}),
+        ttl_seconds=900)
+    return (token, datetime.fromtimestamp(expiry).isoformat(timespec="seconds")) if with_expiry else token
 
 
 # 预检编号失效或对不上时：按动作说清没做成什么，并点名页面上真正用来重做这一步的按钮。

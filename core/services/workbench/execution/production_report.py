@@ -38,9 +38,12 @@ class WorkbenchProductionReportService:
         return WorkbenchReportVoidService(self.ledger, self.commands, self.actor_provider)
 
     def preview_batch(self, items):
+        return self.prepare_batch(items).public()
+
+    def prepare_batch(self, items):
         normalized = normalize_items(items)
         with self.ledger.read_snapshot():
-            return self._prepare(normalized).public()
+            return self._prepare(normalized)
 
     def execute(self, action, ref, payload, *, request_key, validate_context):
         if action == "report_void":
@@ -77,9 +80,9 @@ class WorkbenchProductionReportService:
 
         load_items is server-owned: it must resolve the immutable original preview
         bytes/mode/rows or reject. It is never called for a committed replay.
-        It rebuilds the whole field cohort, so it runs in a read snapshot before the
-        write lock (inside the optional admission slot); the guard reuses its items
-        while the database is unchanged and only then prepares them under the lock.
+        It rebuilds the whole field cohort and returns a checked preparation (or
+        items for non-file callers). Facts are reused only while the write stamp
+        is unchanged; permanent refs and recording times are assigned at commit.
         """
         self._batch_context(preview_ref)
         intent = {"preview_ref": preview_ref}
@@ -92,14 +95,22 @@ class WorkbenchProductionReportService:
         if replayed is not None:
             return replayed
 
+        def prepare_loaded():
+            loaded = load_items()
+            if isinstance(loaded, ReportBatchPreparation):
+                if loaded.conn is not self.conn:
+                    raise ValueError("Imported report facts must belong to the command connection")
+                return loaded
+            return self._prepare(normalize_items(loaded))
+
         def prefetch():
             with admission() if admission else nullcontext():
                 with self.ledger.read_snapshot():
-                    return normalize_items(load_items()), write_stamp(self.conn)
+                    return prepare_loaded(), write_stamp(self.conn)
 
         def command(prefetched):
             def guard():
-                prepared = self._prepare(prefetched.current(lambda: normalize_items(load_items())))
+                prepared = prefetched.current(prepare_loaded)
                 validate_context(preview_ref, "import_confirm", prepared.snapshot)
                 return prepared
 
@@ -118,6 +129,7 @@ class WorkbenchProductionReportService:
 
     def _execute(self, items, request_key, action, context_ref, guard):
         def mutate(prepared):
+            prepared.materialize(self.ledger.clock(), self.actor_provider())
             repo = WorkbenchExecutionReportRepository(self.conn)
             allocated = {}
             for row in prepared.appended:

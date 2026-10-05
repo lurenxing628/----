@@ -6,6 +6,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_process_file import check_format, file_columns
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
+from core.models.workbench_resource_file_source import PreparedImportSource
 
 from .file_codec import decode_process_file
 from .queries import WorkbenchProcessQueryService
@@ -38,12 +39,23 @@ class WorkbenchProcessFileService:
 
         return ProcessHoursFileOperations(self.conn, self.logger)
 
-    def preview_import(self, kind, content, *, file_format, mode="upsert", target_ref=None):
+    def prepare_import(self, kind, content, *, file_format, mode="upsert", target_ref=None):
         file_columns(kind)
         check_format(file_format)
         if mode != "upsert":
             raise WorkbenchCommandRejected("invalid_input", "工艺文件仅支持按图号增量导入。", 400)
         decoded, notices = decode_process_file(kind, content, file_format)
+        request = {"kind": kind, "scope": {}, "target_ref": target_ref, "format": file_format, "mode": mode,
+                   "file_sha256": hashlib.sha256(content).hexdigest()}
+        return PreparedImportSource.build(file_operation(kind), request, decoded, notices)
+
+    def preview_import(self, kind, content, *, file_format, mode="upsert", target_ref=None):
+        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
+            kind, content, file_format=file_format, mode=mode, target_ref=target_ref)
+        request = prepared.request_for(file_operation(kind), file_format, mode)
+        if request["target_ref"] != target_ref:
+            raise WorkbenchCommandRejected("stale_write", "原文件的零件范围已变化，请重新预检。")
+        decoded, notices = prepared.parsed()
         with self.reader.read_snapshot() as state:
             if target_ref is not None:
                 self.reader.resolve(target_ref)
@@ -53,10 +65,9 @@ class WorkbenchProcessFileService:
                 extra.update(skipped)
             for row in rows:
                 row.setdefault("route_summary", None)
-            request = {"kind": kind, "scope": {}, "target_ref": target_ref, "format": file_format, "mode": mode,
-                       "file_sha256": hashlib.sha256(content).hexdigest(), "state": state,
-                       "acknowledgements": {"discard_group_refs": sorted(group["ref"] for group in extra["affected_groups"]),
-                                            "zero_review_required": extra["zero_review_required"]}}
+            request.update(state=state, acknowledgements={
+                "discard_group_refs": sorted(group["ref"] for group in extra["affected_groups"]),
+                "zero_review_required": extra["zero_review_required"]})
             return ResourceActionPreview.build(file_operation(kind), request, rows, notices), extra
 
     def confirm_import(self, preview, content, *, discard_group_refs, confirm_zero_unit_hours):

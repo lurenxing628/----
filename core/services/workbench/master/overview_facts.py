@@ -95,7 +95,7 @@ class MasterOverviewFacts:
         metadata_sources = {table for table, _ in RESOURCE_TABLES.values()}
         if self.available(*required) and self.available(*RELATIONS[:10]) and metadata_sources <= present:
             try:
-                self.workflow = workflow_snapshot(self.conn)
+                self.workflow = workflow_snapshot(self.conn, tables=self.tables)
             except RuntimeError as exc:
                 raise WorkbenchCommandRejected("storage_failure", "工艺确认的数据读得不完整，请联系维护人员核对资料。", 500) from exc
         else:

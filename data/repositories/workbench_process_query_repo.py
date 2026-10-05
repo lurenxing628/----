@@ -36,7 +36,8 @@ class WorkbenchProcessQueryRepository(BaseRepository):
             ORDER BY eg.part_no,eg.start_seq,eg.group_id""")
 
     def references(self):
-        tables = ("OpTypes", "Suppliers", "WorkbenchSupplierProfiles", "WorkbenchSupplierOpTypes", "WorkbenchOpTypePolicies")
+        tables = ("OpTypes", "Suppliers", "WorkbenchSupplierProfiles", "WorkbenchSupplierOpTypes", "WorkbenchOpTypePolicies",
+                  "WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
         return {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in tables}
 
     def identities(self):

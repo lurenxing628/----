@@ -149,6 +149,8 @@ def test_noop_absent_day_has_receipt_but_no_placeholder_row(calendar_api, action
 def test_preview_is_readonly_complete_then_atomic_confirm(calendar_api, scope, expected):
     before = calendar_api.state()
     preview = calendar_api.preview(scope=scope)
+    assert preview["write_context"]["write_token"] == preview["preview_ref"]
+    assert preview["write_context"]["expires_at"] == preview["expires_at"]
     assert preview["counts"] == {"selected": expected, "changed": expected, "unchanged": 0, "configured_before": 0, "configured_after": expected}
     assert len(preview["days"]) == len(preview["dates"]) == expected
     assert all(item["before"]["calendar_ref"] is None for item in preview["days"])
@@ -215,15 +217,13 @@ def test_expired_missing_mismatched_or_forged_previews_never_write(calendar_api)
     assert calendar_api.state() == before
 
 
-def test_preview_domain_expiry_is_checked_even_if_token_clock_is_valid(calendar_api, monkeypatch):
-    import web.public_token_registry as registry
-
+def test_preview_domain_expiry_is_checked_even_if_retained_preview_reaches_domain(calendar_api):
     preview = calendar_api.preview()
-    stamp = calendar_api.now.timestamp()
-    monkeypatch.setattr(registry, "time", SimpleNamespace(time=lambda: stamp))
+    retained = calendar_api.client.application.extensions["workbench_calendar_previews_v1"][preview["preview_ref"]]
     calendar_api.advance(901)
     before = calendar_api.state()
-    assert_error(calendar_api.confirm(preview)[0], "snapshot_stale")
+    with patch("web.routes.workbench.calendars.resolve_preview", return_value=retained):
+        assert_error(calendar_api.confirm(preview)[0], "snapshot_stale")
     assert calendar_api.state() == before
 
 
@@ -459,22 +459,23 @@ def test_repository_rejects_timestamp_instead_of_silently_extracting_date(schema
 
 
 @pytest.mark.parametrize("operation", ["day", "range"])
-def test_short_token_validation_only_runs_under_command_write_transaction(calendar_api, operation):
+def test_confirmation_context_validation_only_runs_under_command_write_transaction(calendar_api, operation):
     from flask import g
 
     from core.infrastructure.transaction import in_transaction_context
     from web.routes.workbench import calendars
 
     body = calendar_api.day_body(fields={"note": "Guarded"}) if operation == "day" else calendar_api.confirm_body(calendar_api.preview())
-    original, seen = calendars.validate_write_context, []
+    validator = "validate_write_context" if operation == "day" else "validate_preview_confirmation"
+    original, seen = getattr(calendars, validator), []
 
     def guarded(*args):
         assert g.db.in_transaction and in_transaction_context(g.db)
-        seen.append(args[2])
+        seen.append(args[2] if operation == "day" else "calendar.confirm")
         return original(*args)
 
     path = BASE + ("/upsert" if operation == "day" else "/range/confirm")
-    with patch.object(calendars, "validate_write_context", guarded):
+    with patch.object(calendars, validator, guarded):
         assert calendar_api.client.post(path, json=body).status_code == 200
     assert seen == ["calendar.upsert" if operation == "day" else "calendar.confirm"]
 

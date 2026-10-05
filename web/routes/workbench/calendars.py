@@ -28,7 +28,12 @@ from .calendars_preview import calendar_now, release_preview, resolve_preview, r
 from .calendars_projection import calendar_day, calendar_preview, calendar_snapshot
 from .materials import _command_body
 from .read_context import bind_read_snapshot
-from .write_context import issue_write_context, validate_write_context
+from .write_context import (
+    issue_write_context,
+    preview_write_context,
+    validate_preview_confirmation,
+    validate_write_context,
+)
 
 
 def _service():
@@ -83,7 +88,7 @@ def calendar_day_command(action):
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=payload,
-        guard=guard, mutate=lambda state: domain.apply(action, payload, state))
+        guard=guard, mutate=lambda state: domain._apply_checked(action, payload, state))
     return jsonify(outcome)
 
 
@@ -110,7 +115,7 @@ def calendar_range_preview():
 
 def _build_preview(domain, payload):
     preview = domain.preview(payload)
-    context = issue_write_context(preview.preview_ref, ["calendar.confirm"], preview.fingerprint)
+    context = preview_write_context(preview.preview_ref, preview.expires_at, ["calendar.confirm"])
     data = calendar_preview(preview)
     data["write_context"] = context
     snapshot = bind_read_snapshot({"kind": "calendar_preview", "preview_ref": preview.preview_ref}, preview.fingerprint)
@@ -127,7 +132,7 @@ def calendar_range_confirm():
 
     def guard():
         preview = resolve_preview(ref)
-        validate_write_context(body["write_token"], ref, "calendar.confirm", preview.fingerprint)
+        validate_preview_confirmation(body["write_token"], ref)
         return preview
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(

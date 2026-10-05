@@ -4,7 +4,7 @@ from core.models.workbench_dashboard import bounded
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from data.repositories.workbench_dashboard_external_repo import WorkbenchDashboardExternalRepository
 
-from .external_sources import latest_fact, subject
+from .external_sources import subject
 from .policy import read_external_stored, read_receipt_mappings
 
 
@@ -19,22 +19,28 @@ def _navigation(ref, current):
              "reason": None if current else "外协来源暂时无法核对，请刷新重试。"}]
 
 
-def _observation(reader, ref, now, gap):
-    header = reader.header(ref)
+def _observation(reader, ref, captured, gap):
+    # Invalid raw dates have no receipt DTO; only their original header is still read here.
+    header = captured["header"] if "header" in captured else reader.header(ref)
     source = _source(header)
     if gap:
         risk = {"active": None, "code": gap["code"], "message": gap["message"]}
-        facts = {"header": header, "latest": latest_fact(reader, ref), "gap": gap}
+        facts = {"header": header, "latest": captured["latest"], "gap": gap}
         current, awaiting = False, False
     else:
-        receipt, snapshot = reader._entry(ref, now)
+        receipt, snapshot = captured["receipt"], captured["snapshot"]
         current, awaiting = receipt["source_state"] == "current", receipt["awaiting_return"]
         active = receipt["overdue"] or receipt["confirmedState"] == "awaiting_confirmation"
         risk = {"active": active if current else None,
                 "code": "outsourcing_overdue" if receipt["overdue"] else "outsourcing_awaiting_confirmation" if active else "outsourcing_tracked",
                 "message": "外协超过真实登记的计划回厂时点。" if receipt["overdue"] else "外协仍待人工确认。" if active else "当前登记未发现超时或待确认风险。"}
         source["receipt"] = receipt
-        facts = {"receipt": receipt, "snapshot": snapshot, "latest": latest_fact(reader, ref)}
+        # Source identities and rows already express this receipt's dependencies;
+        # the global plan clock must not expire it when another source changes.
+        loaded = snapshot["source"]
+        scoped = {**snapshot, "source": {**loaded, "facts": {key: value for key, value in loaded["facts"].items()
+                                                          if key != "source_clock"}}}
+        facts = {"receipt": receipt, "snapshot": scoped, "latest": captured["latest"]}
     label = subject(header["origin"]["batch"]["business_code"], "外协原登记")
     operations = " / ".join(subject(row["business_code"], "外协工序") for row in header["origin"]["operations"])
     item = {"category": "external", "anchor_ref": ref, "subject": label + " · " + operations,
@@ -48,7 +54,7 @@ class DashboardExternalHandling:
         self.conn = conn
         self.repo = WorkbenchDashboardExternalRepository(conn)
 
-    def read(self, summary, now):
+    def read(self, summary, now, receipts):
         state = self.repo.schema_state()
         if state == "not_connected":
             return [], {}, {}  # v30 remains explicitly unsupported until v31 installs the extension.
@@ -58,13 +64,13 @@ class DashboardExternalHandling:
                            "message": "外协处置记录不完整，请核对登记来源和处置历史。"}])
             return [], {}, {"state": "unavailable"}
         reader = WorkbenchOutsourcingService(self.conn, clock=lambda: now)
-        refs = reader.refs()
+        refs = list(receipts)
         mappings, stored = read_receipt_mappings(self.repo, refs), read_external_stored(self.repo)
         gaps = {row["source_ref"]: row for row in summary["evaluation_gaps"]}
         observations = []
         for ref in refs:
             identity = mappings[ref]
-            item, awaiting = _observation(reader, ref, now, gaps.get(ref))
+            item, awaiting = _observation(reader, ref, receipts[ref], gaps.get(ref))
             saved = stored.get(identity["item_ref"])
             if awaiting or saved:
                 observations.append((dict(item, item_ref=identity["item_ref"]), saved, identity))

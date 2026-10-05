@@ -1,4 +1,4 @@
-"""Process imports retain original bytes; confirmation is one ordinary DB command."""
+"""Process imports retain parsed file facts; confirmation rechecks current DB facts."""
 
 from flask import current_app, g, jsonify, request
 
@@ -38,11 +38,12 @@ def _upload(kind):
 def process_file_preview(kind):
     content, fmt, mode, target = _upload(kind)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
-    # preview_import 先解析文件、再自己开读快照比对工艺资料；这里不在外面先开事务，解析大文件时不占读锁。
-    preview, extra = WorkbenchProcessFileService(g.db, current_app.logger, reader).preview_import(
-        kind, content, file_format=fmt, mode=mode, target_ref=target)
+    service = WorkbenchProcessFileService(g.db, current_app.logger, reader)
+    source = service.prepare_import(kind, content, file_format=fmt, mode=mode, target_ref=target)
+    # 文件事实只解析一次；每次预检仍在服务读快照中比对当前工艺资料。
+    preview, extra = service.preview_import(kind, source, file_format=fmt, mode=mode, target_ref=target)
     state = preview.as_dict()["request"]["state"]
-    data = action_preview(preview, file_operation(kind), kind=kind, content=content, extra=extra)
+    data = action_preview(preview, file_operation(kind), kind=kind, content=source, extra=extra)
     snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": file_operation(kind),
                                    "preview_ref": data["preview_ref"], "target_ref": target}, state)
     return query_success(data, snapshot, preview.as_dict()["notices"])
@@ -55,7 +56,7 @@ def process_file_confirm(kind):
     payload = body["input"]
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=operation, context_ref=payload["preview_ref"], normalized_input=payload,
-        guard=lambda: checked_preview(payload["preview_ref"], operation, operation, body["write_token"]),
+        guard=lambda: checked_preview(payload["preview_ref"], operation, body["write_token"]),
         mutate=lambda checked: WorkbenchProcessFileService(g.db, current_app.logger).confirm_import(
             checked[0], checked[1], discard_group_refs=payload["discard_group_refs"],
             confirm_zero_unit_hours=payload["confirm_zero_unit_hours"]))

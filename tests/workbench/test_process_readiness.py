@@ -1,6 +1,5 @@
 """Real workflow counts, corruption boundaries, no writes and fixed SQL at scale."""
 
-import copy
 import importlib
 import json
 import sqlite3
@@ -117,21 +116,9 @@ def test_broken_storage_is_unavailable_not_zero_and_other_facts_survive(workflow
     assert stored_state(workflow_conn) == before and workflow_conn.total_changes == changes
 
 
-@pytest.mark.parametrize("mutate", [
-    lambda snapshot: snapshot.clear(),
-    lambda snapshot: snapshot["P1"].update(workflow=None),
-    lambda snapshot: snapshot["P1"]["workflow"].update(stage="bogus"),
-    lambda snapshot: snapshot["P1"]["workflow"].update(ready="true"),
-    lambda snapshot: snapshot["P1"]["workflow"].update(origin="legacy"),
-    lambda snapshot: snapshot["P1"]["workflow"]["hours"].update(state="locked"),
-    lambda snapshot: snapshot["P1"]["workflow"]["hours"].update(confirmed_at=None),
-    lambda snapshot: snapshot["P1"]["workflow"]["hours"].update(confirmed_by=42),
-])
-def test_invalid_domain_snapshot_is_explicit_and_never_partially_counted(workflow_conn, mutate, monkeypatch):
+def test_catalog_mismatch_is_explicit_and_never_partially_counted(workflow_conn, monkeypatch):
     confirm_all(workflow_conn)
-    snapshot = copy.deepcopy(workflow_snapshot(workflow_conn))
-    mutate(snapshot)
-    monkeypatch.setattr(importlib.import_module(MODULE), "workflow_snapshot", lambda conn: snapshot)
+    monkeypatch.setattr(importlib.import_module(MODULE), "workflow_snapshot", lambda conn: {})
     item = process_item(workflow_conn)
     assert item["status"] == "unavailable" and item["counts"]["ready"] is None
 

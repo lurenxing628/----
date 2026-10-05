@@ -80,13 +80,15 @@ class WorkbenchProcessQueryService:
     def facts(self):
         if self._facts is not None:
             return self._facts
+        facts = {"parts": self.repo.parts(), "operations": self.repo.operations(), "groups": self.repo.groups(),
+                 "references": self.repo.references(), "identities": self.repo.identities()}
         try:
-            workflow = workflow_snapshot(self.conn)
+            workflow = workflow_snapshot(self.conn, tables={**facts["references"], "Parts": facts["parts"],
+                "PartOperations": facts["operations"], "ExternalGroups": facts["groups"],
+                "WorkbenchEntityRefs": facts["identities"]})
         except RuntimeError as exc:
             raise WorkbenchCommandRejected("storage_failure", "工艺确认记录或它的编号不完整，请联系维护人员核对资料。", 500) from exc
-        return {"parts": self.repo.parts(), "operations": self.repo.operations(), "groups": self.repo.groups(),
-                "references": self.repo.references(), "identities": self.repo.identities(),
-                "workflow": workflow}
+        return dict(facts, workflow=workflow)
 
     @contextmanager
     def read_snapshot(self):

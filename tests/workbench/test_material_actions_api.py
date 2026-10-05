@@ -488,7 +488,13 @@ def test_preview_registry_contains_only_small_binding_not_file_or_snapshot(mater
         assert len(entry["value"]) < 200 < len(content)
         store = client.application.extensions[_EXTENSION]
         assert len(store) == 1
-        assert store[binding["preview_key"]].content == content
+        from core.models.workbench_resource_file_source import PreparedImportSource
+        source = store[binding["preview_key"]].content
+        assert isinstance(source, PreparedImportSource)
+        parsed, notices = source.parsed()
+        assert len(parsed) == 2000 and not notices
+        assert parsed[0]["values"] == {"business_code": "NEW00000", "label": "Material name"}
+        assert parsed[-1]["values"] == {"business_code": "NEW01999", "label": "Material name"}
         assert len(store[binding["preview_key"]].preview.as_dict()["rows"]) == 2000
 
 

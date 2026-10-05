@@ -8,6 +8,7 @@ from core.models.resource_capabilities import machine_type_index
 from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.material.stage_availability import MaterialAvailability
+from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     context_problem,
@@ -64,12 +65,20 @@ class BatchProjection:
         self.external_members = member_index(self.external_contexts, facts["BatchOperations"])
         self.machine_types = machine_type_index(facts["Machines"], facts.get("MachineOpTypes", []))
         self.links = {(row["operator_id"], row["machine_id"]) for row in facts["OperatorMachine"]}
-        self.skills = defaultdict(set)
-        for row in facts["OperatorSkill"]:
-            self.skills[row["operator_id"]].add(row["op_type_id"])
+        profiles, skills = defaultdict(list), defaultdict(list)
         for row in facts["WorkbenchOperatorProfiles"]:
-            if row["skills_declared"]:
-                self.skills[row["operator_id"]]
+            profiles[row["operator_id"]].append(dict(row, profile_operator_id=row["operator_id"]))
+        for row in facts["OperatorSkill"]:
+            category = self.catalogs["op_type"].get(row["op_type_id"], {}).get("category")
+            skills[row["operator_id"]].append(dict(row, category=category))
+        self.qualifications, self.qualification_issues = {}, {}
+        for code in self.catalogs["operator"]:
+            profile_rows = profiles[code] or [{"operator_id": code, "profile_operator_id": None, "skills_declared": None}]
+            try:
+                self.qualifications[code] = OperatorQualificationService.project_facts([code], profile_rows, skills[code])[code]
+            except OperatorQualificationError as exc:
+                # Display the invalid source without claiming qualification or blocking unrelated records.
+                self.qualification_issues[code] = issue(str(exc), "operator_qualification_invalid")
 
     def ref(self, kind, key):
         if key is None:
@@ -108,7 +117,10 @@ class BatchProjection:
             issues.append(issue("设备与工序工种不匹配。"))
         if row["operator_id"] and row["machine_id"] and (row["operator_id"], row["machine_id"]) not in self.links:
             issues.append(issue("所选人员未获设备操作授权。"))
-        if row["operator_id"] in self.skills and row["op_type_id"] not in self.skills[row["operator_id"]]:
+        if row["operator_id"] in self.qualification_issues:
+            issues.append(dict(self.qualification_issues[row["operator_id"]]))
+        skills = self.qualifications.get(row["operator_id"])
+        if skills is not None and row["op_type_id"] not in skills:
             issues.append(issue("所选人员未登记本工种资格。"))
 
     def operation_issues(self, row, resources, group, numbers):

@@ -213,6 +213,10 @@ def _confirm_request(client, command):
         proposal = preview(client)
         return lambda: confirm(client, proposal, path="/" + ref_for(client) + "/split-confirm", key="batch-split-load-00001")
     if command == "sync_confirm":
+        # This case counts reads for a valid template update, including outsourcing.
+        client.batch_conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id IN "
+                                  "(SELECT op_type_id FROM PartOperations WHERE part_no='P1' AND source='external')")
+        client.batch_conn.commit()
         response = sync_preview(client)
         path = "/" + ref_for(client) + "/sync-confirm"
     elif command == "import_confirm":

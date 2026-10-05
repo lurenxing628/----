@@ -44,11 +44,14 @@ def retain_preview(preview: CalendarRangePreview) -> None:
 
 
 def resolve_preview(ref: str) -> CalendarRangePreview:
-    """Only call from the receipt-first command guard; the domain checks TTL/facts."""
+    """Resolve a live original preview after receipt replay; the domain rechecks facts."""
     with _LOCK:
         preview = _store().get(ref)
         if preview is None:
             raise WorkbenchCommandRejected("snapshot_stale", "预览变更已过期，日历没有修改。请重新点「预览变更」。")
+        if preview.expires_at <= calendar_now().isoformat(timespec="seconds"):
+            del _store()[ref]
+            raise WorkbenchCommandRejected("stale_write", "预览变更已过期，日历没有修改。请重新点「预览变更」。")
         return preview
 
 

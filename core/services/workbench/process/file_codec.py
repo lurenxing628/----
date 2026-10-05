@@ -31,7 +31,7 @@ from core.models.workbench_process_file import (
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
 
-from .file_reader import check_bytes, csv_rows, xlsx_rows
+from .file_reader import check_bytes, read_rows
 from .file_values import decode_value, numeric_diagnostic
 from .file_writer import write_csv, write_xlsx
 
@@ -104,7 +104,7 @@ def decode_process_file(kind, content, fmt):
     check_format(fmt)
     check_bytes(content, fmt)
     state = {"sheets": 1}
-    source = csv_rows(content) if fmt == "csv" else xlsx_rows(content, state)
+    source = read_rows(content, fmt, state)
     try:
         header = next(source, None)
         if header is None or header[2]:

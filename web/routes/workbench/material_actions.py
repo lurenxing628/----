@@ -76,12 +76,13 @@ def _upload():
 def material_import_preview():
     content, file_format, mode = _upload()
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
-        preview = WorkbenchMaterialFileService(g.db, current_app.logger).preview_import(
-            content, file_format=file_format, mode=mode, scope={})
-        data = issue_preview(preview, content)
+    service = WorkbenchMaterialFileService(g.db, current_app.logger)
+    source = service.prepare_import(content, file_format=file_format, mode=mode, scope={})
+    with reader.read_snapshot(capture_fingerprint=False):
+        preview = service.preview_import(source, file_format=file_format, mode=mode, scope={})
+        data = issue_preview(preview, source)
         snapshot = bind_read_snapshot({"kind": "material", "operation": "material.import",
-                                       "preview_ref": data["preview_ref"]}, fingerprint)
+                                       "preview_ref": data["preview_ref"]}, data["preview_ref"])
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 

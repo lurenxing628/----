@@ -4,8 +4,6 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
 from data.repositories.workbench_dashboard_source_repo import latest_outsourcing_fact_rows, unknown_source_rows
 
-SOURCE_GAPS = {"identity_missing", "identity_drift", "entity_not_found", "constraint_conflict"}
-
 
 def latest_fact(reader, ref):
     # Validate raw dates before DI's JSON-only DTO admission rejects a legacy BLOB.
@@ -18,19 +16,6 @@ def latest_fact(reader, ref):
 def unknown_sources(conn):
     # An invalid source is not proof of an internal operation. Do not hide it.
     return bounded(unknown_source_rows(conn, MAX_ROWS + 1))
-
-
-def target_source(reader, item):
-    if item["issues"]:
-        return None, item["issues"]
-    target = {"kind": "single", "batch_ref": item["batch_ref"], "supplier_ref": item["supplier_ref"],
-              "operation_refs": [item["operation_ref"]]}
-    try:
-        return reader.sources.load(target), []
-    except WorkbenchCommandRejected as exc:
-        if exc.code not in SOURCE_GAPS:
-            raise
-        return None, [{"code": exc.code, "message": str(exc)}]
 
 
 def subject(value, fallback):

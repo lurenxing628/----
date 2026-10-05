@@ -42,11 +42,11 @@ class FieldReportFileService:
             raise WorkbenchCommandRejected('invalid_input', '填的设备或人员在系统里找不到，或者有重名分不清，请核对。', 422)
         return next(iter(options))
 
-    def _items(self, content, tasks, decoded=None):
+    def _items(self, content, tasks, decoded=None, *, file_digest=None):
         rows = decode_reports(content) if decoded is None else decoded
         by_scope, by_ref = task_indexes(tasks)
         resources, items, positions = self._resource_index(), [], []
-        digest = hashlib.sha256(content).hexdigest()
+        digest = hashlib.sha256(content).hexdigest() if file_digest is None else file_digest
         for row in rows:
             value = row['values']
             if row['errors']:
@@ -80,11 +80,20 @@ class FieldReportFileService:
 
     def preview(self, content, cohort, decoded=None):
         """decoded: rows the caller already parsed from these bytes before its read snapshot (used once)."""
-        rows, items, positions = self._items(content, cohort['tasks'], decoded)
-        check = None
+        return self.prepare_preview(content, cohort, decoded)[0]
+
+    def prepare_source(self, source, cohort):
+        """Rebuild current business checks from the retained original file facts."""
+        return self.prepare_preview(source.content, cohort, source.parsed(), file_digest=source.file_digest)
+
+    def prepare_preview(self, content, cohort, decoded=None, *, file_digest=None):
+        """Return the public preview and its private, already checked batch facts."""
+        digest = hashlib.sha256(content).hexdigest() if file_digest is None else file_digest
+        rows, items, positions = self._items(content, cohort['tasks'], decoded, file_digest=digest)
+        check, preparation = None, None
         if not any(row['errors'] for row in rows):
             try:
-                check = self._checked_rows(items, rows, positions)
+                check, preparation = self._checked_rows(items, rows, positions)
             except WorkbenchCommandRejected as exc:
                 self._preview_error(exc, rows, positions)
         rejected = sum(bool(row['errors']) for row in rows)
@@ -92,17 +101,18 @@ class FieldReportFileService:
                    'changed': check['summary']['changed'] if check else 0, 'unchanged': check['summary']['unchanged'] if check else 0}
         public = [{'row': row['row'], 'result': row['result'], 'errors': row['errors']} for row in rows]
         return {'rows': public, 'summary': summary, 'can_confirm': not rejected and bool(items), 'commit_policy': 'atomic',
-                'file_sha256': hashlib.sha256(content).hexdigest(), 'items': items,
-                'snapshot': check['snapshot'] if check else None, 'scope': cohort['scope']}
+                'file_sha256': digest, 'items': items,
+                'snapshot': check['snapshot'] if check else None, 'scope': cohort['scope']}, preparation
 
     def _checked_rows(self, items, rows, positions):
-        check = self.production.preview_batch(items) if items else {'rows': [], 'summary': {'total': 0, 'changed': 0, 'unchanged': 0}, 'can_confirm': True, 'snapshot': {}}
+        preparation = self.production.prepare_batch(items) if items else None
+        check = preparation.public() if preparation else {'rows': [], 'summary': {'total': 0, 'changed': 0, 'unchanged': 0}, 'can_confirm': True, 'snapshot': {}}
         mapped = dict(zip(positions, check['rows']))
         for row in rows:
             if row['row'] in mapped:
                 item = mapped[row['row']]
                 row['result'] = item['result'] if item['result'] == 'unchanged' else item['action']
-        return check
+        return check, preparation
 
     @staticmethod
     def _preview_error(exc, rows, positions):

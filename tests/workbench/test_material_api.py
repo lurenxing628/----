@@ -102,6 +102,19 @@ def test_unchanged_intent_has_receipt_without_rewriting_entity(app_client):
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchCommandReceipts").fetchone()[0] == 2
 
 
+def test_material_create_context_survives_other_records_but_duplicate_code_is_still_rejected(app_client):
+    token = _list(app_client)["data"]["create_context"]["write_token"]
+    _create(app_client, code="OTHER", request_key="create-independent-other")
+    body = {"request_key": "create-independent-material", "write_token": token,
+            "input": {"business_code": "NEW", "label": "New"}}
+    result = app_client.post(BASE + "/create", json=body)
+    assert result.status_code == 200 and result.get_json()["result"] == "committed"
+    duplicate = app_client.post(BASE + "/create", json={**body, "request_key": "create-independent-duplicate"})
+    assert duplicate.status_code >= 400 and duplicate.get_json()["committed"] is False
+    with _database(app_client) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM Materials WHERE material_id='NEW'").fetchone()[0] == 1
+
+
 def test_referenced_material_blocks_delete_but_allows_careful_update(app_client):
     saved, _ = _create(app_client)
     ref = saved["data"]["entity_ref"]

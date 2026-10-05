@@ -37,7 +37,21 @@ def test_write_tokens_are_bound_to_the_exact_subject_action_and_expiry(collectio
     if change == "unknown":
         body["write_token"] = "x" * 32
     elif change == "expired":
-        expire(api, "workbench-write-v1", body["write_token"])
+        scope = "workbench-process-action-preview-v1" if action == "bulk-confirm" else "workbench-write-v1"
+        expire(api, scope, body["write_token"])
+    elif action == "bulk-confirm":
+        if change == "wrong_subject":
+            other = api.delete_body([api.ref(code="PROC-004")])
+            body["write_token"] = other["write_token"]
+        else:
+            from web.routes.workbench.resource_action_context import resolve_context, retain_context
+            with api.client.application.app_context():
+                document, content = resolve_context("workbench-process-action-preview-v1", body["input"]["preview_ref"], "stale_write")
+                value = json.loads(document)
+                value["operation"] = "part.import"
+                token, _ = retain_context("workbench-process-action-preview-v1", json.dumps(value), content)
+            body["write_token"] = token
+            body["input"]["preview_ref"] = token
     else:
         registry = api.client.application.extensions["aps_public_opaque_tokens"]
         entry = registry["workbench-write-v1"]["tokens"][body["write_token"]]

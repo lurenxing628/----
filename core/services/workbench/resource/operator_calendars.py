@@ -194,6 +194,19 @@ class WorkbenchOperatorCalendarService:
         before = self.snapshot(payload["date"])
         if checked != before:
             raise WorkbenchCommandRejected("stale_write", "这一天的个人日历已变化，请刷新后重新核对。")
+        return self._apply_day(action, payload, before)
+
+    def _apply_checked(self, action, normalized_input, checked):
+        """The guard has already read and bound these facts under this command lock."""
+        self._require_write_transaction()
+        payload = self.normalize(action, normalized_input)
+        if action == "range_clear":
+            return self._clear_checked_range(checked)
+        if action not in ("upsert", "delete"):
+            raise ValidationError("不支持的个人日历操作。", field="action")
+        return self._apply_day(action, payload, checked)
+
+    def _apply_day(self, action, payload, before):
         after = self._proposed(payload["fields"], before) if action == "upsert" else None
         return self._write(before, after)
 
@@ -226,6 +239,9 @@ class WorkbenchOperatorCalendarService:
         current = self.preview_range_clear(payload)
         if checked is not None and checked != current:
             raise WorkbenchCommandRejected("stale_write", "这段日期里的个人日历已变化，请重新点「预检要清除的日期」。")
+        return self._clear_checked_range(current)
+
+    def _clear_checked_range(self, current):
         results = [self._write(state, None) for state in current["days"]]
         return WorkbenchCommandOutcome("committed" if any(item.result == "committed" for item in results) else "unchanged",
                                        {"dates": [{**item.data, "result": item.result} for item in results],

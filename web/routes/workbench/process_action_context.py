@@ -8,7 +8,7 @@ from core.models.workbench_resource_action import ResourceActionPreview, public_
 
 from .process_json import read_process_json
 from .resource_action_context import resolve_context, retain_context
-from .write_context import issue_write_context, validate_write_context
+from .write_context import preview_write_context, validate_preview_confirmation
 
 # 工艺文件导入和零件批量删除出了预检结果后，弹窗里的预检按钮都改叫「重新预检」；这里的提示都在那之后出现。
 PREVIEW_SCOPE = "workbench-process-action-preview-v1"
@@ -18,7 +18,7 @@ EXPORT_SCOPE = "workbench-process-file-export-v1"
 def action_preview(preview, command, *, kind=None, content=None, extra=None):
     ref, expiry = retain_context(PREVIEW_SCOPE, preview.document, content)
     body = preview.as_dict()
-    context = issue_write_context(ref, [command], preview.intent())
+    context = preview_write_context(ref, expiry, [command])
     rejected = bool(body["summary"]["rejected"])
     if rejected:
         context["capabilities"][command] = False
@@ -45,12 +45,12 @@ def confirmed_body(input_keys):
     return body
 
 
-def checked_preview(ref, operation, command, write_token):
+def checked_preview(ref, operation, write_token):
     if type(ref) is not str or not ref:
         raise WorkbenchCommandRejected("invalid_input", "预检结果已过期，工艺资料没有改动。请点「重新预检」。", 400)
     document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != operation:
         raise WorkbenchCommandRejected("stale_write", "预检结果和这次工艺操作对不上，工艺资料没有改动。请点「重新预检」。")
-    validate_write_context(write_token, ref, command, preview.intent())
+    validate_preview_confirmation(write_token, ref)
     return preview, content

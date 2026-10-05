@@ -7,7 +7,7 @@ from core.models.workbench_plan_scope import PlanReadScope
 from core.services.scheduler.dispatch_task_ids import public_task_id
 from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_rows
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from core.services.workbench.plan.projection import public_time
+from core.services.workbench.plan.projection import public_time, wire_positive_int64
 
 ENGINE = "core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows"
 SEMANTICS = "selected_plan_control_predecessor_chain"
@@ -39,7 +39,7 @@ def _bound_rows(plans, planned):
     mapping = {}
     for row in rows:
         task = tasks[task_refs[row["schedule_id"]]]
-        if (public_time(row["start_time"]), public_time(row["end_time"]), row["batch_id"], row["seq"], row.get("piece_id")) != (
+        if (public_time(row["start_time"]), public_time(row["end_time"]), row["batch_id"], wire_positive_int64(row["seq"]), row.get("piece_id")) != (
                 task["start"], task["end"], task["batch_id"], task["sequence"], task["piece_id"]):
             return None, None
         if any((row[kind + "_id"] or None) != resources.get(task[kind + "_ref"])

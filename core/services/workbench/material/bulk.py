@@ -32,12 +32,9 @@ from data.repositories.workbench_material_file_repo import WorkbenchMaterialFile
 from .service import WorkbenchMaterialService
 
 
-def full_material_snapshot(adapter, repo, identity):
-    snapshot = adapter.snapshot(identity)
-    raw = repo.raw_material(identity.entity_key)
-    if raw is None:
-        raise WorkbenchCommandRejected("entity_not_found", "物料已不存在，请重新预检。", 404)
-    snapshot["material"].update(raw)
+def full_material_snapshot(adapter, repo, identity, *, material=None):
+    snapshot = (adapter.snapshot(identity) if material is None else
+                adapter._snapshot_from_current(identity, material))
     snapshot["requirements"] = repo.requirements(identity.entity_key)
     return snapshot
 

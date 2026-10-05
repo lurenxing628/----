@@ -6,7 +6,6 @@ from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 from .group_defaults import create_group
-from .route_apply import discard_groups
 from .stage_apply import require_supplier, source_catalog
 
 
@@ -85,23 +84,39 @@ def apply_groups(conn, part_no, prepared, discarded, operations):
     changes = group_changes(conn, prepared, discarded, operations)
     if not changes:
         return False
-    discard_groups(conn, part_no, discarded)
     op_repo, group_repo = PartOperationRepository(conn), ExternalGroupRepository(conn)
+    final = _final_memberships(conn, part_no, prepared, discarded, operations, changes)
+    for op in operations:
+        if op["id"] in final:
+            fields = {key: value for key, value in final[op["id"]].items() if op[key] != value}
+            if fields:
+                op_repo.update(part_no, op["seq"], fields)
+    for group in discarded:
+        group_repo.delete_for_part(part_no, group["group_id"])
+    return True
+
+
+def _final_memberships(conn, part_no, prepared, discarded, operations, changes):
     changed_refs = {row["ref"] for row in changes if row["action"] == "update"}
-    # Detach every edited range first so splitting/moving members is independent of row order.
-    for item in prepared:
-        if item["old"] and item["old"]["ref"] in changed_refs:
-            op_repo.clear_external_group(part_no, item["old"]["group_id"])
+    replaced = {group["group_id"] for group in discarded} | {
+        item["old"]["group_id"] for item in prepared if item["old"] and item["old"]["ref"] in changed_refs}
+    final = {op["id"]: {"ext_group_id": None, "supplier_id": op["supplier_id"]}
+             for op in operations if op["ext_group_id"] in replaced}
     for item in prepared:
         old, members = item["old"], item["members"]
         if old and old["ref"] not in changed_refs:
             continue
-        if old:
-            group_id = old["group_id"]
-            group_repo.update(group_id, {"start_seq": members[0]["seq"], "end_seq": members[-1]["seq"],
-                "merge_mode": "merged", "total_days": item["total_days"], "supplier_id": item["supplier_id"]})
-        else:
-            group_id = create_group(conn, part_no, members, item["supplier_id"], item["total_days"])
+        group_id = _write_group(conn, part_no, item)
         for member in members:
-            op_repo.update(part_no, member["seq"], {"ext_group_id": group_id, "supplier_id": item["supplier_id"]})
-    return True
+            final[member["id"]] = {"ext_group_id": group_id, "supplier_id": item["supplier_id"]}
+    return final
+
+
+def _write_group(conn, part_no, item):
+    old, members = item["old"], item["members"]
+    if old is None:
+        return create_group(conn, part_no, members, item["supplier_id"], item["total_days"], attach=False)
+    fields = {"start_seq": members[0]["seq"], "end_seq": members[-1]["seq"], "merge_mode": "merged",
+              "total_days": item["total_days"], "supplier_id": item["supplier_id"]}
+    ExternalGroupRepository(conn).update(old["group_id"], {key: value for key, value in fields.items() if old[key] != value})
+    return old["group_id"]

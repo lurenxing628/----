@@ -20,7 +20,7 @@ from data.repositories.workbench_dashboard_repo import WorkbenchDashboardReposit
 
 from .downtime import downtime
 from .execution import actual
-from .external import external
+from .external import load_external
 from .external_handling import DashboardExternalHandling
 from .facts import DashboardFacts, typed
 from .policy import (
@@ -126,8 +126,8 @@ class WorkbenchDashboardService:
         facts = DashboardFacts(self.conn, now).load()
         # 齐套要按批次查来源编号，留在读快照里判断；交期、报工、停机在 project() 里只用已读出的事实。
         material = safe_material(facts)
-        external_summary, facts.raw["external"] = external(self.conn, now)
-        external_items, external_stored, facts.raw["external_handling"] = self.external_handling.read(external_summary, now)
+        external_summary, facts.raw["external"], receipts = load_external(self.conn, now)
+        external_items, external_stored, facts.raw["external_handling"] = self.external_handling.read(external_summary, now, receipts)
         stored = read_stored(self.repo)
         return DashboardSources(facts, material, (external_summary, external_items, external_stored), stored,
                                 self._anchor_mappings(facts, material[0]), {ref: self.repo.identity(ref) for ref in stored})
@@ -154,8 +154,8 @@ class WorkbenchDashboardService:
                                        entry={"view": "analysis", "target": "/api/workbench/v1/scheduling/runs", "enabled": True})
         stored = sources.stored
         source_state = facts.fingerprint()
-        items = self._merge(observations, sources, source_state, facts.now)
-        items.extend(self._decorate(item, saved, source_state, identity, facts.now) for item, saved, identity in external_items)
+        items = self._merge(observations, sources, categories, facts.now)
+        items.extend(self._decorate(item, saved, identity, facts.now) for item, saved, identity in external_items)
         bounded(items)
         _category_counts(categories, observations, stored)
         categories["external"] = external_summary
@@ -165,23 +165,25 @@ class WorkbenchDashboardService:
                 "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
                 "categories": {name: categories[name] for name in CATEGORIES}, "fingerprint": fingerprint}
 
-    def _merge(self, observations, sources, source_state, now):
+    def _merge(self, observations, sources, categories, now):
         found, stored = self._identified(observations, sources.mappings), sources.stored
         items = []
         for ref, (item, identity) in found.items():
             # 只列出当前有风险或已有处置的条目；其余几千条无风险观察不逐条规整、不签快照。
             if item["risk"]["active"] is True or ref in stored:
                 item = dict(item, item_ref=ref, navigation=navigation(item), source_state="current")
-                items.append(self._decorate(item, stored.get(ref), source_state, identity, now))
+                items.append(self._decorate(item, stored.get(ref), identity, now))
         for ref, saved in stored.items():
             if ref in found:
                 continue
             origin = saved["origin"]
+            evaluation = categories[saved["category"]]
             item: Dict[str, Any] = dict(origin, source_state="not_currently_evaluated", risk={"active": None, "code": "source_not_currently_evaluated",
-                        "message": "原来源当前未评估或已非当前正式，不能认定风险已消除。"}, _facts={"origin": origin})
+                        "message": "原来源当前未评估或已非当前正式，不能认定风险已消除。"},
+                        _facts={"origin": origin, "evaluation": {"state": evaluation["state"], "issues": evaluation["issues"]}})
             item["navigation"] = navigation(item, current=False)
             identity = found_identity(sources.identities[reference(ref)])
-            items.append(self._decorate(item, saved, source_state, identity, now))
+            items.append(self._decorate(item, saved, identity, now))
         return bounded(items)
 
     @staticmethod
@@ -197,13 +199,14 @@ class WorkbenchDashboardService:
                 found[identity["item_ref"]] = item, identity
         return found
 
-    def _decorate(self, item, saved, source_state, identity, now):
+    def _decorate(self, item, saved, identity, now):
         handling = saved["handling"] if saved else empty_handling()
-        snapshot = {"source_fingerprint": source_state, "identity": identity, "revision": saved["revision"] if saved else 0,
+        item["_facts"] = typed(item["_facts"])
+        snapshot = {"facts": item["_facts"], "source_state": item["source_state"],
+                    "identity": identity, "revision": saved["revision"] if saved else 0,
                     "source": item["source"], "risk": item["risk"], "handling": handling}
         item.update(handling=_handling_view(item, saved, now), allowed_transitions=allowed_transitions(handling["status"]),
                     _handling=handling, _snapshot=typed(snapshot))
-        item["_facts"] = typed(item["_facts"])
         item["write_context"] = None
         return item
 

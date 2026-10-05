@@ -27,6 +27,21 @@ def preview(client):
     return response.get_json()["data"]
 
 
+def test_split_writes_each_material_final_quantity_and_readiness_once(batch_client, monkeypatch):
+    from data.repositories.batch_material_repo import BatchMaterialRepository
+    client = batch_client
+    prepare(client)
+    proposal = preview(client)
+    calls, original = [], BatchMaterialRepository.update_qty
+    def recorded(self, requirement_id, **fields):
+        calls.append((requirement_id, fields))
+        return original(self, requirement_id, **fields)
+    monkeypatch.setattr(BatchMaterialRepository, "update_qty", recorded)
+    response = confirm(client, proposal, path="/" + ref_for(client) + "/split-confirm", key="split-final-fields-once")
+    assert response.status_code == 200, response.get_json()
+    assert len(calls) == 1 and set(calls[0][1]) == {"required_qty", "available_qty", "ready_status"}
+
+
 def test_preview_is_readonly_confirm_40_60_conserves_every_arrival_and_replays(batch_client):
     client = batch_client
     prepare(client)

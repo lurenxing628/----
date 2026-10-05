@@ -9,6 +9,8 @@ from core.models.workbench_identity import WorkbenchEntityIdentity
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
 
+from .state_projection import machine_write_state, operator_write_state
+
 
 class WorkbenchResourceStateService:
     def __init__(self, conn, logger=None):
@@ -41,8 +43,12 @@ class WorkbenchResourceStateService:
         current, raw = self.current(identity, kind)
         return {"identity": asdict(current), "record": raw}
 
-    def snapshot(self, identity):
-        current, raw = self.current(identity, identity.kind)
+    def snapshot(self, identity, *, kind=None):
+        current, raw = self.current(identity, identity.kind if kind is None else kind)
+        return self._snapshot_from_current(current, raw)
+
+    def _snapshot_from_current(self, current, raw):
+        """Project current identity/raw facts without querying them again."""
         kind, code = current.kind, current.entity_key
         result: Dict[str, Any] = {"identity": asdict(current), "record": raw}
         if kind in ("op_type", "machine", "operator"):
@@ -50,21 +56,18 @@ class WorkbenchResourceStateService:
         if kind == "op_type":
             result["dependencies"] = self.repo.op_type_dependencies(code)
         elif kind == "machine":
-            result["dependencies"] = self.repo.assigned_dependencies(kind, code)
-            result["op_type"] = self.related("op_type", raw["op_type_id"])
-            types = set(self.repo.machine_capabilities(code)) | ({raw["op_type_id"]} if raw["op_type_id"] else set())
-            result["op_types"] = [self.related("op_type", item) for item in sorted(types)]
-            result["group"] = self.related("machine_group", result["profile"]["group_id"]) if result["profile"] else None
+            types = set(self.repo.machine_capabilities(code)) | ({raw["op_type_id"]} if raw["op_type_id"] is not None else set())
+            profile = result["profile"]
+            return machine_write_state(current, raw, profile, self.repo.assigned_dependencies(kind, code),
+                                       [self.related("op_type", item) for item in sorted(types)],
+                                       self.related("machine_group", profile["group_id"]) if profile else None)
         elif kind == "operator":
-            result["dependencies"] = self.repo.assigned_dependencies(kind, code)
-            result["skills"] = self.repo.skills(code)
-            result["skill_types"] = [self.related("op_type", row["op_type_id"]) for row in result["skills"]]
-            result["machine_authorizations"] = self.repo.authorizations(code)
-            result["authorized_machines"] = [self.related("machine", row["machine_id"])
-                                             for row in result["machine_authorizations"]]
-            profile_id = result["profile"]["shift_profile_id"] if result["profile"] else None
-            result["shift"] = self.related("shift_profile", profile_id)
-            result["shift_pattern"] = self.repo.pattern(profile_id) if profile_id else []
+            profile, skills, authorizations = result["profile"], self.repo.skills(code), self.repo.authorizations(code)
+            profile_id = profile["shift_profile_id"] if profile else None
+            return operator_write_state(current, raw, profile, self.repo.assigned_dependencies(kind, code), skills,
+                                        [self.related("op_type", row["op_type_id"]) for row in skills], authorizations,
+                                        [self.related("machine", row["machine_id"]) for row in authorizations],
+                                        self.related("shift_profile", profile_id), self.repo.pattern(profile_id) if profile_id else [])
         elif kind == "machine_group":
             result["members"] = self.repo.group_members(code)
         elif kind == "shift_profile":
@@ -82,10 +85,19 @@ class WorkbenchResourceStateService:
         if ref is None:
             return None
         identity, raw = self.by_ref(kind, ref)
+        self._require_selected(identity, raw, category)
+        return identity.entity_key
+
+    def selected_record(self, kind, identity, *, category=None):
+        current, raw = self.current(identity, kind)
+        self._require_selected(current, raw, category)
+        return current, raw
+
+    @staticmethod
+    def _require_selected(identity, raw, category):
         if raw.get("status", "active") != "active":
             raise WorkbenchCommandRejected("constraint_conflict", "选中的关联资源已经停用，没有保存。请重新选择一个在用的。")
         if category is not None and not supports_source(raw.get("category"), category):
             raise WorkbenchCommandRejected("constraint_conflict", "选中工种的自制或外协归属和当前资源不匹配，没有保存。请换一个工种。")
         if identity.entity_key != identity.entity_key.strip():
             raise WorkbenchCommandRejected("constraint_conflict", "关联编号前后带空格，没有保存，以免写错到别的记录上。请去掉前后的空格。")
-        return identity.entity_key

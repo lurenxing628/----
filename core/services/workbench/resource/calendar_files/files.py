@@ -39,6 +39,7 @@ from core.models.workbench_resource_action import (
     check_resource_preview,
     reject_action_row,
 )
+from core.models.workbench_resource_file_source import PreparedImportSource
 
 from ..calendars import WorkbenchCalendarService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
@@ -88,9 +89,16 @@ class WorkbenchCalendarFileService:
 
     # ---------- 导入 ----------
 
-    def preview_import(self, content, *, file_format, mode="upsert"):
+    def prepare_import(self, content, *, file_format, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode)
         source, notices = read_calendar_file(self.kind, content, file_format)
+        return PreparedImportSource.build(self.kind + ".import", request, source, notices)
+
+    def preview_import(self, content, *, file_format, mode="upsert"):
+        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
+            content, file_format=file_format, mode=mode)
+        request = prepared.request_for(self.kind + ".import", file_format, mode)
+        source, notices = prepared.parsed()
         with self.tx.transaction():
             return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices)
 
@@ -260,9 +268,6 @@ class WorkbenchCalendarFileService:
                     "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             body = current.as_dict()
-            if body["summary"]["rejected"]:
-                raise WorkbenchCommandRejected(
-                    "constraint_conflict", "这一批里有不能导入的行，一行都没有导入。请修好标红的行后重新预检。")
             results = []
             for row in body["rows"]:
                 if row["result"] == "unchanged":

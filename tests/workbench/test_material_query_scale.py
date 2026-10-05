@@ -8,7 +8,6 @@ from flask import Flask
 
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench.material.queries import WorkbenchMaterialQueryService
-from core.services.workbench.material.service import WorkbenchMaterialService
 from web.routes.workbench.materials import _entity_with_context
 
 
@@ -24,7 +23,7 @@ def test_ten_thousand_materials_and_thirty_thousand_requirements(schema_conn):
     plan = " ".join(str(row[3]) for row in conn.execute(
         "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM BatchMaterials WHERE material_id=?", ("M-00001",)))
     assert "idx_workbench_batch_materials_material" in plan
-    reader, domain = WorkbenchMaterialQueryService(conn), WorkbenchMaterialService(conn)
+    reader = WorkbenchMaterialQueryService(conn)
     records = []
     before = conn.total_changes
     with Flask("material-scale").app_context():
@@ -36,7 +35,7 @@ def test_ten_thousand_materials_and_thirty_thousand_requirements(schema_conn):
                 start = time.perf_counter()
                 with reader.read_snapshot():
                     rows, page = reader.page(MaterialPageRequest(number=page_number, size=page_size))
-                    entities = [_entity_with_context(row, domain) for row in rows]
+                    entities = [_entity_with_context(row) for row in rows]
                 durations.append((time.perf_counter() - start) * 1000)
                 counts.append(sum(sql.lstrip().upper().startswith("SELECT") for sql in statements))
                 conn.set_trace_callback(None)

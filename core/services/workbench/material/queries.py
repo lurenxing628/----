@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Dict
 
 from core.infrastructure.transaction import TransactionManager
@@ -23,6 +23,7 @@ from .table_facts import material_table_index
 class MaterialReadRecord:
     identity: WorkbenchEntityIdentity
     entity: Dict[str, Any]
+    state: Dict[str, Any]
 
 
 def _project(row):
@@ -43,7 +44,7 @@ def _project(row):
     entity = {"ref": identity.ref, "business_code": row["material_id"], "label": row["name"],
               "status": row["status"], "fields": {key: row[key] for key in ("spec", "unit", "stock_qty", "remark")},
               "relationships": {"batch_requirement_count": int(row["requirement_count"])}, "issues": issues}
-    return MaterialReadRecord(identity, entity)
+    return MaterialReadRecord(identity, entity, {"identity": asdict(identity), "material": row})
 
 
 class WorkbenchMaterialQueryService:
@@ -54,12 +55,12 @@ class WorkbenchMaterialQueryService:
         self._table_indexes = None
 
     @contextmanager
-    def read_snapshot(self):
+    def read_snapshot(self, *, capture_fingerprint=True):
         with TransactionManager(self.conn).transaction():
             previous = self._table_indexes
             self._table_indexes = {}
             try:
-                yield self.state_fingerprint()
+                yield self.state_fingerprint() if capture_fingerprint else None
             finally:
                 self._table_indexes = previous
 

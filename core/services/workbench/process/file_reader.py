@@ -1,18 +1,23 @@
 """Bounded CSV/XLSX byte sources, including all physical records and cells."""
 
-import csv
-from io import BytesIO, StringIO
+from io import BytesIO
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
-import openpyxl
-
 from core.errors import ValidationError
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, XLSX_EXPANDED_BYTE_LIMIT, file_error
-from core.services.common.excel_cell_values import cell_value, is_formula_or_error
+from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 from core.services.workbench.facts.process_file_xml import check_sheet_order
 
 _WORKBOOK_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
+_CSV_ERROR = "CSV 必须是 UTF-8 编码，系统不猜编码，也不替你补引号。请另存为 UTF-8 后重新上传。"
+_READ_MESSAGES = FileReadMessages(
+    csv_encoding=_CSV_ERROR,
+    csv_format=_CSV_ERROR,
+    xlsx_empty="这个 XLSX 里没有工作表。请用 Excel 另存为 xlsx 后重新上传。",
+    xlsx_read="这个 XLSX 读不出来。请确认文件完整、单元格格式正常后重新上传。",
+    xlsx_cell="不接受公式或 Excel 错误单元格，请填写实际值。",
+)
 
 
 def check_bytes(content, file_format):
@@ -56,38 +61,5 @@ def _check_workbook_content(archive):
                 check_sheet_order(stream)
 
 
-def csv_rows(content):
-    reader = None
-    try:
-        reader = csv.reader(StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
-        while True:
-            number = reader.line_num + 1
-            values = next(reader, None)
-            if values is None:
-                return
-            yield number, values, {}
-    except (UnicodeDecodeError, csv.Error) as exc:
-        raise file_error("CSV 必须是 UTF-8 编码，系统不猜编码，也不替你补引号。请另存为 UTF-8 后重新上传。", reader.line_num if reader else 1) from exc
-
-
-def xlsx_rows(content, state):
-    wb = None
-    try:
-        wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-        if not wb.worksheets:
-            raise file_error("这个 XLSX 里没有工作表。请用 Excel 另存为 xlsx 后重新上传。")
-        # 只读第一张表，其余忽略；模板和导出文件本身就带一张「填写说明」。
-        state["sheets"] = len(wb.worksheets)
-        ws = wb.worksheets[0]
-        ws.reset_dimensions()
-        for number, cells in enumerate(ws.iter_rows(), 1):
-            errors = {index: "不接受公式或 Excel 错误单元格，请填写实际值。"
-                      for index, cell in enumerate(cells) if is_formula_or_error(cell)}
-            yield number, [cell_value(cell) for cell in cells], errors
-    except ValidationError:
-        raise
-    except Exception as exc:
-        raise file_error("这个 XLSX 读不出来。请确认文件完整、单元格格式正常后重新上传。") from exc
-    finally:
-        if wb is not None:
-            wb.close()
+def read_rows(content, fmt, state):
+    return source_rows(content, fmt, state, error=file_error, messages=_READ_MESSAGES)

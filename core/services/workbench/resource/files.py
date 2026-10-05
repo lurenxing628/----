@@ -1,7 +1,7 @@
 """Atomic upsert and complete scoped export, using existing resource domains."""
 
 from contextlib import closing
-from typing import cast
+from typing import Union, cast
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -17,29 +17,39 @@ from core.models.workbench_resource_action import (
     resource_scope,
 )
 from core.models.workbench_resource_file import READONLY, WRITABLE, import_request
+from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.facts.file_codec import read_resource_file
 from core.services.workbench.facts.file_writer import check_capacity, write_resource_file
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
+from .entities import WorkbenchResourceService
 from .file_input import ResourceFileInput, proposed_fields, same_value
 from .file_projection import flat_resource, reference_count, resource_file_state
 from .queries import WorkbenchResourceQueryService
+from .suppliers import WorkbenchSupplierService
 
 
 class WorkbenchResourceFileService:
     def __init__(self, conn, kind, logger=None):
         self.conn, self.kind = conn, action_kind(kind)
         self.reader = WorkbenchResourceQueryService(conn, kind, logger)
-        self.adapter = self.reader.domain
+        self.adapter = cast(Union[WorkbenchResourceService, WorkbenchSupplierService], self.reader.domain)
         self.repo = WorkbenchResourceFileRepository(conn, logger)
         self.inputs = ResourceFileInput(self.reader, self.repo)
         self.tx = TransactionManager(conn)
 
-    def preview_import(self, content, *, file_format, scope, mode="upsert"):
+    def prepare_import(self, content, *, file_format, scope, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode, scope)
         source, notices = read_resource_file(self.kind, content, file_format)
+        return PreparedImportSource.build(self.kind + ".import", request, source, notices)
+
+    def preview_import(self, content, *, file_format, scope, mode="upsert"):
+        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
+            content, file_format=file_format, scope=scope, mode=mode)
+        request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
+        source, notices = prepared.parsed()
         with self.tx.transaction():
             rows = [self._import_row(item, request["scope"]) for item in source]
             self._duplicates(rows, "business_code")
@@ -70,15 +80,18 @@ class WorkbenchResourceFileService:
             row["business_code"] = code
             if values["business_code"] != code and self.repo.raw(self.kind, values["business_code"]) is not None:
                 raise ValidationError("编号不能有首尾空格，请修正后重新导入。", field="business_code")
-            raw = self.repo.raw(self.kind, code)
-            row["action"] = "create" if raw is None else "update"
-            if raw is None:
+            identity = self.reader.identities.find_active(self.kind, code)
+            if identity is None:
+                raw = self.repo.raw(self.kind, code)
+                if raw is not None:
+                    raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，这一行没有导入，资料也没有被改动。请到资料总览核对后重试。", 500)
+                row["action"] = "create"
                 row["expected"] = {"state": None, "history": self.repo.identity_history(self.kind, code)}
             else:
-                identity = self.reader.identities.find_active(self.kind, code)
-                if identity is None:
-                    raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，这一行没有导入，资料也没有被改动。请到资料总览核对后重试。", 500)
-                expected = resource_file_state(self.reader, self.repo, identity)
+                row["action"] = "update"
+                state = self.adapter._snapshot_from_current(identity)
+                raw = state["supplier"] if self.kind == "supplier" else state["record"]
+                expected = {"state": state, "references": self.repo.references(self.kind, code)}
                 row.update(entity_ref=identity.ref, expected=expected,
                            before=flat_resource(self.kind, identity, expected, self.repo), reference_count=reference_count(expected))
                 check_category(self.kind, raw, scope)
@@ -118,8 +131,7 @@ class WorkbenchResourceFileService:
             check_resource_preview(preview, current)
             results = []
             for row in current.as_dict()["rows"]:
-                identity = self.reader.resolve(row["entity_ref"]) if row["entity_ref"] else None
-                outcome = self.adapter.apply(row["action"], row["input"], identity)
+                outcome = self.adapter._apply_checked(row["action"], row["input"], row["expected"]["state"])
                 results.append({"row": row["row"], "result": outcome.result, **outcome.data})
             result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
             return WorkbenchCommandOutcome(result, {"rows": results, "summary": current.as_dict()["summary"]})

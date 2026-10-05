@@ -1,4 +1,4 @@
-"""Original material previews and bytes, separate from opaque token bindings.
+"""Material previews and prepared file sources, separate from opaque token bindings.
 
 Entries share the existing short-token expiry. There is no new row/file/count
 limit here; upload limits and the 2000-row import contract remain authoritative.
@@ -11,21 +11,23 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from threading import RLock
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 from flask import current_app
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import MaterialPreview
+from core.models.workbench_resource_file_source import PreparedImportSource
 
 _EXTENSION = "workbench_material_previews_v1"
 _LOCK = RLock()
+FileSource = Optional[Union[bytes, PreparedImportSource]]
 
 
 @dataclass(frozen=True)
 class _RetainedPreview:
     preview: MaterialPreview
-    content: Optional[bytes]
+    content: FileSource
     expires_at: float
 
 
@@ -38,7 +40,7 @@ def _live_store() -> Dict[str, _RetainedPreview]:
     return store
 
 
-def retain_preview(preview: MaterialPreview, content: Optional[bytes], expires_at: float) -> None:
+def retain_preview(preview: MaterialPreview, content: FileSource, expires_at: float) -> None:
     with _LOCK:
         store = _live_store()
         key = preview.digest
@@ -50,7 +52,7 @@ def retain_preview(preview: MaterialPreview, content: Optional[bytes], expires_a
         store[key] = _RetainedPreview(preview, content, expires_at)
 
 
-def stored_preview(key: str) -> Tuple[MaterialPreview, Optional[bytes]]:
+def stored_preview(key: str) -> Tuple[MaterialPreview, FileSource]:
     with _LOCK:
         entry = _live_store().get(key)
         if entry is None:

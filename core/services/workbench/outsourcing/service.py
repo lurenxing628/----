@@ -64,6 +64,10 @@ class WorkbenchOutsourcingService:
 
     def _entry(self, ref, now):
         header, latest = self.header(ref), self.latest(ref)
+        return self.entry_from_facts(header, latest, now)
+
+    def entry_from_facts(self, header, latest, now):
+        """Resolve a receipt from header/latest already admitted in the caller's snapshot."""
         source, issues, state = None, [], "current"
         try:
             source = self.sources.load(header["target"])

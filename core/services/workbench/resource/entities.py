@@ -1,7 +1,10 @@
 """Legacy domain CRUD with explicit workbench resource relationships."""
 
+from dataclasses import asdict
+
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_input import normalize_resource_input
 from core.services.equipment.machine_service import MachineService
 from core.services.personnel.operator_service import OperatorService
@@ -24,8 +27,13 @@ class WorkbenchResourceService:
         return normalize_resource_input(self.kind, action, payload)
 
     def snapshot(self, identity):
-        self.state.current(identity, self.kind)
-        return self.state.snapshot(identity)
+        return self.state.snapshot(identity, kind=self.kind)
+
+    def _snapshot_from_current(self, identity):
+        raw = self.repo.get_raw(self.kind, identity.entity_key)
+        if raw is None:
+            raise WorkbenchCommandRejected("storage_failure", "这条资源的编号和实际记录对不上，操作没有执行。请联系维护人员核对数据。", 500)
+        return self.state._snapshot_from_current(identity, raw)
 
     def apply(self, action, normalized_input, identity=None):
         if not self.conn.in_transaction:
@@ -34,9 +42,22 @@ class WorkbenchResourceService:
         if action == "create":
             if identity is not None:
                 raise WorkbenchCommandRejected("invalid_input", "新增资源时不能指定已有记录，没有保存。请重新点「新增」。", 400)
+            checked = None
+        else:
+            current, raw = self.state.current(identity, self.kind)
+            checked = {"identity": asdict(current), "record": raw}
+        return self._apply_checked(action, payload, checked)
+
+    def _apply_checked(self, action, payload, checked):
+        """Use the row already checked by this command, without a second identity/raw read."""
+        if not self.conn.in_transaction:
+            raise RuntimeError("资源保存必须由工作台最外层事务负责。")
+        if action == "create":
+            identity = None
             code, raw = payload["business_code"], {}
         else:
-            identity, raw = self.state.current(identity, self.kind)
+            identity = WorkbenchEntityIdentity(**checked["identity"])
+            raw = checked["record"]
             code = identity.entity_key
             if code != code.strip():
                 raise WorkbenchCommandRejected("constraint_conflict", "这条旧记录的编号前后带空格，没有保存，以免写错到别的记录上。请联系维护人员修正编号。")

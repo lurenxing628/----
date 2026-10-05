@@ -58,7 +58,7 @@ def _month_binding(record, month):
 def operator_calendar_month(ref):
     values = _month_input()
     reader = _reader()
-    with reader.read_snapshot():
+    with reader.read_snapshot(capture_fingerprint=False):
         record = reader.detail(ref)
         service = _service(_operator_code(reader, ref))
         month = service.month(**values)
@@ -90,7 +90,8 @@ def _guarded_day(ref, action, write_token, service, day):
     record = _reader().detail(ref)
     month = service.month(int(day[:4]), int(day[5:7]))
     validate_write_context(write_token, ref, ACTIONS[action], _month_binding(record, month))
-    return service.snapshot(day)
+    state = next(item for item in month["days"] if item["date"] == day)
+    return {key: state[key] for key in ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history")}
 
 
 def _guarded_range(ref, write_token, service, payload):
@@ -110,7 +111,7 @@ def operator_calendar_command(ref, action):
         request_key=body["request_key"], action=ACTIONS[action], context_ref=ref,
         normalized_input={"operator_ref": ref, **payload},
         guard=lambda: _guarded_day(ref, action, body["write_token"], service, payload["date"]),
-        mutate=lambda checked: service.apply(action, payload, checked))
+        mutate=lambda checked: service._apply_checked(action, payload, checked))
     return jsonify(outcome)
 
 
@@ -119,7 +120,7 @@ def operator_calendar_range_preview(ref):
     body = json_body({"input"})
     reader = _reader()
     # 只借 read_snapshot 的读事务；这次的快照要绑这段日期的个人日历内容，不是整份人员列表。
-    with reader.read_snapshot():
+    with reader.read_snapshot(capture_fingerprint=False):
         service = _service(_operator_code(reader, ref))
         preview = service.preview_range_clear(body["input"])
         data = {"operator_ref": ref, "range": preview["request"], "count": preview["count"],
@@ -140,7 +141,7 @@ def operator_calendar_range_clear(ref):
         request_key=body["request_key"], action=ACTIONS["range_clear"], context_ref=ref,
         normalized_input={"operator_ref": ref, **payload},
         guard=lambda: _guarded_range(ref, body["write_token"], service, payload),
-        mutate=lambda checked: service.apply("range_clear", payload, checked))
+        mutate=lambda checked: service._apply_checked("range_clear", payload, checked))
     return jsonify(outcome)
 
 

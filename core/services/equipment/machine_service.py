@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -162,10 +162,7 @@ class MachineService:
             op_type_id=op_type_id,
             team_id=team_id,
         )
-        if mc_id is None:
-            raise ValidationError("设备编号不能为空", field="设备编号")
-        if mc_name is None:
-            raise ValidationError("设备名称不能为空", field="设备名称")
+        mc_id = cast(str, mc_id)  # Non-partial validation requires a nonempty identifier.
         mc_remark = self._normalize_text(remark)
         mc_category = self._normalize_text(category)
 

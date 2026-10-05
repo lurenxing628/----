@@ -45,6 +45,17 @@ def row(conn, sequences, group=None, supplier="PROC-S", days=4.5):
             "supplier_ref": ref_for(conn, "supplier", supplier), "total_days": days}
 
 
+def test_changing_only_group_cycle_does_not_detach_or_rewrite_operations(stage_conn, monkeypatch):
+    from data.repositories.part_operation_repo import PartOperationRepository
+    conn = stage_conn
+    prepare_stages(conn)
+    before = op_rows(conn)
+    monkeypatch.setattr(PartOperationRepository, "update", lambda *args: pytest.fail("unchanged group members were rewritten"))
+    run_stage(conn, "groups_confirm", {"groups": [row(conn, [20], group="PROC-G", days=8.5)], "discard_group_refs": []},
+              key="group-cycle-write-once")
+    assert op_rows(conn) == before and group_rows(conn)["PROC-G"]["total_days"] == 8.5
+
+
 def test_two_separate_stages_create_edit_and_dissolve_without_touching_other_stage(stage_conn):
     conn = stage_conn
     add_external(conn, [40, 50], "PROC-S2")

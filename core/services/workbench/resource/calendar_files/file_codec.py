@@ -1,16 +1,11 @@
 """严格解析日历文件。空格子表示不修改，转义空值表示明确清除。
 
-日期与数字的取值口径要和批次导入一致（`core/services/common/excel_validators.py` 的
-`_normalize_batch_date_cell`），但不直接调用它：那边的错误文案含界面词表停用词，且所在目录不在
-文案扫描范围。两边对同一输入必须给出相同判定，由 tests/workbench/test_calendar_files.py 锁住。
+文本日期与批次导入采用相同的年月日格式。Excel 原生 datetime 的既有政策不同：
+日历只接受午夜，批次导入取日期部分；这里保留日历的拒绝规则，不静默截去时间。
 """
 
-import csv
 import re
 from datetime import date, datetime, time
-from io import BytesIO, StringIO
-
-import openpyxl
 
 from core.errors import ValidationError
 from core.models.workbench_calendar_file import (
@@ -21,7 +16,7 @@ from core.models.workbench_calendar_file import (
     public_columns,
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
-from core.services.common.excel_cell_values import cell_value, is_formula_or_error
+from core.services.workbench.facts.file_source import source_rows
 
 NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 DATE_TEXT = re.compile(r"([0-9]{4})[/-]([0-9]{1,2})[/-]([0-9]{1,2})\Z")
@@ -85,43 +80,6 @@ def read_number(value, field):
     raise ValidationError("这一项必须填数字。", field=field)
 
 
-def _source_rows(content, fmt, state):
-    if fmt == "csv":
-        reader = None
-        try:
-            reader = csv.reader(StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
-            while True:
-                number = reader.line_num + 1
-                row = next(reader, None)
-                if row is None:
-                    return
-                yield number, row, {}
-        except (UnicodeDecodeError, csv.Error) as exc:
-            raise file_error("这个 CSV 不是 UTF-8 编码，或者引号不成对，一行都没有导入。请另存为 UTF-8 编码后重新上传。",
-                             reader.line_num if reader else 1) from exc
-    else:
-        wb = None
-        try:
-            wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-            if not wb.worksheets:
-                raise file_error("这个 XLSX 里没有工作表，没有导入。请确认文件完整后重新上传。")
-            # 只读第一张表，其余忽略；模板和导出文件本身就带一张「填写说明」。
-            state["sheets"] = len(wb.worksheets)
-            ws = wb.worksheets[0]
-            ws.reset_dimensions()
-            for number, cells in enumerate(ws.iter_rows(), 1):
-                errors = {i: "这个格子是公式或者显示为错误值，没有导入。请改成纯文本后重新上传。"
-                          for i, cell in enumerate(cells) if is_formula_or_error(cell)}
-                yield number, [cell_value(cell) for cell in cells], errors
-        except ValidationError:
-            raise
-        except Exception as exc:
-            raise file_error("这个 XLSX 打不开，没有导入。请确认文件完整后重新上传。") from exc
-        finally:
-            if wb is not None:
-                wb.close()
-
-
 def _headers(kind, values):
     names = {column["label"]: column["key"] for column in public_columns(kind)}
     names.update({key: key for key in file_columns(kind)})
@@ -170,7 +128,7 @@ def read_calendar_file(kind, content, fmt):
     if type(content) is not bytes or fmt not in ("csv", "xlsx"):
         raise file_error("只能导入 CSV 或 XLSX 文件，没有导入。请重新选择文件。")
     state = {"sheets": 1}
-    source = _source_rows(content, fmt, state)
+    source = source_rows(content, fmt, state, error=file_error)
     try:
         header = next(source, None)
         if header is None or header[2]:

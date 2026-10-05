@@ -1,9 +1,9 @@
 """Versioned file columns. Read-only columns are reference data, never written."""
 
 import hashlib
-from dataclasses import dataclass
 
 from core.errors import ValidationError
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_resource_action import action_kind, resource_scope
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -231,12 +231,7 @@ def import_request(kind, content, file_format, mode, scope):
     return {"file_sha256": hashlib.sha256(content).hexdigest(), "format": file_format, "mode": mode, "scope": scope}
 
 
-@dataclass(frozen=True)
-class ResourceFileDownload:
-    filename: str
-    mime_type: str
-    content: bytes
-    row_count: int
+ResourceFileDownload = FileDownload
 
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。四类资源各有自己的列，规则也各是一份。

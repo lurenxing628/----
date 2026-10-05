@@ -99,3 +99,24 @@ def test_raw_source_evidence_is_preserved_and_type_drift_rejects_old_write(exter
     with pytest.raises(WorkbenchCommandRejected) as error:
         case.command(old, follow(remark="Rechecked dispatch"))
     assert error.value.code == "stale_write"
+
+
+def test_summary_and_handling_share_each_receipt_and_target_capture(external_handling_case):
+    case = external_handling_case
+    ref = case.register()
+    queries = []
+    case.conn.set_trace_callback(queries.append)
+    try:
+        data, _ = case.read()
+    finally:
+        case.conn.set_trace_callback(None)
+    summary = data["categories"]["external"]
+    assert summary["receipt_count"] == summary["known_risk_count"] == 1
+    assert summary["unregistered_count"] == 2
+    assert [item["source"]["outsourcing_ref"] for item in data["items"] if item["category"] == "external"] == [ref]
+    assert sum(sql.startswith("SELECT * FROM WorkbenchOutsourcingReceipts WHERE outsourcing_ref=") for sql in queries) == 1
+    assert sum(sql.startswith("SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=") for sql in queries) == 1
+    # One verified source for the receipt and one for each catalog target;
+    # neither handling nor nullable target labels reload those rows.
+    for table, key in (("Batches", "batch_id"), ("Suppliers", "supplier_id")):
+        assert sum('FROM "' + table + '" WHERE "' + key + '"=' in sql for sql in queries) == 4

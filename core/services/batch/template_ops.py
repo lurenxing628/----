@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
@@ -56,39 +56,25 @@ def invoke_template_resolver(svc, part_no: str, part_name: str, route_raw: str, 
     return resolver(part_no, part_name, route_raw, no_tx)
 
 
-def probe_template_ops_readonly(svc, part_no: str, part) -> Dict[str, Any]:
-    template_ops = svc.part_op_repo.list_by_part(part_no, include_deleted=False)
-    route_raw = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
-    return {
-        "has_template_ops": bool(template_ops),
-        "route_raw": route_raw,
-        "part_name": getattr(part, "part_name", None) or part_no,
-    }
-
-
 def ensure_template_ops_in_tx(
     svc,
     part_no: str,
     part,
     *,
     strict_mode: bool = False,
-    probe: Optional[Dict[str, Any]] = None,
 ):
     require_template_ready(svc.conn, part_no)
     template_ops = svc.part_op_repo.list_by_part(part_no, include_deleted=False)
     if template_ops:
         return template_ops
 
-    probe_data = dict(probe or {})
-    route_raw = str(probe_data.get("route_raw") or "").strip()
-    if not route_raw:
-        route_raw = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
+    route_raw = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
     if route_raw:
         try:
             parse_result = invoke_template_resolver(
                 svc,
                 part_no,
-                str(probe_data.get("part_name") or getattr(part, "part_name", None) or part_no),
+                str(getattr(part, "part_name", None) or part_no),
                 route_raw,
                 True,
                 strict_mode=bool(strict_mode),
@@ -161,7 +147,6 @@ def create_batch_from_template_no_tx(
     remark: Optional[str],
     rebuild_ops: bool = False,
     strict_mode: bool = False,
-    template_probe: Optional[Dict[str, Any]] = None,
 ) -> None:
     bid = svc._normalize_text(batch_id)
     part_no_text = svc._normalize_text(part_no)
@@ -181,7 +166,7 @@ def create_batch_from_template_no_tx(
     if not part:
         raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
 
-    template_ops = ensure_template_ops_in_tx(svc, part_no_text, part, strict_mode=bool(strict_mode), probe=template_probe)
+    template_ops = ensure_template_ops_in_tx(svc, part_no_text, part, strict_mode=bool(strict_mode))
     lineage = TemplateLineageWriter(svc.conn)
     lineage.require_ready()
     _ensure_batch_exists_for_template_ops(
