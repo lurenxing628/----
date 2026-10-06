@@ -1,8 +1,9 @@
-"""Represent only verified ledger intervals in the single-row scheduler contract."""
+"""Preserve actual execution across plan versions and keep legacy duration rules."""
 
 from core.errors import AppError, ErrorCode
 from core.models.enums import SourceType
 from core.models.operation_execution_event import parse_operation_event_time
+from core.services.execution.legacy import legacy_resource_refs
 
 _STATUSES = {"unreported": "not_started", "started": "processing", "partial": "processing",
              "paused": "paused", "exception": "exception", "complete": "completed"}
@@ -45,8 +46,8 @@ def _actual_intervals(projection, reasons):
 def _requires_ledger_projection(fact, projection):
     gap_codes = [gap["code"] for gap in projection.data_gaps]
     identity_invalid = bool(_IDENTITY_GAPS.intersection(gap_codes))
-    # Existing event-only flows retain their scope, revision and duration contract.
-    # A proven old finish must still protect completion after a version change.
+    # Report intervals and completed legacy evidence use the strict ledger
+    # contract; in-progress event-only evidence keeps legacy plan duration.
     old_finish = projection.completion_basis == "legacy_finish_event" and fact.actual_status != "completed"
     return bool(projection.reports or identity_invalid or old_finish)
 
@@ -77,27 +78,65 @@ def _protected_intervals(projection, status, reasons):
     return intervals
 
 
+def _actual_resource_refs(projection, field):
+    # Reports describe complete actual records; legacy finish/pause events need
+    # not repeat resources already identified by their start event.
+    return [getattr(report, field) for report in projection.reports] + list(
+        legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps))
+
+
+def _actual_resources(projection, resources, *, source, reasons):
+    machine, operator = None, None
+    if source == SourceType.EXTERNAL.value:
+        fields = ("actual_machine_ref", "actual_operator_ref")
+        if (any(getattr(report, field) is not None for report in projection.reports for field in fields)
+                or any(legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps) for field in fields)):
+            reasons.append("execution_ledger_external_resource_conflict")
+    elif source == SourceType.INTERNAL.value:
+        machine = _resource_id(_actual_resource_refs(projection, "actual_machine_ref"), resources, "machine", reasons)
+        operator = _resource_id(_actual_resource_refs(projection, "actual_operator_ref"), resources, "operator", reasons)
+    else:
+        reasons.append("execution_ledger_operation_source_invalid")
+    return machine, operator
+
+
+def _legacy_in_progress_changes(fact, projection, resources, *, source):
+    if not projection.legacy_facts or projection.execution_state not in ("started", "paused", "exception"):
+        return None
+    reasons = [gap["code"] for gap in projection.data_gaps] if projection.data_quality == "invalid" else []
+    machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons)
+    start = _actual_time(projection.first_actual_start)
+    if start is None:
+        reasons.append("execution_ledger_actual_start_missing")
+    if reasons:
+        _raise_reconciliation(fact.op_id, projection.execution_state, projection.remaining_quantity, reasons)
+    # Permanent history survives adoption into a new scope. These remain
+    # event-only facts: use their actual start/resources with the existing
+    # legacy plan-duration contract, without claiming a new report or finish.
+    return {"actual_status": _STATUSES[projection.execution_state], "actual_start_time": start,
+            "actual_end_time": None, "actual_machine_id": machine, "actual_operator_id": operator}
+
+
 def ledger_fact_changes(fact, projection, resources, *, source):
     if not _requires_ledger_projection(fact, projection):
-        return None
+        return _legacy_in_progress_changes(fact, projection, resources, source=source)
     reasons = []
     status = _protected_status(projection, reasons)
     intervals = _protected_intervals(projection, status, reasons)
-    evidence = [report.to_dict() for report in projection.reports] + projection.legacy_facts
-    machine, operator = None, None
-    if source == SourceType.EXTERNAL.value:
-        if any(row["actual_machine_ref"] is not None or row["actual_operator_ref"] is not None for row in evidence):
-            reasons.append("execution_ledger_external_resource_conflict")
-    elif source == SourceType.INTERNAL.value:
-        machine = _resource_id([row["actual_machine_ref"] for row in evidence], resources, "machine", reasons)
-        operator = _resource_id([row["actual_operator_ref"] for row in evidence], resources, "operator", reasons)
-    else:
-        reasons.append("execution_ledger_operation_source_invalid")
+    machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons)
     return {"actual_status": status, "actual_start_time": _actual_time(projection.first_actual_start),
             "actual_end_time": _actual_time(projection.confirmed_finish), "actual_machine_id": machine,
             "actual_operator_id": operator, "ledger_operation_ref": projection.operation_ref,
             "ledger_execution_state": projection.execution_state, "remaining_quantity": projection.remaining_quantity,
             "execution_effective_intervals": intervals, "execution_protection_reasons": tuple(dict.fromkeys(reasons))}
+
+
+def _raise_reconciliation(op_id, state, remaining_quantity, reasons):
+    raise AppError(ErrorCode.SCHEDULE_CONFLICT,
+                   "工序已有真实报工，但执行资料或剩余安排尚不能安全用于重排。请先补齐或核对报工；本次没有写入排程。",
+                   details={"reason": "execution_ledger_requires_reconciliation", "op_id": op_id,
+                            "execution_state": state, "data_gaps": list(dict.fromkeys(reasons)),
+                            "remaining_quantity": remaining_quantity})
 
 
 def ensure_ledger_execution_schedulable(facts):
@@ -118,8 +157,4 @@ def ensure_ledger_execution_schedulable(facts):
             elif fact.actual_start_time != intervals[0][0] or fact.actual_end_time != intervals[-1][1]:
                 reasons.append("execution_ledger_actual_interval_inconsistent")
         if reasons:
-            raise AppError(ErrorCode.SCHEDULE_CONFLICT,
-                           "工序已有真实报工，但执行资料或剩余安排尚不能安全用于重排。请先补齐或核对报工；本次没有写入排程。",
-                           details={"reason": "execution_ledger_requires_reconciliation", "op_id": op_id,
-                                    "execution_state": fact.ledger_execution_state,
-                                    "data_gaps": list(dict.fromkeys(reasons)), "remaining_quantity": fact.remaining_quantity})
+            _raise_reconciliation(op_id, fact.ledger_execution_state, fact.remaining_quantity, reasons)

@@ -7,6 +7,7 @@ from core.models.workbench_trial import issue
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.scheduler.run.schedule_input_seed_metadata import (
+    MERGED_EXECUTION_GROUP_SOURCE,
     merged_actual_group_intervals,
     merged_external_group_identity,
 )
@@ -50,9 +51,12 @@ def _seed_arrangement(seed, refs):
 def _seed_anchor(seed, refs, completed):
     arrangement = _seed_arrangement(seed, refs)
     complete = seed["op_id"] in completed
+    message = "已完工，按实际开完工时间和资源固定。" if complete else "已开工，固定实际开工和资源；预计完工按原计划时长计算。"
+    if not complete and seed.get("end_time_basis") == MERGED_EXECUTION_GROUP_SOURCE:
+        message = "已开工，固定实际开工和资源；安排结束按同组已确认回厂时间保留，本道工序的完工数量仍以报工为准。"
     return {"arrangement": arrangement,
             "basis": "completed_actuals" if complete else "started_actuals",
-            "message": "已完工，按实际开完工时间和资源固定。" if complete else "已开工，固定实际开工和资源；预计完工按原计划时长计算。"}
+            "message": message}
 
 
 def execution_anchors(conn, rows, live):

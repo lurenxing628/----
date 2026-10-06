@@ -42,6 +42,13 @@ def build_execution_resource_reservations(
         if row is None or op is None or row.op_id != op_id or row.version != fact.schedule_version:
             raise _execution_conflict("在制工序缺少对应正式计划，本次没有写入新排程。",
                                       reason="missing_previous_schedule_row", op_id=op_id)
+        if op.source == SourceType.EXTERNAL.value:
+            if fact.actual_machine_id is not None or fact.actual_operator_id is not None:
+                raise _execution_conflict("外协报工不能占用本厂设备或人员，请核对实际资源记录。",
+                                          reason="external_actual_resource_conflict", op_id=op_id)
+            # Supplier work keeps its execution identity, but reserves no
+            # factory machine or operator while this run schedules other work.
+            continue
         if op.source != SourceType.INTERNAL.value:
             raise _execution_conflict("在制工序的资源占用类型不明确，本次没有写入新排程。",
                                       reason="invalid_execution_resource_source", op_id=op_id)
@@ -114,6 +121,9 @@ class ExecutionResourceCalendar:
 
     def add_working_hours(self, start: datetime, hours: Any, priority=None, machine_id=None, operator_id=None) -> datetime:
         return self._calendar.add_working_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
+
+    def add_effective_hours(self, start: datetime, hours: Any, priority=None, machine_id=None, operator_id=None) -> datetime:
+        return self._calendar.add_effective_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
 
     def get_efficiency(self, dt: datetime, machine_id=None, operator_id=None) -> Any:
         return self._calendar.get_efficiency(dt, machine_id=machine_id, operator_id=operator_id)

@@ -144,6 +144,10 @@ def _build_algo_operations_outcome(
                 field="unit_hours",
                 field_label="单件工时",
             )
+        elif source_key == SourceType.EXTERNAL.value:
+            # External work uses its calendar cycle and has no internal workload.
+            # Keep the raw template's NULL hours intact; these are algorithm fields.
+            setup_hours = unit_hours = 0.0
         else:
             setup_hours = parse_field_float(
                 getattr(op, "setup_hours", None),

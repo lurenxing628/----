@@ -54,9 +54,10 @@ def operation_model(row):
         _optional_text(row[key], key)
     if row["status"] not in _OP_STATES or row["source"] not in ("internal", "external"):
         fail("invalid_operation_state", "有工序的状态或来源资料不完整，这次排产没有开始。请到批次管理核对。", op_id=row["id"])
-    for key in ("setup_hours", "unit_hours"):
-        if not number(row[key]):
-            fail("hours_missing", "工序工时缺失，本次未开始排产。请到工艺资料补填。", op_id=row["id"], field=key)
+    if row["source"] == "internal":
+        for key in ("setup_hours", "unit_hours"):
+            if not number(row[key]):
+                fail("hours_missing", "工序工时缺失，本次未开始排产。请到工艺资料补填。", op_id=row["id"], field=key)
     if row["ext_days"] is not None and not number(row["ext_days"], positive=True):
         fail("external_days_invalid", "有外协工序单独设置的周期不是正数，这次排产没有开始。请把周期改成大于 0 的天数。", op_id=row["id"])
     return BatchOperation(**{item.name: row[item.name] for item in fields(BatchOperation)})

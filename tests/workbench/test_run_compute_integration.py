@@ -2,14 +2,19 @@
 
 from datetime import datetime
 
+import pytest
+
+from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.run.compute import compute_candidate_run
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 from tests.workbench.run_compute_support import unchanged
 
 
-def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case):
+@pytest.mark.parametrize("quantity,finish", [(3, datetime(2026, 9, 10, 1, 30)), (36, datetime(2026, 9, 10, 13, 30))])
+def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case, quantity, finish):
     case = run_case
+    case.conn.execute("UPDATE Batches SET quantity=? WHERE batch_id='B1'", (quantity,))
     insert_row(case.conn, "WorkCalendar", dict(date="2026-09-09", day_type="workday", shift_start="22:30",
                shift_end="06:30", shift_hours=8, efficiency=1, allow_normal="yes", allow_urgent="yes"))
     insert_row(case.conn, "OperatorCalendar", dict(operator_id="O1", date="2026-09-09", day_type="workday",
@@ -21,7 +26,9 @@ def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case):
     for payload in result.candidate_payloads.values():
         row = payload.schedule_rows[0]
         assert row.start_time == datetime(2026, 9, 10)
-        assert row.end_time == datetime(2026, 9, 10, 1, 30)
+        assert row.end_time == finish
+        assert CalendarService(case.conn).capacity_hours_between(
+            row.start_time, row.end_time, priority="normal", operator_id="O1") == pytest.approx(quantity * 0.25)
 
 
 def test_complex_merged_external_chain_and_shared_resource_competition(run_case):
@@ -33,9 +40,9 @@ def test_complex_merged_external_chain_and_shared_resource_competition(run_case)
     external_ids = []
     for seq in (2, 3):
         insert_row(case.conn, "PartOperations", dict(part_no="P1", seq=seq, op_type_id="EXT", op_type_name="Heat treatment",
-                   source="external", supplier_id="S1", ext_group_id="EG", setup_hours=0, unit_hours=0, status="active"))
+                   source="external", supplier_id="S1", ext_group_id="EG", setup_hours=None, unit_hours=None, status="active"))
         external_ids.append(case.operation(seq=seq, op_type_id="EXT", source="external", supplier_id="S1",
-                                          machine_id=None, operator_id=None, setup_hours=0, unit_hours=0, ext_days=None))
+                                          machine_id=None, operator_id=None, setup_hours=None, unit_hours=None, ext_days=None))
     last = case.operation(seq=4)
     case.batch("B2", priority="urgent")
     competing = case.operation("B2", unit_hours=1)

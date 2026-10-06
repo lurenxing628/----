@@ -252,6 +252,12 @@ class CalendarService:
     ) -> datetime:
         return self._engine.add_working_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
 
+    def add_effective_hours(
+        self, start: datetime, hours: float, priority: Optional[str] = None,
+        machine_id: Optional[str] = None, operator_id: Optional[str] = None,
+    ) -> datetime:
+        return self._engine.add_effective_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
+
     def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         return self._engine.add_calendar_days(start, days, machine_id=machine_id, operator_id=operator_id)
 
@@ -306,9 +312,9 @@ class CalendarService:
 
 
 _NATIVE_SERVICE_TIMING = {name: getattr(CalendarService, name) for name in
-                          ("get_efficiency", "adjust_to_working_time", "add_working_hours")}
+                          ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours")}
 _NATIVE_ENGINE_TIMING = {name: getattr(CalendarEngine, name) for name in
-                         ("get_efficiency", "adjust_to_working_time", "add_working_hours",
+                         ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "_add_hours",
                           "policy_for_datetime", "_policy_for_datetime", "_policy_for_date", "_effective_segments", "_allowed_segments")}
 _NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
 _SGS_SERVICE_GUARD = make_class_guard(CalendarService)

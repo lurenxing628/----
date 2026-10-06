@@ -246,6 +246,12 @@ def _abort_after_result(
 
 
 def _estimate_attempt(calendar: Any, *, earliest: datetime, total_base: float, priority: Any, operator_id: str) -> _SlotAttempt:
+    advance_effective = getattr(calendar, "add_effective_hours", None)
+    if advance_effective is not None:
+        end = advance_effective(earliest, total_base, priority=priority, operator_id=operator_id)
+        hours = calendar.working_hours_between(earliest, end, priority=priority, operator_id=operator_id)
+        return _SlotAttempt(earliest, end, float(hours), False)
+    # Continuous adapters and older test calendars expose only a fixed-efficiency clock.
     eff, used_fallback = _resolve_efficiency(calendar, start_time=earliest, operator_id=operator_id)
     total_hours = float(total_base) / float(eff) if float(eff) != 1.0 else float(total_base)
     return _SlotAttempt(

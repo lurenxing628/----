@@ -30,7 +30,7 @@ from .working_hours import WorkingHoursPrefix
 # 正巨值（如录入笔误 9999999），故与既有 NaN/Inf/负数守卫对称地补一条量级上界。
 MAX_CALENDAR_DAYS = 36500.0
 # Engine members whose identity certifies native timing; certificates and the per-decode memo both rely on it.
-NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "policy_for_datetime",
+NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "_add_hours", "policy_for_datetime",
                          "_policy_for_datetime", "_policy_for_date", "_effective_segments", "_allowed_segments",
                          "certified_slot_window", "working_hours_between", "default_periods")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
@@ -385,6 +385,20 @@ class CalendarEngine:
         - 会自动跳过非工作日/非工作时段
         - hours 支持小数
         """
+        return self._add_hours(start, hours, priority, operator_id, efficiency_weighted=False)
+
+    def add_effective_hours(
+        self,
+        start: datetime,
+        hours: float,
+        priority: Optional[str] = None,
+        machine_id: Optional[str] = None,
+        operator_id: Optional[str] = None,
+    ) -> datetime:
+        """消耗有效加工工时；每个实际工作班段按其自己的效率折算。"""
+        return self._add_hours(start, hours, priority, operator_id, efficiency_weighted=True)
+
+    def _add_hours(self, start, hours, priority, operator_id, *, efficiency_weighted):
         if hours is None:
             raise ValidationError("缺少工时参数", field="hours")
         if isinstance(hours, bool):
@@ -409,14 +423,16 @@ class CalendarEngine:
             if guard > 36600:
                 raise BusinessError(ErrorCode.CALENDAR_ERROR, "工作日历计算异常：循环次数过多，请检查日历配置。")
 
-            end_w = next(end for left, end in self._allowed_segments(
-                cur.date(), priority=priority, operator_id=operator_id) if left <= cur < end)
+            end_w, policy = next((end, policy) for left, end, policy in self._effective_segments(
+                cur.date(), operator_id) if left <= cur < end and policy.is_priority_allowed(priority))
+            efficiency = policy.efficiency if efficiency_weighted else 1.0
             available = (end_w - cur).total_seconds() / 3600.0
-            if remaining <= available + 1e-9:
-                return cur + timedelta(hours=remaining)
+            capacity = available * efficiency
+            if remaining <= capacity + 1e-9:
+                return cur + timedelta(hours=min(remaining / efficiency, available))
 
             # 用完当前工作窗剩余工时：推进到该窗结束，再跳到下一可排产时刻
-            remaining -= available
+            remaining -= capacity
             cur = end_w
             cur = self.adjust_to_working_time(cur, priority=priority, operator_id=operator_id)
 

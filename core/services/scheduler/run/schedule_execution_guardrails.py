@@ -17,6 +17,8 @@ from core.services.scheduler.execution.execution_ledger_guard import ensure_ledg
 from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot
 
 from .schedule_execution_resource_facts import collect_resource_execution_facts
+from .schedule_input_seed_metadata import merged_external_group_identity, with_confirmed_merged_group_periods
+from .schedule_template_lookup import lookup_template_group_context_for_op
 
 
 def _op_id(op: Any) -> int:
@@ -152,7 +154,14 @@ def _build_execution_seed_results(
                 schedule_row=row,
             )
         )
-    return execution_seed_results
+    completed = {op_id for op_id in guarded_op_ids if facts[op_id].actual_status == EXECUTION_STATUS_COMPLETED}
+    external = [op_by_id[seed["op_id"]] for seed in execution_seed_results if seed["source"] == SourceType.EXTERNAL.value]
+    if not completed.intersection(op.id for op in external):
+        return execution_seed_results
+    groups = {op.id: merged_external_group_identity(op, group=lookup_template_group_context_for_op(svc, op).group)
+              for op in external}
+    return with_confirmed_merged_group_periods(execution_seed_results, group_identities=groups,
+                                             completed_op_ids=completed)
 
 
 def _collect_execution_guardrails(

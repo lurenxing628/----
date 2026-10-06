@@ -116,6 +116,32 @@ def merged_actual_group_intervals(group_identities, execution_seed_results, actu
     return intervals
 
 
+def with_confirmed_merged_group_periods(seed_results, *, group_identities, completed_op_ids):
+    """A group's confirmed return replaces estimates, never another actual start.
+
+    Started legacy members retain their execution state and original resources.
+    Their planned finish is an estimate; a completed peer proves the shared
+    physical cycle's finish without proving those members' completed quantity.
+    """
+    completed_periods = {}
+    for seed in seed_results:
+        identity = group_identities.get(seed["op_id"])
+        if seed["op_id"] in completed_op_ids and identity is not None:
+            completed_periods.setdefault(identity, set()).add((seed["start_time"], seed["end_time"]))
+    # Keep conflicting actual evidence unchanged: preflight names its members;
+    # runtime and adoption reject the same evidence through the strict index.
+    periods = {identity: next(iter(values)) for identity, values in completed_periods.items() if len(values) == 1}
+    result = []
+    for seed in seed_results:
+        period = periods.get(group_identities.get(seed["op_id"]))
+        if (period is None or seed["op_id"] in completed_op_ids or seed["start_time"] != period[0]
+                or seed["end_time"] == period[1]):
+            result.append(seed)
+            continue
+        result.append(dict(seed, end_time=period[1], end_time_basis=MERGED_EXECUTION_GROUP_SOURCE))
+    return result
+
+
 def with_merged_actual_group_seeds(seed_results, *, algo_ops, actual_op_ids):
     """Fix unreported cycle members without inventing reports for those operations.
 

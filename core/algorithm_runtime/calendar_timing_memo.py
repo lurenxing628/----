@@ -1,8 +1,8 @@
 """Per-decode memo of the pure calendar timing calls made while estimating internal slots.
 
-A slot estimate hops over busy blocks, and every hop asks the calendar the same four
-questions: adjust this instant to working time, the efficiency at that instant, the end
-after adding the operation's hours, and the certified constant work window around it.
+A slot estimate hops over busy blocks, and every hop asks the calendar the same timing
+questions: adjust this instant to working time, consume the operation's effective hours,
+measure the working span, and read the certified constant work window around it.
 The calendar does not change while one decode runs, so those answers are pure functions
 of their arguments, and measured decodes repeat 96-99% of them. The memo answers repeats
 from a dict and defers everything else to the real calendar with exactly the call the
@@ -31,7 +31,7 @@ class _Sentinel(enum.Enum):
 _MISSING = _Sentinel.MISSING
 _LIMIT = 32768
 _GUARDS: Dict[type, Callable[[Any], bool]] = {}
-TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "certified_slot_window",
+TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "certified_slot_window",
                   "working_hours_between")
 ACCESSOR_HOOKS = ("__getattribute__", "__getattr__")
 
@@ -106,7 +106,7 @@ def _remember(memo: Dict[Any, Any], key: Any, value: Any) -> Any:
 class MemoizedTimingCalendar:
     """The estimator-facing timing surface of one certified calendar, with memoized pure answers."""
 
-    __slots__ = ("calendar", "hits", "misses", "_adjust", "_efficiency", "_hours", "_window", "_between")
+    __slots__ = ("calendar", "hits", "misses", "_adjust", "_efficiency", "_hours", "_effective_hours", "_window", "_between")
 
     def __init__(self, calendar: Any) -> None:
         self.calendar = calendar
@@ -115,6 +115,7 @@ class MemoizedTimingCalendar:
         self._adjust: Dict[Tuple[Any, ...], datetime] = {}
         self._efficiency: Dict[Tuple[Any, ...], Any] = {}
         self._hours: Dict[Tuple[Any, ...], datetime] = {}
+        self._effective_hours: Dict[Tuple[Any, ...], datetime] = {}
         self._window: Dict[Tuple[Any, ...], Optional[Tuple[datetime, datetime]]] = {}
         self._between: Dict[Tuple[Any, ...], float] = {}
 
@@ -163,6 +164,17 @@ class MemoizedTimingCalendar:
             return found
         self.misses += 1
         return _remember(self._hours, key, self.calendar.add_working_hours(start, hours, priority=priority, operator_id=operator_id))
+
+    def add_effective_hours(self, start: datetime, hours: Any, *, priority: Any, operator_id: Any) -> datetime:
+        if type(start) is not datetime or type(hours) is not float or not _plain_text(priority) or not _plain_text(operator_id):
+            return self.calendar.add_effective_hours(start, hours, priority=priority, operator_id=operator_id)
+        key = (start, hours, priority, operator_id)
+        found = self._effective_hours.get(key, _MISSING)
+        if found is not _MISSING:
+            self.hits += 1
+            return found
+        self.misses += 1
+        return _remember(self._effective_hours, key, self.calendar.add_effective_hours(start, hours, priority=priority, operator_id=operator_id))
 
     def certified_slot_window(self, dt: datetime, *, priority: Any, operator_id: Any) -> Optional[Tuple[datetime, datetime]]:
         """The underlying certificate, or None for calendars that offer none; validated by the caller as before."""

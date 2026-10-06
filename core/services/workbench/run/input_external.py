@@ -10,6 +10,7 @@ from core.models.operation_execution_event import (
     EXECUTION_STATUS_PROCESSING,
 )
 from core.models.workbench_preflight import issue
+from core.services.execution.legacy import legacy_resource_refs
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     context_problem,
@@ -77,7 +78,7 @@ def _time(value):
     return value.isoformat(sep=" ")
 
 
-def _actual_periods(facts, groups, seeds, actual_ids, rows):
+def _actual_periods(facts, groups, seeds, actual_ids, rows, *, completed_ids):
     """与排产同口径收集已报工成员的实际周期；同组对不上的不抛异常，改为指出是哪几道。"""
     members = defaultdict(dict)
     for seed in seeds:
@@ -89,9 +90,12 @@ def _actual_periods(facts, groups, seeds, actual_ids, rows):
             periods[identity] = next(iter(values.values()))
             continue
         ordered = sorted(values, key=lambda op_id: rows[op_id]["seq"])
-        detail = "；".join(f"第 {rows[op_id]['seq']} 道 {_time(values[op_id][0])} 至 {_time(values[op_id][1])}" for op_id in ordered)
+        detail = "；".join(
+            f"第 {rows[op_id]['seq']} 道 {_time(values[op_id][0])} 至 {_time(values[op_id][1])}"
+            if op_id in completed_ids else f"第 {rows[op_id]['seq']} 道 {_time(values[op_id][0])} 开工，尚未登记实际完工"
+            for op_id in ordered)
         problems.append(facts.public_issue(issue("external_cycle_actuals_differ",
-            "合并外协组各道工序报工的实际起止不一致（" + detail + "），排产会被拦下。同组工序是一起送出、一起回厂的，"
+            "合并外协组各道工序已登记的实际时间不一致（" + detail + "），排产会被拦下。同组工序是一起送出、一起回厂的，"
             "请到现场记录把同组报工更正成同一实际开工、完工时间。"), rows[ordered[0]]))
     return periods, problems
 
@@ -114,7 +118,7 @@ def preflight_external_cycles(facts, batches, operations, projections):
     batch_models = {batch["batch_id"]: SimpleNamespace(**batch) for batch in batches}
     rows = {op["id"]: op for op in operations}
     groups = _merged_groups(facts.tables, batch_models, models)
-    periods, problems = _actual_periods(facts, groups, seeds, fixed | completed, rows)
+    periods, problems = _actual_periods(facts, groups, seeds, fixed | completed, rows, completed_ids=completed)
     cycles = _cycle_members(groups, periods, fixed | completed)
     return cycles, problems
 
@@ -134,8 +138,15 @@ _SEEDED = (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED, EXECUTION_STATU
 
 
 def _holds_resource(row):
-    # 旧现场记录的设备人员可能没有对上编号，按原始设备人员号也算。
     return any(row.get(key) is not None for key in ("actual_machine_ref", "actual_operator_ref", "actual_machine_id", "actual_operator_id"))
+
+
+def _projection_holds_resource(projection):
+    if any(_holds_resource(row) for row in projection["reports"]):
+        return True
+    # Public legacy rows retain an unresolved business key through a data gap.
+    return any(legacy_resource_refs(projection["legacy_facts"], field, gaps=projection["data_gaps"])
+               for field in ("actual_machine_ref", "actual_operator_ref"))
 
 
 def _planned_external(facts, version):
@@ -152,7 +163,7 @@ def _resource_bearing_external(facts, version, projections):
     for offset in range(0, len(missing), 10000):
         supplied.update((row.operation_ref, row.to_dict()) for row in ledger.project_operations(missing[offset:offset + 10000]))
     return {op["id"]: (op, supplied[ref]) for ref, op in external.items()
-            if any(_holds_resource(row) for row in supplied[ref]["reports"] + supplied[ref]["legacy_facts"])}
+            if _projection_holds_resource(supplied[ref])}
 
 
 def _external_resource_issue(facts, op, projection, *, this_run_only):
@@ -169,14 +180,17 @@ def _external_resource_issue(facts, op, projection, *, this_run_only):
 
 
 def _guard_verdict(guard_facts, op_id, selected):
-    """守卫两处拒绝外协带资源：要按报工核对的工序（整次排产都拦），选中且保留执行记录的工序（选这批才拦）。"""
+    """跟随报工守卫、范围外在制预约和选中实际种子的资源归属规则。"""
     fact = guard_facts.get(op_id)
     if fact is None:
         return None
     if fact.ledger_operation_ref is not None and "execution_ledger_external_resource_conflict" in fact.execution_protection_reasons:
         return "all_runs"
-    if op_id in selected and fact.actual_status in _SEEDED and (fact.actual_machine_id is not None or fact.actual_operator_id is not None):
-        return "this_run"
+    if fact.actual_machine_id is not None or fact.actual_operator_id is not None:
+        if fact.actual_status in (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED):
+            return "all_runs"
+        if op_id in selected and fact.actual_status in _SEEDED:
+            return "this_run"
     return None
 
 
