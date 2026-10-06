@@ -84,10 +84,14 @@ def _decode_value(value, field, file_format):
     if type(value) is str:
         if file_format == "csv" and value.startswith("'"):
             value = value[1:]
+            if value == "":
+                return value
         if value == r"\N":
             return None
         if value.startswith("\\\\"):
             value = value[1:]
+        if not value.strip():
+            raise ValidationError("这一格只填了空格。留空表示保持原样，要清除请填 \\N。", field=field)
         # 导出的 XLSX 把库存写成文本格（保住全部有效数字），所以 XLSX 里的文本数字和 CSV 一样按数字读。
         if field == "stock_qty":
             if _NUMBER.fullmatch(value) is None:
@@ -102,11 +106,17 @@ def _parse_row(number, values, cell_errors, fields, file_format):
         errors.append({"row": number, "field": "columns", "code": "invalid_input", "message": "数据行里有表头之外的多余列。"})
     for index, field in enumerate(fields):
         value = values[index] if index < len(values) else None
-        if index in cell_errors:
+        if field == "created_at":
+            if value is not None and value != "":
+                parsed[field] = value
+        elif index in cell_errors:
             errors.append({"row": number, "field": field, "code": "invalid_input", "message": cell_errors[index]})
         elif value is not None and value != "":
             try:
-                parsed[field] = _decode_value(value, field, file_format)
+                value = _decode_value(value, field, file_format)
+                # CSV 的防公式前缀剥掉后只剩空串，也按空格子省略；None 仍是显式清除。
+                if value != "":
+                    parsed[field] = value
             except ValidationError as exc:
                 errors.append({"row": number, "field": field, "code": "invalid_input", "message": exc.message})
     return {"row": number, "values": parsed, "errors": errors}

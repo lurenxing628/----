@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import sqlite3
+from io import BytesIO
+
+from core.services.workbench.material.file_codec import write_material_file
+from tests.workbench.material_file_support import codec_rows, file_bytes
 
 BASE = "/api/workbench/v1/entities/material"
 
@@ -49,8 +53,36 @@ def test_real_create_read_update_clear_delete_and_replay_keep_hidden_fields(app_
     assert len(ref) == 48 and ref != "M / %001"
     detail = _detail(app_client, ref)
     assert detail["fields"] == {"spec": "round", "unit": "kg", "stock_qty": 12.5, "remark": "keep-me"}
+    for fmt in ("csv", "xlsx"):
+        response = app_client.post("/api/workbench/v1/imports/material/preview", data={
+            "file": (BytesIO(file_bytes([("M / %001", "   ", "   ", "   ")], fmt,
+                                       ("business_code", "spec", "unit", "remark"))), "input." + fmt),
+            "format": fmt, "mode": "upsert"}, content_type="multipart/form-data")
+        assert response.status_code == 200, response.get_data(as_text=True)
+        preview = response.get_json()["data"]
+        assert not preview["can_confirm"]
+        assert {error["field"] for error in preview["rows"][0]["errors"]} == {"spec", "unit", "remark"}
+        assert _detail(app_client, ref)["fields"] == detail["fields"]
+    response = app_client.post("/api/workbench/v1/imports/material/preview", data={
+        "file": (BytesIO(file_bytes([("M / %001", "'", "'", "'")], "csv",
+                                   ("business_code", "spec", "unit", "remark"))), "input.csv"),
+        "format": "csv", "mode": "upsert"}, content_type="multipart/form-data")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    preview = response.get_json()["data"]
+    assert preview["rows"][0]["errors"] == [] and preview["rows"][0]["result"] == "unchanged"
+    assert preview["rows"][0]["changes"] == {} and _detail(app_client, ref)["fields"] == detail["fields"]
     with _database(app_client) as conn:
+        # 历史资料允许存空字符串，原样导出的 CSV 回导也必须保持这份原值。
+        conn.execute("UPDATE Materials SET unit='' WHERE material_id=?", ("M / %001",))
         original = dict(conn.execute("SELECT * FROM Materials").fetchone())
+    detail = _detail(app_client, ref)
+    response = app_client.post("/api/workbench/v1/imports/material/preview", data={
+        "file": (BytesIO(write_material_file(codec_rows([original]), "csv").content), "input.csv"),
+        "format": "csv", "mode": "upsert"}, content_type="multipart/form-data")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    preview = response.get_json()["data"]
+    assert preview["rows"][0]["errors"] == [] and preview["rows"][0]["result"] == "unchanged"
+    assert preview["rows"][0]["changes"] == {} and _detail(app_client, ref)["fields"]["unit"] == ""
     changed = _write(app_client, ref, "update", detail["write_context"], {"label": "Changed", "fields": {"spec": None}}, "api-update-request-00001")
     assert changed.status_code == 200 and changed.get_json()["result"] == "committed"
     fresh = _detail(app_client, ref)

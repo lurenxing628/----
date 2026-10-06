@@ -45,10 +45,14 @@ def _decode(value, field, fmt):
     if type(value) is str:
         if fmt == "csv" and value.startswith("'"):
             value = value[1:]
+            if value == "":
+                return value
         if value == r"\N":
             return None
         if value.startswith("\\\\"):
             value = value[1:]
+        if not value.strip():
+            raise ValidationError("这一格只填了空格。留空表示保持原样，要清除请填 \\N。", field=field)
     value = _decode_field(value, field)
     # 导出的 XLSX 把数字写成文本格（保住全部有效数字），所以 XLSX 里的文本数字和 CSV 一样按数字读。
     if field in NUMERIC_FIELDS and (fmt == "csv" or type(value) is str):
@@ -101,6 +105,10 @@ def _parse(number, values, errors, fields, fmt, readonly):
     for index, field in enumerate(fields):
         value = values[index] if index < len(values) else None
         try:
+            if field in readonly:
+                if value is not None and value != "":
+                    parsed[field] = value
+                continue
             if index in errors:
                 raise ValidationError(errors[index], field=field)
             if value is not None and value != "":
@@ -109,7 +117,10 @@ def _parse(number, values, errors, fields, fmt, readonly):
                 # 在 Excel 里被重排一下，回导整行就被拒。
                 # 但键必须留下：file_input._declares_empty_skills 靠 skills_declared 这个键
                 # 在不在，区分「导出回导、空技能列表保持不变」和「明确声明没有技能」。
-                parsed[field] = value if field in readonly else _decode(value, field, fmt)
+                value = _decode(value, field, fmt)
+                # CSV 的防公式前缀剥掉后只剩空串，也按空格子省略；None 仍是显式清除。
+                if value != "":
+                    parsed[field] = value
         except ValidationError as exc:
             issues.append({"row": number, "field": field, "code": "invalid_input", "message": exc.message})
     return {"row": number, "values": parsed, "errors": issues}

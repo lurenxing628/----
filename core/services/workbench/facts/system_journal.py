@@ -44,7 +44,21 @@ class SystemMaintenanceJournal:
         if not directory or not os.path.isabs(directory):
             raise WorkbenchCommandRejected("maintenance_unavailable", "还没有配置维护目录，备份和恢复暂时不能用。请先在系统维护页设置维护目录。", 503)
         self.directory = directory
-        self.database_scope = input_fingerprint(os.path.normcase(os.path.realpath(database_path)))
+        database = os.path.normcase(os.path.realpath(database_path))
+        self._path_scope = input_fingerprint(database)
+        # The default journal travels with user-data. Its existing history keeps
+        # the same identity after a move; a separately configured directory must
+        # still prove that it belongs to the currently configured database path.
+        follows_database = os.path.normcase(os.path.realpath(directory)) == database + ".system-journal"
+        self._database_scope = None if follows_database else self._path_scope
+
+    @property
+    def database_scope(self):
+        if self._database_scope is None:
+            self.records()
+            if self._database_scope is None:
+                self._database_scope = self._path_scope
+        return self._database_scope
 
     def _path(self, request_key):
         key = validate_request_key(request_key)
@@ -59,10 +73,14 @@ class SystemMaintenanceJournal:
         if (row["action"] == "restore" and row["state"] in TERMINAL_STATES
                 and row.get("code") not in _RESTORE_TERMINALS[row["state"]]):
             raise RuntimeError("恢复记录没有可确认的终态，须人工核查。")
+        if self._database_scope is None:
+            self._database_scope = row["database_scope"]
         return row
 
     def _record_content(self, row):
-        if (not isinstance(row, dict) or row.get("version") != 1 or row.get("database_scope") != self.database_scope
+        if (not isinstance(row, dict) or row.get("version") != 1
+                or not re.fullmatch(r"[a-f0-9]{64}", str(row.get("database_scope", "")))
+                or (self._database_scope is not None and row["database_scope"] != self._database_scope)
                 or row.get("state") not in JOB_STATES or not isinstance(row.get("history"), list)
                 or row.get("action") not in ("create", "delete", "restore")
                 or row.get("record_hash") != input_fingerprint({key: value for key, value in row.items() if key != "record_hash"})

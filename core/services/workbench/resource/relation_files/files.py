@@ -5,7 +5,7 @@
 不依赖写入顺序，也不会出现"后一行把前一行刚设好的主操又翻回去"。
 """
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -121,11 +121,12 @@ class WorkbenchRelationFileService:
         return row
 
     def _reject_duplicate_pairs(self, rows) -> None:
-        seen: Dict[str, List[Dict[str, Any]]] = {}
+        seen: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
         for row in rows:
-            code = row["business_code"]
-            if code is not None:
-                seen.setdefault(code, []).append(row)
+            values = row["values"]
+            if "operator_code" in values and "machine_code" in values:
+                pair = (values["operator_code"], values["machine_code"])
+                seen.setdefault(pair, []).append(row)
         for repeated in seen.values():
             if len(repeated) > 1:
                 numbers = ", ".join(str(item["row"]) for item in repeated)

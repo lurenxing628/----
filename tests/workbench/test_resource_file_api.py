@@ -6,8 +6,8 @@ from io import BytesIO
 import pytest
 from flask import Blueprint
 
-from tests.workbench.material_actions_api_support import expire_contexts, snapshot, without_startup_logs
-from tests.workbench.resource_file_support import file_bytes
+from tests.workbench.material_actions_api_support import database, expire_contexts, snapshot, without_startup_logs
+from tests.workbench.resource_file_support import exported, file_bytes
 
 BASE = "/api/workbench/v1"
 
@@ -73,6 +73,21 @@ def test_real_registration_public_preview_and_committed_restart_replay(client, k
     assert "entity_key" not in json.dumps(preview) and "revision" not in json.dumps(preview)
     first = command(client, kind, preview)
     assert first.status_code == 200, first.get_data(as_text=True)
+    with database(client) as conn:
+        conn.executemany("UPDATE OpTypes SET remark=? WHERE op_type_id=?", [("", "R1"), ("keep", "R2")])
+        conn.commit()
+        content = exported(conn, kind, "csv", category=category).content
+    response = client.post(BASE + "/imports/" + kind + "/preview", data={
+        "file": (BytesIO(content), "input.csv"), "format": "csv", "mode": "upsert", "category": category},
+        content_type="multipart/form-data")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    roundtrip = response.get_json()["data"]
+    assert all(row["errors"] == [] and row["result"] == "unchanged" for row in roundtrip["rows"])
+    response = upload(client, kind, [("R2", "'")], category=category, headers=("business_code", "remark"))
+    assert response.status_code == 200, response.get_data(as_text=True)
+    row = response.get_json()["data"]["rows"][0]
+    assert row["errors"] == [] and row["changes"] == {} and row["result"] == "unchanged"
+    assert row["after"]["remark"] == "keep"
     expire_contexts(client)
     replay = command(client, kind, preview)
     assert replay.get_json() == {**first.get_json(), "replayed": True}
