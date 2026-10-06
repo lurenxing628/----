@@ -1,7 +1,6 @@
 """Maintain batch material requirements inside the guarded command transaction."""
 
 from collections import defaultdict
-from datetime import date
 from typing import cast
 
 from core.models.enums import ReadyStatus
@@ -71,7 +70,7 @@ class WorkbenchBatchMaterialService:
         return match["id"]
 
     @staticmethod
-    def _ready(rows):
+    def _ready(rows, material_day):
         codes, flags = set(), []
         for row in rows:
             if (row["material_id"], row["operation_id"]) in codes:
@@ -81,7 +80,7 @@ class WorkbenchBatchMaterialService:
             available = number(row["available_qty"], "available_quantity")
             if required is None or available is None:
                 raise WorkbenchCommandRejected("invalid_input", "需求量和到料量不能为空，请明确填写。", 422)
-            available = quantity(available) + sum(quantity(item["quantity"]) for item in row["arrivals"] if item["arrival_date"] <= date.today().isoformat())
+            available = quantity(available) + sum(quantity(item["quantity"]) for item in row["arrivals"] if item["arrival_date"] <= material_day)
             row["ready_status"] = ReadyStatus.YES.value if covers_quantity(available, quantity(required)) else ReadyStatus.NO.value
             flags.append((row["ready_status"] == ReadyStatus.YES.value, available > 0))
         if flags and all(flag[0] for flag in flags):
@@ -96,7 +95,7 @@ class WorkbenchBatchMaterialService:
         if type(batch["quantity"]) is not int or batch["quantity"] < 0:
             raise WorkbenchCommandRejected("constraint_conflict", "请先在批次基础信息中填好数量，再核对物料需求。")
         old, final = self._proposed(ref, payload, batch, facts)
-        ready = self._ready(list(final.values()))
+        ready = self._ready(list(final.values()), facts["material_day"])
         changed = bool(payload["removed_keys"])
         for key in payload["removed_keys"]:
             self.repo.delete(cast(int, old[key]["id"]))

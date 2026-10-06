@@ -16,7 +16,7 @@ MASTER_OVERVIEW_TABLES = (
     "OperatorSkill", "OperatorMachine", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
     "WorkbenchSupplierProfiles", "WorkbenchMachineGroupMembers", "WorkbenchMachineGroups",
     "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchOpTypePolicies",
-    "Batches", "BatchMaterials", "OperatorCalendar", "MachineOpTypes",
+    "Batches", "BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews", "OperatorCalendar", "MachineOpTypes",
     "WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations",
     "WorkbenchEntityRefs",
 )

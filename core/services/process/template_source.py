@@ -8,12 +8,18 @@ def valid_supplier(fact):
                 and fact["capable"] and fact["inactive_reason"] is None)
 
 
+def group_suppliers_consistent(group, supplier_ids):
+    """Only a merged shipment requires all members to use the same supplier."""
+    return group["merge_mode"] != "merged" or len(set(supplier_ids)) <= 1
+
+
 def valid_external_group(group, part_no, members):
     valid_range = (type(group["start_seq"]) is int and type(group["end_seq"]) is int
                    and 0 < group["start_seq"] <= group["end_seq"])
     return (group["part_no"] == part_no and group["merge_mode"] in ("separate", "merged") and valid_range
             and all(source == "external" and type(seq) is int and group["start_seq"] <= seq <= group["end_seq"]
-                    for seq, source in members))
+                    for seq, source, _supplier_id in members)
+            and group_suppliers_consistent(group, (supplier_id for _seq, _source, supplier_id in members)))
 
 
 def _source_type_issues(source, type_name, category):
@@ -31,7 +37,8 @@ def _source_type_issues(source, type_name, category):
 def _external_group_issue(op, group, group_valid):
     if not group_valid or op["ext_group_id"] is not None and group is None:
         return "group_invalid"
-    if group is not None and group["supplier_id"] is not None and group["supplier_id"] != op["supplier_id"]:
+    if (group is not None and group["merge_mode"] == "merged"
+            and group["supplier_id"] is not None and group["supplier_id"] != op["supplier_id"]):
         return "group_supplier_mismatch"
     return None
 

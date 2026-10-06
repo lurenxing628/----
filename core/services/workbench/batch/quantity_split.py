@@ -98,8 +98,8 @@ class WorkbenchQuantitySplitService:
                 target.append({"material_id": row["material_id"], "operation_id": row["operation_id"],
                     "required_qty": row[prefix + "_required"], "available_qty": row[prefix + "_available"],
                     "arrivals": row[prefix + "_arrivals"]})
-        source_ready = WorkbenchBatchMaterialService._ready(source_rows)
-        child_ready = WorkbenchBatchMaterialService._ready(child_rows)
+        source_ready = WorkbenchBatchMaterialService._ready(source_rows, facts["material_day"])
+        child_ready = WorkbenchBatchMaterialService._ready(child_rows, facts["material_day"])
         ready_day = stored_date(batch["ready_date"])
         if batch["ready_date"] is not None and ready_day is None:
             raise WorkbenchCommandRejected("constraint_conflict", "原批次齐套日期无效，请先核对后再拆分。")

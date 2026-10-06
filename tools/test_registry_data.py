@@ -62,6 +62,7 @@ _WORKBENCH_TESTS = (
     'tests/workbench/test_execution_ledger_commands.py',
     'tests/workbench/test_field_report_void_api.py',
     'tests/workbench/test_field_workspace_api.py',
+    'tests/workbench/test_master_material_readiness.py',
     'tests/workbench/test_material_api.py',
     'tests/workbench/test_material_stage_release.py',
     'tests/workbench/test_operator_calendar_api.py',

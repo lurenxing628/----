@@ -22,7 +22,7 @@ def template_diagnostics(rows, facts, batch):
         group = groups.get(row.get("ext_group_id"))
         supplier = suppliers.get(row.get("supplier_id"))
         group_supplier = suppliers.get(group["supplier_id"]) if group else None
-        group_valid = (group is None or group["valid"] and (group["supplier_id"] is None
+        group_valid = (group is None or group["valid"] and (group["merge_mode"] == "separate" or group["supplier_id"] is None
                        or _supplier_valid(group_supplier, row["op_type_id"])))
         errors = source_issues(row, type_name=kind["name"] if kind else None,
                               category=kind["category"] if kind else None,
@@ -51,7 +51,7 @@ _SOURCE_MESSAGES = {
 def _source_catalogs(rows, facts, batch):
     members = {}
     for row in rows:
-        members.setdefault(row.get("ext_group_id"), []).append((row["seq"], row["source"]))
+        members.setdefault(row.get("ext_group_id"), []).append((row["seq"], row["source"], row["supplier_id"]))
     groups = {group["group_id"]: dict(group, valid=valid_external_group(
         group, batch["part_no"], members.get(group["group_id"], []))) for group in facts["ExternalGroups"]}
     profiles = {row["supplier_id"]: row for row in facts["WorkbenchSupplierProfiles"]}

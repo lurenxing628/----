@@ -5,6 +5,7 @@ import re
 
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.process.template_source import group_suppliers_consistent
 from core.services.process.workflow_state import _group_facts
 
 
@@ -130,10 +131,13 @@ def project_operation(row, confirmation, group=None):
 def _group_member_issues(row, members, issues):
     # Reuse the confirmation rule; also retain the command-side cross-part reference guard.
     facts = dict(row, members=[[op["ref"], op["seq"], op["source"]] for op in members])
-    _, valid = _group_facts(facts, row["part_no"])
+    _, valid = _group_facts(facts, row["part_no"],
+        [(op["seq"], op["source"], op["supplier_id"]) for op in members])
     if any(op["part_no"] != row["part_no"] for op in members):
         issues.append(issue("external_group_part_mismatch", "这个外协组被别的零件的工序用着，这里不拿它当有效合并周期。请到基础资料核对外协组。"))
-    if not valid and not any(item["code"] in ("external_group_range_invalid", "external_group_mode_unknown") for item in issues):
+    if not group_suppliers_consistent(row, (op["supplier_id"] for op in members)):
+        issues.append(issue("external_group_supplier_mismatch", "合并外协段的工序分属不同供应商，不能作为同一次外协。请在归属页整段核对供应商，或拆分外协段。"))
+    elif not valid and not any(item["code"] in ("external_group_range_invalid", "external_group_mode_unknown") for item in issues):
         issues.append(issue("external_group_members_invalid", "外协组里有非外协工序，或者有超出起止序范围的工序，这里不拿它当有效合并周期。请到基础资料核对外协组。"))
 
 

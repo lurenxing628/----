@@ -77,21 +77,25 @@ def _supplier(suppliers, supplier_id, op_type_id):
 def _groups(groups, operations):
     members = {}
     for op in operations:
-        members.setdefault((op["part_no"], op["ext_group_id"]), []).append([op["ref"], op["seq"], op["source"]])
+        members.setdefault((op["part_no"], op["ext_group_id"]), []).append(op)
     result = {}
     for group in groups:
         _ref(group["ref"])
-        group["members"] = members.get((group["part_no"], group["group_id"]), [])
-        fact, valid = _group_facts(group, group["part_no"])
+        current = members.get((group["part_no"], group["group_id"]), [])
+        # Keep the persisted confirmation signature shape. Each operation's source
+        # signature already owns its supplier; validation also needs the full set.
+        group["members"] = [[op["ref"], op["seq"], op["source"]] for op in current]
+        fact, valid = _group_facts(group, group["part_no"],
+            [(op["seq"], op["source"], op["supplier_id"]) for op in current])
         group["source_signature"], group["valid"] = _digest(fact), valid
         result[group["group_id"]] = group
     return result
 
 
-def _group_facts(group, part_no):
+def _group_facts(group, part_no, members):
     if group is None:
         return None, True
-    valid = valid_external_group(group, part_no, [(seq, source) for _, seq, source in group["members"]])
+    valid = valid_external_group(group, part_no, members)
     return {key: group[key] for key in ("ref", "start_seq", "end_seq", "merge_mode", "supplier_id", "members")}, valid
 
 
@@ -100,7 +104,7 @@ def _group_source(group, part_no, op_type_id, suppliers):
         return None, None, True
     valid = group["valid"] and group["part_no"] == part_no
     supplier = None
-    if group["supplier_id"] is not None:
+    if group["merge_mode"] == "merged" and group["supplier_id"] is not None:
         supplier, supplier_valid = _supplier(suppliers, group["supplier_id"], op_type_id)
         valid = valid and supplier_valid
     return group["source_signature"], supplier, valid
@@ -130,18 +134,32 @@ def _valid_hours(op, group):
     return _number(op["ext_days"], positive=True)
 
 
-def _source_signature(route, values, source_valid, old):
-    """Verify current source facts, including the former default-policy slot."""
+def _legacy_separate_supplier(group, suppliers):
+    """Old confirmations only admitted an active, capable group supplier."""
+    if group is None or group["merge_mode"] != "separate" or group["supplier_id"] is None:
+        return None
+    supplier = suppliers.get(group["supplier_id"])
+    if supplier is None:
+        return None
+    # Retain the former signature encoding, without consulting this unused
+    # supplier's present qualification. The declared group identity still matches.
+    return {"ref": _ref(supplier["ref"]), "status": "active", "inactive_reason": None, "capable": True}
+
+
+def _source_signature(route, values, source_valid, old, legacy_group_supplier=None):
+    """Verify actual source facts and recognize equivalent prior encodings."""
     source = _digest(["source-v1", route, values]) if source_valid else None
     if source and old is not None and old["signature"] != source:
-        # Verify all current business facts before accepting an old signature.
-        # Only the former default-policy slot may differ; never rewrite evidence
-        # during reads or carry a confirmation across actual supplier/group edits.
-        for mode in ("separate", "merged"):
-            legacy = _digest(["source-v1", route, values[:5] + [mode] + values[6:]])
-            if old["signature"] == legacy:
-                source = legacy
-                break
+        variants = [values]
+        if legacy_group_supplier is not None:
+            variants.append(values[:-1] + [legacy_group_supplier])
+        # Actual member suppliers and the declared group facts must still match.
+        # Only retired default/unused qualification slots may use the old encoding.
+        for candidate in variants:
+            for mode in (None, "separate", "merged"):
+                legacy = _digest(["source-v1", route, candidate[:5] + [mode] + candidate[6:]])
+                if old["signature"] == legacy:
+                    return legacy
     return source
 
 
@@ -150,7 +168,7 @@ def _hours_signature(source, op, group, old_hours):
     merged = group is not None and group["merge_mode"] == "merged"
     hours = _digest(["hours-v1", source, op["setup_hours"], op["unit_hours"], None if merged else op["ext_days"],
                      group["total_days"] if group else None]) if source and _valid_hours(op, group) else None
-    if hours and merged and old_hours is not None and old_hours["signature"] != hours:
+    if hours and group is not None and group["merge_mode"] == "merged" and old_hours is not None and old_hours["signature"] != hours:
         legacy = _digest(["hours-v1", source, op["setup_hours"], op["unit_hours"], op["ext_days"], group["total_days"]])
         if old_hours["signature"] == legacy:
             hours = legacy
@@ -160,7 +178,8 @@ def _hours_signature(source, op, group, old_hours):
 def _operation_facts(part, op, group, suppliers, records):
     route = [part["ref"], _ref(op["ref"]), op["seq"], op["op_type_name"]]
     values, source_valid = _source_facts(part, op, group, suppliers)
-    source = _source_signature(route, values, source_valid, records.get((op["ref"], "source")))
+    source = _source_signature(route, values, source_valid, records.get((op["ref"], "source")),
+                               _legacy_separate_supplier(group, suppliers))
     hours = _hours_signature(source, op, group, records.get((op["ref"], "hours")))
     return route, {"source": source, "hours": hours}
 

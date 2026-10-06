@@ -62,10 +62,13 @@ def _migrate_material_reviews(conn):
     if "wb_material_quantity_basis" in actual or any(
             name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "") for name, sql in legacy.items()):
         raise RuntimeError("Cannot migrate incomplete material review history.")
-    conn.execute("CREATE TEMP TABLE v37_BatchMaterialReviews AS SELECT * FROM BatchMaterialReviews")
+    # Accepted historical DDL can have a different physical column order.
+    conn.execute("CREATE TEMP TABLE v37_BatchMaterialReviews AS "
+                 "SELECT requirement_id,batch_quantity FROM BatchMaterialReviews")
     conn.execute("DROP TABLE BatchMaterialReviews")
     conn.execute(definitions["BatchMaterialReviews"])
-    conn.execute("INSERT INTO BatchMaterialReviews SELECT * FROM v37_BatchMaterialReviews")
+    conn.execute("INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) "
+                 "SELECT requirement_id,batch_quantity FROM v37_BatchMaterialReviews")
     conn.execute("DROP TABLE v37_BatchMaterialReviews")
     conn.execute(definitions["wb_material_quantity_basis"])
 

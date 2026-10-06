@@ -54,6 +54,7 @@ def date_text(value, issues, label):
 class BatchProjection:
     def __init__(self, facts):
         self.facts = facts
+        self.material_day = facts["material_day"]
         self.material_availability = MaterialAvailability(facts)
         self.relations = index_relations(facts)
         self.refs = {(row["kind"], row["entity_key"]): row["ref"] for row in facts["WorkbenchEntityRefs"] if row["active"]}
@@ -183,7 +184,7 @@ class BatchProjection:
         for key, allowed in (("priority", PRIORITIES), ("ready_status", READY), ("status", STATUSES)):
             if row[key] not in allowed:
                 issues.append(issue("原优先级、齐套或状态标记不明确。"))
-        display_ready, material_issues = self.material_availability.readiness_state(row, date.today().isoformat())
+        display_ready, material_issues = self.material_availability.readiness_state(row, self.material_day)
         issues.extend(material_issues)
         done, all_complete, status = batch_progress(ops, row["status"])
         if row["status"] == "completed" and (not ops or done != len(ops)):
@@ -218,4 +219,4 @@ class BatchProjection:
                          "arrivals": [{"arrival_date": item["arrival_date"], "quantity": item["quantity"]}
                                       for item in availability.arrivals[row["id"]]]})
         return {"basis": "batch_material_requirements_not_stock", "requirements": rows, "count": len(rows),
-                "display_status": availability.readiness_state(batch, date.today().isoformat())[0], "display_date": date_text(batch["ready_date"], [], "齐套日期")}
+                "display_status": availability.readiness_state(batch, self.material_day)[0], "display_date": date_text(batch["ready_date"], [], "齐套日期")}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.process.template_source import group_suppliers_consistent
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
@@ -102,22 +103,21 @@ def apply_source(conn, changes, operations):
 
 def source_group_changes(changes, operations, groups):
     incoming = {row[3]: row[:3] for row in changes}
-    changed_ids = set(incoming)
     affected, updates, by_group = [], [], {}
     for row in operations:
         if row["status"] == "active" and row["ext_group_id"] is not None:
             by_group.setdefault(row["ext_group_id"], []).append(row)
     for group in groups:
         members = by_group.get(group["group_id"], [])
-        if not any(row["id"] in changed_ids for row in members):
+        if not members:
             continue
         values = [incoming.get(row["id"], (row["source"], row["op_type_id"], row["supplier_id"])) for row in members]
         if any(row[0] != "external" for row in values):
             affected.append(group)
-        elif len({row[2] for row in values}) != 1:
+        elif not group_suppliers_consistent(group, (row[2] for row in values)):
             raise WorkbenchCommandRejected("group_supplier_mismatch", "外协段 {} 至 {} 的供应商必须一致。请整段更换供应商，或先在工时定额页拆分外协段。".format(group["start_seq"], group["end_seq"]), 422,
                                            operation_refs=[row["ref"] for row in members])
-        elif group["supplier_id"] != values[0][2]:
+        elif group["merge_mode"] == "merged" and group["supplier_id"] is not None and group["supplier_id"] != values[0][2]:
             updates.append((group["group_id"], values[0][2]))
     return affected, updates
 

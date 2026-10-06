@@ -19,7 +19,7 @@ SOURCES = {
 RELATIONS = ("OperatorSkill", "OperatorMachine", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
              "WorkbenchSupplierProfiles", "WorkbenchMachineGroupMembers", "WorkbenchMachineGroups",
              "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchOpTypePolicies",
-             "Batches", "BatchMaterials", "OperatorCalendar", "MachineOpTypes")
+             "Batches", "BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews", "OperatorCalendar", "MachineOpTypes")
 WORKFLOW = ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
 # 整表白名单归仓储所有；合同测试锁定它等于 SOURCES/RELATIONS/WORKFLOW 的展开顺序。
 TABLES = MASTER_OVERVIEW_TABLES
@@ -49,6 +49,7 @@ class MasterOverviewFacts:
         self.identities = {}
         self._indexes = {}
         self._groups = {}
+        self.material_day = None
 
     def available(self, *tables):
         return all(table in self.tables for table in tables)
@@ -80,6 +81,7 @@ class MasterOverviewFacts:
     def _load(self):
         self.tables, self.identities, self._indexes, self._groups = {}, {}, {}, {}
         self.gaps, self.workflow = [], None
+        self.material_day = date.today().isoformat()
         self.tables, present = self.repo.overview_tables()
         for name in TABLES:
             if name not in present:
@@ -106,4 +108,5 @@ class MasterOverviewFacts:
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
             self._load()
-            yield input_fingerprint(plain({"tables": self.tables, "workflow": self.workflow, "gaps": self.gaps}))
+            yield input_fingerprint(plain({"tables": self.tables, "workflow": self.workflow, "gaps": self.gaps,
+                                           "material_day": self.material_day}))

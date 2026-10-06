@@ -1,6 +1,8 @@
 """Raw, SELECT-only facts used by batch projections and transaction guards."""
 
 from contextlib import contextmanager
+from datetime import date
+from typing import Any, Dict
 
 from core.infrastructure.connection_guards import data_version
 from core.infrastructure.transaction import TransactionManager
@@ -29,8 +31,20 @@ class BatchFacts:
         self._stamp = None
         self._command = False
         self._lookups = {}
+        # The evaluation day belongs to the operation scope, not the raw write-cache stamp.
+        self._material_day = None
 
-    def load(self):
+    def load(self) -> Dict[str, Any]:
+        """Expose the captured material day while keeping the source cache unchanged."""
+        facts = self._load()
+        day = self._material_day
+        if day is None:
+            day = date.today().isoformat()
+            if self._command:
+                self._material_day = day
+        return dict(facts, material_day=day)
+
+    def _load(self):
         facts = self._pinned()
         if facts is not None:
             return facts
@@ -78,18 +92,19 @@ class BatchFacts:
 
     @contextmanager
     def _pin(self, facts):
-        previous = self._facts, self._stamp
+        previous = self._facts, self._stamp, self._material_day
         self._facts, self._stamp = facts, None
+        self._material_day = self._material_day or date.today().isoformat()
         try:
             yield self.fingerprint()
         finally:
-            self._facts, self._stamp = previous
+            self._facts, self._stamp, self._material_day = previous
             self._lookups = {}
 
     @contextmanager
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
-            with self._pin(self.load()) as fingerprint:
+            with self._pin(self._load()) as fingerprint:
                 yield fingerprint
 
     @contextmanager
@@ -99,7 +114,7 @@ class BatchFacts:
         Commands and previews that perform additional SQL use read_snapshot instead.
         An existing caller transaction is never committed or released here.
         """
-        with self._pin(self.load()) as fingerprint:
+        with self._pin(self._load()) as fingerprint:
             yield fingerprint
 
     @contextmanager
@@ -115,12 +130,13 @@ class BatchFacts:
         total_changes does not go back on rollback, so that later read would still get
         the facts cached from the rolled-back writes. Let such failures abort the command.
         """
-        previous = self._facts, self._stamp, self._command
+        previous = self._facts, self._stamp, self._command, self._material_day
         self._facts, self._stamp, self._command = None, None, True
+        self._material_day = None
         try:
             yield
         finally:
-            self._facts, self._stamp, self._command = previous
+            self._facts, self._stamp, self._command, self._material_day = previous
             self._lookups = {}
 
     def _row(self, facts, table, key, value):

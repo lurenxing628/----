@@ -1,10 +1,12 @@
 """Batch requirements are explicit cross-page facts, never stock reservations."""
 
-from core.services.material.stage_availability import covers_quantity, quantity
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
 
 from .overview_graph import number, text
 
-READY_TEXT = {"yes": "齐套", "no": "未齐套"}
+READY_TEXT = {"yes": "齐套", "no": "未齐套", "partial": "部分齐套"}
+MATERIAL_SOURCES = ("BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews")
 
 
 def batch_relations(graph):
@@ -24,6 +26,8 @@ def batch_relations(graph):
         if part:
             graph.link(part, batches[row["batch_id"]], "本零件的批次", "Batches.part_no")
     raw_batches = facts.index("Batches", "batch_id")
+    availability = MaterialAvailability(facts.tables) if facts.available(*MATERIAL_SOURCES) else None
+    readiness = {key: availability.readiness_state(row, facts.material_day) for key, row in raw_batches.items()} if availability else {}
     for row in facts.rows("BatchMaterials"):
         material = graph.by_key.get(("material", row["material_id"]))
         batch = batches.get(row["batch_id"])
@@ -38,24 +42,41 @@ def batch_relations(graph):
         graph.link(material, batch, "需求批次", "BatchMaterials.batch_id")
         part = graph.by_key.get(("part", raw_batches[row["batch_id"]]["part_no"]))
         graph.link(material, part, "需求批次对应零件", "BatchMaterials -> Batches.part_no", "批次需求物料")
-        _requirement_fields(graph, material, row, batch)
+        _requirement_fields(graph, material, row, batch, availability, readiness.get(row["batch_id"]))
 
 
-def _requirement_fields(graph, entity, row, batch):
+def _requirement_fields(graph, entity, row, batch, availability, readiness):
     code = batch["business_code"]
     evidence_key = batch["ref"] + ":" + str(row["id"])
-    for key, label, positive in (("required_qty", "需求数量", True), ("available_qty", "到料数量", False)):
+    for key, label, positive in (("required_qty", "需求数量", True), ("available_qty", "已有到料数量", False)):
         value = row[key]
         graph.field(entity, code + " " + label, value, "BatchMaterials." + key, valid=number(value, positive))
         if not number(value, positive):
             item = graph.issue(entity, "batch_material." + key, "批次" + label + "待核对",
                                "批次 " + code + " 的" + label + "填的是" + text(value) + "。", action="核对批次物料需求", related_ref=evidence_key)
             item["target"] = batch["target"]
-    graph.field(entity, code + " 齐套状态", READY_TEXT.get(row["ready_status"], row["ready_status"]), "BatchMaterials.ready_status", required=False)
-    if (number(row["required_qty"], True) and number(row["available_qty"])
-            and not covers_quantity(quantity(row["available_qty"]), quantity(row["required_qty"]))):
+    graph.field(entity, code + " 原维护齐套标记", READY_TEXT.get(row["ready_status"], row["ready_status"]), "BatchMaterials.ready_status", required=False)
+    if availability is None:
+        graph.unknown(entity, code + " 当前有效齐套", " / ".join(MATERIAL_SOURCES))
+        return
+    state, problems = readiness
+    amount = None
+    try:
+        amount = availability.available(row, graph.facts.material_day) if row["id"] in availability.reviews else quantity(row["available_qty"])
+    except WorkbenchCommandRejected as exc:
+        problems = problems + [{"code": exc.code, "message": str(exc)}] if not problems else problems
+    graph.field(entity, code + " 当前到料数量", float(amount) if amount is not None else None,
+                "BatchMaterials.available_qty + BatchMaterialArrivals", required=False)
+    graph.field(entity, code + " 批次当前有效齐套", "待核对" if problems else READY_TEXT.get(state, state),
+                "MaterialAvailability.readiness_state", required=False)
+    for problem in problems:
+        item = graph.issue(entity, "batch_material." + problem["code"], "批次物料依据待核对",
+                           "批次 " + code + "：" + problem["message"], action="核对批次物料需求", related_ref=evidence_key)
+        item["target"] = batch["target"]
+    if (not problems and amount is not None and number(row["required_qty"], True)
+            and not covers_quantity(amount, quantity(row["required_qty"], positive=True))):
         item = graph.issue(entity, "batch_material.pending", "批次到料记录不足",
-                           "批次 " + code + " 需求 " + text(row["required_qty"]) + "，已到料 " + text(row["available_qty"]) + "；库存不算预留也不算到料。",
+                           "批次 " + code + " 需求 " + text(row["required_qty"]) + "，截至 " + graph.facts.material_day + " 已到料 " + str(amount) + "；库存不算预留也不算到料。",
                            action="核对批次物料需求", related_ref=evidence_key)
         item["target"] = batch["target"]
 
