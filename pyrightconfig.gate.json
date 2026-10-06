@@ -33,6 +33,7 @@
     "verify_manual_styles.py"
   ],
   "pythonVersion": "3.8",
+  "pythonPlatform": "Windows",
   "typeCheckingMode": "basic",
   "venvPath": ".",
   "venv": ".venv",

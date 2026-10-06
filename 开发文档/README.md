@@ -157,7 +157,7 @@ Python 3.8 兼容扫描把语法错误、立即求值的不兼容注解和运行
 - 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它，绕过后不能当作已经通过本地提交检查。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 和 CI 阻断。
 - `scripts/run_quality_gate.py` 包含全仓测试收集、`python tools/check_full_test_debt.py`、工具版本与依赖检查、`ruff check`、主链与工具脚本 `pyright`、import cycle 检查、Python 3.8 语法检查、必需回归结果复用、治理台账检查与速查表核对。
-- `pyrightconfig.gate.json` 只覆盖 `app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/` 主链，是主链 gate 的类型检查口径。
+- `pyrightconfig.gate.json` 覆盖 `app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/` 主链，类型检查目标固定为 Windows / Python 3.8，与产品目标一致。
 - `pyrightconfig.tools.json` 覆盖门禁和维护脚本，是 `pyright_tools_full` 的正式工具脚本门禁口径。
 - `pyrightconfig.json` 保留为全仓类型债务盘点入口，包含 `tests/` 等更宽范围，不直接作为本轮硬门禁。
 - 上面这些 Pyright 命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。
