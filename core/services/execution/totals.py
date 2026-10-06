@@ -42,12 +42,17 @@ def _finish_quantities(totals, finishes):
     quantities = []
     for row in finishes:
         supplement = totals.linked.get(row["legacy_fact_ref"])
-        quantity = supplement.completed_quantity if supplement else row["quantity_done"]
+        # A linked supplement fills an unknown old quantity. It never removes or
+        # replaces a known cumulative fact, including persisted incomplete rows.
+        quantity = row["quantity_done"]
+        if quantity is None and supplement:
+            quantity = supplement.completed_quantity
         if quantity is None:
             totals.unknown += 1
         else:
             quantities.append(quantity)
-        if supplement and row["quantity_done"] is not None and row["quantity_done"] != quantity:
+        if (supplement and row["quantity_done"] is not None and supplement.completed_quantity is not None
+                and row["quantity_done"] != supplement.completed_quantity):
             totals.gaps.append(gap("legacy_quantity_conflict", "补填的数量和原来的完工记录对不上，原完工记录仍然保留，请核对后更正。"))
     return quantities
 

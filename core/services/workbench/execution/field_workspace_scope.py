@@ -7,6 +7,8 @@ from datetime import datetime
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 
+from .actual_gantt_scope import matches_execution_resource
+
 STATES = ('unreported', 'started', 'partial', 'paused', 'exception', 'complete')
 FILTERS = ('plan_ref', 'query', 'state', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'range_start', 'range_end', 'batch_ids')
 PARAMETERS = FILTERS + ('page', 'size', 'snapshot_ref', 'source', 'task_ref', 'operation_ref')
@@ -92,7 +94,7 @@ def page_input(value):
     return tuple(result)
 
 
-def matches(task, scope):
+def matches(task, scope, labels):
     if scope.get('batch_ids') and task['batch_id'] not in scope['batch_ids']:
         return False
     if scope.get('range_start') and not overlaps(task['planned_start'], task['planned_end'], scope['range_start'], scope['range_end']):
@@ -104,6 +106,8 @@ def matches(task, scope):
                       task.get('planned_machine_label'), task.get('planned_operator_label')]
         for report in task['execution']['reports']:
             searchable.extend(report.get(key) for key in ('report_no', 'actual_machine_label', 'actual_operator_label'))
+        for fact in task['execution']['legacy_facts']:
+            searchable.extend(labels.get(fact[key]) for key in ('actual_machine_ref', 'actual_operator_ref'))
         if scope['query'].casefold() not in ' '.join(value for value in searchable if isinstance(value, str)).casefold():
             return False
     if scope.get('plan_finish_date_from') and not scope['plan_finish_date_from'] <= task['planned_end'][:10] <= scope['plan_finish_date_to']:
@@ -115,4 +119,4 @@ def _matches_resource(task, scope):
     if not scope.get('resource_ref'):
         return True
     kind, ref = scope['resource_type'], scope['resource_ref']
-    return task['planned_' + kind + '_ref'] == ref or any(row['actual_' + kind + '_ref'] == ref for row in task['execution']['reports'])
+    return matches_execution_resource({kind + '_ref': task['planned_' + kind + '_ref']}, task['execution'], kind, ref)

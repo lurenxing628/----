@@ -6,6 +6,8 @@ import math
 from collections import Counter
 from statistics import median
 
+from core.services.execution.processing_hours import covered_legacy_scopes
+
 from .review_values import hour_totals
 
 
@@ -38,6 +40,7 @@ def summary(operations, records):
 
 def resource_rows(records, kind):
     groups = {}
+    covered = covered_legacy_scopes(records)
     # 外协不占本厂设备和人员：资源工时只统计自制工序的记录，外协不混进「未填写」行。
     for event in (row for row in records if row["operation_source"] != "external"):
         key = event[kind + "_ref"]
@@ -49,7 +52,7 @@ def resource_rows(records, kind):
         group["production_reports"] += event["record_kind"] == "production_report"
         group["records"].append(event)
     return [{**group, "operations": len(group["operations"]), "batches": len(group["batches"]),
-             **hour_totals(group["records"]), "records": len(group["records"])} for group in groups.values()]
+             **hour_totals(group["records"], covered_scopes=covered), "records": len(group["records"])} for group in groups.values()]
 
 
 def _trend(operations, as_of):

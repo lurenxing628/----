@@ -3,6 +3,7 @@
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Any, Iterable, Mapping, Optional, Set
 
 from core.models.operation_execution_event import (
     OperationExecutionEvent,
@@ -20,6 +21,25 @@ class LegacyEvidence:
     state: str = ""
     records: list = field(default_factory=list)
     gaps: list = field(default_factory=list)
+
+
+def legacy_resource_refs(rows: Iterable[Mapping[str, Any]], field: str, *,
+                         gaps: Iterable[Mapping[str, Any]] = ()) -> Set[Optional[str]]:
+    """Keep known actual identities; distinguish omitted event fields from unbound identities.
+
+    Stored rows retain the original business key. Public ledger rows express an
+    unresolved key through their data gap instead, without exposing that key.
+    """
+    refs: Set[Optional[str]] = set()
+    source_field = field.replace("_ref", "_id")
+    for row in rows:
+        if row[field] is not None:
+            refs.add(row[field])
+        elif row.get(source_field) is not None:
+            refs.add(None)
+    if any(item["code"] == "legacy_resource_identity_unresolved" and field in item["fields"] for item in gaps):
+        refs.add(None)
+    return refs
 
 
 def _validate_group(group, now):
@@ -57,8 +77,9 @@ def _display_gaps(raw, public):
                           legacy_fact_ref=public["legacy_fact_ref"], fields=public["unavailable_fields"]))
     missing = []
     for kind in ("machine", "operator"):
-        if raw.get("actual_" + kind + "_id") is not None and public["actual_" + kind + "_ref"] is None:
-            missing.append("actual_" + kind + "_ref")
+        field = "actual_" + kind + "_ref"
+        if None in legacy_resource_refs([raw], field):
+            missing.append(field)
     if missing:
         result.append(gap("legacy_resource_identity_unresolved", "这条旧记录里的实际设备或人员对不上现在的资料。筛选需要判断这条记录的实际设备或人员时，系统会停止并提示，避免静默漏掉这条记录；请先核对资料。",
                           legacy_fact_ref=public["legacy_fact_ref"], fields=missing))

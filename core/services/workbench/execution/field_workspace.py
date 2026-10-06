@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.execution.processing_hours import hour_totals
 from core.services.workbench.facts.execution_projection import attach_context
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -44,6 +45,8 @@ class FieldWorkspaceService:
         refs = {row[key] for p in projections.values() for row in p['reports'] + [item['report'] for item in p['voided_reports']]
                 for key in ('actual_machine_ref', 'actual_operator_ref') if row[key]}
         refs.update(task[key] for task in plan['tasks'] for key in ('machine_ref', 'operator_ref') if task[key])
+        refs.update(row[key] for p in projections.values() for row in p['legacy_facts']
+                    for key in ('actual_machine_ref', 'actual_operator_ref') if row[key])
         return {row['ref']: row['label'] for row in self.repo.resources(refs)}
 
     def cohort(self, scope):
@@ -73,7 +76,7 @@ class FieldWorkspaceService:
             task = self._task(row, projections[row['operation_ref']], labels, names)
             # 报工页据此对外协工序不提供实际设备、人员选择；写入时仍以服务端校验为准。
             task['source'] = facts['operations'][row['operation_ref']]['source']
-            if matches(task, count_scope):
+            if matches(task, count_scope, labels):
                 scope_tasks.append(task)
                 if not scope.get('state') or task['execution']['execution_state'] == scope['state']:
                     tasks.append(task)
@@ -122,14 +125,15 @@ class FieldWorkspaceService:
         counted = tasks if scope_tasks is None else scope_tasks
         state_counts = {state: sum(task['execution']['execution_state'] == state for task in counted) for state in STATES}
         reports = [report for task in counted for report in task['execution']['reports']]
-        unknown = sum(report['effective_processing_hours'] is None for report in reports)
-        known = sum(report['effective_processing_hours'] for report in reports if report['effective_processing_hours'] is not None)
+        legacy = [fact for task in counted for fact in task['execution']['legacy_facts']]
+        hours = hour_totals(reports + legacy)
         return {'tasks': len(tasks), 'reports': sum(len(task['execution']['reports']) for task in tasks),
                 'complete': sum(task['execution']['execution_state'] == 'complete' for task in tasks),
                 'incomplete': sum(task['execution']['data_quality'] != 'complete' for task in tasks),
                 'state_counts': state_counts, 'state_scope_tasks': len(counted),
-                'effective_processing_hours': None if unknown else known,
-                'known_effective_processing_hours': known, 'unknown_hour_reports': unknown}
+                'effective_processing_hours': hours['effective_processing_hours'],
+                'known_effective_processing_hours': hours['known_effective_processing_hours'],
+                'unknown_hour_reports': hours['unknown_hour_events']}
 
     def _with_contexts(self, tasks):
         """Issue write contexts for the returned rows only; cohort tasks stay token-free."""

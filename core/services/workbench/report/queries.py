@@ -6,7 +6,6 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_report import TOPICS
 
 from .review_projection import project_cohort, validate_selected_refs
-from .review_records import resource_directory
 from .review_summary import charts, resource_rows, summary
 
 GAPS = ["执行状态与累计数量按报工记录统计，历史完工记录单独列示。",
@@ -28,8 +27,7 @@ def report_workspace(reader, facts, snapshot, topic, page, operation_ref=None):
     resources = {"machines": resource_rows(records, "machine"), "people": resource_rows(records, "operator")}
     rows = records if topic == "records" else resources[topic] if topic in resources else operations
     ordered, visible, pagination = page.apply(rows, SORTS[topic])
-    directory = resource_directory(facts)
-    choices = {**directory, "batch": facts["resources"]["batch"]}
+    choices = facts["choices"]
     scope_gaps = list(dict.fromkeys(gap for operation in operations for gap in operation["data_gaps"]))
     data = {"plan": facts["plan"], "scope": facts["scope"].scope(), "topic": topic, "provenance": "当前正式计划与报工记录（逐次报工、更正、旧现场记录）",
             "time_scope": {"selection": "plan_finish_date", "boundary": "inclusive_dates", "time_basis": "factory_local"},

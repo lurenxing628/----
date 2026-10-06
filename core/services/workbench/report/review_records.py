@@ -8,11 +8,19 @@ LEGACY_RECORD_LABEL = "历史现场记录"
 
 
 def resource_directory(facts):
+    return _resource_directory(facts["resources"], facts["ledger"]["resources"])
+
+
+def choice_directory(resources, actual_resources):
+    return {**_resource_directory(resources, actual_resources), "batch": resources["batch"]}
+
+
+def _resource_directory(resources, actual_resources):
     result = {}
     for kind, collection in (("machine", "machines"), ("operator", "operators")):
-        result[kind] = {row["ref"]: row for row in facts["resources"][kind].values()}
+        result[kind] = {row["ref"]: row for row in resources[kind].values()}
         result[kind].update((row["ref"], {key: row[key] for key in ("ref", "label", "available")})
-                            for row in facts["ledger"]["resources"][collection])
+                            for row in actual_resources[collection])
     return result
 
 

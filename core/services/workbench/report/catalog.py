@@ -36,7 +36,7 @@ CATALOG_CONTEXT = {
 
 
 def catalog_facts(reader, scope):
-    _, plan, version, span = reader.current_plan(ReportScope(source=scope.source, plan_ref=scope.plan_ref))
+    _, plan, version, span = reader.current_plan_metadata(ReportScope(source=scope.source, plan_ref=scope.plan_ref))
     scope = replace(scope, plan_ref=plan["plan_ref"])
     if scope.kind != "overdue":
         scope = replace(scope, window_date_from=scope.window_date_from or span["start"][:10],

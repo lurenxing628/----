@@ -11,6 +11,7 @@ from core.services.workbench.facts.execution_projection import (
     DATA_QUALITY_TEXT,
     EXECUTION_STATE_TEXT,
 )
+from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 
 from .field_report_files_codec import decode_reports, encode_reports
@@ -26,18 +27,18 @@ class FieldReportFileService:
         self.production = WorkbenchProductionReportService(conn, context_factory=context_factory)
 
     def _resource_index(self):
-        result = {}
+        result = {'codes': {}, 'labels': {}}
         for row in self.queries.active_resource_index_rows():
-            for value in (row["entity_key"], row["label"]):
+            for index, value in (('codes', row["entity_key"]), ('labels', row["label"])):
                 if type(value) is str and value:
-                    result.setdefault((row["kind"], value), set()).add(row["ref"])
+                    result[index].setdefault((row["kind"], value), set()).add(row["ref"])
         return result
 
     @staticmethod
     def _resource(index, kind, value):
         if not value:
             return None
-        options = index.get((kind, value), set())
+        options = index['codes'].get((kind, value)) or index['labels'].get((kind, value), set())
         if len(options) != 1:
             raise WorkbenchCommandRejected('invalid_input', '填的设备或人员在系统里找不到，或者有重名分不清，请核对。', 422)
         return next(iter(options))
@@ -124,8 +125,14 @@ class FieldReportFileService:
         target['result'] = 'rejected'
         target['errors'].append({'row': original, 'message': str(exc), 'code': exc.code})
 
-    @staticmethod
-    def rows(cohort, template=False):
+    def rows(self, cohort, template=False):
+        refs = {report.get('actual_' + kind + '_ref') for task in cohort['tasks']
+                for report in task['execution']['reports'] for kind in ('machine', 'operator')}
+        if template:
+            refs.update(task.get('planned_' + kind + '_ref') for task in cohort['tasks']
+                        for kind in ('machine', 'operator'))
+        codes = {row['ref']: row['business_code']
+                 for row in WorkbenchExecutionRepository(self.conn).resources(refs - {None})}
         result = []
         for task in cohort['tasks']:
             p = task['execution']
@@ -135,18 +142,18 @@ class FieldReportFileService:
             if template:
                 reports = [row for row in reports if any(row[key] is None for key in REQUIRED_FIELDS)] or [None]
             for report in reports:
-                result.append(FieldReportFileService._export_row(report, task, template))
+                result.append(self._export_row(report, task, template, codes))
         return result
 
     @staticmethod
-    def _export_row(report, task, template):
+    def _export_row(report, task, template, codes):
         row = report or {}
         return {'report_no': row.get('report_no') or 'BG-T-' + uuid.uuid4().hex,
                                'batch_id': task['batch_id'], 'operation_label': task['operation_label'],
                                'completed_quantity': row.get('completed_quantity'), 'actual_start': row.get('actual_start'),
                                'actual_end': row.get('actual_end'), 'effective_processing_hours': row.get('effective_processing_hours'),
-                               'machine_label': row.get('actual_machine_label') or (task['planned_machine_label'] if template else None),
-                               'operator_label': row.get('actual_operator_label') or (task['planned_operator_label'] if template else None),
+                               'machine_label': codes.get(row.get('actual_machine_ref') or (task['planned_machine_ref'] if template else None)),
+                               'operator_label': codes.get(row.get('actual_operator_ref') or (task['planned_operator_ref'] if template else None)),
                 'remark': row.get('remark', ''), **identity_values(task)}
 
     def download(self, cohort, template=False):

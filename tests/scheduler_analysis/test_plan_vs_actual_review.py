@@ -16,6 +16,7 @@ from core.services.report.exporters.xlsx import export_execution_review_xlsx
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from tests._support.paths import REPO_ROOT
 from tests.operation_execution.operation_execution_feedback_test_support import _build_app
+from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
 
 EXPECTED_HEADERS = [
     "批次",
@@ -49,6 +50,129 @@ DEAD_EXECUTION_REVIEW_LABEL_KEYS = (
     "actual_resource_identity_label",
     "actual_resource_export_label",
 )
+
+
+def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_case, monkeypatch):
+    from flask import Blueprint, Flask, g
+
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.models.workbench_report import ReportScope
+    from core.services.workbench.plan import queries as plan_queries
+    from core.services.workbench.report import facts as report_facts
+    from web.routes.workbench.reports import register_report_routes
+
+    case = ledger_case
+    case.install()
+    case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B2','P1',10)")
+    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M3','Other batch lathe','T1')")
+    others = [case.op('CROSS-' + str(index), batch='B2', seq=index) for index in (1, 2)]
+    case.plan(2, [case.op_id] + others, end='2026-09-10 00:00:00')
+    case.conn.execute("UPDATE Schedule SET machine_id='M3' WHERE version=2 AND op_id<>?", (case.op_id,))
+    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09T23:59:59.123456' WHERE version=2 AND op_id=?", (case.op_id,))
+    case.conn.commit()
+    monkeypatch.setattr(plan_queries, 'MAX_PLAN_TASKS', 2)
+    monkeypatch.setattr(report_facts, 'MAX_REPORT_OPERATIONS', 2)
+    app = Flask('bounded-finish-report')
+    app.config.update(TESTING=True, SECRET_KEY='bounded-finish-test')
+    bp = Blueprint('bounded_finish_report', __name__)
+    register_report_routes(bp)
+    app.register_blueprint(bp)
+
+    @app.before_request
+    def database():
+        g.db = case.conn
+
+    client, url = app.test_client(), '/api/workbench/v1/analytics'
+    whole = client.get(url)
+    assert whole.status_code == 413 and whole.get_json()['error']['code'] == 'query_too_large'
+    dates = {'plan_finish_date_from': '2026-09-09', 'plan_finish_date_to': '2026-09-09'}
+    before = case.conn.total_changes
+    first = client.get(url, query_string=dates)
+    assert first.status_code == 200, first.get_data(as_text=True)
+    payload = first.get_json()
+    assert payload['data']['summary']['operations'] == 1
+    assert payload['data']['rows'][0]['planned_end'] == '2026-09-09T23:59:59.123456'
+    export_scope = {**dates, 'snapshot_ref': payload['meta']['snapshot_ref'], 'format': 'csv'}
+    exported = client.get(url + '/export', query_string=export_scope)
+    assert exported.status_code == 200 and exported.headers['X-Workbench-Row-Count'] == '1'
+    for kind in ('utilization', 'downtime'):
+        catalog = client.get('/api/workbench/v1/reports/' + kind, query_string={
+            'window_date_from': '2026-09-09', 'window_date_to': '2026-09-09'})
+        assert catalog.status_code == 200, catalog.get_data(as_text=True)
+        assert catalog.get_json()['data']['scope']['selection'] == 'schedule_window_overlap'
+    batch = client.get(url, query_string={'batch_ref': case.ref('batch', 'B1')})
+    assert batch.status_code == 200 and batch.get_json()['data']['summary']['operations'] == 1
+    choices = batch.get_json()['data']['choices']
+    assert {row['label'] for row in choices['batch']} == {'B1', 'B2'}
+    assert {row['label'] for row in choices['machine']} == {'Lathe', 'Other batch lathe'}
+    other_ref = next(row['ref'] for row in choices['batch'] if row['label'] == 'B2')
+    switched = client.get(url, query_string={'batch_ref': other_ref})
+    assert switched.status_code == 200 and switched.get_json()['data']['summary']['operations'] == 2
+    assert case.conn.total_changes == before
+    case.conn.execute("UPDATE Machines SET name='Changed outside selected scope' WHERE machine_id='M3'")
+    case.conn.commit()
+    stale_choices = client.get(url + '/export', query_string=export_scope)
+    assert stale_choices.status_code == 409 and stale_choices.get_json()['error']['code'] == 'snapshot_stale'
+    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Historical lathe','T1')")
+    case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M2')")
+    case.conn.commit()
+    historical_ref = case.ref('machine', 'M2')
+    case.command('create', case.task(2, case.op_id), case.values(10, actual_machine_ref=historical_ref))
+    case.conn.execute("DELETE FROM OperatorMachine WHERE machine_id='M2'")
+    case.conn.execute("DELETE FROM Machines WHERE machine_id='M2'")
+    case.conn.commit()
+    empty = client.get(url, query_string={'resource_type': 'machine', 'resource_ref': historical_ref,
+        'plan_finish_date_from': '2026-09-20', 'plan_finish_date_to': '2026-09-20'})
+    assert empty.status_code == 200 and empty.get_json()['data']['summary']['operations'] == 0
+    # A replacement with the same business code cannot identify which old
+    # resource instance a preserved event actually used.
+    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Replacement lathe','T1')")
+    schedule_id = case.conn.execute('SELECT id FROM Schedule WHERE version=2 AND op_id=?', (others[0],)).fetchone()[0]
+    case.conn.execute("""INSERT INTO OperationExecutionEvents
+        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,event_type,reported_status,
+         event_time,actual_machine_id,idempotency_key,request_fingerprint,previous_state_revision,created_by)
+        VALUES (2,?,?,'B2','schedule','adopted','start','processing','2026-09-09T08:00:00',
+                'M2','unresolved-resource-review','unresolved-resource-review',?,'old-operator')""",
+        (schedule_id, others[0], str(others[0]) + ':0:0'))
+    case.conn.commit()
+    before = case.conn.total_changes
+    uncertain = {'batch_ref': other_ref, 'resource_type': 'machine', 'resource_ref': historical_ref}
+    unresolved = client.get(url, query_string=uncertain)
+    assert unresolved.status_code == 409 and unresolved.get_json()['error']['code'] == 'execution_resource_unavailable'
+    unresolved = client.get(url, query_string={**uncertain, 'resource_ref': 'unassigned'})
+    assert unresolved.status_code == 409 and unresolved.get_json()['error']['code'] == 'execution_resource_unavailable'
+    planned = client.get(url, query_string={**uncertain, 'resource_ref': case.ref('machine', 'M3')})
+    assert planned.status_code == 200 and planned.get_json()['data']['summary']['operations'] == 2
+    people = client.get(url, query_string={**uncertain, 'resource_type': 'operator', 'resource_ref': 'unassigned'})
+    assert people.status_code == 200 and people.get_json()['data']['summary']['operations'] == 1
+    unreported = client.get(url, query_string={**uncertain, 'focus': 'unreported'})
+    assert unreported.status_code == 200 and unreported.get_json()['data']['summary']['operations'] == 0
+    assert case.conn.total_changes == before
+    case.command('create', case.task(2, others[0]), {'effective_processing_hours': 0})
+    before = case.conn.total_changes
+    omitted = client.get(url, query_string={**uncertain, 'resource_ref': 'unassigned'})
+    assert omitted.status_code == 200 and omitted.get_json()['data']['summary']['operations'] == 1
+    assert case.conn.total_changes == before
+    export_scope['snapshot_ref'] = client.get(url, query_string=dates).get_json()['meta']['snapshot_ref']
+    reader = plan_queries.WorkbenchPlanQueryService(case.conn)
+    with pytest.raises(WorkbenchCommandRejected) as rejection, reader.read_snapshot():
+        reader._selected(case.plan_ref(2))
+    assert rejection.value.code == 'query_too_large'
+    case.conn.execute("UPDATE Schedule SET end_time='2026-09-09 23:59:59.234567' WHERE version=2 AND op_id=?", (case.op_id,))
+    case.conn.commit()
+    stale = client.get(url + '/export', query_string=export_scope)
+    assert stale.status_code == 409 and stale.get_json()['error']['code'] == 'snapshot_stale'
+    reused = report_facts.WorkbenchReportFacts(case.conn)
+    scope = ReportScope(**dates)
+    with reused.read_snapshot():
+        assert len(reused.read(scope)['rows']) == 1
+    case.conn.execute("UPDATE Schedule SET end_time='invalid' WHERE version=2 AND op_id=?", (others[0],))
+    case.conn.commit()
+    with pytest.raises(WorkbenchCommandRejected) as rejection, reused.read_snapshot():
+        reused.read(scope)
+    assert rejection.value.code == 'plan_unavailable'
+    invalid = client.get(url, query_string=dates)
+    assert invalid.status_code == 409 and invalid.get_json()['error']['code'] == 'plan_unavailable'
 
 
 def _insert_event(repo: OperationExecutionEventRepo, **overrides) -> None:

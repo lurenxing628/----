@@ -112,6 +112,38 @@ async function main() {
   const data = { availability: { state: 'available' }, items: Array.from({ length: 1000 }, (_, n) => ({ task: { end: '2026-09-09T08:00:00' },
     execution: { get execution_state() { reads++; return ['complete', 'unreported', 'partial'][n % 3]; }, confirmed_finish: '2026-09-09T08:30:00' } })) };
   assert.deepEqual(JSON.parse(JSON.stringify(modelContext.window.ActualGanttModel.metrics(data))), { complete: 334, pending: 333, reported: 333, average: 30 }); assert.equal(reads, 1000);
+  // A first historical supplement preserves the selected original scope's
+  // start/end, including legacy separators, padding and minute storage. It never takes the
+  // aggregate start from another plan or replaces known time with now.
+  const fieldContext = vm.createContext({ window: { APSResourceContract: { failure: message => new Error(message) },
+    WorkbenchTerms: { execution_states: {}, report_actions: {} }, WorkbenchFormat: {} } });
+  load(fieldContext, 'FieldContract.js'); load(fieldContext, 'FieldDraftModel.js');
+  const field = fieldContext.window.FieldDraftModel, contract = fieldContext.window.FieldContract;
+  const legacyTask = { execution: { first_actual_start: '2026-09-01T00:00:00', legacy_facts: [
+    { event_type: 'start', recorded_against_task_ref: 'other-plan', event_time: '2026-09-01 00:00:00', actual_machine_ref: 'other-machine', actual_operator_ref: 'other-operator' },
+    { event_type: 'start', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-08  08:00', actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator' }
+  ] } };
+  const legacy = { recorded_against_task_ref: 'selected-plan', event_time: '2026-09-09  10:00', quantity_done: 10 };
+  const initialized = field.initialize({ task: legacyTask, legacy, record: null, action: 'create', now: new Date('2030-01-01T00:00:00Z') });
+  assert.equal(initialized.draft.actual_start, '2026-09-08T08:00:00');
+  assert.equal(initialized.draft.actual_end, '2026-09-09T10:00:00');
+  assert.equal(initialized.draft.actual_machine_ref, 'original-machine');
+  assert.equal(initialized.draft.actual_operator_ref, 'original-operator');
+  assert.equal(contract.input(initialized.draft, null, 'create').actual_end, '2026-09-09T10:00:00');
+  for (const [start, end] of [
+    ['2026/09/08 08:00', '2026/09/09 10:00'],
+    ['2026-09-08 08：00', '2026-09-09 10：00'],
+    ['2026-9-8 8:0', '2026-9-9 10:0'],
+    ['2026-09- 8 08:00', '2026-09- 9 10:00']
+  ]) {
+    legacyTask.execution.legacy_facts[1].event_time = start;
+    const normalized = field.initialize({ task: legacyTask, legacy: { ...legacy, event_time: end }, record: null, action: 'create' });
+    const values = contract.input(normalized.draft, null, 'create');
+    assert.equal(values.actual_start, '2026-09-08T08:00:00');
+    assert.equal(values.actual_end, '2026-09-09T10:00:00');
+  }
+  assert.equal(field.initialize({ task: legacyTask, record: null, action: 'create',
+    legacy: { recorded_against_task_ref: 'no-start', event_time: '2026-09-09', quantity_done: 10 } }).draft.actual_start, '');
   console.log(JSON.stringify({ read_identity_and_cancellation: true, unmount_refresh_waiters_cancelled: outcomes.length, unstarted_refresh_loads: queuedLoads,
     scroll_scans: scans, unrelated_scroll_refreshes: 0, context_updates: 60,
     trailing_history_writes: 1, immediate_navigation_and_history_restore: true, restoring_pagehide_preserved: true,

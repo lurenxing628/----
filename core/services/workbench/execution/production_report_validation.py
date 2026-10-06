@@ -1,10 +1,13 @@
 """Resource and lifecycle constraints, rechecked under the outer command lock."""
 
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from core.models.operation_execution_event import parse_operation_event_time
 from core.models.resource_capabilities import machine_types
 from core.models.workbench_execution_input import reject
 from core.models.workbench_identity import WorkbenchEntityIdentity
+from core.services.execution.legacy import legacy_resource_refs
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
@@ -92,16 +95,55 @@ def require_current(facts, operation_ref, task_ref=None):
     return current
 
 
-def validate_legacy_link(legacy, legacy_fact_ref, values):
-    if legacy_fact_ref is None:
-        return
+def _legacy_link_scope(legacy, legacy_fact_ref):
     row = next((row for row in legacy if row["legacy_fact_ref"] == legacy_fact_ref), None)
     if row is None or row["event_type"] != "finish" or not row["recorded_against_task_ref"]:
         reject("指定的历史记录不是这道工序能明确补齐的完工记录。请重新选择要补齐的记录。", "constraint_conflict", 409)
-    known = {"actual_end": row["event_time"].replace(" ", "T"), "completed_quantity": row["quantity_done"]}
-    for field, value in known.items():
-        if value is not None and values.get(field) is not None and values[field] != value:
+    return row, [fact for fact in legacy if fact["recorded_against_task_ref"] == row["recorded_against_task_ref"]]
+
+
+def legacy_link_values(legacy: List[Dict[str, Any]], legacy_fact_ref: Optional[str]) -> Dict[str, Any]:
+    """Known facts from the selected historical scope, never from current plan resources."""
+    if legacy_fact_ref is None:
+        return {}
+    row, scope = _legacy_link_scope(legacy, legacy_fact_ref)
+    try:
+        actual_end = parse_operation_event_time(row["event_time"]).isoformat(timespec="seconds")
+        starts = {parse_operation_event_time(fact["event_time"]).isoformat(timespec="seconds")
+                  for fact in scope if fact["event_type"] == "start"}
+    except ValueError:
+        reject("原完工记录的时间无法读取，请先核对历史记录。", "constraint_conflict", 409)
+    known = {"actual_end": actual_end, "completed_quantity": row["quantity_done"]}
+    if len(starts) > 1:
+        reject("原历史记录的开工先后不明确，请先核对历史记录。", "constraint_conflict", 409)
+    if starts:
+        known["actual_start"] = next(iter(starts))
+    for field in ("actual_machine_ref", "actual_operator_ref"):
+        refs = legacy_resource_refs(scope, field)
+        if len(refs) == 1 and None not in refs:
+            known[field] = next(iter(refs))
+    return known
+
+
+def validate_legacy_link(legacy, legacy_fact_ref, values, *, known_values=None):
+    if legacy_fact_ref is None:
+        return
+    known = legacy_link_values(legacy, legacy_fact_ref) if known_values is None else known_values
+    for field in ("actual_end", "completed_quantity"):
+        if known.get(field) is not None and values.get(field) != known[field]:
             reject("补填内容与原完工记录冲突，请核对后重试。", "constraint_conflict", 409)
+    if known.get("actual_start") is not None and values.get("actual_start") != known["actual_start"]:
+        reject("补填的实际开工与原历史记录不同，不能覆盖原开工时间。请核对后重试。", "constraint_conflict", 409)
+    _, scope = _legacy_link_scope(legacy, legacy_fact_ref)
+    for field in ("actual_machine_ref", "actual_operator_ref"):
+        actual_ref = values.get(field)
+        refs = legacy_resource_refs(scope, field)
+        if actual_ref is not None and None in refs:
+            reject("原历史记录的实际设备或人员身份不明确，不能用补齐改认其他资源。请先核对原始记录。",
+                   "constraint_conflict", 409)
+        if refs - {None} and refs != {actual_ref}:
+            reject("补填的实际设备或人员与原历史记录不同，不能覆盖原实际资源。请核对后重试。",
+                   "constraint_conflict", 409)
 
 
 def validate_projection_change(before, after):
@@ -174,11 +216,39 @@ def validate_merged_cycle(dependencies, operation, before, after, changed):
                + "。请按相同时间填写；如果那道的时间不对，请先更正那条报工。", "constraint_conflict", 409)
 
 
+def _retained_resource_refs(projection, field):
+    return {getattr(report, field) for report in projection.reports if getattr(report, field) is not None} | (
+        legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps))
+
+
+def _actual_period_basis(projection):
+    """Deduplicate and join adjacent periods; keep overlaps and unknowns visible."""
+    periods = {tuple(None if value is None else datetime.fromisoformat(value)
+                     for value in (report.actual_start, report.actual_end)) for report in projection.reports}
+    if projection.completion_basis == "legacy_finish_event":
+        periods.add(_actual_period(projection))
+    unresolved = frozenset((start, end) for start, end in periods if start is None or end is None or end <= start)
+    coverage = []
+    for start, end in sorted((start, end) for start, end in periods
+                             if start is not None and end is not None and end > start):
+        if coverage and start == coverage[-1][1]:
+            coverage[-1] = (coverage[-1][0], end)
+        else:
+            coverage.append((start, end))
+    return tuple(coverage), unresolved
+
+
 def _constraint_signature(projection):
+    # A linked report may only add hours to facts the old events already prove.
+    # Removing that detail must not look like withdrawing the actual execution.
     return (projection.execution_state, projection.first_actual_start, projection.confirmed_finish,
-            projection.known_completed_quantity, projection.unknown_record_count,
-            [(r.report_ref, r.actual_start, r.actual_end, r.completed_quantity, r.actual_machine_ref,
-              r.actual_operator_ref) for r in projection.reports])
+            projection.known_completed_quantity, projection.unknown_record_count, _actual_period_basis(projection),
+            _retained_resource_refs(projection, "actual_machine_ref"),
+            _retained_resource_refs(projection, "actual_operator_ref"))
+
+
+def execution_facts_changed(before, after):
+    return _constraint_signature(before) != _constraint_signature(after)
 
 
 def _downstream_conflicts(before, after, downstream, plans, dependencies):
@@ -207,12 +277,13 @@ def _upstream_conflicts(after, upstream, dependencies):
 
 
 def _actual_resources_changed(before, after, source):
-    before_resources = [(r.report_ref, r.actual_machine_ref, r.actual_operator_ref) for r in before.reports]
-    after_resources = [(r.report_ref, r.actual_machine_ref, r.actual_operator_ref) for r in after.reports]
-    if source == "external" and [row[0] for row in before_resources] == [row[0] for row in after_resources]:
+    fields = ("actual_machine_ref", "actual_operator_ref")
+    before_resources = tuple(_retained_resource_refs(before, field) for field in fields)
+    after_resources = tuple(_retained_resource_refs(after, field) for field in fields)
+    if source == "external" and not any(after_resources):
         # 外协不占本厂设备人员，排产也从不按外协报工的设备人员安排（守卫见外协带资源即拒绝）；
         # 只把旧记录里的设备人员清空不算改了采用依据，否则这类旧数据既改不掉、也挡住所有排产。
-        after_resources = [previous if row[1:] == (None, None) else row for previous, row in zip(before_resources, after_resources)]
+        return False
     return before_resources != after_resources
 
 
@@ -224,6 +295,8 @@ def _adopted_conflicts(before, after, current, revisions, source):
         conflicts.append({"code": "adopted_execution_basis_changed", "operation_ref": before.operation_ref})
     if before.execution_state == "complete" and after.execution_state != "complete":
         conflicts.append({"code": "adopted_completion_required", "operation_ref": before.operation_ref})
+    if _actual_period_basis(before) != _actual_period_basis(after):
+        conflicts.append({"code": "adopted_actual_period_changed", "operation_ref": before.operation_ref})
     if _actual_resources_changed(before, after, source):
         conflicts.append({"code": "adopted_actual_resource_changed", "operation_ref": before.operation_ref})
     return conflicts
@@ -231,7 +304,7 @@ def _adopted_conflicts(before, after, current, revisions, source):
 
 def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies=None, protect_plan=True):
     """Check final actual neighbours; corrections also retain adopted-plan protection."""
-    if _constraint_signature(before) == _constraint_signature(after):
+    if not execution_facts_changed(before, after):
         return []
     dependencies = dependencies or ReportDependencies(ledger, [after])
     operation = facts["operations"][before.operation_ref]

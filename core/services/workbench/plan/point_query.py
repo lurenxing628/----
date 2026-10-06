@@ -40,3 +40,36 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
         return {"version": version, "start_time": min(low for low, _ in intervals),
                 "end_time": end, "end_includes_point": any(row.get("_point_work") and high == end
                     for row, (_, high) in zip(rows, intervals))}
+
+
+class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
+    """Validate and aggregate plan metadata without admitting its full details."""
+
+    def __init__(self, conn, logger=None):
+        super().__init__(conn, logger=logger)
+        self._metadata_spans = {}
+
+    def get_plan_time_span(self, *, version, source_table, candidate_id, scenario_id=None):
+        key = (version, source_table, candidate_id, scenario_id)
+        if key not in self._metadata_spans:
+            sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+            low, high, points = None, None, []
+            for row in self.iter_rows(sql, [version] + extra):
+                start, end = _interval(row)
+                low = start if low is None else min(low, start)
+                high = end if high is None else max(high, end)
+                if start == end:
+                    points.append(row)
+            try:
+                annotated = annotate_plan_points(self.conn, points, source_table=source_table)
+            except WorkbenchCommandRejected as exc:
+                raise ValueError(str(exc)) from exc
+            self._metadata_spans[key] = None if low is None else {
+                "version": version, "start_time": low, "end_time": high,
+                "end_includes_point": any(_interval(row)[1] == high for row in annotated),
+            }
+        return self._metadata_spans[key]
+
+    def validate_detail_times(self, resolution):
+        self.get_plan_time_span(version=resolution.version, source_table=resolution.source_table,
+                                candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id)

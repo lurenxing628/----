@@ -100,30 +100,36 @@ def cohort_match(item, scope):
     if scope.batch_ids and task["batch_id"] not in scope.batch_ids:
         return False
     if scope.resource_ref is not None:
-        return _resource_match(task, execution, scope)
+        return matches_execution_resource(task, execution, scope.resource_type, scope.resource_ref)
     return True
 
 
-def _resource_match(task, execution, scope):
-    field = scope.resource_type + "_ref"
+def matches_execution_resource(task, execution, kind, ref):
+    field = kind + "_ref"
     owners = [task]
     if execution and execution["remaining_plan"]:
         owners.append(execution["remaining_plan"])
-    if any(owner.get(field) == scope.resource_ref for owner in owners):
+    values = [owner.get(field) for owner in owners]
+    unresolved = set()
+    if execution:
+        actual_field = "actual_" + field
+        unresolved = _unresolved_resource_facts(execution["data_gaps"], actual_field)
+        values.extend(report.get(actual_field) for report in execution["reports"])
+        # Only an unresolved historical identity is excluded from the empty
+        # selection. Other records and the plan retain their explicit omissions.
+        values.extend(fact.get(actual_field) for fact in execution["legacy_facts"]
+                      if fact.get(actual_field) is not None or
+                      (None not in unresolved and fact.get("legacy_fact_ref") not in unresolved))
+    if ref in values:
         return True
-    if not execution:
-        return False
-    if any(report.get("actual_" + field) == scope.resource_ref
-           for report in execution["reports"] + execution["legacy_facts"]):
-        return True
-    if _resource_unresolved(execution["data_gaps"], "actual_" + field):
+    if unresolved:
         raise WorkbenchCommandRejected("execution_resource_unavailable", "历史报工的设备或人员资料无法对应，请核对资源资料。")
     return False
 
 
-def _resource_unresolved(gaps, field):
-    return any(gap["code"] == "legacy_resource_identity_unresolved"
-               and (not gap.get("fields") or field in gap["fields"]) for gap in gaps)
+def _unresolved_resource_facts(gaps, field):
+    return {gap.get("legacy_fact_ref") for gap in gaps if gap["code"] == "legacy_resource_identity_unresolved"
+            and (not gap.get("fields") or field in gap["fields"])}
 
 
 def deadlines(item, as_of):

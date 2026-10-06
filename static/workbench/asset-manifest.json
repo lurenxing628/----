@@ -4275,8 +4275,8 @@
     },
     {
       "path": "workbench/app/FieldDraftModel.js",
-      "sha256": "3e6294c4c163c388368e3739a94b03af91c1e7e3ab0229731098838a6ad2565a",
-      "bytes": 2944,
+      "sha256": "bc527b94b75941171fe6fe8f7f689a3b62ad707a91fd0fb87dfc37002bb0a017",
+      "bytes": 4051,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/FieldContract.js"
@@ -4300,7 +4300,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/FieldDraftModel.js",
-              "sha256": "106a08f4e0c9c3a73465f510c626167e781b17983bad1367482e9b79bf55dc28"
+              "sha256": "04948693fd81392857d15344be0417dab73d784e87e2c92ea49c863a743b57cc"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -4309,7 +4309,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/FieldDraftModel.js",
-          "sha256": "106a08f4e0c9c3a73465f510c626167e781b17983bad1367482e9b79bf55dc28"
+          "sha256": "04948693fd81392857d15344be0417dab73d784e87e2c92ea49c863a743b57cc"
         }
       ]
     },
@@ -18453,7 +18453,7 @@
     },
     {
       "path": "frontend/workbench/app/FieldDraftModel.js",
-      "sha256": "106a08f4e0c9c3a73465f510c626167e781b17983bad1367482e9b79bf55dc28"
+      "sha256": "04948693fd81392857d15344be0417dab73d784e87e2c92ea49c863a743b57cc"
     },
     {
       "path": "frontend/workbench/app/FieldAPI.js",
@@ -19575,5 +19575,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "87174c3623d133b72a0ee4ced8a67088eb926dbc93e42beb1ee55c0500604fdc"
+  "build_id": "a117eb7466ae3335117012b5ea4161999d2f7b803a7c2b0b7399802a40616165"
 }

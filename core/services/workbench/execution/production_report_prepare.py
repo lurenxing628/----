@@ -1,7 +1,7 @@
 """In-memory batch simulation. No SQL writes, including preview and import checks."""
 
 import copy
-from typing import Dict, List, NoReturn, Optional
+from typing import Any, Dict, List, NoReturn, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_execution_input import (
@@ -17,6 +17,7 @@ from .production_report_dependencies import ReportDependencies
 from .production_report_validation import (
     ReportResourceValidator,
     execution_conflicts,
+    legacy_link_values,
     require_current,
     validate_legacy_link,
     validate_merged_cycle,
@@ -65,14 +66,14 @@ def _merge(action, original, patch):
     return values
 
 
-def _new_row(item, operation_ref, task, *, actor, now, row_number):
+def _new_row(item, operation_ref, task, *, actor, now, row_number, original_values) -> Dict[str, Any]:
     payload = item["payload"]
     return {"report_ref": new_ref(), "report_no": payload.get("report_no") or f"preview-{row_number:08d}",
             "allocate_number": "report_no" not in payload, "operation_ref": operation_ref,
             "recorded_against_task_ref": task["task_ref"], "recorded_against_plan_ref": task["plan_ref"],
             "source": payload["source"], "legacy_fact_ref": payload.get("legacy_fact_ref"), "recorded_at": now,
             "revision_ref": new_ref(), "sequence": 1, "previous_revision_ref": None, "action": "create",
-            "values": {key: payload.get(key, "" if key == "remark" else None) for key in REPORT_FIELDS},
+            "values": {key: payload.get(key, original_values.get(key, "" if key == "remark" else None)) for key in REPORT_FIELDS},
             "reason": payload.get("reason", ""), "local_operator": actor, "declared_operator": payload["declared_operator"],
             "revision_at": now, "receipt_ref": None}
 
@@ -101,6 +102,7 @@ class ReportBatchPreparation:
         refs = {item["payload"][field] for item in self.items for field in fields if item["payload"].get(field)}
         refs.update(history[-1]["values"][field] for group in self.facts["reports"].values()
                     for history in group.values() for field in fields if history[-1]["values"].get(field))
+        refs.update(row[field] for rows in self.facts["legacy"].values() for row in rows for field in fields if row[field])
         self.resources.preload(refs)
 
     def resolve(self):
@@ -155,12 +157,17 @@ class ReportBatchPreparation:
         old = history[-1] if history else None
         if old and old["report_ref"] in self.facts["voids"]:
             reject("这条报工已经撤销，不能再补齐、更正或用原单号导入。需要登记实际生产时请新增报工。", "report_voided", 409)
+        legacy = self.facts["legacy"].get(operation_ref, [])
+        link = old["legacy_fact_ref"] if old else item["payload"].get("legacy_fact_ref")
+        known = legacy_link_values(legacy, link)
+        row: Dict[str, Any]
         if old is None:
             if self.before_projections[operation_ref].completion_basis == "complete_reports":
                 reject("这道工序已经报完工，用「新增」不能把完工撤掉。请改用「更正」并填写原因。", "constraint_conflict", 409)
             if self.before_projections[operation_ref].completion_basis == "legacy_finish_event" and not item["payload"].get("legacy_fact_ref"):
                 reject("这道工序已有历史完工记录，「补齐」必须指明补的是哪一条，不能凭空加产量。请选定要补齐的记录。", "constraint_conflict", 409)
-            row = _new_row(item, operation_ref, task, actor=self.actor, now=now.isoformat(timespec="seconds"), row_number=index)
+            row = _new_row(item, operation_ref, task, actor=self.actor, now=now.isoformat(timespec="seconds"),
+                           row_number=index, original_values=known)
         else:
             row = dict(old, revision_ref=new_ref(), sequence=old["sequence"] + 1, previous_revision_ref=old["revision_ref"],
                        action=action, values=_merge(action, old["values"], item["payload"]),
@@ -168,9 +175,12 @@ class ReportBatchPreparation:
                        local_operator=self.actor, declared_operator=item["payload"]["declared_operator"],
                        revision_at=now.isoformat(timespec="seconds"), receipt_ref=None)
         validate_actual_values(row["values"], now)
+        validate_legacy_link(legacy, link, row["values"], known_values=known)
+        preserves_legacy_actuals = link is not None and all(known.get(field) == row["values"].get(field) for field in
+            ("actual_start", "actual_end", "actual_machine_ref", "actual_operator_ref"))
+        previous_values = known if preserves_legacy_actuals else old["values"] if old else None
         self.resources.validate(self.facts["operations"][operation_ref], row["values"],
-                                previous_values=old["values"] if old else None)
-        validate_legacy_link(self.facts["legacy"].get(operation_ref, []), row["legacy_fact_ref"], row["values"])
+                                previous_values=previous_values)
         if old and row["values"] == old["values"]:
             self.rows.append(self._result(index, item, old, "unchanged", action=action))
             return

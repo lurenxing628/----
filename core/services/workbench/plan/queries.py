@@ -27,7 +27,7 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .point_evidence import annotate_plan_points
-from .point_query import PointPlanCatalogRepository
+from .point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from .projection import (
     check_payload_size,
     project_capacity_blocked_plan,
@@ -160,18 +160,29 @@ class WorkbenchPlanQueryService:
     def _selected(self, plan_ref):
         repo = self._repo()
         locator = self.references.resolve_plan(plan_ref)
+        if locator.scenario_id is not None:
+            row = repo.get_scenario_context(locator.scenario_id)
+            if row is not None:
+                _admit_scenario(repo, row)
+        else:
+            _admit_version(repo, locator.version, locator.plan_role)
+        return self._selected_metadata(plan_ref, repo=repo)
+
+    def _selected_metadata(self, plan_ref, *, repo=None):
+        if not self.conn.in_transaction:
+            raise RuntimeError("Plan reads require read_snapshot() or an existing read transaction.")
+        repo = repo if repo is not None else PlanMetadataRepository(self.conn, logger=self.logger)
+        locator = self.references.resolve_plan(plan_ref)
         query = _PagePlanQueryService(repo, repo.latest_version())
         history = repo.get_history_identity_row(locator.version)
         if locator.scenario_id is not None:
             row = repo.get_scenario_context(locator.scenario_id)
             if row is None:
                 raise WorkbenchCommandRejected("entity_not_found", "所选试调方案已不存在，请到「试调排产方案」重新选择。", 404)
-            _admit_scenario(repo, row)
             entry = _scenario_entry(query, ScheduleAdjustmentScenario.from_row(row), history, query.latest)
         else:
             if history is None:
                 raise WorkbenchCommandRejected("entity_not_found", "所选排产记录已不存在，请刷新列表后重新选择。", 404)
-            _admit_version(repo, locator.version, locator.plan_role)
             option = next((row for row in repo.list_plan_role_options(locator.version) if row["role"] == locator.plan_role), None)
             entry = _role_entry(query, history, query.latest, locator.plan_role, option)
         identity = entry.plan_identity

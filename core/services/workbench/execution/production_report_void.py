@@ -10,6 +10,7 @@ from .production_report_dependencies import ReportDependencies
 from .production_report_prepare import ReportBatchRejected
 from .production_report_validation import (
     execution_conflicts,
+    execution_facts_changed,
     require_current,
     validate_projection_change,
 )
@@ -17,6 +18,8 @@ from .production_report_void_dependencies import adopted_quota_impacts
 
 
 def _downstream_impacts(conn, ledger, facts, before, after, report):
+    if not execution_facts_changed(before, after):
+        return []
     dependencies = ReportDependencies(ledger, [after])
     impacts = execution_conflicts(ledger, facts, before, after, [report], dependencies=dependencies)
     refs = dependencies.relatives(facts["operations"][before.operation_ref])
@@ -31,6 +34,7 @@ def _downstream_impacts(conn, ledger, facts, before, after, report):
                 "downstream_time_conflict": "后道工序时间与撤销后的完工记录冲突",
                 "adopted_execution_basis_changed": "当前正式计划使用了这次报工的数量或开工记录",
                 "adopted_completion_required": "当前正式计划依赖这次完工记录",
+                "adopted_actual_period_changed": "当前正式计划使用了这次报工的实际执行时段，撤销会改变已确认的时段依据",
                 "adopted_actual_resource_changed": "当前正式计划使用了这次报工的实际资源"}
     return [dict(item, operation_label=str(labels[item["operation_ref"]]["seq"]) + " " +
                  str(labels[item["operation_ref"]]["op_type_name"] or ""), message=messages[item["code"]]) for item in impacts]

@@ -11,12 +11,28 @@
       && C.validTime(record.actual_end) && (record.actual_start === null || C.validTime(record.actual_start) && record.actual_start <= record.actual_end))
       .slice().sort((a, b) => b.actual_end.localeCompare(a.actual_end) || b.report_no.localeCompare(a.report_no))[0] || null;
   }
+  function legacyTime(value) {
+    // Match the preserved formats accepted by parse_operation_event_time.
+    const stamp = value.trim().replace(/\//g, '-').replace(/T/g, ' ').replace(/：/g, ':');
+    const match = /^(\d{4})-(\d{1,2})-(\d{1,2}| [1-9])(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/.exec(stamp);
+    if (!match) return stamp;
+    const [year, month, day, hour = '0', minute = '0', second = '0'] = match.slice(1);
+    return year + '-' + month.padStart(2, '0') + '-' + day.trim().padStart(2, '0') + 'T'
+      + hour.padStart(2, '0') + ':' + minute.padStart(2, '0') + ':' + second.padStart(2, '0');
+  }
   function initialize({ task, record, legacy, action, retained, now = new Date() }) {
     if (retained) return { draft: { ...retained.draft }, initialDraft: { ...retained.initialDraft }, suggestions: { ...retained.suggestions } };
     const draft = C.draft(record), suggestions = {};
     if (legacy) {
-      draft.actual_end = legacy.event_time.replace(' ', 'T');
+      const scope = task.execution.legacy_facts.filter(fact => fact.recorded_against_task_ref === legacy.recorded_against_task_ref);
+      const start = scope.find(fact => fact.event_type === 'start');
+      draft.actual_start = start ? legacyTime(start.event_time) : '';
+      draft.actual_end = legacyTime(legacy.event_time);
       draft.completed_quantity = legacy.quantity_done === null ? '' : String(legacy.quantity_done);
+      for (const key of ['actual_machine_ref', 'actual_operator_ref']) {
+        const refs = [...new Set(scope.map(fact => fact[key]).filter(value => value != null))];
+        draft[key] = refs.length === 1 ? refs[0] : '';
+      }
     } else if (action === 'create' && !record) {
       const last = previous(task), current = localNow(now);
       draft.actual_start = last && last.actual_end <= current ? last.actual_end : current;
