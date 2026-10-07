@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-07",
+  "fetched_main": "269346407c0a47fd7b4c40747085cdf0becc4635",
+  "product_commit": "df2dc4f7c2bd8ee3d704b14138c6196d0581bd94",
+  "quality_gate_commit": "7f056985",
+  "quality_gate_steps": 17,
+  "pytest_nodes": 273,
+  "native_checks": {
+    "backup": {
+      "path": "output/win7-latest-20261007/suite-backup-1791371181.json",
+      "sha256": "b83ddf795c1f93a090e4d9d3affab7e57063397afd890a2ca5b0b7ec577f3b36",
+      "checks": 4,
+      "passed": true
+    },
+    "backup-verify": {
+      "path": "output/win7-latest-20261007/suite-backup-verify-1791371291.json",
+      "sha256": "bcae463a7559207295d3b1ef86d1c8148a05f2f2c95d816f28ad1c5e9fd73cae",
+      "checks": 2,
+      "passed": true
+    },
+    "business": {
+      "path": "output/win7-latest-20261007/suite-business-1791371016.json",
+      "sha256": "842009515fc9abb613e1f8e2ffe0abee28fc800a99a8efcef99645ffa2b1cabc",
+      "checks": 4,
+      "passed": true
+    },
+    "files": {
+      "path": "output/win7-latest-20261007/suite-files-1791370785.json",
+      "sha256": "2d2ffaa0962c0b8e10c77088602558c20a415fb140ee34b66cf8599c66d3bf0b",
+      "checks": 7,
+      "passed": true
+    },
+    "pressure": {
+      "path": "output/win7-latest-20261007/suite-pressure-1791371024.json",
+      "sha256": "71908f96e8744e04cacd3882eba43519c4fb3cac9c0db2e21a603c656bcc6a5e",
+      "checks": 6,
+      "passed": true
+    },
+    "seed": {
+      "path": "output/win7-latest-20261007/suite-seed-1791370594.json",
+      "sha256": "da55540fc5ebaed93290377407115a522544339f5f8a6b1af36f2c26a4c65992",
+      "checks": 10,
+      "passed": true
+    },
+    "ui": {
+      "path": "output/win7-latest-20261007/suite-ui-1791370794.json",
+      "sha256": "a6304cb03ab1513c0dcb1579689619bfc54c9c5909c5348b873d28ea838436a3",
+      "checks": 25,
+      "passed": true
+    }
+  },
+  "native_screen_count": 36,
+  "pressure_requests": 1024,
+  "pressure_concurrency": 16,
+  "package": {
+    "product_commit": "df2dc4f7c2bd8ee3d704b14138c6196d0581bd94",
+    "file": "APS_Portable_Win7_x64_20261007_v2.zip",
+    "bytes": 134446997,
+    "files": 408,
+    "sha256": "88b265ef70414be86860cd83b7ed2c918f509b4df09b5af8eb3c7d4819fb8acf",
+    "exe_sha256": "15a3f0bcc81b206e030e308860c6dfe17d0cfdd946159457fa732626627d7ac4",
+    "crc_passed": true,
+    "no_user_data": true
+  },
+  "proofs": [
+    {
+      "path": "output/win7-latest-20261007/final-ui.json",
+      "sha256": "28c430c0310f3a2c64f277b4a73410b87b1b5f53b447fb29f56221614b257dbf"
+    },
+    {
+      "path": "output/win7-latest-20261007/final-package-proof.json",
+      "sha256": "bcd63a9325d2651793e2a27631f65411591bb4ca75cd453000e8674b449e4cc6"
+    },
+    {
+      "path": "output/win7-latest-20261007/ui-asset-identity.json",
+      "sha256": "e77df52914176d4b9651617f782329e75b10aa4707d6fe1d451b50fa516f39e8"
+    },
+    {
+      "path": "output/win7-latest-20261007/quality-gate-7f056985.json",
+      "sha256": "a763212b13ca0401b096ddbfdea5f04d83b4823f104312d3f6a5c46192092b99"
+    },
+    {
+      "path": "output/win7-latest-20261007/full_test_debt_summary.json",
+      "sha256": "d3626141be77acd92640a394872f056320740aaed486d12c49db6c3c8e9e7e3c"
+    },
+    {
+      "path": "output/win7-latest-20261007/trial-subsecond-original-proof.json",
+      "sha256": "d8539c71aed4e7236ebf1bf4eee1ba1b67372aa8b64bfccfcda6e106fcd12fdb"
+    },
+    {
+      "path": "output/win7-latest-20261007/exchange/native-db-final.json",
+      "sha256": "4699f670d632ce0e39f4bb81ab6e8a756366a4bb41abca59e92c58806e54878a"
+    },
+    {
+      "path": "output/win7-latest-20261007/exchange/native-relocated-proof.json",
+      "sha256": "7a8c0ceed1d8c37b3738d2a495adf8adf6a2883cff445c402ae9191b78e3e2ed"
+    },
+    {
+      "path": "output/win7-latest-20261007/vm-restored.json",
+      "sha256": "9bf27050987be6c6a8eec4d151254a5c2b8c23d5eb16dc1267988799a4986e96"
+    }
+  ],
+  "preserved_failed_reports": [
+    {
+      "path": "output/win7-latest-20261007/suite-backup-1791370122.json",
+      "sha256": "86aeb7a7fb75825be59d642bd8f5d44455262e3361e14202192d1810df698249",
+      "source_commit": "269346407c0a47fd7b4c40747085cdf0becc4635",
+      "phase": "backup"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-backup-1791370232.json",
+      "sha256": "b230bfdd319d0e2dc21d0eaa71bc830a306f3d63c341111d27badaae900dc580",
+      "source_commit": "269346407c0a47fd7b4c40747085cdf0becc4635",
+      "phase": "backup"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-business-1791369962.json",
+      "sha256": "fbae3adab492e50601ec8bd9c89c3b57fd197c40576cb42127bab6a388a8f574",
+      "source_commit": "269346407c0a47fd7b4c40747085cdf0becc4635",
+      "phase": "business"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-business-1791370602.json",
+      "sha256": "33e8d88d11021ff1c18a8ac7c2250984507d42428c2a9625ea124824d4fd31ed",
+      "source_commit": "df2dc4f7c2bd8ee3d704b14138c6196d0581bd94",
+      "phase": "business"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-business-1791370684.json",
+      "sha256": "9e24aea2cc1f5b4a8f69c8f133cc8daaab79b2f6525cbead10e0beb5326d0636",
+      "source_commit": "df2dc4f7c2bd8ee3d704b14138c6196d0581bd94",
+      "phase": "business"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-business-1791370886.json",
+      "sha256": "70f3ebaba84d70bf2e79e1d0822bed801a1464a0626bb400c4df71e8fffca731",
+      "source_commit": "df2dc4f7c2bd8ee3d704b14138c6196d0581bd94",
+      "phase": "business"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-business-1791370971.json",
+      "sha256": "4502e67cdc0f761cb3894b249cbe31c89117076b6930be53c6f80001376e9351",
+      "source_commit": "df2dc4f7c2bd8ee3d704b14138c6196d0581bd94",
+      "phase": "business"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-seed-1791369741.json",
+      "sha256": "343f5937bd5b51c205e758223223a88689b48f8543951a3e259a197a9e236d13",
+      "source_commit": "269346407c0a47fd7b4c40747085cdf0becc4635",
+      "phase": "seed"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-seed-1791369816.json",
+      "sha256": "7a7b03d57f7c150478dc7413e2632730a9c51117a717c75584bd87e3d6b5988c",
+      "source_commit": "269346407c0a47fd7b4c40747085cdf0becc4635",
+      "phase": "seed"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-seed-1791369850.json",
+      "sha256": "7a434a4bbe273230a623e7f0f4cd03150d3967b05da227ee3a63f8d6b5eb1606",
+      "source_commit": "269346407c0a47fd7b4c40747085cdf0becc4635",
+      "phase": "seed"
+    },
+    {
+      "path": "output/win7-latest-20261007/suite-ui-1791370026.json",
+      "sha256": "792f8a70c1347c4ae7571e92448b4f35ff4d5a2adf73513255df8df189d7909b",
+      "source_commit": "269346407c0a47fd7b4c40747085cdf0becc4635",
+      "phase": "ui"
+    }
+  ],
+  "local_evidence_root": "C:\\Users\\lurenxing\\.codex\\worktrees\\win7-acceptance-fixes\\----\\output\\win7-latest-20261007",
+  "raw_data_committed": false
+}
