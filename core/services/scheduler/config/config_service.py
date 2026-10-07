@@ -214,6 +214,9 @@ class ConfigService:
     def ensure_defaults(self) -> None:
         self.bootstrap_service.ensure_defaults()
 
+    def ensure_defaults_if_pristine(self) -> bool:
+        return self.bootstrap_service.ensure_defaults_if_pristine()
+
     @classmethod
     def _preset_key(cls, name: str) -> str:
         return preset_ops.preset_key(name)

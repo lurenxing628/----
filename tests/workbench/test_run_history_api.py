@@ -7,7 +7,8 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 from flask import Blueprint
 
@@ -33,7 +34,7 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     original, paths = sqlite3.connect, []
 
     def guard(path, *args, **kwargs):
-        value = unquote(urlsplit(str(path)).path) if str(path).startswith("file:") else str(path)
+        value = url2pathname(urlsplit(str(path)).path) if str(path).startswith("file:") else str(path)
         assert value == ":memory:" or Path(value).resolve() == case.path.resolve(), "Nonfixture SQLite access"
         paths.append(value)
         return original(path, *args, **kwargs)

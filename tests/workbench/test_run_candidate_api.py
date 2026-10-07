@@ -2,7 +2,8 @@
 
 import sqlite3
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 from flask import Blueprint
 
@@ -23,7 +24,7 @@ def test_full_app_explicit_registration_only_temporary_connections(candidate_cas
     connections = []
 
     def guarded(path, *args, **kwargs):
-        value = unquote(urlsplit(str(path)).path) if str(path).startswith("file:") else str(path)
+        value = url2pathname(urlsplit(str(path)).path) if str(path).startswith("file:") else str(path)
         assert value == ":memory:" or Path(value).resolve() == case.path.resolve(), "Unexpected nonfixture SQLite path"
         connections.append(value)
         return original(path, *args, **kwargs)

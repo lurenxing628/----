@@ -41,6 +41,7 @@ from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
 from .runtime_server import create_runtime_server, make_runtime_server
 from .runtime_server import prepare_runtime_server as _prepare_runtime_server
+from .schedule_config import bootstrap_schedule_config
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .startup_config import resolve_config_class
 from .static_versioning import install_versioned_url_for
@@ -294,6 +295,7 @@ def create_app_core(
         schema_path=schema_path if os.path.exists(schema_path) else None,
         backup_dir=app.config.get("BACKUP_DIR"),
     )
+    bootstrap_schedule_config(app.config["DATABASE_PATH"], logger=app.logger)
 
     plugin_status = bootstrap_plugins(
         base_dir,
