@@ -8,10 +8,10 @@ its own savepoint, and never records or refreshes process-stage confirmations.
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_number
+from core.services.process.template_hours import ProcessTemplateHours
 from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 
-from .file_hours_preview import HoursFilePreview, protect_hours_preview
-from .quota_protection import ProcessQuotaProtection, quota_skip
+from .file_hours_preview import HoursFilePreview
 from .zero_hours import require_zero_confirmation
 
 
@@ -22,9 +22,6 @@ class ProcessHoursFileOperations:
 
     def preview_rows(self, decoded_rows, facts, target_ref=None):
         rows, extra = HoursFilePreview(facts, target_ref).build(decoded_rows)
-        locks = ProcessQuotaProtection(self.conn).read_locks(
-            [row["expected"]["operation_ref"] for row in rows if row["expected"] is not None])
-        extra.update(protect_hours_preview(rows, locks))
         extra["zero_review_required"] = any(row["requires_confirmation"] for row in rows)
         return rows, extra
 
@@ -33,20 +30,13 @@ class ProcessHoursFileOperations:
             raise RuntimeError("工时文件写入必须在外层 BEGIN IMMEDIATE 事务中执行。")
         with TransactionManager(self.conn).transaction():
             self._check_rows(rows, discard_group_refs, confirm_zero_unit_hours)
-            current, locks = ProcessQuotaProtection(self.conn).current(
-                [row["expected"]["operation_ref"] for row in rows])
-            skipped = self._skipped_rows(rows, current, locks)
-            writable = [row for row in rows if row["row"] not in skipped]
+            current = ProcessTemplateHours(self.conn).current([row["expected"]["operation_ref"] for row in rows])
+            self._check_current(rows, current)
             require_zero_confirmation(self.conn, [(current[row["expected"]["operation_ref"]], row["after"])
-                                                 for row in writable], confirm_zero_unit_hours)
-            groups = self._group_updates(writable)
+                                                 for row in rows], confirm_zero_unit_hours)
+            groups = self._group_updates(rows)
             results, affected = [], set()
             for row in rows:
-                if row["row"] in skipped:
-                    results.append({"row": row["row"], "result": "skipped", "entity_ref": row["entity_ref"],
-                                    "business_code": row["business_code"], "sequence": row["sequence"],
-                                    "skip_reason": skipped[row["row"]]})
-                    continue
                 self._operation_update(row)
                 affected.add(row["expected"]["part_ref"])
                 results.append({"row": row["row"], "result": "committed" if row["result"] == "update" else "unchanged",
@@ -62,29 +52,19 @@ class ProcessHoursFileOperations:
             raise WorkbenchCommandRejected("group_discard_mismatch", "工时导入不会解除外协组，请不要提交要解除的外协组。", 422)
         if type(zero_ack) is not bool:
             raise WorkbenchCommandRejected("invalid_input", "必须明确提供是否已复核零工时。", 422)
-        if any(row["errors"] or row["result"] not in ("update", "unchanged", "skipped") or row["input"] is None for row in rows):
+        if any(row["errors"] or row["result"] not in ("update", "unchanged") or row["input"] is None for row in rows):
             raise WorkbenchCommandRejected("constraint_conflict", "预检里有被拒绝的行，这批一条都没写入。请改好文件后重新预检。", 422)
         refs = [row["expected"]["operation_ref"] for row in rows]
         if len(refs) != len(set(refs)):
             raise WorkbenchCommandRejected("duplicate_entry", "这批里有重复工序，一条都没写入。请合并重复行后重新导入。", 422)
 
     @staticmethod
-    def _skipped_rows(rows, current, locks):
-        skipped = {}
+    def _check_current(rows, current):
         for row in rows:
-            ref = row["expected"]["operation_ref"]
             old = row["expected"]["operation"]
-            live = current[ref]
-            if old["id"] != live["id"] or old["part_no"] != live["part_no"] or old["seq"] != live["seq"]:
-                raise WorkbenchCommandRejected("stale_write", "工序的归属或序号在预检之后变了。请重新预检。")
-            values = row["input"]["hours"]
-            if ref in locks and "unit_hours" in values and values["unit_hours"] != live["unit_hours"]:
-                skipped[row["row"]] = quota_skip(ref, locks[ref])
-            elif row["result"] == "skipped":
-                raise WorkbenchCommandRejected("stale_write", "原跳过原因已变化，请重新预检。")
-            elif old["revision"] != live["revision"]:
+            live = current[row["expected"]["operation_ref"]]
+            if any(old[key] != live[key] for key in ("id", "part_no", "seq", "revision")):
                 raise WorkbenchCommandRejected("stale_write", "预检时的工序已经变了，这批没有写入。请重新预检。")
-        return skipped
 
     @staticmethod
     def _group_updates(rows):
@@ -118,7 +98,8 @@ class ProcessHoursFileOperations:
 
     def _update(self, table, key_column, key, expected, values):
         if (table, key_column) == ("PartOperations", "id"):
-            count = self.repo.update_operation_hours(key, values, ref=expected["ref"], revision=expected["revision"])
+            ProcessTemplateHours(self.conn).revise(expected["ref"], values, expected_revision=expected["revision"])
+            return
         elif (table, key_column) == ("ExternalGroups", "group_id"):
             count = self.repo.update_group_cycle(key, values, ref=expected["ref"], revision=expected["revision"])
         else:

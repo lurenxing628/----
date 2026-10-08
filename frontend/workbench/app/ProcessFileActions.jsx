@@ -87,12 +87,11 @@
       } catch (failure) { if (alive.current && !controller.signal.aborted) { setError(failure); setDownload({ busy: false }); } }
       finally { if (abort.current === controller) abort.current = null; }
     }
-    const allSkipped = data && importing && kind === 'hours' && data.skipped_count === data.rows.length;
     return <div className={'plana rm-actions' + ((data || saved) && importing ? ' rm-wide' : '')}>
       <Modal title={(importing ? '导入' : '导出') + label} icon={importing ? 'file-input' : 'file-output'} locked={locked} suspended={discard} onClose={() => close()}
         footer={<><Button disabled={locked} onClick={() => close()}>{done || !importing && download.name ? '完成' : '取消'}</Button>
           {!done && !recovery && <Button icon="check" disabled={disabled || locked} busy={busy} onClick={preflight}>{job ? '重新预检' : '开始预检'}</Button>}
-          {!done && !recovery && data && <Button transfer={importing ? 'import' : 'export'} className="btn primary" disabled={controlsDisabled} reason={reason} onClick={importing ? confirm : () => downloadFile(false)}>{importing ? allSkipped ? '确认跳过并记录结果' : data.zero_review_required ? '按 0 导入' : '确认导入' : '下载文件'}</Button>}</>}>
+          {!done && !recovery && data && <Button transfer={importing ? 'import' : 'export'} className="btn primary" disabled={controlsDisabled} reason={reason} onClick={importing ? confirm : () => downloadFile(false)}>{importing ? data.zero_review_required ? '按 0 导入' : '确认导入' : '下载文件'}</Button>}</>}>
         <div className="modal-b scroll rm-body">
           {recovery && !done && <p>正在查询上次导入结果，请稍候。</p>}
           {!recovery && !done && <><div className="rm-format"><span className="seclabel">文件格式</span><div className="seg" role="group" aria-label="文件格式">{['xlsx', 'csv'].map(value => <button type="button" key={value} className={format === value ? 'on' : ''} aria-pressed={format === value} disabled={controlsDisabled} onClick={() => { invalidate(); setFormat(value); }}>{value === 'xlsx' ? 'Excel (.xlsx)' : 'CSV (.csv)'}</button>)}</div></div>
@@ -103,7 +102,7 @@
           {busy && <p role="status">正在预检，尚未修改零件…</p>}<ErrorBox error={error} /><ErrorBox error={query.error} /><Issues issues={result && result.warnings || []} />
           {data && importing && !done && <><p className="iohint">{data.instructions}</p><window.ProcessFilePreview data={data} groups={groups} onGroups={setGroups} disabled={controlsDisabled} />
             {data.zero_review_required && <p className="process-zero-impact" role="status">以下工序的单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长：{data.rows.filter(row => row.requires_confirmation && row.after && row.after.unit_hours === 0).map(row => row.business_code + ' / 工序 ' + row.sequence).join('、')}。点「按 0 导入」保存这些数值。</p>}
-            <p>{kind === 'hours' ? '锁定跳过行不参与写入；其余行整体确认，任何一行不能提交，本批全部不修改。' : '本批整体确认；任何一行不能提交，本批全部不修改。'}</p></>}
+            <p>本批整体确认；任何一行不能提交，本批全部不修改。</p></>}
           {data && !importing && <p role="status">已核对 {data.part_count} 个零件，导出 {data.row_count} 行{kind === 'hours' ? '工序记录' : '零件记录'}，不限当前显示页。</p>}
           {reason && data && !done && <p role="status">{reason}</p>}{download.name && <p role="status">{window.WorkbenchTerms.download_started(download.name)}</p>}
           {importing && <window.ResourceForms.Feedback command={done && kind === 'hours' ? { ...visible, phase: 'idle' } : visible} />}

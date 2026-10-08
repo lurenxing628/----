@@ -88,7 +88,8 @@
       <ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}
       {registrationChanged && <div className="dy-note warning" role="status">外协物流登记已更新。当前仍显示离开前的筛选和条目，请点「刷新值班台」更新风险与处置。</div>}
       {!dialog && command.saved && <div className={'dy-note ' + (command.saved.phase === 'confirmed' ? 'success' : 'warning')}>{command.saved.phase === 'confirmed' ? '上次处置结果已确认，点「完成」后更新风险与处置。' : '上次处置还没确认结果，确认前不能新增处置。'}</div>}
-      <P.Overview data={data} analysis={analysisData} onCategory={category} onAnalysis={showAnalysis} /><ErrorBox error={analysisRead.error} />
+      <P.Overview data={data} analysis={analysisData} loading={list.loading} error={list.error}
+        analysisLoading={analysisRead.loading} analysisError={analysisRead.error} onCategory={category} onAnalysis={showAnalysis} /><ErrorBox error={analysisRead.error} />
       <div className="dy-work"><P.Rail data={data} category={q.category} onCategory={category} /><div className="dy-main">
         <div className="dy-section-head"><h3>{C.categories[q.category]}</h3>{currentSummary && q.category !== 'candidate' && <P.CategoryState summary={currentSummary} />}
           <label className="dy-category-picker">异常类别<select aria-label="异常类别" value={q.category} onChange={event => category(event.target.value)}>

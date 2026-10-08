@@ -7,6 +7,16 @@
       <input type="radio" name={id} checked={value === key} disabled={disabled || unavailable} onChange={() => onChange(key)} /><span>{text}</span>
     </label>)}</div>;
   }
+  function MaterialRules({ value, onChange, disabled }) {
+    const id = React.useId(), T = window.WorkbenchTerms, unavailable = disabled || !value.ready_check;
+    return <fieldset className="pf-material-rules" disabled={unavailable}><legend>物料齐套规则</legend>
+      <div className="pf-material-choices">{['strict', 'stage'].map(strategy => <label key={strategy} className={'pf-material-choice' + (value.material_strategy === strategy ? ' selected' : '')}>
+        <input type="radio" name={id} checked={value.material_strategy === strategy} disabled={unavailable} aria-describedby={id + '-' + strategy}
+          onChange={() => onChange({ material_strategy: strategy })} />
+        <span><strong>{T.material_strategies[strategy]}</strong><small id={id + '-' + strategy}>{T.material_descriptions[strategy]}</small></span>
+      </label>)}</div>
+    </fieldset>;
+  }
   // 不重排时段：没动过时不带这一项（按交付设置），检查后用本次生效的时段填显示值；改任一端就按本次单独填的发送，点「不设」发送 null。
   function HoldWindow({ value, effective, onChange, disabled }) {
     const C = window.PreflightContract, explicit = value.hold_window !== undefined;
@@ -46,13 +56,15 @@
     return <details className="pf-detail pf-hold-summary" data-hold-summary><summary>{text}{source}{locked.length ? '；正式计划里已锁定 ' + locked.length + ' 道' : ''} · 查看明细</summary>
       {!!kept.length && <HeldRows key="kept" rows={kept} label="不重排时段内保持原安排" />}{!!locked.length && <HeldRows key="locked" rows={locked} label="正式计划里已锁定" />}</details>;
   }
-  function Rules({ value, effective, onChange, disabled }) {
+  function Rules({ value, effective, onChange, disabled, onInspectMaterials, splitExpanded, materialPanel }) {
     return <section aria-labelledby="pf-rules-title"><h3 id="pf-rules-title">本次排产规则</h3><div className="pf-rows">
       <div className="pf-rule"><strong>齐套检查</strong><Segment label="齐套检查" value={value.ready_check} choices={[[true, '开启'], [false, '关闭']]} disabled={disabled} onChange={ready_check => onChange({ ready_check, ...(ready_check ? {} : { material_strategy: 'strict' }) })} /></div>
-      <div className="pf-rule"><strong>物料放行方式</strong><Segment label="物料放行方式" value={value.material_strategy || 'strict'}
-        choices={Object.entries(window.WorkbenchTerms.material_strategies)} disabled={disabled}
-        onChange={material_strategy => onChange({ material_strategy, ready_check: true })} /></div>
-      <div className="pf-rule pf-note">按工序齐套：只等待本序及前序需要的物料。分批开工：先预检可做数量，确认保存拆分后再排产。</div>
+      <MaterialRules value={value} onChange={onChange} disabled={disabled} />
+      {!value.ready_check && <p className="pf-material-disabled">已关闭齐套检查，本次排产不按到料条件限制。</p>}
+      <div className="pf-split-action"><div><strong>物料只够做一部分？</strong><p>先检查可做数量，确认后拆成两批。</p></div>
+        <Button icon={splitExpanded ? 'chevron-up' : 'search'} disabled={disabled || !value.ready_check || !onInspectMaterials} aria-expanded={!!splitExpanded} aria-controls={splitExpanded ? 'pf-material-split' : undefined}
+          onClick={onInspectMaterials}>{splitExpanded ? '收起数量检查' : '检查物料可做数量'}</Button></div>
+      {materialPanel}
       <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={[["auto_assign", '自动分配'], ['exclude', '暂不排']]} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>
       <HoldWindow value={value} effective={effective} onChange={onChange} disabled={disabled} />
       <div className="pf-rule"><span className="pf-fixed">已开工工序：保留记录（不可修改）</span></div>

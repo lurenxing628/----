@@ -41,7 +41,7 @@ from .workbench_run_schema import workbench_run_contract_issues, workbench_run_o
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
-CURRENT_SCHEMA_VERSION = 38
+CURRENT_SCHEMA_VERSION = 39
 
 
 class MigrationContractError(RuntimeError):

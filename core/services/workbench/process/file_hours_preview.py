@@ -11,21 +11,7 @@ from core.models.workbench_resource_action import action_row, reject_action_row
 from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key, supplied_values
 from .projection import public_sequence, require_ref
 from .queries import _plain
-from .quota_protection import quota_skip, quota_skip_summary
 from .zero_hours import zero_confirmation_required
-
-
-def protect_hours_preview(rows, locks):
-    for row in rows:
-        if row["errors"] or row["input"] is None:
-            continue
-        ref = row["expected"]["operation_ref"]
-        if ref in locks and row["expected"]["operation"]["unit_hours"] != locks[ref]["locked_unit_hours"]:
-            raise WorkbenchCommandRejected("calibration_lock_corrupt", "工艺模板的工时定额和定额已锁定的记录（来自工时校准）对不上，请联系维护人员核对定额锁定记录。", 500)
-        if ref in locks and "unit_hours" in row["changes"]:
-            row.update(result="skipped", after=deepcopy(row["before"]), changes={}, requires_confirmation=False,
-                       warnings=[], skip_reason=quota_skip(ref, locks[ref]))
-    return quota_skip_summary(rows)
 
 
 class HoursFilePreview:
@@ -103,7 +89,7 @@ class HoursFilePreview:
                                  "group": _plain(deepcopy(group))})
             assertions(values, operation, group)
             updates = hours_values(values, operation, group)
-            # 归属确认过期只挡真正改工时的行；原样导回的行判不变，和定额锁定的行一样不让整份文件卡住。
+            # 归属确认过期只挡真正改工时的行；原样导回的行判不变。
             if any(updates[key] != row["before"][key] for key in updates):
                 self.source_ready(operation)
             row["input"] = {"values": deepcopy(values), "hours": updates}

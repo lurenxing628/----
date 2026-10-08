@@ -1,0 +1,45 @@
+roadmap: demand-hours-integration
+created: 2026-10-08
+review_status: draft
+notes: 整体规划仍待评审；取消独立试算链与取消定额永久锁定均已确认。近期定额持续修订已实施并通过定向验证；BOM 和装配仍未实施，planned 不表示已经启动。
+
+items:
+  - slug: quota-continuous-revision
+    description: 统一人工保存、导入和校准采用的定额修订规则，迁移旧永久锁并保留历史采用事实
+    depends_on: []
+    status: done
+    feature: 2026-10-09-quota-continuous-revision
+    minimal_loop: true
+    notes: 近期唯一保留的新增变更和最小交付闭环；v39 迁移、共同写入、采用与导入界面及必要验证已完成，采用历史与旧批次/计划值保留
+
+  - slug: direct-demand-hours-loop
+    description: 已取消独立零件工时试算、需求草稿、独立批次方案和草稿转批次链
+    depends_on: []
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 用户明确指出直接点现有 APS 计算更快，粗估没有指导意义；机加中心继续维护批次、直接计算、看结果调整和报工，不换名保留原链路
+
+  - slug: demand-hours-summary-export
+    description: 已取消新增零件工时明细、汇总与导出任务，继续使用现有结果和导出
+    depends_on: []
+    status: dropped
+    feature: null
+    minimal_loop: false
+    notes: 现有工时、负荷、结果与导出仅作复用，当前没有确认新的建设缺口；不作为 BOM 前置项，不另加拆批试算补偿
+
+  - slug: bom-demand-expansion
+    description: 后续按真实产品配套需求建设 BOM 数量展开，确认结果直接接现有建批、工序和排程
+    depends_on: []
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: 分厂确有产品配套需求时启动，基于现有批次能力；不依赖已取消的试算、草稿、汇总导出或定额修订，不自动推断物料齐套及装配关系
+
+  - slug: optional-assembly-precedence
+    description: 按需配置明确的跨批次工序完成到开始关系，接入共同排程与结果说明
+    depends_on: [bom-demand-expansion]
+    status: planned
+    feature: null
+    minimal_loop: false
+    notes: BOM 产品配套阶段后的可选增强；近期不依赖本项，未启用不新增跨零件约束

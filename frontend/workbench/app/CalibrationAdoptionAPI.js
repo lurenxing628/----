@@ -49,10 +49,10 @@
         && number(sample.effective_processing_hours) && number(sample.completed_quantity) && sample.completed_quantity > 0 && number(sample.unit_hours)
         && sample.unknown_record_count === 0 && Array.isArray(sample.exclusion_reasons) && !sample.exclusion_reasons.length && Array.isArray(sample.reports)));
     if (v.can_adopt) check(v.issues.length === 0 && c.blocked_reasons.length === 0 && c.capabilities[ACTION] === true && text(c.write_token)
-      && text(c.expires_at) && c.expires_at > d.generated_at && d.quota_lock === null && row.sample_count >= 5 && number(row.suggested_unit_hours));
+      && text(c.expires_at) && c.expires_at > d.generated_at && row.sample_count >= 5 && number(row.suggested_unit_hours));
     else check(v.issues.length > 0 && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null && equal(v.issues, c.blocked_reasons));
-    if (d.quota_lock !== null) check(object(d.quota_lock) && d.quota_lock.template_operation_ref === original.template_operation_ref
-      && d.quota_lock.locked === true && ref(d.quota_lock.adoption_ref) && number(d.quota_lock.locked_unit_hours));
+    if (d.latest_adoption !== null) check(object(d.latest_adoption) && d.latest_adoption.template_operation_ref === original.template_operation_ref
+      && ref(d.latest_adoption.adoption_ref) && number(d.latest_adoption.new_unit_hours) && text(d.latest_adoption.adopted_at));
     return d;
   }
   function receipt(value, intent) {
@@ -65,7 +65,7 @@
       && d.old_unit_hours === s.old_unit_hours && d.new_unit_hours === s.suggested_unit_hours && d.template_revision_before === s.template_revision
       && d.template_revision_after === s.template_revision + Number(s.old_unit_hours !== s.suggested_unit_hours)
       && d.method_version === s.method_version && d.sample_count === s.sample_count && equal(d.sample_refs, s.sample_refs)
-      && equal(d.sample_revisions, s.sample_revisions) && d.locked === true && d.effect_scope === 'future_template_use_only');
+      && equal(d.sample_revisions, s.sample_revisions) && d.effect_scope === 'future_template_use_only');
     return value;
   }
   function failure(value, status) {

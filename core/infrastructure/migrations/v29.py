@@ -2,7 +2,7 @@
 
 from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_calibration_adoption_schema import install as install_calibration_adoption
+from core.infrastructure.workbench_calibration_adoption_legacy_schema import install as install_calibration_adoption
 from core.infrastructure.workbench_dashboard_schema import install_workbench_dashboard_schema
 
 

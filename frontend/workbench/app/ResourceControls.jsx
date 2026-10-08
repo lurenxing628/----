@@ -337,6 +337,11 @@
   // 列表基础件（EmptyState / Pager）和按钮、错误框放在同一层：Choice 用 Pager 翻页，Pager 又用 Button 画按钮，
   // 分到两个文件就会互相依赖、无法排出加载顺序。WorkbenchListControls / WorkbenchControls 只是它们的既有入口名。
   const titles = { empty: '暂无记录', filtered: '当前筛选没有匹配项', loading: '正在读取…', error: '读取未完成' };
+  function MetricValue({ pending = false, error = null, kind = 'value', children }) {
+    if (error) return <>读取失败</>;
+    if (pending) return <span className="wb-metric-placeholder" data-kind={kind} aria-hidden="true" />;
+    return <>{children}</>;
+  }
   function EmptyState({ kind = 'empty', title, hint, action, error }) {
     if (!Object.prototype.hasOwnProperty.call(titles, kind)) throw new TypeError('empty_state_kind_unknown: ' + kind);
     if ((kind === 'filtered' || kind === 'error') && !action) throw new TypeError('empty_state_requires_action: ' + kind);
@@ -404,5 +409,5 @@
       <Button icon="plus" className={className} aria-label={'放大' + axis} title={'放大' + axis + ' (+)'} disabled={disabled || zoom >= max} onClick={() => onZoom(timelineZoomStep(zoom, 1, max))} />
       <Button icon="unfold-vertical" className={(fitClassName || className) + ' wb-zoom-fit'} aria-label={'显示完整' + range} title={'显示完整' + range + ' (F)'} disabled={disabled || zoom <= 1} onClick={onFit} /></>;
   }
-  window.ResourceControls = { Icon, Button, Search, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep, focusOrigin, restoreCandidate };
+  window.ResourceControls = { Icon, Button, Search, ErrorBox, Issues, Status, Modal, Relation, relationLabels, Choice, Field, focusFirstInvalid, MetricValue, EmptyState, Pager, TimelineZoom, timelineZoomKey, timelineZoomStep, focusOrigin, restoreCandidate };
 })();

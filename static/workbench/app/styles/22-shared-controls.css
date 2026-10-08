@@ -12,6 +12,10 @@ body.aps-workbench .wb-empty-title { margin: 0; color: var(--ui-text); font-weig
 body.aps-workbench .wb-empty-hint { margin: var(--space-2) 0 0; overflow-wrap: anywhere; }
 body.aps-workbench .wb-empty-action { display: flex; justify-content: center; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 body.aps-workbench .wb-empty-loading { min-height: 104px; }
+body.aps-workbench .wb-metric-placeholder { display: inline-block; width: 2.25em; height: .72em; max-width: 100%; border-radius: 2px; background: var(--ui-border); vertical-align: baseline; }
+body.aps-workbench .wb-metric-placeholder[data-kind="helper"] { width: 10em; }
+body.aps-workbench .wb-metric-placeholder[data-kind="count"] { width: 1.5em; }
+body.aps-workbench .master-overview .mo-tabs button .wb-metric-placeholder { margin-left: 0; }
 body.aps-workbench .wb-pager { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3) 0; min-width: 0; }
 body.aps-workbench .wb-pager-summary { color: var(--ui-info-muted); font-size: var(--font-size-1); }
 body.aps-workbench .wb-pager-actions,

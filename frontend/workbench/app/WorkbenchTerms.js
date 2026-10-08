@@ -15,8 +15,11 @@
     // 排产记录状态与候选方案状态：值班台、执行排产、排产记录、试调列表共用同一套叫法。
     run_statuses: Object.freeze({ queued: '等待计算', running: '正在计算', complete: '计算完成', partial: '部分完成', failed: '计算失败', interrupted: '已中断' }),
     candidate_statuses: Object.freeze({ completed: '已完成', partial: '部分完成', failed: '失败', skipped: '已跳过' }),
-    // 物料放行方式：排产规则的选项与运行、记录、候选里的回显用同一套叫法。
-    material_strategies: Object.freeze({ strict: '整批齐套', stage: '按工序齐套', split: '预检分批开工' }),
+    // 齐套规则与拆批操作分开。旧 split 记录实际按整批齐套执行，不能据此声称已经拆批。
+    material_strategies: Object.freeze({ strict: '等整批物料齐套', stage: '按工序物料齐套', split: '等整批物料齐套（原分批开工入口）' }),
+    material_descriptions: Object.freeze({ strict: '这批全部用料到齐后，再安排工序开工。', stage: '每道工序只等本序和前序用料，不等后续用料。' }),
+    material_strategy: (value, readyCheck) => readyCheck === false ? '未启用（齐套检查已关闭）'
+      : value === null || readyCheck === null ? '未记录' : window.WorkbenchTerms.material_strategies[value || 'strict'] || '记录无效',
     // 不重排时段：排产检查、排产任务、排产记录、候选方案的回显用同一套说法。没有这一项的是旧记录，当时按交付设置。
     hold_window: (value, invalid) => value === undefined ? '未记录（按当时的交付设置）' : invalid ? '记录无效' : value === null ? '不设'
       : value.start.replace('T', ' ') + ' 至 ' + value.end.replace('T', ' '),

@@ -3,8 +3,7 @@
 
   const {
     Button,
-    Issues,
-    Icon
+    Issues
   } = window.ResourceControls;
   function HoursFacts({
     value,
@@ -35,12 +34,10 @@
       setFilter('all');
       setSearch('');
     }, [data]);
-    const counts = window.APSProcessFiles.hoursCounts(data),
-      skips = new Map(data.skipped_rows.map(row => [row.row, row]));
-    const status = row => skips.has(row.row) ? 'skipped' : ['update', 'new', 'committed'].includes(row.result) ? 'changed' : row.result;
+    const counts = window.APSProcessFiles.hoursCounts(data);
+    const status = row => ['update', 'new', 'committed'].includes(row.result) ? 'changed' : row.result;
     const labels = {
       changed: receipt ? '已导入' : '待导入',
-      skipped: '单件工时已锁定 · 本行跳过',
       unchanged: '原值相同 · 无需导入',
       rejected: '不能提交'
     };
@@ -54,11 +51,11 @@
     }, /*#__PURE__*/React.createElement("div", {
       className: "rm-summary",
       role: "status"
-    }, /*#__PURE__*/React.createElement("span", null, receipt ? '已导入' : data.can_confirm ? '可导入' : '待处理更新', " ", /*#__PURE__*/React.createElement("b", null, counts.changed), " \u884C"), /*#__PURE__*/React.createElement("span", null, "\u9501\u5B9A\u8DF3\u8FC7 ", /*#__PURE__*/React.createElement("b", null, counts.skipped), " \u884C"), /*#__PURE__*/React.createElement("span", null, "\u539F\u503C\u76F8\u540C ", /*#__PURE__*/React.createElement("b", null, counts.unchanged), " \u884C"), counts.rejected > 0 && /*#__PURE__*/React.createElement("span", {
+    }, /*#__PURE__*/React.createElement("span", null, receipt ? '已导入' : data.can_confirm ? '可导入' : '待处理更新', " ", /*#__PURE__*/React.createElement("b", null, counts.changed), " \u884C"), /*#__PURE__*/React.createElement("span", null, "\u539F\u503C\u76F8\u540C ", /*#__PURE__*/React.createElement("b", null, counts.unchanged), " \u884C"), counts.rejected > 0 && /*#__PURE__*/React.createElement("span", {
       className: "rm-danger"
     }, "\u4E0D\u80FD\u63D0\u4EA4 ", /*#__PURE__*/React.createElement("b", null, counts.rejected), " \u884C")), /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, receipt ? counts.changed ? '仅已导入行发生修改，其余行未修改。' : '本次没有导入任何工时，业务数据未变化。' : !data.can_confirm ? '本批存在不能提交的行，当前不能导入任何工时。' : counts.skipped === data.rows.length ? '全部行的单件工时都已锁定，本次跳过；确认只记录结果，不修改工时。' : '尚未导入；确认后只写入可导入行。'), counts.skipped > 0 && /*#__PURE__*/React.createElement("p", null, "\u5B9A\u989D\u9501\u5B9A\u53EA\u4FDD\u62A4\u5355\u4EF6\u5DE5\u65F6\uFF08\u6765\u81EA\u5DE5\u65F6\u6821\u51C6\uFF09\u3002\u9501\u5B9A\u884C\u82E5\u8981\u4FEE\u6539\u5355\u4EF6\u5DE5\u65F6\uFF0C\u672C\u884C\u5168\u90E8\u8DF3\u8FC7\uFF0C\u6362\u578B\u65F6\u95F4\u4E5F\u4E0D\u4F1A\u968F\u672C\u884C\u5BFC\u5165\uFF1B\u53EA\u6539\u6362\u578B\u65F6\u95F4\u65F6\uFF0C\u4FDD\u7559\u539F\u5355\u4EF6\u5DE5\u65F6\u6216\u628A\u8BE5\u5217\u7559\u7A7A\u5373\u53EF\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, receipt ? counts.changed ? '仅已导入行发生修改，其余行未修改。' : '本次没有导入任何工时，业务数据未变化。' : !data.can_confirm ? '本批存在不能提交的行，当前不能导入任何工时。' : '尚未导入；确认后只写入可导入行。'), /*#__PURE__*/React.createElement("div", {
       className: "rm-preview-toolbar"
     }, /*#__PURE__*/React.createElement("h3", null, receipt ? '逐行导入结果' : '逐行核对'), /*#__PURE__*/React.createElement("label", null, "\u67E5\u627E ", /*#__PURE__*/React.createElement("input", {
       type: "search",
@@ -78,8 +75,6 @@
     }, /*#__PURE__*/React.createElement("option", {
       value: "all"
     }, "\u5168\u90E8 ", data.rows.length, " \u884C"), /*#__PURE__*/React.createElement("option", {
-      value: "skipped"
-    }, "\u9501\u5B9A\u8DF3\u8FC7 ", counts.skipped, " \u884C"), /*#__PURE__*/React.createElement("option", {
       value: "changed"
     }, receipt ? '已导入' : '待导入', " ", counts.changed, " \u884C"), /*#__PURE__*/React.createElement("option", {
       value: "unchanged"
@@ -120,31 +115,22 @@
       style: {
         width: '22%'
       }
-    }, "\u5BFC\u5165\u540E")))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * 20, current * 20).map(row => {
-      const skip = skips.get(row.row);
-      return /*#__PURE__*/React.createElement("tr", {
-        key: row.row,
-        "data-quota-row": row.row,
-        "data-quota-result": status(row)
-      }, /*#__PURE__*/React.createElement("td", null, row.row), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, row.business_code || '图号未识别'), /*#__PURE__*/React.createElement("div", null, "\u5DE5\u5E8F ", row.sequence === undefined ? '未识别' : row.sequence)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", null, skip && /*#__PURE__*/React.createElement(Icon, {
-        name: "lock"
-      }), " ", labels[status(row)]), skip && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u5DF2\u91C7\u7528\u6821\u51C6\u7ED3\u679C\uFF0C\u5355\u4EF6\u5DE5\u65F6\u4E0D\u80FD\u88AB\u672C\u6587\u4EF6\u8986\u76D6\u3002"), /*#__PURE__*/React.createElement("div", {
-        style: {
-          whiteSpace: 'pre-wrap'
-        }
-      }, "\u91C7\u7528\u539F\u56E0\uFF1A", skip.reason)), !receipt && row.errors.map((error, index) => /*#__PURE__*/React.createElement("div", {
-        className: "rm-danger",
-        key: index
-      }, error.message))), !receipt && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(HoursFacts, {
-        value: row.before,
-        fields: fields,
-        changes: row.changes
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(HoursFacts, {
-        value: row.after,
-        fields: fields,
-        changes: row.changes
-      }))));
-    }), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    }, "\u5BFC\u5165\u540E")))), /*#__PURE__*/React.createElement("tbody", null, rows.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {
+      key: row.row,
+      "data-quota-row": row.row,
+      "data-quota-result": status(row)
+    }, /*#__PURE__*/React.createElement("td", null, row.row), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, row.business_code || '图号未识别'), /*#__PURE__*/React.createElement("div", null, "\u5DE5\u5E8F ", row.sequence === undefined ? '未识别' : row.sequence)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("div", null, labels[status(row)]), !receipt && row.errors.map((error, index) => /*#__PURE__*/React.createElement("div", {
+      className: "rm-danger",
+      key: index
+    }, error.message))), !receipt && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(HoursFacts, {
+      value: row.before,
+      fields: fields,
+      changes: row.changes
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(HoursFacts, {
+      value: row.after,
+      fields: fields,
+      changes: row.changes
+    }))))), !rows.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: receipt ? 3 : 5
     }, "\u6CA1\u6709\u5339\u914D\u7684\u5DE5\u65F6\u8BB0\u5F55\u3002"))))), /*#__PURE__*/React.createElement("div", {
       className: "rm-pagination"

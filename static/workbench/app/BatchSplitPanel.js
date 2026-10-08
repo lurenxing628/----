@@ -18,7 +18,9 @@
   function BatchSplitPanel({
     refs,
     day,
-    onCommitted
+    onCommitted,
+    disabled,
+    onActivityChange
   }) {
     const adapter = React.useMemo(() => window.APSBatchAPI.create(), []);
     const command = window.APSResourceSession.useCommand(adapter);
@@ -41,6 +43,12 @@
       serial.current++;
     }, []);
     React.useEffect(() => {
+      if (onActivityChange) onActivityChange(busy || command.locked);
+    }, [busy, command.locked, onActivityChange]);
+    React.useEffect(() => () => {
+      if (onActivityChange) onActivityChange(false);
+    }, [onActivityChange]);
+    React.useEffect(() => {
       if (command.phase !== 'done' || seen.current === command.result.receipt_ref || command.intent.action !== 'split_confirm') return;
       try {
         const result = B.receipt(command.result, 'split_confirm', command.intent.ref);
@@ -54,7 +62,7 @@
       }
     }, [command.phase, command.result]);
     async function inspect() {
-      if (refs.length !== 1 || command.locked || busy) return;
+      if (disabled || refs.length !== 1 || command.locked || busy) return;
       const id = ++serial.current;
       setBusy(true);
       setError(null);
@@ -78,8 +86,10 @@
       }
     }
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u5206\u6279\u5F00\u5DE5\u9884\u68C0"
-    }, /*#__PURE__*/React.createElement("div", {
+      id: "pf-material-split",
+      className: "pf-split-panel",
+      "aria-label": "\u68C0\u67E5\u7269\u6599\u53EF\u505A\u6570\u91CF"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u68C0\u67E5\u7269\u6599\u53EF\u505A\u6570\u91CF"), /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
     }, /*#__PURE__*/React.createElement(Field, {
       label: "\u672C\u6B21\u5148\u505A\u6570\u91CF\uFF08\u53EF\u7559\u7A7A\uFF09"
@@ -87,23 +97,23 @@
       inputMode: "numeric",
       "aria-label": "\u672C\u6B21\u5148\u505A\u6570\u91CF",
       value: quantity,
-      disabled: busy || command.locked,
+      disabled: disabled || busy || command.locked,
       onChange: e => {
         setQuantity(e.target.value);
         setPreview(null);
       }
     })), /*#__PURE__*/React.createElement(Button, {
       busy: busy,
-      disabled: command.locked || refs.length !== 1,
+      disabled: disabled || command.locked || refs.length !== 1,
       onClick: inspect
-    }, "\u9884\u68C0\u53EF\u5F00\u5DE5\u6570\u91CF")), /*#__PURE__*/React.createElement("p", null, "\u4E00\u6B21\u9009\u62E9\u4E00\u4E2A\u6279\u6B21\u9884\u68C0\uFF1B\u6309\u6392\u4EA7\u5F00\u59CB\u65E5\u671F ", day, " \u524D\u7684\u5230\u6599\u8BA1\u7B97\u3002\u786E\u8BA4\u540E\u624D\u4FDD\u5B58\u4E3A\u4E24\u4E2A\u6279\u6B21\uFF0C\u5E76\u9009\u4E2D\u53EF\u5F00\u5DE5\u5B50\u6279\u3002\u9700\u6C42\u91CF\u6309\u4EF6\u6570\u6BD4\u4F8B\u5206\u914D\uFF0C\u8BBE\u5907\u6362\u578B\u548C\u5916\u534F\u5468\u671F\u5728\u6BCF\u4E2A\u5B50\u6279\u5206\u522B\u8BA1\u7B97\u3002"), refs.length !== 1 && /*#__PURE__*/React.createElement("p", null, "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8981\u62C6\u5206\u7684\u5F85\u6392\u6279\u6B21\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u67E5\u770B\u53EF\u505A\u6570\u91CF")), /*#__PURE__*/React.createElement("p", null, "\u6309\u6392\u4EA7\u5F00\u59CB\u65E5\u671F ", day, " \u524D\u7684\u5230\u6599\u8BA1\u7B97\uFF1B\u6570\u91CF\u7559\u7A7A\u65F6\uFF0C\u67E5\u770B\u7269\u6599\u6700\u591A\u591F\u505A\u591A\u5C11\u4EF6\u3002\u67E5\u770B\u6570\u91CF\u4E0D\u4F1A\u4FEE\u6539\u6279\u6B21\u3002"), refs.length !== 1 && /*#__PURE__*/React.createElement("p", null, "\u8BF7\u5148\u9009\u62E9\u4E00\u4E2A\u8981\u62C6\u5206\u7684\u5F85\u6392\u6279\u6B21\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     }), preview && ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       className: "plana"
     }, /*#__PURE__*/React.createElement(Modal, {
-      title: "\u786E\u8BA4\u5206\u6279\u5F00\u5DE5",
+      title: "\u786E\u8BA4\u62C6\u6210\u4E24\u6279",
       icon: "box",
       guardOwner: owner,
       locked: command.locked,
@@ -115,11 +125,13 @@
         onClick: () => setPreview(null)
       }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
         className: "btn primary",
-        disabled: command.locked,
-        onClick: () => command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, {
-          preview_ref: preview.preview_ref
-        })
-      }, "\u786E\u8BA4\u62C6\u5206\u5E76\u9009\u62E9\u53EF\u5F00\u5DE5\u5B50\u6279"))
+        disabled: disabled || command.locked,
+        onClick: () => {
+          if (!disabled && !command.locked) command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, {
+            preview_ref: preview.preview_ref
+          });
+        }
+      }, "\u786E\u8BA4\u62C6\u6279\u5E76\u9009\u62E9\u5B50\u6279"))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b"
     }, /*#__PURE__*/React.createElement("p", null, preview.source_code, " \u539F\u6709 ", preview.original_quantity, " \u4EF6\uFF1A", preview.child_code, " \u5148\u505A ", preview.quantity, " \u4EF6\uFF0C\u539F\u6279\u4FDD\u7559 ", preview.remaining_quantity, " \u4EF6\u3002"), /*#__PURE__*/React.createElement("div", {
@@ -129,7 +141,7 @@
       "aria-label": "\u62C6\u5206\u7269\u6599\u5206\u914D"
     }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u7269\u6599"), /*#__PURE__*/React.createElement("th", null, "\u5B50\u6279\u9700\u6C42"), /*#__PURE__*/React.createElement("th", null, "\u5269\u4F59\u9700\u6C42"), /*#__PURE__*/React.createElement("th", null, "\u5B50\u6279\u5230\u6599"), /*#__PURE__*/React.createElement("th", null, "\u5269\u4F59\u5230\u6599"))), /*#__PURE__*/React.createElement("tbody", null, preview.materials.map((row, i) => /*#__PURE__*/React.createElement("tr", {
       key: i
-    }, /*#__PURE__*/React.createElement("td", null, row.business_code, " \xB7 ", row.label), /*#__PURE__*/React.createElement("td", null, amount(row.child_required)), /*#__PURE__*/React.createElement("td", null, amount(row.source_required)), /*#__PURE__*/React.createElement("td", null, arrived(row.child_available, row.child_arrivals)), /*#__PURE__*/React.createElement("td", null, arrived(row.source_available, row.source_arrivals))))))), /*#__PURE__*/React.createElement("p", null, "\u5230\u6599\u5206\u914D\u5305\u542B\u540E\u7EED\u5230\u6599\uFF0C\u6309\u5404\u81EA\u65E5\u671F\u53EF\u7528\u3002\u53D6\u6D88\u4E0D\u4F1A\u6539\u52A8\u6279\u6B21\uFF1B\u786E\u8BA4\u540E\u4ECD\u9700\u68C0\u67E5\u5E76\u5F00\u59CB\u8BA1\u7B97\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }, /*#__PURE__*/React.createElement("td", null, row.business_code, " \xB7 ", row.label), /*#__PURE__*/React.createElement("td", null, amount(row.child_required)), /*#__PURE__*/React.createElement("td", null, amount(row.source_required)), /*#__PURE__*/React.createElement("td", null, arrived(row.child_available, row.child_arrivals)), /*#__PURE__*/React.createElement("td", null, arrived(row.source_available, row.source_arrivals))))))), /*#__PURE__*/React.createElement("p", null, "\u7269\u6599\u9700\u6C42\u6309\u4EF6\u6570\u6BD4\u4F8B\u5206\u914D\uFF1B\u6574\u6279\u56FA\u5B9A\u8017\u6599\u8BF7\u5148\u6838\u5BF9\u3002\u4E24\u6279\u5206\u522B\u8BA1\u7B97\u8BBE\u5907\u6362\u578B\u548C\u5916\u534F\u5468\u671F\u3002"), /*#__PURE__*/React.createElement("p", null, "\u5230\u6599\u5206\u914D\u5305\u542B\u540E\u7EED\u5230\u6599\uFF0C\u6309\u5404\u81EA\u65E5\u671F\u53EF\u7528\u3002\u53D6\u6D88\u4E0D\u4F1A\u6539\u52A8\u6279\u6B21\uFF1B\u786E\u8BA4\u540E\u4ECD\u9700\u68C0\u67E5\u5E76\u5F00\u59CB\u8BA1\u7B97\u3002"), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     })))), document.body));
   }

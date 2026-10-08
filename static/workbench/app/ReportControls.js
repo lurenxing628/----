@@ -75,12 +75,7 @@
         event.preventDefault();
         onChange(window.ReportAPI.scope(draft));
       }
-    }, /*#__PURE__*/React.createElement("p", {
-      className: "rw-source-line"
-    }, /*#__PURE__*/React.createElement("span", null, "\u6570\u636E\u6765\u6E90"), /*#__PURE__*/React.createElement("output", {
-      className: "rw-source-value",
-      "aria-label": "\u6570\u636E\u6765\u6E90"
-    }, "\u5F53\u524D\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", {
       className: "aw-scope-main"
     }, /*#__PURE__*/React.createElement("label", null, "\u8BA1\u5212\u5B8C\u5DE5\u8D77\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",

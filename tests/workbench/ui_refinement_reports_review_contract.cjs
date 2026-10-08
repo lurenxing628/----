@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), base = path.join(root, 'frontend/workbench/app');
-const React = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), Fragment: 'fragment' };
+const React = { createElement: (type, props, ...children) => ({ type, props: props || {}, children }), Fragment: 'fragment', createContext: () => ({}) };
 const context = { React, window: { React, ResourceControls: {}, ReportControls: {}, WorkbenchFormat: {
   number: (value) => value == null ? '未知' : String(value),
   // 与真 WorkbenchFormat.dateTime 一样：格式不对就抛错，不静默原样返回。
@@ -12,10 +12,14 @@ const context = { React, window: { React, ResourceControls: {}, ReportControls: 
 vm.createContext(context);
 context.window.DashboardContract = { categories: { external: '外协', actual: '现场' } };
 context.window.ResourceControls.Issues = function Issues() {};
-const files = ['ReportEvidence.jsx', 'ReportTable.jsx', 'ReportControls.jsx', 'CalibrationControls.jsx', 'DashboardPanels.jsx'];
+const controlMocks = context.window.ResourceControls;
+const files = ['ResourceControls.jsx', 'ReportEvidence.jsx', 'ReportTable.jsx', 'ReportControls.jsx', 'CalibrationControls.jsx', 'DashboardPanels.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
   sources: files.map(file => ({ path: file, code: fs.readFileSync(path.join(base, file), 'utf8') })), check_combined: true });
-for (const output of built.outputs) vm.runInContext(output.code, context);
+for (const output of built.outputs) {
+  vm.runInContext(output.code, context);
+  if (output.path.endsWith('ResourceControls.jsx')) context.window.ResourceControls = { ...controlMocks, MetricValue: context.window.ResourceControls.MetricValue };
+}
 const E = context.window.ReportEvidence, T = context.window.ReportTable;
 context.window.WorkbenchReference = function WorkbenchReference() {};
 assert.equal(E.noFeedback({ records: 0 }), true);
@@ -118,12 +122,6 @@ assert(operationText.includes('暂无法评估 · 4 道工序'));
 assert(operationText.includes('OP（2026）_0') && operationText.includes('表处理（外协）'), 'Use separate source fields without parsing display punctuation');
 assert(!operationText.includes('批次 A · 工序 10'), 'Structured rows do not repeat the combined subject');
 assert(operationNodes.filter(node => node.type === 'details').every(node => !node.props.open), 'Start collapsed');
-React.useState = value => [value, () => {}];
-React.useEffect = () => {};
-const reportScope = context.window.ReportControls.Scope({value:{source:'production'}, onChange() {}});
-const sourceField = nodes(reportScope).find(node => node.props['aria-label'] === '数据来源');
-assert.equal(sourceField.type, 'output');
-assert.equal(visibleText(sourceField), '当前正式计划');
 context.window.APSWorkbenchUI = {MetricStrip:function MetricStrip(){}, Metric:function Metric(){}};
 context.window.WorkbenchFormat.percent = value => String(value);
 for (const count of [0, 18]) {

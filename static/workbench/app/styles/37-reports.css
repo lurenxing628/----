@@ -29,8 +29,6 @@
 .rw-workbench .rw-query > .wb-view-tabs,
 .rw-workbench .rw-results > .rw-tabs {margin:0;padding:0 var(--wb-section-padding);}
 .rw-workbench .aw-scope {padding:var(--wb-section-padding);}
-.rw-workbench .rw-source-line {display:flex;align-items:baseline;gap:var(--space-2);margin:0 0 var(--space-3);}
-.rw-workbench .rw-source-value {color:var(--ui-text);font:inherit;}
 .rw-workbench .rw-summary .rw-metrics {margin:0;}
 .rw-workbench .rw-summary .rw-no-feedback {margin:0 var(--wb-section-padding) var(--space-3);}
 .rw-workbench .rw-result-content {min-width:0;border-top:1px solid var(--ui-border);}

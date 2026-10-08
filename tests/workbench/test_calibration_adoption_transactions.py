@@ -14,7 +14,7 @@ from tests.workbench.template_lineage_support import lineage_case as _lineage_ca
 
 
 @pytest.mark.parametrize('table', ['WorkbenchCommandReceipts'])
-def test_each_write_failure_rolls_back_quota_audit_lock_and_receipt(ready_adoption_case, table):
+def test_each_write_failure_rolls_back_quota_audit_and_receipt(ready_adoption_case, table):
     case = ready_adoption_case
     write_token = token(case)
     event = "UPDATE" if table == "PartOperations" else "INSERT"
@@ -37,7 +37,7 @@ def test_each_write_failure_rolls_back_quota_audit_lock_and_receipt(ready_adopti
 
 
 @pytest.mark.parametrize('same_key', [False])
-def test_two_connections_adopt_once_and_never_overwrite_lock(ready_adoption_case, same_key):
+def test_two_connections_recheck_the_same_preview_before_adoption(ready_adoption_case, same_key):
     case = ready_adoption_case
     write_token = token(case)
     barrier = Barrier(2)
@@ -66,5 +66,4 @@ def test_two_connections_adopt_once_and_never_overwrite_lock(ready_adoption_case
         assert len(successes) == 1
         assert [row for row in results if not row.get("ok")] == [{"code": "stale_write"}]
     assert case.conn.execute("SELECT count(*) FROM WorkbenchCalibrationAdoptions").fetchone()[0] == 1
-    assert case.conn.execute("SELECT count(*) FROM WorkbenchCalibrationQuotaLocks").fetchone()[0] == 1
     assert case.conn.execute("SELECT count(*) FROM WorkbenchCommandReceipts WHERE action='calibration.adopt'").fetchone()[0] == 1

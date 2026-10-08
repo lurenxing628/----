@@ -1,6 +1,6 @@
 """Template-operation reference and part reference reads for the shared process services.
 
-Rows are returned as stored; permanent-reference, quota-lock and deletion
+Rows are returned as stored; permanent-reference and deletion
 judgements stay with the calling service.
 """
 
@@ -31,8 +31,3 @@ class ProcessQueryRepository(BaseRepository):
                 WHERE r.kind='template_operation' AND r.active=1 AND o.status='active'
                 AND r.ref IN (""" + ",".join("?" for _ in chunk) + ")", chunk))
         return rows
-
-    def legacy_template_operations(self) -> List[Dict[str, Any]]:
-        return self.fetchall("""SELECT o.part_no,o.seq,o.unit_hours,r.ref FROM PartOperations o
-            LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_operation' AND r.active=1
-            AND r.entity_key=CAST(o.id AS TEXT) WHERE o.status='active' ORDER BY o.part_no,o.seq""")

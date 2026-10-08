@@ -26,7 +26,6 @@
       return rows.map(row => <option value={row.ref} key={row.ref}>{row.label}{row.available === false ? '（原资料不可用）' : ''}</option>);
     }
     return <form className="aw-scope" aria-label="执行分析筛选" onSubmit={event => { event.preventDefault(); onChange(window.ReportAPI.scope(draft)); }}>
-      <p className="rw-source-line"><span>数据来源</span><output className="rw-source-value" aria-label="数据来源">当前正式计划</output></p>
       <div className="aw-scope-main">
         <label>计划完工起日<input type="date" aria-label="计划完工起日" value={draft.plan_finish_date_from || ''} onChange={event => set({ plan_finish_date_from: event.target.value })} /></label>
         <label>计划完工止日<input type="date" aria-label="计划完工止日" value={draft.plan_finish_date_to || ''} onChange={event => set({ plan_finish_date_to: event.target.value })} /></label>

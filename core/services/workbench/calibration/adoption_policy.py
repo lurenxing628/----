@@ -3,7 +3,7 @@
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
 from core.models.workbench_template_lineage import snapshot
-from core.services.workbench.process.quota_protection import read_quota_locks
+from core.services.process.template_hours import ProcessTemplateHours
 
 
 def require_template(repo, template_operation_ref):
@@ -16,27 +16,12 @@ def require_template(repo, template_operation_ref):
     return row
 
 
-def require_unlocked(repo, template_operation_refs):
-    if not repo.conn.in_transaction:
-        raise RuntimeError("Quota write protection requires the caller write transaction.")
-    if read_quota_locks(repo, template_operation_refs):
-        raise WorkbenchCommandRejected("calibration_quota_locked", "已采纳的模板定额已锁定，不能覆盖。")
-
-
-def adopt_quota(repo, template, value):
-    """Write the adopted quota under the lock guard and re-read the template to prove the exact effect."""
-    if not repo.conn.in_transaction:
-        raise RuntimeError("Quota adoption requires the caller write transaction.")
-    require_unlocked(repo, [template["template_operation_ref"]])
-    return adopt_checked_quota(repo, template, value)
-
-
 def adopt_checked_quota(repo, template, value):
-    """Evidence guard has checked the lock in the same outer write transaction."""
+    """Use the shared current-template hours writer in the adoption transaction."""
     if not repo.conn.in_transaction:
         raise RuntimeError("Quota adoption requires the caller write transaction.")
-    if template["unit_hours"] != value and repo.update_quota(template, value) != 1:
-        raise WorkbenchCommandRejected("stale_write", "模板定额在采纳前已变化，请重新预览核对。")
+    ProcessTemplateHours(repo.conn).revise(template["template_operation_ref"], {"unit_hours": value},
+                                          expected_revision=template["template_revision"])
     after = require_template(repo, template["template_operation_ref"])
     expected = {**template, "unit_hours": after["unit_hours"], "template_revision": after["template_revision"]}
     revision = template["template_revision"] + int(template["unit_hours"] != value)

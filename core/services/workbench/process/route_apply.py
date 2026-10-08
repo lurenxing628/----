@@ -9,7 +9,6 @@ from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.part_repo import PartRepository
 
-from .quota_protection import ProcessQuotaProtection
 from .route_choices import preview_existing_route
 from .route_preview import ProcessRoutePreviewService
 
@@ -59,13 +58,6 @@ def _suggested_key(identities, ref, kind):
     return identity.entity_key
 
 
-def _protected_replacements(conn, operations, proposed):
-    replaced = {row["sequence"] for row in proposed if row.get("replace_existing_choices")}
-    if replaced:
-        ProcessQuotaProtection(conn).require_changes({old["ref"]: None for old in operations if old["seq"] in replaced})
-    return replaced
-
-
 def _remove_absent_operations(op_repo, operations, incoming):
     changed = False
     for row in operations:
@@ -107,11 +99,11 @@ def apply_route(conn, part, operations, preview, identities):
     if not preview.get("_choices_projected"):
         preview = preview_existing_route(conn, preview, operations)
     if not preview["can_confirm_route"]:
-        raise WorkbenchCommandRejected("route_invalid", "路线中的工种或定额保护已变化，请重新预检。", 422)
+        raise WorkbenchCommandRejected("route_invalid", "路线中的工种已变化，请重新预检。", 422)
     op_repo = PartOperationRepository(conn)
     existing = {row["seq"]: row for row in operations}
     incoming = {row["sequence"] for row in preview["operations"]}
-    replaced = _protected_replacements(conn, operations, preview["operations"])
+    replaced = {row["sequence"] for row in preview["operations"] if row.get("replace_existing_choices")}
     changed = _remove_absent_operations(op_repo, operations, incoming)
     defaults = set()
     for row in preview["operations"]:

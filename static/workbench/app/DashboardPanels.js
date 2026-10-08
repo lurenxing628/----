@@ -4,7 +4,8 @@
   const C = window.DashboardContract,
     {
       Button,
-      Issues
+      Issues,
+      MetricValue
     } = window.ResourceControls;
   // 跳转标签与侧栏视图标题保持同名（web/routes/workbench/navigation_metadata.py VIEW_TITLES）；outsourcing 是页内目标，侧栏没有对应条目。
   const navigationLabels = {
@@ -54,32 +55,55 @@
   function Overview({
     data,
     analysis,
+    loading = false,
+    error = null,
+    analysisLoading = false,
+    analysisError = null,
     onCategory,
     onAnalysis
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "dy-metrics",
       role: "region",
-      "aria-label": "\u98CE\u9669\u6982\u89C8"
-    }, ['delivery', 'pressure', 'actual', 'external', 'downtime', 'material', 'pending'].map(k => {
+      "aria-label": "\u98CE\u9669\u6982\u89C8",
+      "aria-busy": loading || analysisLoading
+    }, (loading || analysisLoading) && /*#__PURE__*/React.createElement("span", {
+      className: "wb-visually-hidden",
+      role: "status"
+    }, "\u6B63\u5728\u8BFB\u53D6\u98CE\u9669\u6982\u89C8"), ['delivery', 'pressure', 'actual', 'external', 'downtime', 'material', 'pending'].map(k => {
       if (k === 'pressure' || k === 'pending') {
         const p = analysis && analysis[k === 'pressure' ? 'pressure' : 'pending'];
+        const pending = !p && (loading || analysisLoading),
+          failure = !p && (error || analysisError);
         return /*#__PURE__*/React.createElement("button", {
           type: "button",
           className: "dy-metric",
           key: k,
+          "aria-busy": pending && !failure,
           onClick: () => onAnalysis(k === 'pressure' ? 'delivery' : 'material')
-        }, /*#__PURE__*/React.createElement("span", null, k === 'pressure' ? '资源压力' : '待排批次'), /*#__PURE__*/React.createElement("strong", null, !p ? '未读取' : p.count === null ? '未知' : p.count), /*#__PURE__*/React.createElement("small", null, k === 'pressure' ? '日峰值占用率 ≥ 90%' : '全部待排批次'), p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && /*#__PURE__*/React.createElement("small", null, "\u5BB9\u91CF\u672A\u77E5 ", p.unknown_resources, " \xB7 \u96F6\u53EF\u7528 ", p.zero_capacity_resources));
+        }, /*#__PURE__*/React.createElement("span", null, k === 'pressure' ? '资源压力' : '待排批次'), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(MetricValue, {
+          pending: pending,
+          error: failure
+        }, !p ? '未读取' : p.count === null ? '未知' : p.count)), /*#__PURE__*/React.createElement("small", null, k === 'pressure' ? '日峰值占用率 ≥ 90%' : '全部待排批次'), p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && /*#__PURE__*/React.createElement("small", null, "\u5BB9\u91CF\u672A\u77E5 ", p.unknown_resources, " \xB7 \u96F6\u53EF\u7528 ", p.zero_capacity_resources));
       }
-      const s = data && data.categories[k];
+      const s = data && data.categories[k],
+        pending = !s && loading,
+        failure = !s && error;
       return /*#__PURE__*/React.createElement("button", {
         type: "button",
         className: "dy-metric",
         key: k,
+        "aria-busy": pending && !failure,
         onClick: () => onCategory(k)
       }, /*#__PURE__*/React.createElement("span", null, C.categories[k]), /*#__PURE__*/React.createElement("strong", {
         className: s && s.risk_count > 0 ? 'dy-danger' : 'dy-muted'
-      }, !s ? '未读取' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count), /*#__PURE__*/React.createElement("small", null, !s ? '未读取' : k === 'external' ? s.awaiting_return_count === null ? '外协风险未读取' : '待回厂 ' + s.awaiting_return_count + ' · 超期 ' + s.overdue_count + ' · 待确认 ' + s.awaiting_confirmation_count : s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : '已关闭处置 ' + s.closed_count + ' 项'));
+      }, /*#__PURE__*/React.createElement(MetricValue, {
+        pending: pending,
+        error: failure
+      }, !s ? '未读取' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count)), /*#__PURE__*/React.createElement("small", null, /*#__PURE__*/React.createElement(MetricValue, {
+        pending: pending && !failure,
+        kind: "helper"
+      }, failure ? '请刷新重试' : !s ? '未读取' : k === 'external' ? s.awaiting_return_count === null ? '外协风险未读取' : '待回厂 ' + s.awaiting_return_count + ' · 超期 ' + s.overdue_count + ' · 待确认 ' + s.awaiting_confirmation_count : s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : '已关闭处置 ' + s.closed_count + ' 项')));
     }));
   }
   function Rail({

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.DashboardContract, { Button, Issues } = window.ResourceControls;
+  const C = window.DashboardContract, { Button, Issues, MetricValue } = window.ResourceControls;
   // 跳转标签与侧栏视图标题保持同名（web/routes/workbench/navigation_metadata.py VIEW_TITLES）；outsourcing 是页内目标，侧栏没有对应条目。
   const navigationLabels = { gantt: '计划甘特', fieldgantt: '现场实际甘特', batches: '批次管理', analysis: '选择排产方案', field: '现场记录', run: '执行排产', outsourcing: '外协物流登记' };
   function navigationTarget(n, onNavigate) {
@@ -21,19 +21,23 @@
     return <><span>{C.states[summary.state]}{summary.risk_count === null ? ' · 总风险未知' : ' · ' + summary.risk_count + ' 项风险'}</span>
       {summary.risk_count === null && summary.known_risk_count > 0 && <small>已确认 {summary.known_risk_count} 项风险</small>}</>;
   }
-  function Overview({ data, analysis, onCategory, onAnalysis }) { return <div className="dy-metrics" role="region" aria-label="风险概览">{['delivery', 'pressure', 'actual', 'external', 'downtime', 'material', 'pending'].map(k => {
+  function Overview({ data, analysis, loading = false, error = null, analysisLoading = false, analysisError = null, onCategory, onAnalysis }) { return <div className="dy-metrics" role="region" aria-label="风险概览" aria-busy={loading || analysisLoading}>
+    {(loading || analysisLoading) && <span className="wb-visually-hidden" role="status">正在读取风险概览</span>}
+    {['delivery', 'pressure', 'actual', 'external', 'downtime', 'material', 'pending'].map(k => {
     if (k === 'pressure' || k === 'pending') {
       const p = analysis && analysis[k === 'pressure' ? 'pressure' : 'pending'];
-      return <button type="button" className="dy-metric" key={k} onClick={() => onAnalysis(k === 'pressure' ? 'delivery' : 'material')}>
-        <span>{k === 'pressure' ? '资源压力' : '待排批次'}</span><strong>{!p ? '未读取' : p.count === null ? '未知' : p.count}</strong>
+      const pending = !p && (loading || analysisLoading), failure = !p && (error || analysisError);
+      return <button type="button" className="dy-metric" key={k} aria-busy={pending && !failure} onClick={() => onAnalysis(k === 'pressure' ? 'delivery' : 'material')}>
+        <span>{k === 'pressure' ? '资源压力' : '待排批次'}</span><strong><MetricValue pending={pending} error={failure}>{!p ? '未读取' : p.count === null ? '未知' : p.count}</MetricValue></strong>
         <small>{k === 'pressure' ? '日峰值占用率 ≥ 90%' : '全部待排批次'}</small>
         {p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && <small>容量未知 {p.unknown_resources} · 零可用 {p.zero_capacity_resources}</small>}
       </button>;
     }
-    const s = data && data.categories[k]; return <button type="button" className="dy-metric" key={k} onClick={() => onCategory(k)}><span>{C.categories[k]}</span>
-      <strong className={s && s.risk_count > 0 ? 'dy-danger' : 'dy-muted'}>{!s ? '未读取' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count}</strong>
-      <small>{!s ? '未读取' : k === 'external' ? s.awaiting_return_count === null ? '外协风险未读取' : '待回厂 ' + s.awaiting_return_count + ' · 超期 ' + s.overdue_count + ' · 待确认 ' + s.awaiting_confirmation_count :
-        s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : '已关闭处置 ' + s.closed_count + ' 项'}</small></button>;
+    const s = data && data.categories[k], pending = !s && loading, failure = !s && error;
+    return <button type="button" className="dy-metric" key={k} aria-busy={pending && !failure} onClick={() => onCategory(k)}><span>{C.categories[k]}</span>
+      <strong className={s && s.risk_count > 0 ? 'dy-danger' : 'dy-muted'}><MetricValue pending={pending} error={failure}>{!s ? '未读取' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count}</MetricValue></strong>
+      <small><MetricValue pending={pending && !failure} kind="helper">{failure ? '请刷新重试' : !s ? '未读取' : k === 'external' ? s.awaiting_return_count === null ? '外协风险未读取' : '待回厂 ' + s.awaiting_return_count + ' · 超期 ' + s.overdue_count + ' · 待确认 ' + s.awaiting_confirmation_count :
+        s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : '已关闭处置 ' + s.closed_count + ' 项'}</MetricValue></small></button>;
   })}</div>; }
   function Rail({ data, category, onCategory }) { return <aside className="dy-rail" aria-label="风险类别"><h3>需要关注</h3>{Object.entries(C.categories).map(([k, label]) => <button
     type="button" className="dy-category" key={k} aria-pressed={category === k} onClick={() => onCategory(k)}><b>{label}</b>

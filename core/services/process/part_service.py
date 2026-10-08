@@ -28,8 +28,8 @@ from .part_route_validation import (
     operation_source_or_raise,
     save_template_no_tx,
 )
-from .quota_protection import ProcessQuotaProtection
 from .route_parser import ParseResult, ParseStatus, RouteParseContext, RouteParser
+from .template_hours import ProcessTemplateHours
 
 
 class PartService:
@@ -84,7 +84,7 @@ class PartService:
             raise BusinessError(ErrorCode.PART_NOT_FOUND, f"零件“{part_no}”不存在")
         return p
 
-    def _build_internal_hours_snapshot(self, part_no: str) -> Dict[int, Tuple[float, float]]:
+    def _build_internal_hours_snapshot(self, part_no: str) -> Dict[int, Tuple[Optional[str], Optional[float], Optional[float]]]:
         return build_internal_hours_snapshot(self.op_repo, part_no)
 
     def _coerce_external_default_days(
@@ -351,7 +351,7 @@ class PartService:
         self,
         part_no: str,
         parse_result: ParseResult,
-        preserved_internal_hours: Optional[Dict[int, Tuple[float, float]]] = None,
+        preserved_internal_hours: Optional[Dict[int, Tuple[Optional[str], Optional[float], Optional[float]]]] = None,
     ) -> None:
         """
         保存模板（不包含事务控制）。调用方必须保证已在事务中，或可接受多语句写入。
@@ -410,17 +410,17 @@ class PartService:
         if not op.is_internal():
             raise ValidationError("只能编辑内部工序工时", field="工序")
 
-        protection = ProcessQuotaProtection(self.conn)
-        ref = protection.bind(pn, s)
+        hours = ProcessTemplateHours(self.conn)
+        ref = hours.bind(pn, s)
         with self.tx_manager.transaction(begin_immediate=True):
-            current = protection.require_changes({ref: float(uh)})[ref]
+            current = hours.current([ref])[ref]
             if current["source"] != "internal":
                 raise ValidationError("只能编辑内部工序工时", field="工序")
             if current["part_no"] != pn or current["seq"] != s or current["id"] != op.id:
                 raise BusinessError(ErrorCode.NOT_FOUND, "这道模板工序已经变了，同工序号现在是另一条记录，这次没有更新工时。请刷新后重新核对再保存。")
             fields = {key: value for key, value in {"setup_hours": float(sh), "unit_hours": float(uh)}.items()
                       if current[key] != value}
-            self.op_repo.update(pn, s, fields)
+            hours.revise(ref, fields, expected_revision=current["revision"])
 
     def delete_external_group(self, part_no: str, group_id: str) -> Dict[str, Any]:
         pn = self._normalize_text(part_no)

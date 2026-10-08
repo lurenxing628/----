@@ -254,6 +254,10 @@
     }, command.saved.phase === 'confirmed' ? '上次处置结果已确认，点「完成」后更新风险与处置。' : '上次处置还没确认结果，确认前不能新增处置。'), /*#__PURE__*/React.createElement(P.Overview, {
       data: data,
       analysis: analysisData,
+      loading: list.loading,
+      error: list.error,
+      analysisLoading: analysisRead.loading,
+      analysisError: analysisRead.error,
       onCategory: category,
       onAnalysis: showAnalysis
     }), /*#__PURE__*/React.createElement(ErrorBox, {

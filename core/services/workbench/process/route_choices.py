@@ -2,7 +2,6 @@
 
 from copy import deepcopy
 
-from core.services.process.quota_protection import ProcessQuotaProtection
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
@@ -111,19 +110,6 @@ def _preview_existing_operation(row, old, result, context, discarded):
     return replace
 
 
-def _record_locked_replacements(conn, replacements, result):
-    if not replacements:
-        return
-    _, locks = ProcessQuotaProtection(conn).current([old["ref"] for old, _ in replacements])
-    for old, row in replacements:
-        if old["ref"] in locks:
-            message = "工序 " + str(old["seq"]) + " 的定额已锁定（来自工时校准），不能因更换工种清除单件工时。请先核对定额锁定记录。"
-            row["issues"].append({"code": "calibration_quota_locked", "message": message})
-            result["diagnostics"].append({"code": "calibration_quota_locked", "severity": "error",
-                                          "sequence": row["sequence"], "message": message})
-            result["can_confirm_route"] = False
-
-
 def preview_existing_route(conn, preview, operations, context=None):
     result = deepcopy(preview)
     result["_choices_projected"] = True
@@ -132,12 +118,10 @@ def preview_existing_route(conn, preview, operations, context=None):
         return result
     context = route_choice_context(conn, operations) if context is None else context
     discarded = _discarded_groups(existing, result["operations"], context)
-    replacements = []
     for row in result["operations"]:
         old = existing.get(row["sequence"])
-        if old is not None and _preview_existing_operation(row, old, result, context, discarded):
-            replacements.append((old, row))
-    _record_locked_replacements(conn, replacements, result)
+        if old is not None:
+            _preview_existing_operation(row, old, result, context, discarded)
     result["counts"]["recognized"] = sum(row["op_type_ref"] is not None for row in result["operations"])
     result["counts"]["unknown"] = len(result["operations"]) - result["counts"]["recognized"]
     return result

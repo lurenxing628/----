@@ -45,35 +45,15 @@
         || !C.object(row.changes[key]) || !C.own(row.changes[key], 'before') || !C.own(row.changes[key], 'after')
         || !scalar(row.changes[key].before) || !scalar(row.changes[key].after)))) throw C.failure('文件预检里有没说明的列或不完整的修改，不能确认。');
   }
-  const skipFields = ['code', 'template_operation_ref', 'adoption_ref', 'reason', 'message'];
-  function quotaSkips(data) {
-    const rows = new Map(data.rows.map(row => [row.row, row]));
-    if (!count(data.skipped_count) || !Array.isArray(data.skipped_rows) || !Array.isArray(data.skipped_refs)
-        || data.skipped_count !== data.skipped_rows.length || data.skipped_count !== data.skipped_refs.length
-        || new Set(data.skipped_refs).size !== data.skipped_count || new Set(data.skipped_rows.map(row => row && row.row)).size !== data.skipped_count
-        || data.skipped_rows.some((skip, index) => {
-          const row = C.object(skip) && rows.get(skip.row);
-          return !row || row.result !== 'unchanged' || !sequence(row.sequence) || !text(row.business_code) || !row.business_code.trim()
-            || skip.code !== 'calibration_quota_locked' || !A.ref(skip.template_operation_ref) || !A.ref(skip.adoption_ref)
-            || !text(skip.reason) || !skip.reason.trim() || !text(skip.message) || !skip.message.trim()
-            || data.skipped_refs[index] !== skip.template_operation_ref || !C.object(row.skip_reason)
-            || skipFields.some(key => row.skip_reason[key] !== skip[key]);
-        }))
-      throw C.failure('工时锁定跳过的数量、工序或原因不完整，没有按全部导入处理。请重新预检。');
-    const skips = new Map(data.skipped_rows.map(skip => [skip.row, skip]));
-    if (data.rows.some(row => C.own(row, 'skip_reason') && !skips.has(row.row)))
-      throw C.failure('工时锁定跳过明细有遗漏，请重新预检。');
-    return skips;
-  }
   function hoursCounts(data) {
-    return { changed: data.summary.new + data.summary.update, skipped: data.skipped_count,
-      unchanged: data.summary.unchanged - data.skipped_count, rejected: data.summary.rejected };
+    return { changed: data.summary.new + data.summary.update,
+      unchanged: data.summary.unchanged, rejected: data.summary.rejected };
   }
   function preview(raw, requestedKind, format, request) {
     const result = envelope(raw), d = result.data;
     if (d.kind !== kind(requestedKind) || d.operation !== operation(requestedKind) || !A.token(d.preview_ref)
         || !Number.isFinite(Date.parse(d.expires_at)) || d.commit_policy !== 'atomic' || typeof d.can_confirm !== 'boolean'
-        || d.format !== format || d.mode !== 'upsert' || d.template_version !== 1 || !text(d.file_sha256) || !/^[0-9a-f]{64}$/.test(d.file_sha256)
+        || d.format !== format || d.mode !== 'upsert' || d.template_version !== 1
         || !text(d.instructions) || typeof d.zero_review_required !== 'boolean' || !C.object(d.scope)
         || !C.object(d.write_context) || !A.token(d.write_context.write_token) || !C.object(d.write_context.capabilities) || !Array.isArray(d.write_context.blocked_reasons)
         || !C.object(d.summary) || !results.every(key => count(d.summary[key])) || !Array.isArray(d.rows)
@@ -88,13 +68,9 @@
         || new Set(d.affected_groups.map(group => group.ref)).size !== d.affected_groups.length)
       throw C.failure('文件预检内容、原记录或统计不完整，不能确认导入。');
     publicColumns(d);
-    if (requestedKind === 'hours') {
-      const skips = quotaSkips(d);
-      if (d.summary.new !== 0 || d.summary.delete !== 0 || d.rows.some(row => row.result !== 'rejected' && !sequence(row.sequence))
-          || d.rows.some(row => skips.has(row.row) && (row.requires_confirmation || Object.keys(row.changes).length || !C.object(row.before) || !C.object(row.after)
-              || Object.keys(row.before).length !== Object.keys(row.after).length || Object.keys(row.before).some(key => row.before[key] !== row.after[key]))))
-        throw C.failure('工时锁定行仍包含修改或确认要求，不能确认导入。');
-    }
+    if (requestedKind === 'hours' && (d.summary.new !== 0 || d.summary.delete !== 0
+        || d.rows.some(row => row.result !== 'rejected' && !sequence(row.sequence))))
+      throw C.failure('工时文件包含无效的工序或新增行，请重新预检。');
     if (request.target_ref && (!A.ref(request.target_ref) || d.rows.some(row => row.entity_ref !== request.target_ref && row.result !== 'rejected')
         || d.affected_groups.some(group => group.part_ref !== request.target_ref))) throw C.failure('文件包含其他零件，不能从当前详情提交。');
     return result;
@@ -144,13 +120,11 @@
         || C.own(previewData.rows[index], 'sequence') && row.sequence !== previewData.rows[index].sequence)))
       throw C.failure('导入结果和预检的文件行不一致。请点「查询结果」核对，不要重复提交。');
     if (requestedKind === 'hours') {
-      const skips = quotaSkips(result.data), counts = hoursCounts(result.data);
+      const counts = hoursCounts(result.data);
       if (result.data.summary.new !== 0 || result.data.rows.some(row => !sequence(row.sequence))
           || counts.changed !== result.data.rows.filter(row => row.result === 'committed').length
-          || (result.result === 'committed') !== (counts.changed > 0)
-          || previewData && (skips.size !== previewData.skipped_count || previewData.skipped_rows.some(skip =>
-            !skips.has(skip.row) || skipFields.some(key => skip[key] !== skips.get(skip.row)[key]))))
-        throw C.failure('实际导入数量或锁定跳过原因和文件不一致。请点「查询结果」核对，不要重复提交。');
+          || (result.result === 'committed') !== (counts.changed > 0))
+        throw C.failure('实际导入数量和文件不一致。请点「查询结果」核对，不要重复提交。');
     }
     return result.data;
   }

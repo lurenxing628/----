@@ -3,17 +3,60 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(x => x !== null && x !== false && x !== undefined) });
-const react = { createElement: h, Fragment: 'fragment' };
+const react = { createElement: h, Fragment: 'fragment', createContext: () => ({}) };
 const window = { ResourceControls: { Button: 'button', Issues: 'issues' }, WorkbenchFormat: { dateTime: v => v == null ? '未知' : v.replace('T', ' '), date: v => v == null ? '未知' : v.slice(0, 10), number: v => v == null ? '未知' : String(v), hours: v => v == null ? '未知' : String(v) + ' h' }, WorkbenchReference: 'reference', WorkbenchDetailPanel: 'detail-panel', WorkbenchListControls: { Pager: 'pager', EmptyState: 'empty-state' } };
 // 值班台来源依据的按项词表取自全站词表，这里加载真实的 WorkbenchTerms。
 vm.runInNewContext(fs.readFileSync(path.join(app, 'WorkbenchTerms.js'), 'utf8'), { window });
-const names = ['DashboardContract.js', 'DashboardEvidence.jsx', 'DashboardPanels.jsx', 'MasterOverviewContract.js', 'MasterOverviewTable.jsx', 'MasterOverviewDetail.jsx'];
+const controlMocks = window.ResourceControls;
+const names = ['ResourceControls.jsx', 'DashboardContract.js', 'DashboardEvidence.jsx', 'DashboardPanels.jsx', 'MasterOverviewContract.js', 'MasterOverviewTable.jsx', 'MasterOverviewDetail.jsx', 'MasterOverviewWorkspace.jsx'];
 const source = names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }));
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: source });
-for (const file of built.outputs) vm.runInNewContext(file.code, { React: react, window });
+for (const file of built.outputs) {
+  vm.runInNewContext(file.code, { React: react, window });
+  if (file.path.endsWith('ResourceControls.jsx')) window.ResourceControls = { ...controlMocks, MetricValue: window.ResourceControls.MetricValue };
+}
 function expand(node) { if (!node || typeof node !== 'object') return node; if (typeof node.type === 'function') return expand(node.type({ ...node.props, children: node.children })); return { ...node, children: node.children.map(expand) }; }
 function text(node) { if (node == null) return ''; if (typeof node !== 'object') return String(node); return node.children.map(text).join(' '); }
 function nodes(node) { return !node || typeof node !== 'object' ? [] : [node, ...node.children.flatMap(nodes)]; }
+const noop = () => {}, skeletons = tree => nodes(tree).filter(node => node.props.className === 'wb-metric-placeholder');
+const values = tree => nodes(tree).filter(node => node.type === 'strong').map(text);
+const dashboard = props => expand(h(window.DashboardPanels.Overview, { onCategory: noop, onAnalysis: noop, ...props }));
+const firstDashboard = dashboard({ loading: true });
+assert.deepEqual(values(firstDashboard), Array(7).fill(''), '首读数值区只展示占位，不先写未读取、未知或0');
+assert.equal(skeletons(firstDashboard).length, 12, '七个值位及五个动态备注位均为静态骨架');
+assert(skeletons(firstDashboard).every(node => node.props['aria-hidden'] === 'true'));
+const dashboardData = { categories: Object.fromEntries(['delivery', 'actual', 'external', 'downtime', 'material'].map(key => [key, {
+  state: 'loaded', risk_count: 0, closed_count: 0, known_risk_count: 0, awaiting_return_count: 0, overdue_count: 0, awaiting_confirmation_count: 0
+}])) };
+const analysisPending = dashboard({ data: dashboardData, analysisLoading: true });
+assert.deepEqual(values(analysisPending), ['0', '', '0', '0', '0', '0', ''], '主请求完成后只保留分析请求的两个骨架');
+assert.equal(skeletons(analysisPending).length, 2);
+const firstFailure = dashboard({ error: new Error('read failed') });
+assert.deepEqual(values(firstFailure), Array(7).fill('读取失败'));
+assert.equal(skeletons(firstFailure).length, 0, '主请求失败也终止等待主请求的分析卡片骨架');
+const analysisFailure = dashboard({ data: dashboardData, analysisError: new Error('analysis failed') });
+assert.deepEqual(values(analysisFailure), ['0', '读取失败', '0', '0', '0', '0', '读取失败']);
+const dashboardUnknown = dashboard({ data: { categories: { ...dashboardData.categories, external: { ...dashboardData.categories.external, risk_count: null } } },
+  analysis: { pressure: { count: 0 }, pending: { count: 0 } } });
+assert.deepEqual(values(dashboardUnknown), ['0', '0', '0', '未知', '0', '0', '0'], '读取成功后的真实0与业务未知保留');
+const masterScope = window.APSMasterOverviewContract.scope({}), master = window.MasterOverviewWorkspace;
+const statistics = props => expand(h(master.Statistics, { scope: masterScope, domainsId: 'counts', onDomain: noop, ...props }));
+const firstMaster = statistics({ pending: true });
+assert.deepEqual(values(firstMaster), Array(12).fill(''));
+assert.equal(skeletons(firstMaster).length, 20, '资料总览四个总数、八个类别及其备注全部采用同一占位规则');
+const firstTabs = expand(h(master.ListTabs, { scope: masterScope, pending: true, onChange: noop }));
+assert.equal(skeletons(firstTabs).length, 2); assert(!text(firstTabs).includes('未读取'));
+const masterFailure = statistics({ error: new Error('read failed') });
+assert.deepEqual(values(masterFailure), Array(12).fill('读取失败')); assert.equal(skeletons(masterFailure).length, 0);
+const overview = { complete: true, stats: { entities: 0, issues: 0, affected: 0, relations: 0 },
+  domains: window.APSMasterOverviewContract.domains.map(([id]) => ({ id, loaded: true, count: 0, attention: 0, unknown: 0 })) };
+const masterRefreshing = statistics({ overview, pending: true });
+assert.deepEqual(values(masterRefreshing), Array(12).fill('0')); assert.equal(skeletons(masterRefreshing).length, 0, '刷新保留现有全局summary');
+assert(nodes(masterRefreshing).filter(node => node.props['aria-busy'] === true).length === 2);
+const masterPartial = statistics({ overview: { ...overview, complete: false, stats: { ...overview.stats, relations: null },
+  domains: overview.domains.map((domain, index) => index ? domain : { ...domain, loaded: false, count: null }) } });
+assert.equal(values(masterPartial)[3], '未知'); assert.equal(values(masterPartial)[4], '未读取');
+assert(text(masterPartial).includes('已读取资料')); assert.equal(skeletons(masterPartial).length, 0, '返回后的实际来源缺口不是loading');
 const sample = { kind: 'delivery', plan_ref: 'a'.repeat(48), request_key: 'c'.repeat(48), code: 'qualification.empty',
   evaluation: { delay_days: 0, planned_finish: null }, requirements: [{ label: '原料', business_code: 'M-001', required_quantity: 0, available_quantity: null }] };
 const tree = expand(h(window.DashboardEvidence.Structure, { value: sample }));

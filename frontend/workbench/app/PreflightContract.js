@@ -64,7 +64,9 @@
     }
     // 来源入口既可以是旧的视图名字符串，也可以是值班台用的 {view, context} 信封；本页不使用它，只做形状校验。
     if (context.return_to !== undefined && !['batches', 'dashboard', 'run'].includes(object(context.return_to) ? context.return_to.view : context.return_to)) throw fail('返回入口无效。');
-    return input(value);
+    const normalized = input(value);
+    // 旧 split 只是拆批入口，实际放行与 strict 相同；新的可编辑规则只保留真实的两种齐套方式。
+    return normalized.material_strategy === 'split' ? { ...normalized, material_strategy: 'strict' } : normalized;
   }
   const issues = rows => Array.isArray(rows) && rows.every(row => object(row) && typeof row.code === 'string' && typeof row.message === 'string');
   const nullableCount = value => value === null || count(value);

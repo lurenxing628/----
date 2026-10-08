@@ -13,9 +13,8 @@
   const time = value => value ? window.WorkbenchFormat.dateTime(value, {
     seconds: true
   }) : '未知';
-  // 采用即锁定，而且锁不掉：这句要在预检、勾选确认两处都说清楚。
-  const scope = '采用后会更新这个模板的定额并锁定：不能撤销，以后也不能再改这个模板的定额；已有批次保持不变。';
-  const consentText = '我已知道：采用后这个模板的定额锁定，不能撤销，以后不能再改；新定额只用于以后新增的工序。';
+  const scope = '采用后更新模板当前定额，并保留本次采用记录；以后可以继续人工修改、导入或采用新建议。已有批次和历史计划保留原值。';
+  const consentText = '我已核对本次建议和完工记录；新定额用于以后新建的批次，已有批次和历史计划保持原值。';
   function Facts({
     row
   }) {
@@ -65,11 +64,11 @@
   }) {
     const d = value.data;
     return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u91C7\u7528\u4E0E\u9501\u5B9A\u7ED3\u679C"
+      "aria-label": "\u91C7\u7528\u7ED3\u679C"
     }, /*#__PURE__*/React.createElement("p", {
       className: "cad-success",
       role: "status"
-    }, window.WorkbenchTerms.outcomes.done('采用', '新定额 ' + unitHours(d.new_unit_hours) + '，定额已锁定（来自工时校准）')), /*#__PURE__*/React.createElement("dl", {
+    }, window.WorkbenchTerms.outcomes.done('采用', '新定额 ' + unitHours(d.new_unit_hours) + '，以后仍可继续修订')), /*#__PURE__*/React.createElement("dl", {
       className: "cad-facts"
     }, [['原定额', unitHours(d.old_unit_hours)], ['新定额', unitHours(d.new_unit_hours)], ['版本变化', '第 ' + d.template_revision_before + ' 版 → 第 ' + d.template_revision_after + ' 版'], ['采用时间', time(d.adopted_at)], ['经办人', d.declared_operator], ['记录人', d.application_operator], ['采用原因', d.reason], ['用户确认', d.confirmed ? '已确认' : '未确认']].map(([label, value]) => /*#__PURE__*/React.createElement("div", {
       key: label
@@ -103,7 +102,7 @@
       if (typeof onRefresh === 'function') onRefresh();
     };
     return /*#__PURE__*/React.createElement(Modal, {
-      title: result ? '模板采用与锁定结果' : pending ? '查询上次采用结果' : '预检并采用模板定额',
+      title: result ? '模板采用结果' : pending ? '查询上次采用结果' : '预检并采用模板定额',
       icon: "check",
       onClose: s.close,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
@@ -133,7 +132,7 @@
         busy: s.busy,
         disabled: blocked || !preview || !preview.validation.can_adopt || !s.consent,
         onClick: s.submit
-      }, "\u786E\u8BA4\u91C7\u7528\u5E76\u9501\u5B9A")))
+      }, "\u786E\u8BA4\u91C7\u7528")))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-body cad-body"
     }, (s.error || s.storageError) && /*#__PURE__*/React.createElement("p", {
@@ -185,9 +184,9 @@
     }, preview.validation.can_adopt ? '检查通过，可以采用。' : '当前不能采用。'), preview.validation.issues.map(item => /*#__PURE__*/React.createElement("p", {
       className: "cad-notice",
       key: item.code
-    }, item.message)), preview.quota_lock && /*#__PURE__*/React.createElement("p", {
-      className: "cad-notice"
-    }, "\u5B9A\u989D\u5DF2\u9501\u5B9A\uFF08\u6765\u81EA\u5DE5\u65F6\u6821\u51C6\uFF09\uFF1A", unitHours(preview.quota_lock.locked_unit_hours), "\uFF1B\u9501\u5B9A\u65F6\u95F4 ", time(preview.quota_lock.locked_at), "\u3002"), /*#__PURE__*/React.createElement(Samples, {
+    }, item.message)), preview.latest_adoption && /*#__PURE__*/React.createElement("p", {
+      className: "ca-muted"
+    }, "\u4E0A\u6B21\u91C7\u7528 ", unitHours(preview.latest_adoption.new_unit_hours), " \xB7 ", time(preview.latest_adoption.adopted_at), "\uFF1B\u672C\u6B21\u4ECD\u53EF\u6309\u5F53\u524D\u6A21\u677F\u7248\u672C\u91C7\u7528\u3002"), /*#__PURE__*/React.createElement(Samples, {
       preview: preview,
       detail: detail
     }), preview.validation.can_adopt && /*#__PURE__*/React.createElement("label", {

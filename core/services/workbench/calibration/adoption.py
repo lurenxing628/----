@@ -50,7 +50,7 @@ class WorkbenchCalibrationAdoptionService:
                        factory(template_operation_ref, [ADOPT_ACTION], evidence.snapshot))
             return {"template_operation_ref": template_operation_ref, "suggestion": evidence.suggestion,
                     "generated_at": evidence.generated_at, "input": intent, "samples": evidence.samples,
-                    "effect_scope": "future_template_use_only", "quota_lock": evidence.snapshot["locks"].get(template_operation_ref),
+                    "effect_scope": "future_template_use_only", "latest_adoption": evidence.snapshot["latest_adoption"],
                     "validation": {"can_adopt": not evidence.blockers, "issues": evidence.blockers}, "write_context": context}
 
     def confirm(self, template_operation_ref, write_token, request_key, value):
@@ -74,7 +74,7 @@ class WorkbenchCalibrationAdoptionService:
             after = adopt_checked_quota(self.repo, evidence.template, evidence.suggestion["suggested_unit_hours"])
             audit = self.repo.append(evidence, after, intent, request_key=request_key, actor=actor,
                                      adopted_at=evidence.generated_at)
-            return WorkbenchCommandOutcome("committed", {**audit, "locked": True,
+            return WorkbenchCommandOutcome("committed", {**audit,
                 "sample_refs": evidence.suggestion["sample_refs"], "sample_revisions": evidence.suggestion["sample_revisions"],
                 "effect_scope": "future_template_use_only"})
 

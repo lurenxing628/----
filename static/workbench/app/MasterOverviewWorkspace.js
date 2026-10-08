@@ -4,7 +4,8 @@
   const C = window.APSMasterOverviewContract,
     {
       Button,
-      ErrorBox
+      ErrorBox,
+      MetricValue
     } = window.ResourceControls;
   const {
     Table,
@@ -58,6 +59,83 @@
       section: view.section,
       detailPage: view.detail_page
     };
+  }
+  function Statistics({
+    overview,
+    pending,
+    error,
+    scope,
+    domainsId,
+    onDomain
+  }) {
+    const metrics = overview && overview.stats,
+      loading = !overview && pending,
+      failure = !overview && error;
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "wb-metrics mo-metrics",
+      "aria-label": "\u603B\u89C8\u72B6\u6001",
+      "aria-busy": pending
+    }, [['entities', overview && !overview.complete ? '已读取资料' : '资料条数'], ['issues', '待维护项'], ['affected', '涉及资料'], ['relations', '已关联对数']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
+      className: "wb-metric",
+      key: key,
+      "data-tone": key === 'issues' ? 'warn' : undefined
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "wb-metric-label"
+    }, label), /*#__PURE__*/React.createElement("strong", {
+      className: "wb-metric-value"
+    }, /*#__PURE__*/React.createElement(MetricValue, {
+      pending: loading,
+      error: failure
+    }, metrics ? C.value(metrics[key]) : '未读取'))))), /*#__PURE__*/React.createElement("div", {
+      className: "wb-metrics mo-domains",
+      "aria-label": "\u8D44\u6599\u7C7B\u522B\u6570\u91CF",
+      "aria-busy": pending
+    }, C.domains.map(([id, label], index) => {
+      const domain = overview && overview.domains[index],
+        countId = domainsId + '-' + id;
+      return /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        className: "wb-metric mo-domain",
+        key: id,
+        "aria-pressed": scope.domain === id,
+        "aria-label": '查看资料类别 ' + label,
+        "aria-describedby": countId + '-count ' + countId + '-helper',
+        onClick: () => onDomain(scope.domain === id ? 'all' : id)
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "wb-metric-label"
+      }, label), /*#__PURE__*/React.createElement("strong", {
+        className: "wb-metric-value",
+        id: countId + '-count'
+      }, /*#__PURE__*/React.createElement(MetricValue, {
+        pending: loading,
+        error: failure
+      }, domain && domain.loaded ? domain.count : '未读取')), /*#__PURE__*/React.createElement("span", {
+        className: "wb-metric-helper",
+        id: countId + '-helper'
+      }, /*#__PURE__*/React.createElement(MetricValue, {
+        pending: loading && !failure,
+        kind: "helper"
+      }, failure ? '请刷新重试' : domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取')));
+    })));
+  }
+  function ListTabs({
+    scope,
+    metrics,
+    pending,
+    error,
+    onChange
+  }) {
+    const count = key => /*#__PURE__*/React.createElement(MetricValue, {
+      pending: !metrics && pending,
+      error: !metrics && error,
+      kind: "count"
+    }, metrics ? metrics[key] : '未读取');
+    return /*#__PURE__*/React.createElement(Tabs, {
+      label: "\u6E05\u5355\u7C7B\u578B",
+      value: scope.view,
+      onChange: onChange,
+      values: [["issues", "待维护项", count('issues')], ["entities", "资料清单", count('entities')]]
+    });
   }
   function MasterOverviewWorkspace({
     onNavigate,
@@ -366,7 +444,9 @@
       className: "wb-page-title"
     }, "\u8D44\u6599\u603B\u89C8"), /*#__PURE__*/React.createElement("p", {
       className: "wb-page-context"
-    }, summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料 · 未读取')), /*#__PURE__*/React.createElement("div", {
+    }, summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料', /*#__PURE__*/React.createElement("span", {
+      role: "status"
+    }, pending ? summary ? ' · 正在更新统计' : ' · 正在读取资料' : readError ? summary ? ' · 更新失败，显示上次读取结果' : ' · 读取失败' : ''))), /*#__PURE__*/React.createElement("div", {
       className: "mo-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -392,43 +472,16 @@
           setActionError(failure);
         }
       }
-    }, "\u7EF4\u62A4\u57FA\u7840\u8D44\u6599"))), /*#__PURE__*/React.createElement("div", {
-      className: "wb-metrics mo-metrics",
-      "aria-label": "\u603B\u89C8\u72B6\u6001"
-    }, [['entities', overview && !overview.complete ? '已读取资料' : '资料条数'], ['issues', '待维护项'], ['affected', '涉及资料'], ['relations', '已关联对数']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
-      className: "wb-metric",
-      key: key,
-      "data-tone": key === 'issues' ? 'warn' : undefined
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "wb-metric-label"
-    }, label), /*#__PURE__*/React.createElement("strong", {
-      className: "wb-metric-value"
-    }, metrics ? C.value(metrics[key]) : '未读取')))), /*#__PURE__*/React.createElement("div", {
-      className: "wb-metrics mo-domains",
-      "aria-label": "\u8D44\u6599\u7C7B\u522B\u6570\u91CF"
-    }, C.domains.map(([id, label], index) => {
-      const domain = overview && overview.domains[index],
-        countId = domainsId + '-' + id;
-      return /*#__PURE__*/React.createElement("button", {
-        type: "button",
-        className: "wb-metric mo-domain",
-        key: id,
-        "aria-pressed": scope.domain === id,
-        "aria-label": '查看资料类别 ' + label,
-        "aria-describedby": countId + '-count ' + countId + '-helper',
-        onClick: () => filter({
-          domain: scope.domain === id ? 'all' : id
-        })
-      }, /*#__PURE__*/React.createElement("span", {
-        className: "wb-metric-label"
-      }, label), /*#__PURE__*/React.createElement("strong", {
-        className: "wb-metric-value",
-        id: countId + '-count'
-      }, domain && domain.loaded ? domain.count : '未读取'), /*#__PURE__*/React.createElement("span", {
-        className: "wb-metric-helper",
-        id: countId + '-helper'
-      }, domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'));
-    })), overview && overview.gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
+    }, "\u7EF4\u62A4\u57FA\u7840\u8D44\u6599"))), /*#__PURE__*/React.createElement(Statistics, {
+      overview: overview,
+      pending: pending,
+      error: readError,
+      scope: scope,
+      domainsId: domainsId,
+      onDomain: domain => filter({
+        domain
+      })
+    }), overview && overview.gaps.length > 0 && /*#__PURE__*/React.createElement("details", {
       className: "mo-gaps",
       open: true
     }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u59CB\u6570\u636E\u7F3A\u53E3 ", overview.gaps.length, " \u9879"), /*#__PURE__*/React.createElement("ul", null, overview.gaps.map((gap, index) => /*#__PURE__*/React.createElement("li", {
@@ -448,15 +501,16 @@
     }, "\u5237\u65B0\u672C\u9875")), /*#__PURE__*/React.createElement("section", {
       className: "mo-controls",
       "aria-label": "\u8D44\u6599\u6E05\u5355\u7B5B\u9009"
-    }, /*#__PURE__*/React.createElement(Tabs, {
-      label: "\u6E05\u5355\u7C7B\u578B",
-      value: scope.view,
+    }, /*#__PURE__*/React.createElement(ListTabs, {
+      scope: scope,
+      metrics: metrics,
+      pending: pending,
+      error: readError,
       onChange: view => filter({
         view,
         status: 'all',
         column_filters: {}
-      }),
-      values: [["issues", "待维护项", metrics ? metrics.issues : '未读取'], ["entities", "资料清单", metrics ? metrics.entities : '未读取']]
+      })
     }), /*#__PURE__*/React.createElement("form", {
       className: "mo-tools",
       onSubmit: event => {
@@ -616,4 +670,6 @@
   window.MasterOverviewWorkspace = MasterOverviewWorkspace;
   MasterOverviewWorkspace.readContext = readContext;
   MasterOverviewWorkspace.readList = readList;
+  MasterOverviewWorkspace.Statistics = Statistics;
+  MasterOverviewWorkspace.ListTabs = ListTabs;
 })();

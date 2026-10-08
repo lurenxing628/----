@@ -10,7 +10,7 @@
     start_date: '排产起日',
     end_date: '排产止日',
     ready_check: '齐套检查',
-    material_strategy: '物料放行方式',
+    material_strategy: '物料齐套规则',
     hold_window: '不重排时段',
     missing_resource_policy: '缺设备人员时的规则',
     completed_policy: '执行规则',
@@ -172,7 +172,7 @@
   function ScopeSummary({
     value
   }) {
-    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u653E\u884C\uFF1A", value.material_strategy === null ? '未记录' : window.WorkbenchTerms.material_strategies[value.material_strategy || 'strict']), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219\uFF1A", window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
       auto_assign: '自动分配',
       exclude: '暂不排'
     }[value.missing_resource_policy] || '未记录', " \xB7 ", value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'), /*#__PURE__*/React.createElement("small", {

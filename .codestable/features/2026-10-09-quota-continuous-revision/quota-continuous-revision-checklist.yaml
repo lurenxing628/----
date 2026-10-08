@@ -1,0 +1,25 @@
+feature: quota-continuous-revision
+design: quota-continuous-revision-design.md
+steps:
+  - id: writer
+    description: 统一工时修订入口，退役旧锁读写和工种变更阻断
+    status: done
+  - id: migration
+    description: v39 保留采用历史并移除单模板唯一约束和锁表
+    status: done
+  - id: ui-docs
+    description: 更新采用、导入合同及本地静态资源，同步当前说明和路线图
+    status: done
+checks:
+  - id: business
+    description: 旧库迁移、连续修订、各入口一致、批次和计划快照、失败回滚及并发
+    status: passed
+  - id: schema
+    description: 新库与完整历史迁移链到 v39 的终态结构相同
+    status: passed
+  - id: frontend
+    description: 前端 Node 契约和实际浏览器定向组件验证
+    status: passed
+  - id: daily-scope
+    description: 本轮 Python ruff、Python 3.8 语法、应用启动与离线资源冒烟
+    status: passed

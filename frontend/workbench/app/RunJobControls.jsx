@@ -32,7 +32,7 @@
     const value = preview.normalized_input;
     return <dl className="rj-scope"><div><dt>本次批次</dt><dd>{value.batch_refs.length} 批</dd></div>
       <div><dt>排产日期</dt><dd>{value.start_date} 至 {value.end_date}</dd></div>
-      <div><dt>物料放行方式</dt><dd>{window.WorkbenchTerms.material_strategies[value.material_strategy || 'strict']}</dd></div><div><dt>齐套检查</dt><dd>{value.ready_check ? '开启' : '关闭'}</dd></div>
+      <div><dt>物料齐套规则</dt><dd>{window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)}</dd></div><div><dt>齐套检查</dt><dd>{value.ready_check ? '开启' : '关闭'}</dd></div>
       <div><dt>缺资源工序</dt><dd>{value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排'}</dd></div>
       <div><dt>不重排时段</dt><dd data-hold-window>{holdText(value, effective)}</dd></div>
       <div><dt>已有报工</dt><dd>保留已开工和已完工的记录</dd></div></dl>;

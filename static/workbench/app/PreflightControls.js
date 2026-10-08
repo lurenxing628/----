@@ -28,6 +28,35 @@
       onChange: () => onChange(key)
     }), /*#__PURE__*/React.createElement("span", null, text))));
   }
+  function MaterialRules({
+    value,
+    onChange,
+    disabled
+  }) {
+    const id = React.useId(),
+      T = window.WorkbenchTerms,
+      unavailable = disabled || !value.ready_check;
+    return /*#__PURE__*/React.createElement("fieldset", {
+      className: "pf-material-rules",
+      disabled: unavailable
+    }, /*#__PURE__*/React.createElement("legend", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("div", {
+      className: "pf-material-choices"
+    }, ['strict', 'stage'].map(strategy => /*#__PURE__*/React.createElement("label", {
+      key: strategy,
+      className: 'pf-material-choice' + (value.material_strategy === strategy ? ' selected' : '')
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "radio",
+      name: id,
+      checked: value.material_strategy === strategy,
+      disabled: unavailable,
+      "aria-describedby": id + '-' + strategy,
+      onChange: () => onChange({
+        material_strategy: strategy
+      })
+    }), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, T.material_strategies[strategy]), /*#__PURE__*/React.createElement("small", {
+      id: id + '-' + strategy
+    }, T.material_descriptions[strategy]))))));
+  }
   // 不重排时段：没动过时不带这一项（按交付设置），检查后用本次生效的时段填显示值；改任一端就按本次单独填的发送，点「不设」发送 null。
   function HoldWindow({
     value,
@@ -159,7 +188,10 @@
     value,
     effective,
     onChange,
-    disabled
+    disabled,
+    onInspectMaterials,
+    splitExpanded,
+    materialPanel
   }) {
     return /*#__PURE__*/React.createElement("section", {
       "aria-labelledby": "pf-rules-title"
@@ -180,20 +212,21 @@
           material_strategy: 'strict'
         })
       })
-    })), /*#__PURE__*/React.createElement("div", {
-      className: "pf-rule"
-    }, /*#__PURE__*/React.createElement("strong", null, "\u7269\u6599\u653E\u884C\u65B9\u5F0F"), /*#__PURE__*/React.createElement(Segment, {
-      label: "\u7269\u6599\u653E\u884C\u65B9\u5F0F",
-      value: value.material_strategy || 'strict',
-      choices: Object.entries(window.WorkbenchTerms.material_strategies),
-      disabled: disabled,
-      onChange: material_strategy => onChange({
-        material_strategy,
-        ready_check: true
-      })
-    })), /*#__PURE__*/React.createElement("div", {
-      className: "pf-rule pf-note"
-    }, "\u6309\u5DE5\u5E8F\u9F50\u5957\uFF1A\u53EA\u7B49\u5F85\u672C\u5E8F\u53CA\u524D\u5E8F\u9700\u8981\u7684\u7269\u6599\u3002\u5206\u6279\u5F00\u5DE5\uFF1A\u5148\u9884\u68C0\u53EF\u505A\u6570\u91CF\uFF0C\u786E\u8BA4\u4FDD\u5B58\u62C6\u5206\u540E\u518D\u6392\u4EA7\u3002"), /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement(MaterialRules, {
+      value: value,
+      onChange: onChange,
+      disabled: disabled
+    }), !value.ready_check && /*#__PURE__*/React.createElement("p", {
+      className: "pf-material-disabled"
+    }, "\u5DF2\u5173\u95ED\u9F50\u5957\u68C0\u67E5\uFF0C\u672C\u6B21\u6392\u4EA7\u4E0D\u6309\u5230\u6599\u6761\u4EF6\u9650\u5236\u3002"), /*#__PURE__*/React.createElement("div", {
+      className: "pf-split-action"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u7269\u6599\u53EA\u591F\u505A\u4E00\u90E8\u5206\uFF1F"), /*#__PURE__*/React.createElement("p", null, "\u5148\u68C0\u67E5\u53EF\u505A\u6570\u91CF\uFF0C\u786E\u8BA4\u540E\u62C6\u6210\u4E24\u6279\u3002")), /*#__PURE__*/React.createElement(Button, {
+      icon: splitExpanded ? 'chevron-up' : 'search',
+      disabled: disabled || !value.ready_check || !onInspectMaterials,
+      "aria-expanded": !!splitExpanded,
+      "aria-controls": splitExpanded ? 'pf-material-split' : undefined,
+      onClick: onInspectMaterials
+    }, splitExpanded ? '收起数量检查' : '检查物料可做数量')), materialPanel, /*#__PURE__*/React.createElement("div", {
       className: "pf-rule"
     }, /*#__PURE__*/React.createElement("strong", null, "\u7F3A\u8D44\u6E90\u5DE5\u5E8F"), /*#__PURE__*/React.createElement(Segment, {
       label: "\u7F3A\u8D44\u6E90\u5DE5\u5E8F",

@@ -68,7 +68,7 @@
         const body = P.previewBody('text', mode === 'rows' ? D.serialize(rows) : routeRaw, rows, snapshot);
         const response = P.preview(await adapter.routePreview(entity.ref, body, controller.signal), entity.ref, body);
         if (controller.signal.aborted || request.current !== controller) return null;
-        const syntaxInvalid = !response.data.operations.length || response.data.diagnostics.some(row => row.severity === 'error' && !['calibration_quota_locked', 'legacy_sequence_invalid'].includes(row.code));
+        const syntaxInvalid = !response.data.operations.length || response.data.diagnostics.some(row => row.severity === 'error' && !['legacy_sequence_invalid'].includes(row.code));
         if (syntaxInvalid) { setState({ busy: false, result: response, error: C.failure('当前输入还不能准确识别，已保留原输入。请按路线预检提示修正后再继续。') }); return null; }
         return response.data.operations.map(row => ({ seq: String(row.sequence), op_type_name: row.op_type_name }));
       } catch (error) { if (!controller.signal.aborted) throw error; return null; }

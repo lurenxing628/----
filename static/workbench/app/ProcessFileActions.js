@@ -216,7 +216,6 @@
         if (abort.current === controller) abort.current = null;
       }
     }
-    const allSkipped = data && importing && kind === 'hours' && data.skipped_count === data.rows.length;
     return /*#__PURE__*/React.createElement("div", {
       className: 'plana rm-actions' + ((data || saved) && importing ? ' rm-wide' : '')
     }, /*#__PURE__*/React.createElement(Modal, {
@@ -239,7 +238,7 @@
         disabled: controlsDisabled,
         reason: reason,
         onClick: importing ? confirm : () => downloadFile(false)
-      }, importing ? allSkipped ? '确认跳过并记录结果' : data.zero_review_required ? '按 0 导入' : '确认导入' : '下载文件'))
+      }, importing ? data.zero_review_required ? '按 0 导入' : '确认导入' : '下载文件'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll rm-body"
     }, recovery && !done && /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u5BFC\u5165\u7ED3\u679C\uFF0C\u8BF7\u7A0D\u5019\u3002"), !recovery && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -327,7 +326,7 @@
     }), data.zero_review_required && /*#__PURE__*/React.createElement("p", {
       className: "process-zero-impact",
       role: "status"
-    }, "\u4EE5\u4E0B\u5DE5\u5E8F\u7684\u5355\u4EF6\u5DE5\u65F6\u4E3A 0\uFF0C\u6392\u4EA7\u53EA\u8BA1\u7B97\u6362\u578B\u5DE5\u65F6\uFF0C\u6570\u91CF\u589E\u52A0\u4E0D\u4F1A\u589E\u52A0\u52A0\u5DE5\u65F6\u957F\uFF1A", data.rows.filter(row => row.requires_confirmation && row.after && row.after.unit_hours === 0).map(row => row.business_code + ' / 工序 ' + row.sequence).join('、'), "\u3002\u70B9\u300C\u6309 0 \u5BFC\u5165\u300D\u4FDD\u5B58\u8FD9\u4E9B\u6570\u503C\u3002"), /*#__PURE__*/React.createElement("p", null, kind === 'hours' ? '锁定跳过行不参与写入；其余行整体确认，任何一行不能提交，本批全部不修改。' : '本批整体确认；任何一行不能提交，本批全部不修改。')), data && !importing && /*#__PURE__*/React.createElement("p", {
+    }, "\u4EE5\u4E0B\u5DE5\u5E8F\u7684\u5355\u4EF6\u5DE5\u65F6\u4E3A 0\uFF0C\u6392\u4EA7\u53EA\u8BA1\u7B97\u6362\u578B\u5DE5\u65F6\uFF0C\u6570\u91CF\u589E\u52A0\u4E0D\u4F1A\u589E\u52A0\u52A0\u5DE5\u65F6\u957F\uFF1A", data.rows.filter(row => row.requires_confirmation && row.after && row.after.unit_hours === 0).map(row => row.business_code + ' / 工序 ' + row.sequence).join('、'), "\u3002\u70B9\u300C\u6309 0 \u5BFC\u5165\u300D\u4FDD\u5B58\u8FD9\u4E9B\u6570\u503C\u3002"), /*#__PURE__*/React.createElement("p", null, "\u672C\u6279\u6574\u4F53\u786E\u8BA4\uFF1B\u4EFB\u4F55\u4E00\u884C\u4E0D\u80FD\u63D0\u4EA4\uFF0C\u672C\u6279\u5168\u90E8\u4E0D\u4FEE\u6539\u3002")), data && !importing && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u5DF2\u6838\u5BF9 ", data.part_count, " \u4E2A\u96F6\u4EF6\uFF0C\u5BFC\u51FA ", data.row_count, " \u884C", kind === 'hours' ? '工序记录' : '零件记录', "\uFF0C\u4E0D\u9650\u5F53\u524D\u663E\u793A\u9875\u3002"), reason && data && !done && /*#__PURE__*/React.createElement("p", {
       role: "status"

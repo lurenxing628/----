@@ -11,7 +11,7 @@ from core.infrastructure.workbench_calibration_adoption_schema import objects as
 from core.infrastructure.workbench_dashboard_schema import objects as dashboard_objects
 
 V29_EMPTY_TABLES = (
-    "WorkbenchCalibrationAdoptions", "WorkbenchCalibrationQuotaLocks",
+    "WorkbenchCalibrationAdoptions",
     "WorkbenchDashboardStates", "WorkbenchDashboardHistory",
 )
 V29_MAPPING_TABLES = ("WorkbenchDashboardItems", "WorkbenchDashboardDowntimeRefs")

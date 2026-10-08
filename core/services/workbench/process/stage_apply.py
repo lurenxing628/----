@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.process.template_hours import ProcessTemplateHours
 from core.services.process.template_source import group_suppliers_consistent
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
-from .quota_protection import ProcessQuotaProtection
 from .zero_hours import require_zero_confirmation
 
 
@@ -57,18 +57,6 @@ def require_supplier(conn, operation, supplier_key, type_key, catalog=None):
     return supplier
 
 
-def _guard_rebound_hours(conn, changes, operations):
-    old = {op["id"]: op for op in operations}
-    refs = {old[key]["ref"]: None for _source, type_key, _supplier, key in changes
-            if old[key]["op_type_id"] != type_key}
-    if refs:
-        protection = ProcessQuotaProtection(conn)
-        if conn.in_transaction:
-            protection.require_changes(refs)
-        else:
-            protection.check_changes(refs)
-
-
 def prepare_source(conn, logger, payload, operations, identities):
     active = exact_operations(payload, operations)
     catalog = source_catalog(conn, logger)
@@ -87,7 +75,6 @@ def prepare_source(conn, logger, payload, operations, identities):
         if values != (old["source"], old["op_type_id"], old["supplier_id"]):
             changes.append(values + (old["id"],))
             affected.add(old["seq"])
-    _guard_rebound_hours(conn, changes, operations)
     return changes, affected
 
 
@@ -161,19 +148,16 @@ def _hours_updates(payload, active, merged):
 def apply_hours(conn, payload, operations, groups):
     active = exact_operations(payload, operations)
     merged = _merged_hours_groups(payload, active, groups)
-    current = ProcessQuotaProtection(conn).require_changes(
-        {row["ref"]: row.get("unit_hours", active[row["ref"]]["unit_hours"]) for row in payload["operations"]})
-    if any(current[ref]["id"] != row["id"] or current[ref]["part_no"] != row["part_no"] or
-           current[ref]["seq"] != row["seq"] for ref, row in active.items()):
-        raise WorkbenchCommandRejected("stale_write", "原模板工序已经变了。请刷新后重新操作。")
     updates = _hours_updates(payload, active, merged)
     require_zero_confirmation(conn, [(active[row["ref"]], row) for row in payload["operations"]],
                               payload["confirm_zero_unit_hours"])
     changed = bool(updates)
-    op_repo = PartOperationRepository(conn)
+    hours = ProcessTemplateHours(conn)
     group_repo = ExternalGroupRepository(conn)
+    by_id = {row["id"]: row for row in active.values()}
     for key, fields in updates:
-        op_repo.update_fields_by_id(key, fields)
+        old = by_id[key]
+        hours.revise(old["ref"], fields, expected_revision=old["revision"])
     for row in payload["groups"]:
         old = merged[row["ref"]]
         if old["total_days"] != row["total_days"]:

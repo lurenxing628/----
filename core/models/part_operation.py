@@ -7,7 +7,6 @@ from ._helpers import (
     RowLike,
     as_dict,
     get,
-    parse_float_or_default,
     parse_int,
     parse_int_or_default,
     parse_optional_float,
@@ -26,8 +25,8 @@ class PartOperation:
     supplier_id: Optional[str] = None
     ext_days: Optional[float] = None
     ext_group_id: Optional[str] = None
-    setup_hours: float = 0.0
-    unit_hours: float = 0.0
+    setup_hours: Optional[float] = 0.0
+    unit_hours: Optional[float] = 0.0
     status: str = PartOperationStatus.ACTIVE.value  # active/deleted
     created_at: Optional[str] = None
 
@@ -74,8 +73,8 @@ class PartOperation:
             supplier_id=str(supplier_id) if supplier_id is not None and supplier_id != "" else None,
             ext_days=parse_optional_float(ext_days, field="ext_days"),
             ext_group_id=str(ext_group_id) if ext_group_id is not None and ext_group_id != "" else None,
-            setup_hours=parse_float_or_default(setup_hours, 0.0, field="setup_hours"),
-            unit_hours=parse_float_or_default(unit_hours, 0.0, field="unit_hours"),
+            setup_hours=parse_optional_float(setup_hours, field="setup_hours"),
+            unit_hours=parse_optional_float(unit_hours, field="unit_hours"),
             status=(
                 str(get(row, "status") or PartOperationStatus.ACTIVE.value).strip().lower()
                 or PartOperationStatus.ACTIVE.value

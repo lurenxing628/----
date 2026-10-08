@@ -1,4 +1,4 @@
-"""Unregistered next-version DDL; no business backfill or runtime installation."""
+"""Append-only calibration adoption history; current template hours remain revisable."""
 
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_migration_contract_issues
 from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
@@ -8,7 +8,6 @@ from core.infrastructure.workbench_template_lineage_schema import contract_issue
 from .schema_structure import schema_objects
 
 ADOPTIONS = "WorkbenchCalibrationAdoptions"
-LOCKS = "WorkbenchCalibrationQuotaLocks"
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
@@ -29,7 +28,7 @@ def objects():
     result = {
         ADOPTIONS: """CREATE TABLE WorkbenchCalibrationAdoptions (
             adoption_ref """ + _REF.format("adoption_ref") + """ PRIMARY KEY,
-            template_operation_ref TEXT NOT NULL UNIQUE REFERENCES WorkbenchEntityRefs(ref),
+            template_operation_ref TEXT NOT NULL REFERENCES WorkbenchEntityRefs(ref),
             request_key TEXT NOT NULL UNIQUE,
             template_revision_before INTEGER NOT NULL CHECK(typeof(template_revision_before)='integer' AND template_revision_before>0),
             template_revision_after INTEGER NOT NULL CHECK(typeof(template_revision_after)='integer' AND template_revision_after>=template_revision_before),
@@ -45,22 +44,8 @@ def objects():
             evidence_json TEXT NOT NULL, template_before TEXT NOT NULL, template_after TEXT NOT NULL,
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
         )""",
-        LOCKS: """CREATE TABLE WorkbenchCalibrationQuotaLocks (
-            template_operation_ref TEXT NOT NULL PRIMARY KEY REFERENCES WorkbenchEntityRefs(ref),
-            adoption_ref TEXT NOT NULL UNIQUE REFERENCES WorkbenchCalibrationAdoptions(adoption_ref),
-            locked_unit_hours REAL NOT NULL CHECK(locked_unit_hours>=0 AND locked_unit_hours<=1.7976931348623157e308),
-            locked_at TEXT NOT NULL
-        )""",
-        "wb_calibration_quota_lock_origin": """CREATE TRIGGER wb_calibration_quota_lock_origin
-            BEFORE INSERT ON WorkbenchCalibrationQuotaLocks BEGIN
-            SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions a
-                WHERE a.adoption_ref=NEW.adoption_ref AND a.template_operation_ref=NEW.template_operation_ref
-                AND a.new_unit_hours IS NEW.locked_unit_hours AND a.adopted_at=NEW.locked_at)
-                THEN RAISE(ABORT,'quota lock requires matching adoption audit') END;
-        END""",
     }
-    result.update(_immutable_triggers(ADOPTIONS, "wb_calibration_adoption", ("adoption_ref", "template_operation_ref", "request_key")))
-    result.update(_immutable_triggers(LOCKS, "wb_calibration_quota_lock", ("template_operation_ref", "adoption_ref")))
+    result.update(_immutable_triggers(ADOPTIONS, "wb_calibration_adoption", ("adoption_ref", "request_key")))
     return result
 
 

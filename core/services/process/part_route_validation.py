@@ -11,8 +11,8 @@ from core.services.common.safe_logging import safe_warning
 from .route_parser import ParseResult, ParseStatus
 
 
-def build_internal_hours_snapshot(op_repo: Any, part_no: str) -> Dict[int, Tuple[float, float]]:
-    snapshot: Dict[int, Tuple[float, float]] = {}
+def build_internal_hours_snapshot(op_repo: Any, part_no: str) -> Dict[int, Tuple[Optional[str], Optional[float], Optional[float]]]:
+    snapshot: Dict[int, Tuple[Optional[str], Optional[float], Optional[float]]] = {}
     for op in op_repo.list_by_part(part_no, include_deleted=False):
         if not op.is_internal():
             continue
@@ -20,7 +20,7 @@ def build_internal_hours_snapshot(op_repo: Any, part_no: str) -> Dict[int, Tuple
             seq = int(op.seq)
         except Exception:
             continue
-        snapshot[seq] = (float(op.setup_hours or 0.0), float(op.unit_hours or 0.0))
+        snapshot[seq] = (op.op_type_id, op.setup_hours, op.unit_hours)
     return snapshot
 
 
@@ -73,7 +73,7 @@ def save_template_no_tx(
     logger: Any,
     part_no: str,
     parse_result: ParseResult,
-    preserved_internal_hours: Optional[Dict[int, Tuple[float, float]]] = None,
+    preserved_internal_hours: Optional[Dict[int, Tuple[Optional[str], Optional[float], Optional[float]]]] = None,
 ) -> None:
     for op in parse_result.operations:
         source = operation_source_or_raise(op)
@@ -129,15 +129,17 @@ def _create_internal_operation(
     op_repo: Any,
     part_no: str,
     op: Any,
-    preserved_internal_hours: Optional[Dict[int, Tuple[float, float]]],
+    preserved_internal_hours: Optional[Dict[int, Tuple[Optional[str], Optional[float], Optional[float]]]],
 ) -> None:
     seq = int(op.seq)
     setup_hours = 0.0
     unit_hours = 0.0
     if preserved_internal_hours and seq in preserved_internal_hours:
-        old_setup, old_unit = preserved_internal_hours.get(seq, (0.0, 0.0))
-        setup_hours = float(old_setup or 0.0)
-        unit_hours = float(old_unit or 0.0)
+        old_type, old_setup, old_unit = preserved_internal_hours[seq]
+        if old_type == op.op_type_id:
+            setup_hours, unit_hours = old_setup, old_unit
+        else:
+            setup_hours = unit_hours = None
     op_repo.create(
         {
             "part_no": part_no,

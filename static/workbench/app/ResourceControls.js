@@ -736,6 +736,20 @@
     loading: '正在读取…',
     error: '读取未完成'
   };
+  function MetricValue({
+    pending = false,
+    error = null,
+    kind = 'value',
+    children
+  }) {
+    if (error) return /*#__PURE__*/React.createElement(React.Fragment, null, "\u8BFB\u53D6\u5931\u8D25");
+    if (pending) return /*#__PURE__*/React.createElement("span", {
+      className: "wb-metric-placeholder",
+      "data-kind": kind,
+      "aria-hidden": "true"
+    });
+    return /*#__PURE__*/React.createElement(React.Fragment, null, children);
+  }
   function EmptyState({
     kind = 'empty',
     title,
@@ -958,6 +972,7 @@
     Choice,
     Field,
     focusFirstInvalid,
+    MetricValue,
     EmptyState,
     Pager,
     TimelineZoom,

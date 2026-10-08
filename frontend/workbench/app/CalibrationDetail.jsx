@@ -62,7 +62,7 @@
       ['同零件未关联核对', 'unbound', data.samples.filter(sample => sample.template_operation_ref === null)]
     ] : [], [data]);
     const actions = <div className="ca-actions">
-        {!window.CalibrationAdoptionAction && <><Button icon="check" reason={writeReason}>采用</Button><Button icon="lock" reason={writeReason}>锁定</Button></>}
+        {!window.CalibrationAdoptionAction && <><Button icon="check" reason={writeReason}>采用</Button></>}
         </div>;
     return <window.WorkbenchDetailPanel className="ca-detail" detailKey={selected} title={row ? row.part_no + ' · ' + row.sequence + ' ' + row.operation_label : '已选校准记录'}
       subtitle="校准详情" actions={actions} onClose={onClose}>

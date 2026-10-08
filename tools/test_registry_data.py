@@ -56,6 +56,7 @@ _WORKBENCH_TESTS = (
     'tests/workbench/test_calendar_file_api.py',
     'tests/workbench/test_calendar_period_defaults.py',
     'tests/workbench/test_calibration_adoption_transactions.py',
+    'tests/workbench/test_quota_continuous_revision.py',
     'tests/workbench/test_commands.py',
     'tests/workbench/test_dashboard_api.py',
     'tests/workbench/test_dashboard_external_handling_atomic.py',
@@ -108,6 +109,7 @@ _RUNTIME_TESTS = (
 _DATA_IO_TESTS = (
     'tests/config/test_config_field_spec_contract.py',
     'tests/config/test_config_snapshot_strict_numeric.py',
+    'tests/config/test_schedule_config_startup.py',
     'tests/excel_data_io/test_batch_excel_import_strict_mode_hardfail_atomic.py',
     'tests/excel_data_io/test_excel_import_executor_status_gate.py',
     'tests/excel_data_io/test_excel_import_hardening.py',

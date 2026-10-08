@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.APSMasterOverviewContract, { Button, ErrorBox } = window.ResourceControls;
+  const C = window.APSMasterOverviewContract, { Button, ErrorBox, MetricValue } = window.ResourceControls;
   const { Table, Tabs, Pager } = window.MasterOverviewTable;
   const { useState, useEffect, useMemo, useRef } = React;
   async function readList(api, scope, page, token, signal) {
@@ -31,6 +31,18 @@
         || Object.keys(selected).some(key => !['domain', 'entity_ref', 'issue_ref'].includes(key)) || !C.ref(selected.entity_ref)
         || !C.domains.some(row => row[0] === selected.domain) || selected.issue_ref !== undefined && !C.ref(selected.issue_ref))) C.fail('上次操作记录里的资料编号不正确，页面没有恢复。请刷新后重试。');
     return { scope, page: view.page, selected, section: view.section, detailPage: view.detail_page };
+  }
+  function Statistics({ overview, pending, error, scope, domainsId, onDomain }) {
+    const metrics = overview && overview.stats, loading = !overview && pending, failure = !overview && error;
+    return <><div className="wb-metrics mo-metrics" aria-label="总览状态" aria-busy={pending}>{[['entities', overview && !overview.complete ? '已读取资料' : '资料条数'], ['issues', '待维护项'], ['affected', '涉及资料'], ['relations', '已关联对数']].map(([key, label]) => <div className="wb-metric" key={key} data-tone={key === 'issues' ? 'warn' : undefined}>
+      <span className="wb-metric-label">{label}</span><strong className="wb-metric-value"><MetricValue pending={loading} error={failure}>{metrics ? C.value(metrics[key]) : '未读取'}</MetricValue></strong></div>)}</div>
+      <div className="wb-metrics mo-domains" aria-label="资料类别数量" aria-busy={pending}>{C.domains.map(([id, label], index) => { const domain = overview && overview.domains[index], countId = domainsId + '-' + id; return <button type="button" className="wb-metric mo-domain" key={id} aria-pressed={scope.domain === id} aria-label={'查看资料类别 ' + label} aria-describedby={countId + '-count ' + countId + '-helper'}
+        onClick={() => onDomain(scope.domain === id ? 'all' : id)}><span className="wb-metric-label">{label}</span><strong className="wb-metric-value" id={countId + '-count'}><MetricValue pending={loading} error={failure}>{domain && domain.loaded ? domain.count : '未读取'}</MetricValue></strong>
+        <span className="wb-metric-helper" id={countId + '-helper'}><MetricValue pending={loading && !failure} kind="helper">{failure ? '请刷新重试' : domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'}</MetricValue></span></button>; })}</div></>;
+  }
+  function ListTabs({ scope, metrics, pending, error, onChange }) {
+    const count = key => <MetricValue pending={!metrics && pending} error={!metrics && error} kind="count">{metrics ? metrics[key] : '未读取'}</MetricValue>;
+    return <Tabs label="清单类型" value={scope.view} onChange={onChange} values={[["issues", "待维护项", count('issues')], ["entities", "资料清单", count('entities')]]} />;
   }
   function MasterOverviewWorkspace({ onNavigate, initialContext }) {
     const api = useMemo(() => window.APSMasterOverviewAPI.create(), []);
@@ -132,18 +144,16 @@
     const overview = summary && summary.overview, metrics = overview && overview.stats;
     const empty = { scope, rows: [], page: { number: 1, size: scope.size, total: 0, pages: 1 } };
     return <section className="plana master-overview" aria-label="资料总览">
-      <header className="mo-heading"><div><h2 className="wb-page-title">资料总览</h2><p className="wb-page-context">{summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料 · 未读取'}</p></div>
+      <header className="mo-heading"><div><h2 className="wb-page-title">资料总览</h2><p className="wb-page-context">{summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料'}
+        <span role="status">{pending ? summary ? ' · 正在更新统计' : ' · 正在读取资料' : readError ? summary ? ' · 更新失败，显示上次读取结果' : ' · 读取失败' : ''}</span></p></div>
         <div className="mo-actions"><Button reasonDisplay="inline" className="btn mo-icon" icon="refresh-cw" aria-label="刷新资料" onClick={refresh} />
           <Button reasonDisplay="inline" transfer="export" disabled={!data || !data.page.total || pending || exporting} onClick={exportRows}>导出筛选结果</Button>
           <Button reasonDisplay="inline" className="btn primary" reason={typeof onNavigate !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={async () => { try { await onNavigate('process', { source: 'production' }); } catch (failure) { setActionError(failure); } }}>维护基础资料</Button></div></header>
-      <div className="wb-metrics mo-metrics" aria-label="总览状态">{[['entities', overview && !overview.complete ? '已读取资料' : '资料条数'], ['issues', '待维护项'], ['affected', '涉及资料'], ['relations', '已关联对数']].map(([key, label]) => <div className="wb-metric" key={key} data-tone={key === 'issues' ? 'warn' : undefined}>
-        <span className="wb-metric-label">{label}</span><strong className="wb-metric-value">{metrics ? C.value(metrics[key]) : '未读取'}</strong></div>)}</div>
-      <div className="wb-metrics mo-domains" aria-label="资料类别数量">{C.domains.map(([id, label], index) => { const domain = overview && overview.domains[index], countId = domainsId + '-' + id; return <button type="button" className="wb-metric mo-domain" key={id} aria-pressed={scope.domain === id} aria-label={'查看资料类别 ' + label} aria-describedby={countId + '-count ' + countId + '-helper'}
-        onClick={() => filter({ domain: scope.domain === id ? 'all' : id })}><span className="wb-metric-label">{label}</span><strong className="wb-metric-value" id={countId + '-count'}>{domain && domain.loaded ? domain.count : '未读取'}</strong><span className="wb-metric-helper" id={countId + '-helper'}>{domain && domain.loaded ? domain.attention + ' 条需维护' + (domain.unknown ? ' · ' + domain.unknown + ' 条未确认' : '') : '来源未读取'}</span></button>; })}</div>
+      <Statistics overview={overview} pending={pending} error={readError} scope={scope} domainsId={domainsId} onDomain={domain => filter({ domain })} />
       {overview && overview.gaps.length > 0 && <details className="mo-gaps" open><summary>原始数据缺口 {overview.gaps.length} 项</summary><ul>{overview.gaps.map((gap, index) => <li key={index}>{gap.message}</li>)}</ul></details>}
       <ErrorBox error={readError || actionError} />{message && <div className="mo-message" role="status">{message}</div>}
       {stale && !pending && data && <div className="mo-message mo-stale" role="status" data-master-stale><span>切回本页后资料可能已更新，当前页、选中项和详情都还保留着。</span><Button icon="refresh-cw" onClick={refreshInPlace}>刷新本页</Button></div>}
-      <section className="mo-controls" aria-label="资料清单筛选"><Tabs label="清单类型" value={scope.view} onChange={view => filter({ view, status: 'all', column_filters: {} })} values={[["issues", "待维护项", metrics ? metrics.issues : '未读取'], ["entities", "资料清单", metrics ? metrics.entities : '未读取']]} />
+      <section className="mo-controls" aria-label="资料清单筛选"><ListTabs scope={scope} metrics={metrics} pending={pending} error={readError} onChange={view => filter({ view, status: 'all', column_filters: {} })} />
       <form className="mo-tools" onSubmit={event => { event.preventDefault(); filter({ query: search }); }}>
         <label>资料类别<select aria-label="筛选资料类别" value={scope.domain} onChange={event => filter({ domain: event.target.value })}><option value="all">全部资料类别</option>{C.domains.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
         <label>状态<select aria-label="筛选检查状态" value={scope.status} onChange={event => filter({ status: event.target.value })}><option value="all">全部状态</option>{Object.entries(C.statuses).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
@@ -167,4 +177,6 @@
   window.MasterOverviewWorkspace = MasterOverviewWorkspace;
   MasterOverviewWorkspace.readContext = readContext;
   MasterOverviewWorkspace.readList = readList;
+  MasterOverviewWorkspace.Statistics = Statistics;
+  MasterOverviewWorkspace.ListTabs = ListTabs;
 })();

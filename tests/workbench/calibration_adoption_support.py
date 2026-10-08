@@ -87,7 +87,7 @@ def snapshot(conn):
 
 def assert_preserved(before, after):
     mutable = {"PartOperations", "WorkbenchEntityRefs", "WorkbenchCalibrationAdoptions",
-               "WorkbenchCalibrationQuotaLocks", "WorkbenchCommandReceipts"}
+               "WorkbenchCommandReceipts"}
     for table, rows in before.items():
         if table not in mutable:
             assert after[table] == rows, table

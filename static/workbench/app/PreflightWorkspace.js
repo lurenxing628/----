@@ -107,6 +107,8 @@
       [result, setResult] = React.useState(null);
     const [busy, setBusy] = React.useState(false),
       [expanded, setExpanded] = React.useState(false);
+    const [splitExpanded, setSplitExpanded] = React.useState(false),
+      [splitBusy, setSplitBusy] = React.useState(false);
     const [needsRecheck, setNeedsRecheck] = React.useState(false);
     // 上次检查按交付设置推算出的不重排时段（从开始日期起算）；开始日期没变时继续用它填显示值。
     const [holdDefault, setHoldDefault] = React.useState(null);
@@ -128,6 +130,10 @@
       setError(null);
       setBusy(false);
     }
+    const onSplitActivity = React.useCallback(inProgress => {
+      setSplitBusy(inProgress);
+      if (inProgress) invalidate();
+    }, []);
     function change(patch) {
       if (result || busy) setNeedsRecheck(true);
       invalidate();
@@ -150,7 +156,7 @@
       if (active.current) active.current.abort();
     }, []);
     async function check() {
-      if (busy || initial.error) return;
+      if (busy || splitBusy || initial.error) return;
       invalidate();
       const id = ++serial.current,
         controller = new AbortController();
@@ -183,6 +189,14 @@
       currentStep = window.RunPresentation.step(remembered, data);
     const runBlocked = !data || data.write_context.capabilities['scheduling.run'] !== true || typeof adapter.run !== 'function';
     const runReason = data && data.run_blocked_reasons[0].message || window.WorkbenchTerms.outcomes.unavailable;
+    const inputDisabled = !!initial.error || busy || splitBusy;
+    function inspectMaterials() {
+      if (inputDisabled || !value.ready_check) return;
+      if (splitExpanded) setSplitExpanded(false);else {
+        invalidate();
+        setSplitExpanded(true);
+      }
+    }
     function navigate(kind) {
       if (!onNavigate || !data) return;
       const rows = kind === 'unready' ? data.unready_batches : kind === 'resources' ? data.tasks.filter(row => row.issues.some(item => ['machine_missing', 'operator_missing', 'operator_skill_missing', 'machine_authorization_missing'].includes(item.code))) : data.tasks.filter(row => row.status === 'blocked').concat(data.no_route_batches);
@@ -236,7 +250,7 @@
       min: "1900-01-01",
       max: "9999-12-30",
       value: value.start_date,
-      disabled: !!initial.error,
+      disabled: inputDisabled,
       onChange: event => change({
         start_date: event.target.value
       })
@@ -246,14 +260,14 @@
       min: "1900-01-01",
       max: "9999-12-30",
       value: value.end_date,
-      disabled: !!initial.error,
+      disabled: inputDisabled,
       onChange: event => change({
         end_date: event.target.value
       })
     })), /*#__PURE__*/React.createElement("span", null, "\u5DF2\u9009 ", value.batch_refs.length, " \u6279"), /*#__PURE__*/React.createElement(Button, {
       icon: expanded ? 'chevron-up' : 'chevron-down',
       className: currentStep === 1 ? 'btn primary' : 'btn',
-      disabled: !!initial.error,
+      disabled: inputDisabled,
       "aria-expanded": expanded,
       onClick: () => setExpanded(old => !old)
     }, expanded ? '收起范围' : '选择批次')), expanded && !initial.error && /*#__PURE__*/React.createElement(window.PreflightBatchPicker, {
@@ -262,7 +276,7 @@
       onChange: batch_refs => change({
         batch_refs
       }),
-      disabled: busy
+      disabled: inputDisabled
     }), /*#__PURE__*/React.createElement(Metrics, {
       counts: counts
     })), /*#__PURE__*/React.createElement("section", {
@@ -274,7 +288,18 @@
       value: value,
       effective: effectiveHold,
       onChange: change,
-      disabled: !!initial.error
+      disabled: inputDisabled,
+      onInspectMaterials: window.BatchSplitPanel && inspectMaterials,
+      splitExpanded: splitExpanded,
+      materialPanel: splitExpanded && window.BatchSplitPanel && /*#__PURE__*/React.createElement(window.BatchSplitPanel, {
+        refs: value.batch_refs,
+        day: value.start_date,
+        disabled: !!initial.error || busy || !value.ready_check,
+        onActivityChange: onSplitActivity,
+        onCommitted: (child, source) => change({
+          batch_refs: value.batch_refs.map(ref => ref === source ? child : ref)
+        })
+      })
     }), /*#__PURE__*/React.createElement("section", {
       "aria-labelledby": "pf-check-title"
     }, /*#__PURE__*/React.createElement("h3", {
@@ -287,13 +312,7 @@
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, title), /*#__PURE__*/React.createElement("p", null, description)), kind && /*#__PURE__*/React.createElement(Button, {
       disabled: !data || !onNavigate || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches),
       onClick: () => navigate(kind)
-    }, action)))))), value.material_strategy === 'split' && window.BatchSplitPanel && /*#__PURE__*/React.createElement(window.BatchSplitPanel, {
-      refs: value.batch_refs,
-      day: value.start_date,
-      onCommitted: (child, source) => change({
-        batch_refs: value.batch_refs.map(ref => ref === source ? child : ref)
-      })
-    }), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, action)))))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), needsRecheck && /*#__PURE__*/React.createElement("p", {
       className: "pf-recheck",
@@ -324,7 +343,7 @@
       icon: "search",
       className: currentStep === 2 ? 'btn primary' : 'btn',
       busy: busy,
-      disabled: !!initial.error,
+      disabled: !!initial.error || splitBusy,
       reason: !initial.error && !value.batch_refs.length ? '请先选择要排产的批次。' : '',
       reasonDisplay: "tooltip",
       onClick: check

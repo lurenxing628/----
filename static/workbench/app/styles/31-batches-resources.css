@@ -80,7 +80,7 @@ th:focus-within .wb-resource-th .wb-th-filter,
 @media(hover:none) {
   .batch-workspace .wb-column-filter,.wb-resource-th .wb-th-filter { opacity:1; }
 }
-.plana.resource-workspace { padding:0; }
+.plana.resource-workspace { padding:0; container-type:inline-size; container-name:resource-rail; }
 .plana.resource-workspace > .rail { padding:var(--space-4); border-radius:var(--wb-radius-control); box-shadow:none; }
 .plana.resource-workspace .rail-bar { margin-bottom:var(--space-3); }
 .plana.resource-workspace .rail-foot { margin-top:var(--space-3); padding-top:var(--space-3); }
@@ -95,25 +95,99 @@ th:focus-within .wb-resource-th .wb-th-filter,
 .plana.resource-workspace .hb-lane,
 .plana.resource-workspace .hb-tile,
 .plana.resource-workspace .hb-tbody { min-width:0; box-sizing:border-box; }
-.plana.resource-workspace .hb-block { height:auto; }
-.plana.resource-workspace .hb-ops .hb-lane { flex-basis:auto; }
-.plana.resource-workspace .hb-ops .hb-lane-row .hb-tile { height:auto; }
+.plana.resource-workspace .hb-block { height:auto; padding:10px; box-shadow:none; }
+.plana.resource-workspace .hb-bhead { min-height:20px; margin-bottom:6px; }
+.plana.resource-workspace .hb-bbody { flex:none; gap:8px; }
+.plana.resource-workspace .rail-input .hb-bbody { display:grid; grid-template-rows:repeat(2,1fr); flex:1 1 auto; }
+.plana.resource-workspace .hb-ops .hb-lane { flex:none; justify-content:flex-start; gap:4px; }
+.plana.resource-workspace .hb-ops .hb-lane-row { flex:none; align-content:start; gap:8px; }
+.plana.resource-workspace .hb-lane + .hb-lane { margin-top:6px; padding-top:6px; }
+.plana.resource-workspace .hb-tile,
+.plana.resource-workspace .hb-ops .hb-lane-row .hb-tile { flex:none; height:auto; min-height:48px; padding:8px; gap:8px; align-items:center; }
+.plana.resource-workspace .hb-tico { width:28px; height:28px; border-radius:8px; }
+.plana.resource-workspace .hb-tico svg { width:16px; height:16px; }
+.plana.resource-workspace .hb-tbody { gap:3px; }
 .plana.resource-workspace .hb-tmeta { white-space:normal; overflow-wrap:anywhere; }
-/* 原型 .hb-tile 是 flex:1（基准 0）+ min-height:64px：数据输入块里“工艺”卡片有 5-6 行说明，卡片却按 64px 平分高度，文字顶穿上下边框；基准改成内容高度，块随最高的卡片撑开，64px 只作下限。 */
-.plana.resource-workspace .hb-bbody > .hb-tile { flex-basis:auto; }
-.plana.resource-workspace .hb-hub { grid-template-columns:minmax(0,1fr) 28px minmax(0,1.7fr) 28px minmax(0,1fr); }
-.plana.resource-workspace .hb-lane-head { flex-wrap:wrap; }
-.plana.resource-workspace .hb-ops .hb-lane-row { grid-template-columns:repeat(3,minmax(0,1fr)); }
-.plana.resource-workspace .hb-ops .extl .hb-lane-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
-@media(max-width:1280px) {
+.plana.resource-workspace .rail-tile-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:3px 8px; }
+.plana.resource-workspace .rail-tile-title .hb-tmeta { white-space:nowrap; }
+.plana.resource-workspace .rail-process-progress { font-weight:600; }
+.plana.resource-workspace .rail-pending { color:var(--ui-warning-text); }
+/* 最小列宽来自卡片内容；响应式跟随工作区宽度，侧栏和窗口高度不参与折叠选择。 */
+.plana.resource-workspace .hb-hub { grid-template-columns:minmax(180px,.75fr) 18px minmax(380px,1.6fr) 18px minmax(300px,1.1fr); align-items:stretch; gap:8px; }
+.plana.resource-workspace .hb-flowarr { align-self:stretch; padding:0; color:var(--ui-info-muted); }
+.plana.resource-workspace .hb-flowarr svg { width:18px; height:18px; transform:none; }
+.plana.resource-workspace .hb-lane-head { min-height:18px; flex-wrap:wrap; gap:6px; }
+.plana.resource-workspace .hb-ops .rail-resource-links { grid-template-columns:minmax(0,1fr) 20px minmax(0,1fr); align-items:center; gap:6px; }
+.plana.resource-workspace .hb-ops .rail-resource-pair { align-items:stretch; }
+.plana.resource-workspace .rail-resource-pair .rail-branch-source { display:grid; }
+.plana.resource-workspace .rail-branch-source,
+.plana.resource-workspace .rail-branch-targets { min-width:0; }
+.plana.resource-workspace .rail-branch-targets { display:grid; gap:4px; }
+.plana.resource-workspace .hb-ops .hb-lane-row .hb-tile { width:100%; grid-template-columns:20px minmax(0,1fr); min-height:36px; padding:6px 8px; gap:6px; }
+.plana.resource-workspace .hb-ops .hb-tico { width:20px; height:20px; border-radius:6px; }
+.plana.resource-workspace .rail-tile-facts { display:flex; flex-wrap:wrap; gap:3px 8px; }
+.plana.resource-workspace .hb-ops .rail-branch-source .hb-tile { gap:4px 6px; }
+.plana.resource-workspace .rail-branch-source .hb-tbody { display:contents; }
+.plana.resource-workspace .rail-branch-source .rail-tile-title { grid-column:2; }
+.plana.resource-workspace .rail-branch-source .rail-tile-facts { grid-column:1 / -1; }
+.plana.resource-workspace .rail-branch-targets .hb-tbody { flex-direction:row; flex-wrap:wrap; align-items:baseline; gap:3px 8px; }
+.plana.resource-workspace .rail-branch-link { position:relative; display:flex; align-items:center; justify-content:center; align-self:stretch; min-height:20px; color:var(--ui-info-muted); }
+.plana.resource-workspace .rail-branch-link svg { width:18px; height:18px; }
+.plana.resource-workspace .rail-branch-link.fork::before { content:''; position:absolute; left:100%; top:25%; bottom:25%; border-left:1px solid var(--ui-info-muted); }
+.plana.resource-workspace .rail-branch-link.fork::after { content:''; position:absolute; left:100%; top:25%; width:6px; height:50%; border-top:1px solid var(--ui-info-muted); border-bottom:1px solid var(--ui-info-muted); }
+.plana.resource-workspace .hb-cal-block { display:grid; align-content:start; gap:16px; padding:12px; }
+.plana.resource-workspace .rail-calendar-summary,
+.plana.resource-workspace .rail-calendar-week { display:flex; flex-direction:column; min-width:0; gap:4px; }
+.plana.resource-workspace .rail-calendar-summary { gap:12px; }
+.plana.resource-workspace .rail-calendar-heading { display:flex; flex-direction:column; gap:6px; }
+.plana.resource-workspace .rail-calendar-stats { display:grid; grid-template-columns:minmax(0,1.35fr) repeat(2,minmax(0,1fr)); gap:8px; }
+.plana.resource-workspace .rail-calendar-stat { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.plana.resource-workspace .rail-calendar-stat-label { font-size:var(--font-size-1); line-height:18px; color:var(--ui-info-muted); white-space:nowrap; }
+.plana.resource-workspace .rail-calendar-stat-value { font-size:var(--font-size-4); line-height:24px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.plana.resource-workspace .rail-calendar-week { gap:8px; }
+.plana.resource-workspace .rail-calendar-summary .hb-bhead { margin-bottom:0; }
+.plana.resource-workspace .rail-calendar-range,
+.plana.resource-workspace .rail-calendar-facts,
+.plana.resource-workspace .rail-calendar-source,
+.plana.resource-workspace .rail-calendar-unit { font-size:var(--font-size-1); line-height:18px; color:var(--ui-info-muted); }
+.plana.resource-workspace .hb-cal-strip { grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; margin:0; }
+.plana.resource-workspace .hb-seg { min-width:0; padding:8px 2px; gap:4px; background:var(--ui-primary-soft); border-radius:var(--wb-radius-control); }
+.plana.resource-workspace .hb-sl { font-weight:400; color:var(--ui-info-muted); }
+.plana.resource-workspace .rail-day-value { font-size:var(--font-size-2); line-height:18px; font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.plana.resource-workspace .hb-seg.rest { background:var(--ui-surface-muted); color:var(--ui-info-muted); }
+.plana.resource-workspace .hb-seg.rest .hb-sl { color:var(--ui-info-muted); }
+.plana.resource-workspace .hb-seg.unavailable { background:var(--ui-warning-bg); color:var(--ui-warning-text); }
+.plana.resource-workspace .rail-read-state { color:var(--ui-info-muted); font-size:var(--font-size-1); }
+.plana.resource-workspace .rail-notices { margin:0 0 12px; padding:8px 12px; list-style:none; border-left:2px solid var(--ui-warning); background:var(--ui-warning-bg); color:var(--ui-warning-text); font-size:var(--font-size-1); overflow-wrap:anywhere; }
+.plana.resource-workspace .rail-notices li + li { margin-top:4px; }
+.plana.resource-workspace .rail-foot { margin-top:8px; padding-top:8px; }
+.plana.resource-workspace .hb-r-top { padding:0; gap:8px; flex-wrap:wrap; }
+.plana.resource-workspace .hb-r-next { min-height:32px; padding:0 12px; border-radius:var(--wb-radius-control); font-weight:500; }
+.plana.resource-workspace .rail-details { flex:0 1 auto; min-width:0; color:var(--ui-info-muted); font-size:var(--font-size-1); }
+.plana.resource-workspace .rail-details summary { cursor:pointer; padding:4px 0; }
+.plana.resource-workspace .rail-details[open] { flex-basis:100%; }
+.plana.resource-workspace .rail-detail-content { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:8px 0; color:var(--ui-text); overflow-wrap:anywhere; }
+.plana.resource-workspace .rail-detail-content p { margin:4px 0; }
+@container resource-rail (max-width:970px) {
   .plana.resource-workspace .hb-hub { grid-template-columns:minmax(0,1fr); }
-  .plana.resource-workspace .hb-block { height:auto; }
-  .plana.resource-workspace .hb-lane-row .hb-tile { min-height:72px; }
+  .plana.resource-workspace .hb-flowarr { min-height:18px; }
+  .plana.resource-workspace .hb-flowarr svg { transform:rotate(90deg); }
+  .plana.resource-workspace .rail-input .hb-bbody { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:auto; align-items:stretch; }
+  .plana.resource-workspace .hb-cal-block { grid-template-columns:minmax(250px,.85fr) minmax(0,1.7fr); align-content:start; align-items:center; gap:16px; }
+  .plana.resource-workspace .rail-detail-content { grid-template-columns:minmax(0,1fr); gap:8px; }
 }
-/* 产能链收起态由 section.rail 的 data-collapsed="true" 驱动（ResourceRail.jsx 无论是矮屏默认收起还是用户手动收起，都写这个属性；旧类名 .rail-collapsed 同义保留）。
-   收起后表头压成一行快捷切换（.rail-compact），下方内容区的面包屑省掉、标题间距收紧——这些只看收起状态，不再绑定 820px 的媒体查询，JSX 用什么阈值收起都生效。展开态沿用原型样式。 */
+@container resource-rail (max-width:620px) {
+  .plana.resource-workspace .hb-cal-block { grid-template-columns:minmax(0,1fr); }
+}
+@container resource-rail (max-width:430px) {
+  .plana.resource-workspace .rail-input .hb-bbody { grid-template-columns:minmax(0,1fr); }
+}
+@container resource-rail (max-width:350px) {
+  .plana.resource-workspace .hb-cal-strip { grid-template-columns:repeat(4,minmax(0,1fr)); }
+}
+/* 收起态只跟随用户选择，快捷切换已标出当前节点，下方省去重复面包屑。 */
 .plana.resource-workspace .rail-bar:has(.rail-toggle) { align-items:center; }
-.plana.resource-workspace .rail-toggle { margin-left:var(--space-3); }
+.plana.resource-workspace .rail-bar > .wb-button-host { margin-left:auto; }
 .plana.resource-workspace .rail:is([data-collapsed="true"],.rail-collapsed) { padding:8px 14px 10px; }
 .plana.resource-workspace .rail:is([data-collapsed="true"],.rail-collapsed) .rail-bar { margin-bottom:6px; }
 .plana.resource-workspace .rail-compact { display:flex; flex-wrap:wrap; gap:6px; margin:0; }

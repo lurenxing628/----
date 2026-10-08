@@ -1271,7 +1271,7 @@ CREATE TRIGGER IF NOT EXISTS wb_trial_closed_rows BEFORE UPDATE ON WorkbenchTria
 CREATE INDEX IF NOT EXISTS idx_wb_lineage_operation_id_text ON BatchOperations(CAST(id AS TEXT));
 CREATE TABLE IF NOT EXISTS WorkbenchCalibrationAdoptions (
             adoption_ref TEXT NOT NULL CHECK(length(adoption_ref)=48 AND adoption_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY,
-            template_operation_ref TEXT NOT NULL UNIQUE REFERENCES WorkbenchEntityRefs(ref),
+            template_operation_ref TEXT NOT NULL REFERENCES WorkbenchEntityRefs(ref),
             request_key TEXT NOT NULL UNIQUE,
             template_revision_before INTEGER NOT NULL CHECK(typeof(template_revision_before)='integer' AND template_revision_before>0),
             template_revision_after INTEGER NOT NULL CHECK(typeof(template_revision_after)='integer' AND template_revision_after>=template_revision_before),
@@ -1287,25 +1287,9 @@ CREATE TABLE IF NOT EXISTS WorkbenchCalibrationAdoptions (
             evidence_json TEXT NOT NULL, template_before TEXT NOT NULL, template_after TEXT NOT NULL,
             FOREIGN KEY(request_key) REFERENCES WorkbenchCommandReceipts(request_key) DEFERRABLE INITIALLY DEFERRED
         );
-CREATE TABLE IF NOT EXISTS WorkbenchCalibrationQuotaLocks (
-            template_operation_ref TEXT NOT NULL PRIMARY KEY REFERENCES WorkbenchEntityRefs(ref),
-            adoption_ref TEXT NOT NULL UNIQUE REFERENCES WorkbenchCalibrationAdoptions(adoption_ref),
-            locked_unit_hours REAL NOT NULL CHECK(locked_unit_hours>=0 AND locked_unit_hours<=1.7976931348623157e308),
-            locked_at TEXT NOT NULL
-        );
-CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_origin
-            BEFORE INSERT ON WorkbenchCalibrationQuotaLocks BEGIN
-            SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions a
-                WHERE a.adoption_ref=NEW.adoption_ref AND a.template_operation_ref=NEW.template_operation_ref
-                AND a.new_unit_hours IS NEW.locked_unit_hours AND a.adopted_at=NEW.locked_at)
-                THEN RAISE(ABORT,'quota lock requires matching adoption audit') END;
-        END;
 CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_update BEFORE UPDATE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_delete BEFORE DELETE ON WorkbenchCalibrationAdoptions BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_replace BEFORE INSERT ON WorkbenchCalibrationAdoptions WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions WHERE adoption_ref=NEW.adoption_ref OR template_operation_ref=NEW.template_operation_ref OR request_key=NEW.request_key) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_update BEFORE UPDATE ON WorkbenchCalibrationQuotaLocks BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_delete BEFORE DELETE ON WorkbenchCalibrationQuotaLocks BEGIN SELECT RAISE(ABORT,'calibration adoption is immutable'); END;
-CREATE TRIGGER IF NOT EXISTS wb_calibration_quota_lock_no_replace BEFORE INSERT ON WorkbenchCalibrationQuotaLocks WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationQuotaLocks WHERE template_operation_ref=NEW.template_operation_ref OR adoption_ref=NEW.adoption_ref) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
+CREATE TRIGGER IF NOT EXISTS wb_calibration_adoption_no_replace BEFORE INSERT ON WorkbenchCalibrationAdoptions WHEN EXISTS (SELECT 1 FROM WorkbenchCalibrationAdoptions WHERE adoption_ref=NEW.adoption_ref OR request_key=NEW.request_key) BEGIN SELECT RAISE(ABORT,'calibration adoption cannot be replaced'); END;
 CREATE TABLE IF NOT EXISTS WorkbenchDashboardItems (
             item_ref TEXT NOT NULL CHECK(length(item_ref)=48 AND item_ref NOT GLOB '*[^0-9a-f]*') PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('delivery','material','actual','downtime')),
             batch_ref TEXT, task_ref TEXT,

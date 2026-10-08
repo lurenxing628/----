@@ -29,7 +29,7 @@ def action_preview(preview, command, *, kind=None, content=None, extra=None):
               "columns": public_columns(kind or "route"), "scope": body["request"]["scope"]}
     if kind is not None:
         result.update(kind=kind, template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS[kind])
-        result.update({key: body["request"][key] for key in ("file_sha256", "format", "mode")})
+        result.update({key: body["request"][key] for key in ("format", "mode")})
     result.update(extra or {})
     return result
 

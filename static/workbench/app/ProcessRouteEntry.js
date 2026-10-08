@@ -206,7 +206,7 @@
         const body = P.previewBody('text', mode === 'rows' ? D.serialize(rows) : routeRaw, rows, snapshot);
         const response = P.preview(await adapter.routePreview(entity.ref, body, controller.signal), entity.ref, body);
         if (controller.signal.aborted || request.current !== controller) return null;
-        const syntaxInvalid = !response.data.operations.length || response.data.diagnostics.some(row => row.severity === 'error' && !['calibration_quota_locked', 'legacy_sequence_invalid'].includes(row.code));
+        const syntaxInvalid = !response.data.operations.length || response.data.diagnostics.some(row => row.severity === 'error' && !['legacy_sequence_invalid'].includes(row.code));
         if (syntaxInvalid) {
           setState({
             busy: false,

@@ -2,7 +2,7 @@
   'use strict';
   const A = window.RunHistoryAPI;
   const labels = { all: '全部状态', ...window.WorkbenchTerms.run_statuses };
-  const fields = { start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', material_strategy: '物料放行方式', hold_window: '不重排时段', missing_resource_policy: '缺设备人员时的规则', completed_policy: '执行规则', batch_count: '所选批次' };
+  const fields = { start_date: '排产起日', end_date: '排产止日', ready_check: '齐套检查', material_strategy: '物料齐套规则', hold_window: '不重排时段', missing_resource_policy: '缺设备人员时的规则', completed_policy: '执行规则', batch_count: '所选批次' };
   function Button({ className = '', ...props }) { return <window.ResourceControls.Button {...props} className={'btn wb-action ' + className} />; }
   const timeLabel = v => window.WorkbenchFormat.dateTime(v);
   const number = v => window.WorkbenchFormat.number(v, { digits: 0 });
@@ -44,7 +44,7 @@
   }
   function ScopeSummary({ value }) {
     return <div><span>{value.start_date || '起日未记录'} 至 {value.end_date || '止日未记录'}</span>
-      <small>物料放行：{value.material_strategy === null ? '未记录' : window.WorkbenchTerms.material_strategies[value.material_strategy || 'strict']}</small>
+      <small>物料齐套规则：{window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)}</small>
       <small>选批 {value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批'} · 齐套{value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'}</small>
       <details><summary>排产设置</summary><small>缺资源：{{ auto_assign: '自动分配', exclude: '暂不排' }[value.missing_resource_policy] || '未记录'} · {value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'}</small>
         <small data-hold-window>不重排时段：{window.WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window'))}</small></details>

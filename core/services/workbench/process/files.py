@@ -1,7 +1,5 @@
 """Atomic process-file commands bound to the original bytes and full read facts."""
 
-import hashlib
-
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_process_file import check_format, file_columns
@@ -10,18 +8,11 @@ from core.models.workbench_resource_file_source import PreparedImportSource
 
 from .file_codec import decode_process_file
 from .queries import WorkbenchProcessQueryService
-from .quota_protection import quota_skip_summary
 
 
 def file_operation(kind):
     file_columns(kind)
     return "process_" + kind + "_import.confirm"
-
-
-def _hours_result_rows(rows):
-    # Public file results keep their existing enum; explicit skip evidence is separate.
-    skipped = quota_skip_summary(rows)
-    return [{**row, "result": "unchanged"} if row["result"] == "skipped" else row for row in rows], skipped
 
 
 class WorkbenchProcessFileService:
@@ -45,8 +36,7 @@ class WorkbenchProcessFileService:
         if mode != "upsert":
             raise WorkbenchCommandRejected("invalid_input", "工艺文件仅支持按图号增量导入。", 400)
         decoded, notices = decode_process_file(kind, content, file_format)
-        request = {"kind": kind, "scope": {}, "target_ref": target_ref, "format": file_format, "mode": mode,
-                   "file_sha256": hashlib.sha256(content).hexdigest()}
+        request = {"kind": kind, "scope": {}, "target_ref": target_ref, "format": file_format, "mode": mode}
         return PreparedImportSource.build(file_operation(kind), request, decoded, notices)
 
     def preview_import(self, kind, content, *, file_format, mode="upsert", target_ref=None):
@@ -60,9 +50,6 @@ class WorkbenchProcessFileService:
             if target_ref is not None:
                 self.reader.resolve(target_ref)
             rows, extra = self._domain(kind).preview_rows(decoded, self.reader.facts(), target_ref)
-            if kind == "hours":
-                rows, skipped = _hours_result_rows(rows)
-                extra.update(skipped)
             for row in rows:
                 row.setdefault("route_summary", None)
             request.update(state=state, acknowledgements={
@@ -92,9 +79,6 @@ class WorkbenchProcessFileService:
                 body["rows"], discard_group_refs=refs, confirm_zero_unit_hours=confirm_zero_unit_hours)
             data = {"kind": original["kind"], "rows": rows, "summary": body["summary"], "affected_refs": affected_refs}
             if original["kind"] == "hours":
-                rows, skipped = _hours_result_rows(rows)
-                data.update(skipped)
-                data["rows"] = rows
                 # This is the existing refresh set, not a count of business changes.
                 data["affected_refs"] = sorted({row["entity_ref"] for row in rows})
                 data["summary"] = {**body["summary"], "update": sum(row["result"] == "committed" for row in rows),

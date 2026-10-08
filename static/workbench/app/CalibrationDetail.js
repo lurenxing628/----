@@ -166,10 +166,7 @@
     }, !window.CalibrationAdoptionAction && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
       icon: "check",
       reason: writeReason
-    }, "\u91C7\u7528"), /*#__PURE__*/React.createElement(Button, {
-      icon: "lock",
-      reason: writeReason
-    }, "\u9501\u5B9A")));
+    }, "\u91C7\u7528")));
     return /*#__PURE__*/React.createElement(window.WorkbenchDetailPanel, {
       className: "ca-detail",
       detailKey: selected,
