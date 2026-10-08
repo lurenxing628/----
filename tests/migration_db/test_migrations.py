@@ -10,6 +10,8 @@ from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, 
 from core.infrastructure.material_stages_schema import objects as material_objects
 from core.infrastructure.migration_state import detect_schema_is_current, set_schema_version
 from core.infrastructure.migrations.v15 import _EVENT_INDEX_SQL
+from core.infrastructure.workbench_calibration_adoption_legacy_schema import objects as legacy_adoption_objects
+from core.infrastructure.workbench_calibration_adoption_schema import objects as adoption_objects
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from tests._support.paths import REPO_ROOT
 
@@ -183,6 +185,12 @@ def _v36_review_case(path):
                             _schema_statement(previous["WorkbenchProductionReports"]))
     for name in current.keys() - previous.keys():
         schema = schema.replace(_schema_statement(current[name]), "")
+    # A v36 fixture must retain the pre-v39 adoption table and its quota locks.
+    for sql in adoption_objects().values():
+        statement = _schema_statement(sql)
+        assert statement in schema
+        schema = schema.replace(statement, "")
+    schema += "\n" + "\n".join(_schema_statement(sql) for sql in legacy_adoption_objects().values())
     conn = get_connection(str(path))
     conn.executescript(schema)
     set_schema_version(conn, 36)
