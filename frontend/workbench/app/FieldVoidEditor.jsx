@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.FieldContract, { Button, ErrorBox, Feedback } = window.FieldControls;
+  const C = window.FieldContract, { Button, ErrorBox, Feedback, Issues } = window.FieldControls;
   function FieldVoidEditor({ task, record, adapter, command, retained, onDraft, onClose, onDone }) {
     const [draft, setDraft] = React.useState(() => retained ? retained.draft : { reason: '', declared_operator: '' });
     const [baseline] = React.useState(() => retained ? retained.baseline : { report_ref: record.report_ref, revision_ref: record.revision_ref });
@@ -23,7 +23,8 @@
       try {
         const result = await adapter.previewVoid(record.report_ref, input(), controller.signal), value = result.data;
         if (!value || !value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref
-          || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context)
+          || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context
+          || !Array.isArray(value.warnings) || !value.warnings.every(item => item && typeof item.message === 'string' && item.message))
           throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
         setPreview(value);
       } catch (failure) { if (!controller.signal.aborted) setError(failure); }
@@ -44,6 +45,7 @@
       {preview && <section aria-label="撤销影响" className="field-note"><h4>撤销后</h4>
         <p>累计完成 {C.quantity(preview.before.known_completed_quantity)} → {C.quantity(preview.after.known_completed_quantity)} 件；剩余 {C.quantity(preview.after.remaining_quantity)} 件；状态 {C.states[preview.after.execution_state]}。</p>
         {preview.downstream_impacts.length > 0 && <><p role="alert">以下关联记录需要先处理，本次不能撤销：</p><ul>{preview.downstream_impacts.map((item, index) => <li key={index}>{item.operation_label}：{item.message}</li>)}</ul></>}
+        <Issues issues={preview.warnings} />
         {preview.state === 'voided' && <p>这条报工已经撤销，不会重复扣减。</p>}
       </section>}
       {changed && <p role="alert">原报工已变化，请取消后重新选择。</p>}

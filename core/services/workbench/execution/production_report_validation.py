@@ -195,6 +195,23 @@ def _cycle_blocker(peers, mine, previous, correcting):
     return next(iter(parted), None)
 
 
+def _cycle_peer_periods(dependencies, operation):
+    refs = dependencies.cycle_peers(operation)
+    return [(ref, _actual_period(row)) for ref, row in zip(refs, dependencies.projections(refs))]
+
+
+def merged_cycle_parted(dependencies, operation, before, after):
+    """改动后同组里原本对得上、现在对不上的成员 (工序, 实际周期)，按工序顺序；与登记、更正同一口径。
+
+    撤销不按这个拦：同组两道各有一条偏早的报工时，单独撤销哪条都会先对不上，只能先撤一条再逐道改齐。
+    """
+    mine, previous = _actual_period(after), _actual_period(before)
+    if operation["source"] != "external" or mine == previous:
+        return []
+    return [peer for peer in _cycle_peer_periods(dependencies, operation)
+            if _periods_conflict(mine, peer[1]) and not _periods_conflict(previous, peer[1])]
+
+
 def validate_merged_cycle(dependencies, operation, before, after, changed):
     """合并外协组一起送出、一起回厂，排产只按同一个实际周期保留整组。
 
@@ -206,9 +223,7 @@ def validate_merged_cycle(dependencies, operation, before, after, changed):
     if operation["source"] != "external" or mine == previous:
         return
     correcting = bool(changed) and all(row["action"] == "correct" for row in changed)
-    refs = dependencies.cycle_peers(operation)
-    peers = [(ref, _actual_period(row)) for ref, row in zip(refs, dependencies.projections(refs))]
-    blocker = _cycle_blocker(peers, mine, previous, correcting)
+    blocker = _cycle_blocker(_cycle_peer_periods(dependencies, operation), mine, previous, correcting)
     if blocker is not None:
         ref, theirs = blocker
         reject("合并外协组的工序是一起送出、一起回厂的，同组各道的实际开工和实际完工要相同。同组第 "

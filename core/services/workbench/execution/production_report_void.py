@@ -11,16 +11,14 @@ from .production_report_prepare import ReportBatchRejected
 from .production_report_validation import (
     execution_conflicts,
     execution_facts_changed,
+    merged_cycle_parted,
     require_current,
     validate_projection_change,
 )
 from .production_report_void_dependencies import adopted_quota_impacts
 
 
-def _downstream_impacts(conn, ledger, facts, before, after, report):
-    if not execution_facts_changed(before, after):
-        return []
-    dependencies = ReportDependencies(ledger, [after])
+def _downstream_impacts(ledger, facts, before, after, report, dependencies):
     impacts = execution_conflicts(ledger, facts, before, after, [report], dependencies=dependencies)
     refs = dependencies.relatives(facts["operations"][before.operation_ref])
     downstream = dependencies.projections(refs)
@@ -38,6 +36,17 @@ def _downstream_impacts(conn, ledger, facts, before, after, report):
                 "adopted_actual_resource_changed": "当前正式计划使用了这次报工的实际资源"}
     return [dict(item, operation_label=str(labels[item["operation_ref"]]["seq"]) + " " +
                  str(labels[item["operation_ref"]]["op_type_name"] or ""), message=messages[item["code"]]) for item in impacts]
+
+
+def _cycle_warnings(dependencies, operation, before, after):
+    """撤销后合并外协组各道的实际周期对不上时只提醒、不拦，排产检查会按 external_cycle_actuals_differ 拦下。"""
+    parted = merged_cycle_parted(dependencies, operation, before, after)
+    if not parted:
+        return []
+    numbers = "、".join(str(dependencies.sequences[ref]) for ref, _ in parted)
+    return [{"code": "external_cycle_actuals_differ",
+             "message": "撤销后，同一外协合并组第 " + numbers + " 道工序的实际开工、完工时间会和这道对不上，排产检查会拦下。"
+                        "可以照常撤销；之后请把同组其它工序的报工一并更正或撤销。"}]
 
 
 class WorkbenchReportVoidService:
@@ -64,7 +73,7 @@ class WorkbenchReportVoidService:
                     "original_revision_ref": original["revision_ref"]}
         if existing:
             return {"target": original, "fact": existing, "before": before, "after": before,
-                    "impacts": [], "snapshot": snapshot, "unchanged": True}
+                    "impacts": [], "warnings": [], "snapshot": snapshot, "unchanged": True}
         require_current(facts, header["operation_ref"])
         actor = self.actor_provider()
         if not isinstance(actor, str) or not actor.strip():
@@ -75,11 +84,17 @@ class WorkbenchReportVoidService:
         changed["voids"][payload["report_ref"]] = fact
         after = self.ledger.project_loaded(changed, contexts=False)[0]
         validate_projection_change(before, after)
-        impacts = _downstream_impacts(self.conn, self.ledger, facts, before, after, original)
+        # 执行事实没变（如只去掉了已被其它报工证明的工时）就不牵动前后道，也不会让合并外协组对不上。
+        impacts, warnings = [], []
+        if execution_facts_changed(before, after):
+            dependencies = ReportDependencies(self.ledger, [after])
+            impacts = _downstream_impacts(self.ledger, facts, before, after, original, dependencies)
+            warnings = _cycle_warnings(dependencies, facts["operations"][header["operation_ref"]], before, after)
         impacts += adopted_quota_impacts(self.conn, payload["report_ref"], header["operation_ref"])
-        snapshot["dependencies"] = impacts
+        # 确认时按预检看到的提醒核对：同组别的工序在这期间改了报工、提醒变了，就要重新查看撤销影响。
+        snapshot["dependencies"], snapshot["warnings"] = impacts, warnings
         return {"target": original, "fact": fact, "before": before, "after": after,
-                "impacts": impacts, "snapshot": snapshot, "unchanged": False}
+                "impacts": impacts, "warnings": warnings, "snapshot": snapshot, "unchanged": False}
 
     def preview(self, report_ref, payload):
         normalized = normalize_report_void_input(report_ref, payload)
@@ -93,6 +108,7 @@ class WorkbenchReportVoidService:
                                       "original_revision_ref": target["revision_ref"], "values": target["values"]},
                     "before": prepared["before"].to_dict(), "after": prepared["after"].to_dict(),
                     "downstream_impacts": prepared["impacts"], "can_confirm": not prepared["impacts"],
+                    "warnings": prepared["warnings"],
                     "state": "voided" if prepared["unchanged"] else "active", "write_context": context,
                     "snapshot": prepared["snapshot"]}
 

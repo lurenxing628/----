@@ -4648,8 +4648,8 @@
     },
     {
       "path": "workbench/app/FieldVoidEditor.js",
-      "sha256": "4a62a94a4c4ab1f242e9b53e53270abfec9d6088bf6aa5371a2129a4c2fbc298",
-      "bytes": 7539,
+      "sha256": "b1e02c4d8b9a8085675e0f6bd7467843ea899e3a76667e6a2142d3a529af71de",
+      "bytes": 7760,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/FieldContract.js",
@@ -4701,7 +4701,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/FieldVoidEditor.jsx",
-              "sha256": "b76d8f1bde1c4b5f499e7e14c9ed86d87f10f292cbf071582b8069c1995db8ee"
+              "sha256": "8bcd02b1bd7c0508432fc0644fb8598466eb6b6a08a500592ab23ef1511702d0"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -4710,7 +4710,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/FieldVoidEditor.jsx",
-          "sha256": "b76d8f1bde1c4b5f499e7e14c9ed86d87f10f292cbf071582b8069c1995db8ee"
+          "sha256": "8bcd02b1bd7c0508432fc0644fb8598466eb6b6a08a500592ab23ef1511702d0"
         }
       ]
     },
@@ -18484,7 +18484,7 @@
     },
     {
       "path": "frontend/workbench/app/FieldVoidEditor.jsx",
-      "sha256": "b76d8f1bde1c4b5f499e7e14c9ed86d87f10f292cbf071582b8069c1995db8ee"
+      "sha256": "8bcd02b1bd7c0508432fc0644fb8598466eb6b6a08a500592ab23ef1511702d0"
     },
     {
       "path": "frontend/workbench/app/FieldDetail.jsx",
@@ -19582,5 +19582,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "e20198c037f22103a9e05a9519839af8a64fd450cf299da04007ede3ef483a35"
+  "build_id": "e706a050075824a5cb8cd64221b86a35f0f240a21202ea48604b8475e3907dda"
 }

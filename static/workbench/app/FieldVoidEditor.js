@@ -5,7 +5,8 @@
     {
       Button,
       ErrorBox,
-      Feedback
+      Feedback,
+      Issues
     } = window.FieldControls;
   function FieldVoidEditor({
     task,
@@ -82,7 +83,7 @@
       try {
         const result = await adapter.previewVoid(record.report_ref, input(), controller.signal),
           value = result.data;
-        if (!value || !value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context) throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
+        if (!value || !value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context || !Array.isArray(value.warnings) || !value.warnings.every(item => item && typeof item.message === 'string' && item.message)) throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
         setPreview(value);
       } catch (failure) {
         if (!controller.signal.aborted) setError(failure);
@@ -136,7 +137,9 @@
       role: "alert"
     }, "\u4EE5\u4E0B\u5173\u8054\u8BB0\u5F55\u9700\u8981\u5148\u5904\u7406\uFF0C\u672C\u6B21\u4E0D\u80FD\u64A4\u9500\uFF1A"), /*#__PURE__*/React.createElement("ul", null, preview.downstream_impacts.map((item, index) => /*#__PURE__*/React.createElement("li", {
       key: index
-    }, item.operation_label, "\uFF1A", item.message)))), preview.state === 'voided' && /*#__PURE__*/React.createElement("p", null, "\u8FD9\u6761\u62A5\u5DE5\u5DF2\u7ECF\u64A4\u9500\uFF0C\u4E0D\u4F1A\u91CD\u590D\u6263\u51CF\u3002")), changed && /*#__PURE__*/React.createElement("p", {
+    }, item.operation_label, "\uFF1A", item.message)))), /*#__PURE__*/React.createElement(Issues, {
+      issues: preview.warnings
+    }), preview.state === 'voided' && /*#__PURE__*/React.createElement("p", null, "\u8FD9\u6761\u62A5\u5DE5\u5DF2\u7ECF\u64A4\u9500\uFF0C\u4E0D\u4F1A\u91CD\u590D\u6263\u51CF\u3002")), changed && /*#__PURE__*/React.createElement("p", {
       role: "alert"
     }, "\u539F\u62A5\u5DE5\u5DF2\u53D8\u5316\uFF0C\u8BF7\u53D6\u6D88\u540E\u91CD\u65B0\u9009\u62E9\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error

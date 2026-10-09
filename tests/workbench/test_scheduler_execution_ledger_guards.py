@@ -2,10 +2,12 @@
 
 import json
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 import pytest
 
 from core.errors import AppError
+from core.infrastructure.transaction import TransactionManager
 from core.services.personnel.operator_machine_service import OperatorMachineService
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
 from core.services.scheduler.operation_execution_feedback_service import (
@@ -13,6 +15,8 @@ from core.services.scheduler.operation_execution_feedback_service import (
     OperationExecutionFeedbackService,
 )
 from core.services.scheduler.schedule_service import ScheduleService
+from core.services.scheduler.template_lineage import TemplateLineageWriter
+from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import _seed_two_operation_plan
 from tests.workbench.field_workspace_support import FieldAPI
@@ -101,3 +105,61 @@ def test_normal_old_finish_can_be_supplemented_and_used_by_real_replan(candidate
         assert (actual["start_time"], actual["end_time"]) == ("2026-09-09T08:00:00", "2026-09-09T10:00:00")
         assert (actual["machine_id"], actual["operator_id"]) == ("M1", "O1")
     assert formal_rows(case.conn)["OperationExecutionEvents"] == original
+
+
+def _merged_reports_in_two_parts(case):
+    """合并外协组第 2、3 道各报两次：先报一段 0 件的开工，再报全部 3 件到完工；两道的实际开工、完工都相同。"""
+    case.conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='T1'")
+    case.conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id) VALUES ('S1','供应商','T1')")
+    case.conn.execute("INSERT INTO ExternalGroups(group_id,part_no,start_seq,end_seq,merge_mode,total_days,supplier_id) "
+                      "VALUES ('G','P1',2,3,'merged',1,'S1')")
+    copied = []
+    with TransactionManager(case.conn).transaction():
+        for seq in (2, 3):
+            cursor = case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,"
+                                       "ext_group_id,setup_hours,unit_hours) VALUES ('P1',?,'T1','Turning','external','S1','G',0,0)", (seq,))
+            copied.append(TemplateLineageWriter(case.conn).copy_template("B1", cursor.lastrowid))
+    case.conn.commit()
+    _, refs = compute(case)
+    version = service(case.conn).adopt(refs[0], preview(case, refs[0]), "merged-void-adoption-001", INTENT)["data"]["official_plan"]["version"]
+    start, end = (value.replace(" ", "T") for value in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (version, case.op_id)).fetchone())
+    hours = (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 3600
+    case.command("create", case.task(version, case.op_id), case.values(3, actual_start=start, actual_end=end,
+                 effective_processing_hours=hours))
+    start, end = (value.replace(" ", "T") for value in case.conn.execute(
+        "SELECT start_time,end_time FROM Schedule WHERE version=? AND op_id=?", (version, copied[0])).fetchone())
+    middle = (datetime.fromisoformat(start) + timedelta(minutes=30)).isoformat()
+    first = []
+    for operation in copied:
+        for begin, finish, quantity in ((start, middle, 0), (middle, end, 3)):
+            hours = (datetime.fromisoformat(finish) - datetime.fromisoformat(begin)).total_seconds() / 3600
+            row = case.command("create", case.task(version, operation), case.values(
+                quantity, actual_start=begin, actual_end=finish, effective_processing_hours=hours,
+                actual_machine_ref=None, actual_operator_ref=None))["data"]["rows"][0]
+            if quantity == 0:
+                first.append(row)
+    return first
+
+
+def test_void_that_parts_merged_cycle_warns_without_blocking(candidate_case):
+    case = candidate_case
+    first = _merged_reports_in_two_parts(case)
+
+    def intent(row):
+        return {"original_revision_ref": row["revision_ref"], "reason": "误记了其他工序的产出", "declared_operator": "现场班长"}
+
+    # 撤掉第 2 道偏早的那条，它仍完工，但实际开工变晚，和第 3 道对不上：照常能撤销，只给提醒。
+    checked = case.writer.preview("report_void", first[0]["report_ref"], intent(first[0]))
+    assert checked["can_confirm"] is True and checked["downstream_impacts"] == []
+    assert [row["code"] for row in checked["warnings"]] == ["external_cycle_actuals_differ"]
+    assert "第 3 道工序" in checked["warnings"][0]["message"] and "排产检查会拦下" in checked["warnings"][0]["message"]
+    assert case.command("report_void", first[0]["report_ref"], intent(first[0]))["result"] == "committed"
+    blockers = PreflightService(case.conn).evaluate(case.settings())[0]["blockers"]
+    assert "external_cycle_actuals_differ" in {row["code"] for row in blockers}
+    # 第 3 道也撤掉偏早的那条，两道又对上了：不再提醒，排产检查也不再拦这一组。
+    again = case.writer.preview("report_void", first[1]["report_ref"], intent(first[1]))
+    assert again["can_confirm"] is True and again["warnings"] == []
+    assert case.command("report_void", first[1]["report_ref"], intent(first[1]))["result"] == "committed"
+    blockers = PreflightService(case.conn).evaluate(case.settings())[0]["blockers"]
+    assert "external_cycle_actuals_differ" not in {row["code"] for row in blockers}
