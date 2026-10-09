@@ -101,7 +101,7 @@ class DashboardFacts:
             tasks = reader.references.get_task_refs(ref, self.task_rows)
             operations = reader.references.get_operation_refs(row["op_id"] for row in self.task_rows)
             resources, resource_state = reader._resources(self.task_rows)
-            self.tasks = project_tasks(ref, self.task_rows, tasks, operations, resources)
+            self.tasks = project_tasks(ref, self.task_rows, tasks, operations, resources, conn=self.conn)
             self.raw["plan_resource_identities"] = resource_state
             self.raw["plan_identity_revision"] = reader.references.read_revision()
             self.plan_state = "loaded"
