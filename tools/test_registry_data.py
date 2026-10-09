@@ -12,6 +12,7 @@ QUALITY_GATE_SELFTEST_PATH = ""
 QUALITY_GATE_STARTUP_REGRESSION_ARGS = (
     'tests/app_runtime/test_app_new_ui_create_app_smoke.py',
     'tests/app_runtime/test_frontend_offline_static_assets.py',
+    'tests/app_runtime/test_launcher_startup.py',
     'tests/app_runtime/test_portable_runtime_paths.py',
     'tests/app_runtime/test_runtime_db_scope_lock.py',
     'tests/app_runtime/test_runtime_server_binding.py',

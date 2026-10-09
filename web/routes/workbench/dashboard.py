@@ -3,7 +3,7 @@
 import json
 from datetime import datetime
 
-from flask import g, jsonify, request
+from flask import current_app, g, jsonify, request
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
@@ -80,9 +80,20 @@ def _read(item_ref=None, history=False):
             records = _history(reader, item_ref, history_page, query.size) if history else None
         # 读事务到此结束：整份看板的投影和指纹只用已读出的事实，算多久都不挡别人提交写入。
         data = reader.project(sources)
+        analysis, analysis_error = None, None
+        if item_ref is None:
+            try:
+                analysis = reader.analysis(sources)
+            except WorkbenchCommandRejected as exc:
+                analysis_error = str(exc)
+            except Exception:
+                current_app.logger.exception("Dashboard analysis failed after the list was read")
+                analysis_error = "分析数据没有读出来，请刷新重试。"
     snapshot = _bind(query, data, token)
     if item_ref is None:
         result = reader.workspace(data, query)
+        result["analysis"] = analysis
+        result["analysis_error"] = analysis_error
     else:
         item = reader.detail(data, item_ref, query)
         result = {"item": reader.public_item(item), "as_of": data["as_of"], "scope": query.scope()}
@@ -92,7 +103,8 @@ def _read(item_ref=None, history=False):
                 raise error
         payload_size(result)
     response = query_success(result, snapshot)
-    payload_size(response.get_json())
+    if item_ref is not None:
+        payload_size(response.get_json())
     response.headers["Cache-Control"] = "no-store"
     return response
 

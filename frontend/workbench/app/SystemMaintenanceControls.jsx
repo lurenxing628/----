@@ -7,7 +7,7 @@
     const label = typeof children === 'string' ? children : props['aria-label'];
     return <window.ResourceControls.Button {...props} icon={icon === 'rotate-ccw' ? undefined : icon === 'save' ? 'check' : icon}
       title={props.reason || props.title || label} aria-label={props['aria-label'] || (props.reason && label ? label + '：' + props.reason : undefined)}
-      reasonDisplay={props.reason ? 'inline' : props.reasonDisplay} className={className + ' sm-button' + (children ? '' : ' sm-icon-button')}>{icon === 'rotate-ccw' && <SMIcon name="rotate-ccw" />}{children}</window.ResourceControls.Button>;
+      reasonDisplay={props.reasonDisplay} className={className + ' sm-button' + (children ? '' : ' sm-icon-button')}>{icon === 'rotate-ccw' && <SMIcon name="rotate-ccw" />}{children}</window.ResourceControls.Button>;
   }
   function ErrorBox({ error }) {
     return error ? <window.WorkbenchError error={error} /> : null;
@@ -28,7 +28,6 @@
         {action === 'restore' && <p className="sm-notice">一旦提交恢复，业务操作会停用。无论恢复成功还是已还原，都要关闭整个软件再启动；只刷新浏览器不算重启。</p>}
         {destructive && <label className="sm-inline-label"><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} />我已核对所选文件与操作影响</label>}
         {action === 'restore' && <label className="field sm-field-gap"><span>输入「恢复」确认</span><input value={typed} onChange={event => setTyped(event.target.value)} /></label>}
-        {reason && <ErrorBox error={reason} />}
       </div>
     </window.ResourceControls.Modal>;
   }

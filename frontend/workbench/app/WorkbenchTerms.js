@@ -42,7 +42,8 @@
     // 结果未知这一族提示只从这里取，各工作区不再自己写。
     outcomes: Object.freeze({
       pending: action => '上次' + action + '的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。',
-      rejected: (action, reason) => '上次' + action + '没有生效：' + sentence(reason) + '填写内容已保留，改好后重新提交。',
+      // Omit reason when an adjacent error box already owns the failure details.
+      rejected: (action, reason) => '上次' + action + '没有生效' + (reason ? '：' + sentence(reason) : '。') + '填写内容已保留，改好后重新提交。',
       done: (action, next) => action + '已完成。' + (next ? sentence(next) : ''),
       unknown: action => action + '结果不确定，可能已经生效。请刷新后核对，不要重复提交。',
       stale: '数据已更新，请刷新后重试。刚才的选择已保留。',

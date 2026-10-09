@@ -57,7 +57,6 @@
         {review && <div className="match-note is-block">
           <p>最新资料已读取，已填写的内容保持不变。请核对后继续编辑。</p><Policy value={review.day} />
           <Button disabled={disabled} reason={C.blocked(review.day.write_context, 'calendar', clearing ? 'delete' : 'upsert', review.source)} onClick={accept}>{window.WorkbenchTerms.accept_latest}</Button></div>}
-        {reason && <p role="status">{reason}</p>}
         {done && <RefreshResult state={refreshState} onRefresh={onRefresh} />}
       </form></Modal>;
   }

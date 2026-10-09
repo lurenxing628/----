@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 from typing import Dict, List, Tuple
 
 from .schema_structure import schema_objects
@@ -193,7 +194,9 @@ def _split_top_level(body: str) -> List[str]:
     return [part for part in parts if part]
 
 
+@lru_cache(maxsize=1024)
 def _normalized_sql(sql: str) -> str:
+    # Only immutable SQL text is reused. Live schema/clock checks still read SQLite.
     text = _strip_line_comments(str(sql or ""))
     text = _IF_NOT_EXISTS_RE.sub("", text)
     return _PUNCT_WS_RE.sub(r"\1", _WS_RE.sub(" ", text)).strip().rstrip(";").strip()

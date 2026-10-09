@@ -104,7 +104,7 @@
             {data.zero_review_required && <p className="process-zero-impact" role="status">以下工序的单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长：{data.rows.filter(row => row.requires_confirmation && row.after && row.after.unit_hours === 0).map(row => row.business_code + ' / 工序 ' + row.sequence).join('、')}。点「按 0 导入」保存这些数值。</p>}
             <p>本批整体确认；任何一行不能提交，本批全部不修改。</p></>}
           {data && !importing && <p role="status">已核对 {data.part_count} 个零件，导出 {data.row_count} 行{kind === 'hours' ? '工序记录' : '零件记录'}，不限当前显示页。</p>}
-          {reason && data && !done && <p role="status">{reason}</p>}{download.name && <p role="status">{window.WorkbenchTerms.download_started(download.name)}</p>}
+          {download.name && <p role="status">{window.WorkbenchTerms.download_started(download.name)}</p>}
           {importing && <window.ResourceForms.Feedback command={done && kind === 'hours' ? { ...visible, phase: 'idle' } : visible} />}
           {done && kind === 'hours' && <window.ProcessFileReceipt data={saved} />}
           {done && <p role="status">{kind === 'hours' ? '导入已完成，请继续确认工时。' : '导入已完成，请刷新资料。'}</p>}

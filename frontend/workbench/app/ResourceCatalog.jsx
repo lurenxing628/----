@@ -125,7 +125,6 @@
           {command.intent && command.locked && <window.WorkbenchReference entries={{ '操作编号': command.intent.request_key }} />}
           {editor && !done && !command.locked && <div className="rc-pattern">
             <Button icon="refresh-cw" disabled={busy} onClick={() => { setReview(null); load(editor.action, editor.ref, true); }}>{window.WorkbenchTerms.refresh_latest}</Button>
-            {reason && <p role="status">{reason}</p>}
             {review && <div className="match-note rc-note"><p>最新资料已读取，已填写的内容保持不变。请核对后继续编辑。</p>
               {editor.ref ? <Editor.Facts kind={kind} entity={review.data} /> : <p>当前共有 {review.data.page.total} 条记录。</p>}
               <Button icon="check" disabled={locked} onClick={acceptReview}>{window.WorkbenchTerms.accept_latest}</Button></div>}</div>}

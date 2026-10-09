@@ -174,7 +174,6 @@
             {browsing && <section role="tabpanel" id={panelId + '-navigation'} aria-labelledby={panelId + '-tab-' + selected} data-process-navigation-stage={selected}>
               <div className="toolbar"><span role="status">已按原零件记录定位，当前只能查看 · {P.stageLabel(selected)}</span>
                 <Button icon="square-pen" disabled={editingBlocked} reason={prerequisite} onClick={() => setBrowsing(false)}>开始维护</Button></div>
-              {prerequisite && <p role="status">{prerequisite}</p>}
               <p><E.Confirmation record={entity.workflow[selected === 'ready' ? 'hours' : selected]} /></p>
               {selected === 'route' && <dl className="process-fields"><dt>原始路线</dt><dd>{E.value(entity.fields.route_raw)}</dd></dl>}
               <Operations key={selected} entity={entity} hours={selected !== 'route'} focusRef={target.operationRef} />

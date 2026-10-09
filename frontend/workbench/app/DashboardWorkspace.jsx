@@ -17,12 +17,10 @@
     const [analysisBatch, setAnalysisBatch] = React.useState(start.analysisBatch);
     const [comparisonState, setComparisonState] = React.useState({ context: start.comparison, caption: null });
     const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
-    const analysisApi = React.useMemo(() => window.DashboardAnalysisAPI.create(), []);
     const list = S.useRead(signal => readList(api, q, signal), [api, q, revision]);
     const result = list.result, data = result && result.data, snapshot = result && result.meta.snapshot_ref;
-    const analysisRead = S.useRead(signal => analysisApi.read(data && data.plan ? data.plan.plan_ref : null, signal),
-      [analysisApi, data && data.plan && data.plan.plan_ref, revision], !!data && !list.loading && !list.error && !outsourcing);
-    const analysisData = analysisRead.result && analysisRead.result.data;
+    const analysisData = data && data.analysis;
+    const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
     const detailQuery = React.useMemo(() => ({ ...q, snapshot_ref: snapshot }), [q, snapshot]);
     const handlingAvailable = q.category !== 'external' || !!data && data.categories.external.handling_supported === true;
     const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && !!selected && !!snapshot);
@@ -110,7 +108,7 @@
             {!external && tab === 'analysis' && <>
               {analysisRead.loading && <p role="status">正在读取同一正式计划的分析依据。</p>}
               {analysisRead.error && <Button icon="refresh-cw" onClick={reload}>刷新分析</Button>}
-              {analysisData && <><ErrorBox error={analysisRead.error} /><window.ResourceControls.Issues issues={analysisData.issues} />
+              {analysisData && <><window.ResourceControls.Issues issues={analysisData.issues} />
                 {q.category === 'material' ? <window.DashboardAnalysisPanels.Material data={analysisData} /> : analysisData.plan && (q.category === 'downtime'
                   ? <window.DashboardAnalysisPanels.Downtime data={analysisData} selected={analysisBatch} onSelect={setAnalysisBatch} />
                   : q.category === 'actual' ? <window.DashboardAnalysisPanels.Actual data={analysisData} navigate={navigate} />

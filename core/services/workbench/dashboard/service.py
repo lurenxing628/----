@@ -18,6 +18,7 @@ from core.models.workbench_dashboard import (
 )
 from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
 
+from .analysis_projection import project_dashboard_analysis
 from .downtime import downtime
 from .execution import actual
 from .external import load_external
@@ -242,6 +243,9 @@ class WorkbenchDashboardService:
         return payload_size({"plan": data["plan"], "as_of": data["as_of"], "categories": data["categories"],
                              "resource_pressure": data["resource_pressure"], "candidate_catalog": data["candidate_catalog"],
                              "items": [self.public_item(item) for item in items], "page": pagination, "scope": query.scope()})
+
+    def analysis(self, sources):
+        return project_dashboard_analysis(sources.facts, sources.material)
 
     def detail(self, data, item_ref, query=None):
         reference(item_ref)

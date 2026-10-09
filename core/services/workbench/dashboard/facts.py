@@ -57,6 +57,7 @@ class DashboardFacts:
         self._plan()
         if self.plan_state == "loaded":
             self._load_execution()
+            self.raw["analysis_batch_refs"] = self.entity_refs("batch", [row["batch_id"] for row in self.tasks])
         self.candidates, self.raw["candidate_catalog"] = candidate_catalog(self.conn)
         return self
 
@@ -111,7 +112,7 @@ class DashboardFacts:
             self._plan_failure(exc.code, str(exc))
 
     def _plan_failure(self, code, message):
-        self.plan_state, self.tasks = "unavailable", []
+        self.plan_state, self.plan, self.tasks = "unavailable", None, []
         self.plan_issues = [source_issue(code, message)]
 
     def _load_execution(self):

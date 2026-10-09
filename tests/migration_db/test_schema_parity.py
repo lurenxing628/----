@@ -19,6 +19,25 @@ _IF_NOT_EXISTS_RE = re.compile(r"\bIF\s+NOT\s+EXISTS\b", re.IGNORECASE)
 _CHECK_RE = re.compile(r"\bCHECK\s*\(", re.IGNORECASE)
 
 
+def test_identical_schema_text_is_normalized_once_but_changed_ddl_is_not_reused(monkeypatch):
+    from core.infrastructure import workbench_metadata_schema as schema
+
+    original, calls = schema._strip_line_comments, []
+    schema._normalized_sql.cache_clear()
+
+    def strip(sql):
+        calls.append(sql)
+        return original(sql)
+
+    monkeypatch.setattr(schema, "_strip_line_comments", strip)
+    first = "CREATE TABLE sample (value TEXT DEFAULT '--keep') -- ignore\n;"
+    changed = first.replace("'--keep'", "'--changed'")
+    assert schema.canonical_sql(first) == schema.canonical_sql(first)
+    assert schema.canonical_ddl_parts(first) == ["value TEXT DEFAULT '--keep'"]
+    assert schema.canonical_sql(changed) != schema.canonical_sql(first)
+    assert calls == [first, changed]
+
+
 def _normalize_sql(sql: Any) -> str:
     text = str(sql or "")
     text = _IF_NOT_EXISTS_RE.sub("", text)

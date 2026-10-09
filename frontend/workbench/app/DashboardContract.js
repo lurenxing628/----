@@ -146,7 +146,17 @@
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
     }
     return {
-      async list(q, signal) { return catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal), q); },
+      async list(q, signal) {
+        const value = catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal), q);
+        try {
+          if (value.data.analysis_error !== null) check(text(value.data.analysis_error) && value.data.analysis === null);
+          else window.DashboardAnalysisAPI.validate({ ...value, data: value.data.analysis }, value.data.plan && value.data.plan.plan_ref);
+        } catch (error) {
+          value.data.analysis = null;
+          value.data.analysis_error = '影响分析读取失败：' + error.message;
+        }
+        return value;
+      },
       async detail(selected, q, historyPage, signal) { check(ref(selected)); const args = { ...q }; if (historyPage !== undefined) args.history_page = historyPage;
         return detail(await request(BASE + '/items/' + selected + (historyPage === undefined ? '' : '/history') + '?' + new URLSearchParams(args), undefined, signal), q, selected, historyPage); },
       async command(intent, token) { return receipt(await request(BASE + '/items/' + intent.item_ref + '/' + intent.action, { request_key: intent.request_key, write_token: token, input: intent.input }, undefined, intent), intent); },

@@ -9,23 +9,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-from asset_sources import (
-    asset_mime,
-    css_references,
-    digest,
-    license_origin,
-    load_json,
-    local_path,
-    parse_entry,
-    script_dependencies,
-    stylesheet_dependencies,
-    unknown_license,
-    verify_snapshot,
-)
+from asset_sources import css_references, load_json, local_path, parse_entry
+from entry_bundle import bundle_styles
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = Path(__file__).resolve().parent
 FOUNDATION_ASSET = re.compile(r"foundation-[a-f0-9]{16}\.js\Z")
+
+
+def read_snapshot(root, manifest):
+    # The source manifest enumerates inputs; compilation and local-path checks
+    # validate their use. Do not re-hash each file on every UI build.
+    return {item["path"]: local_path(root, root, item["path"]).read_bytes() for item in manifest["files"]}
 
 
 def compile_sources(node, prototype, order, sources, combined=False, captured=None):
@@ -43,7 +38,7 @@ def compile_sources(node, prototype, order, sources, combined=False, captured=No
 def read_inputs(root, order_bytes=None):
     prototype = root / "frontend/workbench/prototype"
     snapshot = load_json(prototype / "source-manifest.json")
-    paths = verify_snapshot(prototype, snapshot)
+    paths = read_snapshot(prototype, snapshot)
     order = json.loads((TOOLS / "build-order.json").read_bytes() if order_bytes is None else order_bytes)
     if order["target"] != "chrome109" or order["babel"]["version"] != "7.29.0":
         raise ValueError("Build target/compiler must remain pinned")
@@ -105,13 +100,15 @@ def retired_generated_assets(output, payload):
 
     The static tree also contains imported fonts, icons, notices and prototype resources. Never infer
     ownership from the old manifest: an interrupted or older build may already have omitted an orphan.
-    Instead, limit cleanup to the exact filename shapes emitted for live JS/CSS and foundation bundles.
+    Clean only the JS/CSS namespaces published by this builder; keep fonts, images and notices.
     """
     expected = {Path(name[len("workbench/"):]).as_posix() for name in payload
                 if name.startswith("workbench/")}
     candidates = []
     candidates.extend((output / "app").glob("*.js"))
     candidates.extend((output / "app" / "styles").glob("*.css"))
+    candidates.extend((output / "app").glob("*.css"))
+    candidates.extend((output / "prototype").rglob("*.css"))
     assets = output / "assets"
     if assets.is_dir():
         candidates.extend(path for path in assets.iterdir()
@@ -152,76 +149,6 @@ def style_assets(prototype, snapshot, captured):
     return payload, ordered
 
 
-def asset_records(root, payload, scripts, theme_script, foundation_path, order, snapshot, vendor_manifest, node, source_bytes):
-    prototype = root / "frontend/workbench/prototype"
-
-    def source_hash(source):
-        return digest(source_bytes[source])
-
-    script_refs = script_dependencies(node, prototype / order["babel"]["path"], payload,
-                                      [theme_script] + scripts, scripts[:2], source_bytes["frontend/workbench/prototype/" + order["babel"]["path"]])
-    inline_origins = {"workbench/prototype/" + Path(entry["path"]).with_suffix(".inline.css").as_posix():
-                      ["frontend/workbench/prototype/" + entry["path"]]
-                      for entry in snapshot["entries"].values() if entry["inline_styles"]}
-    live_origins = {"workbench/app/" + Path(name).with_suffix(".js").as_posix(): ["frontend/workbench/app/" + name]
-                    for name in [order["theme"]] + order["live"]}
-    foundation_origins = ["frontend/workbench/prototype/" + item["path"] for item in order["foundation"]]
-    foundation_origins.append("scripts/workbench/build-order.json")
-    vendor_source = "frontend/workbench/vendor/vendor-manifest.json"
-    vendor_licenses = {}
-    for package, public in zip(vendor_manifest["packages"], scripts[:2]):
-        name = package["name"]
-        if public != f"workbench/vendor/{name}-{package['version']}.production.min.js":
-            raise ValueError("Pinned UMD filename/package order mismatch")
-        notice = license_origin(root, name, ["MIT"], "frontend/workbench/vendor/" + name + ".LICENSE",
-                                "workbench/vendor/" + name + ".LICENSE", f"Distributed {name} package payload/notice only.",
-                                {"path": vendor_source, "sha256": digest(source_bytes[vendor_source]),
-                                 "package": name, "version": package["version"], "integrity": package["integrity"]},
-                                data=source_bytes["frontend/workbench/vendor/" + name + ".LICENSE"])
-        vendor_licenses[public] = notice
-        vendor_licenses[notice["source"]["asset_path"]] = notice
-    lucide_path = "workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE"
-    lucide = license_origin(root, "Lucide icon subset", ["ISC", "MIT"],
-                            "frontend/workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE", lucide_path,
-                            "Embedded Lucide icon data only. The local notice also retains Feather-derived icon MIT terms; it does not license project code.",
-                            data=source_bytes["frontend/workbench/prototype/ui_kits/workbench/assets/lucide-LICENSE"])
-    records = []
-    for name, data in sorted(payload.items()):
-        mime = asset_mime(name)
-        dependencies = [item["path"] for item in script_refs.get(name, [])]
-        if mime == "text/css":
-            dependencies = stylesheet_dependencies(name, data, payload)
-        if name == foundation_path:
-            origins = foundation_origins
-        elif name in live_origins:
-            origins = live_origins[name]
-        elif name in inline_origins:
-            origins = inline_origins[name]
-        else:
-            origins = ["frontend/workbench/" + name[len("workbench/"):]]
-        sources = [{"path": source, "sha256": source_hash(source)} for source in origins]
-        if name in vendor_licenses:
-            licenses = [vendor_licenses[name]]
-        elif name == lucide_path:
-            licenses = [lucide]
-        else:
-            font = mime.startswith("font/")
-            licenses = [unknown_license("Imported font" if font else "Workbench project content", sources,
-                         "No font redistribution license is recorded with this imported font; confirm rights separately."
-                         if font else "No applicable project license is recorded in the imported source manifests; confirm the project grant separately.")]
-            if name == foundation_path:
-                licenses.append(lucide)
-        records.append({"path": name, "sha256": digest(data), "bytes": len(data), "mime": mime,
-                        "dependencies": dependencies, "dependency_symbols": script_refs.get(name, []),
-                        "license_sources": licenses, "source_files": sources})
-    for row in records:
-        for origin in row["license_sources"]:
-            source = origin["source"]
-            if source and (source["asset_path"] not in payload or digest(payload[source["asset_path"]]) != source["sha256"]):
-                raise ValueError("Published license notice missing or different: " + source["path"])
-    return records
-
-
 def build(root, output, node):
     order_bytes = (TOOLS / "build-order.json").read_bytes()
     prototype, snapshot, paths, order = read_inputs(root, order_bytes)
@@ -235,7 +162,6 @@ def build(root, output, node):
         sources.append(dict(item, code=paths[item["path"]].decode("utf-8")))
     compiled = compile_sources(node, prototype, order, sources + live, combined=True, captured=paths)
     foundation = "\n;\n".join(item["code"] for item in compiled[:len(sources)]).encode("utf-8")
-    foundation_path = "workbench/assets/foundation-" + digest(foundation)[:16] + ".js"
     payload, styles = style_assets(prototype, snapshot, paths)
     for item in live_styles:
         public = "workbench/" + item["path"]
@@ -244,52 +170,37 @@ def build(root, output, node):
     vendor = root / "frontend/workbench/vendor"
     vendor_manifest_bytes = (vendor / "vendor-manifest.json").read_bytes()
     vendor_manifest = json.loads(vendor_manifest_bytes)
-    vendor_bytes = verify_snapshot(vendor, vendor_manifest)
+    vendor_bytes = read_snapshot(vendor, vendor_manifest)
     if [(item["name"], item["version"]) for item in vendor_manifest["packages"]] != [
             ("react", "18.3.1"), ("react-dom", "18.3.1")]:
         raise ValueError("React packages must remain pinned to 18.3.1")
     for item in vendor_manifest["files"]:
         if item["path"].endswith((".js", ".LICENSE")):
             payload["workbench/vendor/" + item["path"]] = vendor_bytes[item["path"]]
-    scripts = ["workbench/vendor/" + name for name in vendor_manifest["scripts"]] + [foundation_path]
-    payload[foundation_path] = foundation
+    scripts = ["workbench/vendor/" + name for name in vendor_manifest["scripts"]]
+    application = [foundation]
     theme_script = "workbench/app/theme.js"
     for item in compiled[len(sources):]:
         public = "workbench/" + Path(item["path"]).with_suffix(".js").as_posix()
-        payload[public] = (item["code"] + "\n").encode("utf-8")
-        if public != theme_script:
-            scripts.append(public)
+        code = (item["code"] + "\n").encode("utf-8")
+        if public == theme_script:
+            payload[public] = code
+        else:
+            application.append(code)
+    scripts.append("workbench/app/main.js")
+    payload[scripts[-1]] = b"\n;\n".join(application)
+    stylesheet = "workbench/app/workbench.css"
+    combined_styles = bundle_styles(payload, styles, stylesheet)
+    payload = {name: data for name, data in payload.items() if not name.endswith(".css")}
+    payload[stylesheet] = combined_styles
+    styles = [stylesheet]
     lucide = "ui_kits/workbench/assets/lucide-LICENSE"
     payload["workbench/prototype/" + lucide] = paths[lucide]
-    source_bytes = {"frontend/workbench/prototype/" + name: data for name, data in paths.items()}
-    source_bytes.update({"frontend/workbench/vendor/" + name: data for name, data in vendor_bytes.items()})
-    source_bytes["frontend/workbench/vendor/vendor-manifest.json"] = vendor_manifest_bytes
-    source_bytes.update({"frontend/workbench/" + item["path"]: item["code"].encode("utf-8") for item in live})
-    source_bytes.update({"frontend/workbench/" + item["path"]: item["data"] for item in live_styles})
-    source_bytes["scripts/workbench/build-order.json"] = order_bytes
-    files = asset_records(root, payload, scripts, theme_script, foundation_path, order, snapshot, vendor_manifest, node, source_bytes)
-    input_records = [{"path": item["target"], "sha256": item["sha256"]} for item in snapshot["files"]]
-    input_records += [{"path": "frontend/workbench/" + item["path"],
-                       "sha256": digest(item["code"].encode("utf-8"))} for item in live]
-    input_records += [{"path": "frontend/workbench/" + item["path"],
-                       "sha256": digest(item["data"])} for item in live_styles]
-    input_records += [{"path": "frontend/workbench/vendor/" + item["path"],
-                       "sha256": item["sha256"]} for item in vendor_manifest["files"]]
-    input_records += [{"path": "scripts/workbench/" + name, "sha256": digest((TOOLS / name).read_bytes())}
-                      for name in ("build.py", "asset_sources.py", "build-order.json", "compile.cjs", "ds-projection.cjs")]
     manifest = {"schema_version": 1, "target": "chrome109", "entry": order["entry"],
                 "styles": styles, "scripts": scripts, "theme_script": theme_script,
                 "icon": "workbench/prototype/" + snapshot["entries"]["index"]["icons"][0],
-                "files": files, "inputs": input_records, "babel_version": "7.29.0",
-                "react_version": "18.3.1", "foundation_sources": order["foundation"],
-                "live_source_order": [order["theme"]] + order["live"],
-                "live_style_order": order["styles"],
-                "asset_metadata": {
-                    "dependency_scope": "Direct local CSS references and classic-script global providers. Browser built-ins and guarded module exports are not assets; scripts/theme_script remain the execution order contract.",
-                    "script_analysis": "Local Babel AST free bindings/global members; root/w denote the imported window-host model contracts. Pinned ReactDOM UMD requires the separately loaded React UMD, not npm build-time dependencies.",
-                    "license_scope": "Local notice evidence applies only to its named component, not to callers or an entire mixed bundle. Unknown entries require rights review, not an inferred license grant.",
-                    "requires_license_review": [row["path"] for row in files if any(item["requires_review"] for item in row["license_sources"])]}}
-    manifest["build_id"] = digest(json.dumps(manifest, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+                "notices": ["workbench/vendor/react.LICENSE", "workbench/vendor/react-dom.LICENSE",
+                            "workbench/prototype/" + lucide]}
     if live_inputs(root, order) != live:
         raise ValueError("Live sources changed during compilation; retry the build")
     if live_style_inputs(root, order) != live_styles:
@@ -311,7 +222,7 @@ def build(root, output, node):
     marker.write_bytes((json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     os.replace(str(marker), str(output / "asset-manifest.json"))
     return {"status": "built", "manifest": str(output / "asset-manifest.json"),
-            "build_id": manifest["build_id"], "files": len(files), "target": manifest["target"]}
+            "files": len(payload), "target": manifest["target"]}
 
 
 def main():

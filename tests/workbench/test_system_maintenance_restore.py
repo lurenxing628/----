@@ -1,6 +1,10 @@
 """Fault injection only in our fresh disposable test DB and backup directory."""
 
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 import pytest
 
 from core.infrastructure.backup import BackupManager
@@ -17,6 +21,68 @@ def enable_restore(api):
     assert api.app.extensions["workbench_system_restore_guard"] is host
     assert host.runtime.ready and host.status["operations_available"]
     host.verify()
+
+
+def test_static_files_observe_stop_state_without_rereading_database_locks(system_api, monkeypatch):
+    from web.bootstrap.workbench_run_runtime_lock import RunRuntimeLockProof
+
+    calls, original = [], RunRuntimeLockProof.verify
+
+    def verify(proof):
+        calls.append(proof)
+        return original(proof)
+
+    monkeypatch.setattr(RunRuntimeLockProof, "verify", verify)
+    response = system_api.client.get("/static/workbench/app/theme.js", buffered=True)
+    assert response.status_code == 200 and not calls
+    response.close()
+    assert system_api.get("/restore-host").status_code == 200 and calls
+    host = system_api.app.extensions["workbench_system_restore_host"]
+    host._set_state("stopped", None)
+    calls.clear()
+    assert system_api.client.get("/static/workbench/app/theme.js", buffered=True).status_code == 503
+    assert not calls
+
+
+def test_due_backup_runs_after_response_on_owned_worker_and_shutdown_joins_it(system_api, monkeypatch):
+    from core.services.system.system_config_service import SystemConfigService
+    from core.services.system.system_maintenance_service import SystemMaintenanceService
+    from web.bootstrap.workbench_run_lifecycle import stop_run_runtime
+
+    conn = system_api.connect()
+    try:
+        SystemConfigService(conn).update_backup_settings("yes", 60, "no", 7, 1440)
+    finally:
+        conn.close()
+    # Advance the deferred check interval in this controlled test, without waiting ten seconds.
+    monkeypatch.setattr(SystemMaintenanceService, "CHECK_THROTTLE_SECONDS", 0)
+    entered, release = threading.Event(), threading.Event()
+    threads, original = [], BackupManager.backup
+
+    def backup(manager, *args, **kwargs):
+        threads.append(threading.get_ident())
+        entered.set()
+        assert release.wait(5)
+        return original(manager, *args, **kwargs)
+
+    monkeypatch.setattr(BackupManager, "backup", backup)
+    runtime = system_api.app.extensions["workbench_run_runtime"]
+    try:
+        response = system_api.client.get("/", buffered=True)
+        assert response.status_code == 302
+        response.close()
+        assert entered.wait(3)
+        assert threads == [runtime._thread.ident] and threads[0] != threading.get_ident()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            stopped = pool.submit(stop_run_runtime, runtime)
+            assert not stopped.done()
+            assert Path(runtime.proof.db_lock_path).exists()
+            release.set()
+            stopped.result(5)
+        assert runtime.status["closed"]
+        assert list(system_api.backups.glob("*_auto.db"))
+    finally:
+        release.set()
 
 
 def test_verified_restore_uses_protection_external_result_and_new_connection(system_api):

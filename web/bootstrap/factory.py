@@ -366,32 +366,6 @@ def create_app_core(
                 conn = get_connection(app.config["DATABASE_PATH"])
                 track_workbench_request_connection(conn)
                 op_logger = OperationLogger(conn, logger=current_app.logger)
-                owner = restore_host(app)
-                try:
-                    from core.services.system import SystemMaintenanceService
-
-                    workbench_request = ((request.endpoint or "").startswith("workbench.")
-                                         or req_path.startswith("/api/workbench/"))
-                    runtime = app.extensions.get("workbench_run_runtime")
-                    managed_request = (runtime is not None and runtime.app is app and runtime.ready
-                                       and owner is not None and owner.status["operations_available"])
-                    if not workbench_request or managed_request:
-                        _ = SystemMaintenanceService.run_if_due(
-                            conn,
-                            db_path=app.config["DATABASE_PATH"],
-                            backup_dir=app.config["BACKUP_DIR"],
-                            backup_keep_days_default=int(app.config.get("BACKUP_KEEP_DAYS", 7)),
-                            logger=app.logger,
-                            op_logger=op_logger,
-                            admission_window=owner.automatic_maintenance if owner is not None else None,
-                        )
-                except (MaintenanceWindowError, WorkbenchCommandRejected) as exc:
-                    # Busy/rejected admission stops this request before services
-                    # are mounted; unexpected failures propagate through cleanup.
-                    if exc.__cause__ is not None:
-                        app.logger.exception("Automatic maintenance admission rejected")
-                    close_workbench_request_connection(conn)
-                    return _maintenance_gate_response()
             except Exception:
                 if conn is not None:
                     try:
@@ -420,6 +394,15 @@ def create_app_core(
 
     if enable_security_headers:
         register_security_headers(app)
+
+    @app.after_request
+    def _schedule_idle_maintenance(resp):
+        runtime = app.extensions.get("workbench_run_runtime")
+        if (runtime is not None and runtime.ready and resp.status_code < 400
+                and not request.path.startswith("/static/")
+                and request.path not in {"/system/health", "/system/runtime/shutdown"}):
+            resp.call_on_close(runtime.request_maintenance_check)
+        return resp
 
     @app.after_request
     def _perf_headers(resp):

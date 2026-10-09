@@ -166,7 +166,6 @@
         </div>}
         <Issues issues={entity && entity.issues || []} />
         <ErrorBox error={error} excludePaths={fieldPaths} /><Feedback command={command} action={action} excludePaths={error ? [] : fieldPaths} /><ErrorBox error={contextError} />
-        {reason && <p role="status">{reason}</p>}
         {!done && !command.locked && onReloadContext && <Button icon="refresh-cw" busy={contextBusy} disabled={catalogBusy} onClick={onReloadContext}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {contextReview && !done && <div className="wb-resource-review" role="status">
           <p>最新资料已刷新。已修改的内容保留，未修改的项已更新；下方显示当前已保存的资料。</p>

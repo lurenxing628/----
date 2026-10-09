@@ -36,6 +36,7 @@
   // it asked for opens, so Modal falls back to this element when focus has already dropped to <body>.
   let launcher = null;
   // reasonDisplay: 'inline' shows the reason next to the control; 'tooltip' keeps it in the title and a hidden description (table cells, toolbars).
+  // A reason has one visible owner: use inline for a single action; use tooltip when a page/group already explains it.
   // A tooltip-only reason is reachable only through the button itself, so that button stays focusable (aria-disabled) and just ignores clicks.
   function Button({ icon, transfer, children, reason, reasonDisplay = 'inline', busy, className = 'btn', onClick, ...props }) {
     if (reasonDisplay !== 'inline' && reasonDisplay !== 'tooltip') throw new TypeError('Unknown reasonDisplay: ' + reasonDisplay);

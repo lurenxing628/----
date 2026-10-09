@@ -53,7 +53,7 @@ class MaintenanceResult:
 
 class SystemMaintenanceService:
     """
-    系统维护（有人访问系统时检查）。
+    系统维护（访问完成后，由现有运行线程在空闲时检查）。
 
     目标：
     - 分钟级自动备份
@@ -61,7 +61,7 @@ class SystemMaintenanceService:
     - 分钟级自动清理操作日志（保留策略，避免过度清理）
 
     约束：
-    - 不启后台线程
+    - 不另启维护线程，复用宿主已有的运行线程
     - 轻量：加进程内节流，避免每个请求都做 DB 查询/文件扫描
     """
 

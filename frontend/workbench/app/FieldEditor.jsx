@@ -51,9 +51,9 @@
       <div className="field-editor-heading"><h3>{title}{record ? ' · ' + record.report_no : ''}</h3>
         {fresh && <Button disabled={disabled} reason={!M.previous(task) ? '同任务同工序暂无可复制的有效报工。' : ''} reasonDisplay="inline" onClick={copy}>复制上一条</Button>}</div>
       <window.FieldEditorFields {...{ task, record, legacy, action, adapter, draft, suggestions, disabled, first, change }} error={shownError} />
-      <ErrorBox error={error} excludePaths={mapped} /><Feedback command={command} onDone={onDone} excludePaths={mapped} />{reason && <p role="status">{reason}</p>}
+      <ErrorBox error={error} excludePaths={mapped} /><Feedback command={command} onDone={onDone} excludePaths={mapped} />
       <div className="field-footer"><Button onClick={onClose} disabled={command.locked}>取消</Button>
-        {fresh && <Button disabled={disabled} reason={reason} onClick={() => save(draft, true)}>保存并继续</Button>}
+        {fresh && <Button disabled={disabled} reason={reason} reasonDisplay="tooltip" onClick={() => save(draft, true)}>保存并继续</Button>}
         <Button type="submit" icon="check" className="btn primary" disabled={disabled} busy={command.locked} reason={reason}>{action === 'correct' ? '保存更正' : '保存报工'}</Button></div>
     </form>;
   }

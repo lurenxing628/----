@@ -79,7 +79,7 @@
     const losesSelections = model.review && !E.same(draft, reconcile(draft, entity, model.review.data));
     function label(fact) { return fact ? '工序 ' + (fact.sequences.join('、') || '无有效成员') + '；供应商 ' + (fact.supplier_label || fact.supplier_id || '未选') + '；' + (fact.merge_mode === 'merged' ? '整段 ' + E.value(fact.total_days) + ' 天' : '逐序周期') : '无'; }
     return ReactDOM.createPortal(<div className="plana process-detail" data-process-group-editor><Modal title="管理外协段" icon="chart-gantt" onClose={close} locked={blocked || checking} suspended={!!picker}
-      footer={<><Button disabled={blocked || checking} onClick={close}>返回工时</Button><Button icon="search" disabled={blocked || checking} reason={reason} onClick={check}>预检外协段</Button>
+      footer={<><Button disabled={blocked || checking} onClick={close}>返回工时</Button><Button icon="search" disabled={blocked || checking} reason={reason} reasonDisplay="tooltip" onClick={check}>预检外协段</Button>
         <Button className="btn primary" icon="check" disabled={blocked || checking || !validPreview} reason={reason} onClick={save}>确认保存外协段</Button></>}>
       <div className="modal-b scroll"><p>一段表示一次送出、一次回厂。只选路线中连续且属于同一家供应商的外协工序；两次送出请分别建段。整段周期只计算一次，修改后还需确认工时。</p>
         <p className="muted">拆分时先缩小原段的工序范围，再新增另一段；解除后各工序恢复原逐序周期，原来未填写的请补齐。未编辑的段及历史记录保留。</p>

@@ -21,6 +21,7 @@ Expand-Archive -LiteralPath '.\APS_Portable_Win7_x64.zip' -DestinationPath 'D:\A
 ```text
 APS_Portable/
   启动_排产系统_Chrome.bat    日常启动入口
+  aps-launcher.ps1           启动控制脚本，与 BAT 一起保留
   排产系统.exe              后台服务
   aps-portable.txt           便携标记，必须保留
   README_PORTABLE.txt        随包使用说明
@@ -38,6 +39,8 @@ APS_Portable/
 程序检测到 `aps-portable.txt` 后，数据库、日志、备份、模板和浏览器配置固定随目录走。旧安装注册表、`ProgramData`、`LOCALAPPDATA` 及 `APS_*` 数据路径覆盖不会把便携版引向其他目录；启动器只使用包内浏览器。路径不可写时明确失败，不换地方建库。
 
 同一份数据一次只允许一个实例使用；重复启动和另一账户占用时仍执行现有的运行锁保护。使用系统页面退出功能，等待程序正常退出后再复制、移动、升级或拔出存储设备。专用浏览器只用于本机 APS 页面。
+
+启动 BAT 只调用一次 Windows PowerShell；日志、实例身份核对和健康轮询都在该进程内完成。就绪等待按实际经过时间限制为 45 秒，`launcher.log` 中的 `elapsed_ms` 可用于区分服务就绪与浏览器打开阶段。更新启动器时必须同时替换 BAT 和 `aps-launcher.ps1`，不能只拷贝其中一个。日志仍为 UTF-8，运行目录可含中文、空格和 `!`。
 
 ## 构建
 
@@ -95,8 +98,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 
 - 打包 `.ps1` 保持纯 ASCII，并使用 `#Requires -Version 5.1`。不使用 `utf8NoBOM` 编码参数、PowerShell 7 语法或要求升级到 7 的回退方案。
 - 控制台、PowerShell 原生命令管道与 Python 输出显式设置 UTF-8；设置作用于本次进程，不改机器或账户的全局配置。
-- 启动 `.bat` 保持项目既有 UTF-8 无 BOM、LF 与第二行 `chcp 65001` 合同；中文使用说明在出包时写成 UTF-8 带 BOM，供 Win7 记事本读取。
-- `.gitattributes` 为这些启动文件固定 `text eol=lf`，避免 Windows 的 `core.autocrlf` 改变既有换行合同；不更改用户全局 Git 设置。[Git 换行属性文档](https://git-scm.com/docs/gitattributes)
+- 启动 `.bat` 保持 ASCII 内容与 CRLF，关闭延迟展开；`aps-launcher.ps1` 保持 ASCII 源码并兼容 Windows PowerShell 2.0，中文路径与 UTF-8 日志在同一 PowerShell 进程内处理。中文使用说明在出包时写成 UTF-8 带 BOM，供 Win7 记事本读取。
+- `.gitattributes` 为启动和构建 BAT 固定 `text eol=crlf`，为打包 PS1 固定 `text eol=lf`，避免 Windows 的 `core.autocrlf` 改变各自的换行约定；不更改用户全局 Git 设置。[Git 换行属性文档](https://git-scm.com/docs/gitattributes)
 - 浏览器验收对路径参数显式加双引号，并在含中文、空格的临时目录里执行。微软说明 `Start-Process` 会把参数数组拼为字符串，外层字符串引号不会自动传给子进程。[Start-Process 5.1 文档](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/start-process?view=powershell-5.1)
 
 5.1 是本次现场基线，不能仅凭“Win7”推断版本；微软将其作为 WMF 5.1 更新提供给 Win7。[微软 WMF 5.1 发布说明](https://devblogs.microsoft.com/powershell/windows-management-framework-wmf-5-1-released/)

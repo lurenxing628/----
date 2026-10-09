@@ -56,7 +56,8 @@
           try { accept(await api.command(original, item.write_context.write_token), original); }
           catch (e) {
             if (C.isRejected(e)) save({ ...original, phase: 'rejected' }, original);
-            if (mounted.current) { setError(e); setNotice(C.isRejected(e) ? window.WorkbenchTerms.outcomes.rejected('处置', e.message) : window.WorkbenchTerms.outcomes.unknown('处置')); }
+            // Receipt owns the rejected/pending outcome; the error box owns the failure reason.
+            if (mounted.current) setError(e);
           }
         });
       } catch (e) { if (mounted.current) setStorageError(e); }

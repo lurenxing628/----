@@ -12,13 +12,16 @@ import time
 from contextlib import closing
 
 from core.infrastructure.database import get_connection
+from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import TERMINAL_STATES, validate_run_ref
 from core.services.scheduler import schedule_service
+from core.services.system.system_maintenance_service import SystemMaintenanceService
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.run.worker_claim import RunClaimBusy, capture_claim_retry_state, require_retryable_claim
 from web.error_boundary import user_visible_app_error_message
+from web.runtime_host import restore_host
 
 from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
@@ -40,6 +43,7 @@ class WorkbenchRunRuntime:
         self._condition = threading.Condition()
         self._queue = queue.Queue()
         self._pending = set()
+        self._maintenance_requested_at = None
         self._stop = threading.Event()
         self._thread = None
         self._compute_runner = None
@@ -223,12 +227,46 @@ class WorkbenchRunRuntime:
                                           run_ref, self.db_path)
                 self._stop.set()
 
+    def request_maintenance_check(self):
+        """Called after a response closes; coalesce activity on the existing worker."""
+        with self._condition:
+            if self._ready and not self._closed and self._maintenance_requested_at is None:
+                self._maintenance_requested_at = time.monotonic()
+
+    def _run_idle_maintenance(self):
+        with self._condition:
+            requested = self._maintenance_requested_at
+            if (requested is None or self._closed or self._pending or
+                    time.monotonic() - requested < SystemMaintenanceService.CHECK_THROTTLE_SECONDS):
+                return
+            gate = lookup_workbench_request_lifecycle(self.db_path)
+            if gate is None or gate.status["active"] or gate.status["state"] != "accepting":
+                return
+            self._maintenance_requested_at = None
+        try:
+            self._verify()
+            owner = restore_host(self.app)
+            if owner is None:
+                return
+            with closing(get_connection(self.db_path)) as conn:
+                SystemMaintenanceService.run_if_due(
+                    conn, db_path=self.db_path, backup_dir=self.app.config["BACKUP_DIR"],
+                    backup_keep_days_default=int(self.app.config.get("BACKUP_KEEP_DAYS", 7)),
+                    logger=self.app.logger, op_logger=OperationLogger(conn, logger=self.app.logger),
+                    admission_window=owner.automatic_maintenance,
+                )
+        except WorkbenchCommandRejected as exc:
+            self.app.logger.info("Automatic maintenance deferred: %s", exc)
+        except Exception:
+            self.app.logger.exception("Automatic maintenance failed")
+
     def _serve(self):
         try:
             while not self._stop.is_set():
                 try:
                     run_ref = self._queue.get(timeout=0.1)
                 except queue.Empty:
+                    self._run_idle_maintenance()
                     continue
                 try:
                     self._run_one(run_ref)

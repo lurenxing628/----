@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from fnmatch import fnmatch
 from pathlib import Path
@@ -174,3 +175,37 @@ def _user_visible_text_files() -> Iterable[Path]:
 def test_frontend_static_assets_are_offline_local() -> None:
     violations = _collect_external_resource_violations()
     assert not violations, "\n".join(violations)
+
+
+def test_workbench_entry_has_few_requests_and_all_bundled_css_targets_exist():
+    from urllib.parse import unquote, urlsplit
+
+    from scripts.workbench.asset_sources import css_references
+
+    static = REPO_ROOT / "static"
+    manifest = json.loads((static / "workbench/asset-manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["scripts"]) <= 4 and len(manifest["styles"]) <= 2
+    for relative in manifest["scripts"] + manifest["styles"] + [manifest["theme_script"], manifest["icon"]]:
+        assert (static / relative).is_file(), relative
+    for relative in manifest["styles"]:
+        sheet = static / relative
+        text = sheet.read_text(encoding="utf-8")
+        assert not re.search(r"@import\s", re.sub(r"/\*.*?\*/", "", text, flags=re.S))
+        for ref in css_references(text):
+            target = (sheet.parent / unquote(urlsplit(ref).path)).resolve()
+            assert static.resolve() in target.parents and target.is_file(), ref
+
+
+def test_style_bundle_preserves_cascade_and_rebases_nested_imports():
+    from scripts.workbench.entry_bundle import bundle_styles
+
+    payload = {"workbench/prototype/base.css": b'@import "tokens/type.css"; .x { color:red; }',
+               "workbench/prototype/tokens/type.css": b'@font-face { src: url("../font.ttf"); }',
+               "workbench/prototype/font.ttf": b"font",
+               "workbench/app/styles/live.css": b'.x { color:blue; background:url("data:image/png;base64,AA=="); }'}
+    result = bundle_styles(payload, ["workbench/prototype/base.css", "workbench/app/styles/live.css"],
+                           "workbench/app/workbench.css").decode()
+    assert '@import' not in result
+    assert 'url("../prototype/font.ttf")' in result
+    assert result.index('color:red') < result.index('color:blue')
+    assert 'url("data:image/png;base64,AA==")' in result

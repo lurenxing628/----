@@ -38,9 +38,10 @@
       </div>)}</div>
     </div>;
   }
-  function Detail({ row, kind, data, reason, onAction, onDownload, downloadBusy, onClose }) {
+  function Detail({ row, kind, data, reason, sharedReason, onAction, onDownload, downloadBusy, onClose }) {
     const ref = React.useRef(null);
     const file = kind === 'backups' && row.record_kind === 'backup_file', event = kind === 'backups' && !file;
+    const restoreReason = file ? reason || A.blocked(data, 'restore') : '', deleteReason = file ? reason || A.blocked(data, 'delete') : '';
     React.useEffect(() => { const previous = document.activeElement; ref.current.focus(); return () => { if (previous && previous.isConnected) previous.focus(); }; }, []);
     return <section className="sm-detail" role="region" aria-label={kind === 'logs' ? '日志详情' : file ? '备份详情' : '维护事件详情'} tabIndex={-1} ref={ref} onKeyDown={event => { if (event.key === 'Escape') onClose(); }}>
       <div className="sm-section-head"><h3 className="sm-detail-title">{kind === 'logs' ? '日志详情' : file ? row.filename : row.summary}</h3><C.Button icon="x" aria-label="关闭详情" onClick={onClose} /></div>
@@ -50,10 +51,9 @@
       {row.content_truncated && <p className="sm-tone-warning">本条详情已截断，不是完整原始内容。</p>}
       {file && <><p className="sm-note">校验状态：未校验。</p><div className="sm-actions">
         <C.Button transfer="export" disabled={!!reason} busy={downloadBusy} onClick={() => onDownload(row)}>下载备份</C.Button>
-        <C.Button icon="rotate-ccw" reason={reason || A.blocked(data, 'restore')} onClick={() => onAction('restore', row)}>恢复备份</C.Button>
-        <C.Button icon="trash-2" reason={reason || A.blocked(data, 'delete')} onClick={() => onAction('delete', row)}>删除备份</C.Button>
-      </div>{A.blocked(data, 'restore') && <p className="sm-note">恢复禁用：{A.blocked(data, 'restore')}</p>}
-        {A.blocked(data, 'delete') && <p className="sm-note">删除禁用：{A.blocked(data, 'delete')}</p>}</>}
+        <C.Button icon="rotate-ccw" reason={restoreReason} reasonDisplay={restoreReason === sharedReason ? 'tooltip' : 'inline'} onClick={() => onAction('restore', row)}>恢复备份</C.Button>
+        <C.Button icon="trash-2" reason={deleteReason} reasonDisplay={deleteReason === sharedReason ? 'tooltip' : 'inline'} onClick={() => onAction('delete', row)}>删除备份</C.Button>
+      </div></>}
     </section>;
   }
   function Records({ api, kind, pageSize, onPageSize, revision, command, active = true, initialContext, onReadContext }) {
@@ -102,6 +102,7 @@
       } catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
     }
     const writeReason = command.locked ? '上次维护操作还没有确认结果。请先点「查询结果」。' : request.loading || !data ? '请先读取有效的备份清单。' : '';
+    const sharedReason = kind === 'backups' ? writeReason || data && data.capabilities.blocked_reason || '' : '';
     const ask = (action, row) => {
       if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) { setError(new Error('维护事件不是可操作的备份文件。')); return; }
       setConfirm({ action, row });
@@ -109,7 +110,7 @@
     return <section className="sm-section" aria-label={kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}>
       <div className="sm-section-head"><h3>{kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}</h3><C.Button icon="refresh-cw" aria-label="刷新清单" busy={request.loading} onClick={() => { setPage(1); setSnapshot(''); setSelected(null); reload(); }} /></div>
       <div className="sm-toolbar"><Filters kind={kind} value={draft} onChange={setDraft} onSubmit={() => apply(draft)} loading={request.loading} onReset={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }} />
-        <div className="sm-actions sm-record-actions">{kind === 'backups' ? <C.Button icon="plus" reason={writeReason || A.blocked(data, 'create')} onClick={() => ask('create', null)}>新增备份</C.Button> : <>
+        <div className="sm-actions sm-record-actions">{kind === 'backups' ? <C.Button icon="plus" reason={sharedReason || A.blocked(data, 'create')} reasonDisplay={sharedReason ? 'tooltip' : 'inline'} onClick={() => ask('create', null)}>新增备份</C.Button> : <>
           <C.Button transfer="export" disabled={!data || request.loading} busy={downloadBusy} onClick={() => download('csv')}>导出这段日志 CSV</C.Button>
           <C.Button transfer="export" disabled={!data || request.loading} busy={downloadBusy} onClick={() => download('zip')}>导出诊断包</C.Button></>}</div>
       </div>
@@ -117,7 +118,7 @@
       {selection && data && !selected && <p className="sm-notice" role="status">{!stableSelection
         ? '原先选中的记录编号不完整，没有按同名文件或第一条记录乱猜。请重新选择。'
         : '这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。'}<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
-      {kind === 'backups' && data && A.blocked(data, 'create') && <p className="sm-note">文件动作禁用：{A.blocked(data, 'create')}</p>}
+      {kind === 'backups' && sharedReason && <p className="sm-note" role="status">{sharedReason}</p>}
       {request.loading && <p className="sm-note" role="status">正在读取{kind === 'logs' ? '日志' : '备份清单'}…</p>}
       {data && <><Sources data={data} kind={kind} /><div className="sm-meta">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(payload.meta.as_of))}</div>
         {data.rows.length ? <div className="wb-table-shell wb-table-frame" data-sticky-head="true" data-sticky-actions="true"><table className={'wb-table sm-table sm-record-table sm-' + kind + '-table'}>
@@ -132,7 +133,7 @@
             <td className="wb-col-actions"><C.Button icon="chevron-right" className="mini" aria-label={'查看详情 ' + row.summary} aria-expanded={!!selected && selected.key === row.key} onClick={event => { event.stopPropagation(); setSelected(row); }} /></td>
           </tr>)}</tbody></table></div> : <window.WorkbenchListControls.EmptyState kind={Object.values(filters).some(Boolean) ? 'filtered' : 'empty'} title="当前筛选下暂无记录" hint={kind === 'logs' ? '只看已读取的那段日志；来源缺失和读取失败另行列出。' : '只看已读取的备份文件、恢复事件和清理记录。'} action={Object.values(filters).some(Boolean) ? <C.Button onClick={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }}>清除筛选</C.Button> : undefined} />}
         <div className="sm-pager"><window.WorkbenchListControls.Pager page={data.page} sizes={[10, 25, 50]} unit="条" onSize={onPageSize} onPage={changePage} busy={request.loading} label="" sizeLabel="每页数量" /></div>
-        {selected && <Detail key={selected.key} row={selected} kind={kind} data={data} reason={writeReason} onAction={ask} onDownload={downloadBackup} downloadBusy={downloadBusy} onClose={() => setSelected(null)} />}
+        {selected && <Detail key={selected.key} row={selected} kind={kind} data={data} reason={writeReason} sharedReason={sharedReason} onAction={ask} onDownload={downloadBackup} downloadBusy={downloadBusy} onClose={() => setSelected(null)} />}
       </>}
       {confirm && <C.Confirm {...confirm} reason={writeReason || A.blocked(data, confirm.action)} onClose={() => setConfirm(null)} onConfirm={() => {
         const { action, row } = confirm, reason = writeReason || A.blocked(data, action); if (reason) { setError(new Error(reason)); return; }

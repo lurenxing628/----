@@ -95,6 +95,8 @@ if %RC%==0 (
   rem The onedir payload owns the launcher consumed by smoke tests and every installer.
   copy /y "assets\启动_排产系统_Chrome.bat" "dist\排产系统\启动_排产系统_Chrome.bat" >nul
   if errorlevel 1 set "RC=8"
+  copy /y "assets\aps-launcher.ps1" "dist\排产系统\aps-launcher.ps1" >nul
+  if errorlevel 1 set "RC=8"
 )
 
 echo.

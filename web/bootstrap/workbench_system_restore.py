@@ -70,8 +70,10 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
         return self._status()
 
     def static_status(self):
-        """Asset requests still respect the owned host state without reading file history."""
-        return self._status()
+        """Static files need the host's stop state, not database lock-file reads."""
+        with self._lock:
+            return {"state": self._state, "request_key": self._request_key,
+                    "restart_required": self._state != "ready"}
 
     def _status(self):
         with self._lock:

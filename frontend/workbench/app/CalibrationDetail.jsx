@@ -67,7 +67,7 @@
     return <window.WorkbenchDetailPanel className="ca-detail" detailKey={selected} title={row ? row.part_no + ' · ' + row.sequence + ' ' + row.operation_label : '已选校准记录'}
       subtitle="校准详情" actions={actions} onClose={onClose}>
       {!row && <Refs rows={[["已选记录编号", selected], ["已选完工记录编号", sampleRef]]} />}
-      <ErrorBox error={error} />{stale && <p className="ca-note">{window.WorkbenchTerms.outcomes.stale}</p>}
+      <ErrorBox error={error} />
       {(error || stale) && <Button icon="refresh-cw" onClick={onRefresh}>刷新所选记录</Button>}
       {busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取完工记录来源" />}
       {row && <><dl className="ca-facts"><div><dt>原定额</dt><dd>{unitHours(row.old_unit_hours)}</dd></div><div><dt>建议定额</dt><dd>{unitHours(row.suggested_unit_hours, '暂无建议')}</dd></div>

@@ -72,7 +72,7 @@
       {rest && <p className="iohint">休息日不排产，工时按 0 计。</p>}
       <div className="wb-actions" style={{ marginTop: 12 }}>
         <Button icon="check" className="btn primary" disabled={disabled} reason={saveReason} onClick={onSave}>保存这一天</Button>
-        {day.explicit && <Button icon="minus" disabled={disabled} reason={clearReason} onClick={() => onClearing(true)}>清除单独设置</Button>}
+        {day.explicit && <Button icon="minus" disabled={disabled} reason={clearReason} reasonDisplay={clearReason === saveReason ? 'tooltip' : 'inline'} onClick={() => onClearing(true)}>清除单独设置</Button>}
       </div>
     </div>;
   }

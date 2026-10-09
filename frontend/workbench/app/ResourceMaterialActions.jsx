@@ -153,7 +153,7 @@
           <ErrorBox error={error} excludePaths={isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []} /><ErrorBox error={query.error} /><Issues issues={result && result.warnings || []} />
           {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>
             {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint}</span></label>}
-            {reason && !done && <p role="status">{reason}</p>}</>}
+          </>}
           {data && isExport && <p role="status">已核对导出范围：<b>{data.row_count}</b> 条 · {format.toUpperCase()}{expired ? ' · 预检结果已过期' : ''}</p>}
           {download.busy && <p role="status">正在读取下载文件…</p>}{download.name && <p role="status">{window.WorkbenchTerms.download_started(download.name)}</p>}
           {!isExport && <Feedback command={command} />}

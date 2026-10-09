@@ -16,8 +16,8 @@ README = "README_PORTABLE.txt"
 ACCEPTANCE = "WIN7_ACCEPTANCE.txt"
 ARCHIVE_ROOT = "APS_Portable"
 REQUIRED_FILES = (
-    "排产系统.exe", "python38.dll", "base_library.zip", "schema.sql",
-    "static/workbench/prototype/styles.css", "static/workbench/app/main.js",
+    "排产系统.exe", "python38.dll", "base_library.zip", "schema.sql", "aps-launcher.ps1",
+    "static/workbench/app/workbench.css", "static/workbench/app/main.js",
     "tools/chrome109/chrome.exe", "tools/chrome109/locales/zh-CN.pak",
     "tools/chrome109/locales/en-US.pak",
 )
