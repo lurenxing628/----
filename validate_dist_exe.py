@@ -41,7 +41,7 @@ _EXPECTED_CONTRACT_VERSION = 1
 # tests/app_runtime/test_validate_dist_static_payload.py 对账：锚点必须真实存在于
 # 仓库 static/、列入 manifest 且由实际入口模板加载，不能保留已退役的旧资源。
 _STATIC_BUNDLE_ANCHORS = (
-    "static/workbench/prototype/styles.css",
+    "static/workbench/app/workbench.css",
     "static/workbench/app/theme.js",
     "static/workbench/app/main.js",
 )

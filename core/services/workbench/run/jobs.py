@@ -17,7 +17,7 @@ from core.services.workbench.facts.run_data_context import RunDataContext
 from core.services.workbench.facts.run_policy import public_run, require_run_schema
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
-from .input_admission import piece_admission_issues
+from .input_admission import candidate_admission_issues
 from .jobs_facts import capture_run_facts, run_baseline, run_execution_projections
 from .progress import read_progress
 
@@ -51,7 +51,8 @@ class WorkbenchRunService:
             raise WorkbenchCommandRejected("run_worker_not_connected", messages.UNAVAILABLE, 503)
         data, fingerprint = self.input_resolver(self.conn, input_ref)
         settings = data["normalized_input"]
-        data["blockers"].extend(piece_admission_issues(self.conn, settings))
+        if not data["blockers"]:
+            data["blockers"].extend(candidate_admission_issues(self.conn, settings))
         snapshot = {"input_ref": input_ref, "normalized_input": settings, "fingerprint": fingerprint,
                     "data_context_ref": self.data_context.ref()}
         return settings, data, snapshot

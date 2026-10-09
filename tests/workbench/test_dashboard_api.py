@@ -4,9 +4,12 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.workbench.dashboard_support import api, follow  # noqa: F401
-from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
+from tests.workbench.dashboard_support import dashboard_case as dashboard_fixture  # noqa: F401
 from tests.workbench.node_runtime_support import node_runtime
+from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
 
 ROOT = "/api/workbench/v1/dashboard"
 
@@ -126,3 +129,52 @@ def test_unavailable_plan_keeps_handling_readable_and_analysis_consistent(dashbo
         text=True, encoding="utf-8", capture_output=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case, monkeypatch):
+    from core.models.workbench_dashboard import MAX_BYTES, payload_size
+
+    case = dashboard_case
+    reason = "x" * (MAX_BYTES * 9 // 16)
+    case.conn.execute("UPDATE MachineDowntimes SET reason_detail=?", (reason,))
+    case.conn.commit()
+    client = api(case, monkeypatch)
+    analysis = client.get(ROOT + "/analysis")
+    assert analysis.status_code == 413
+    assert analysis.get_json()["error"]["code"] == "query_too_large"
+    merged = client.get(ROOT)
+    assert merged.status_code == 200
+    body = merged.get_json()
+    payload_size(body)
+    assert body["data"]["analysis"] is None and "读取上限" in body["data"]["analysis_error"]
+    assert body["data"]["page"]["total"] == len(body["data"]["items"]) == 4
+    downtime = next(row for row in body["data"]["items"] if row["category"] == "downtime")
+    assert downtime["source"]["downtimes"][0]["reason"] == reason
+
+
+def test_candidate_comparison_uses_dashboard_envelope_budget(candidate_case, monkeypatch):
+    from core.models.workbench_dashboard import MAX_BYTES
+    from tests.workbench.run_candidate_support import compute
+
+    case = candidate_case
+    case.conn.execute("UPDATE Batches SET part_name=?", ("x" * (MAX_BYTES * 9 // 16),))
+    case.conn.commit()
+    _, candidates = compute(case)
+    response = api(case, monkeypatch).get(ROOT + "/candidates/" + candidates[0] + "/comparison", query_string={
+        "range_start": "2026-09-09T00:00:00", "range_end": "2026-09-26T00:00:00"})
+    assert response.status_code == 413, response.get_json()
+    assert response.get_json()["error"]["code"] == "query_too_large"
+
+
+@pytest.mark.parametrize("endpoint, reader_name", [("/analysis", "read_dashboard_analysis"),
+                                                   ("/candidates/" + "a" * 48 + "/comparison", "read_candidate_comparison")])
+def test_dashboard_analysis_envelopes_never_return_nonfinite_json(dashboard_case, monkeypatch, endpoint, reader_name):
+    import web.routes.workbench.dashboard_analysis as module
+
+    monkeypatch.setattr(module, reader_name, lambda *args: ({"unserializable_number": float("nan")}, "fault-snapshot"))
+    response = api(dashboard_case, monkeypatch).get(ROOT + endpoint)
+    assert response.status_code == 500
+    body = response.get_json()
+    assert body["ok"] is False and body["committed"] is False
+    assert body["error"]["code"] == "storage_failure"
+    assert b"NaN" not in response.data

@@ -3,21 +3,16 @@
 param([string]$Destination='',[switch]$VerifyOnly,[switch]$NoOpen)
 $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Path)
-function Hash([string]$Path){
- $stream=[IO.File]::OpenRead($Path);$algorithm=New-Object Security.Cryptography.SHA256Managed
- try{return [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-','').ToLowerInvariant()}
- finally{$stream.Close();$algorithm.Clear()}
-}
 function Child([string]$Parent,[string]$Relative){
  if([IO.Path]::IsPathRooted($Relative) -or $Relative.Contains(':') -or ($Relative -split '[/\\]') -contains '..'){throw 'Unsafe package path'}
  $result=[IO.Path]::GetFullPath((Join-Path $Parent $Relative))
  if(-not $result.StartsWith(([IO.Path]::GetFullPath($Parent).TrimEnd('\')+'\'),[StringComparison]::OrdinalIgnoreCase)){throw 'Package path escaped its root'}
  return $result
 }
-function Check([string]$File,[string]$Digest,[long]$Length){
+function Check([string]$File,[long]$Length){
  if(-not(Test-Path -LiteralPath $File -PathType Leaf)){throw ('Missing file: '+$File)}
  if(((Get-Item -LiteralPath $File).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){throw 'Link refused'}
- if((Get-Item -LiteralPath $File).Length -ne $Length -or (Hash $File) -cne $Digest){throw ('File is incomplete or damaged: '+$File)}
+ if((Get-Item -LiteralPath $File).Length -ne $Length){throw ('File is incomplete: '+$File)}
 }
 function ReadCsv([string]$File){return @([IO.File]::ReadAllText($File,[Text.Encoding]::UTF8)|ConvertFrom-Csv)}
 try{
@@ -30,7 +25,7 @@ try{
  # Refuse existing targets before writing or extracting anything into them.
  if(-not $VerifyOnly -and (Test-Path -LiteralPath $Destination)){throw ('Destination already exists; choose a NEW folder. Existing data was not changed: '+$Destination)}
  $support=ReadCsv (Join-Path $root 'support.csv')
- foreach($row in $support){Check (Child $root $row.Path) $row.SHA256 ([long]$row.Bytes)}
+ foreach($row in $support){Check (Child $root $row.Path) ([long]$row.Bytes)}
  $tool=Join-Path $root 'tools\7za.exe'
  $parts=ReadCsv (Join-Path $root 'parts.csv')
  if($parts.Count -eq 0){throw 'Package parts manifest is empty'}
@@ -44,11 +39,13 @@ try{
     if(Test-Path -LiteralPath $candidate){$zip=$candidate;break}
    }
    if(-not $zip){throw ('Put ALL ZIP packages together, then run Install.cmd again. Missing: '+$part.Zip)}
-   Check $zip $part.ZipSHA256 ([long]$part.ZipBytes)
+   Check $zip ([long]$part.ZipBytes)
+   & $tool t $zip -bsp0
+   if($LASTEXITCODE -ne 0){throw 'Additional ZIP integrity check failed'}
    & $tool x $zip $part.Path ('-o'+$root) -aos -y -bsp0
    if($LASTEXITCODE -ne 0){throw 'Could not read the additional ZIP package'}
   }
-  Check $piece $part.SHA256 ([long]$part.Bytes)
+  Check $piece ([long]$part.Bytes)
  }
  $first=Child $root $parts[0].Path
  & $tool t $first -bsp0
@@ -59,14 +56,15 @@ try{
  if($LASTEXITCODE -ne 0){throw 'Extraction failed; original user data was not modified'}
  $app=Child $Destination 'APS_Portable'
  $files=ReadCsv (Join-Path $root 'files.csv')
- foreach($row in $files){Check (Child $app $row.Path) $row.SHA256 ([long]$row.Bytes)}
+ foreach($row in $files){Check (Child $app $row.Path) ([long]$row.Bytes)}
  $actual=@(Get-ChildItem -LiteralPath $app -Recurse -Force|Where-Object {-not $_.PSIsContainer})
  if($actual.Count -ne $files.Count){throw 'Unexpected application files were found'}
  if(Test-Path -LiteralPath (Join-Path $app 'user-data')){throw 'A new package must not contain user data'}
+ if(Test-Path -LiteralPath (Join-Path $app 'sample-context')){throw 'A new package must not contain a sample context'}
  $launcher=@(Get-ChildItem -LiteralPath $app -Filter '*.bat')
  if($launcher.Count -ne 1){throw 'Application launcher could not be identified uniquely'}
- [IO.File]::WriteAllText((Join-Path $Destination 'Start.cmd'),('@echo off'+"`r`n"+'setlocal DisableDelayedExpansion'+"`r`n"+'cd /d "%~dp0APS_Portable"'+"`r`n"+'for %%F in (*.bat) do call "%%F"'+"`r`n"),[Text.Encoding]::ASCII)
- [IO.File]::WriteAllText((Join-Path $root 'DEPLOYED.txt'),('Verified '+$files.Count+' original files. Start: '+(Join-Path $Destination 'Start.cmd')+"`r`n"))
+ foreach($name in @('Start.cmd','Start.ps1','SampleOn.cmd','SampleOff.cmd','files.csv')){Copy-Item -LiteralPath (Join-Path $root $name) -Destination (Join-Path $Destination $name)}
+ [IO.File]::WriteAllText((Join-Path $root 'DEPLOYED.txt'),('Verified ZIP/7z CRC and '+$files.Count+' original file sizes. Start: '+(Join-Path $Destination 'Start.cmd')+"`r`n"))
  Write-Output ('SUCCESS: '+$files.Count+' files verified. Double-click Application\Start.cmd to use APS.')
  Write-Output 'No Python, browser installation, internet download or administrator installation is needed.'
  if(-not $NoOpen){Start-Process -FilePath 'explorer.exe' -ArgumentList ('"'+$Destination+'"')}

@@ -42,12 +42,15 @@
       <div className="dy-context">当前范围：全部待排批次 · 齐套检查和缺设备人员的规则在「执行排产」里按本次选择设定，已保存候选方案的规则见「方案对比」。</div>
     </section>;
   }
-  function Actual({ data, navigate }) { return <section aria-label="工序执行偏差"><h3>工序报工与定额对照</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">工序执行偏差</caption>
+  function Actual({ data, navigate }) {
+    const tasks = new Map(data.tasks.map(task => [task.task_ref, task]));
+    return <section aria-label="工序执行偏差"><h3>工序报工与定额对照</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">工序执行偏差</caption>
     <thead><tr><th scope="col">批次 / 工序</th><th scope="col">定额加工小时</th><th scope="col">有效加工小时</th><th scope="col">超耗判断</th><th scope="col">现场记录</th></tr></thead><tbody>{data.execution.map(row => {
-      const source = row.source, hours = source.hours || {}, context = { plan_ref: source.plan_ref, task_ref: source.task_ref, operation_ref: source.operation_ref };
-      return <tr key={source.task_ref}><td>{row.subject}</td><td>{value(hours.quota_processing_hours)} 小时</td><td>{value(hours.effective_processing_hours)} 小时</td>
+      const source = row.source, task = tasks.get(source.task_ref), hours = source.hours || {}, context = { plan_ref: data.plan.plan_ref, task_ref: task.task_ref, operation_ref: task.operation_ref };
+      return <tr key={source.task_ref}><td>{task.batch_id + ' · ' + task.process_label}</td><td>{value(hours.quota_processing_hours)} 小时</td><td>{value(hours.effective_processing_hours)} 小时</td>
         <td>{hours.overrun === true ? '已确认超耗' : hours.overrun === false ? '未超耗' : '暂无数据'}</td><td><Button reasonDisplay="inline" icon="square-pen" onClick={() => navigate({ view: 'field', context, enabled: true })}>现场记录</Button>
           <Button reasonDisplay="inline" icon="chart-gantt" onClick={() => navigate({ view: 'fieldgantt', context, enabled: true })}>现场实际甘特</Button></td></tr>;
-    })}</tbody></table></div></section>; }
+    })}</tbody></table></div></section>;
+  }
   window.DashboardAnalysisPanels = { Delivery, Downtime, Material, Actual, value, risk };
 })();

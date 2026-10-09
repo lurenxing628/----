@@ -78,7 +78,7 @@ def test_legacy_external_keeps_analysis_and_reports_unassessed_logistics(externa
     assert data["analysis_error"] is None
     task = next(row for row in data["analysis"]["tasks"] if row["batch_id"] == "XB1")
     assert task["source"] == "external" and task["machine_ref"] is None
-    actual = next(row for row in data["analysis"]["execution"] if row["source"]["batch_id"] == "XB1")
+    actual = next(row for row in data["analysis"]["execution"] if row["source"]["task_ref"] == task["task_ref"])
     assert actual["source"]["hours"]["basis"] == "not_currently_evaluated"
     assert actual["source"]["data_quality"] != "invalid"
     external = data["categories"]["external"]

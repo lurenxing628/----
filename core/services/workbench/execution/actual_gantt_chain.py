@@ -86,6 +86,10 @@ def _result_valid(raw, mapping, point_count, target_id=None):
 def plan_chain(plans, planned, plan_state, visible_refs, *, target_task_ref=None):
     plan_ref = planned["plan"]["plan_ref"]
     target = {"target_task_ref": target_task_ref}
+    if planned["scope"]["range_start"] is not None:
+        # The visible cohort is time-scoped; the existing engine still needs the
+        # complete plan to retain predecessors outside this timeline window.
+        planned, plan_state = plans.execution_workspace(PlanReadScope(plan_ref))
     if _mixed_piece_groups(planned["tasks"]):
         return unavailable(plan_ref, "engine_piece_precedence_unsupported",
             "暂不支持共同工序与分件之间的跨组依赖，无法计算关键链。", **target)

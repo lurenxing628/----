@@ -59,7 +59,9 @@ class FieldWorkspaceService:
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
             return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, plain_fingerprint(self.ledger.revision_clock())
-        plan, plan_state = self.plans.workspace(PlanReadScope(plan_ref))
+        plan, plan_state = self.plans.execution_workspace(
+            PlanReadScope(plan_ref, scope.get('range_start'), scope.get('range_end')),
+        )
         refs = [task['operation_ref'] for task in plan['tasks']]
         with self.ledger.read_snapshot():
             facts = self.ledger.load(refs, comparison_plan_ref=plan_ref)

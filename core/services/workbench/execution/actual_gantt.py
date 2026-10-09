@@ -110,7 +110,9 @@ class ActualGanttService:
         return projection, items, resources, availability
 
     def workspace(self, scope, *, chain_target=None):
-        planned, plan_state = self.plans.workspace(PlanReadScope(scope.plan_ref))
+        planned, plan_state = self.plans.execution_workspace(
+            PlanReadScope(scope.plan_ref, scope.range_start, scope.range_end), include_calendar=True,
+        )
         projection, items, resources, availability = self._execution(planned, scope)
         items = [item for item in items if cohort_match(item, scope)]
         data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],

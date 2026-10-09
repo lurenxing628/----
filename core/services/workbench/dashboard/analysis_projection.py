@@ -133,7 +133,10 @@ def _projection(facts, material):
     deliveries = [{**row, "priority": batches.get(row["batch_id"], {}).get("priority")} for row in facts.delivery["items"]]
     execution, execution_state = actual(facts)
     by_ref = {row["task_ref"]: row for row in tasks}
-    execution = [{"subject": row["subject"], "source": row["source"],
+    # The task already carries identity, label and planned times. Analysis links
+    # execution by task_ref; list/detail retain the complete evidence source.
+    duplicate_task_fields = {"kind", "plan_ref", "operation_ref", "batch_id", "planned_start", "planned_end"}
+    execution = [{"source": {key: value for key, value in row["source"].items() if key not in duplicate_task_fields},
                   "batch_ref": by_ref[row["source"]["task_ref"]]["batch_ref"]} for row in execution]
     return {"plan": facts.plan, "state": "available", "time_scope": scope, "tasks": tasks, "resources": resources,
             "downtimes": records, "overlaps": overlaps, "deliveries": deliveries, "execution": execution, "pending": pending,

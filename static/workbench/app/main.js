@@ -50671,6 +50671,7 @@ function SystemLiveOverview({
     data,
     navigate
   }) {
+    const tasks = new Map(data.tasks.map(task => [task.task_ref, task]));
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5DE5\u5E8F\u6267\u884C\u504F\u5DEE"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u5E8F\u62A5\u5DE5\u4E0E\u5B9A\u989D\u5BF9\u7167"), /*#__PURE__*/React.createElement("div", {
@@ -50691,15 +50692,16 @@ function SystemLiveOverview({
       scope: "col"
     }, "\u73B0\u573A\u8BB0\u5F55"))), /*#__PURE__*/React.createElement("tbody", null, data.execution.map(row => {
       const source = row.source,
+        task = tasks.get(source.task_ref),
         hours = source.hours || {},
         context = {
-          plan_ref: source.plan_ref,
-          task_ref: source.task_ref,
-          operation_ref: source.operation_ref
+          plan_ref: data.plan.plan_ref,
+          task_ref: task.task_ref,
+          operation_ref: task.operation_ref
         };
       return /*#__PURE__*/React.createElement("tr", {
         key: source.task_ref
-      }, /*#__PURE__*/React.createElement("td", null, row.subject), /*#__PURE__*/React.createElement("td", null, value(hours.quota_processing_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("td", null, value(hours.effective_processing_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("td", null, hours.overrun === true ? '已确认超耗' : hours.overrun === false ? '未超耗' : '暂无数据'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+      }, /*#__PURE__*/React.createElement("td", null, task.batch_id + ' · ' + task.process_label), /*#__PURE__*/React.createElement("td", null, value(hours.quota_processing_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("td", null, value(hours.effective_processing_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("td", null, hours.overrun === true ? '已确认超耗' : hours.overrun === false ? '未超耗' : '暂无数据'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
         reasonDisplay: "inline",
         icon: "square-pen",
         onClick: () => navigate({

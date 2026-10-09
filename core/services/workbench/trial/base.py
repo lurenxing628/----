@@ -163,7 +163,7 @@ def _candidate(conn, ref):
         summary = candidate_summary(candidate, scope)
         issues = []
         try:
-            expected = require_candidate_scope(run, candidates, candidate, scope, capture)
+            expected = require_candidate_scope(run, candidate, scope, capture)
             if {row["original"]["operation"]["id"] for row in result} != expected:
                 raise CandidateAdoptionBlocked("candidate_scope_incomplete", "候选任务范围不完整。")
         except CandidateAdoptionBlocked:

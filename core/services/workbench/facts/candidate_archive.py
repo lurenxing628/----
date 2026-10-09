@@ -33,21 +33,20 @@ def load_adoption_candidate(conn, candidate_ref):
     candidate = next(row for row in candidates if row["candidate_ref"] == candidate_ref)
     scope = dispositions(receipt)
     capture = store.capture(run_ref)
-    ids = require_candidate_scope(run, candidates, candidate, scope, capture)
+    ids = require_candidate_scope(run, candidate, scope, capture)
     tasks = store.tasks(candidate_ref)
     if len(tasks) != len(ids):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案的工序明细条数对不上，不能采用。请重新排产后再试。")
     return candidate, scope, tasks, capture
 
 
-def require_candidate_scope(run, candidates, candidate, scope, capture):
-    """Same archived scope proof for direct adoption and candidate-based trials."""
+def require_candidate_scope(run, candidate, scope, capture):
+    """Prove this candidate's scope; a comparison sibling may have exhausted its budget."""
     summary = candidate_summary(candidate, scope)
     deferred = material_deferred_ids(scope.values(), capture["input"]) if scope is not None else set()
-    stage_scope = bool(deferred) and run["state"] in ("complete", "partial") and all(row["status"] == "completed" for row in candidates)
-    if (candidate["status"] != "completed" or
-            ((run["state"] != "complete" or summary["completeness"] != "complete") and not stage_scope)):
-        raise CandidateAdoptionBlocked("candidate_incomplete", _incomplete_message(candidate, candidates, scope, deferred))
+    if (run["state"] not in ("complete", "partial") or candidate["status"] != "completed"
+            or (summary["completeness"] != "complete" and not deferred)):
+        raise CandidateAdoptionBlocked("candidate_incomplete", _incomplete_message(candidate, scope, deferred))
     ids = scheduled_ids(candidate)
     if not ids or scope is None or ids != {row["op_id"] for row in scope.values()} - deferred:
         raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全排产时选定的工序，不能采用。请重新排产后再试。")
@@ -55,7 +54,7 @@ def require_candidate_scope(run, candidates, candidate, scope, capture):
     return ids
 
 
-def _incomplete_message(candidate, candidates, scope, deferred):
+def _incomplete_message(candidate, scope, deferred):
     """按没排完的原因说出路：本次跳过的批次重排还是跳过，要先取消勾选或处理好跳过原因。"""
     if candidate["status"] != "completed":
         return "这个候选方案没有算出结果，不能采用。请看其它候选方案；都不行请到「排产记录」查看原因。"
@@ -65,20 +64,15 @@ def _incomplete_message(candidate, candidates, scope, deferred):
         names = "、".join(skipped[:5]) + (" 等" if len(skipped) > 5 else "")
         return ("这次排产有批次本次跳过（" + names + "），结果只能查看、不能采用：采用时选中批次的工序要全部排上。"
                 "要采用，请回到排产检查取消勾选这些批次，或先按工序明细处理好跳过原因，再重新排产。"
-                + _other_gaps(candidate, candidates, scope))
-    return "这次排产有工序没排上，或者有候选方案没算完，不能采用。请到「排产记录」查看原因，处理后重新排产。"
+                + _other_gaps(candidate, scope))
+    return "这个候选方案有工序没排上，或者缺少完整结果，不能采用。请到「排产记录」查看原因，处理后重新排产。"
 
 
-def _other_gaps(candidate, candidates, scope):
+def _other_gaps(candidate, scope):
     """跳过批次之外同时还有的没排完原因（与 candidate_summary 判“不完整”同一口径），只取消勾选不够时一并说清。"""
-    reasons = []
     if _unscheduled_beyond_skipped(candidate, scope):
-        reasons.append("这个方案里还有别的工序没排上")
-    if any(row["status"] != "completed" for row in candidates):
-        reasons.append("有候选方案没算完")
-    if not reasons:
-        return ""
-    return "另外，" + "，".join(reasons) + "，处理好跳过的批次后还要到「排产记录」查看原因。"
+        return "另外，这个方案里还有别的工序没排上，处理好跳过的批次后还要到「排产记录」查看原因。"
+    return ""
 
 
 def _unscheduled_beyond_skipped(candidate, scope):

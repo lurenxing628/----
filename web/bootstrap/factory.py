@@ -90,6 +90,8 @@ def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) ->
 
 def _apply_runtime_config(app: Flask, *, base_dir: str) -> None:
     app.config["BASE_DIR"] = base_dir
+    if os.path.isfile(os.path.join(base_dir, "aps-complex-sample.txt")):
+        app.config["WORKBENCH_INSTANCE_LABEL"] = "复杂样例 · 独立数据"
     data_root = resolve_shared_data_root(base_dir)
     overrides = {} if is_portable_runtime(base_dir) else os.environ
     app.config["DATABASE_PATH"] = resolve_runtime_db_path(base_dir)

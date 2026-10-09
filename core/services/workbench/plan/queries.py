@@ -26,6 +26,7 @@ from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
+from .calendar import project_plan_calendar
 from .point_evidence import annotate_plan_points
 from .point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from .projection import (
@@ -229,16 +230,34 @@ class WorkbenchPlanQueryService:
         with read_evidence_scope(self.conn):
             return self._workspace(scope)
 
-    def _workspace(self, scope):
+    def execution_workspace(self, scope, *, include_calendar=False):
+        """Read complete scoped plan tasks without unrelated comparison/dashboard DTOs.
+
+        Field reporting and actual Gantt use the same plan admission, identities,
+        captured quantities and payload bound as the plan workspace. Only actual
+        Gantt needs the selected-plan calendar; its full-plan chain reads tasks.
+        """
+        with read_evidence_scope(self.conn):
+            return self._workspace(scope, execution_only=True, include_calendar=include_calendar)
+
+    def _workspace(self, scope, *, execution_only=False, include_calendar=False):
         repo, entry, span = self._selected(scope.plan_ref)
         rows = self._task_rows(repo, entry, scope)
         task_refs = self.references.get_task_refs(scope.plan_ref, rows)
         operation_refs = self.references.get_operation_refs(row["op_id"] for row in rows)
         resources, resource_state = self._resources(rows)
         tasks = project_tasks(scope.plan_ref, rows, task_refs, operation_refs, resources, conn=self.conn)
-        projections, facts = workspace_projections(
-            self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, logger=self.logger,
-        )
+        if execution_only:
+            projections, facts = {}, {}
+            if include_calendar:
+                calendar, calendar_facts = project_plan_calendar(
+                    self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span,
+                )
+                projections, facts = {"calendar": calendar}, {"calendar": calendar_facts}
+        else:
+            projections, facts = workspace_projections(
+                self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, logger=self.logger,
+            )
         data = {"plan": project_plan(entry, scope.plan_ref), "scope": scope.scope(),
                 "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(rows),
                 "tasks": tasks, "task_count": len(tasks), "tasks_complete": True,

@@ -3,14 +3,22 @@
 from flask import g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_dashboard import payload_size
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
+from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot
-from .run_candidates import _response
+
+
+def _response(data, snapshot):
+    response = query_success(data, snapshot)
+    payload_size(response.get_json())
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _arguments(allowed):

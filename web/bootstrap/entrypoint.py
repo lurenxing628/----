@@ -88,6 +88,7 @@ def _parse_cli_args(argv):
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--runtime-stop", default="")
     parser.add_argument("--stop-aps-chrome", action="store_true")
+    parser.add_argument("--sample-inject", action="store_true")
     return parser.parse_known_args(argv)
 
 
@@ -217,6 +218,10 @@ def app_main(
         )
 
     runtime_dir = runtime_base_dir(anchor_file=anchor_file)
+    if args.sample_inject:
+        from .sample_injection import main as inject_complex_sample
+
+        return int(inject_complex_sample(runtime_dir))
     prelaunch_log_dir = deps.resolve_prelaunch_log_dir(runtime_dir)
     is_frozen = bool(getattr(sys, "frozen", False))
     # 源码运行时，对外 contract 固定发布到 runtime_dir/logs；lock 也要收敛到同一命名空间，
