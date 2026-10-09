@@ -46,7 +46,7 @@ from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
-from ..operator_calendars import WorkbenchOperatorCalendarService
+from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_row
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
@@ -303,8 +303,13 @@ class WorkbenchOperatorCalendarFileService:
         return mapping.get(field or "", "date")
 
     def _public(self, row: Optional[Dict[str, Any]], label: Optional[str]) -> Optional[Dict[str, Any]]:
+        """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。
+
+        旧行空着的班次开始、工时、效率按排产引擎的解释写出（与全局日历文件同一口径）；原样回导时这几格与引擎解释相同，不算改动。
+        """
         if row is None:
             return None
+        row = engine_read_row(row)
         return {"operator_code": row["operator_id"], "date": row["date"],
                 "day_type": _DAY_TYPE_TEXT[row["day_type"]],
                 "shift_start": row["shift_start"], "shift_end": row["shift_end"],

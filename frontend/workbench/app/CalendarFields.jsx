@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const { Button, ErrorBox, Field } = window.ResourceControls;
+  const { Button, ErrorBox, Field, Issues } = window.ResourceControls;
   const fieldPaths = ['fields.hours', 'fields.eff', 'fields.note', 'fields.shiftStart', 'fields.shiftEnd', 'fields.periods'];
   function Segment({ label, value, options, onChange, disabled }) {
     return <div className="field full"><label>{label}</label><div className="seg" role="group" aria-label={label} style={{ flexWrap: 'wrap', maxWidth: '100%' }}>
@@ -9,6 +9,9 @@
   }
   function CalendarFields({ value, onChange, disabled, error, noteEnabled = true, showSummary = true }) {
     const work = value.type === 'work';
+    // 分段时段全部移除，或可排工时填 0：能保存，但排产按 0 工时排不进任何工序，先在表单里说清楚。
+    const zeroHours = work && (Array.isArray(value.periods) ? !value.periods.length
+      : String(value.hours).trim() !== '' && Number(value.hours) === 0);
     const change = (key, next) => onChange(key === 'type' ? window.APSCalendarContract.switchType(value, next) : { ...value, [key]: next });
     const id = React.useId();
     return <>
@@ -30,6 +33,7 @@
         {['allowNormal', 'allowUrgent'].map(key => <div className="field" key={key}><Segment label={key === 'allowNormal' ? '允许普通件排产' : '允许急件排产'} value={value[key]}
           options={[["yes", "是"], ["no", "否"]]} onChange={next => change(key, next)} disabled={disabled || !work} /></div>)}
       </div>
+      <Issues issues={zeroHours ? [window.APSWorkPeriods.zeroHoursNote] : []} />
       <Field label="备注" path="fields.note" error={error} full><input id={id + '-note'} className="cal-note" value={value.note} disabled={disabled || !noteEnabled}
         onChange={event => change('note', event.target.value)} /></Field>{showSummary && <ErrorBox error={error} excludePaths={fieldPaths} />}
     </>;

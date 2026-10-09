@@ -72,6 +72,17 @@ def _effective(day: str, row: Optional[Dict[str, Any]], periods=None) -> Dict[st
             "window_start": start.isoformat(timespec="seconds"), "window_end": end.isoformat(timespec="seconds")}
 
 
+def stored_shift_reading(day: str, row: Dict[str, Any]) -> Dict[str, Any]:
+    """已存的一行日历由日历引擎读出的班次开始、工时、效率；全局日历和个人日历的这几列是同一套解释。
+
+    空着的列按引擎的默认值算：08:00 开始、工时按时段或起止推算否则 8 小时、效率 1。这一天有行，用不到默认工作时间。
+    多时段的一天，开始取第一段的开始，与保存规则补出的开始时刻相同。
+    """
+    effective = _effective(day, row)
+    return {"shift_start": effective["window_start"][11:16], "shift_hours": effective["hours"],
+            "efficiency": effective["efficiency"]}
+
+
 # 旧库升级加列时没有回填，这几列可能空着；日历引擎和日历页都按班表默认值解释它们。
 _LEGACY_BLANK_COLUMNS = ("shift_start", "shift_end", "shift_hours", "efficiency")
 

@@ -49,6 +49,8 @@
   function describe(value) {
     return value.map(row => (row.day_offset ? '次日 ' : '') + row.start + '–' + (row.end <= row.start ? '次日 ' : '') + row.end).join('、') || '无工作时段';
   }
+  // 工作日却没有可排工时：全局日历和个人日历编辑这一天时都显示这一句，不拦保存；与日历文件导入预检的提醒同一口径。
+  const zeroHoursNote = '这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填写工作时间；要休息请改选休息。';
   window.APSWorkPeriods = {
     defaults,
     clone,
@@ -56,6 +58,7 @@
     hours,
     describe,
     bounds,
-    duration
+    duration,
+    zeroHoursNote
   };
 })();

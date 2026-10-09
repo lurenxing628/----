@@ -27,6 +27,8 @@
   function monthKey(year, month) { return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0'); }
   function DayEditor({ day, draft, setDraft, disabled, error, onSave, onClear, saveReason, clearReason, clearing, onClearing }) {
     const rest = draft.type === 'rest';
+    // 上班但工作时段全部移除：能保存，但排产按 0 工时不排这个人，与全局日历同一句提醒。
+    const zeroHours = !rest && Array.isArray(draft.periods) && !draft.periods.length;
     // 清除单独设置与全局日历同一套两步：先点「清除单独设置」，再点「确认清除，恢复默认」才真正提交。
     if (clearing) return <div className="iopane on">
       <div className="chead"><h3 style={{ margin: 0 }}>{day.date} · 清除单独设置</h3></div>
@@ -50,6 +52,7 @@
       </div>}
       {!rest && <window.WorkPeriodFields value={draft.periods} start={draft.shiftStart} end={draft.shiftEnd} disabled={disabled}
         onChange={periods => setDraft({ ...draft, periods })} />}
+      <Issues issues={zeroHours ? [window.APSWorkPeriods.zeroHoursNote] : []} />
       {!rest && draft.periods == null && <p className="iohint">工时由班次起止算出来，不用单独填。结束时刻早于开始时刻表示跨零点的夜班。
         留空结束时刻时，由系统按默认班次时长推算。</p>}
       <div className="fgrid">

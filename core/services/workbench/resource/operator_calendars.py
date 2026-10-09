@@ -26,8 +26,22 @@ from core.services.scheduler.calendar.defaults import read_default_periods
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
+from .calendars import stored_shift_reading
+
 _PUBLIC_FIELDS = ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
                   "allow_normal", "allow_urgent", "remark")
+# 旧行的这几列可能被明确写成空，排产引擎按默认值解释它们；显示、统计和文件都照引擎的解释，不当缺数据报错。
+_ENGINE_DEFAULTED = ("shift_start", "shift_hours", "efficiency")
+
+
+def engine_read_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """空着的班次开始、工时、效率换成排产引擎对这一天的解释，其余列原样；库里的行不动。没有空着的列就原样返回。"""
+    blanks = [name for name in _ENGINE_DEFAULTED
+              if row.get(name) is None or isinstance(row[name], str) and not row[name].strip()]
+    if not blanks:
+        return row
+    reading = stored_shift_reading(row["date"], row)
+    return {**row, **{name: reading[name] for name in blanks}}
 
 
 def _patch_day_hours(payload, fields, before):
@@ -127,7 +141,8 @@ class WorkbenchOperatorCalendarService:
                 "days": days, "cells": cells, "default_periods": read_default_periods(self.conn),
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
                 "stats": {"configured": sum(day["explicit"] for day in days),
-                          "work_days": sum(day["explicit"] and day["row"]["shift_hours"] > 0 for day in days)}}
+                          "work_days": sum(day["explicit"] and engine_read_row(day["row"])["shift_hours"] > 0
+                                           for day in days)}}
 
     @staticmethod
     def _adjacent(year: int, month: int, delta: int) -> Optional[Dict[str, int]]:
@@ -165,7 +180,9 @@ class WorkbenchOperatorCalendarService:
         """
         payload: Dict[str, Any] = {"operator_id": self.operator_code, "date": before["date"]}
         if before["row"] is not None:
-            payload.update({key: before["row"][key] for key in
+            # 旧行空着的班次开始、工时、效率先按排产引擎的解释补上：三项全空时保存规则会把它当成新建的一天、
+            # 套上默认工作时间，没改的班次就被悄悄换掉了。
+            payload.update({key: engine_read_row(before["row"])[key] for key in
                             ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
                              "allow_normal", "allow_urgent", "remark", "periods_json")})
         if payload.get("periods_json") is not None and "periods" not in fields and fields.get("type") != "rest":
@@ -249,8 +266,11 @@ class WorkbenchOperatorCalendarService:
 
     @staticmethod
     def public_day(state: Dict[str, Any]) -> Dict[str, Any]:
-        """对外投影：只暴露这一天的业务字段与是否单独设置，不暴露内部修订号以外的元数据。"""
-        row = state["row"]
+        """对外投影：只暴露这一天的业务字段与是否单独设置，不暴露内部修订号以外的元数据。
+
+        旧行空着的班次开始、工时、效率按排产引擎的解释显示，与排产对这一天的理解一致。
+        """
+        row = engine_read_row(state["row"]) if state["row"] is not None else None
         return {"date": state["date"], "explicit": state["explicit"],
                 "calendar_ref": state["calendar_ref"],
                 "periods": decode_periods(row.get("periods_json")) if row is not None else None,

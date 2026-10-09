@@ -4,7 +4,8 @@
   const {
     Button,
     ErrorBox,
-    Field
+    Field,
+    Issues
   } = window.ResourceControls;
   const fieldPaths = ['fields.hours', 'fields.eff', 'fields.note', 'fields.shiftStart', 'fields.shiftEnd', 'fields.periods'];
   function Segment({
@@ -42,6 +43,8 @@
     showSummary = true
   }) {
     const work = value.type === 'work';
+    // 分段时段全部移除，或可排工时填 0：能保存，但排产按 0 工时排不进任何工序，先在表单里说清楚。
+    const zeroHours = work && (Array.isArray(value.periods) ? !value.periods.length : String(value.hours).trim() !== '' && Number(value.hours) === 0);
     const change = (key, next) => onChange(key === 'type' ? window.APSCalendarContract.switchType(value, next) : {
       ...value,
       [key]: next
@@ -146,7 +149,9 @@
       options: [["yes", "是"], ["no", "否"]],
       onChange: next => change(key, next),
       disabled: disabled || !work
-    })))), /*#__PURE__*/React.createElement(Field, {
+    })))), /*#__PURE__*/React.createElement(Issues, {
+      issues: zeroHours ? [window.APSWorkPeriods.zeroHoursNote] : []
+    }), /*#__PURE__*/React.createElement(Field, {
       label: "\u5907\u6CE8",
       path: "fields.note",
       error: error,

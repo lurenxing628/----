@@ -75,3 +75,19 @@ def test_save_one_day_then_clear_it(client):
                       key="operator-calendar-request-00002")
     assert cleared.status_code == 200 and cleared.get_json()["result"] == "committed"
     assert stored(client, "OP001", DAY) is None
+
+
+def test_blank_legacy_columns_read_the_way_scheduling_does(client):
+    """旧行的班次开始、工时、效率被明确写成空：月视图统计、这一天的显示、导出都按排产引擎的解释，不再报错；库里的行不动。"""
+    ref = ref_of(client, "OP001")
+    token = month(client, ref)["write_context"]["write_token"]
+    assert command(client, ref, "upsert", {"date": DAY, "fields": WORK}, token).status_code == 200
+    with database(client) as conn:
+        conn.execute("UPDATE OperatorCalendar SET shift_hours=NULL, efficiency=NULL, shift_start=NULL, shift_end=NULL "
+                     "WHERE operator_id='OP001' AND date=?", (DAY,))
+        conn.commit()
+    data = month(client, ref)
+    shown = next(day for day in data["days"] if day["date"] == DAY)
+    assert data["stats"] == {"configured": 1, "work_days": 1}
+    assert (shown["shift_start"], shown["shift_hours"], shown["efficiency"]) == ("08:00", 8.0, 1.0)
+    assert stored(client, "OP001", DAY)["shift_hours"] is None

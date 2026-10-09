@@ -79,6 +79,8 @@
     onClearing
   }) {
     const rest = draft.type === 'rest';
+    // 上班但工作时段全部移除：能保存，但排产按 0 工时不排这个人，与全局日历同一句提醒。
+    const zeroHours = !rest && Array.isArray(draft.periods) && !draft.periods.length;
     // 清除单独设置与全局日历同一套两步：先点「清除单独设置」，再点「确认清除，恢复默认」才真正提交。
     if (clearing) return /*#__PURE__*/React.createElement("div", {
       className: "iopane on"
@@ -153,6 +155,8 @@
         ...draft,
         periods
       })
+    }), /*#__PURE__*/React.createElement(Issues, {
+      issues: zeroHours ? [window.APSWorkPeriods.zeroHoursNote] : []
     }), !rest && draft.periods == null && /*#__PURE__*/React.createElement("p", {
       className: "iohint"
     }, "\u5DE5\u65F6\u7531\u73ED\u6B21\u8D77\u6B62\u7B97\u51FA\u6765\uFF0C\u4E0D\u7528\u5355\u72EC\u586B\u3002\u7ED3\u675F\u65F6\u523B\u65E9\u4E8E\u5F00\u59CB\u65F6\u523B\u8868\u793A\u8DE8\u96F6\u70B9\u7684\u591C\u73ED\u3002 \u7559\u7A7A\u7ED3\u675F\u65F6\u523B\u65F6\uFF0C\u7531\u7CFB\u7EDF\u6309\u9ED8\u8BA4\u73ED\u6B21\u65F6\u957F\u63A8\u7B97\u3002"), /*#__PURE__*/React.createElement("div", {

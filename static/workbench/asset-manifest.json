@@ -2027,8 +2027,8 @@
     },
     {
       "path": "workbench/app/CalendarFields.js",
-      "sha256": "e440d2a3953d06b639f162820efab35beef5fea265c1098c0e39166a1bd157aa",
-      "bytes": 8144,
+      "sha256": "62679f310294d9e5bb8886379d9afc27d0216bca4b074a436917f06b7ee6e711",
+      "bytes": 8569,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/CalendarContract.js",
@@ -2087,7 +2087,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/CalendarFields.jsx",
-              "sha256": "3d1c2fb62aa5dc34ba6e6034f6fc4c5c3e66d73fd6f354283efc2a8e1730b4ce"
+              "sha256": "d2465fa85241cfa30ff1861d0240315f079ed1d39157efc104a13b3a918a9193"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -2096,7 +2096,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/CalendarFields.jsx",
-          "sha256": "3d1c2fb62aa5dc34ba6e6034f6fc4c5c3e66d73fd6f354283efc2a8e1730b4ce"
+          "sha256": "d2465fa85241cfa30ff1861d0240315f079ed1d39157efc104a13b3a918a9193"
         }
       ]
     },
@@ -5314,13 +5314,14 @@
     },
     {
       "path": "workbench/app/OperatorCalendarPanel.js",
-      "sha256": "830f2f6f49584a0d71367f396882ccd50a0cc0780b0771544bcc530429c772a0",
-      "bytes": 24795,
+      "sha256": "28cdab5f723f98810d6d9664388c6fe87295d3cff2bef900ce07f3979ee79d04",
+      "bytes": 25129,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/OperatorCalendarContract.js",
         "workbench/app/ResourceControls.js",
         "workbench/app/WorkPeriodFields.js",
+        "workbench/app/WorkPeriods.js",
         "workbench/app/WorkbenchControls.js",
         "workbench/app/WorkbenchGuards.js",
         "workbench/app/WorkbenchTerms.js",
@@ -5345,6 +5346,12 @@
           "path": "workbench/app/WorkPeriodFields.js",
           "symbols": [
             "WorkPeriodFields"
+          ]
+        },
+        {
+          "path": "workbench/app/WorkPeriods.js",
+          "symbols": [
+            "APSWorkPeriods"
           ]
         },
         {
@@ -5395,7 +5402,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/OperatorCalendarPanel.jsx",
-              "sha256": "175be5bcac4f3cf439574d97dc9f98249d0a9a456e421ac02f4d0ae6b06e96dc"
+              "sha256": "bbc57460669f0cba74928d1df14b91d414611def07a14d60693582c229b58e55"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -5404,7 +5411,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/OperatorCalendarPanel.jsx",
-          "sha256": "175be5bcac4f3cf439574d97dc9f98249d0a9a456e421ac02f4d0ae6b06e96dc"
+          "sha256": "bbc57460669f0cba74928d1df14b91d414611def07a14d60693582c229b58e55"
         }
       ]
     },
@@ -14442,8 +14449,8 @@
     },
     {
       "path": "workbench/app/WorkPeriods.js",
-      "sha256": "baffee5fe0c2ab49dcd35254f3a9f1398b642f4d778354abf7561cee4fbbe757",
-      "bytes": 2103,
+      "sha256": "11b42993d08387be8a166ec8cda1dc4122243a64f322d8e12bb9cb6938af739a",
+      "bytes": 2467,
       "mime": "application/javascript",
       "dependencies": [],
       "dependency_symbols": [],
@@ -14458,7 +14465,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/WorkPeriods.js",
-              "sha256": "f58bfeaacf368e1dfac9a263fb3fcd90fa2c5419014b1a619cbb028de035eac2"
+              "sha256": "999b7a693d04a8b8041b365822a9100b1de11eb9df99a00c22dd856f3f8e459c"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -14467,7 +14474,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/WorkPeriods.js",
-          "sha256": "f58bfeaacf368e1dfac9a263fb3fcd90fa2c5419014b1a619cbb028de035eac2"
+          "sha256": "999b7a693d04a8b8041b365822a9100b1de11eb9df99a00c22dd856f3f8e459c"
         }
       ]
     },
@@ -18137,7 +18144,7 @@
     },
     {
       "path": "frontend/workbench/app/WorkPeriods.js",
-      "sha256": "f58bfeaacf368e1dfac9a263fb3fcd90fa2c5419014b1a619cbb028de035eac2"
+      "sha256": "999b7a693d04a8b8041b365822a9100b1de11eb9df99a00c22dd856f3f8e459c"
     },
     {
       "path": "frontend/workbench/app/WorkPeriodFields.jsx",
@@ -18197,7 +18204,7 @@
     },
     {
       "path": "frontend/workbench/app/OperatorCalendarPanel.jsx",
-      "sha256": "175be5bcac4f3cf439574d97dc9f98249d0a9a456e421ac02f4d0ae6b06e96dc"
+      "sha256": "bbc57460669f0cba74928d1df14b91d414611def07a14d60693582c229b58e55"
     },
     {
       "path": "frontend/workbench/app/ResourceForms.jsx",
@@ -18229,7 +18236,7 @@
     },
     {
       "path": "frontend/workbench/app/CalendarFields.jsx",
-      "sha256": "3d1c2fb62aa5dc34ba6e6034f6fc4c5c3e66d73fd6f354283efc2a8e1730b4ce"
+      "sha256": "d2465fa85241cfa30ff1861d0240315f079ed1d39157efc104a13b3a918a9193"
     },
     {
       "path": "frontend/workbench/app/CalendarDayDialog.jsx",
@@ -19575,5 +19582,5 @@
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
   },
-  "build_id": "6f1f9a02de72b6ad0762f04a07b72701773cdfc8eb9eae874f0d78b2d3e82d08"
+  "build_id": "e20198c037f22103a9e05a9519839af8a64fd450cf299da04007ede3ef483a35"
 }
