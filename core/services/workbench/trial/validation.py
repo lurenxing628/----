@@ -55,8 +55,8 @@ class TrialValidator:
         try:
             self.frozen = frozen_arrangements(self.conn, self.admission, self.rows, self.live, self.checks)
         except (AppError, ValueError, TypeError, KeyError, OverflowError):
-            self.frozen_issue = issue("freeze_window_unavailable", "正式采用要原样保留正式计划里锁定的、以及来源排产不重排时段里的原安排，"
-                                      "但正式计划里的这些安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。")
+            self.frozen_issue = issue("freeze_window_unavailable", "正式采用要原样保留来源排产不重排时段里的原安排，"
+                                      "但正式计划里这段时间的安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。")
         self.protection = TrialProtection(self.live, self.frozen)
 
     def evaluate(self):
@@ -95,7 +95,7 @@ class TrialValidator:
             return issues + self._frozen_row(row, self.frozen[original["operation"]["id"]])
         if protected:
             expected = anchor["arrangement"] if anchor is not None else original["arrangement"]
-            if protected["code"] not in ("task_locked", "execution_protected") or (anchor is None and current != expected):
+            if protected["code"] != "execution_protected" or (anchor is None and current != expected):
                 issues.append(protected)
         issues.extend(self._resources(row))
         issues.extend(self._times(row, protected))

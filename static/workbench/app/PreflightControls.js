@@ -157,16 +157,15 @@
       onPage: setPage
     }));
   }
-  // 检查结果里的“本次不重排”一行；明细列出因不重排时段保持原安排的工序，正式计划里锁定的另列。
+  // 检查结果里的“本次不重排”一行；明细列出因不重排时段保持原安排的工序。
   function HoldSummary({
     data
   }) {
     const span = data.effective_config.hold_window,
-      kept = data.tasks.filter(row => row.held && row.held.basis === 'hold_window'),
-      locked = data.tasks.filter(row => row.held && row.held.basis === 'locked');
+      kept = data.tasks.filter(row => row.held);
     const text = span ? '本次不重排：' + window.WorkbenchTerms.hold_window(span) + '，共 ' + data.counts.hold_window_tasks + ' 道工序保持原安排' : '本次不设不重排时段';
     const source = data.effective_config.hold_window_source === 'default' ? '（按交付设置）' : '';
-    if (!kept.length && !locked.length) return /*#__PURE__*/React.createElement("p", {
+    if (!kept.length) return /*#__PURE__*/React.createElement("p", {
       className: "pf-hold-summary",
       "data-hold-summary": true,
       role: "status"
@@ -174,14 +173,9 @@
     return /*#__PURE__*/React.createElement("details", {
       className: "pf-detail pf-hold-summary",
       "data-hold-summary": true
-    }, /*#__PURE__*/React.createElement("summary", null, text, source, locked.length ? '；正式计划里已锁定 ' + locked.length + ' 道' : '', " \xB7 \u67E5\u770B\u660E\u7EC6"), !!kept.length && /*#__PURE__*/React.createElement(HeldRows, {
-      key: "kept",
+    }, /*#__PURE__*/React.createElement("summary", null, text, source, " \xB7 \u67E5\u770B\u660E\u7EC6"), /*#__PURE__*/React.createElement(HeldRows, {
       rows: kept,
       label: "\u4E0D\u91CD\u6392\u65F6\u6BB5\u5185\u4FDD\u6301\u539F\u5B89\u6392"
-    }), !!locked.length && /*#__PURE__*/React.createElement(HeldRows, {
-      key: "locked",
-      rows: locked,
-      label: "\u6B63\u5F0F\u8BA1\u5212\u91CC\u5DF2\u9501\u5B9A"
     }));
   }
   function Rules({

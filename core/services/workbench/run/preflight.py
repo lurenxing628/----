@@ -150,12 +150,12 @@ class PreflightService:
 
     def _arrangement_reasons(self, settings, batches, operations, rows, projections, ledger_reasons, checks, cycles):
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
-        锁定或不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记})。"""
+        不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记})。"""
         svc = ScheduleService(self.facts.conn)
         version = svc.history_repo.get_latest_version()
         ledger_ready = not any(item["code"] == "execution_ledger_unavailable" for item in ledger_reasons)
         reasons = external_resource_issues(self.facts, svc, operations, projections, version) if ledger_ready else []
-        # 与排产计算查锁定和冻结的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
+        # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
         held, notes, marks = held_arrangement_reasons(self.facts, svc, checks, settings, version, batches, operations,
                                                       held_ids, cycles, projections)

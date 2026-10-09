@@ -34,14 +34,23 @@ def test_resources_and_start_one_change_and_conflict_remains_editable(trial_case
     assert len(rows) == 2
 
 
+def test_old_lock_mark_no_longer_blocks_trial_changes(trial_case):
+    """正式计划里的锁定标记（旧版「锁定近期排程」顺带打上的）不再起作用：没报工、不在不重排时段里的工序试调照常能改。"""
+    case = trial_case
+    draft = create(case)
+    case.conn.execute("UPDATE Schedule SET lock_status='locked'")
+    case.conn.commit()
+    refreshed = service(case.conn).get(draft["draft_ref"])
+    assert refreshed["tasks"][0]["edit_context"] == {"blocked_reasons": [], "can_change": True}
+    task = change(case, refreshed)["data"]["tasks"][0]
+    assert task["changed"] is True and task["start"] == "2026-09-09T13:00:00"
+
+
 @pytest.mark.parametrize("state", ["new_complete"])
 def test_fixed_and_unique_execution_projection_protect_changes(trial_case, state):
     case = trial_case
     draft = create(case)
-    if state == "lock":
-        case.conn.execute("UPDATE Schedule SET lock_status='locked'")
-        case.conn.commit()
-    elif state == "legacy_finish":
+    if state == "legacy_finish":
         case.event(case.op_id, "start")
         case.event(case.op_id, "finish")
     else:

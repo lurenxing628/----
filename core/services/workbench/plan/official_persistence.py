@@ -25,11 +25,9 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
         raise ValueError("Official plan audit requires an action and source")
     history = ScheduleHistoryRepository(conn)
     version = history.allocate_next_version()
-    # 不重排时段只管这一次排产：只因时段保留的工序按未锁定落库（时段另记在 material_policy 里，试调据此判断），
-    # 否则一旦采用就变成永久锁定，以后填"不设"也放不开。继承的锁定、已开工完工的照旧锁定。
-    window_only = set((getattr(prepared, "freeze_meta", None) or {}).get("hold_window_op_ids") or ())
-    locked_ids = ((set(prepared.frozen_op_ids) - window_only)
-                  | prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids)
+    # 锁定只标已开工、做完的工序（它们由报工记录保护）。因不重排时段保留的不锁：时段只管这一次排产
+    # （另记在 material_policy 里，试调据此判断），否则一旦采用就钉死，以后填"不设"也放不开。
+    locked_ids = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
     rows = [{"op_id": row.op_id, "version": version, "machine_id": row.machine_id,
              "operator_id": row.operator_id, "start_time": row.start_time.isoformat(sep=" "),
              "end_time": row.end_time.isoformat(sep=" "),

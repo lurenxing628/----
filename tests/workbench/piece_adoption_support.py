@@ -18,9 +18,9 @@ from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_resu
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
-from core.services.workbench.run.input_config import candidate_config
+from core.services.workbench.run.input_config import candidate_config, hold_window
 from core.services.workbench.run.input_external import prime_template_cache
-from core.services.workbench.run.input_runtime import locked_seeds
+from core.services.workbench.run.input_runtime import held_arrangements
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.run_candidate_adoption_support import snapshot
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
@@ -51,6 +51,7 @@ def split(case, *, common=True, unit=0.25, quantity=3):
 def lower_input(case, *batch_ids):
     """Assemble the existing prepared DTO fields at the lower seam, without guards patched out."""
     ids = list(batch_ids or ("B1",))
+    settings = case.settings(*ids)
     batches = {key: batch_model(dict(case.conn.execute("SELECT * FROM Batches WHERE batch_id=?", (key,)).fetchone()))
                for key in ids}
     operations = [operation_model(dict(row)) for key in ids for row in case.conn.execute(
@@ -66,17 +67,20 @@ def lower_input(case, *batch_ids):
                      "sequence": work.sequence, "predecessor_refs": [refs[key] for key in work.predecessor_op_ids],
                      "status": "protected" if work.op_id in fixed | completed else "eligible", "issues": [],
                      "execution": projected[refs[work.op_id]]} for work in scope.operations]
-    locks = locked_seeds(svc, [op for op in operations if op.id not in fixed | completed], version)
     tables = {name: [dict(row) for row in case.conn.execute('SELECT * FROM "' + name + '"')]
               for name in ("BatchExternalContexts", "BatchOperations")}
     prime_template_cache(svc, tables, batches, operations)
-    return SimpleNamespace(normalized_batch_ids=ids, normalized_input=case.settings(*ids),
+    cfg = candidate_config(case.conn, settings)
+    # 正式计划里的锁定标记不再起作用：受保护的只有报工保护的工序，和本次不重排时段里保持原安排的工序。
+    held, _ = held_arrangements(svc, cfg=cfg, prev_version=version, start_dt=START, operations=operations,
+        reschedulable_operations=[op for op in operations if op.id not in fixed | completed],
+        hold_window=hold_window(case.conn, settings)[0])
+    return SimpleNamespace(normalized_batch_ids=ids, normalized_input=settings,
         operations=operations, batches=batches, dispositions=dispositions,
-        cal_svc=CalendarService(case.conn), prev_version=version, start_dt_norm=START,
-        cfg=candidate_config(case.conn, case.settings(*ids)),
+        cal_svc=CalendarService(case.conn), prev_version=version, start_dt_norm=START, cfg=cfg,
         end_date_norm=datetime(2026, 9, 25).date(), readiness_gate_enabled=True, downtime_map={},
         algo_ops=build_algo_operations(svc, operations, strict_mode=True),
-        frozen_op_ids={row["op_id"] for row in locks}, seed_results=actual + locks,
+        frozen_op_ids={seed["op_id"] for seed in held}, seed_results=list(actual) + held,
         execution_facts=facts, execution_fixed_op_ids=fixed, execution_completed_op_ids=completed,
         execution_seed_results=actual, execution_guard_state_revisions=revisions,
         execution_snapshot_revision=snap.revision, execution_snapshot_op_ids=list(snap.op_ids),

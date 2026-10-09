@@ -14,8 +14,6 @@ from core.services.scheduler.run.schedule_input_seed_metadata import (
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
 
-from .protection import TrialProtection
-
 
 def _selected_has_actuals(rows, live):
     """Anchors only matter when a selected operation already reported actual production."""
@@ -110,13 +108,9 @@ def attach_execution_anchors(conn, rows, live):
         anchors = execution_anchors(conn, rows, live)
     except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
         return [anchor_issue(exc)]
-    protection = TrialProtection(live)
     for row in rows:
         anchor = anchors.get(row["original"]["operation"]["id"])
         if anchor is not None:
             row["original"]["execution_anchor"] = anchor
-            protected = protection.check(row)
-            if anchor["basis"] == "merged_external_actuals" and protected and protected["code"] == "task_locked":
-                continue
             row["current"] = dict(anchor["arrangement"])
     return []

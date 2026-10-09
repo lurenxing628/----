@@ -106,8 +106,8 @@
   function execution(value) {
     return object(value) && ['unreported', 'started', 'partial', 'paused', 'exception', 'complete'].includes(value.execution_state) && [null, 'complete_reports', 'legacy_finish_event'].includes(value.completion_basis) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(value.data_quality) && ['first_actual_start', 'confirmed_finish'].every(key => localTime(value[key])) && ['remaining_quantity', 'known_completed_quantity', 'unknown_record_count'].every(key => nullableCount(value[key]));
   }
-  // 排产会原样保留的原安排：正式计划里锁定的，或落在不重排时段里的（含同批次一起保留的前道）。
-  const held = value => value === null || object(value) && Object.keys(value).length === 3 && ['locked', 'hold_window'].includes(value.basis) && value.start !== null && localTime(value.start) && value.end !== null && localTime(value.end) && value.start <= value.end;
+  // 排产会原样保留的原安排：落在不重排时段里的（含同批次一起保留的前道）。正式计划里的锁定标记已不再起作用。
+  const held = value => value === null || object(value) && Object.keys(value).length === 3 && value.basis === 'hold_window' && value.start !== null && localTime(value.start) && value.end !== null && localTime(value.end) && value.start <= value.end;
   function effectiveHold(config, normalized) {
     const value = config.hold_window;
     if (normalized.hold_window === undefined) return config.hold_window_source === 'default' && (value === null || span(value));
@@ -126,7 +126,7 @@
     ['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks'].forEach((key, index) => {
       if (c[key] !== d.tasks.filter(row => row.status === taskStates[index]).length) throw fail('排产检查计数不一致。');
     });
-    if (c.held_tasks !== heldRows.length || c.hold_window_tasks !== heldRows.filter(row => row.held.basis === 'hold_window').length || d.effective_config.hold_window === null && c.hold_window_tasks !== 0) throw fail('排产检查计数不一致。');
+    if (c.held_tasks !== heldRows.length || c.hold_window_tasks !== heldRows.filter(row => row.held.basis === 'hold_window').length || d.effective_config.hold_window === null && c.held_tasks !== 0) throw fail('排产检查计数不一致。');
     const batchRows = d.included_batches.concat(d.excluded_batches);
     const taskRefs = new Set(d.tasks.map(row => row.operation_ref));
     if (c.selected_tasks !== d.tasks.length || c.selected_batches !== scope.size || c.eligible_tasks !== c.ready_tasks + c.auto_assign_required || d.eligible_tasks !== c.eligible_tasks || d.auto_assign_required !== c.auto_assign_required || d.skipped_tasks !== c.skipped_tasks || c.actual_fact_tasks !== d.tasks.filter(row => row.has_execution_facts).length || c.no_route_batches !== d.no_route_batches.length || c.unready_batches !== d.unready_batches.length || new Set(d.no_route_batches.map(row => row.batch_ref)).size !== c.no_route_batches || new Set(d.unready_batches.map(row => row.batch_ref)).size !== c.unready_batches || !d.tasks.every(row => row.predecessor_refs.every(ref => taskRefs.has(ref))) || d.tasks.some(row => ['eligible', 'auto_assign_required'].includes(row.status) && row.execution.execution_state !== 'unreported') || batchRows.length !== scope.size || new Set(batchRows.map(row => row.batch_ref)).size !== scope.size || !batchRows.concat(d.no_route_batches, d.unready_batches).every(row => object(row) && scope.has(row.batch_ref) && typeof row.batch_id === 'string')) throw fail('排产检查遗漏了选中批次，不能继续。');

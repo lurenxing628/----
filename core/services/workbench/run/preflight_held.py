@@ -1,9 +1,9 @@
-"""排产检查核对排产会原样保留的原安排：正式计划里锁定的，以及落在本次不重排时段里的。
+"""排产检查核对排产会原样保留的原安排：落在本次不重排时段里的（含同批次一起保留的前道）。
 
 排产计算把这些安排原样留下，候选采用时却按现在的资料逐条复核（与 candidate_adoption_constraints 同一口径）；
 两边对不上，排出的方案都采用不了。这里在开始前用排产计算同一套保留规则先找出这些安排，
-指出是哪道工序、该去哪里改：时段里的可以在排产检查把不重排时段改短或不设；锁定的（以前采用时继承下来的）
-工作台里没有解锁入口，只能改资料，或请维护人员解除锁定。
+指出是哪道工序、该去哪里改：改资料，或在排产检查把不重排时段改短或不设。
+正式计划里的锁定标记不再起作用（见 input_runtime._freeze_hold_window），这里也不再按它核对。
 """
 
 from collections import defaultdict
@@ -43,21 +43,18 @@ def _name(value):
 
 
 _SHORTEN = "到排产检查把不重排时段改短或不设"
-_UNLOCK = "这道工序在正式计划里是锁定的，工作台里不能解锁；确需改排，请联系维护人员解除锁定"
 
 
 class _Held:
     """一条保留安排在提示里的说法和出路。"""
 
-    def __init__(self, seed, locked, window):
-        self.seed, self.locked = seed, locked
+    def __init__(self, seed, window):
+        self.seed = seed
         span = f"{_time(seed['start_time'])} 至 {_time(seed['end_time'])}"
-        self.text = (f"这道工序在正式计划里锁定在 {span}" if locked
-                     else f"这道工序在正式计划里排在 {span}，因不重排时段（{window_label(window)}）保持原安排")
+        self.text = f"这道工序在正式计划里排在 {span}，因不重排时段（{window_label(window)}）保持原安排"
 
-    def action(self, fix):
-        if self.locked:
-            return f"请{fix}。{_UNLOCK}。"
+    @staticmethod
+    def action(fix):
         return f"请{fix}，或{_SHORTEN}。"
 
 
@@ -216,9 +213,6 @@ def _cycle_problem(held, cycle):
     if (seed["start_time"], seed["end_time"]) == (start, end):
         return None
     head = f"合并外协组已按报工确认实际周期 {_time(start)} 至 {_time(end)}，但同组"
-    if held.locked:
-        return issue("external_cycle_locked_conflict", head + held.text + "，排产会被拦下。"
-                     f"{_UNLOCK}，解除后排产会让它跟同组按实际周期保留。")
     return issue("external_cycle_locked_conflict", head + held.text + "，排产会原样保留它，和实际周期对不上，排产会被拦下。"
                  f"请到现场记录核对同组报工的实际时间；报工无误时，请{_SHORTEN}。")
 
@@ -237,7 +231,7 @@ def _skipped_freeze(meta, batches):
             for batch_id in sorted(meta.get("freeze_skipped_batch_ids") or ())]
 
 
-# 排产参数本身读不出来时，排产计算会直接报出是哪项参数；排产检查不替它拦，只按显式锁定核对。
+# 排产参数本身读不出来时，排产计算会直接报出是哪项参数；排产检查不替它拦。
 _FREEZE_OFF = SimpleNamespace(freeze_window_enabled="no", freeze_window_days=0, degradation_events=())
 
 
@@ -251,20 +245,20 @@ def _held(facts, svc, settings, version, operations, held_ids):
         svc, cfg=cfg, prev_version=version,
         start_dt=datetime.combine(local_date(settings["start_date"]), datetime.min.time()),
         operations=models, reschedulable_operations=[op for op in models if op.id in held_ids],
-        schedule_rows=facts.schedule_through(version), hold_window=hold_window(facts.conn, settings)[0])
+        hold_window=hold_window(facts.conn, settings)[0])
     return seeds, meta
 
 
-def _marks(seeds, locked):
+def _marks(seeds):
     """{工序: 保留标记}：排产检查结果里每道工序 held 字段的来源。"""
-    return {seed["op_id"]: {"basis": "locked" if seed["op_id"] in locked else "hold_window",
+    return {seed["op_id"]: {"basis": "hold_window",
                             "start": seed["start_time"].isoformat(), "end": seed["end_time"].isoformat()} for seed in seeds}
 
 
 def held_arrangement_reasons(facts, svc, checks, settings, version, batches, operations, held_ids, cycles, projections):
     """返回 (阻断原因, 提醒, {工序: 保留标记})。
 
-    held_ids 是这次要重排的工序（资料有效、自动分配待补）加上合并外协组派生保留的成员，与排产计算查锁定和不重排时段的范围一致；
+    held_ids 是这次要重排的工序（资料有效、自动分配待补）加上合并外协组派生保留的成员，与排产计算查不重排时段的范围一致；
     cycles 是这些成员的实际周期；其余外协按现在的外协周期、零工时按现在的班次、分件按每件数量复核，与采用同口径；
     projections 是这些工序的执行投影，已完工前道的实际完工按它核对。
     """
@@ -280,18 +274,17 @@ def held_arrangement_reasons(facts, svc, checks, settings, version, batches, ope
     contexts = {row["operation_id"]: row for row in facts.tables.get("BatchExternalContexts", [])}
     context = _Context(checks, CalendarService(facts.conn), held_machine_downtimes(svc, seeds), settings, batches, operations,
                        contexts, _completed(facts, operations, projections))
-    locked = set(meta.get("explicit_locked_op_ids") or ())
-    blockers = _seed_blockers(facts, context, seeds, by_id, locked, meta.get("hold_window"), cycles)
+    blockers = _seed_blockers(facts, context, seeds, by_id, meta.get("hold_window"), cycles)
     # 合并外协组成员只在不在保留安排里时才由排产按实际周期派生、排产照常出结果；全都在保留安排里排产会直接停下。
     if held_ids <= {seed["op_id"] for seed in seeds}:
-        blockers.append(_all_held(held_ids & locked, held_ids - locked))
-    return blockers, _skipped_freeze(meta, batches), _marks(seeds, locked)
+        blockers.append(_all_held())
+    return blockers, _skipped_freeze(meta, batches), _marks(seeds)
 
 
-def _seed_blockers(facts, context, seeds, by_id, locked, window, cycles):
+def _seed_blockers(facts, context, seeds, by_id, window, cycles):
     blockers = []
     for seed in seeds:
-        held = _Held(seed, seed["op_id"] in locked, window)
+        held = _Held(seed, window)
         op = by_id[seed["op_id"]]
         problem = _cycle_problem(held, cycles[op["id"]]) if op["id"] in cycles else _seed_problem(context, held, op)
         if problem is not None:
@@ -299,9 +292,7 @@ def _seed_blockers(facts, context, seeds, by_id, locked, window, cycles):
     return blockers
 
 
-def _all_held(locked, frozen):
+def _all_held():
     """要重排的工序全都原样保留时，排产计算没有可排的工序会直接停下；排产检查先说清楚。"""
-    where = "、".join((["在正式计划里锁定"] if locked else []) + (["落在不重排时段里"] if frozen else []))
-    fixes = ([_SHORTEN] if frozen else []) + (["请维护人员解除不需要的锁定（工作台里不能解锁）"] if locked else [])
-    return issue("all_tasks_held", f"选中批次里要排的工序都{where}，排产会原样保留它们，这次没有可以重新排的工序，"
-                 "排产会直接停下。请多勾选要排的批次，或" + "、".join(fixes) + "。")
+    return issue("all_tasks_held", "选中批次里要排的工序都落在不重排时段里，排产会原样保留它们，这次没有可以重新排的工序，"
+                 f"排产会直接停下。请多勾选要排的批次，或{_SHORTEN}。")

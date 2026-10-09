@@ -15,9 +15,9 @@ from core.shared.boolean_normalize import to_yes_no
 
 from .freeze_window_prefixes import (
     group_seed_operations_by_batch,
-    max_seq_by_batch,
-    prefix_op_ids_for_batch,
+    prefix_op_ids_for_anchors,
     rows_in_window,
+    window_anchors_by_batch,
 )
 from .freeze_window_seed_rows import (
     build_seed_results as _build_seed_results,
@@ -358,13 +358,11 @@ def _apply_freeze_prefixes(
     skip_incomplete_prefix: bool = False,
 ) -> Set[int]:
     frozen_op_ids: Set[int] = set()
-    max_seq_lookup = max_seq_by_batch(
+    anchors_lookup = window_anchors_by_batch(
         rows_in_window(svc, scope.anchor_start, scope.anchor_end, schedule_map), scope.op_by_id)
 
-    for bid, max_seq in max_seq_lookup.items():
-        if max_seq <= 0:
-            continue
-        prefix = prefix_op_ids_for_batch(scope.seed_operations_by_batch.get(bid, []), bid, max_seq)
+    for bid, anchors in anchors_lookup.items():
+        prefix = prefix_op_ids_for_anchors(scope.seed_operations_by_batch.get(bid, []), bid, anchors)
         missing = [oid for oid in prefix if oid not in schedule_map]
         if missing and skip_incomplete_prefix:
             # 调用方明确接受：前道原安排不在冻结窗口里（窗口前还没报工，或者没排过）的批次整批不冻结、
@@ -416,7 +414,7 @@ def _finish_freeze_seed_result(
             freeze_meta["freeze_state"] = "active"
         else:
             # 走到收尾且非 degraded 但一个前缀都没冻住（如上一版窗内命中行全部对应
-            # seq<=0 工序，被 freeze_window_prefixes.max_seq_by_batch 跳过）。补上
+            # seq<=0 工序，被 freeze_window_prefixes.window_anchors_by_batch 跳过）。补上
             # reason，保住"disabled 必带可查原因"的诊断口径（audit 2026-07-20 A15）。
             _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_FREEZABLE_PREFIX)
     _finalize_freeze_application_status(freeze_meta)

@@ -17,7 +17,7 @@
             {row.execution.first_actual_start && <p>实际开工：{window.WorkbenchFormat.dateTime(row.execution.first_actual_start)}</p>}
             {row.execution.confirmed_finish && <p>确认完工：{window.WorkbenchFormat.dateTime(row.execution.confirmed_finish)}</p>}
             {row.status === 'protected' && <p>剩余数量：{row.execution.remaining_quantity === null ? '未知' : row.execution.remaining_quantity}</p>}
-            {row.held && <p>{row.held.basis === 'locked' ? '正式计划里已锁定' : '因不重排时段'}，保持原安排：{window.WorkbenchFormat.dateTime(row.held.start)} 至 {window.WorkbenchFormat.dateTime(row.held.end)}</p>}</td>
+            {row.held && <p>因不重排时段，保持原安排：{window.WorkbenchFormat.dateTime(row.held.start)} 至 {window.WorkbenchFormat.dateTime(row.held.end)}</p>}</td>
         </tr>)}</tbody></table></div>
       {pages > 1 && <window.WorkbenchListControls.Pager page={page} pages={pages} total={data.tasks.length} size={100} unit="道" label="检查明细" onPage={setPage} />}
     </details>;

@@ -10,10 +10,7 @@ from core.services.scheduler.resource_pool_builder import (
     load_machine_downtimes,
 )
 from core.services.scheduler.run.freeze_window import build_freeze_window_seed
-from core.services.scheduler.run.schedule_input_runtime_support import (
-    _build_runtime_support_inputs,
-    _merge_execution_and_freeze_seed_results,
-)
+from core.services.scheduler.run.schedule_input_runtime_support import _build_runtime_support_inputs
 from core.services.workbench.facts.preflight_checks import number, stored_date
 from core.services.workbench.facts.run_input_rows import fail
 from core.services.workbench.plan.point_evidence import official_point_work
@@ -42,32 +39,6 @@ def _strict_pool(svc, *, cfg, algo_ops, meta):
     if cfg.auto_assign_enabled == "yes" and (pool is None or meta.get("resource_pool_build_ok") is not True):
         fail("resource_pool_unavailable", "自动分配要用的设备人员清单建不起来，这次排产没有开始。请到资料总览核对设备和人员后重试。")
     return pool, warnings
-
-
-def locked_seeds(svc, operations, prev_version, *, rows=None):
-    """rows 可由已在同一读快照里读出的 Schedule 行提供（version<=prev_version，按 version,id 排序）。"""
-    by_id = {op.id: op for op in operations}
-    latest = {}
-    for row in WorkbenchRunInputRepository(svc.conn).schedule_rows_through_version(prev_version) if rows is None else rows:
-        if row["op_id"] in by_id:
-            latest[row["op_id"]] = row
-    result = []
-    for op_id, row in latest.items():
-        if row["lock_status"] not in ("locked", "unlocked"):
-            fail("invalid_schedule_lock", "原安排里有工序的锁定状态读不出来，这次排产没有开始。请刷新重试；仍不行请联系维护人员。", op_id=op_id)
-        if row["lock_status"] != "locked":
-            continue
-        op = by_id[op_id]
-        start = svc._normalize_datetime(row["start_time"])
-        end = svc._normalize_datetime(row["end_time"])
-        if start is None or end is None or end < start:
-            fail("invalid_locked_interval", "锁定的原安排时间不对，结束早于开始，这次排产没有开始。请到计划甘特核对后重试。", op_id=op_id)
-        result.append({"op_id": op.id, "op_code": op.op_code, "batch_id": op.batch_id, "seq": op.seq,
-                       "source": op.source, "op_type_name": op.op_type_name, "machine_id": row["machine_id"],
-                       "operator_id": row["operator_id"], "start_time": start, "end_time": end})
-        if start == end:
-            result[-1]["_point_evidence"] = stored_point_validator(svc.conn, row["version"])(SimpleNamespace(**result[-1]))
-    return result
 
 
 def _occupies_machine(seed):
@@ -99,9 +70,10 @@ def downtime_overlap(seed, downtimes):
     return overlaps[0] if overlaps else None
 
 
-def _freeze_with_explicit_locks(svc, *, cfg, prev_version, start_dt, operations,
-                                reschedulable_operations, strict_mode, meta, schedule_rows=None, hold_window=None,
-                                hold_start=None):
+def _freeze_hold_window(svc, *, cfg, prev_version, start_dt, operations, reschedulable_operations, strict_mode, meta,
+                        hold_window=None, hold_start=None):
+    """只按本次的不重排时段保留原安排。正式计划里的锁定标记（旧版「锁定近期排程」顺带打上的）不再起作用：
+    已开工、做完的工序由报工记录保护，其余工序要不要保持原安排，每次排产由不重排时段决定。"""
     validator = stored_point_validator(svc.conn, prev_version)
     frozen, seeds, warnings = build_freeze_window_seed(
         # hold_start：试调采用按来源排产的起日起算冻结（同批前道从那天起找），与来源排产同一口径。
@@ -118,28 +90,19 @@ def _freeze_with_explicit_locks(svc, *, cfg, prev_version, start_dt, operations,
     for seed in seeds:
         if seed["start_time"] == seed["end_time"]:
             seed["_point_evidence"] = validator(SimpleNamespace(**seed))
-    locked = locked_seeds(svc, reschedulable_operations, prev_version, rows=schedule_rows)
-    merged = _merge_execution_and_freeze_seed_results(execution_seed_results=locked, freeze_seed_results=seeds)
-    locked_ids = {row["op_id"] for row in locked}
-    meta["explicit_locked_op_ids"] = sorted(locked_ids)
-    # 只因这次的不重排时段保留的工序：正式采用时不写成锁定，时段只管这一次排产，下次按下次填的时段。
-    meta["hold_window_op_ids"] = sorted(set(frozen) - locked_ids)
-    return set(frozen) | locked_ids, merged, warnings
+    return set(frozen), seeds, warnings
 
 
-def held_arrangements(svc, *, cfg, prev_version, start_dt, operations, reschedulable_operations, schedule_rows=None,
-                      hold_window=None):
-    """排产会原样保留的原安排：正式计划里锁定的，加上落在不重排时段里的；与排产计算同一口径、同样严格。
+def held_arrangements(svc, *, cfg, prev_version, start_dt, operations, reschedulable_operations, hold_window=None):
+    """排产会原样保留的原安排：落在本次不重排时段里的（含同批次一起保留的前道）；与排产计算同一口径、同样严格。
 
-    返回 (保留安排, 保留信息)；保留信息里 explicit_locked_op_ids 是锁定的工序，hold_window 是本次的不重排时段，
-    freeze_skipped_batch_ids 是前道原安排不全、这次不保留的批次。原安排读不出来抛 ValidationError
-    （field=freeze_window），锁定安排读不出来抛 CandidateRunInputError。schedule_rows 同 locked_seeds。
+    返回 (保留安排, 保留信息)；保留信息里 hold_window 是本次的不重排时段，freeze_skipped_batch_ids 是前道原安排不全、
+    这次不保留的批次。原安排读不出来抛 ValidationError（field=freeze_window）。
     """
     meta = {}
-    _, seeds, _ = _freeze_with_explicit_locks(
+    _, seeds, _ = _freeze_hold_window(
         svc, cfg=cfg, prev_version=prev_version, start_dt=start_dt, operations=operations,
-        reschedulable_operations=reschedulable_operations, strict_mode=True, meta=meta, schedule_rows=schedule_rows,
-        hold_window=hold_window)
+        reschedulable_operations=reschedulable_operations, strict_mode=True, meta=meta, hold_window=hold_window)
     return seeds, meta
 
 
@@ -207,7 +170,7 @@ def build_runtime(svc, *, cfg, prev_version, start_dt, batches, operations, muta
         batches=batches, operations=operations, reschedulable_operations=mutable, algo_ops=algo_ops,
         execution_fixed_op_ids=set(fixed_ids) | set(completed_ids), execution_completed_op_ids=completed_ids,
         execution_seed_results=execution_seeds, execution_reservations=reservations, strict_mode=True,
-        build_freeze_window_seed_fn=partial(_freeze_with_explicit_locks, hold_window=hold_window, hold_start=hold_start),
+        build_freeze_window_seed_fn=partial(_freeze_hold_window, hold_window=hold_window, hold_start=hold_start),
         load_machine_downtimes_fn=load_machine_downtimes,
         build_resource_pool_fn=_strict_pool, extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool,
         raise_schedule_empty_result_fn=lambda message, *, reason: fail(reason, message),

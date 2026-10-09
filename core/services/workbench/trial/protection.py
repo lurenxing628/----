@@ -16,8 +16,7 @@ def frozen_arrangements(conn, admission, rows, live, checks):
     """{工序: 原安排}：正式采用时按来源排产的不重排时段原样保留的工序。
 
     与试调采用复核同一口径：同一份排产输入（冻结从来源排产的起日起算）、同一份正式计划、
-    同一批要重排的工序，由排产计算同一套保留规则找出。正式计划里锁定的仍按固定工序处理，
-    不在这里。冻结资料读不出来时抛 AppError，由调用方提示。
+    同一批要重排的工序，由排产计算同一套保留规则找出。冻结资料读不出来时抛 AppError，由调用方提示。
     """
     version = live["baseline"]["version"]
     if version is None:
@@ -33,15 +32,12 @@ def frozen_arrangements(conn, admission, rows, live, checks):
     batch_ids = {row["original"]["batch"]["batch_id"] for row in rows}
     operations = [SimpleNamespace(**op) for op in tables["BatchOperations"] if op["batch_id"] in batch_ids]
     moving = _rescheduled_ids(rows, live)
-    # 正式计划在 live 里已整表读出，锁定状态直接从中取，不再逐次从库里流式读一遍。
-    schedule = sorted((row for row in tables["Schedule"] if row["version"] <= version), key=lambda row: (row["version"], row["id"]))
     seeds, meta = held_arrangements(
         ScheduleService(conn), cfg=cfg, prev_version=version,
         start_dt=datetime.combine(date.fromisoformat(anchor["start_date"]), time.min),
         operations=operations, reschedulable_operations=[op for op in operations if op.id in moving],
-        schedule_rows=schedule, hold_window=hold_window(conn, anchor)[0])
-    locked = set(meta.get("explicit_locked_op_ids") or ())
-    return {seed["op_id"]: dict(seed, hold_window=meta.get("hold_window")) for seed in seeds if seed["op_id"] not in locked}
+        hold_window=hold_window(conn, anchor)[0])
+    return {seed["op_id"]: dict(seed, hold_window=meta.get("hold_window")) for seed in seeds}
 
 
 def _rescheduled_ids(rows, live):
@@ -103,36 +99,23 @@ class TrialProtection:
         self.frozen = frozen or {}
         tables = live["facts"]["tables"]
         self.identities = {row["ref"]: row for row in tables["WorkbenchPlanSourceRefs"] if row["kind"] == "operation"}
-        self.latest = {}
-        for row in tables["Schedule"]:
-            old = self.latest.get(row["op_id"])
-            if old is None or (row["version"], row["id"]) > (old["version"], old["id"]):
-                self.latest[row["op_id"]] = row
         self.execution = live["execution"]
         self.operations = {row["id"]: row for row in tables["BatchOperations"]}
         self.batches = {row["batch_id"]: row for row in tables["Batches"]}
 
     def check(self, row):
-        return self._identity_and_lock(row) or self._execution(row) or self._frozen(row) or self._closed(row)
+        return self._identity(row) or self._execution(row) or self._frozen(row) or self._closed(row)
 
     def _frozen(self, row):
         seed = self.frozen.get(row["original"]["operation"]["id"])
         return frozen_issue(row, seed, changed=False) if seed is not None else None
 
-    def _identity_and_lock(self, row):
-        original, ref = row["original"], row["task_ref"]
-        op_id = original["operation"]["id"]
+    def _identity(self, row):
+        # 正式计划里的锁定标记不再起作用：已开工做完的由 _execution 拦，按不重排时段保留的由 _frozen 说明是哪个时段。
+        op_id = row["original"]["operation"]["id"]
         identity = self.identities.get(row["operation_ref"])
         if identity is None or identity["active"] != 1 or identity["source_key"] != str(op_id):
-            return issue("operation_identity_changed", "该工序已删除或被替换，无法继续调整。", ref)
-        if not original["lock_known"]:
-            return issue("lock_state_unknown", "这道工序是不是已固定读不到，这里不当成未固定处理。", ref)
-        latest = self.latest.get(op_id)
-        if latest is not None and latest["lock_status"] != "unlocked":
-            return issue("task_locked", "固定工序不可调整。", ref)
-        # 候选方案行的 locked 含因不重排时段保留的工序；正式计划里没锁的这类工序交给 _frozen 说明是哪个时段。
-        if original["locked"] and op_id not in self.frozen:
-            return issue("task_locked", "固定工序不可调整。", ref)
+            return issue("operation_identity_changed", "该工序已删除或被替换，无法继续调整。", row["task_ref"])
         return None
 
     def _execution(self, row):

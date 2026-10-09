@@ -44,7 +44,8 @@ def _task_projection(row, draft_ref, by_operation, protected_rows, by_task, live
         "process_label": op["op_type_name"], "sequence": op["seq"], "piece_id": op["piece_id"],
         "source": op["source"], "quantity": hours.get("quantity"), "priority": batch["priority"],
         "batch_quantity": _public_value(batch["quantity"]),
-        "due_date": batch["due_date"], "locked": original["locked"] or bool(blocked),
+        # 不能改的才画成锁定：正式计划里的锁定标记不再起作用，不拿它当依据。
+        "due_date": batch["due_date"], "locked": bool(blocked),
         **{key: current[key] for key in ("machine_ref", "operator_ref", "start", "end")},
         "original": {key: original["arrangement"][key] for key in ("machine_ref", "operator_ref", "start", "end")},
         "hours": hours, "duration_reason": duration_reason,

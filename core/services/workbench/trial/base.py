@@ -65,9 +65,7 @@ def _row(payload, op, batch, refs, *, source_task_ref, source_row_ref, operation
             "source_task_ref": source_task_ref, "source_row_ref": source_row_ref,
             "current": current,
             "original": {"arrangement": current, "source_row": payload, "operation": op, "batch": batch,
-                         "detail": detail, "locked": payload.get("locked", payload.get("lock_status") == "locked"),
-                         "lock_known": "locked" in payload or payload.get("lock_status") in ("locked", "unlocked"),
-                         "batch_ref": refs.get(("batch", op["batch_id"])), "predecessor_operation_refs": []}}
+                         "detail": detail, "batch_ref": refs.get(("batch", op["batch_id"])), "predecessor_operation_refs": []}}
 
 
 def _plan(conn, ref):

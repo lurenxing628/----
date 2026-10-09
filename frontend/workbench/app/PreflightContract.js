@@ -79,8 +79,8 @@
       && ['first_actual_start', 'confirmed_finish'].every(key => localTime(value[key]))
       && ['remaining_quantity', 'known_completed_quantity', 'unknown_record_count'].every(key => nullableCount(value[key]));
   }
-  // 排产会原样保留的原安排：正式计划里锁定的，或落在不重排时段里的（含同批次一起保留的前道）。
-  const held = value => value === null || object(value) && Object.keys(value).length === 3 && ['locked', 'hold_window'].includes(value.basis)
+  // 排产会原样保留的原安排：落在不重排时段里的（含同批次一起保留的前道）。正式计划里的锁定标记已不再起作用。
+  const held = value => value === null || object(value) && Object.keys(value).length === 3 && value.basis === 'hold_window'
     && value.start !== null && localTime(value.start) && value.end !== null && localTime(value.end) && value.start <= value.end;
   function effectiveHold(config, normalized) {
     const value = config.hold_window;
@@ -112,7 +112,7 @@
       if (c[key] !== d.tasks.filter(row => row.status === taskStates[index]).length) throw fail('排产检查计数不一致。');
     });
     if (c.held_tasks !== heldRows.length || c.hold_window_tasks !== heldRows.filter(row => row.held.basis === 'hold_window').length
-        || d.effective_config.hold_window === null && c.hold_window_tasks !== 0) throw fail('排产检查计数不一致。');
+        || d.effective_config.hold_window === null && c.held_tasks !== 0) throw fail('排产检查计数不一致。');
     const batchRows = d.included_batches.concat(d.excluded_batches);
     const taskRefs = new Set(d.tasks.map(row => row.operation_ref));
     if (c.selected_tasks !== d.tasks.length || c.selected_batches !== scope.size || c.eligible_tasks !== c.ready_tasks + c.auto_assign_required

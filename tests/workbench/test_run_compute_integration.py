@@ -11,6 +11,28 @@ from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F
 from tests.workbench.run_compute_support import unchanged
 
 
+@pytest.mark.parametrize("hold", ["old_lock_mark", "window"])
+def test_only_the_hold_window_keeps_an_original_arrangement(run_case, hold):
+    """本次显式填的不重排时段照样保持原安排（08:00-10:00 原样留下）；
+    正式计划里旧的锁定标记（旧版「锁定近期排程」顺带打上的）不再起作用，这道工序照常按现在的工时重排（3 件 × 0.25 小时）。"""
+    case = run_case
+    successor = case.operation(seq=2)
+    case.plan(1, [case.op_id])
+    settings = case.settings(hold_window={"start": "2026-09-09T09:00", "end": "2026-09-09T09:01"})
+    if hold == "old_lock_mark":
+        case.conn.execute("UPDATE Schedule SET lock_status='locked'")
+        settings = case.settings()
+    case.conn.commit()
+    result = unchanged(case, lambda: compute_candidate_run(case.conn, settings, case.projections()))
+    held = hold == "window"
+    assert result.schedule_input.frozen_op_ids == ({case.op_id} if held else set())
+    expected = (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10) if held else datetime(2026, 9, 9, 8, 45))
+    for payload in result.candidate_payloads.values():
+        rows = {row.op_id: row for row in payload.schedule_rows}
+        assert (rows[case.op_id].start_time, rows[case.op_id].end_time) == expected
+        assert rows[successor].start_time >= rows[case.op_id].end_time
+
+
 @pytest.mark.parametrize("quantity,finish", [(3, datetime(2026, 9, 10, 1, 30)), (36, datetime(2026, 9, 10, 13, 30))])
 def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case, quantity, finish):
     case = run_case

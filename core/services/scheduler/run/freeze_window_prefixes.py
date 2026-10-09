@@ -12,22 +12,36 @@ def group_seed_operations_by_batch(seed_operations: List[Any]) -> Dict[str, List
     return grouped
 
 
-def max_seq_by_batch(schedule_map: Dict[int, Dict[str, Any]], op_by_id: Dict[int, Any]) -> Dict[str, int]:
-    max_seq: Dict[str, int] = {}
+def window_anchors_by_batch(schedule_map: Dict[int, Dict[str, Any]],
+                            op_by_id: Dict[int, Any]) -> Dict[str, Dict[Optional[str], int]]:
+    """{批次: {分件号（None 为不分件或共同工序）: 窗口里这一件最大的工序号}}；工序号 <=0 的不算。"""
+    anchors: Dict[str, Dict[Optional[str], int]] = {}
     for oid in schedule_map.keys():
         op0 = op_by_id.get(int(oid))
         if not op0:
             continue
-        bid = str(op0.batch_id or "")
         seq0 = int(op0.seq or 0)
         if seq0 <= 0:
             continue
-        max_seq[bid] = max(max_seq.get(bid, 0), seq0)
-    return max_seq
+        pieces = anchors.setdefault(str(op0.batch_id or ""), {})
+        piece = getattr(op0, "piece_id", None)
+        pieces[piece] = max(pieces.get(piece, 0), seq0)
+    return anchors
 
 
-def prefix_op_ids_for_batch(operations: List[Any], bid: str, max_seq: int) -> List[int]:
-    return [int(op.id) for op in operations if op and op.id and op.batch_id == bid and int(op.seq or 0) <= max_seq]
+def prefix_op_ids_for_anchors(operations: List[Any], bid: str, anchors: Dict[Optional[str], int]) -> List[int]:
+    """窗口里的工序加上它们的前道。不分件的批次就是工序号不超过窗口里最大号的全部工序；
+    分件批次里，分件工序只跟同一件和共同工序走，另一件排在后面的工序不算前道（与排产计算的分件前后关系一致）。"""
+    top = max(anchors.values())
+    result = []
+    for op in operations:
+        if not op or not op.id or op.batch_id != bid:
+            continue
+        piece = getattr(op, "piece_id", None)
+        bound = top if piece is None else max(anchors.get(None, 0), anchors.get(piece, 0))
+        if int(op.seq or 0) <= bound:
+            result.append(int(op.id))
+    return result
 
 
 def rows_in_window(svc, start: Optional[datetime], end: Optional[datetime],

@@ -103,7 +103,7 @@ def _actual_periods(facts, groups, seeds, actual_ids, rows, *, completed_ids):
 def preflight_external_cycles(facts, batches, operations, projections):
     """Return frozen cycles plus explicit blockers for split actuals.
 
-    同组未报工成员的锁定或不重排时段保留安排是否与实际周期一致，由 preflight_held 按排产同一保留范围核对。
+    同组未报工成员按不重排时段保留的安排是否与实际周期一致，由 preflight_held 按排产同一保留范围核对。
     """
     contexts = {row["operation_id"]: row for row in facts.tables.get("BatchExternalContexts", [])}
     if not any(op["source"] == "external" and (contexts.get(op["id"]) or {}).get("merge_mode") == "merged"

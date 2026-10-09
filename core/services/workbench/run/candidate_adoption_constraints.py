@@ -102,7 +102,7 @@ def arrangement_problem(checks, batch, raw, start_time, settings):
     """一条非实际安排按现在的资料还成不成立：工序资料和设备人员资格、物料到齐日、齐套日期。
 
     batch、raw 是原始行，raw 的设备人员换成安排行自己的。返回第一处不成立的原因码，都成立返回 None。
-    候选采用逐行复核与排产检查核对锁定、冻结保留的原安排共用这一口径。
+    候选采用逐行复核与排产检查核对不重排时段保留的原安排共用这一口径。
     """
     if checks.fields(batch, raw) or checks.resources(raw):
         return "candidate_resource_invalid"

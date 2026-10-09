@@ -47,14 +47,14 @@
       {row.batch_id} · {row.sequence} {row.label}{row.piece_id ? ' · ' + row.piece_id : ''} · 原安排 {minuteText(row.held.start)} 至 {minuteText(row.held.end)}</li>)}</ul>
       {pages > 1 && <window.WorkbenchListControls.Pager page={page} pages={pages} total={rows.length} size={100} unit="道" label={label} onPage={setPage} />}</div>;
   }
-  // 检查结果里的“本次不重排”一行；明细列出因不重排时段保持原安排的工序，正式计划里锁定的另列。
+  // 检查结果里的“本次不重排”一行；明细列出因不重排时段保持原安排的工序。
   function HoldSummary({ data }) {
-    const span = data.effective_config.hold_window, kept = data.tasks.filter(row => row.held && row.held.basis === 'hold_window'), locked = data.tasks.filter(row => row.held && row.held.basis === 'locked');
+    const span = data.effective_config.hold_window, kept = data.tasks.filter(row => row.held);
     const text = span ? '本次不重排：' + window.WorkbenchTerms.hold_window(span) + '，共 ' + data.counts.hold_window_tasks + ' 道工序保持原安排' : '本次不设不重排时段';
     const source = data.effective_config.hold_window_source === 'default' ? '（按交付设置）' : '';
-    if (!kept.length && !locked.length) return <p className="pf-hold-summary" data-hold-summary role="status">{text}{source}</p>;
-    return <details className="pf-detail pf-hold-summary" data-hold-summary><summary>{text}{source}{locked.length ? '；正式计划里已锁定 ' + locked.length + ' 道' : ''} · 查看明细</summary>
-      {!!kept.length && <HeldRows key="kept" rows={kept} label="不重排时段内保持原安排" />}{!!locked.length && <HeldRows key="locked" rows={locked} label="正式计划里已锁定" />}</details>;
+    if (!kept.length) return <p className="pf-hold-summary" data-hold-summary role="status">{text}{source}</p>;
+    return <details className="pf-detail pf-hold-summary" data-hold-summary><summary>{text}{source} · 查看明细</summary>
+      <HeldRows rows={kept} label="不重排时段内保持原安排" /></details>;
   }
   function Rules({ value, effective, onChange, disabled, onInspectMaterials, splitExpanded, materialPanel }) {
     return <section aria-labelledby="pf-rules-title"><h3 id="pf-rules-title">本次排产规则</h3><div className="pf-rows">

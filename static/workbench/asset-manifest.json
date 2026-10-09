@@ -2395,6 +2395,7 @@
     },
     {
       "path": "workbench/app/CalibrationAdoptionAPI.js",
+      "sha256": "a3fbc19175be5f858fb5b64902f41d747a901804120f021ea2c997c5c0927392",
       "bytes": 10842,
       "mime": "application/javascript",
       "dependencies": [
@@ -2418,7 +2419,8 @@
           "scope": "Only the listed source content; no license inferred from dependencies.",
           "source_files": [
             {
-              "path": "frontend/workbench/app/CalibrationAdoptionAPI.js"
+              "path": "frontend/workbench/app/CalibrationAdoptionAPI.js",
+              "sha256": "7649379f20414e62cab494c4e27162f86940a9235e7af4ed23554b09f28870d0"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -2426,7 +2428,8 @@
       ],
       "source_files": [
         {
-          "path": "frontend/workbench/app/CalibrationAdoptionAPI.js"
+          "path": "frontend/workbench/app/CalibrationAdoptionAPI.js",
+          "sha256": "7649379f20414e62cab494c4e27162f86940a9235e7af4ed23554b09f28870d0"
         }
       ]
     },
@@ -2486,6 +2489,7 @@
     },
     {
       "path": "workbench/app/CalibrationAdoptionControls.js",
+      "sha256": "6275fbb085200a25317587537064654073fb444824ee89ff13e2b117b7cfe5f6",
       "bytes": 13170,
       "mime": "application/javascript",
       "dependencies": [
@@ -2544,7 +2548,8 @@
           "scope": "Only the listed source content; no license inferred from dependencies.",
           "source_files": [
             {
-              "path": "frontend/workbench/app/CalibrationAdoptionControls.jsx"
+              "path": "frontend/workbench/app/CalibrationAdoptionControls.jsx",
+              "sha256": "51fa224396f1a868cfb98eb21f607e290c373113749c76aafa53275e5f1cc6de"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -2552,7 +2557,8 @@
       ],
       "source_files": [
         {
-          "path": "frontend/workbench/app/CalibrationAdoptionControls.jsx"
+          "path": "frontend/workbench/app/CalibrationAdoptionControls.jsx",
+          "sha256": "51fa224396f1a868cfb98eb21f607e290c373113749c76aafa53275e5f1cc6de"
         }
       ]
     },
@@ -2694,6 +2700,7 @@
     },
     {
       "path": "workbench/app/CalibrationDetail.js",
+      "sha256": "4f14339eaad0b07e9b1e7eb3ea0854580702b9ef57cc5557e5e12f043802906c",
       "bytes": 14901,
       "mime": "application/javascript",
       "dependencies": [
@@ -2773,7 +2780,8 @@
           "scope": "Only the listed source content; no license inferred from dependencies.",
           "source_files": [
             {
-              "path": "frontend/workbench/app/CalibrationDetail.jsx"
+              "path": "frontend/workbench/app/CalibrationDetail.jsx",
+              "sha256": "d9e8061c7c047e880c9dc3e432d3c99795635939e3980d958cd8d297820dd81b"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -2781,7 +2789,8 @@
       ],
       "source_files": [
         {
-          "path": "frontend/workbench/app/CalibrationDetail.jsx"
+          "path": "frontend/workbench/app/CalibrationDetail.jsx",
+          "sha256": "d9e8061c7c047e880c9dc3e432d3c99795635939e3980d958cd8d297820dd81b"
         }
       ]
     },
@@ -6805,8 +6814,8 @@
     },
     {
       "path": "workbench/app/PreflightContract.js",
-      "sha256": "a7d83a51c2797a7fc3f35a7d9bd0af4f723a87a7f67db57c01613ee0ac85eff3",
-      "bytes": 12554,
+      "sha256": "c8488be11faa57b63cbf45537482c6a447c990205594d2c863462f6f462462b4",
+      "bytes": 12550,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/WorkbenchTerms.js"
@@ -6830,7 +6839,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/PreflightContract.js",
-              "sha256": "83077a8552ac3384951840e10279d949241e18ffd3a0527f281ac7401f2d040a"
+              "sha256": "543fc2a9a9b5129addc794eb597991a384f892350f8fe85195311ab139e0687b"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6839,14 +6848,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/PreflightContract.js",
-          "sha256": "83077a8552ac3384951840e10279d949241e18ffd3a0527f281ac7401f2d040a"
+          "sha256": "543fc2a9a9b5129addc794eb597991a384f892350f8fe85195311ab139e0687b"
         }
       ]
     },
     {
       "path": "workbench/app/PreflightControls.js",
-      "sha256": "d9e8dda51630c468fbf7a9d83858cac86db05619087ac9720de914dd0770abaa",
-      "bytes": 15068,
+      "sha256": "df02fda9b6196b8d530b800d4eae47b9fce7983e56697312853eafb36a390416",
+      "bytes": 14608,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/PreflightContract.js",
@@ -6912,7 +6921,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/PreflightControls.jsx",
-              "sha256": "d487d85feb591706cfa85ee9cbeae4bdf00e549ef7beee38219a635783850dff"
+              "sha256": "209f43e658c02b0419532bdf3dd852d57a9fe4283eb2a722190b10f182a26eb6"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -6921,14 +6930,14 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/PreflightControls.jsx",
-          "sha256": "d487d85feb591706cfa85ee9cbeae4bdf00e549ef7beee38219a635783850dff"
+          "sha256": "209f43e658c02b0419532bdf3dd852d57a9fe4283eb2a722190b10f182a26eb6"
         }
       ]
     },
     {
       "path": "workbench/app/PreflightWorkspace.js",
-      "sha256": "4bcaafdea864af1191ad9e2cb28f78695dd3620097699424fb1cd82ecbb89712",
-      "bytes": 18095,
+      "sha256": "95aad63e6ccb3d90ff1f747c49d00b4cdf647a90a4a55859d69188c98435bec2",
+      "bytes": 18050,
       "mime": "application/javascript",
       "dependencies": [
         "workbench/app/BatchSplitPanel.js",
@@ -7022,7 +7031,7 @@
           "source_files": [
             {
               "path": "frontend/workbench/app/PreflightWorkspace.jsx",
-              "sha256": "b15e78678b0bc3b6432941a5c01a0b9a3619f68e8276cdca463c314503fa0407"
+              "sha256": "47d918d2573703d9470fe159e13c051f82a6a2fff3fad8654d099590e70c6306"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7031,7 +7040,7 @@
       "source_files": [
         {
           "path": "frontend/workbench/app/PreflightWorkspace.jsx",
-          "sha256": "b15e78678b0bc3b6432941a5c01a0b9a3619f68e8276cdca463c314503fa0407"
+          "sha256": "47d918d2573703d9470fe159e13c051f82a6a2fff3fad8654d099590e70c6306"
         }
       ]
     },
@@ -7576,6 +7585,7 @@
     },
     {
       "path": "workbench/app/ProcessFileActions.js",
+      "sha256": "e4f1a6d2275b1f6c5e499f2f5a66a2156abd1661aeee5c35697406050f13a270",
       "bytes": 15601,
       "mime": "application/javascript",
       "dependencies": [
@@ -7677,7 +7687,8 @@
           "scope": "Only the listed source content; no license inferred from dependencies.",
           "source_files": [
             {
-              "path": "frontend/workbench/app/ProcessFileActions.jsx"
+              "path": "frontend/workbench/app/ProcessFileActions.jsx",
+              "sha256": "a68d90d39aa778a86ec90036466146adc07f19f797c6725360363a4dad2b36d2"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7685,12 +7696,14 @@
       ],
       "source_files": [
         {
-          "path": "frontend/workbench/app/ProcessFileActions.jsx"
+          "path": "frontend/workbench/app/ProcessFileActions.jsx",
+          "sha256": "a68d90d39aa778a86ec90036466146adc07f19f797c6725360363a4dad2b36d2"
         }
       ]
     },
     {
       "path": "workbench/app/ProcessFileContract.js",
+      "sha256": "63428f424b47646babd429e564955471ddb72d2ff4341451dc45a9ae384fddf2",
       "bytes": 12164,
       "mime": "application/javascript",
       "dependencies": [
@@ -7742,7 +7755,8 @@
           "scope": "Only the listed source content; no license inferred from dependencies.",
           "source_files": [
             {
-              "path": "frontend/workbench/app/ProcessFileContract.js"
+              "path": "frontend/workbench/app/ProcessFileContract.js",
+              "sha256": "291ac22e3fd923e496eb70e26d46ecf35b68a05100bae8fec6882ca6f79b4a66"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7750,12 +7764,14 @@
       ],
       "source_files": [
         {
-          "path": "frontend/workbench/app/ProcessFileContract.js"
+          "path": "frontend/workbench/app/ProcessFileContract.js",
+          "sha256": "291ac22e3fd923e496eb70e26d46ecf35b68a05100bae8fec6882ca6f79b4a66"
         }
       ]
     },
     {
       "path": "workbench/app/ProcessFilePreview.js",
+      "sha256": "b1cd525e572330958125e0962e6514edd15df8f2762abc6ef56f5347be99cc4c",
       "bytes": 17334,
       "mime": "application/javascript",
       "dependencies": [
@@ -7814,7 +7830,8 @@
           "scope": "Only the listed source content; no license inferred from dependencies.",
           "source_files": [
             {
-              "path": "frontend/workbench/app/ProcessFilePreview.jsx"
+              "path": "frontend/workbench/app/ProcessFilePreview.jsx",
+              "sha256": "2893cf9d7711427c0f83b89e8bb90fae38502494492e474a03b9db46635058e7"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -7822,7 +7839,8 @@
       ],
       "source_files": [
         {
-          "path": "frontend/workbench/app/ProcessFilePreview.jsx"
+          "path": "frontend/workbench/app/ProcessFilePreview.jsx",
+          "sha256": "2893cf9d7711427c0f83b89e8bb90fae38502494492e474a03b9db46635058e7"
         }
       ]
     },
@@ -8166,6 +8184,7 @@
     },
     {
       "path": "workbench/app/ProcessRouteEntry.js",
+      "sha256": "9bb3744b1e505c61dde80f78a49adebb58e48d72395621c4a96f70bb8f8fc998",
       "bytes": 26894,
       "mime": "application/javascript",
       "dependencies": [
@@ -8252,7 +8271,8 @@
           "scope": "Only the listed source content; no license inferred from dependencies.",
           "source_files": [
             {
-              "path": "frontend/workbench/app/ProcessRouteEntry.jsx"
+              "path": "frontend/workbench/app/ProcessRouteEntry.jsx",
+              "sha256": "0928317b51f70ed1eba010766b04dc84ba77ac65ccdd48ebc57493f2f85fee85"
             }
           ],
           "reason": "No applicable project license is recorded in the imported source manifests; confirm the project grant separately."
@@ -8260,7 +8280,8 @@
       ],
       "source_files": [
         {
-          "path": "frontend/workbench/app/ProcessRouteEntry.jsx"
+          "path": "frontend/workbench/app/ProcessRouteEntry.jsx",
+          "sha256": "0928317b51f70ed1eba010766b04dc84ba77ac65ccdd48ebc57493f2f85fee85"
         }
       ]
     },
@@ -18291,13 +18312,16 @@
       "sha256": "0a32951081f79c55a0baea5eeeecd71795c872d5411fc198270d04be0524e701"
     },
     {
-      "path": "frontend/workbench/app/ProcessFileContract.js"
+      "path": "frontend/workbench/app/ProcessFileContract.js",
+      "sha256": "291ac22e3fd923e496eb70e26d46ecf35b68a05100bae8fec6882ca6f79b4a66"
     },
     {
-      "path": "frontend/workbench/app/ProcessFilePreview.jsx"
+      "path": "frontend/workbench/app/ProcessFilePreview.jsx",
+      "sha256": "2893cf9d7711427c0f83b89e8bb90fae38502494492e474a03b9db46635058e7"
     },
     {
-      "path": "frontend/workbench/app/ProcessFileActions.jsx"
+      "path": "frontend/workbench/app/ProcessFileActions.jsx",
+      "sha256": "a68d90d39aa778a86ec90036466146adc07f19f797c6725360363a4dad2b36d2"
     },
     {
       "path": "frontend/workbench/app/ProcessControls.jsx",
@@ -18328,7 +18352,8 @@
       "sha256": "b28e986ae5efedb9ce62882eb8ac3a0c247bad93e9937ac5af2c2795a91f06a4"
     },
     {
-      "path": "frontend/workbench/app/ProcessRouteEntry.jsx"
+      "path": "frontend/workbench/app/ProcessRouteEntry.jsx",
+      "sha256": "0928317b51f70ed1eba010766b04dc84ba77ac65ccdd48ebc57493f2f85fee85"
     },
     {
       "path": "frontend/workbench/app/ProcessDetail.jsx",
@@ -18508,7 +18533,7 @@
     },
     {
       "path": "frontend/workbench/app/PreflightContract.js",
-      "sha256": "83077a8552ac3384951840e10279d949241e18ffd3a0527f281ac7401f2d040a"
+      "sha256": "543fc2a9a9b5129addc794eb597991a384f892350f8fe85195311ab139e0687b"
     },
     {
       "path": "frontend/workbench/app/PreflightAPI.js",
@@ -18516,7 +18541,7 @@
     },
     {
       "path": "frontend/workbench/app/PreflightControls.jsx",
-      "sha256": "d487d85feb591706cfa85ee9cbeae4bdf00e549ef7beee38219a635783850dff"
+      "sha256": "209f43e658c02b0419532bdf3dd852d57a9fe4283eb2a722190b10f182a26eb6"
     },
     {
       "path": "frontend/workbench/app/BatchSplitPanel.jsx",
@@ -18528,7 +18553,7 @@
     },
     {
       "path": "frontend/workbench/app/PreflightWorkspace.jsx",
-      "sha256": "b15e78678b0bc3b6432941a5c01a0b9a3619f68e8276cdca463c314503fa0407"
+      "sha256": "47d918d2573703d9470fe159e13c051f82a6a2fff3fad8654d099590e70c6306"
     },
     {
       "path": "frontend/workbench/app/RunJobAPI.js",
@@ -18731,21 +18756,24 @@
       "sha256": "b66f2157779c54bbca664b8ce5e63fd9bf4dbc16e98ca35b9f4ec0f0d78c3531"
     },
     {
-      "path": "frontend/workbench/app/CalibrationAdoptionAPI.js"
+      "path": "frontend/workbench/app/CalibrationAdoptionAPI.js",
+      "sha256": "7649379f20414e62cab494c4e27162f86940a9235e7af4ed23554b09f28870d0"
     },
     {
       "path": "frontend/workbench/app/CalibrationAdoptionState.js",
       "sha256": "a398fd85a1a8a951f32144a9296fc443c6e77af2d8ed7ce200d631c5fea2d29c"
     },
     {
-      "path": "frontend/workbench/app/CalibrationAdoptionControls.jsx"
+      "path": "frontend/workbench/app/CalibrationAdoptionControls.jsx",
+      "sha256": "51fa224396f1a868cfb98eb21f607e290c373113749c76aafa53275e5f1cc6de"
     },
     {
       "path": "frontend/workbench/app/CalibrationAdoptionAction.jsx",
       "sha256": "bd70eb29d4d877d0b5243f19eba3ec7c781f0820d128ccd4e6c2807393189830"
     },
     {
-      "path": "frontend/workbench/app/CalibrationDetail.jsx"
+      "path": "frontend/workbench/app/CalibrationDetail.jsx",
+      "sha256": "d9e8061c7c047e880c9dc3e432d3c99795635939e3980d958cd8d297820dd81b"
     },
     {
       "path": "frontend/workbench/app/CalibrationWorkspace.jsx",
@@ -19546,5 +19574,6 @@
       "workbench/prototype/ui_kits/workbench/trial-sample.css",
       "workbench/prototype/ui_kits/workbench/workbench-ui.css"
     ]
-  }
+  },
+  "build_id": "6f1f9a02de72b6ad0762f04a07b72701773cdfc8eb9eae874f0d78b2d3e82d08"
 }
