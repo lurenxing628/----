@@ -1,11 +1,25 @@
 """Draft and scenario rulings over WorkbenchTrialRepository facts; the repository itself never rejects."""
 
+import hashlib
+
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
 from core.models.workbench_trial_codec import dump_and_fingerprint, load_document, load_object, require_object
 from core.models.workbench_trial_scenario_archive import scenario_snapshot
 
 _CURRENT_FIELDS = {"machine_ref", "operator_ref", "machine_id", "operator_id", "start", "end"}
+
+
+def _stored_object(text, digest):
+    """load_object(text, digest) without re-serializing an intact column only to hash it again.
+
+    The repository stores dump(value) beside fingerprint(value), which is the digest of exactly that
+    text, so a matching text needs no second canonical write; any other text still takes the codec's
+    full check and is rejected as before. The stored hashes themselves are never recomputed differently.
+    """
+    if type(text) is str and type(digest) is str and hashlib.sha256(text.encode("utf-8")).hexdigest() == digest:
+        return load_object(text)
+    return load_object(text, digest)
 
 
 def require_trial_schema(repo):
@@ -19,7 +33,7 @@ def load_draft(repo, draft_ref):
     head = repo.draft_header(draft_ref)
     if head is None:
         reject("entity_not_found", "未找到指定草稿，未改查其他草稿或最新计划。", 404)
-    head["admission"] = load_object(head.pop("admission_json"), head["admission_hash"])
+    head["admission"] = _stored_object(head.pop("admission_json"), head["admission_hash"])
     head["validation"] = load_object(head.pop("validation_json"))
     count = repo.draft_row_count(draft_ref)
     if count != head["row_count"] or not 0 < count <= MAX_TRIAL_TASKS:
@@ -28,7 +42,7 @@ def load_draft(repo, draft_ref):
     for item in repo.draft_rows(draft_ref):
         if item["ordinal"] != len(rows):
             reject("trial_snapshot_invalid", "草稿原始行顺序缺失。")
-        item["original"] = load_object(item.pop("original_json"), item.pop("original_hash"))
+        item["original"] = _stored_object(item.pop("original_json"), item.pop("original_hash"))
         item["current"] = load_object(item.pop("current_json"))
         if set(item["current"]) != _CURRENT_FIELDS:
             reject("trial_snapshot_invalid", "草稿安排字段不完整。")

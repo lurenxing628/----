@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.execution.ledger import ExecutionLedgerService
@@ -10,6 +10,7 @@ from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.delivery import read_plan_delivery
 from core.services.workbench.plan.projection import project_plan, project_tasks
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.process.queries import plain_fingerprint
 from data.repositories.workbench_dashboard_source_repo import DashboardSourceRepository
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 
@@ -141,7 +142,8 @@ class DashboardFacts:
         self.execution_issues = [source_issue(exc.code, str(exc))]
 
     def fingerprint(self):
-        return input_fingerprint(typed({"raw": self.raw, "plan": self.plan, "state": self.plan_state,
-                                       "tasks": self.tasks, "task_rows": self.task_rows,
-                                       "delivery": self.delivery_facts, "execution": self.execution_facts,
-                                       "plan_issues": self.plan_issues, "execution_issues": self.execution_issues}))
+        # 只判断来源变没变：一次写成文本取摘要，不先 typed() 复制整份来源；来源里的集合在读出时已排成列表。
+        return plain_fingerprint({"raw": self.raw, "plan": self.plan, "state": self.plan_state,
+                                  "tasks": self.tasks, "task_rows": self.task_rows,
+                                  "delivery": self.delivery_facts, "execution": self.execution_facts,
+                                  "plan_issues": self.plan_issues, "execution_issues": self.execution_issues})

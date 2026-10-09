@@ -2,13 +2,13 @@
 
 from contextlib import contextmanager
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.execution.processing_hours import hour_totals
 from core.services.workbench.facts.execution_projection import attach_context
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.process.queries import plain_fingerprint
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
@@ -58,7 +58,7 @@ class FieldWorkspaceService:
     def _cohort(self, scope):
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
-            return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, input_fingerprint(self.ledger.revision_clock())
+            return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, plain_fingerprint(self.ledger.revision_clock())
         plan, plan_state = self.plans.workspace(PlanReadScope(plan_ref))
         refs = [task['operation_ref'] for task in plan['tasks']]
         with self.ledger.read_snapshot():
@@ -85,8 +85,10 @@ class FieldWorkspaceService:
         # Tokens have expiries and must not become part of the business fingerprint.
         state_facts = self.ledger.fact_snapshot(facts, refs[0]) if len(refs) == 1 else facts['clock']
         summary = self._summary(tasks, scope_tasks)
-        state = input_fingerprint({'scope': effective, 'plan': plan_state, 'execution': plain_plan_facts(state_facts),
-                                   'data': self._without_context(tasks), 'summary': summary})
+        # 整份范围一次写成文本取摘要，不再逐层复制。这里的任务都没签令牌（contexts=False），write_context
+        # 只有固定的“未绑定”或旧计划“不能新增报工”两种，随数据而定；令牌只在 page/detail 给副本另签。
+        state = plain_fingerprint({'scope': effective, 'plan': plan_state, 'execution': state_facts,
+                                   'data': tasks, 'summary': summary})
         return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state
 
     @staticmethod
@@ -111,14 +113,6 @@ class FieldWorkspaceService:
             task['planned_' + kind + '_ref'] = row[kind + '_ref']
             task['planned_' + kind + '_label'] = labels.get(row[kind + '_ref'])
         return task
-
-    @staticmethod
-    def _without_context(value):
-        if isinstance(value, dict):
-            return {key: FieldWorkspaceService._without_context(item) for key, item in value.items() if key != 'write_context'}
-        if isinstance(value, list):
-            return [FieldWorkspaceService._without_context(item) for item in value]
-        return plain_plan_facts(value)
 
     @staticmethod
     def _summary(tasks, scope_tasks=None):

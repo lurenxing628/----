@@ -11,7 +11,7 @@ from flask import current_app
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_resource_action import public_action_row, resource_scope
 from core.models.workbench_resource_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns
 from core.models.workbench_resource_query import ResourcePageRequest
@@ -61,8 +61,17 @@ def _store():
     return store
 
 
+def _context_key(namespace, document):
+    """本进程内去重用的短键：同一份文档得同一个键，从而复用同一个令牌。
+
+    留存表和令牌登记都只在本进程里，内置 hash 就够用，不必把整份文档再做一遍 JSON 转义后算 sha256；
+    万一两份不同文档撞了键，retain_context 会比对原文后报错，不会把两份预检混用。
+    """
+    return f"{namespace}:{len(document)}:{hash(document) & 0xFFFFFFFFFFFFFFFF:016x}"
+
+
 def retain_context(namespace, document, content=None):
-    key = input_fingerprint({"namespace": namespace, "document": document})
+    key = _context_key(namespace, document)
     binding = canonical_json({"version": 1, "source": "production", "context_key": key})
     token, expiry = issue_public_token_with_expiry(namespace, binding, ttl_seconds=900)
     with LOCK:
