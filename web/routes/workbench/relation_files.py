@@ -101,11 +101,12 @@ def relation_export(kind):
     binding = json.loads(document)
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
-    reader = _reader()
+    reader, service = _reader(), _service(kind)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])
-        download = _service(kind).export(fmt, **binding["arguments"])
-    response = file_response(download)
+        rows = service.export_rows(fmt, **binding["arguments"])
+    # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
+    response = file_response(service.write_export(rows, fmt))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     return response

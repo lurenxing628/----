@@ -63,8 +63,10 @@ def confirm_delete(conn, preview, refs, *, key=KEY, scope=None, guard=None, comm
 
 
 def export_file(conn, file_format, **selection):
+    # 和下载路由一样：读快照里只读行，事务结束后再生成文件。
     with TransactionManager(conn).transaction():
-        return WorkbenchMaterialFileService(conn).export(file_format, **selection)
+        rows = WorkbenchMaterialFileService(conn).export_rows(file_format, **selection)
+    return WorkbenchMaterialFileService.write_export(rows, file_format)
 
 
 def seed_many(conn, count):

@@ -97,3 +97,44 @@ def test_real_registration_public_preview_and_committed_restart_replay(client, k
     replay = command(restarted, kind, preview)
     assert replay.get_json() == {**first.get_json(), "replayed": True}
     assert without_startup_logs(snapshot(restarted)) == before
+
+
+@pytest.mark.parametrize("fmt", ("csv", "xlsx"))
+def test_export_file_is_written_after_the_read_snapshot_is_released(client, monkeypatch, fmt):
+    """整份导出行在读快照里读完；生成文件时读事务已结束，不挡别人提交写入。资源、物料两条下载路由同一做法。"""
+    from flask import g
+
+    from core.services.workbench.material import files as material_files
+    from core.services.workbench.resource import files as resource_files
+    from tests.workbench.material_actions_api_support import export_preview, register_actions, seed
+
+    register_actions(client.application)
+    assert command(client, "machine", new_preview(client, "machine")).status_code == 200
+    seed(client)
+    seen = []
+
+    def spy(module, name, kind):
+        original = getattr(module, name)
+
+        def wrapped(*args, **kwargs):
+            seen.append((kind, g.db.in_transaction))
+            return original(*args, **kwargs)
+        monkeypatch.setattr(module, name, wrapped)
+
+    spy(resource_files.WorkbenchResourceFileService, "export_rows", "read")
+    spy(resource_files, "write_resource_file", "write")
+    spy(material_files.WorkbenchMaterialFileService, "export_rows", "read")
+    spy(material_files, "write_material_file", "write")
+    listed = client.get(BASE + "/entities/machine", query_string={"size": 200})
+    assert listed.status_code == 200, listed.get_data(as_text=True)
+    approved = client.post(BASE + "/exports/machine/preview", json={
+        "selection": "all", "scope": {}, "page_size": 200, "snapshot_ref": listed.get_json()["meta"]["snapshot_ref"]}).get_json()
+    result = client.get(BASE + "/exports/machine", query_string={"export_ref": approved["data"]["export_ref"], "format": fmt})
+    assert result.status_code == 200, result.get_json()
+    assert int(result.headers["X-Workbench-Row-Count"]) == approved["data"]["row_count"] > 0
+    assert seen == [("read", True), ("write", False)]
+    seen.clear()
+    approved = export_preview(client, "all")
+    result = client.get(BASE + "/exports/material", query_string={"export_ref": approved["data"]["export_ref"], "format": fmt})
+    assert result.status_code == 200, result.get_json()
+    assert seen == [("read", True), ("write", False)]

@@ -73,10 +73,12 @@ def resource_export(kind):
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
+    service = WorkbenchResourceFileService(g.db, kind, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])
-        download = WorkbenchResourceFileService(g.db, kind, current_app.logger).export(fmt, **binding["arguments"])
-    response = _response(download)
+        rows = service.export_rows(fmt, **binding["arguments"])
+    # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
+    response = _response(service.write_export(rows, fmt, scope=binding["arguments"]["scope"]))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     return response

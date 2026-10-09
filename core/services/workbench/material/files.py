@@ -14,12 +14,13 @@ and call confirmation from mutate. All facts/inputs are rechecked before writes;
 a savepoint prevents partial batches even if the caller catches a domain failure.
 Referenced updates are flagged requires_confirmation in the approved preview.
 
-export(file_format, *, scope=None, selected_refs=None) requires the caller's
+export_rows(file_format, *, scope=None, selected_refs=None) requires the caller's
 already validated read-snapshot transaction and exactly one explicit scope or
 ref list. Filters export every matching row in query order; selected refs retain
 their explicit order. The 2000-row import cap does not apply to either selection.
 XLSX is limited only by worksheet capacity; CSV has no worksheet row/cell cap.
-Returns MaterialFileDownload(filename, mime_type, content: bytes, row_count).
+write_export(rows, file_format) encodes those rows after the read transaction
+ends and returns MaterialFileDownload(filename, mime_type, content: bytes, row_count).
 template(file_format='xlsx') returns header-only bytes, with XLSX field examples
 in header comments (no demo records that could accidentally be imported).
 """
@@ -196,7 +197,8 @@ class WorkbenchMaterialFileService:
             result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
             return WorkbenchCommandOutcome(result, {"rows": results, "summary": current.as_dict()["summary"]})
 
-    def export(self, file_format, *, scope=None, selected_refs=None):
+    def export_rows(self, file_format, *, scope=None, selected_refs=None):
+        """在调用方已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("物料导出必须在调用方已验证的查询快照事务中执行。")
         if (scope is None) == (selected_refs is None):
@@ -210,7 +212,12 @@ class WorkbenchMaterialFileService:
             rows, total = (self.query.get_by_ref(ref) for ref in refs), len(refs)
         check_export_capacity(total, file_format)
         with closing(rows), closing(self._export_rows(rows)) as projected:
-            return write_material_file(projected, file_format)
+            return list(projected)
+
+    @staticmethod
+    def write_export(rows, file_format):
+        """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
+        return write_material_file(rows, file_format)
 
     def _export_rows(self, rows):
         for raw in rows:

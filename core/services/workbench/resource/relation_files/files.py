@@ -362,7 +362,8 @@ class WorkbenchRelationFileService:
         rows.sort(key=lambda item: (item["operator_code"], item["machine_code"]))
         return rows
 
-    def export(self, file_format, *, scope, selected_refs=None):
+    def export_rows(self, file_format, *, scope, selected_refs=None):
+        """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("关系导出必须在已验证的查询快照事务中执行。")
         scope = resource_scope("operator", scope)
@@ -373,6 +374,10 @@ class WorkbenchRelationFileService:
             codes = [reader.resolve(ref).entity_key for ref in resource_refs(selected_refs, allow_empty=True)]
         rows = self._rows_for(codes)
         check_capacity(len(rows), file_format)
+        return rows
+
+    def write_export(self, rows, file_format):
+        """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
         return write_relation_file(self.kind, rows, file_format)
 
     @staticmethod

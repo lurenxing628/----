@@ -101,8 +101,11 @@ def confirm(conn, kind, preview, content=None, fmt="csv", *, command=None, key=N
 
 
 def exported(conn, kind, fmt, *, category=None, selected_refs=None, query=""):
+    service, selected_scope = WorkbenchResourceFileService(conn, kind), {**scope(category), "query": query}
+    # 和下载路由一样：读快照里只读行，事务结束后再生成文件。
     with TransactionManager(conn).transaction():
-        return WorkbenchResourceFileService(conn, kind).export(fmt, scope={**scope(category), "query": query}, selected_refs=selected_refs)
+        rows = service.export_rows(fmt, scope=selected_scope, selected_refs=selected_refs)
+    return service.write_export(rows, fmt, scope=selected_scope)
 
 
 def seed_many(conn, kind, count=10000):

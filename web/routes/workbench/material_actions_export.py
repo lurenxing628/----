@@ -90,8 +90,9 @@ def material_export():
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = check_source_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])
-        download = WorkbenchMaterialFileService(g.db, current_app.logger).export(file_format, **binding["arguments"])
-    response = _download_response(download)
+        rows = WorkbenchMaterialFileService(g.db, current_app.logger).export_rows(file_format, **binding["arguments"])
+    # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
+    response = _download_response(WorkbenchMaterialFileService.write_export(rows, file_format))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     return response

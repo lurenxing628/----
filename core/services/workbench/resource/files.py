@@ -152,7 +152,8 @@ class WorkbenchResourceFileService:
         count = len(self.reader.matching_keys(ResourcePageRequest(kind=self.kind, **effective)))
         return {"scope": effective}, count
 
-    def export(self, file_format, *, scope, selected_refs=None):
+    def export_rows(self, file_format, *, scope, selected_refs=None):
+        """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出必须在已验证的查询快照事务中执行。")
         scope = resource_scope(self.kind, scope)
@@ -164,7 +165,11 @@ class WorkbenchResourceFileService:
             rows, count = ({"ref": ref} for ref in refs), len(refs)
         with closing(rows):
             check_capacity(count, file_format)
-            return write_resource_file(self.kind, self._export_rows(rows, scope), file_format, category=scope["category"])
+            return list(self._export_rows(rows, scope))
+
+    def write_export(self, rows, file_format, *, scope):
+        """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
+        return write_resource_file(self.kind, rows, file_format, category=resource_scope(self.kind, scope)["category"])
 
     def _export_rows(self, rows, scope):
         for row in rows:
