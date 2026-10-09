@@ -61,10 +61,21 @@
       <td><Status handling={row.handling} /><div className="dy-muted">历史 {row.handling.history_count} 条</div></td><td>{value(row.handling.owner)}<div className={row.handling.deadline_overdue ? 'dy-danger' : 'dy-muted'}>{dateOnly(row.handling.deadline)}{row.handling.deadline_overdue ? ' · 处置超期' : ''}</div></td>
       <td className="wb-col-actions"><Button reasonDisplay="inline" className="mini" icon="search" aria-label={'查看 ' + row.subject + ' ' + C.categories[row.category]} onClick={() => onSelect(row.item_ref)}>详情</Button></td></tr>)}</tbody></table></div>;
   }
-  function Gaps({ categories, selected }) {
+  function Gaps({ categories, selected, analysis }) {
     const rows = Object.entries(categories).filter(([key]) => selected === 'all' || key === selected), seen = new Set(), issues = [];
     let count = 0;
-    rows.forEach(([, summary]) => summary.issues.forEach(issue => { count += 1; const key = JSON.stringify(issue); if (!seen.has(key)) { seen.add(key); issues.push(issue); } }));
+    const include = issue => { count += 1; const key = JSON.stringify(issue); if (!seen.has(key)) { seen.add(key); issues.push(issue); } };
+    // The analysis already carries the plan, execution, downtime and pressure sources.
+    // This panel owns those notices; category-specific evidence below still keeps its own records.
+    rows.forEach(([key, summary]) => {
+      const analysisSource = analysis && (['delivery', 'actual', 'downtime'].includes(key)
+        || key === 'material' && selected === 'material' && analysis.pending.state === 'unavailable');
+      if (!analysisSource) summary.issues.forEach(include);
+    });
+    if (analysis) {
+      analysis.issues.forEach(include);
+      if (selected === 'material') analysis.pending.issues.forEach(include);
+    }
     return <><Issues issues={issues} />{count > issues.length && <details className="dy-evidence"><summary>查看各来源读取状态</summary><dl className="dy-facts">{rows.filter(([, summary]) => summary.issues.length).map(([key, summary]) => <div key={key}><dt>{C.categories[key]}</dt><dd><CategoryState summary={summary} /></dd></div>)}</dl></details>}
       {rows.map(([key, summary]) => {
         if (!summary.evaluation_gaps.length) return null;
@@ -106,11 +117,11 @@
         <Evidence source={item.source} /><p>这条记录和它的处置状态都没有变。</p><ErrorBox error={error} /></div>
     </Modal>;
   }
-  function Pressure({ data, navigate, canNavigate }) {
+  function Pressure({ data, navigate, canNavigate, showIssues = true }) {
     const p = data.resource_pressure, rows = p.resources;
     return <section aria-label="资源压力"><div className="dy-heading"><h3>正式计划资源压力</h3>{data.plan && <Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'gantt', context: { plan_ref: data.plan.plan_ref }, enabled: true })}>计划甘特</Button>}</div>
       <div className="dy-context">{data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取'} · {p.time_scope ? window.WorkbenchFormat.dateTime(p.time_scope.range_start) + ' 至 ' + window.WorkbenchFormat.dateTime(p.time_scope.range_end) + ' · 含起日，不含止日' : '时间范围未读取'}</div>
-      <Issues issues={p.issues} />
+      {showIssues && <Issues issues={p.issues} />}
       {!rows || !rows.length ? <window.WorkbenchListControls.EmptyState kind="empty" title={!rows ? '资源压力暂时无法计算。' : '当前正式计划没有资源占用数据。'} /> : <div className="dy-scroll"><table className="dy-resource"><caption className="wb-sr-only">正式计划资源压力</caption><thead><tr><th scope="col">资源</th><th scope="col">班表内占用（小时）</th><th scope="col">可用（小时）</th><th scope="col">整窗占用率</th><th scope="col">重叠时段（小时）</th><th scope="col">班表外占用（小时）</th><th scope="col">容量缺口（小时）</th></tr></thead><tbody>{rows.map(r => <tr key={r.kind + r.resource_ref} data-resource-ref={r.resource_ref}><td><b>{r.label || '名称未填写'}</b><div className="dy-muted">{r.kind === 'machine' ? '设备' : '人员'} · {r.operation_count} 道工序</div></td>
         <td>{hoursValue(r.available_occupied_hours)}</td><td>{hoursValue(r.available_hours)}</td><td>{window.WorkbenchFormat.percent(r.utilization)}{r.utilization !== null && <div className={'dy-meter' + (r.capacity_insufficient || r.has_overlap ? ' hot' : '')}><i style={{ width: Math.min(100, Math.max(0, r.utilization * 100)) + '%' }} /></div>}</td>
         <td className={r.has_overlap ? 'dy-danger' : ''}>{hoursValue(r.overlap_hours)}</td><td className={r.outside_available_hours > 0 ? 'dy-warning' : ''}>{hoursValue(r.outside_available_hours)}</td><td>{hoursValue(r.capacity_shortfall_hours)}<Issues issues={r.issues} /></td></tr>)}</tbody></table></div>}

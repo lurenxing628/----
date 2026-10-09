@@ -1,5 +1,6 @@
 """Bounded SELECTs with original SQLite storage types, including legacy dates; no rulings here."""
 
+from core.models.enums import SOURCE_TYPE_VALUES, SourceType, read_source_type
 from core.models.workbench_dashboard import MAX_BYTES, MAX_FACT_ROWS, bounded
 
 TABLES = {"SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
@@ -10,14 +11,19 @@ _QUOTED = {name: '"' + name + '"' for name in TABLES}
 _FROM = {name: ' FROM "' + name + '"' for name in TABLES}
 
 
-def rows(conn, sql, params=()):
+def rows(conn, sql, params=(), *, select=None, limit=None):
     cursor = conn.execute(sql, params)
     names = [column[0] for column in cursor.description]
     result, size = [], 0
     for row in cursor:
+        item = dict(zip(names, row))
+        if select is not None and not select(item):
+            continue
         size += sum(len(value) if type(value) is bytes else len(value.encode("utf-8")) if type(value) is str else 16 for value in row)
         bounded(range(size), MAX_BYTES)
-        result.append(dict(zip(names, row)))
+        result.append(item)
+        if limit is not None and len(result) >= limit:
+            break
     return result
 
 
@@ -26,8 +32,13 @@ def latest_outsourcing_fact_rows(conn, ref):
     return rows(conn, "SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT 1", (ref,))
 
 
-def unknown_source_rows(conn, limit):
-    """归属未填或非法的批次工序，连其工序编号、批次编号与外协登记编号，按 id 取 limit 行。"""
+def source_gap_rows(conn, limit):
+    """Stream unknown sources and legacy external values outside canonical registration reads."""
+    def selected(row):
+        row["source_kind"] = read_source_type(row["source"])
+        return row["source_kind"] not in SOURCE_TYPE_VALUES or (
+            row["source_kind"] == SourceType.EXTERNAL.value and row["source"] != SourceType.EXTERNAL.value)
+
     return rows(conn, """SELECT r.ref AS operation_ref, b.ref AS batch_ref,
         m.outsourcing_ref, CASE WHEN 1 THEN o.op_code END AS business_code,
         CASE WHEN 1 THEN o.source END AS source
@@ -35,8 +46,7 @@ def unknown_source_rows(conn, limit):
         LEFT JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT)
         LEFT JOIN WorkbenchEntityRefs b ON b.kind='batch' AND b.active=1 AND b.entity_key=o.batch_id
         LEFT JOIN WorkbenchOutsourcingMembers m ON m.operation_ref=r.ref
-        WHERE o.source IS NULL OR o.source NOT IN ('internal','external')
-        ORDER BY o.id LIMIT ?""", (limit,))
+        ORDER BY o.id""", select=selected, limit=limit)
 
 
 class DashboardSourceRepository:

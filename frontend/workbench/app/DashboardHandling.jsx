@@ -30,7 +30,9 @@
     return <Modal title={saved ? '上次处置结果' : reopen ? '重新打开处置' : '登记条目处置'} icon={reopen ? 'refresh-cw' : 'square-pen'} locked={command.busy} onClose={onClose}
       footer={<><Button reasonDisplay="inline" onClick={onClose} disabled={command.busy}>{saved && saved.phase === 'pending' ? '关闭并保留这次操作' : '关闭'}</Button>
         {!saved && <Button reasonDisplay="inline" icon="check" className="btn primary" busy={command.busy} reason={disabledReason || (command.storageError ? '上次操作记录还没确认' : '')} onClick={submit}>{reopen ? '确认重新打开' : '提交处置'}</Button>}</>}>
-      <div className="dy-dialog-body"><ErrorBox error={error || command.error || command.storageError} />{command.notice && <div className="dy-note">{command.notice}</div>}
+      <div className="dy-dialog-body"><ErrorBox error={command.storageError || error || command.error} />
+        {command.storageError && <Button icon="refresh-cw" disabled={command.busy} onClick={command.sync}>刷新上次操作记录</Button>}
+        {command.notice && <div className="dy-note">{command.notice}</div>}
         {saved ? <Receipt command={command} onFinish={onFinish} /> : item && <><h3>{item.subject}</h3><div className="dy-tools"><P.Risk risk={item.risk} /><P.Status handling={item.handling} /></div>
           {reopen ? <><div className="dy-note">重开后状态变为跟进中，本次填的完成内容会清除。原来的完成时间、结果和凭据都留在历史里。</div><label className="dy-form">重开原因<textarea aria-label="重开原因" value={draft.reason} maxLength={4000} onChange={e => update('reason', e.target.value)} /></label><P.Facts handling={item.handling} /></> : <form className="dy-form" onSubmit={e => { e.preventDefault(); submit(); }}>
             <label>目标处置状态<select aria-label="目标处置状态" value={draft.target_status} onChange={e => update('target_status', e.target.value)} disabled={command.busy}>{item.allowed_transitions.map(s => <option key={s} value={s}>{C.statuses[s]}</option>)}</select></label>

@@ -17,7 +17,7 @@
   async function request(url, fetcher, signal) {
     const controller = new AbortController(), abort = () => controller.abort();
     if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
-    const timer = setTimeout(abort, 60000);
+    const timer = setTimeout(abort, C.READ_TIMEOUT_MS);
     try {
       const response = await fetcher(url, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
       C.check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '读到的数据不完整，请刷新后重试。');

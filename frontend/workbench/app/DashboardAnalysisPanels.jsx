@@ -32,9 +32,9 @@
       <div><dt>开始 / 结束</dt><dd>{M.timeLabel(row.start)} / {M.timeLabel(row.end)}</dd></div><div><dt>登记时间</dt><dd>{M.timeLabel(row.recorded_at)}</dd></div>
     </dl>)}</section>
   </>; }
-  function Material({ data }) {
+  function Material({ data, showIssues = true }) {
     const p = data.pending;
-    return <section aria-label="待排批次与齐套日期"><h3>待排批次与齐套日期</h3><div className="dy-context">待排 {value(p.count)} 批 · 已读取 {p.known_count} 批</div><Issues issues={p.issues} />
+    return <section aria-label="待排批次与齐套日期"><h3>待排批次与齐套日期</h3><div className="dy-context">待排 {value(p.count)} 批 · 已读取 {p.known_count} 批</div>{showIssues && <Issues issues={p.issues} />}
       <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">待排批次与齐套日期</caption><thead><tr><th scope="col">批次 / 零件</th><th scope="col">数量</th><th scope="col">交期</th><th scope="col">齐套状态</th><th scope="col">齐套日期</th></tr></thead><tbody>{p.items.map(row => <tr key={row.batch_ref} data-pending-batch={row.batch_ref}>
         <td><b>{row.batch_id}</b><small>{value(row.part_label)}</small></td><td>{value(row.quantity)}</td><td>{value(row.due_date)}</td>
         <td>{({ yes: '齐套', no: '未齐套', partial: '部分齐套' })[row.ready_status] || '未知'}</td><td>{value(row.ready_date)}</td></tr>)}</tbody></table></div>

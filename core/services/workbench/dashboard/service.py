@@ -240,9 +240,9 @@ class WorkbenchDashboardService:
     def workspace(self, data, query):
         selected = self.selected(data, query)
         items, pagination = page(selected, query.number, query.size, [{"field": query.sort, "direction": query.direction}])
-        return payload_size({"plan": data["plan"], "as_of": data["as_of"], "categories": data["categories"],
-                             "resource_pressure": data["resource_pressure"], "candidate_catalog": data["candidate_catalog"],
-                             "items": [self.public_item(item) for item in items], "page": pagination, "scope": query.scope()})
+        return {"plan": data["plan"], "as_of": data["as_of"], "categories": data["categories"],
+                "resource_pressure": data["resource_pressure"], "candidate_catalog": data["candidate_catalog"],
+                "items": [self.public_item(item) for item in items], "page": pagination, "scope": query.scope()}
 
     def analysis(self, sources):
         return project_dashboard_analysis(sources.facts, sources.material)

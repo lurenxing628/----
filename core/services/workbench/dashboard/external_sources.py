@@ -2,7 +2,7 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
-from data.repositories.workbench_dashboard_source_repo import latest_outsourcing_fact_rows, unknown_source_rows
+from data.repositories.workbench_dashboard_source_repo import latest_outsourcing_fact_rows, source_gap_rows
 
 
 def latest_fact(reader, ref):
@@ -13,9 +13,9 @@ def latest_fact(reader, ref):
     return selected[0]
 
 
-def unknown_sources(conn):
-    # An invalid source is not proof of an internal operation. Do not hide it.
-    return bounded(unknown_source_rows(conn, MAX_ROWS + 1))
+def source_gaps(conn):
+    # Neither unknown values nor legacy external values outside strict registration reads are zero risk.
+    return bounded(source_gap_rows(conn, MAX_ROWS + 1))
 
 
 def subject(value, fallback):

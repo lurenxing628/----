@@ -3,7 +3,6 @@
 from collections import defaultdict
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_dashboard import payload_size
 from core.services.capacity.plan_calendar_intervals import instant, wire
 from core.services.workbench import messages
 from core.services.workbench.facts.resource_pressure import (
@@ -145,4 +144,4 @@ def project_dashboard_analysis(facts, material):
     data = _projection(facts, material)
     data.update(as_of=facts.now.isoformat(timespec="seconds"), capabilities={"view": True, "adopt": False},
                 basis="current_official_plan_and_readiness_sources")
-    return payload_size(data)
+    return data

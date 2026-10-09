@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   const BASE = '/api/workbench/v1/dashboard', RECEIPTS = '/api/workbench/v1/commands/';
+  const READ_TIMEOUT_MS = 60000;
   const categories = { all: '全部风险', delivery: '交期风险', actual: '执行偏差', external: '外协回厂', downtime: '停机影响', material: '齐套缺口', candidate: '候选方案待确认' };
   const statuses = { new: '待分析', following: '跟进中', awaiting_verification: '待验证', closed: '已关闭' };
   const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_connected: '尚未开通' };
@@ -136,7 +137,7 @@
   }
   function create(fetcher = window.fetch.bind(window)) {
     async function request(url, body, signal, intent) {
-      const controller = new AbortController(), abort = () => controller.abort(), timer = setTimeout(abort, 30000);
+      const controller = new AbortController(), abort = () => controller.abort(), timer = setTimeout(abort, body === undefined ? READ_TIMEOUT_MS : 30000);
       if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
       try {
         const r = await fetcher(url, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
@@ -165,5 +166,5 @@
         return receipt(v, intent); }
     };
   }
-  window.DashboardContract = { categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, item, baseHandling, catalog, detail, expected, receipt, create, external, isRejected: e => rejected.has(e) };
+  window.DashboardContract = { READ_TIMEOUT_MS, categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, item, baseHandling, catalog, detail, expected, receipt, create, external, isRejected: e => rejected.has(e) };
 })();

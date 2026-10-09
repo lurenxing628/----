@@ -72,6 +72,29 @@ def test_analysis_failure_does_not_hide_the_readable_list(dashboard_case, monkey
     assert data["analysis_error"] == "分析超过读取上限。"
 
 
+def test_merged_response_budget_keeps_the_complete_readable_list(dashboard_case, monkeypatch):
+    from core.models.workbench_dashboard import MAX_BYTES
+
+    case = dashboard_case
+    case.conn.execute("UPDATE MachineDowntimes SET reason_detail=?", ("x" * (3 * 1024 * 1024),))
+    case.conn.commit()
+    client = api(case, monkeypatch)
+
+    standalone = client.get(ROOT + "/analysis")
+    assert standalone.status_code == 200 and len(standalone.data) <= MAX_BYTES
+    assert standalone.get_json()["data"]["overlaps"]
+    response = client.get(ROOT)
+    assert response.status_code == 200 and len(response.data) <= MAX_BYTES
+    body = response.get_json()
+    assert body["data"]["analysis"] is None
+    assert "读取上限" in body["data"]["analysis_error"]
+    assert body["data"]["page"]["total"] == len(body["data"]["items"]) == 4
+    downtime = next(row for row in body["data"]["items"] if row["category"] == "downtime")
+    assert len(downtime["source"]["downtimes"][0]["reason"]) == 3 * 1024 * 1024
+    detail = client.get(ROOT + "/items/" + downtime["item_ref"], query_string={"snapshot_ref": body["meta"]["snapshot_ref"]})
+    assert detail.status_code == 200 and len(detail.data) <= MAX_BYTES
+
+
 def test_unavailable_plan_keeps_handling_readable_and_analysis_consistent(dashboard_case, monkeypatch):
     case = dashboard_case
     item = case.item()

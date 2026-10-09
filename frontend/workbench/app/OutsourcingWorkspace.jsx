@@ -46,7 +46,7 @@
         {[['all', '全部登记'], ['awaiting', '待回厂'], ['overdue', '超期未回'], ['returned', '已回厂']].map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></label>
         <Button icon="refresh-cw" aria-label="刷新外协登记" busy={read.loading} disabled={command.busy} onClick={reload} />
         <Button className="btn primary" icon="plus" disabled={blocked} onClick={() => setDialog({ item: null })}>新增外协登记</Button></div></div>
-      <ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}
+      {!dialog && <><ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}</>}
       {command.saved && <div className="os-note warning"><div className="os-heading"><span>{command.saved.phase === 'pending' ? '上次外协登记还没确认结果，不能重新提交。' : '上次外协登记的结果已经出来了，请点「完成」。'}</span>
         <Button icon="history" onClick={() => setDialog({ item: null })}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次登记结果'}</Button></div></div>}
       <ErrorBox error={read.error} />{read.loading && !shown && <EmptyState kind="loading" title="正在读取外协登记" />}

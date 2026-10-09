@@ -26,6 +26,7 @@
     const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && !!selected && !!snapshot);
     const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage, tab], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
     const item = detail.result && detail.result.data.item;
+    const handlingOpen = !!(dialog && (command.saved || item));
     function choose(ref) { setSelected(ref); setHistoryPage(1); }
     function change(patch, paging = false) {
       const next = { ...q, ...patch, page: paging ? patch.page : 1 }; delete next.snapshot_ref;
@@ -83,7 +84,7 @@
       <header className="dy-heading"><div><h2 className="wb-page-title">值班台</h2><div className="dy-context wb-page-context"><span>{comparing ? comparisonState.caption ? comparisonState.caption.name + ' · ' + comparisonState.caption.status : '尚未确认所选候选方案' : data ? data.plan ? data.plan.display_name + ' · 当前正式' : data.categories.delivery.state === 'no_official_plan' ? '当前无正式计划' : '正式计划未能读取' : '正式计划未读取'}</span><span>{data ? window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(data.as_of)) : '数据尚未读取'}</span></div></div><div className="dy-tools"><Button icon="refresh-cw" aria-label="刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload} />
         {command.saved && <Button icon="history" onClick={() => setDialog(true)}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'}</Button>}</div></header>
 
-      <ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}
+      {!handlingOpen && <><ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}</>}
       {registrationChanged && <div className="dy-note warning" role="status">外协物流登记已更新。当前仍显示离开前的筛选和条目，请点「刷新值班台」更新风险与处置。</div>}
       {!dialog && command.saved && <div className={'dy-note ' + (command.saved.phase === 'confirmed' ? 'success' : 'warning')}>{command.saved.phase === 'confirmed' ? '上次处置结果已确认，点「完成」后更新风险与处置。' : '上次处置还没确认结果，确认前不能新增处置。'}</div>}
       <P.Overview data={data} analysis={analysisData} loading={list.loading} error={list.error}
@@ -99,7 +100,7 @@
         <div className="dy-panel" role="tabpanel" id="dy-content" aria-labelledby={'dy-tab-' + activeTab}>
           <ErrorBox error={list.error || navError} />{list.error && <Button icon="refresh-cw" onClick={reload}>刷新当前筛选</Button>}{list.loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取风险、资源与候选方案列表" />}
           {external && <P.ExternalRegistration summary={currentSummary} onUpdated={reload} />}
-          {data && <><P.Gaps categories={data.categories} selected={q.category} />
+          {data && <><P.Gaps categories={data.categories} selected={q.category} analysis={showingAnalysis ? analysisData : null} />
             {external && <P.ExternalHandlingState summary={currentSummary} />}
             {handlingAvailable && activeTab === 'items' && <div className={item ? 'wb-detail-layout dy-detail-layout' : ''}><div><P.Filters query={q} busy={list.loading} onChange={change} /><P.List data={data} selected={selected} onSelect={choose} query={q} onClear={() => change({ query: '', status: 'all' })} />
               <P.Pager page={data.page} busy={list.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
@@ -108,12 +109,12 @@
             {!external && tab === 'analysis' && <>
               {analysisRead.loading && <p role="status">正在读取同一正式计划的分析依据。</p>}
               {analysisRead.error && <Button icon="refresh-cw" onClick={reload}>刷新分析</Button>}
-              {analysisData && <><window.ResourceControls.Issues issues={analysisData.issues} />
-                {q.category === 'material' ? <window.DashboardAnalysisPanels.Material data={analysisData} /> : analysisData.plan && (q.category === 'downtime'
+              {analysisData && <>
+                {q.category === 'material' ? <window.DashboardAnalysisPanels.Material data={analysisData} showIssues={false} /> : analysisData.plan && (q.category === 'downtime'
                   ? <window.DashboardAnalysisPanels.Downtime data={analysisData} selected={analysisBatch} onSelect={setAnalysisBatch} />
                   : q.category === 'actual' ? <window.DashboardAnalysisPanels.Actual data={analysisData} navigate={navigate} />
                   : <window.DashboardAnalysisPanels.Delivery data={analysisData} selected={analysisBatch} onSelect={setAnalysisBatch} onCompare={() => setTab('compare')} />)}
-                {!['material', 'actual'].includes(q.category) && <P.Pressure data={data} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}
+                {!['material', 'actual'].includes(q.category) && <P.Pressure data={data} showIssues={false} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}
               </>}
             </>}
             {!external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? <>
@@ -125,7 +126,7 @@
             {handlingAvailable && activeTab === 'records' && <window.DashboardHistory read={history} selected={selected} rows={data.items} historyPage={historyPage} onPage={setHistoryPage} onSelect={choose} onHandle={() => setDialog(true)} />}
           </>}
         </div></div></div><footer className="dy-footer"><span>正式计划 / 报工记录 / 资源班表 / 齐套记录 / 外协登记</span></footer>
-      {dialog && (command.saved || item) && <window.DashboardHandling key={command.saved ? command.saved.request_key : item.item_ref} item={item} command={command} onClose={() => setDialog(false)} onFinish={finish} />}
+      {handlingOpen && <window.DashboardHandling key={command.saved ? command.saved.request_key : item.item_ref} item={item} command={command} onClose={() => setDialog(false)} onFinish={finish} />}
       {navigationConfirmation && <P.NavigationConfirmation entry={navigationConfirmation} error={navError}
         onClose={() => setNavigationConfirmation(null)} onConfirm={confirmNavigation} />}
     </div>;

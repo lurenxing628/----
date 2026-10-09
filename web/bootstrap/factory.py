@@ -51,6 +51,7 @@ from .workbench_request_lifecycle import (
     install_workbench_request_lifecycle,
     track_workbench_request_connection,
 )
+from .workbench_request_lifecycle_wsgi import call_on_workbench_request_close
 from .workbench_system_restore_recovery import prepare_system_restore_startup
 
 # atexit 退出备份去重：避免 create_app_core() 在测试/脚本中被多次调用导致重复注册
@@ -401,7 +402,7 @@ def create_app_core(
         if (runtime is not None and runtime.ready and resp.status_code < 400
                 and not request.path.startswith("/static/")
                 and request.path not in {"/system/health", "/system/runtime/shutdown"}):
-            resp.call_on_close(runtime.request_maintenance_check)
+            call_on_workbench_request_close(runtime.request_maintenance_check)
         return resp
 
     @app.after_request

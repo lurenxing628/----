@@ -17,7 +17,7 @@ from core.models.workbench_outsourcing_input import next_values
 from core.services.workbench.outsourcing.projection import values
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 
-from .external_sources import gap, latest_fact, subject, unknown_sources
+from .external_sources import gap, latest_fact, source_gaps, subject
 from .facts import source_issue, typed
 from .projection import category
 
@@ -87,12 +87,17 @@ def _targets(reader, result):
         detail = gap(item["operation_ref"], title, issues)
         detail["operation"] = {"code": item["business_code"], "name": item["label"]}
         result["evaluation_gaps"].append(detail)
-    invalid = unknown_sources(reader.conn)
-    for item in invalid:
+    source_rows = source_gaps(reader.conn)
+    for item in source_rows:
         if item["outsourcing_ref"] is None:
-            result["evaluation_gaps"].append(gap(item["operation_ref"], subject(item["business_code"], "来源未知工序"),
-                [source_issue("external_source_unknown", "工序归属未填写，请确认自制或外协。")]))
-    return {"targets": targets, "unregistered_sources": snapshots, "unknown_sources": invalid}
+            legacy_external = item["source_kind"] == "external"
+            if legacy_external:
+                issue = source_issue("external_source_noncanonical", "已识别为历史外协工序，但归属未按标准保存，物流登记尚未评估。请到基础资料核对。")
+            else:
+                issue = source_issue("external_source_unknown", "工序归属未填写或无效，请确认自制或外协。")
+            title = subject(item["business_code"], "历史外协工序" if legacy_external else "来源未知工序")
+            result["evaluation_gaps"].append(gap(item["operation_ref"], title, [issue]))
+    return {"targets": targets, "unregistered_sources": snapshots, "source_gaps": source_rows}
 
 
 def external(conn, now):

@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from core.models.enums import read_source_type
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
@@ -94,6 +95,9 @@ class DashboardFacts:
             scope = PlanReadScope(ref)
             self.delivery, self.delivery_facts = read_plan_delivery(self.conn, scope=scope, identity=identity)
             self.task_rows = reader._task_rows(repo, entry, scope)
+            self.raw["plan_task_sources"] = [(row["schedule_id"], row["source"]) for row in self.task_rows]
+            for row in self.task_rows:
+                row["source"] = read_source_type(row["source"])
             tasks = reader.references.get_task_refs(ref, self.task_rows)
             operations = reader.references.get_operation_refs(row["op_id"] for row in self.task_rows)
             resources, resource_state = reader._resources(self.task_rows)
@@ -121,7 +125,11 @@ class DashboardFacts:
         ledger = ExecutionLedgerService(self.conn, clock=lambda: self.now)
         try:
             ledger.require_schema()
-            self._ledger = ledger, ledger.load([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
+            facts = ledger.load([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
+            self.raw["execution_operation_sources"] = {ref: row["source"] for ref, row in facts["operations"].items()}
+            for row in facts["operations"].values():
+                row["source"] = read_source_type(row["source"])
+            self._ledger = ledger, facts
         except WorkbenchCommandRejected as exc:
             self._execution_unavailable(exc)
 

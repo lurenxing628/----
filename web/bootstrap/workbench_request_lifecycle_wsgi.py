@@ -8,6 +8,12 @@ from .workbench_request_lifecycle_state import _LOCAL, RequestFrame, current_fra
 
 _FRAME_KEY = "aps.workbench.request_lifecycle"
 _RESPONSE_KEY = "aps.workbench.request_lifecycle_response"
+_CLOSE_CALLBACKS_KEY = "aps.workbench.request_lifecycle_close_callbacks"
+
+
+def call_on_workbench_request_close(callback):
+    """Run after WSGI cleanup, including direct-passthrough file responses."""
+    request.environ.setdefault(_CLOSE_CALLBACKS_KEY, []).append(callback)
 
 
 def stopping_response():
@@ -31,9 +37,10 @@ def frame_scope(frame):
 
 
 class RequestIterable:
-    def __init__(self, iterable, frame):
+    def __init__(self, iterable, frame, close_callbacks=()):
         self._source, self._iterator = iterable, iter(iterable)
         self._frame, self._closed = frame, False
+        self._close_callbacks = close_callbacks
 
     def __iter__(self):
         return self
@@ -59,6 +66,8 @@ class RequestIterable:
                     close()
             finally:
                 self._frame.finish()
+        for callback in self._close_callbacks:
+            callback()
 
 
 def wrap_wsgi(app, gate):
@@ -69,7 +78,8 @@ def wrap_wsgi(app, gate):
         environ[_FRAME_KEY] = frame
         with frame_scope(frame):
             try:
-                response = RequestIterable(original(environ, start_response), frame)
+                iterable = original(environ, start_response)
+                response = RequestIterable(iterable, frame, environ.pop(_CLOSE_CALLBACKS_KEY, ()))
                 environ[_RESPONSE_KEY] = response
                 return response
             except BaseException:

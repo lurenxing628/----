@@ -112,8 +112,8 @@
     const title = (editor && !done ? ({ create: '新增', update: '编辑', delete: '删除' })[editor.action] : '维护') + (M.names[kind] || '基础资料');
     return <div className="plana resource-catalog" data-resource-catalog={kind} ref={root}>
       <Modal title={title} icon={editor && editor.action === 'delete' ? 'trash-2' : kind === 'shift_profile' ? 'clock-3' : 'folder-open'} locked={locked} guardOwner={guardOwner} onClose={options => requestClose('close', options)}
-        footer={<><Button onClick={() => requestClose()} reason={locked ? '操作结果还没确认，请保留当前页面。' : ''}>{lastReceipt || done ? '完成并返回' : '关闭'}</Button>
-            {editor && !done && <><Button onClick={() => requestClose('list')} disabled={locked}>返回列表</Button><Button type="submit" form={formId} className={'btn ' + (editor.action === 'delete' ? 'danger' : 'primary')} icon={editor.action === 'delete' ? 'trash-2' : 'check'} reason={reason || confirmReason} disabled={locked}>
+        footer={<><Button onClick={() => requestClose()} reason={locked ? '操作结果还没确认，请保留当前页面。' : ''} reasonDisplay="tooltip">{lastReceipt || done ? '完成并返回' : '关闭'}</Button>
+            {editor && !done && <><Button onClick={() => requestClose('list')} disabled={locked}>返回列表</Button><Button type="submit" form={formId} className={'btn ' + (editor.action === 'delete' ? 'danger' : 'primary')} icon={editor.action === 'delete' ? 'trash-2' : 'check'} reason={reason || confirmReason} reasonDisplay={needsReview ? 'tooltip' : 'inline'} disabled={locked}>
               {editor.action === 'delete' ? '确认删除' : '保存'}</Button></>}
             {done && <Button icon="folder-open" onClick={() => back('list')}>继续维护</Button>}</>}>
         <div className="modal-b form scroll">

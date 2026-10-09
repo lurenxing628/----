@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from werkzeug.test import EnvironBuilder
 
 from core.infrastructure.backup import BackupManager
 from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
@@ -83,6 +84,26 @@ def test_due_backup_runs_after_response_on_owned_worker_and_shutdown_joins_it(sy
         assert list(system_api.backups.glob("*_auto.db"))
     finally:
         release.set()
+
+
+def test_download_requests_schedule_maintenance_after_wsgi_lifecycle_finishes(system_api, monkeypatch):
+    app = system_api.app
+    runtime = app.extensions["workbench_run_runtime"]
+    gate = app.extensions["workbench_request_lifecycle"]
+    calls = []
+    monkeypatch.setattr(runtime, "request_maintenance_check", lambda: calls.append(gate.status["active"]))
+    statuses = []
+    environ = EnvironBuilder(path="/api/workbench/v1/entities/batch/template").get_environ()
+    response = app.wsgi_app(environ, lambda status, headers: statuses.append(status))
+    try:
+        assert statuses == ["200 OK"]
+        first_chunk = next(iter(response))
+        assert not calls and gate.status["active"] == 1
+        assert (first_chunk + b"".join(response)).startswith(b"PK")
+        assert calls == [0]
+    finally:
+        response.close()
+    assert calls == [0]
 
 
 def test_verified_restore_uses_protection_external_result_and_new_connection(system_api):

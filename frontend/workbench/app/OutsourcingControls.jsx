@@ -93,6 +93,7 @@
         <Button className="btn primary" icon="search" busy={locked} disabled={!!command.storageError} onClick={review}>预检核对</Button>}</>;
     return <Modal title={saved ? '外协登记结果' : item ? '核实 / 更正外协登记' : '新增外协登记'} icon="truck" onClose={onClose} guardOwner={guardOwner} locked={locked} footer={footer}>
       <div className="os-dialog-body" ref={formRef}><div tabIndex={-1} ref={errorRef}><ErrorBox error={command.storageError || error || command.error} excludePaths={saved || preview ? [] : formPaths} /></div>
+        {command.storageError && <Button icon="refresh-cw" disabled={locked} onClick={command.sync}>刷新上次操作记录</Button>}
         {saved ? <Pending command={command} /> : preview ? <><Target target={preview.data.target} /><Facts facts={preview.data.after} before={preview.data.before} />
           <dl className="os-facts"><div><dt>经办人</dt><dd>{preview.data.input.declared_operator}</dd></div><div><dt>核实原因</dt><dd>{preview.data.input.reason}</dd></div></dl>
           <div className="os-note">{preview.data.execution.reason}</div><div className="os-muted">核对时点 {when(preview.meta.as_of)}</div></> : <>

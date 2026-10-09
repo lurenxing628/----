@@ -15,7 +15,8 @@
       dirty: !done && JSON.stringify(value) !== JSON.stringify(K.draft(original.current)), locked: command.locked, message: '工作日历有尚未保存的修改。' });
     async function close() { if (!command.locked && !reading && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
     React.useEffect(() => { if (error || command.error) focusFirstInvalid(formRef.current); }, [error, command.error]);
-    const reason = K.stale(command) ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' :
+    const stale = K.stale(command);
+    const reason = stale ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' :
       C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
     async function reloadContext() {
       if (disabled) return;
@@ -46,7 +47,7 @@
       footer={<><Button disabled={command.locked || reading} onClick={close}>{done ? '关闭' : '取消'}</Button>
         {!done && !clearing && base.explicit && <Button icon="minus" disabled={disabled || !!review} onClick={() => setClearing(true)}>清除单独设置</Button>}
         {!done && clearing && <Button disabled={disabled} onClick={() => setClearing(false)}>返回编辑</Button>}
-        {!done && <Button type="submit" form={formId} className="btn primary" icon={clearing ? 'minus' : 'check'} busy={disabled} reason={reason}>
+        {!done && <Button type="submit" form={formId} className="btn primary" icon={clearing ? 'minus' : 'check'} busy={disabled} reason={reason} reasonDisplay={stale ? 'tooltip' : 'inline'}>
           {clearing ? '确认清除，恢复默认' : '保存配置'}</Button>}</>}>
       <form id={formId} ref={formRef} className="modal-b form scroll" onSubmit={save} noValidate>
         <div style={{ borderBottom: '1px solid var(--ui-border)', paddingBottom: 12, marginBottom: 16 }}><Policy value={base} /></div>

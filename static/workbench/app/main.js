@@ -12606,7 +12606,8 @@ function SMExport({
     React.useEffect(() => {
       if (error || command.error) focusFirstInvalid(formRef.current);
     }, [error, command.error]);
-    const reason = K.stale(command) ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' : C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
+    const stale = K.stale(command);
+    const reason = stale ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' : C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
     async function reloadContext() {
       if (disabled) return;
       setReading(true);
@@ -12682,7 +12683,8 @@ function SMExport({
         className: "btn primary",
         icon: clearing ? 'minus' : 'check',
         busy: disabled,
-        reason: reason
+        reason: reason,
+        reasonDisplay: stale ? 'tooltip' : 'inline'
       }, clearing ? '确认清除，恢复默认' : '保存配置'))
     }, /*#__PURE__*/React.createElement("form", {
       id: formId,
@@ -15734,7 +15736,8 @@ function SMExport({
       onClose: options => requestClose('close', options),
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: () => requestClose(),
-        reason: locked ? '操作结果还没确认，请保留当前页面。' : ''
+        reason: locked ? '操作结果还没确认，请保留当前页面。' : '',
+        reasonDisplay: "tooltip"
       }, lastReceipt || done ? '完成并返回' : '关闭'), editor && !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: () => requestClose('list'),
         disabled: locked
@@ -15744,6 +15747,7 @@ function SMExport({
         className: 'btn ' + (editor.action === 'delete' ? 'danger' : 'primary'),
         icon: editor.action === 'delete' ? 'trash-2' : 'check',
         reason: reason || confirmReason,
+        reasonDisplay: needsReview ? 'tooltip' : 'inline',
         disabled: locked
       }, editor.action === 'delete' ? '确认删除' : '保存')), done && /*#__PURE__*/React.createElement(Button, {
         icon: "folder-open",
@@ -49327,7 +49331,11 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.storageError || error || command.error,
       excludePaths: saved || preview ? [] : formPaths
-    })), saved ? /*#__PURE__*/React.createElement(Pending, {
+    })), command.storageError && /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      disabled: locked,
+      onClick: command.sync
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), saved ? /*#__PURE__*/React.createElement(Pending, {
       command: command
     }) : preview ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Target, {
       target: preview.data.target
@@ -49576,12 +49584,12 @@ function SystemLiveOverview({
       onClick: () => setDialog({
         item: null
       })
-    }, "\u65B0\u589E\u5916\u534F\u767B\u8BB0"))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u65B0\u589E\u5916\u534F\u767B\u8BB0"))), !dialog && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.storageError
     }), command.storageError && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: command.sync
-    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), command.saved && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55")), command.saved && /*#__PURE__*/React.createElement("div", {
       className: "os-note warning"
     }, /*#__PURE__*/React.createElement("div", {
       className: "os-heading"
@@ -49704,6 +49712,7 @@ function SystemLiveOverview({
 
   const BASE = '/api/workbench/v1/dashboard',
     RECEIPTS = '/api/workbench/v1/commands/';
+  const READ_TIMEOUT_MS = 60000;
   const categories = {
     all: '全部风险',
     delivery: '交期风险',
@@ -49910,7 +49919,7 @@ function SystemLiveOverview({
     async function request(url, body, signal, intent) {
       const controller = new AbortController(),
         abort = () => controller.abort(),
-        timer = setTimeout(abort, 30000);
+        timer = setTimeout(abort, body === undefined ? READ_TIMEOUT_MS : 30000);
       if (signal) {
         signal.addEventListener('abort', abort, {
           once: true
@@ -49981,6 +49990,7 @@ function SystemLiveOverview({
     };
   }
   window.DashboardContract = {
+    READ_TIMEOUT_MS,
     categories,
     statuses,
     states,
@@ -50030,7 +50040,7 @@ function SystemLiveOverview({
       });
       if (signal.aborted) abort();
     }
-    const timer = setTimeout(abort, 60000);
+    const timer = setTimeout(abort, C.READ_TIMEOUT_MS);
     try {
       const response = await fetcher(url, {
         method: 'GET',
@@ -50617,14 +50627,15 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BBE\u5907"), /*#__PURE__*/React.createElement("dd", null, value((data.resources.find(r => r.resource_ref === row.machine_ref) || {}).label))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u56E0"), /*#__PURE__*/React.createElement("dd", null, value(row.reason))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F00\u59CB / \u7ED3\u675F"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.start), " / ", M.timeLabel(row.end))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u767B\u8BB0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.recorded_at)))))));
   }
   function Material({
-    data
+    data,
+    showIssues = true
   }) {
     const p = data.pending;
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5F85\u6392\u6279\u6B21\u4E0E\u9F50\u5957\u65E5\u671F"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5F85\u6392\u6279\u6B21\u4E0E\u9F50\u5957\u65E5\u671F"), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u5F85\u6392 ", value(p.count), " \u6279 \xB7 \u5DF2\u8BFB\u53D6 ", p.known_count, " \u6279"), /*#__PURE__*/React.createElement(Issues, {
+    }, "\u5F85\u6392 ", value(p.count), " \u6279 \xB7 \u5DF2\u8BFB\u53D6 ", p.known_count, " \u6279"), showIssues && /*#__PURE__*/React.createElement(Issues, {
       issues: p.issues
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
@@ -51919,20 +51930,31 @@ function SystemLiveOverview({
   }
   function Gaps({
     categories,
-    selected
+    selected,
+    analysis
   }) {
     const rows = Object.entries(categories).filter(([key]) => selected === 'all' || key === selected),
       seen = new Set(),
       issues = [];
     let count = 0;
-    rows.forEach(([, summary]) => summary.issues.forEach(issue => {
+    const include = issue => {
       count += 1;
       const key = JSON.stringify(issue);
       if (!seen.has(key)) {
         seen.add(key);
         issues.push(issue);
       }
-    }));
+    };
+    // The analysis already carries the plan, execution, downtime and pressure sources.
+    // This panel owns those notices; category-specific evidence below still keeps its own records.
+    rows.forEach(([key, summary]) => {
+      const analysisSource = analysis && (['delivery', 'actual', 'downtime'].includes(key) || key === 'material' && selected === 'material' && analysis.pending.state === 'unavailable');
+      if (!analysisSource) summary.issues.forEach(include);
+    });
+    if (analysis) {
+      analysis.issues.forEach(include);
+      if (selected === 'material') analysis.pending.issues.forEach(include);
+    }
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Issues, {
       issues: issues
     }), count > issues.length && /*#__PURE__*/React.createElement("details", {
@@ -52114,7 +52136,8 @@ function SystemLiveOverview({
   function Pressure({
     data,
     navigate,
-    canNavigate
+    canNavigate,
+    showIssues = true
   }) {
     const p = data.resource_pressure,
       rows = p.resources;
@@ -52135,7 +52158,7 @@ function SystemLiveOverview({
       })
     }, "\u8BA1\u5212\u7518\u7279")), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取', " \xB7 ", p.time_scope ? window.WorkbenchFormat.dateTime(p.time_scope.range_start) + ' 至 ' + window.WorkbenchFormat.dateTime(p.time_scope.range_end) + ' · 含起日，不含止日' : '时间范围未读取'), /*#__PURE__*/React.createElement(Issues, {
+    }, data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取', " \xB7 ", p.time_scope ? window.WorkbenchFormat.dateTime(p.time_scope.range_start) + ' 至 ' + window.WorkbenchFormat.dateTime(p.time_scope.range_end) + ' · 含起日，不含止日' : '时间范围未读取'), showIssues && /*#__PURE__*/React.createElement(Issues, {
       issues: p.issues
     }), !rows || !rows.length ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
@@ -52423,8 +52446,12 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-dialog-body"
     }, /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error || command.error || command.storageError
-    }), command.notice && /*#__PURE__*/React.createElement("div", {
+      error: command.storageError || error || command.error
+    }), command.storageError && /*#__PURE__*/React.createElement(Button, {
+      icon: "refresh-cw",
+      disabled: command.busy,
+      onClick: command.sync
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), command.notice && /*#__PURE__*/React.createElement("div", {
       className: "dy-note"
     }, command.notice), saved ? /*#__PURE__*/React.createElement(Receipt, {
       command: command,
@@ -52683,6 +52710,7 @@ function SystemLiveOverview({
     const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && !!selected && !!snapshot);
     const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage, tab], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
     const item = detail.result && detail.result.data.item;
+    const handlingOpen = !!(dialog && (command.saved || item));
     function choose(ref) {
       setSelected(ref);
       setHistoryPage(1);
@@ -52861,12 +52889,12 @@ function SystemLiveOverview({
     }), command.saved && /*#__PURE__*/React.createElement(Button, {
       icon: "history",
       onClick: () => setDialog(true)
-    }, command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'))), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'))), !handlingOpen && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.storageError
     }), command.storageError && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: command.sync
-    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55"), registrationChanged && /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u4E0A\u6B21\u64CD\u4F5C\u8BB0\u5F55")), registrationChanged && /*#__PURE__*/React.createElement("div", {
       className: "dy-note warning",
       role: "status"
     }, "\u5916\u534F\u7269\u6D41\u767B\u8BB0\u5DF2\u66F4\u65B0\u3002\u5F53\u524D\u4ECD\u663E\u793A\u79BB\u5F00\u524D\u7684\u7B5B\u9009\u548C\u6761\u76EE\uFF0C\u8BF7\u70B9\u300C\u5237\u65B0\u503C\u73ED\u53F0\u300D\u66F4\u65B0\u98CE\u9669\u4E0E\u5904\u7F6E\u3002"), !dialog && command.saved && /*#__PURE__*/React.createElement("div", {
@@ -52948,7 +52976,8 @@ function SystemLiveOverview({
       onUpdated: reload
     }), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(P.Gaps, {
       categories: data.categories,
-      selected: q.category
+      selected: q.category,
+      analysis: showingAnalysis ? analysisData : null
     }), external && /*#__PURE__*/React.createElement(P.ExternalHandlingState, {
       summary: currentSummary
     }), handlingAvailable && activeTab === 'items' && /*#__PURE__*/React.createElement("div", {
@@ -52992,10 +53021,9 @@ function SystemLiveOverview({
     }, "\u6B63\u5728\u8BFB\u53D6\u540C\u4E00\u6B63\u5F0F\u8BA1\u5212\u7684\u5206\u6790\u4F9D\u636E\u3002"), analysisRead.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, "\u5237\u65B0\u5206\u6790"), analysisData && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.ResourceControls.Issues, {
-      issues: analysisData.issues
-    }), q.category === 'material' ? /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Material, {
-      data: analysisData
+    }, "\u5237\u65B0\u5206\u6790"), analysisData && /*#__PURE__*/React.createElement(React.Fragment, null, q.category === 'material' ? /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Material, {
+      data: analysisData,
+      showIssues: false
     }) : analysisData.plan && (q.category === 'downtime' ? /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Downtime, {
       data: analysisData,
       selected: analysisBatch,
@@ -53010,6 +53038,7 @@ function SystemLiveOverview({
       onCompare: () => setTab('compare')
     })), !['material', 'actual'].includes(q.category) && /*#__PURE__*/React.createElement(P.Pressure, {
       data: data,
+      showIssues: false,
       navigate: navigate,
       canNavigate: typeof onNavigate === 'function'
     }))), !external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.DashboardCandidates, {
@@ -53039,7 +53068,7 @@ function SystemLiveOverview({
       onHandle: () => setDialog(true)
     }))))), /*#__PURE__*/React.createElement("footer", {
       className: "dy-footer"
-    }, /*#__PURE__*/React.createElement("span", null, "\u6B63\u5F0F\u8BA1\u5212 / \u62A5\u5DE5\u8BB0\u5F55 / \u8D44\u6E90\u73ED\u8868 / \u9F50\u5957\u8BB0\u5F55 / \u5916\u534F\u767B\u8BB0")), dialog && (command.saved || item) && /*#__PURE__*/React.createElement(window.DashboardHandling, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u6B63\u5F0F\u8BA1\u5212 / \u62A5\u5DE5\u8BB0\u5F55 / \u8D44\u6E90\u73ED\u8868 / \u9F50\u5957\u8BB0\u5F55 / \u5916\u534F\u767B\u8BB0")), handlingOpen && /*#__PURE__*/React.createElement(window.DashboardHandling, {
       key: command.saved ? command.saved.request_key : item.item_ref,
       item: item,
       command: command,

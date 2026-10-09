@@ -101,9 +101,19 @@ def _read(item_ref=None, history=False):
             result["history"], error = records
             if error is not None:
                 raise error
-        payload_size(result)
-    response = query_success(result, snapshot)
-    if item_ref is not None:
+    try:
+        response = query_success(result, snapshot)
+        payload_size(response.get_json())
+    except (WorkbenchCommandRejected, TypeError, ValueError) as exc:
+        if item_ref is not None or result["analysis"] is None:
+            raise
+        result["analysis"] = None
+        if isinstance(exc, WorkbenchCommandRejected):
+            result["analysis_error"] = "影响分析超过值班台读取上限，已保留风险与处置清单。"
+        else:
+            current_app.logger.exception("Dashboard analysis could not be serialized with the list")
+            result["analysis_error"] = "分析数据没有读出来，请刷新重试。"
+        response = query_success(result, snapshot)
         payload_size(response.get_json())
     response.headers["Cache-Control"] = "no-store"
     return response

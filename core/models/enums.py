@@ -152,3 +152,12 @@ LOCK_STATUS_VALUES = tuple(m.value for m in LockStatus)
 DOWNTIME_SCOPE_TYPE_VALUES = tuple(m.value for m in DowntimeScopeType)
 # 正式合同只保留 canonical3；skilled 作为历史别名在归一化矩阵中折叠到 expert。
 SKILL_LEVEL_VALUES = (SkillLevel.BEGINNER.value, SkillLevel.NORMAL.value, SkillLevel.EXPERT.value)
+
+
+def read_source_type(value):
+    """Read legacy source text; unrecognized storage values remain unknown."""
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in SOURCE_TYPE_VALUES:
+            return normalized
+    return value
