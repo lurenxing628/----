@@ -30,11 +30,18 @@ README_TEXT = """APS 排产系统 · 离线分卷交付包
 首次启动建立空库，业务数据位于 Application\\APS_Portable\\user-data。
 复杂排产样例默认关闭。双击 Application\\SampleOn.cmd 启用并打开样例，
 首次会在独立 sample-context 中注入 100 批次、约 5000 道工序并实际排产，需要等待几分钟。
+生成完成后，点击页面右上角“刷新”，查看已采用计划及样例。
 双击 Application\\SampleOff.cmd 停用并返回原业务数据。
 日常 Start.cmd 会打开当前选定的数据；样例页面标有“复杂样例 · 独立数据”。
 样例数据保留在独立 sample-context 中，不复制或覆盖正式 user-data；再次启用可回读。
 Excel 模板从各业务页的导入窗口下载，不要求目标机安装 Microsoft Office。
-日常通过系统页面正常退出；备份从系统维护页面操作。
+正常退出时，在当前运行实例的程序目录按住 Shift 并右键单击空白处，
+选择“在此处打开命令窗口”，逐行执行：
+  start /wait "" ".\\排产系统.exe" --runtime-stop . --stop-aps-chrome
+  echo %ERRORLEVEL%
+显示 0 后，可复制或迁移目录；非 0 时保留提示并联系交付人员。
+正式程序目录为 Application\\APS_Portable，样例为 Application\\sample-context\\APS_Portable。
+备份从系统维护页面操作。
 升级时先在旧系统备份并正常退出，把新包部署到新的空目录，再复制旧 user-data，
 或通过新系统的备份恢复功能导入。不要在运行中复制数据库，也不要覆盖原程序目录。
 迁移时正常退出后复制整个 APS_Portable 文件夹。专用浏览器用于本机 APS 页面。
