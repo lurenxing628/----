@@ -1,5 +1,7 @@
 """Resolve a new official baseline from its recorded adoption, never version - 1."""
 
+from typing import cast
+
 from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
@@ -113,7 +115,9 @@ def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_ann
             return None
         basis, audit, receipt = recorded
         facts["adoption"] = {"basis": basis, "audit": audit, "receipt": receipt}
-        evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded)
+        evidence = cast(dict, read_adoption_source(
+            conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded,
+        ))
         baseline, tables, current = evidence["baseline"], evidence["tables"], evidence["selected"]
         facts["adoption"].update(baseline=baseline, selected_rows=current)
         if baseline["version"] is None:
