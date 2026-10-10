@@ -1,7 +1,7 @@
 ---
 doc_type: issue
 date: 2026-10-10
-status: in-progress
+status: resolved
 ---
 
 # Win7 大计划读取在 16 并发下超过 60 秒
@@ -10,7 +10,9 @@ status: in-progress
 
 Win7 SP1 x64 原生冻结程序在真实 100 批次、5000 工序、6 条分次报工样例上进行第一轮重度读取压力测试，完整全局分析和正式计划 workspace 大量超时。轻量健康检查和设备目录仍正常，说明不能用健康正常、单次读取或先前界面通过来核销并发大计划读取能力。第一轮压力结果为 **failed**，原失败、每次请求、进程采样和工具错误全部保留。
 
-冻结源码是 `a4a6ad24452675305196c8889f18482c025447ad`；当时宿主 `9d4faa56743f9f9ab4af3e3740fcf14ea5bd198a` 仅改变债务台账行号/验证时间，运行内容相同。现有 clean 17 步/405 节点门禁属于这份修复前运行内容，不能覆盖正在修改的读取 CPU 路径。当前源码修复、原生 v3 重建、修后完整门禁及交付均未核销。
+首压力的冻结源码是 `a4a6ad24452675305196c8889f18482c025447ad`；当时宿主 `9d4faa56743f9f9ab4af3e3740fcf14ea5bd198a` 仅改变债务台账行号/验证时间，运行内容相同。修复前clean17步/405节点门禁属于这份运行内容，不能覆盖后来的读取CPU改动；最终4f门禁及原生核销分别保存在下文，旧证明不改写成新版本。
+
+本问题现已 **resolved**：修复源码 `4f850c75cfb4c2d4d975e7832958180cd6f82d54` 的完整 clean 门禁17/526普通通过；同一源码原生冻结v3在相同100/5000/6、600s/16worker/60s socket timeout/无重试条件下，实际 **279/279通过、timeout/failed/non_200/invalid_content均0**。压后任务/数量/报工/来源链及全列导出保持，样例停用与复用已核销。最终临时Python退役后的正常启动/停止、进程退出、VM原状态恢复及桌面交付也已完成；Git整合另由root实际执行并记录收据。完整范围见[原生验收审计](../../audits/2026-10-10-win7-complex-native-acceptance.md)。
 
 ## 实际复现及第一轮结果
 
@@ -70,20 +72,20 @@ Win7 SP1 x64 原生冻结程序在真实 100 批次、5000 工序、6 条分次�
 - WMI launcher/actual-client 身份错误属于量测工具口径，按上节纠正；不能因此抹掉真实 160 次大读取超时。
 - UI 原扫描把只读 `POST /entities/batch/query` 按方法误判成业务写入。独立 [严格只读审查 v2](../../../output/win7-complex-20261010/native-app-ui-scan-strict-ro-audit-v2.json) 核对真实源码契约及唯一 request_id，纠正工具判断，原报告 false 保留。唯一 bootstrap 导航取消仍单列，不改成 200，也不把该问题写成产品业务写入 bug。
 
-## 修复进展：源码稳定，原生复压仍待核销
+## 最终源码修复及等价验证
 
-当前修复源码涉及 **8 个生产文件、2 个新增测试文件**，已进入提交前稳定检查。沿既有 read-only snapshot/evidence 作用域复用同一 adoption audit 的**完整已验证证明**；数量投影消费同一次已经验证的 `GenerationFacts`，不再次完整恢复相同候选归档。同一计划的 ledger task mapping 只加载一次，两个私有字段仍保留独立 plain 副本；日期转换使用现有本地解析器，保留 fold、subclass、微秒及异常规则；精确 `str/bool/int/None` 类型只做原值快返回，float、date/blob/container/set/tuple、subclass 和不支持类型沿用原规则。
+最终修复涉及 **8 个生产文件、2 个新增测试文件**，已作为4f源码提交、冻结并实测。沿既有 read-only snapshot/evidence 作用域复用同一 adoption audit 的**完整已验证证明**；数量投影消费同一次已经验证的 `GenerationFacts`，不再次完整恢复相同候选归档。同一计划的 ledger task mapping 只加载一次，两个私有字段仍保留独立 plain 副本；日期转换使用现有本地解析器，保留 fold、subclass、微秒及异常规则；精确 `str/bool/int/None` 类型只做原值快返回，float、date/blob/container/set/tuple、subclass 和不支持类型沿用原规则。
 
 旧 baseline 与当前采用计划仍独立核验，不能将相同工序集合或同一次请求误当同一 plan_ref 的证明。schema、完整候选 manifest、准入/采用 receipt、既有 canonical 类型比较、64 MiB 归档限制、point witness、安排完整范围和永久引用证明全部保留；既有算法、token 与指纹规则不改。没有增加全局或持久缓存、后台刷新或跨读快照的陈旧证据复用。
 
 当前定向验证分别记录，不累加为无重叠总数：
 
 - 来源复用专项 **新增 9 项、既有 6 项通过**，覆盖同一 proof 的复用及不同 baseline/ref 的独立核验。
-- CPU 等价专项 **94 节点通过**：原 22 个有业务意义的回归，加 72 个与优化前实现比较的存储类型 oracle。覆盖部分数量、当前/比较计划分开、坏匹配引用、重复工序/DTO、canonical int/float/bool/string 区别、与原归档不一致时的拒绝、日期/时区/fold、blob、非有限浮点和不支持类型的原异常。成功 canonical 文本与原 TypeError 文本一致。
+- CPU 等价专项最终 **112节点通过=22业务语义+72存储类型oracle+18 metadata**；原94只是中间阶段。覆盖部分数量、当前/比较计划分开、坏匹配引用、重复工序/DTO、canonical int/float/bool/string 区别、与原归档不一致时的拒绝、日期/时区/fold、blob、非有限浮点、不支持类型及自定义元类的原行为。成功canonical文本与原TypeError文本一致。
 - 既有 ledger/candidate/adoption/calendar 相关 **14 项通过**。此前测试夹具失败日志保留，没有修改产品保护来让测试通过。
-- 首批 7 个生产模块的独立审查未发现阻断项；追加 primitive 快返回部分仍在补充独立审查，不能将首轮审查扩写成全部最终改动审查完成。
+- 首批7模块及最终primitive的独立审查已完成，无剩余阻断；集合包含判断会触发自定义元类hash/eq的问题已改为严格类型身份判断。[最终两接口语义回读](../../../output/pressure-cpu-profile-20261010/stable-comparison-v3-metaclass.json) 保留原业务值、键、类型及字节大小，单次回读不提供新的性能增益结论。
 
-来源：[来源复用测试](../../../tests/workbench/test_adoption_source_read_reuse.py)、[CPU 等价测试](../../../tests/workbench/test_read_projection_cpu_equivalence.py)、[112 项执行日志](../../../output/pressure-cpu-profile-20261010/primitive-equivalence-tests.log)、[既有 14 项执行日志](../../../output/pressure-cpu-profile-20261010/related-tests.log)。这些是宿主定向验证，不代替修后完整 clean 门禁或原生 EXE 复压。
+来源：[来源复用测试](../../../tests/workbench/test_adoption_source_read_reuse.py)、[CPU 等价测试](../../../tests/workbench/test_read_projection_cpu_equivalence.py)、[CPU专项阶段日志](../../../output/pressure-cpu-profile-20261010/primitive-equivalence-tests.log)、[既有14项日志](../../../output/pressure-cpu-profile-20261010/related-tests.log)。最终112 CPU与9来源节点已在[4f完整526节点结果](../../../output/win7-complex-20261010/quality-gate-cpu-4f850c75-526-raw/current_full_test_debt.json) 实际执行，各setup/call/teardown普通passed；17steps、526nodes、1578reports无skip/xfail/error/new debt，所有receipt实际执行、无cache/resume。Win7独立源码另实测132=旧11+9+112，5个原始XML与2130源码CRC证明已归档；源码夹具与原生冻结HTTP分别核销，不互相替代。
 
 ### 宿主 before/after 严格回放
 
@@ -98,7 +100,7 @@ primitive 追加改动后，analysis 和 merged 各再次读取 3 次，新增 6
 | full-global-analysis，5000 tasks / v2 | 5.015625 → 4.390625 | 12.46%（约 12.5%） | 200，wire 7,609,575 B |
 | dashboard-merged / v2 | 5.796875 → 5.000000 | 13.75%（约 13.7%） | 200，wire 8,489,055 B |
 
-这是合并源码改动的宿主串行诊断，不能归因于某一个快返回或单个模块。宿主样例有 **两版**已采用计划，需要保留两个来源独立证明；原生大型样例只有 **一版**正式采用。单次 scope、数据历史和机器环境不同，不能把宿主 37.45% 外推为 native 并发收益。v2 相对 v1 的增量只有 analysis 0.71%、merged 2.44%，有运行噪声；也不能据此宣称第一轮 160 次 timeout 已解决。
+这是合并源码改动的宿主串行诊断，不能归因于某一个快返回或单个模块。宿主样例有 **两版**已采用计划，需要保留两个来源独立证明；原生大型样例只有 **一版**正式采用。单次scope、数据历史和机器环境不同，不能把宿主37.45%外推为native并发收益。v2相对v1增量analysis0.71%、merged2.44%有运行噪声；本问题关闭依据是下面真实原生同参数复压，不能仅凭这些宿主数值核销160次timeout。
 
 来源：[首轮严格比较](../../../output/pressure-cpu-profile-20261010/stable-comparison.json)、[追加 v2 比较](../../../output/pressure-cpu-profile-20261010/stable-comparison-v2.json)、[比较规则](../../../output/pressure-cpu-profile-20261010/compare_benchmark.py)、[完整诊断及修复进展](../../../output/pressure-cpu-profile-20261010/REPORT.md)。同目录 `stable-before/`、`stable-after/`、`stable-after-v2/` 的原响应、summary 和 profile 保留。
 
@@ -106,6 +108,38 @@ primitive 追加改动后，analysis 和 merged 各再次读取 3 次，新增 6
 
 第一轮压力后，原 v2 的低并发只读复核已恢复正常：16 个 HTTP 读取和导出步骤通过，5000 工序/6 报工保持、完整 CSV/XLSX 内容复核；[后置报告](../../../output/win7-complex-20261010/native-postpressure-http.json) 最大单次读取 7.248 s。该结果支持数据保持及空闲时可读，不改变第一轮压力 failed，也不是源码 CPU 修复后的原生重压通过。
 
-仍为 pending：修后 clean/no-cache/no-resume 全门禁、原生 v3 冻结/普通冷启动与同规模同预算 600 s/16 并发复压、复压后 5000 工序和 6 报工/导出/界面检查、样例开关恢复、临时构建 Python 隔离后启动、最终包及桌面交付、main 合并和推送。完成真实核销前保持 **in-progress**，不得引用定向等价回放、修复前的 17/405 或工具夹具通过作为最终版本压力通过。
+## 修复后真实原生同参数复压：通过
 
-最终追加审查发现集合包含判断会触发自定义元类的 hash/eq，已改成严格类型身份判断；112 项类型和业务回归通过，独立复核无剩余阻断。[最终两接口语义回读](../../../output/pressure-cpu-profile-20261010/stable-comparison-v3-metaclass.json) 保留原业务值、键、类型和字节大小；此单次回读不提供新的性能增益结论。
+原生v3固定run **`20261010T005347844-2572`**，source4f、Win7 SP1 x64、4 logical processors/约8GiB；实际backend **3088**，launcher1916，真实HTTP client **4300** 经自报PID和父链一次核对。仅在相同原生样例100批次/5000工序/6条partial报工上发只读loopback GET，600s停止新请求、16并发、60s socket操作timeout、无重试，未提高响应或归档预算。
+
+| 指标 | v3真实结果 |
+| --- | --- |
+| 总耗时 / 600s后在途drain | 653.613s / 53.613s |
+| 请求 / 普通通过 | 279 / 279，全HTTP200 |
+| failed / timeout / non_200 / invalid_content | 0 / 0 / 0 / 0 |
+| health / machine-directory / full-global-analysis / formal-scope-00 | 45 / 43 / 95 / 96，全部访问 |
+| 实际最大并发 / 完成worker | 16 / 16 |
+| 最后发起 / 最后结束 | 596.642s / 653.363s |
+| 最大HTTP wall耗时 / 对60s余量 | 58.266s / 1.734s |
+
+279条原JSONL、16个worker序列与预定调度、真实I/O区间、内容validator和234条业务响应no-store由独立审查核对；没有600s后继续发请求、失败删除、重试或用镜像覆盖原请求。综合 **16项checks全部true**，[真实最终结果](../../../output/win7-complex-20261010/exchange/native-pressure/20261010T005347844-2572/http/result.json)、[综合独立审查](../../../output/win7-complex-20261010/native-pressure-v3-complete-readonly-audit.json)、[原请求独立审查v2](../../../output/win7-complex-20261010/exchange/native-pressure/20261010T005347844-2572/raw-audit-native_matrix_sources-v2.json)、[进程独立审查](../../../output/win7-complex-20261010/native-pressure-v3-process-readonly-audit.json) 分别保留。
+
+v3共有37个backend WMI观测，weighted约25.010%整机/1.0004单核量级，working-set峰值272,089,088B，可用内存最低5,808,340KiB；实际client采样从核对后开始，首行缺失不回填，冷WMI格式化延迟与CPU原capture时间分开。该结果没有内存耗尽或崩溃，37个观测不证明任意长期负载无泄漏。最大请求距60s仅1.734s，结论限于此实测规模、环境及并发，不泛化到任意慢机或更高负载。
+
+原v2的160次超时、PS2 prelaunch失败及WMI身份纠正仍保留。v3第一次独立raw auditor又产生48条方法误报：47条不同计时范围offset差及1条用四舍五入端点重建I/O峰值；原失败审查不改写，后续v2审查按真实原capture区间核销。它们不是失败HTTP请求，实际client原failure始终0。
+
+## 复压后数据、导出、界面与样例启停：通过
+
+[压后真实GET/导出](../../../output/win7-complex-20261010/native-v3-readonly/postpressure-http-export.json) 共16次、全部200/no-store，14份原JSON和2份原文件保存；7组业务检查passed，独立[16项压后审查](../../../output/win7-complex-20261010/native-pressure-v3-post-readonly-audit.json) 全部true。与本v3压前基线相比，5000唯一task的业务值/四个采用数量字段、全部执行事实、6条partial报工及342-node完整source chain一致；原scope/snapshot重开，CSV/XLSX各5000×32=160,000格原列内容核对，通过且无重复/遗漏。独立审查另逐格比较两个文件及五个核心字段；不能声称重新解析不存在的279份原HTTP body。桥接最大5.199520s（含base64准备），该串行复查不是再次并发测试。
+
+实际Chrome109页面16入口/15视图/33截图，独立[96项v3 UI审查](../../../output/win7-complex-20261010/native-app-ui-v3-independent-audit-v2.json) 全passed；原strict仅把draft_ref与关联scenario_ref混淆的false保留。压力期间既有值班台局部操作842.9ms完成，新增request/API/WebSocket均0，未重新导航、刷新或发业务请求；不能借此宣称所有页面在压力下可重新加载。[压力中局部探针](../../../output/win7-complex-20261010/exchange/app-ui-results/native-app-ui-local-v3-20261010T010035564-4264/result.json) 和[压后新鲜可见截图](../../../output/win7-complex-20261010/environment/v3-postpressure-ui-fresh.png) 分开保存；后者中文、正式v1、100待排及真实未知/来源缺口提示可读，没有空白或加载占位。
+
+SampleOff固定run `20261010T011208682-2580` 正常退出样例、回正式PID2516，4.736s；[正式控制实体复核](../../../output/win7-complex-20261010/native-v3-readonly/sentinel-off.json) 12GET全200，synthetic详情一致（新生成write_context单独排除）、正式仅1个material且batch/run/history/scenario均0。SampleOn固定复用run `20261010T011401854-2708` 7.171s重开已有样例PID1556，16 GET回读一致、原acceptance报告字节完全相同、无新注入；[复用结果](../../../output/win7-complex-20261010/native-v3-readonly/sample-on-reuse.json) 核对5000/6/342及数量、目录、历史引用保持，只允许资料汇总calendar.as_of时钟变化。不把所有新HTTP正文都描述为原始字节相同。此项关闭样例切换的数据保持验证，不替代最终用户目录安装。
+
+最终docfix普通安装实际run `20261010T011909098-3312` 已149文件/首次无user-data/defaultoff/exit0；证据版本4、实际release-v3-docfix/compiled4f/docs404dc。另[最终普通冷启动及相对目录停止](../../../output/win7-complex-20261010/exchange/native-docfix-cold-dot-20261010T012504835-2968.json) 总8.368s、Start2.624s，新backend2936创建晚于CMD，系统PATH；真实START /WAIT执行`--runtime-stop . --stop-aps-chrome`并捕获ERRORLEVEL0、原PID退出/rootbackend0/5957free/marker保持，无kill/retry。这不等于强退役所有临时Python后已验证。
+
+最终强退役固定run `20261010T012833250-1832` 已passed：四个owned临时目录buildenv/python38/test-tools/test-tools-v3移到可恢复retiredRoot，普通Start1.451s/系统PATH/新backend2784/5957、标准stop0。新鲜独立[退出后WMI](../../../output/win7-complex-20261010/exchange/native-final-state-20261010T013527843-4548.json)仅采集helper4548，完成helper1832 absent、owned APS/Chrome/Python0、sample formalOff；四条temporary_task_python_directory的实际字段 **directory_exists=false**，与原Move后源absent/目标present断言一致。固定[强退役证据](../../../output/win7-complex-20261010/exchange/native-retire-python-20261010T012833250-1832.json)及[独立28checks审查](../../../output/win7-complex-20261010/build-prep/final-retire-readonly-audit-20261010T014022510-73652.json)均通过，范围限本任务四目录及最终程序，不宣称全机所有Python被删除。
+
+VM恢复固定run `20261010T013707772-57380` 已真实完成：仅移除本任务共享、九键恢复原值、两个原快照及VMSD原字节不变、soft suspended、旧应用/业务不改。首Apply因helper错误只接受running而实机返回on，在任何mutation前拒绝；原failed保留，最小on兼容修正后29offlinechecks通过，再执行真实恢复。来源：[成功state](../../../output/win7-complex-20261010/build-prep/host-restoration-evidence/20261010T013707772-57380/state.json)。
+
+桌面交付已完成，程序内容和两ZIP完整回读通过；main整合/推送及版本核对以root实际执行的[Git同步收据](../../../output/win7-complex-20261010/final-git-sync.json)为准。新安装目录标签Version4只表示再次部署，编译源码仍4f；148个非README文件不变，不能把它记作native v4重编译。本问题关闭依据为真实同参数复压，全部交付范围及限制另见原生审计。
