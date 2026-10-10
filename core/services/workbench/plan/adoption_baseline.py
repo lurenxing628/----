@@ -1,11 +1,12 @@
 """Resolve a new official baseline from its recorded adoption, never version - 1."""
 
+from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 
 from .adoption_baseline_identity import baseline_tasks, verify_arranged, verify_capture
-from .adoption_baseline_sources import candidate_source, decoded_baseline, trial_source
+from .adoption_baseline_sources import candidate_source_evidence, decoded_baseline, trial_source
 from .adoption_baseline_values import AdoptionBaselineUnavailable, fail, has_table, require, same, stored
 
 _SOURCES = {"workbench_candidate_adoption": ("candidate_adoption", "scheduling.candidate.adopt", "candidate_ref", "run_ref"),
@@ -69,6 +70,41 @@ def _receipt(conn, plan_ref, version, audit):
     return receipt
 
 
+def read_adoption_source(conn, *, plan_ref, version, history, recorded=None):
+    """Reuse full adoption proof only in the existing caller-owned read snapshot.
+
+    The caller's exact version and history are part of this binding; an earlier
+    official plan is always a separate source, even when its operations match.
+    """
+    recorded = _audit(conn, plan_ref, version, history) if recorded is None else recorded
+    if recorded is None:
+        return None
+    key = ("adoption_source", plan_ref, version, input_fingerprint(recorded[1]))
+    return verified_read(conn, key, lambda: _read_adoption_source(
+        conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded,
+    ))
+
+
+def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None):
+    recorded = _audit(conn, plan_ref, version, history) if recorded is None else recorded
+    if recorded is None:
+        return None
+    basis, audit, receipt = recorded
+    if basis == "candidate_adoption":
+        baseline, tables, arranged, generation = candidate_source_evidence(conn, audit)
+    else:
+        baseline, tables, arranged = trial_source(conn, audit)
+        generation = None
+    baseline = decoded_baseline(baseline)
+    require(same((baseline["plan_ref"], baseline["version"]), (audit["baseline_ref"], audit["baseline_version"])),
+            "adoption.recorded_baseline")
+    verify_capture(baseline, tables)
+    require(len(arranged) == audit["row_count"], "adoption.complete_row_count")
+    current = verify_arranged(conn, plan_ref, version, tables, arranged)
+    return {"basis": basis, "audit": audit, "receipt": receipt, "baseline": baseline,
+            "tables": tables, "arranged": arranged, "selected": current, "generation_facts": generation}
+
+
 def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_annotator=None):
     """Return captured tasks and locator, or raise a classified evidence gap."""
     try:
@@ -77,14 +113,8 @@ def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_ann
             return None
         basis, audit, receipt = recorded
         facts["adoption"] = {"basis": basis, "audit": audit, "receipt": receipt}
-        load = candidate_source if basis == "candidate_adoption" else trial_source
-        baseline, tables, arranged = load(conn, audit)
-        baseline = decoded_baseline(baseline)
-        require(same((baseline["plan_ref"], baseline["version"]), (audit["baseline_ref"], audit["baseline_version"])),
-                "adoption.recorded_baseline")
-        verify_capture(baseline, tables)
-        require(len(arranged) == audit["row_count"], "adoption.complete_row_count")
-        current = verify_arranged(conn, plan_ref, version, tables, arranged)
+        evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded)
+        baseline, tables, current = evidence["baseline"], evidence["tables"], evidence["selected"]
         facts["adoption"].update(baseline=baseline, selected_rows=current)
         if baseline["version"] is None:
             fail("no_adoption_baseline", "recorded_empty_official_baseline")

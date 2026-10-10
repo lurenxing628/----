@@ -160,14 +160,17 @@ class AdmissionBaseline:
             invalid_baseline()
         if {row.operation_ref for row in projections} != self._execution_scope(archive):
             invalid_baseline()
+        snapshots = []
         for projection in projections:
             ref = projection.operation_ref
+            saved = projection.to_dict()
+            snapshots.append(saved)
             if ref in disposition:
                 try:
                     original = restore_execution_projections([disposition[ref].get("execution")])[0]
                 except (CandidateRunInputError, TypeError, ValueError):
                     invalid_baseline()
-                if canonical_json(original.to_dict()) != canonical_json(projection.to_dict()):
+                if canonical_json(original.to_dict()) != canonical_json(saved):
                     invalid_baseline()
             current = projection.current_task_ref
             if ref in self.by_operation:
@@ -177,9 +180,9 @@ class AdmissionBaseline:
                     invalid_baseline()
             elif current is not None:
                 invalid_baseline()
-        self._verify_execution_values(projections, archive, accepted_at)
+        self._verify_execution_values(projections, archive, accepted_at, snapshots)
 
-    def _verify_execution_values(self, projections, archive, accepted_at):
+    def _verify_execution_values(self, projections, archive, accepted_at, snapshots):
         reports = _archived_reports(archive)
         legacy, unresolved = defaultdict(list), set()
         for raw in self._required(archive, "WorkbenchExecutionLegacyFacts"):
@@ -190,7 +193,7 @@ class AdmissionBaseline:
         fields = ("target_quantity", "target_basis", "known_completed_quantity", "quantity_complete", "unknown_record_count",
                   "records_complete", "first_actual_start", "confirmed_finish", "execution_state", "completion_basis",
                   "data_quality", "remaining_quantity", "remaining_plan", "reports", "legacy_facts")
-        for projection in projections:
+        for projection, saved in zip(projections, snapshots):
             ref = projection.operation_ref
             operation = self.facts.tables["BatchOperations"].get(self.facts.operations.get(ref))
             if operation is None:
@@ -205,7 +208,6 @@ class AdmissionBaseline:
                 ).to_dict()
             except (KeyError, TypeError, ValueError, OverflowError):
                 invalid_baseline()
-            saved = projection.to_dict()
             if canonical_json({key: checked[key] for key in fields}) != canonical_json({key: saved[key] for key in fields}):
                 invalid_baseline()
 

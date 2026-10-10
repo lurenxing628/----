@@ -1,7 +1,7 @@
 """Reuse RunBaseline verification and CQ's immutable saved-scenario contract."""
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.workbench_command import input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
 from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, _blob
@@ -10,7 +10,7 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
-from .adoption_baseline_values import fail, has_table, require, same, stored
+from .adoption_baseline_values import fail, has_table, require, same
 
 _TABLES = ("Schedule", "ScheduleHistory", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs",
            "WorkbenchEntityRefs", "BatchOperations", "Batches")
@@ -35,6 +35,16 @@ def _decode_rows(rows):
 
 
 def candidate_source(conn, audit):
+    return candidate_source_evidence(conn, audit)[:3]
+
+
+def candidate_source_evidence(conn, audit):
+    """Private complete proof and its parsed facts, including without reuse."""
+    key = ("candidate_adoption_source", input_fingerprint(audit))
+    return verified_read(conn, key, lambda: _candidate_source(conn, audit))
+
+
+def _candidate_source(conn, audit):
     _tables_exist(conn, ("WorkbenchRunJobs", "WorkbenchRunCandidates", "WorkbenchRunReceipts", "WorkbenchRunCandidateTasks"))
     _source_exists(conn, "WorkbenchRunJobs", "run_ref", audit["run_ref"])
     _source_exists(conn, "WorkbenchRunCandidates", "candidate_ref", audit["candidate_ref"])
@@ -42,7 +52,11 @@ def candidate_source(conn, audit):
     store = CandidateStore(conn)
     run = store.run(audit["run_ref"])
     facts = GenerationFacts(capture)
-    archive = stored(capture["facts_text"])
+    # GenerationFacts already checks the hash and strictly parses this object.
+    # Keep the adoption reader's original byte limit without parsing it again.
+    if len(capture["facts_text"].encode("utf-8")) > 64 * 1024 * 1024:
+        raise WorkbenchCommandRejected("query_too_large", "完整采用凭据超过 64 MB 上限。请缩小查询范围后重试。", 413)
+    archive = facts.archive
     tables = _candidate_tables(archive)
     AdmissionBaseline(capture, facts, scope, run["accepted_at"])
     require(candidate["run_ref"] == audit["run_ref"], "candidate.run_ref")
@@ -53,7 +67,7 @@ def candidate_source(conn, audit):
                        ("baseline_hash", input_fingerprint(capture["baseline"])),
                        ("candidate_hash", input_fingerprint({"candidate": candidate, "tasks": tasks, "scope": scope}))):
         require(same(proof[key], value), "candidate.proof." + key)
-    return capture["baseline"], tables, [row["payload"] for row in tasks]
+    return capture["baseline"], tables, [row["payload"] for row in tasks], facts
 
 
 def _candidate_tables(archive):

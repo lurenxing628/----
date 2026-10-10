@@ -18,4 +18,4 @@ status: in-progress
 
 宿主准备发现 `validate_dist_exe.py` 的样式锚点仍指向已删除的 prototype/styles.css；更新为现行 manifest 使用的 app/workbench.css，使冷启动验证检查当前实际资源。
 
-验收尚未完成。最终记录必须包含实际版本、来宾环境、实际样例规模、计算耗时、候选/计划回读、约束结果、压力统计、六类原触发条件、启停恢复和分包真实部署结果；失败和未测项保留。
+验收尚未完成。第一轮真实 Win7 600 秒、16 并发、60 秒 socket timeout、无重试读取压力在最终 drain 后记录 254 请求，94 通过、160 超时；健康和设备目录正常，不能据此核销大计划并发读取。8 个生产文件及 2 个新增测试的源码修复已稳定：在既有只读作用域内复用同一 audit 的完整证明及已验证 GenerationFacts，旧 baseline、schema/manifest/receipt/canonical/64 MiB/point 保护全部保留。定向来源回归与 94 项 CPU 语义等价测试通过；宿主四路各三次 before/after 的 24 份响应业务值、键/类型及 wire 长度一致，正式合法范围 CPU 中位数约减 37.45%，追加独立比较中 analysis 约减 12.5%、merged 约减 13.7%。宿主有两版采用计划、原生样例只有一版，这些数据不能外推原生压力已修复。追加 primitive 审查、修后完整 clean 门禁、原生 v3 复压及交付仍进行中，详见 [问题草稿及修复进展](../../issues/2026-10-10-win7-native-read-pressure-timeout/issue.md)。最终记录必须包含实际版本、来宾环境、实际样例规模、计算耗时、候选/计划回读、约束结果、压力统计、六类原触发条件、启停恢复和分包真实部署结果；失败和未测项保留，不把当前失败写成最终通过。

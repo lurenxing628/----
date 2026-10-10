@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.enums import read_source_type
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
@@ -23,6 +24,9 @@ UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid
 
 
 def typed(value: Any) -> Any:
+    kind = type(value)
+    if value is None or kind is str or kind is bool or kind is int:
+        return value
     if isinstance(value, set):
         return sorted(typed(item) for item in value)
     if isinstance(value, dict):
@@ -53,6 +57,10 @@ class DashboardFacts:
 
     def load(self):
         """Read sources under the caller's snapshot; project() then works on them without SQLite."""
+        with read_evidence_scope(self.conn):
+            return self._load_sources()
+
+    def _load_sources(self):
         for table in ("SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines", "WorkbenchDashboardDowntimeRefs"):
             self.raw[table] = self.repo.table(table)
         self._plan()

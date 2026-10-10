@@ -4,14 +4,17 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import datetime
 
-from data.repositories.schedule_time_sql import parse_dt_for_sql
+from core.shared.local_datetime import format_local_datetime, parse_local_datetime
 
 
 def instant(value):
-    parsed = parse_dt_for_sql(value)
+    parsed = parse_local_datetime(value)
     if parsed is None:
         raise ValueError("Invalid local plan/calendar time")
-    return datetime.fromisoformat(parsed)
+    if type(parsed) is datetime and not parsed.fold:
+        return parsed
+    # The original text round trip normalized fold and datetime subclasses.
+    return datetime.fromisoformat(format_local_datetime(parsed))
 
 
 def wire(value):

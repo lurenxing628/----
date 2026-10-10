@@ -122,11 +122,11 @@ def _adopted_quantities(conn, plan_ref):
     if conn is None:
         return {}, "plan_target_not_recorded"
     try:
-        evidence = read_adopted_source(conn, plan_ref)
+        evidence = _adopted_source_record(conn, plan_ref)
         if evidence is None:
             return {}, "plan_target_not_recorded"
-        basis, audit, _, arranged, _ = evidence
-        result = _source_quantities(conn, basis, audit, arranged)
+        basis, audit, arranged = evidence["basis"], evidence["audit"], evidence["arranged"]
+        result = _source_quantities(conn, basis, audit, arranged, generation_facts=evidence["generation_facts"])
         require(set(result) == {row["op_id"] for row in arranged}, "quantity.complete_operation_set")
         return result, None
     except (AdoptionBaselineUnavailable, WorkbenchPlanReferenceError):
@@ -147,41 +147,31 @@ def read_adopted_source(conn, plan_ref):
 
 
 def _read_adopted_source(conn, plan_ref):
+    evidence = _adopted_source_record(conn, plan_ref)
+    return None if evidence is None else tuple(evidence[key] for key in ("basis", "audit", "tables", "arranged", "selected"))
+
+
+def _adopted_source_record(conn, plan_ref):
     from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-    from .adoption_baseline import _audit
-    from .adoption_baseline_identity import verify_arranged, verify_capture
-    from .adoption_baseline_sources import candidate_source, decoded_baseline, trial_source
-    from .adoption_baseline_values import require, same
+    from .adoption_baseline import read_adoption_source
 
     locator = WorkbenchPlanIdentityRepository(conn).resolve_plan(plan_ref)
     if locator.scenario_id is not None or locator.plan_role != ROLE_ADOPTED:
         return None
     history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(locator.version)
-    recorded = _audit(conn, plan_ref, locator.version, history)
-    if recorded is None:
-        return None
-    basis, audit, _ = recorded
-    source = candidate_source if basis == "candidate_adoption" else trial_source
-    baseline, tables, arranged = source(conn, audit)
-    baseline = decoded_baseline(baseline)
-    require(same((baseline["plan_ref"], baseline["version"]), (audit["baseline_ref"], audit["baseline_version"])),
-            "quantity.adoption_baseline")
-    verify_capture(baseline, tables)
-    require(len(arranged) == audit["row_count"], "quantity.adoption_complete_rows")
-    selected = verify_arranged(conn, plan_ref, locator.version, tables, arranged)
-    return basis, audit, tables, arranged, selected
+    return read_adoption_source(conn, plan_ref=plan_ref, version=locator.version, history=history)
 
 
-def _source_quantities(conn, basis, audit, arranged):
-    from core.services.workbench.facts.candidate_facts import GenerationFacts
-    from core.services.workbench.facts.candidate_store import CandidateStore
+def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None):
     from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+
+    from .adoption_baseline_sources import candidate_source_evidence
 
     # Only the audited source can supply target work; current batch joins cannot.
     if basis == "candidate_adoption":
-        facts = GenerationFacts(CandidateStore(conn).capture(audit["run_ref"]))
+        facts = generation_facts if generation_facts is not None else candidate_source_evidence(conn, audit)[3]
         refs = {key: ref for ref, key in facts.operations.items()}
         result = {}
         for item in arranged:

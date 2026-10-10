@@ -6,6 +6,9 @@ from datetime import date, datetime
 
 def plain_plan_facts(value):
     """Retain SQLite value types without stringifying unsupported objects."""
+    kind = type(value)
+    if value is None or kind is str or kind is bool or kind is int:
+        return value
     if isinstance(value, dict):
         return {key: plain_plan_facts(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):

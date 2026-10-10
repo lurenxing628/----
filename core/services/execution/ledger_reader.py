@@ -127,12 +127,21 @@ class ExecutionLedgerReader:
             WorkbenchPlanIdentityRepository(self.conn).resolve_plan(comparison_plan_ref)
         legacy = _capped(self.repo.legacy, operations, "历史现场记录超过读取上限，请缩小范围。")
         source = WorkbenchExecutionSourceRepository(self.conn).read(legacy)
+        reports = _capped(self.repo.reports, operations, "报工及更正历史超过读取上限，请缩小范围。")
+        voids = _capped(self.repo.report_voids, operations, "报工撤销历史超过读取上限，请缩小范围。")
+        current_plan_ref = plan["plan_ref"] if plan else None
+        current_tasks = self.task_map(operations, current_plan_ref)
+        # Both fields retain independent plain rows, but the same admitted plan
+        # needs only one complete mapping read in this caller's snapshot.
+        comparison_tasks = ({ref: dict(row) for ref, row in current_tasks.items()}
+                            if comparison_plan_ref is not None and comparison_plan_ref == current_plan_ref
+                            else self.task_map(operations, comparison_plan_ref))
         return {"operations": operations,
-                "reports": _capped(self.repo.reports, operations, "报工及更正历史超过读取上限，请缩小范围。"),
-                "voids": _capped(self.repo.report_voids, operations, "报工撤销历史超过读取上限，请缩小范围。"),
+                "reports": reports,
+                "voids": voids,
                 "legacy": legacy, "legacy_source": source,
-                "current_tasks": self.task_map(operations, plan["plan_ref"] if plan else None),
-                "comparison_tasks": self.task_map(operations, comparison_plan_ref), "plan": plan,
+                "current_tasks": current_tasks,
+                "comparison_tasks": comparison_tasks, "plan": plan,
                 "unresolved": self.repo.unresolved_operations(operations), "clock": self.revision_clock()}
 
     def project_loaded(self, facts):
