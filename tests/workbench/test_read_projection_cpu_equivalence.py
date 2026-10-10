@@ -19,8 +19,8 @@ from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
-from tests.workbench.run_candidate_support import compute, corrupt_update
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
+from tests.workbench.run_candidate_support import compute, corrupt_update
 
 
 def _operation_ref(case):
