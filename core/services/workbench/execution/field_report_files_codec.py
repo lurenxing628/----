@@ -7,11 +7,6 @@ from io import BytesIO
 from typing import NoReturn
 from zipfile import BadZipFile
 
-from openpyxl import Workbook, load_workbook
-from openpyxl.cell.cell import TYPE_STRING
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils.datetime import from_excel
-
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_field_report_file import (
     BYTE_LIMIT,
@@ -39,6 +34,8 @@ def reject(message: str) -> NoReturn:
 
 def _timestamp(value, epoch):
     if type(value) in (int, float):
+        from openpyxl.utils.datetime import from_excel
+
         if not math.isfinite(value) or value < 0:
             reject('Excel 里的日期时间填得不对。')
         value = from_excel(value, epoch)
@@ -108,6 +105,8 @@ def _decode_row(cells, number, version, fields, order, epoch):
 
 
 def decode_reports(content):
+    from openpyxl import load_workbook
+
     if type(content) is not bytes or not content or len(content) > BYTE_LIMIT:
         reject('请选择不超过 8 MB 的 XLSX 文件。')
     columns = check_package(content)
@@ -150,6 +149,9 @@ def _append_report(sheet, row, fields):
 
 
 def _style(page, is_report):
+    from openpyxl.cell.cell import TYPE_STRING
+    from openpyxl.styles import Alignment, Font, PatternFill
+
     page.freeze_panes = 'A2'
     page.auto_filter.ref = page.dimensions
     for cell in page[1]:
@@ -168,6 +170,8 @@ def _style(page, is_report):
 
 
 def encode_reports(rows, *, summaries=(), metadata=(), format_version=1):
+    from openpyxl import Workbook
+
     if type(format_version) is not int or format_version not in (1, 2):
         reject('这个报工文件的格式版本不支持。')
     headers, fields = (HEADERS, FIELDS) if format_version == 1 else (TASK_HEADERS, TASK_FIELDS)
@@ -199,6 +203,10 @@ def encode_reports(rows, *, summaries=(), metadata=(), format_version=1):
 
 
 def encode_issues(rows):
+    from openpyxl import Workbook
+    from openpyxl.cell.cell import TYPE_STRING
+    from openpyxl.styles import Alignment
+
     book = Workbook()
     sheet = book.active
     if sheet is None:

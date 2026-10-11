@@ -1,8 +1,10 @@
 # One PowerShell process owns launch diagnostics, identity checks and readiness.
 # Keep this file ASCII and compatible with Windows PowerShell 2.0 / .NET 3.5.
 # Dot-sourcing loads the functions without starting the application.
+$script:ApsScriptClock = [Diagnostics.Stopwatch]::StartNew()
+$script:ApsScriptStartedUtc = [DateTime]::UtcNow
 $ErrorActionPreference = 'Stop'
-$script:ApsJsonCommand = Get-Command ConvertFrom-Json -ErrorAction SilentlyContinue
+$script:ApsJsonCommand = Get-Command ConvertFrom-Json -CommandType Cmdlet -ErrorAction SilentlyContinue
 $script:ApsJsonSerializer = $null
 
 function Read-ApsJson([string]$Text) {
@@ -44,7 +46,8 @@ function Get-ApsRegistryValue([string]$Key, [string]$Name) {
     return ([string]$value).Replace('"', '')
 }
 
-function New-ApsContext([string]$Directory) {
+function New-ApsContext([string]$Directory, [Diagnostics.Stopwatch]$Clock) {
+    if ($null -eq $Clock) { $Clock = [Diagnostics.Stopwatch]::StartNew() }
     $directory = [IO.Path]::GetFullPath($Directory)
     [IO.Directory]::SetCurrentDirectory($directory)
     $portable = [IO.File]::Exists((Join-Path $directory 'aps-portable.txt'))
@@ -79,7 +82,7 @@ function New-ApsContext([string]$Directory) {
     if ($portable) { $profile = Join-Path $data 'chrome109_profile' }
     return @{ directory = $directory; portable = $portable; exe = $exe; owner = $owner;
         db = [IO.Path]::GetFullPath($env:APS_DB_PATH).ToLowerInvariant(); profile = $profile;
-        log = (Join-Path $env:APS_LOG_DIR 'launcher.log'); clock = [Diagnostics.Stopwatch]::StartNew();
+        log = (Join-Path $env:APS_LOG_DIR 'launcher.log'); clock = $Clock;
         lock = (Join-Path $env:APS_LOG_DIR 'aps_runtime.lock');
         contract = (Join-Path $env:APS_LOG_DIR 'aps_runtime.json');
         hostFile = (Join-Path $env:APS_LOG_DIR 'aps_host.txt');
@@ -302,24 +305,34 @@ function Wait-ApsReady($Context, $IgnoredErrorTime, [int]$TimeoutMs = 45000) {
 
 function Start-ApsProcess([string]$Executable, [string]$Arguments, [string]$Directory) {
     $info = New-Object Diagnostics.ProcessStartInfo
-    $info.FileName = $Executable
+    $info.FileName = [IO.Path]::GetFullPath($Executable)
     $info.Arguments = $Arguments
-    $info.WorkingDirectory = $Directory
-    $info.UseShellExecute = $true
+    if ($Directory) { $info.WorkingDirectory = [IO.Path]::GetFullPath($Directory) }
+    else { $info.WorkingDirectory = [IO.Directory]::GetCurrentDirectory() }
+    $info.UseShellExecute = $false
     $process = [Diagnostics.Process]::Start($info)
     if ($null -ne $process) { $process.Dispose() }
 }
 
-function Invoke-ApsLauncher([string]$Directory) {
+function Invoke-ApsLauncher([string]$Directory, [Diagnostics.Stopwatch]$LaunchClock,
+    [DateTime]$PowerShellStartedUtc = [DateTime]::MinValue) {
+    if ($null -eq $LaunchClock) { $LaunchClock = [Diagnostics.Stopwatch]::StartNew() }
+    if ($PowerShellStartedUtc -eq [DateTime]::MinValue) { $PowerShellStartedUtc = [DateTime]::UtcNow }
+    $invokedMs = $LaunchClock.ElapsedMilliseconds
     $context = $null
     try {
-        $context = New-ApsContext $Directory
-        Write-ApsLog $context ('launcher_begin app_dir="' + $context.directory + '" owner="' + $context.owner + '"')
+        $context = New-ApsContext $Directory $LaunchClock
+        Write-ApsLog $context ('launcher_begin app_dir="' + $context.directory + '" owner="' + $context.owner +
+            '" ps_pid=' + $PID + ' ps_started_utc="' + $PowerShellStartedUtc.ToString('o') +
+            '" cmd_started_local="' + $env:APS_START_CMD_LOCAL_TIME + '" launcher_invoked_ms=' + $invokedMs +
+            ' context_ms=' + ($context.clock.ElapsedMilliseconds - $invokedMs))
         if (-not $context.exe) {
             Write-ApsLog $context 'app_exe_not_found'
             Write-Host '[launcher] App exe not found.'
             return 1
         }
+        Write-ApsLog $context 'chrome_find_begin'
+        $phaseMs = $context.clock.ElapsedMilliseconds
         try { $chrome = Find-ApsChrome $context }
         catch {
             Write-ApsLog $context $_.Exception.Message
@@ -327,7 +340,10 @@ function Invoke-ApsLauncher([string]$Directory) {
             if (-not $context.portable -and $env:APS_CHROME_EXE) { return 4 }
             return 2
         }
-        Write-ApsLog $context ('app_exe="' + $context.exe + '" chrome_exe="' + $chrome + '"')
+        Write-ApsLog $context ('app_exe="' + $context.exe + '" chrome_exe="' + $chrome +
+            '" chrome_find_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
+        Write-ApsLog $context 'chrome_profile_begin'
+        $phaseMs = $context.clock.ElapsedMilliseconds
         try {
             [void][IO.Directory]::CreateDirectory($context.profile)
             $probe = Join-Path $context.profile ('aps_write_probe_' + [Guid]::NewGuid().ToString('N') + '.tmp')
@@ -335,8 +351,12 @@ function Invoke-ApsLauncher([string]$Directory) {
             [IO.File]::Delete($probe)
         }
         catch { Write-ApsLog $context ('chrome_profile_probe_failed=' + $_.Exception.Message); return 10 }
+        Write-ApsLog $context ('chrome_profile_ready profile_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
+        Write-ApsLog $context 'existing_probe_begin'
+        $phaseMs = $context.clock.ElapsedMilliseconds
         $state = Get-ApsExistingState $context $null
-        Write-ApsLog $context ('existing_instance=' + $state.state + ':' + $state.reason)
+        Write-ApsLog $context ('existing_instance=' + $state.state + ':' + $state.reason +
+            ' probe_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
         if ($state.state -eq 'absent' -or $state.state -eq 'starting') {
             $ignoredErrorTime = $null
             if ($state.state -eq 'absent') {
@@ -344,12 +364,17 @@ function Invoke-ApsLauncher([string]$Directory) {
                 $ignoredErrorTime = [IO.File]::GetLastWriteTimeUtc($context.errorFile)
                 Write-Host '[launcher] Starting app...'
                 Write-ApsLog $context 'app_start_required=1'
+                $phaseMs = $context.clock.ElapsedMilliseconds
                 try { Start-ApsProcess $context.exe '' $context.directory }
                 catch { Write-ApsLog $context ('app_spawn_failed=' + $_.Exception.Message); return 6 }
-                Write-ApsLog $context 'app_spawned'
+                Write-ApsLog $context ('app_spawned spawn_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
             }
             Write-Host '[launcher] Waiting for app readiness (up to 45s)...'
+            Write-ApsLog $context 'wait_begin'
+            $phaseMs = $context.clock.ElapsedMilliseconds
             $state = Wait-ApsReady $context $ignoredErrorTime
+            Write-ApsLog $context ('wait_end state=' + $state.state +
+                ' wait_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
         }
         if ($state.state -ne 'ready') {
             Write-ApsLog $context ('launch_stopped=' + $state.state + ':' + $state.reason)
@@ -365,9 +390,10 @@ function Invoke-ApsLauncher([string]$Directory) {
         Write-ApsLog $context ('health_ready url="' + $url + '" recovery=' + $state.recovery)
         Write-ApsLog $context ('chrome_cmd="' + $chrome + '" ' + $arguments)
         Write-Host ('[launcher] Opening: ' + $url)
+        $phaseMs = $context.clock.ElapsedMilliseconds
         try { Start-ApsProcess $chrome $arguments ([IO.Path]::GetDirectoryName($chrome)) }
         catch { Write-ApsLog $context ('chrome_spawn_failed=' + $_.Exception.Message); return 5 }
-        Write-ApsLog $context 'chrome_started'
+        Write-ApsLog $context ('chrome_started spawn_ms=' + ($context.clock.ElapsedMilliseconds - $phaseMs))
         Write-ApsLog $context 'launcher_complete'
         return 0
     } catch {
@@ -380,5 +406,5 @@ function Invoke-ApsLauncher([string]$Directory) {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    exit (Invoke-ApsLauncher (Split-Path -Parent $MyInvocation.MyCommand.Path))
+    exit (Invoke-ApsLauncher (Split-Path -Parent $MyInvocation.MyCommand.Path) $script:ApsScriptClock $script:ApsScriptStartedUtc)
 }

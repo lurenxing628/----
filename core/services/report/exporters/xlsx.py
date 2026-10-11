@@ -5,11 +5,6 @@ import logging
 import tempfile
 from typing import Any, BinaryIO, Dict, List, Optional, cast
 
-import openpyxl
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.styles import Alignment, Font
-from openpyxl.utils import get_column_letter
-
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.values.number_parsing import parse_optional_report_float
 
@@ -17,6 +12,8 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _auto_width(ws) -> None:
+    from openpyxl.utils import get_column_letter
+
     widths: Dict[int, int] = {}
     for row in ws.iter_rows():
         for cell in row:
@@ -31,6 +28,9 @@ def _append_row(ws, values: List[Any]) -> None:
 
 
 def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) -> None:
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Alignment, Font
+
     row_cells: List[Any] = []
     for value in values:
         cell = WriteOnlyCell(ws, value=_sanitize_export_cell(value))
@@ -44,6 +44,8 @@ def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) ->
 
 
 def _format_sheet(ws) -> None:
+    from openpyxl.styles import Alignment, Font
+
     ws.freeze_panes = "A2"
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -108,6 +110,9 @@ SUMMARY_IDENTITY_LABELS = ("计划编号", "数据版本编号")
 
 def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
     if len(values) == 2 and values[0] in SUMMARY_IDENTITY_LABELS:
+        from openpyxl.cell import WriteOnlyCell
+        from openpyxl.styles import Alignment
+
         cells = [WriteOnlyCell(ws, value=_sanitize_export_cell(values[0])),
                  WriteOnlyCell(ws, value=values[1])]
         cells[1].data_type = "s"
@@ -121,6 +126,8 @@ def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
 
 
 def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_only: bool) -> None:
+    from openpyxl.styles import Alignment, Font
+
     rows = list(summary_rows or [])
     if not rows:
         return
@@ -162,6 +169,8 @@ def export_overdue_xlsx(
     summary_rows: Optional[List[List[Any]]] = None,
     write_only: bool = False,
 ) -> BinaryIO:
+    import openpyxl
+
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
@@ -249,6 +258,8 @@ def export_utilization_xlsx(
     summary_rows: Optional[List[List[Any]]] = None,
     write_only: bool = False,
 ) -> BinaryIO:
+    import openpyxl
+
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
@@ -294,6 +305,8 @@ def export_downtime_impact_xlsx(
     summary_rows: Optional[List[List[Any]]] = None,
     write_only: bool = False,
 ) -> BinaryIO:
+    import openpyxl
+
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
@@ -349,6 +362,8 @@ def export_execution_review_xlsx(
     summary_rows: Optional[List[List[Any]]] = None,
     write_only: bool = False,
 ) -> BinaryIO:
+    import openpyxl
+
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)

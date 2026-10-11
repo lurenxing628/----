@@ -6,7 +6,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, validate_req
 from core.models.workbench_run_adoption import adoption_input
 from core.models.workbench_trial import reference
 from core.models.workbench_trial_adoption import ADOPT_ACTION, TrialAdoptionBlocked
-from core.services.scheduler import schedule_service
+from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.messages import UNAVAILABLE
@@ -90,7 +90,7 @@ class WorkbenchTrialAdoptionService:
             return replayed
         # Same admission mutex and global scheduler lock as real candidate adopt.
         with _ADOPTION_LOCK:
-            lock = schedule_service._RUN_SCHEDULE_LOCK
+            lock = RUN_SCHEDULE_LOCK
             if not lock.acquire(blocking=False):
                 raise WorkbenchCommandRejected("scheduling_busy", "正在排产，这次采用没有执行。请等排产结束后重新点「确认正式采用」。")
             try:

@@ -496,4 +496,5 @@ class CalendarEngine:
 
 
 # Subclasses that only change how calendar rows are resolved keep the engine's pure timing surface.
-register_calendar_timing_guard(CalendarEngine, make_lineage_timing_guard(CalendarEngine, NATIVE_TIMING_METHODS))
+register_calendar_timing_guard(CalendarEngine, make_lineage_timing_guard(CalendarEngine, NATIVE_TIMING_METHODS),
+                               calendar_days_guard=make_lineage_timing_guard(CalendarEngine, ("add_calendar_days",)))

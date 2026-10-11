@@ -15,11 +15,10 @@ from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_job import TERMINAL_STATES, validate_run_ref
-from core.services.scheduler import schedule_service
+from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.system.system_maintenance_service import SystemMaintenanceService
-from core.services.workbench.run.jobs import WorkbenchRunService
-from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.run.worker_claim import RunClaimBusy, capture_claim_retry_state, require_retryable_claim
+from core.services.workbench.run.worker_recovery import recover_unfinished_runs
 from web.error_boundary import user_visible_app_error_message
 from web.runtime_host import restore_host
 
@@ -106,7 +105,7 @@ class WorkbenchRunRuntime:
     def _recover(self):
         self._verify()
         with closing(get_connection(self.db_path)) as conn:
-            result = WorkbenchRunService(conn).recover_unfinished_runs(
+            result = recover_unfinished_runs(conn,
                 executor_is_active=self._executor_is_active)
         self.recovery = result
         self._verify()
@@ -156,6 +155,9 @@ class WorkbenchRunRuntime:
                 self._queue.put(run_ref)
 
     def _execute(self, run_ref):
+        from core.services.workbench.run.jobs import WorkbenchRunService
+        from core.services.workbench.run.worker import WorkbenchRunWorker
+
         claim_failures, original = 0, None
         while not self._stop.is_set():
             self._verify()
@@ -199,11 +201,13 @@ class WorkbenchRunRuntime:
                 continue
             # Never hold a DB transaction while waiting. The worker must acquire
             # the original non-reentrant lock itself, so release this wait probe.
-            lock = schedule_service._RUN_SCHEDULE_LOCK
+            lock = RUN_SCHEDULE_LOCK
             if lock.acquire(timeout=0.1):
                 lock.release()
 
     def _run_one(self, run_ref):
+        from core.services.workbench.run.jobs import WorkbenchRunService
+
         try:
             self._execute(run_ref)
         except Exception:

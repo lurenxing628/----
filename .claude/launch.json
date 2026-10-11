@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "review-workbench",
+      "runtimeExecutable": "/Users/lurenxing/GitHub/----/.venv/bin/python",
+      "runtimeArgs": ["/tmp/claude-501/rail-shot/scripts/serve.py", "/tmp/claude-501/rail-shot/run", "/Users/lurenxing/GitHub/----"],
+      "port": 5893
+    },
+    {
+      "name": "review-head",
+      "runtimeExecutable": "/Users/lurenxing/GitHub/----/.venv/bin/python",
+      "runtimeArgs": ["/tmp/claude-501/rail-shot/scripts/serve.py", "/tmp/claude-501/rail-shot/run-head", "/tmp/claude-501/rail-shot/head"],
+      "port": 5894,
+      "env": { "REVIEW_PORT": "5894" }
+    }
+  ]
+}

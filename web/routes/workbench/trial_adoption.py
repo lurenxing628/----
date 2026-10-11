@@ -6,7 +6,6 @@ from flask import current_app, g, jsonify, request
 
 from core.models.workbench_command import WorkbenchCommandUncertain, input_fingerprint, validate_request_key
 from core.models.workbench_trial import fields, reject
-from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
@@ -15,6 +14,8 @@ from .write_context import issue_write_context, validate_write_context
 
 
 def _service():
+    from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
+
     return WorkbenchTrialAdoptionService(g.db,
         integration_enabled=current_app.config.get("WORKBENCH_CANDIDATE_ADOPTION_ENABLED") is True,
         point_rendering_enabled=current_app.config.get("WORKBENCH_POINT_RENDERING_ENABLED") is True,

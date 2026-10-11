@@ -17,9 +17,8 @@ class PriorityReadyQueue:
         heapq.heapify(self.heap)
 
     def head(self, blocked_batches):
-        for kind, record in self.pruning.examples.items():
-            if not self.pruning.guards[kind](record):
-                return None
+        if not self.pruning.intact():
+            return None
         while self.heap:
             _key, op_id = self.heap[0]
             batch_id, op = self.graph["op_by_id"][op_id]

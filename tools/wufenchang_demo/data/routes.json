@@ -1,0 +1,3415 @@
+{
+  "source": {
+    "project": "五分厂产能调研",
+    "directory": "01_原始资料/02_工艺工时与能力_原始导出",
+    "operations_file": "工序表_原始导出_国标中文编码.csv",
+    "hours_file": "工时表_原始导出_国标中文编码.csv",
+    "encoding": "gb18030",
+    "record_locator": "原CSV首列的记录编号，不是物理文本行号。",
+    "join_fields": [
+      "完整图号",
+      "REVISION_NO",
+      "OPERATION_SEQ_NO"
+    ],
+    "setup_field": "IN_STORE_PREPARE_TIME",
+    "unit_field": "IN_STORE_RATION_TIME",
+    "time_unit": "minutes",
+    "route_selection": "为演示明确选用一条原始路线；不宣称是现场最新有效版次。"
+  },
+  "parts": [
+    {
+      "drawing": "HSS2-00-0000",
+      "name": "海伞锁",
+      "family": "HSS2",
+      "route": "HSS2-L.IN-2024-0014",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "512817",
+          "hours_record_id": "513919"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "512818",
+          "hours_record_id": "513920"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "512819",
+          "hours_record_id": "513921"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 90.0,
+          "operation_record_id": "512820",
+          "hours_record_id": "513922"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 40.0,
+          "operation_record_id": "512821",
+          "hours_record_id": "513923"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "512822",
+          "hours_record_id": "513924"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "电装",
+          "department": "电子产品装配分厂",
+          "workcenter": "电子产品装配分厂-电装工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "512823",
+          "hours_record_id": "513925"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "512824",
+          "hours_record_id": "513926"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "512825",
+          "hours_record_id": "513927"
+        }
+      ]
+    },
+    {
+      "drawing": "HSS2-00-0000GY1",
+      "name": "海伞锁装配过程件",
+      "family": "HSS2",
+      "route": "HSS2-IN-0009",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 108.0,
+          "operation_record_id": "98176",
+          "hours_record_id": "98276"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 36.0,
+          "operation_record_id": "98177",
+          "hours_record_id": "98277"
+        },
+        {
+          "sequence": 12,
+          "source_sequence": "012",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "98178",
+          "hours_record_id": "98278"
+        },
+        {
+          "sequence": 13,
+          "source_sequence": "013",
+          "operation": "喷漆",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-喷漆工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "98179",
+          "hours_record_id": "98279"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "98180",
+          "hours_record_id": "98280"
+        }
+      ]
+    },
+    {
+      "drawing": "HSS2-00-0000-A01GY1",
+      "name": "海伞锁装配过程件",
+      "family": "HSS2",
+      "route": "HSS2-IN-0010",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "274431",
+          "hours_record_id": "274777"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "274738",
+          "hours_record_id": "275094"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "274727",
+          "hours_record_id": "275083"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "喷漆",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-喷漆工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "274728",
+          "hours_record_id": "275084"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "274729",
+          "hours_record_id": "275085"
+        }
+      ]
+    },
+    {
+      "drawing": "HZK1-01-0001-002",
+      "name": "盖板",
+      "family": "HZK1",
+      "route": "HZK1-L.IC-2024-0001",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "线切割",
+          "department": "五分厂",
+          "workcenter": "五分厂-线切割工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "349247",
+          "hours_record_id": "349659"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 5.0,
+          "operation_record_id": "349248",
+          "hours_record_id": "349660"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 5.0,
+          "operation_record_id": "349249",
+          "hours_record_id": "349661"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "349250",
+          "hours_record_id": "349662"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "热处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-热处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "349253",
+          "hours_record_id": "349665"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "349254",
+          "hours_record_id": "349666"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "349255",
+          "hours_record_id": "349667"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "349256",
+          "hours_record_id": "349668"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 1.0,
+          "operation_record_id": "349257",
+          "hours_record_id": "349669"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "349258",
+          "hours_record_id": "349670"
+        }
+      ]
+    },
+    {
+      "drawing": "HZK1-00-0000-A02",
+      "name": "海伞锁",
+      "family": "HZK1",
+      "route": "HZK1-L.IN-2025-0004",
+      "operations": [
+        {
+          "sequence": 3,
+          "source_sequence": "003",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 24.0,
+          "operation_record_id": "52817",
+          "hours_record_id": "52879"
+        },
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "52818",
+          "hours_record_id": "52880"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "配胶",
+          "department": "二分厂",
+          "workcenter": "二分厂-配胶工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "52819",
+          "hours_record_id": "52881"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "52820",
+          "hours_record_id": "52882"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 28.0,
+          "operation_record_id": "52884",
+          "hours_record_id": "52946"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "52885",
+          "hours_record_id": "52947"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "喷漆",
+          "department": "五分厂",
+          "workcenter": "五分厂-喷漆工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "52886",
+          "hours_record_id": "52948"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "52887",
+          "hours_record_id": "52949"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "电装",
+          "department": "电子产品装配分厂",
+          "workcenter": "电子产品装配分厂-电装工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "52888",
+          "hours_record_id": "52950"
+        }
+      ]
+    },
+    {
+      "drawing": "HZK1-00-0000-A01GY1",
+      "name": "海伞锁装配过程件",
+      "family": "HZK1",
+      "route": "HZK1-IN-0011",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "154588",
+          "hours_record_id": "154742"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "154589",
+          "hours_record_id": "154743"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "152191",
+          "hours_record_id": "152341"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "152174",
+          "hours_record_id": "152324"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "喷漆",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-喷漆工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "152175",
+          "hours_record_id": "152325"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "152176",
+          "hours_record_id": "152326"
+        }
+      ]
+    },
+    {
+      "drawing": "HZK1-00-0000-A02GY1",
+      "name": "海伞锁装配过程件",
+      "family": "HZK1",
+      "route": "HZK1-IN-0008",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "187267",
+          "hours_record_id": "187480"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 42.0,
+          "operation_record_id": "187268",
+          "hours_record_id": "187481"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 36.0,
+          "operation_record_id": "325883",
+          "hours_record_id": "326253"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "325884",
+          "hours_record_id": "326254"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "喷漆",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-喷漆工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "325890",
+          "hours_record_id": "326260"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "325891",
+          "hours_record_id": "326261"
+        }
+      ]
+    },
+    {
+      "drawing": "SZM1-05-1001",
+      "name": "锁闭摇臂",
+      "family": "SZM1",
+      "route": "SZM1-IW-0033",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "191717",
+          "hours_record_id": "191932"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "191718",
+          "hours_record_id": "191933"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "热处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-热处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 4.0,
+          "operation_record_id": "191720",
+          "hours_record_id": "191935"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "吹砂",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-吹砂工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 1.0,
+          "operation_record_id": "191721",
+          "hours_record_id": "191936"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "磨削",
+          "department": "五分厂",
+          "workcenter": "五分厂-磨工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "191722",
+          "hours_record_id": "191937"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "191723",
+          "hours_record_id": "191938"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "191724",
+          "hours_record_id": "191939"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "192016",
+          "hours_record_id": "192231"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 18.0,
+          "operation_record_id": "192017",
+          "hours_record_id": "192232"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "192018",
+          "hours_record_id": "192233"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "线切割",
+          "department": "五分厂",
+          "workcenter": "五分厂-线切割工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "192019",
+          "hours_record_id": "192234"
+        },
+        {
+          "sequence": 60,
+          "source_sequence": "060",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 2.0,
+          "operation_record_id": "192030",
+          "hours_record_id": "192245"
+        },
+        {
+          "sequence": 65,
+          "source_sequence": "065",
+          "operation": "普车",
+          "department": "五分厂",
+          "workcenter": "五分厂-车工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "192031",
+          "hours_record_id": "192246"
+        },
+        {
+          "sequence": 70,
+          "source_sequence": "070",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "192319",
+          "hours_record_id": "192534"
+        },
+        {
+          "sequence": 75,
+          "source_sequence": "075",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "192320",
+          "hours_record_id": "192535"
+        },
+        {
+          "sequence": 80,
+          "source_sequence": "080",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 1.0,
+          "operation_record_id": "192321",
+          "hours_record_id": "192536"
+        },
+        {
+          "sequence": 85,
+          "source_sequence": "085",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "192322",
+          "hours_record_id": "192537"
+        }
+      ]
+    },
+    {
+      "drawing": "SZM1-00-0000",
+      "name": "阻力伞舱门锁",
+      "family": "SZM1",
+      "route": "SZM1-L.IN-2024-0005",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "495180",
+          "hours_record_id": "496223"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "492137",
+          "hours_record_id": "493174"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "492138",
+          "hours_record_id": "493175"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "492139",
+          "hours_record_id": "493176"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "492140",
+          "hours_record_id": "493177"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "492141",
+          "hours_record_id": "493178"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "492142",
+          "hours_record_id": "493179"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "492143",
+          "hours_record_id": "493180"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "492144",
+          "hours_record_id": "493181"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "无损检测",
+          "department": "质量部",
+          "workcenter": "质量部-无损检测工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "492145",
+          "hours_record_id": "493182"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "无损检测",
+          "department": "质量部",
+          "workcenter": "质量部-无损检测工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "492146",
+          "hours_record_id": "493183"
+        },
+        {
+          "sequence": 60,
+          "source_sequence": "060",
+          "operation": "无损检测",
+          "department": "质量部",
+          "workcenter": "质量部-无损检测工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "492147",
+          "hours_record_id": "493184"
+        },
+        {
+          "sequence": 65,
+          "source_sequence": "065",
+          "operation": "无损检测",
+          "department": "质量部",
+          "workcenter": "质量部-无损检测工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "492148",
+          "hours_record_id": "493185"
+        },
+        {
+          "sequence": 70,
+          "source_sequence": "070",
+          "operation": "无损检测",
+          "department": "质量部",
+          "workcenter": "质量部-无损检测工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "492149",
+          "hours_record_id": "493186"
+        },
+        {
+          "sequence": 75,
+          "source_sequence": "075",
+          "operation": "无损检测",
+          "department": "质量部",
+          "workcenter": "质量部-无损检测工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "492150",
+          "hours_record_id": "493187"
+        },
+        {
+          "sequence": 80,
+          "source_sequence": "080",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "492151",
+          "hours_record_id": "493188"
+        },
+        {
+          "sequence": 85,
+          "source_sequence": "085",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "492152",
+          "hours_record_id": "493189"
+        }
+      ]
+    },
+    {
+      "drawing": "SZM1-00-0003",
+      "name": "制动钩",
+      "family": "SZM1",
+      "route": "SZM1-IW-0026",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "领料",
+          "department": "仓储管理办公室",
+          "workcenter": "仓储管理办公室-领料工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 0.02,
+          "operation_record_id": "485451",
+          "hours_record_id": "486447"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 36.0,
+          "operation_record_id": "485436",
+          "hours_record_id": "486432"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 21.0,
+          "operation_record_id": "485437",
+          "hours_record_id": "486433"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "热处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-热处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "485438",
+          "hours_record_id": "486434"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "磨削",
+          "department": "五分厂",
+          "workcenter": "五分厂-磨工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "485439",
+          "hours_record_id": "486435"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "线切割",
+          "department": "五分厂",
+          "workcenter": "五分厂-线切割工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "485440",
+          "hours_record_id": "486436"
+        },
+        {
+          "sequence": 32,
+          "source_sequence": "032",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "485441",
+          "hours_record_id": "486437"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "普车",
+          "department": "五分厂",
+          "workcenter": "五分厂-车工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "485442",
+          "hours_record_id": "486438"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "485443",
+          "hours_record_id": "486439"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "485444",
+          "hours_record_id": "486440"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 2.0,
+          "operation_record_id": "485445",
+          "hours_record_id": "486441"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "485446",
+          "hours_record_id": "486442"
+        }
+      ]
+    },
+    {
+      "drawing": "SZM1-04-0003",
+      "name": "固定架",
+      "family": "SZM1",
+      "route": "SZM1-IW-0067",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "加工试件",
+          "department": "五分厂",
+          "workcenter": "五分厂-加工试件工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 18.0,
+          "operation_record_id": "270461",
+          "hours_record_id": "270791"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "冲压",
+          "department": "五分厂",
+          "workcenter": "五分厂-冲压工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 0.08,
+          "operation_record_id": "270462",
+          "hours_record_id": "270792"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "270463",
+          "hours_record_id": "270793"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "冲压",
+          "department": "五分厂",
+          "workcenter": "五分厂-冲压工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 0.17,
+          "operation_record_id": "270465",
+          "hours_record_id": "270795"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 2.0,
+          "operation_record_id": "270466",
+          "hours_record_id": "270796"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "270467",
+          "hours_record_id": "270797"
+        }
+      ]
+    },
+    {
+      "drawing": "SZS2A-03-0000",
+      "name": "电磁铁",
+      "family": "SZS2A",
+      "route": "SZS2A-IN-0005",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "启封",
+          "department": "一分厂",
+          "workcenter": "一分厂-启封工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "253457",
+          "hours_record_id": "253771"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "253458",
+          "hours_record_id": "253772"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "253468",
+          "hours_record_id": "253782"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "253450",
+          "hours_record_id": "253764"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "253451",
+          "hours_record_id": "253765"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "普车",
+          "department": "五分厂",
+          "workcenter": "五分厂-车工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "253452",
+          "hours_record_id": "253766"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "涂漆",
+          "department": "五分厂",
+          "workcenter": "五分厂-涂漆工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "253453",
+          "hours_record_id": "253767"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "涂油",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-涂油工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "253454",
+          "hours_record_id": "253768"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 240.0,
+          "operation_record_id": "253455",
+          "hours_record_id": "253769"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "253456",
+          "hours_record_id": "253770"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "调试",
+          "department": "五分厂",
+          "workcenter": "五分厂-调试工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "253459",
+          "hours_record_id": "253773"
+        },
+        {
+          "sequence": 60,
+          "source_sequence": "060",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "253460",
+          "hours_record_id": "253774"
+        },
+        {
+          "sequence": 65,
+          "source_sequence": "065",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "253461",
+          "hours_record_id": "253775"
+        },
+        {
+          "sequence": 70,
+          "source_sequence": "070",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "253462",
+          "hours_record_id": "253776"
+        }
+      ]
+    },
+    {
+      "drawing": "SZS2A-03-1000",
+      "name": "线圈",
+      "family": "SZS2A",
+      "route": "SZS2A-IN-0004",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "355710",
+          "hours_record_id": "356129"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "355711",
+          "hours_record_id": "356130"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "355712",
+          "hours_record_id": "356131"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 90.0,
+          "operation_record_id": "355713",
+          "hours_record_id": "356132"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "355714",
+          "hours_record_id": "356133"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 90.0,
+          "operation_record_id": "355715",
+          "hours_record_id": "356134"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "355716",
+          "hours_record_id": "356135"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 150.0,
+          "operation_record_id": "355717",
+          "hours_record_id": "356136"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "清理",
+          "department": "五分厂",
+          "workcenter": "五分厂-清理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "356045",
+          "hours_record_id": "356470"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "356049",
+          "hours_record_id": "356474"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "356048",
+          "hours_record_id": "356473"
+        }
+      ]
+    },
+    {
+      "drawing": "SZS2A-02-0001",
+      "name": "支撑钩",
+      "family": "SZS2A",
+      "route": "SZS2A-IW-0032",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "330633",
+          "hours_record_id": "331006"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "330634",
+          "hours_record_id": "331007"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 2.5,
+          "operation_record_id": "330621",
+          "hours_record_id": "330994"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "磨削",
+          "department": "五分厂",
+          "workcenter": "五分厂-磨工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "330622",
+          "hours_record_id": "330995"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "330623",
+          "hours_record_id": "330996"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 2.0,
+          "operation_record_id": "330624",
+          "hours_record_id": "330997"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "数车",
+          "department": "五分厂",
+          "workcenter": "五分厂-数车工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 5.0,
+          "operation_record_id": "330625",
+          "hours_record_id": "330998"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 360.0,
+          "unit_minutes": 52.0,
+          "operation_record_id": "330626",
+          "hours_record_id": "330999"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "330627",
+          "hours_record_id": "331000"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "330628",
+          "hours_record_id": "331001"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "热处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-热处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "330629",
+          "hours_record_id": "331002"
+        },
+        {
+          "sequence": 60,
+          "source_sequence": "060",
+          "operation": "特检",
+          "department": "计量理化中心",
+          "workcenter": "计量理化中心-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "330630",
+          "hours_record_id": "331003"
+        },
+        {
+          "sequence": 65,
+          "source_sequence": "065",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "330631",
+          "hours_record_id": "331004"
+        },
+        {
+          "sequence": 70,
+          "source_sequence": "070",
+          "operation": "涂漆",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-涂漆工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "330632",
+          "hours_record_id": "331005"
+        },
+        {
+          "sequence": 75,
+          "source_sequence": "075",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "330635",
+          "hours_record_id": "331008"
+        }
+      ]
+    },
+    {
+      "drawing": "SZS2A-01-0002",
+      "name": "侧板一",
+      "family": "SZS2A",
+      "route": "SZS2A-IW-0006",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "428310",
+          "hours_record_id": "429019"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "428311",
+          "hours_record_id": "429020"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "428312",
+          "hours_record_id": "429021"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "磨削",
+          "department": "五分厂",
+          "workcenter": "五分厂-磨工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 24.0,
+          "operation_record_id": "428313",
+          "hours_record_id": "429022"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "428314",
+          "hours_record_id": "429023"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 28.0,
+          "operation_record_id": "428315",
+          "hours_record_id": "429024"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 4.0,
+          "operation_record_id": "428316",
+          "hours_record_id": "429025"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "成检",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "428317",
+          "hours_record_id": "429026"
+        }
+      ]
+    },
+    {
+      "drawing": "BSSY5G-00-0000-A01",
+      "name": "飞行员装备检测仪",
+      "family": "BSSY5G",
+      "route": "BSSY5G-L.IN-2025-0001",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "68497",
+          "hours_record_id": "68573"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "86438",
+          "hours_record_id": "86532"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "试验",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "86439",
+          "hours_record_id": "86533"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "称重",
+          "department": "电子产品装配分厂",
+          "workcenter": "电子产品装配分厂-称重工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "86440",
+          "hours_record_id": "86534"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "86441",
+          "hours_record_id": "86535"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "86442",
+          "hours_record_id": "86536"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "86443",
+          "hours_record_id": "86537"
+        }
+      ]
+    },
+    {
+      "drawing": "BSSY5G-01-3220-001",
+      "name": "连接管",
+      "family": "BSSY5G",
+      "route": "BSSY5G-IH-0003",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "清洗",
+          "department": "五分厂",
+          "workcenter": "五分厂-清洗工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "229276",
+          "hours_record_id": "229549"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "229277",
+          "hours_record_id": "229550"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "焊接",
+          "department": "机加中心",
+          "workcenter": "机加中心-焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "229278",
+          "hours_record_id": "229551"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 40.0,
+          "operation_record_id": "229279",
+          "hours_record_id": "229552"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "281662",
+          "hours_record_id": "282024"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "281643",
+          "hours_record_id": "282005"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "试验",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "281644",
+          "hours_record_id": "282006"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "281645",
+          "hours_record_id": "282007"
+        }
+      ]
+    },
+    {
+      "drawing": "BSSY5G-03-0200-001",
+      "name": "YDJ-25堵头",
+      "family": "BSSY5G",
+      "route": "BSSY5G-L.IN-2026-0003",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "414219",
+          "hours_record_id": "414875"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "414211",
+          "hours_record_id": "414867"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "414212",
+          "hours_record_id": "414868"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "414213",
+          "hours_record_id": "414869"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "414214",
+          "hours_record_id": "414870"
+        }
+      ]
+    },
+    {
+      "drawing": "BSSY5G-03-0002-001",
+      "name": "夹具",
+      "family": "BSSY5G",
+      "route": "BSSY5G-IW-0076",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "普车",
+          "department": "五分厂",
+          "workcenter": "五分厂-车工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 5.0,
+          "operation_record_id": "259122",
+          "hours_record_id": "259446"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "259123",
+          "hours_record_id": "259447"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "259124",
+          "hours_record_id": "259448"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "259125",
+          "hours_record_id": "259449"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "259135",
+          "hours_record_id": "259459"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "259136",
+          "hours_record_id": "259460"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "259137",
+          "hours_record_id": "259461"
+        }
+      ]
+    },
+    {
+      "drawing": "SSJ10-01-1100-001",
+      "name": "浮筒组件检测仪机箱",
+      "family": "SSJ10",
+      "route": "SSJ10-IH-0001",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "普车",
+          "department": "五分厂",
+          "workcenter": "五分厂-车工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 2.0,
+          "operation_record_id": "425834",
+          "hours_record_id": "426534"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "425835",
+          "hours_record_id": "426535"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 36.0,
+          "operation_record_id": "425836",
+          "hours_record_id": "426536"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "焊接",
+          "department": "机加中心",
+          "workcenter": "机加中心-焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 120.0,
+          "operation_record_id": "425837",
+          "hours_record_id": "426537"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "425838",
+          "hours_record_id": "426538"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "焊接",
+          "department": "五分厂",
+          "workcenter": "五分厂-焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 120.0,
+          "operation_record_id": "425839",
+          "hours_record_id": "426539"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "425840",
+          "hours_record_id": "426540"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "总检",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "425841",
+          "hours_record_id": "426541"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "油漆",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-油漆工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 120.0,
+          "operation_record_id": "425842",
+          "hours_record_id": "426542"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "丝网印刷",
+          "department": "五分厂",
+          "workcenter": "五分厂-丝网印刷工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "425843",
+          "hours_record_id": "426543"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "成检",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "425844",
+          "hours_record_id": "426544"
+        }
+      ]
+    },
+    {
+      "drawing": "SSJ10-01-3100-001",
+      "name": "储气罐",
+      "family": "SSJ10",
+      "route": "SSJ10-IH-0002",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "清洗",
+          "department": "五分厂",
+          "workcenter": "五分厂-清洗工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 8.0,
+          "operation_record_id": "154687",
+          "hours_record_id": "154841"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "154977",
+          "hours_record_id": "155131"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "焊接",
+          "department": "机加中心",
+          "workcenter": "机加中心-焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 48.0,
+          "operation_record_id": "154978",
+          "hours_record_id": "155132"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 26.0,
+          "operation_record_id": "154979",
+          "hours_record_id": "155133"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "试验",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "154994",
+          "hours_record_id": "155148"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "试验",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "154995",
+          "hours_record_id": "155149"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "155291",
+          "hours_record_id": "155449"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "155292",
+          "hours_record_id": "155450"
+        }
+      ]
+    },
+    {
+      "drawing": "SSJ10-01-8002-001",
+      "name": "叉耳",
+      "family": "SSJ10",
+      "route": "SSJ10-IW-0074",
+      "operations": [
+        {
+          "sequence": 2,
+          "source_sequence": "002",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "330942",
+          "hours_record_id": "331315"
+        },
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "330943",
+          "hours_record_id": "331316"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 2.0,
+          "operation_record_id": "331283",
+          "hours_record_id": "331656"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "中走丝",
+          "department": "五分厂",
+          "workcenter": "五分厂-中走丝工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 50.0,
+          "operation_record_id": "331284",
+          "hours_record_id": "331657"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "331285",
+          "hours_record_id": "331658"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "331286",
+          "hours_record_id": "331659"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 2.0,
+          "operation_record_id": "331287",
+          "hours_record_id": "331660"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "331288",
+          "hours_record_id": "331661"
+        }
+      ]
+    },
+    {
+      "drawing": "SSJ10-02-0200-001",
+      "name": "充放气阀接口管",
+      "family": "SSJ10",
+      "route": "SSJ10-IN-0024",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "357229",
+          "hours_record_id": "357659"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "清洗",
+          "department": "五分厂",
+          "workcenter": "五分厂-清洗工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 0.5,
+          "operation_record_id": "357230",
+          "hours_record_id": "357660"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "357231",
+          "hours_record_id": "357661"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "气密性检验",
+          "department": "五分厂",
+          "workcenter": "五分厂-气密性检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "357232",
+          "hours_record_id": "357662"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "成检",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "357565",
+          "hours_record_id": "357997"
+        }
+      ]
+    },
+    {
+      "drawing": "XFT1A-02-1112-002",
+      "name": "中间动梁",
+      "family": "XFT1A",
+      "route": "XFT1A-L.IW-2026-0021",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "410697",
+          "hours_record_id": "411342"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "410698",
+          "hours_record_id": "411343"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 360.0,
+          "unit_minutes": 58.0,
+          "operation_record_id": "410699",
+          "hours_record_id": "411344"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "410700",
+          "hours_record_id": "411345"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "线切割",
+          "department": "五分厂",
+          "workcenter": "五分厂-线切割工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 980.0,
+          "operation_record_id": "410701",
+          "hours_record_id": "411346"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 5.0,
+          "operation_record_id": "410704",
+          "hours_record_id": "411349"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "410714",
+          "hours_record_id": "411359"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "410715",
+          "hours_record_id": "411360"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "410716",
+          "hours_record_id": "411361"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "410717",
+          "hours_record_id": "411362"
+        }
+      ]
+    },
+    {
+      "drawing": "XFT1A-02-1000",
+      "name": "控制锁",
+      "family": "XFT1A",
+      "route": "XFT1A-IN-0002",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "标印",
+          "department": "五分厂",
+          "workcenter": "五分厂-标印工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "169885",
+          "hours_record_id": "170087"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "169886",
+          "hours_record_id": "170088"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "169887",
+          "hours_record_id": "170089"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "169888",
+          "hours_record_id": "170090"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "装配",
+          "department": "五分厂",
+          "workcenter": "五分厂-装配钳工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "169889",
+          "hours_record_id": "170091"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "检验",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "169890",
+          "hours_record_id": "170092"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "试验",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "169892",
+          "hours_record_id": "170094"
+        }
+      ]
+    },
+    {
+      "drawing": "XFT1A-02-1101-001",
+      "name": "控制锁面板",
+      "family": "XFT1A",
+      "route": "XFT1A-IW-0063",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 18.0,
+          "operation_record_id": "214595",
+          "hours_record_id": "214849"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 4.0,
+          "operation_record_id": "214596",
+          "hours_record_id": "214850"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 360.0,
+          "unit_minutes": 35.0,
+          "operation_record_id": "214597",
+          "hours_record_id": "214851"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "214598",
+          "hours_record_id": "214852"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "215341",
+          "hours_record_id": "215606"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "215342",
+          "hours_record_id": "215607"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "215343",
+          "hours_record_id": "215608"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "215344",
+          "hours_record_id": "215609"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "215345",
+          "hours_record_id": "215610"
+        }
+      ]
+    },
+    {
+      "drawing": "XFT1A-02-1101",
+      "name": "控制锁底板",
+      "family": "XFT1A",
+      "route": "XFT1A-IW-0075",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "221758",
+          "hours_record_id": "222028"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "221759",
+          "hours_record_id": "222029"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 360.0,
+          "unit_minutes": 38.0,
+          "operation_record_id": "221763",
+          "hours_record_id": "222033"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "221764",
+          "hours_record_id": "222034"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "221765",
+          "hours_record_id": "222035"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 36.0,
+          "operation_record_id": "221766",
+          "hours_record_id": "222036"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "221767",
+          "hours_record_id": "222037"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "221768",
+          "hours_record_id": "222038"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "221769",
+          "hours_record_id": "222039"
+        }
+      ]
+    },
+    {
+      "drawing": "YB9-08-0501-001",
+      "name": "主体",
+      "family": "YB9",
+      "route": "YB9-IW-0142",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "激光切割",
+          "department": "五分厂",
+          "workcenter": "五分厂-激光切割工",
+          "setup_minutes": 120.0,
+          "unit_minutes": 5.9,
+          "operation_record_id": "465428",
+          "hours_record_id": "466347"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "465417",
+          "hours_record_id": "466336"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钣金",
+          "department": "五分厂",
+          "workcenter": "五分厂-钣金工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "465418",
+          "hours_record_id": "466337"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "酸洗",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-酸洗工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "465419",
+          "hours_record_id": "466338"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 5.0,
+          "operation_record_id": "467975",
+          "hours_record_id": "468907"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "焊接",
+          "department": "五分厂",
+          "workcenter": "五分厂-焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 5.0,
+          "operation_record_id": "490434",
+          "hours_record_id": "491459"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 4.0,
+          "operation_record_id": "490435",
+          "hours_record_id": "491460"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "钨极氩弧焊",
+          "department": "五分厂",
+          "workcenter": "五分厂-钨极氩弧焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "490436",
+          "hours_record_id": "491461"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "490437",
+          "hours_record_id": "491462"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "成检",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "490438",
+          "hours_record_id": "491463"
+        }
+      ]
+    },
+    {
+      "drawing": "YB9-01-0501",
+      "name": "主体",
+      "family": "YB9",
+      "route": "YB9-IW-0036",
+      "operations": [
+        {
+          "sequence": 2,
+          "source_sequence": "002",
+          "operation": "领料",
+          "department": "仓储管理办公室",
+          "workcenter": "仓储管理办公室-领料工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "493067",
+          "hours_record_id": "494104"
+        },
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "激光切割",
+          "department": "机加中心",
+          "workcenter": "机加中心-激光切割工",
+          "setup_minutes": 240.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "493068",
+          "hours_record_id": "494105"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "493054",
+          "hours_record_id": "494091"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "钣金",
+          "department": "五分厂",
+          "workcenter": "五分厂-钣金工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 54.0,
+          "operation_record_id": "493055",
+          "hours_record_id": "494092"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "酸洗",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-酸洗工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 6.0,
+          "operation_record_id": "493056",
+          "hours_record_id": "494093"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "493057",
+          "hours_record_id": "494094"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "焊接",
+          "department": "五分厂",
+          "workcenter": "五分厂-焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "493058",
+          "hours_record_id": "494095"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "493059",
+          "hours_record_id": "494096"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "钨极氩弧焊",
+          "department": "五分厂",
+          "workcenter": "五分厂-钨极氩弧焊工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "493060",
+          "hours_record_id": "494097"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "493061",
+          "hours_record_id": "494098"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "493312",
+          "hours_record_id": "494349"
+        }
+      ]
+    },
+    {
+      "drawing": "YB9-00-1006",
+      "name": "上梁",
+      "family": "YB9",
+      "route": "YB9-IW-0095",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 110.0,
+          "operation_record_id": "134197",
+          "hours_record_id": "134309"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "线切割",
+          "department": "五分厂",
+          "workcenter": "五分厂-线切割工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "134267",
+          "hours_record_id": "134379"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 360.0,
+          "unit_minutes": 210.0,
+          "operation_record_id": "134268",
+          "hours_record_id": "134380"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "热处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-热处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 25.0,
+          "operation_record_id": "134269",
+          "hours_record_id": "134381"
+        },
+        {
+          "sequence": 22,
+          "source_sequence": "022",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 360.0,
+          "unit_minutes": 110.0,
+          "operation_record_id": "134270",
+          "hours_record_id": "134382"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "电火花",
+          "department": "五分厂",
+          "workcenter": "五分厂-电火花工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 60.0,
+          "operation_record_id": "134271",
+          "hours_record_id": "134383"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 15.0,
+          "operation_record_id": "134272",
+          "hours_record_id": "134384"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "总检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "134273",
+          "hours_record_id": "134385"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "吹砂",
+          "department": "五分厂",
+          "workcenter": "五分厂-吹砂工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "134274",
+          "hours_record_id": "134386"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 30.0,
+          "operation_record_id": "134275",
+          "hours_record_id": "134387"
+        },
+        {
+          "sequence": 50,
+          "source_sequence": "050",
+          "operation": "喷塑",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-喷塑工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 40.0,
+          "operation_record_id": "134276",
+          "hours_record_id": "134388"
+        },
+        {
+          "sequence": 55,
+          "source_sequence": "055",
+          "operation": "成检",
+          "department": "质量部",
+          "workcenter": "质量部-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "134277",
+          "hours_record_id": "134389"
+        }
+      ]
+    },
+    {
+      "drawing": "YB9-14-0401-001",
+      "name": "压板",
+      "family": "YB9",
+      "route": "YB9-IW-0238",
+      "operations": [
+        {
+          "sequence": 5,
+          "source_sequence": "005",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 3.0,
+          "operation_record_id": "462546",
+          "hours_record_id": "463462"
+        },
+        {
+          "sequence": 10,
+          "source_sequence": "010",
+          "operation": "普铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-铣工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 10.0,
+          "operation_record_id": "462547",
+          "hours_record_id": "463463"
+        },
+        {
+          "sequence": 15,
+          "source_sequence": "015",
+          "operation": "数铣",
+          "department": "五分厂",
+          "workcenter": "五分厂-数铣工",
+          "setup_minutes": 180.0,
+          "unit_minutes": 22.0,
+          "operation_record_id": "462548",
+          "hours_record_id": "463464"
+        },
+        {
+          "sequence": 20,
+          "source_sequence": "020",
+          "operation": "磨削",
+          "department": "五分厂",
+          "workcenter": "五分厂-磨工",
+          "setup_minutes": 60.0,
+          "unit_minutes": 20.0,
+          "operation_record_id": "462551",
+          "hours_record_id": "463467"
+        },
+        {
+          "sequence": 25,
+          "source_sequence": "025",
+          "operation": "钳",
+          "department": "五分厂",
+          "workcenter": "五分厂-钳工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 12.0,
+          "operation_record_id": "462552",
+          "hours_record_id": "463468"
+        },
+        {
+          "sequence": 30,
+          "source_sequence": "030",
+          "operation": "总检",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "462553",
+          "hours_record_id": "463469"
+        },
+        {
+          "sequence": 35,
+          "source_sequence": "035",
+          "operation": "表面处理",
+          "department": "热表处理中心",
+          "workcenter": "热表处理中心-表面处理工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "462554",
+          "hours_record_id": "463470"
+        },
+        {
+          "sequence": 40,
+          "source_sequence": "040",
+          "operation": "丝网印刷",
+          "department": "五分厂",
+          "workcenter": "五分厂-丝网印刷工",
+          "setup_minutes": 30.0,
+          "unit_minutes": 1.5,
+          "operation_record_id": "462827",
+          "hours_record_id": "463743"
+        },
+        {
+          "sequence": 45,
+          "source_sequence": "045",
+          "operation": "成检",
+          "department": "五分厂",
+          "workcenter": "五分厂-检验工",
+          "setup_minutes": 0.0,
+          "unit_minutes": 0.0,
+          "operation_record_id": "462821",
+          "hours_record_id": "463737"
+        }
+      ]
+    }
+  ]
+}

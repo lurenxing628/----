@@ -31,6 +31,7 @@ class _Sentinel(enum.Enum):
 _MISSING = _Sentinel.MISSING
 _LIMIT = 32768
 _GUARDS: Dict[type, Callable[[Any], bool]] = {}
+_CALENDAR_DAY_GUARDS: Dict[type, Callable[[Any], bool]] = {}
 TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "certified_slot_window",
                   "working_hours_between")
 ACCESSOR_HOOKS = ("__getattribute__", "__getattr__")
@@ -76,11 +77,17 @@ def make_lineage_timing_guard(base: type, methods: Sequence[str]) -> Callable[[A
     return supported
 
 
-def register_calendar_timing_guard(calendar_type: type, guard: Callable[[Any], bool]) -> None:
+def register_calendar_timing_guard(
+    calendar_type: type, guard: Callable[[Any], bool], *, calendar_days_guard: Optional[Callable[[Any], bool]] = None,
+) -> None:
     _GUARDS[calendar_type] = guard
+    if calendar_days_guard is None:
+        _CALENDAR_DAY_GUARDS.pop(calendar_type, None)
+    else:
+        _CALENDAR_DAY_GUARDS[calendar_type] = calendar_days_guard
 
 
-def native_timing_calendar(calendar: Any) -> bool:
+def native_timing_calendar(calendar: Any, *, include_calendar_days: bool = False) -> bool:
     """The nearest registered guard in the calendar's lineage certifies its timing methods as native."""
     kind = type(calendar)
     if type(kind) is not type:
@@ -88,7 +95,12 @@ def native_timing_calendar(calendar: Any) -> bool:
     for entry in kind.__mro__:
         guard = _GUARDS.get(entry)
         if guard is not None:
-            return guard(calendar)
+            if not guard(calendar):
+                return False
+            if not include_calendar_days:
+                return True
+            days_guard = _CALENDAR_DAY_GUARDS.get(entry)
+            return days_guard is not None and days_guard(calendar)
     return False
 
 

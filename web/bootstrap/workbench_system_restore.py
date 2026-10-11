@@ -26,7 +26,7 @@ from flask import g, has_request_context
 from core.infrastructure.backup import MaintenanceWindowError, is_maintenance_window_active, maintenance_window
 from core.infrastructure.database import get_connection
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.scheduler import schedule_service
+from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.system.backup_restore import audit_backup_operation
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from core.services.workbench.system.maintenance_records import capture_maintenance_journal
@@ -263,7 +263,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
 
     def _restore(self, lease, service, row, path, audit, restore_runner):
         self._confirm_host(lease)
-        lock = schedule_service._RUN_SCHEDULE_LOCK
+        lock = RUN_SCHEDULE_LOCK
         if not lock.acquire(blocking=False):
             raise RuntimeError("Original scheduler lock is still held after host drain")
         try:

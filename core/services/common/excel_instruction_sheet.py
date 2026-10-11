@@ -7,9 +7,6 @@
 import os
 from typing import Any, Dict, List
 
-from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.datavalidation import DataValidation
-
 from core.models.workbench_table_descriptor import (
     INSTRUCTION_SHEET,
     enum_columns,
@@ -33,6 +30,9 @@ def append_instruction_sheet(wb, descriptor: Dict[str, Any]) -> Any:
 
 def add_enum_dropdowns(ws, descriptor: Dict[str, Any], row_count: int, *, write_only: bool) -> None:
     """给可填的枚举列挂下拉，覆盖已有数据行再往下留出可填区。"""
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+
     last = max(row_count, 0) + 1 + DROPDOWN_ROWS
     for index, choices in enum_columns(descriptor):
         letter = get_column_letter(index)

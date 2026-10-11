@@ -4,8 +4,13 @@ from datetime import timedelta
 from types import MethodType, SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithms.greedy import scheduler as scheduler_module
+from core.algorithms.greedy.dispatch.sgs_priority_frontier import make_priority_queue
+from core.algorithms.greedy.dispatch.sgs_priority_pruning import GraphPriorityPruning
+from core.errors import ValidationError
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_execution_reservations import (
     ExecutionResourceCalendar,
@@ -142,6 +147,120 @@ def test_graph_decode_with_release_floors_matches_cache_off_with_memo_and_prunin
     assert all(start >= at(1.5) for _op, _m, operator, start, _end in actual[0] if operator == "O2")
     assert not any(off.values())
     assert on["calendar_hits"] > 0 and on["graph_candidates_pruned"] > 0
+
+
+def _mixed_case(batch_count=30):
+    case = _saturated_case(batch_count=batch_count)
+    for index, op in enumerate(case["operations"]):
+        batch_index, seq = divmod(index, 3)
+        if seq == 1 or (seq == 2 and batch_index % 3 == 0):
+            op.source, op.machine_id, op.operator_id = "external", None, None
+            op.ext_days = 0.25
+            if batch_index % 3 == 0:
+                op.ext_merge_mode, op.ext_group_id = "merged", "supplier-group"
+                op.ext_group_total_days = "0.5"
+    return case
+
+
+def test_mixed_external_decode_keeps_pruning_and_exact_schedule_with_release_floors():
+    reservations = [_reservation("O1", "M1", -2.0, 3.0)]
+    (expected, off), (actual, on) = [
+        _decode_with_floors(_mixed_case(), reservations, cache_enabled=enabled) for enabled in (False, True)]
+    assert actual == expected
+    assert actual[1]["failed_ops"] == 0 and actual[1]["scheduled_ops"] == 90
+    assert not any(off.values())
+    assert on["graph_candidates_pruned"] > 0
+
+
+def _pruning(case, calendar, *, strict_mode=True):
+    graph = dict(case["graph_ready_context"])
+    graph["op_by_id"] = {op.id: (op.batch_id, op) for op in case["operations"]}
+    graph["ready_op_ids"] = {op.id for op in case["operations"] if op.seq == 0}
+    hours = {op.id: float(op.setup_hours + op.unit_hours * case["batches"][op.batch_id].quantity)
+             for op in case["operations"] if op.source == "internal"}
+    return GraphPriorityPruning(graph, case["batches"], hours, strict_mode=strict_mode, calendar=calendar), graph
+
+
+def test_external_calendar_override_disables_both_narrowing_paths_without_disabling_internal_timing():
+    with native_calendar() as calendar:
+        pruning, graph = _pruning(_mixed_case(batch_count=50), calendar)
+        internal, _ = _pruning(_saturated_case(batch_count=50), calendar)
+        queue = make_priority_queue(graph, pruning)
+        assert pruning.supported and not pruning.fixed_resources and queue is not None
+        calendar.add_calendar_days = MethodType(lambda self, start, days: start + timedelta(days=days), calendar)
+        assert native_timing_calendar(calendar) and not native_timing_calendar(calendar, include_calendar_days=True)
+        assert internal.intact() and internal.fixed_resources
+        assert queue.head(set()) is None and not pruning.supported
+        assert pruning.frontier(list(graph["op_by_id"].values()), graph) is None
+
+
+@pytest.mark.parametrize("field,value", [("ext_days", "bad"), ("ext_days", 36501.0), ("ext_group_total_days", 0.0)])
+def test_invalid_external_duration_keeps_the_complete_path_and_original_first_error(field, value):
+    case = _saturated_case(batch_count=3, ops_per_batch=1)
+    first, second = case["operations"][:2]
+    first.source, first.ext_days = "external", value
+    if field == "ext_group_total_days":
+        first.ext_merge_mode, first.ext_group_id, first.ext_group_total_days = "merged", "G", value
+    second.source, second.ext_days = "external", "another invalid duration"
+    errors = []
+    for enabled in (False, True):
+        with native_calendar() as calendar:
+            pruning, _ = _pruning(case, calendar)
+            assert not pruning.supported
+            with pytest.raises(ValidationError) as exc:
+                _decode(calendar, case, cache_enabled=enabled)
+            errors.append((exc.value.field, str(exc.value)))
+    assert errors[0] == errors[1]
+    assert errors[0][0] == ("days" if value == 36501.0 else field)
+
+
+def test_external_duration_descriptor_is_not_read_by_certification():
+    calls = []
+
+    class External(SimpleNamespace):
+        @property
+        def ext_days(self):
+            calls.append("duration")
+            return 0.25
+
+    case = _saturated_case(batch_count=2, ops_per_batch=1)
+    first = case["operations"][0]
+    case["operations"][0] = External(**dict(vars(first), source="external"))
+    with native_calendar() as calendar:
+        pruning, _ = _pruning(case, calendar)
+    assert not pruning.supported and calls == []
+
+
+def test_blank_external_duration_keeps_the_existing_strict_and_non_strict_rules():
+    case = _saturated_case(batch_count=2, ops_per_batch=1)
+    case["operations"][0].source, case["operations"][0].ext_days = "external", None
+    with native_calendar() as calendar:
+        non_strict, _ = _pruning(case, calendar, strict_mode=False)
+        strict, _ = _pruning(case, calendar, strict_mode=True)
+    assert non_strict.supported and not strict.supported
+
+
+def test_blocked_lowest_external_group_still_scores_the_other_ready_operations():
+    case = _saturated_case(batch_count=2, ops_per_batch=1)
+    external, internal = case["operations"]
+    external.source, external.ext_days = "external", 2.0
+    case["end_date"] = BASE.date()
+    case["graph_ready_context"]["graph_priority_key_by_op_id"] = {external.id: (0.0, 0.0), internal.id: (1.0, 0.0)}
+    outputs = []
+    for enabled in (False, True):
+        with native_calendar() as calendar:
+            payload, _ = _decode(calendar, case, cache_enabled=enabled)
+            outputs.append(payload)
+    assert outputs[0] == outputs[1]
+    assert [row[0] for row in outputs[1][0]] == [internal.id]
+    assert outputs[1][1]["failed_ops"] == 1
+
+
+def test_external_overlay_keeps_two_argument_calendar_protocol():
+    calendar = SimpleNamespace(add_calendar_days=lambda start, days: start + timedelta(days=days))
+    overlay = ExecutionResourceCalendar(calendar, [])
+    assert overlay.add_calendar_days(BASE, 0.5) == at(12)
+    assert not native_timing_calendar(overlay, include_calendar_days=True)
 
 
 def test_saturated_decode_with_release_floor_matches_cache_off_with_shared_slots_on():

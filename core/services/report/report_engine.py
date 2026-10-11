@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cached_property
 from typing import Any, BinaryIO, Callable, ClassVar, Dict, Iterable, List, Optional
 
 from core.errors import AppError, ErrorCode, ValidationError
+from core.models.report_export import ReportExport, ReportExportDecision
 from core.services.capacity.resource_utilization_metrics import METRIC_VERSION
 from core.services.common.degradation import DegradationCollector
 from core.services.report.delay_diagnosis_presentation import (
@@ -32,20 +32,6 @@ from .report_degradation import report_degradation_payload
 from .report_plan_helpers import ReportPlanMixin
 from .utilization_calendars import resource_calendars
 from .values.number_parsing import parse_report_nonnegative_int
-
-
-@dataclass
-class ReportExport:
-    filename: str
-    content_type: str
-    data: BinaryIO
-    mode: str = "direct"
-    estimated_rows: int = 0
-
-@dataclass(frozen=True)
-class ReportExportDecision:
-    mode: str
-    estimated_rows: int
 
 
 class ReportEngine(ReportPlanMixin, ExecutionReviewMixin):

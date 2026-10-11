@@ -3,13 +3,11 @@
 import csv
 import io
 
-import openpyxl
-
+from core.models.report_export import ReportExport
 from core.models.workbench_calibration import MAX_EXPORT_BYTES
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import _append_write_only_row
-from core.services.report.report_engine import ReportExport
 from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
 
@@ -55,6 +53,8 @@ def _csv(values, headers, output):
 
 
 def _xlsx(values, headers, output, metadata_rows):
+    import openpyxl
+
     workbook = openpyxl.Workbook(write_only=True)
     try:
         sheet = workbook.create_sheet("校准建议")

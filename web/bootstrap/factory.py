@@ -16,7 +16,6 @@ from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
 from core.models.workbench_command import WorkbenchCommandRejected
-from web.bootstrap import _frozen_import_anchor as _scheduler_services_import_anchor
 from web.error_boundary import (
     render_error_template,
     render_minimal_error_page,
@@ -30,6 +29,7 @@ from web.runtime_host import install_runtime_host, restore_host
 
 from .app_config import config as _config_map
 from .launcher import resolve_shared_data_root
+from .launcher_observability import launcher_log_warning
 from .launcher_paths import is_portable_runtime, resolve_runtime_db_path
 from .launcher_shutdown import (
     RuntimeExitBackupManager,
@@ -61,7 +61,6 @@ _RUNTIME_SERVER: Any = None
 _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
-_PYINSTALLER_IMPORT_ANCHORS = (_scheduler_services_import_anchor,)
 make_server = make_runtime_server
 
 
@@ -292,12 +291,18 @@ def create_app_core(
     _ensure_runtime_dirs(app)
 
     schema_path = os.path.abspath(os.path.join(base_dir, "schema.sql"))
+    schema_started = time.perf_counter()
+    launcher_log_warning(app.logger, "启动阶段 schema_begin pid=%s。", os.getpid(),
+                         cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
     ensure_schema(
         app.config["DATABASE_PATH"],
         app.logger,
         schema_path=schema_path if os.path.exists(schema_path) else None,
         backup_dir=app.config.get("BACKUP_DIR"),
     )
+    launcher_log_warning(app.logger, "启动阶段 schema_complete pid=%s duration=%.3fs。",
+                         os.getpid(), time.perf_counter() - schema_started,
+                         cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
     bootstrap_schedule_config(app.config["DATABASE_PATH"], logger=app.logger)
 
     plugin_status = bootstrap_plugins(

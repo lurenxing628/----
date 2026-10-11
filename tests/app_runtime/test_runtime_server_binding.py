@@ -12,9 +12,40 @@ from flask import Flask
 
 from web.bootstrap import factory, runtime_server
 
-pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows exclusive listener semantics")
+windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows exclusive listener semantics")
 
 
+@pytest.mark.parametrize("server_class", [runtime_server._WindowsRuntimeServer, runtime_server._WindowsSingleRuntimeServer])
+def test_windows_bind_publishes_reserved_endpoint_without_reverse_dns(monkeypatch, server_class):
+    calls = []
+
+    class Listener:
+        def setsockopt(self, level, option, value):
+            calls.append(("setsockopt", level, option, value))
+
+        def bind(self, endpoint):
+            calls.append(("bind", endpoint))
+
+        def getsockname(self):
+            return ("127.0.0.1", 32123)
+
+    def reject_reverse_dns(host):
+        raise AssertionError("Binding a loopback listener must not resolve its host name")
+
+    monkeypatch.setattr(socket, "SO_EXCLUSIVEADDRUSE", -5, raising=False)
+    monkeypatch.setattr(socket, "getfqdn", reject_reverse_dns)
+    server = object.__new__(server_class)
+    server.socket = Listener()
+    server.server_address = ("127.0.0.1", 0)
+    server.server_bind()
+    assert calls == [("setsockopt", socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1),
+                     ("bind", ("127.0.0.1", 0))]
+    assert server.server_address == ("127.0.0.1", 32123)
+    assert server.server_name == "127.0.0.1"
+    assert server.server_port == 32123
+
+
+@windows_only
 def test_listener_rejects_even_a_reusable_competing_bind():
     server = runtime_server.create_runtime_server(Flask("exclusive-listener"), "127.0.0.1", 0)
     try:
@@ -28,6 +59,7 @@ def test_listener_rejects_even_a_reusable_competing_bind():
         server.server_close()
 
 
+@windows_only
 def test_competing_reusable_listener_is_not_stolen():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupier:
         occupier.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -40,6 +72,7 @@ def test_competing_reusable_listener_is_not_stolen():
         assert occupier.fileno() != -1
 
 
+@windows_only
 def test_fallback_serves_on_the_same_reserved_socket(monkeypatch):
     app = Flask("fallback-listener")
 
@@ -72,6 +105,7 @@ def test_fallback_serves_on_the_same_reserved_socket(monkeypatch):
         assert not thread.is_alive()
 
 
+@windows_only
 def test_failed_bind_does_not_leak_a_socket(monkeypatch):
     sockets = []
     original_bind = runtime_server._WindowsRuntimeServer.server_bind
@@ -94,6 +128,7 @@ def test_failed_bind_does_not_leak_a_socket(monkeypatch):
     server.server_close()
 
 
+@windows_only
 def test_failed_listen_releases_the_bound_socket(monkeypatch):
     sockets = []
 

@@ -7,6 +7,9 @@ from typing import NoReturn
 from core.models.workbench_command import WorkbenchCommandRejected
 
 MAX_BATCH_REFS = 5000
+SCHEDULING_PREFERENCES_KEY = "workbench_scheduling_preferences"
+SCHEDULING_PREFERENCES_ACTION = "scheduling.preferences.save"
+SCHEDULING_PREFERENCES_SUBJECT = "scheduling-preferences"
 INPUT_FIELDS = ("batch_refs", "start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy")
 # 可选项：不带 material_strategy 按整批齐套；不带 hold_window 按交付设置推算不重排时段（见 hold_window_bounds）。
 OPTIONAL_FIELDS = frozenset(("material_strategy", "hold_window"))

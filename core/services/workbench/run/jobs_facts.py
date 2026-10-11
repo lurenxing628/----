@@ -5,8 +5,6 @@ import json
 
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import durable_value
-from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
-from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
@@ -59,6 +57,9 @@ def production_facts_match(conn, captured_text, captured_hash):
 
 
 def run_execution_projections(conn, settings):
+    from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
+    from core.services.scheduler.schedule_service import ScheduleService
+
     facts = WorkbenchRunFactsRepository(conn)
     identities = {int(row[0]): row[1] for row in facts.operation_identity_refs()}
     selected = set(settings["batch_refs"])

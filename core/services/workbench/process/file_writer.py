@@ -5,12 +5,6 @@ import csv
 from collections.abc import Mapping
 from tempfile import SpooledTemporaryFile
 
-import openpyxl
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.comments import Comment
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-
 from core.models.workbench_process_file import (
     LABELS,
     ProcessFileDownload,
@@ -58,6 +52,12 @@ def _filename(kind, file_format):
 
 
 def write_xlsx(kind, rows, template=False):
+    import openpyxl
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.comments import Comment
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
     descriptor = table_descriptor(kind)
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet(descriptor["sheet_name"])

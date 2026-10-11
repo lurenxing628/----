@@ -10,8 +10,6 @@ import csv
 from dataclasses import dataclass
 from io import BytesIO, StringIO
 
-import openpyxl
-
 from core.errors import ValidationError
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 
@@ -63,6 +61,8 @@ def _csv_rows(content, error, messages):
 
 
 def _xlsx_rows(content, state, error, messages):
+    import openpyxl
+
     wb = None
     try:
         wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)

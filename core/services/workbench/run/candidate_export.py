@@ -5,11 +5,6 @@ import csv
 import os
 from tempfile import SpooledTemporaryFile
 
-import openpyxl
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-
 from core.models.workbench_command import canonical_json
 from core.models.workbench_resource_file import ResourceFileDownload
 from core.services.workbench.facts.file_writer import _value, check_capacity
@@ -87,6 +82,11 @@ def _csv(data, snapshot):
 
 
 def _xlsx(data, snapshot):
+    import openpyxl
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet("候选任务")
     try:

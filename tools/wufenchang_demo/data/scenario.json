@@ -1,0 +1,25 @@
+{
+  "basis": "真实图号、选定工艺路线、原始单件与准备定额、真实设备编号；生产批次、资源岗位、交期、日历和来料安排为本次明确制定的排产场景。说明留在构建资料中，不写入业务备注。",
+  "batch_quantities": [2, 4, 6],
+  "calendar_days": 56,
+  "shift_periods": [{"start": "08:00", "end": "12:00", "day_offset": 0}, {"start": "13:00", "end": "17:00", "day_offset": 0}],
+  "setup_rule": "自制工序 setup_hours 使用原始 IN_STORE_PREPARE_TIME / 60，每批该道工序一次；unit_hours 使用 IN_STORE_RATION_TIME / 60，不另加顺序相关换型罚时。",
+  "zero_unit_minutes": {"总检": 6, "成检": 6, "检验": 6, "试验": 12, "无损检测": 12, "特检": 12, "气密性检验": 12, "领料": 3},
+  "zero_unit_basis": "只为原始零值、仍需占用资源的检验和领料步骤补充明确时长；原值与采用值分别保留。外协零工时以整段交付自然日计，沿用当前产品的外协周期口径。",
+  "external_days": {"热表处理中心": 2, "机加中心": 3, "电子产品装配分厂": 2, "二分厂": 1, "一分厂": 1},
+  "source_decision": "质量部、计量理化中心和仓储的支持步骤作为本排产范围内的公共工位。未选入内制设备池的热表、焊接、冲压、激光切割作为协作加工，保留原始部门和定额；这不是对历史主制部门的改写。",
+  "materials": "每图号一套专用配套料，三个批次按2/4/6件核对；每四个图号的第三批保留2件现料，其余各2件于开始日后第2、第4个工作日到料。各批按全批数量核对，不自动拆批。",
+  "resource_decision": "真实设备按类别与所选工序匹配。钳工、装配、检验使用明确建立的工位与岗位，不导入个人姓名；岗位并发人数是当前场景采用值，不等于源表在岗人数。",
+  "staffing": [
+    {"code": "QG", "name": "钳工1班", "count": 4, "skills": ["FIT", "CLEAN", "WASH", "TEST_PIECE", "SHEET", "PICK", "PRINT"]},
+    {"code": "MG", "name": "磨镗班", "count": 2, "skills": ["GRIND"]},
+    {"code": "DG", "name": "电加工班", "count": 3, "skills": ["WIRE", "WIRE_MEDIUM", "EDM"]},
+    {"code": "CG", "name": "车加工班", "count": 3, "skills": ["TURN", "TURN_CNC"]},
+    {"code": "XG", "name": "铣加工班", "count": 4, "skills": ["MILL", "MILL_CNC", "DRILL"]},
+    {"code": "ZB", "name": "综保装配", "count": 4, "skills": ["ASSEMBLY_SUPPORT", "ADJUST"]},
+    {"code": "SS", "name": "伞锁装配", "count": 4, "skills": ["ASSEMBLY_LOCK", "ADJUST"]},
+    {"code": "JY", "name": "检验", "count": 3, "skills": ["INSPECT", "INSPECT_FINAL", "INSPECT_GENERAL", "EXPERIMENT", "NDT", "SPECIAL_INSPECT", "AIRTIGHT"]},
+    {"code": "BY", "name": "标印", "count": 1, "skills": ["MARK"]}
+  ],
+  "schedule_config": {"algo_mode": "improve", "time_budget_seconds": 30, "auto_assign_enabled": "yes", "graph_analysis_mode": "on", "graph_candidate_weight_count": 3, "ortools_enabled": "no"}
+}

@@ -38,7 +38,7 @@
     const [needsRecheck, setNeedsRecheck] = React.useState(false);
     // 上次检查按交付设置推算出的不重排时段（从开始日期起算）；开始日期没变时继续用它填显示值。
     const [holdDefault, setHoldDefault] = React.useState(null);
-    const serial = React.useRef(0), active = React.useRef(null), context = React.useRef(initialContext);
+    const serial = React.useRef(0), active = React.useRef(null);
     const remembered = React.useMemo(() => {
       try { return C.input(value); }
       catch (_) { return null; }
@@ -48,16 +48,33 @@
     const onSplitActivity = React.useCallback(inProgress => { setSplitBusy(inProgress); if (inProgress) invalidate(); }, []);
     function change(patch) { if (result || busy) setNeedsRecheck(true); invalidate(); setValue(old => ({ ...old, ...patch })); }
     React.useEffect(() => {
-      if (context.current !== initialContext) { context.current = initialContext; const next = contextState(initialContext); invalidate(); setInitial(next); setValue(next.value); }
-    }, [initialContext]);
+      invalidate(); const id = ++serial.current, controller = new AbortController(); active.current = controller;
+      setBusy(true);
+      async function open() {
+        try {
+          const saved = await adapter.preferences(controller.signal);
+          if (serial.current !== id) return;
+          const next = contextState(initialContext === undefined ? saved.data.input === null ? undefined : saved.data.input : initialContext);
+          setInitial(next); setValue(next.value);
+          if (!next.error && next.value.batch_refs.length) await read(C.input(next.value), controller, id);
+        } catch (problem) { if (serial.current === id) setError(problem); }
+        finally { if (serial.current === id) setBusy(false); }
+      }
+      open();
+      return () => { controller.abort(); if (serial.current === id) serial.current++; };
+    }, [adapter, initialContext]);
     React.useEffect(() => () => { serial.current++; if (active.current) active.current.abort(); }, []);
     async function check() {
       if (busy || splitBusy || initial.error) return;
       invalidate(); const id = ++serial.current, controller = new AbortController(); active.current = controller;
       setBusy(true);
-      try { const input = C.input(value), response = await adapter.preflight(input, controller.signal); C.result(response, input); if (serial.current === id) { setResult(response); setNeedsRecheck(false); rememberHold(input, response.data.effective_config); } }
+      try { const input = C.input(value); await adapter.savePreferences(input, controller.signal); if (serial.current === id) await read(input, controller, id); }
       catch (problem) { if (serial.current === id) setError(problem); }
       finally { if (serial.current === id) setBusy(false); }
+    }
+    async function read(input, controller, id) {
+      const response = await adapter.preflight(input, controller.signal); C.result(response, input);
+      if (serial.current === id) { setResult(response); setNeedsRecheck(false); rememberHold(input, response.data.effective_config); }
     }
     function rememberHold(input, config) {
       if (config.hold_window_source === 'default') setHoldDefault({ start_date: input.start_date, hold_window: config.hold_window });

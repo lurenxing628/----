@@ -27,6 +27,7 @@
       setPreview(null); setConfirming(false); setUnavailable('');
       if (previewRequest.current) previewRequest.current.abort();
     }, [inputRef, api]);
+    React.useEffect(() => { if (inputRef && !storageError && !pendingActive) inspect(); }, [inputRef, api]);
     React.useEffect(() => {
       function changed(event) {
         if (![A.PENDING_KEY, A.RECENT_KEY, null].includes(event.key)) return;
@@ -66,6 +67,8 @@
             try { const saved = A.pending().attach(activeIntent.current, result.run_ref); activeIntent.current = saved; setIntent(saved); }
             catch (e) { setStorageError(e.message); return; }
           }
+          // 活跃任务保持正常读取频率；待恢复记录、未决结果和读取失败沿用退避。
+          if (!result.recovery_required) attempt = 0;
           setRun(result); setVerified(true); unsettledSince = null; done = A.terminal(result);
           if (done && pendingActive) { A.pending().finish(activeIntent.current, 'found'); setPendingActive(false); }
         } catch (e) { if (current() && !controller.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
@@ -83,7 +86,7 @@
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };
     }, [api, intent && intent.request_key, revision, storageError]);
     async function inspect() {
-      if (locked.current || storageError || !inputRef || pendingActive) return;
+      if (locked.current && !(previewRequest.current && previewRequest.current.signal.aborted) || storageError || !inputRef || pendingActive) return;
       locked.current = true; setBusy(true); clearError(); setNotice(''); setPreview(null); setUnavailable('');
       const original = inputRef, controller = new AbortController(); previewRequest.current = controller;
       try {
@@ -97,7 +100,7 @@
           if (['run_schema_unavailable', 'run_worker_not_connected'].includes(e.code)) setUnavailable(A.message(e));
         }
       }
-      finally { locked.current = false; if (alive.current) setBusy(false); }
+      finally { if (previewRequest.current === controller) { previewRequest.current = null; locked.current = false; if (alive.current) setBusy(false); } }
     }
     async function submit() {
       if (locked.current || !preview || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;

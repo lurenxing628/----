@@ -4,6 +4,7 @@ import argparse
 import os
 import secrets
 import sys
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Tuple
 
@@ -287,7 +288,13 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
             return 14
         if owns_runtime_resources:
             try:
+                runtime_started = time.perf_counter()
+                launcher_log_warning(app.logger, "启动阶段 runtime_recovery_begin pid=%s。", os.getpid(),
+                                     cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
                 runtime = install_run_lifecycle(deps, app, runtime_lock_state)
+                launcher_log_warning(app.logger, "启动阶段 runtime_recovery_complete pid=%s duration=%.3fs。",
+                                     os.getpid(), time.perf_counter() - runtime_started,
+                                     cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
             except Exception as exc:
                 _write_launch_error_with_observability(
                     deps, runtime_dir, str(exc), prelaunch_log_dir, logger=app.logger,

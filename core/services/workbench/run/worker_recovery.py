@@ -5,7 +5,7 @@ from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
-from core.services.scheduler import schedule_service
+from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.facts.run_policy import require_admission, require_run_schema
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
@@ -21,7 +21,7 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
         raise RuntimeError("Run recovery must own the outer transaction")
     repo = WorkbenchRunRepository(conn)
     require_run_schema(repo)
-    lock = schedule_service._RUN_SCHEDULE_LOCK
+    lock = RUN_SCHEDULE_LOCK
     if not lock.acquire(blocking=False):
         return {"recovered": [], "pending": [], "scheduling_busy": True}
     try:

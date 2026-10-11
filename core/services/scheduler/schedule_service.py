@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -27,9 +26,9 @@ from .run.schedule_persistence import (
     validate_execution_guard_before_persist,
 )
 from .run.schedule_template_lookup import get_template_and_group_for_op
+from .schedule_lock import RUN_SCHEDULE_LOCK
 from .summary.schedule_summary import build_result_summary
 
-_RUN_SCHEDULE_LOCK = threading.Lock()
 _TERMINAL_OPERATION_STATUSES = frozenset(
     (BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value)
 )
@@ -193,7 +192,7 @@ class ScheduleService:
         strict_mode: bool = False,
         run_time_budget_seconds: Any = None,
     ) -> Dict[str, Any]:
-        if not _RUN_SCHEDULE_LOCK.acquire(blocking=False):
+        if not RUN_SCHEDULE_LOCK.acquire(blocking=False):
             raise ValidationError("系统正在执行排产，请稍后重试。", field="排产")
         try:
             self._aps_schedule_input_cache = {"batch": {}, "tmpl": {}, "grp": {}}
@@ -209,7 +208,7 @@ class ScheduleService:
             )
         finally:
             self._aps_schedule_input_cache = None
-            _RUN_SCHEDULE_LOCK.release()
+            RUN_SCHEDULE_LOCK.release()
 
     def _run_schedule_impl(
         self,

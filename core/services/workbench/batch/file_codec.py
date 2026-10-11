@@ -4,12 +4,6 @@ import re
 import zipfile
 from io import BytesIO
 
-import openpyxl
-from openpyxl.cell.cell import TYPE_STRING
-from openpyxl.comments import Comment
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-
 from core.errors import ValidationError
 from core.models.workbench_batch_file import (
     FILE_HEADERS,
@@ -31,6 +25,8 @@ from core.services.common.excel_instruction_sheet import add_enum_dropdowns, app
 
 
 def read_batch_file(content):
+    import openpyxl
+
     if not isinstance(content, bytes) or not content or len(content) > MAX_BYTES:
         raise ValidationError("请选择不超过10MB的有效批次XLSX文件。", field="file")
     workbook = None
@@ -91,6 +87,12 @@ def _read_data_row(line, cells, headers):
 
 
 def write_batch_file(rows, *, template=False):
+    import openpyxl
+    from openpyxl.cell.cell import TYPE_STRING
+    from openpyxl.comments import Comment
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+
     if len(rows) > MAX_ROWS:
         raise ValidationError("单次导出超过5000行，请缩小范围。", field="scope")
     descriptor = table_descriptor()

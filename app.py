@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
+
+_PYTHON_STARTED_AT = time.perf_counter()
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -38,9 +41,9 @@ def _record_prelaunch_import_failure(exc: BaseException) -> bool:
 
 
 def _entrypoint_module() -> Any:
-    from web.bootstrap import entrypoint
+    from web.bootstrap.entrypoint_loader import load_entrypoint
 
-    return entrypoint
+    return load_entrypoint(__file__, _PYTHON_STARTED_AT)
 
 
 def create_app() -> Flask:

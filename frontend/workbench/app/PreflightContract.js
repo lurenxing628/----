@@ -46,6 +46,14 @@
     const today = new Date(), end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6);
     return { batch_refs: [], start_date: local(today), end_date: local(end), ready_check: true, material_strategy: 'strict', missing_resource_policy: 'auto_assign', completed_policy: 'preserve_actuals' };
   }
+  function preferences(response) {
+    const data = response && response.data, context = data && data.write_context;
+    if (!object(data) || !own(data, 'input') || !object(context) || !token(context.write_token)
+        || !object(context.capabilities) || context.capabilities['scheduling.preferences.save'] !== true
+        || !issues(context.blocked_reasons)) throw fail('保存的排产范围读取不完整，请刷新后重试。');
+    if (data.input !== null) input(data.input);
+    return response;
+  }
   function initial(context) {
     if (context === undefined) return defaults();
     if (!object(context) || Object.keys(context).some(key => !fields.concat(['hold_window', 'scope', 'entity_ref', 'return_to']).includes(key)))
@@ -133,5 +141,5 @@
       throw fail(window.WorkbenchTerms.outcomes.stale);
     return data.refs;
   }
-  window.PreflightContract = { input, initial, defaults, result, selection, refs, ref, fail, holdBounds, holdWindow };
+  window.PreflightContract = { input, initial, defaults, preferences, result, selection, refs, ref, fail, holdBounds, holdWindow };
 })();

@@ -10,10 +10,6 @@ import csv
 import os
 from tempfile import SpooledTemporaryFile
 
-import openpyxl
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.styles import Font
-
 from core.models.workbench_resource_file import ResourceFileDownload
 from core.services.workbench.facts.file_writer import _value, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
@@ -92,6 +88,10 @@ def _csv(data, snapshot):
 
 
 def _xlsx(data, snapshot):
+    import openpyxl
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Font
+
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet("计划任务")
     try:

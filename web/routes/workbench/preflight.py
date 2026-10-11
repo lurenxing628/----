@@ -1,20 +1,27 @@
-"""Independent read-only registration. Host owns mounting and worker integration."""
+"""Scheduling input checks and remembered form input; host owns worker integration."""
 
 import json
 from datetime import datetime
 
-from flask import current_app, g, request
+from flask import current_app, g, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.models.workbench_preflight import normalize_preflight_input
-from core.services.workbench.run.preflight import PreflightService
+from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, validate_request_key
+from core.models.workbench_preflight import (
+    SCHEDULING_PREFERENCES_ACTION,
+    SCHEDULING_PREFERENCES_SUBJECT,
+    normalize_preflight_input,
+)
+from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.preflight_facts import full_facts_fingerprint
 from web.api_responses import failure, query_success
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
+from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
+from .write_context import issue_write_context, validate_write_context
 
 INPUT_SCOPE = "workbench-preflight-input-v1"
 
@@ -46,6 +53,8 @@ def resolve_preflight_input(conn, input_ref):
 
 def evaluate_preflight_input(conn, input_ref):
     """Admission consumes one current preflight for both business checks and freshness."""
+    from core.services.workbench.run.preflight import PreflightService
+
     normalized, original = _preflight_binding(conn, input_ref)
     data, fingerprint = PreflightService(conn).evaluate(normalized)
     _require_current(original, fingerprint)
@@ -53,6 +62,8 @@ def evaluate_preflight_input(conn, input_ref):
 
 
 def scheduling_preflight():
+    from core.services.workbench.run.preflight import PreflightService
+
     try:
         if request.args or not request.is_json:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，排产检查没有执行。请刷新页面后重新点「开始排产检查」。", 400)
@@ -75,5 +86,37 @@ def scheduling_preflight():
     return response
 
 
+@api_endpoint
+def scheduling_preferences_read():
+    if request.args:
+        raise WorkbenchCommandRejected("invalid_input", "排产范围读取条件不正确。", 400)
+    with TransactionManager(g.db).transaction():
+        data, state = SchedulingPreferencesService(g.db).snapshot()
+        data["write_context"] = issue_write_context(SCHEDULING_PREFERENCES_SUBJECT, [SCHEDULING_PREFERENCES_ACTION], state)
+        snapshot = bind_read_snapshot({"kind": "scheduling_preferences"}, canonical_json(state))
+    response = query_success(data, snapshot)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@api_endpoint
+def scheduling_preferences_write():
+    if request.args or not request.is_json:
+        raise WorkbenchCommandRejected("invalid_input", "排产范围的保存内容格式不正确。", 400)
+    body = request.get_json()
+    if type(body) is not dict or set(body) != {"request_key", "write_token", "input"}:
+        raise WorkbenchCommandRejected("invalid_input", "排产范围的保存内容不完整或有多余项。", 400)
+    validate_request_key(body["request_key"])
+    g.workbench_request_key = body["request_key"]
+    result = SchedulingPreferencesService(g.db, current_app.logger).save(
+        body["input"], request_key=body["request_key"],
+        validate_context=lambda subject, action, state: validate_write_context(body["write_token"], subject, action, state))
+    response = jsonify(result)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 def register_preflight_routes(bp):
     bp.add_url_rule("/api/workbench/v1/scheduling/preflight", view_func=scheduling_preflight, methods=["POST"])
+    bp.add_url_rule("/api/workbench/v1/scheduling/preferences", view_func=scheduling_preferences_read, methods=["GET"])
+    bp.add_url_rule("/api/workbench/v1/scheduling/preferences", view_func=scheduling_preferences_write, methods=["POST"])

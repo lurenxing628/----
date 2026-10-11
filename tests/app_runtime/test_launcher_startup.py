@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -205,31 +206,82 @@ function Start-ApsProcess([string]$Executable, [string]$Arguments, [string]$Dire
     } else { $script:browserArguments = $Arguments }
 }
 function Start-Sleep([int]$Milliseconds) { }
-$code = Invoke-ApsLauncher $env:APS_TEST_APP
+$launchClock = [Diagnostics.Stopwatch]::StartNew()
+$launchStarted = [DateTime]::UtcNow
+[Threading.Thread]::Sleep(25)
+$code = Invoke-ApsLauncher $env:APS_TEST_APP $launchClock $launchStarted
 'CODE=' + $code
 'SPAWNS=' + $script:spawned.Count
 $profile = Join-Path $env:APS_TEST_APP 'user-data\chrome109_profile'
 if (-not $script:browserArguments.Contains('--user-data-dir="' + $profile + '"')) { throw 'Browser profile argument changed' }
 if ($env:APS_DB_PATH -ne (Join-Path $env:APS_TEST_APP 'user-data\db\aps.db')) { throw 'Portable DB override was not applied' }
-''', APS_TEST_APP=str(app), USERNAME="operator", USERDOMAIN="LOCAL", APS_DB_PATH="must-not-use.db")
+''', APS_TEST_APP=str(app), USERNAME="operator", USERDOMAIN="LOCAL", APS_DB_PATH="must-not-use.db",
+        APS_START_CMD_LOCAL_TIME="test CMD local timestamp")
     assert "CODE=0" in rows
     assert "SPAWNS=" + str(1 if reuse else 2) in rows
     assert error.read_text() == ("historical failure" if reuse else "concurrent duplicate start")
     log = (logs / "launcher.log").read_text(encoding="utf-8")
     assert "便携 ! APS" in log and "launcher_complete" in log
+    assert 'cmd_started_local="test CMD local timestamp"' in log
+    assert 'ps_started_utc="' in log and "ps_pid=" in log
+    assert int(re.search(r"launcher_invoked_ms=(\d+)", log).group(1)) >= 25
+    elapsed = [int(value) for value in re.findall(r"elapsed_ms=(\d+)", log)]
+    assert elapsed == sorted(elapsed)
+    phases = ["launcher_begin", "chrome_find_begin", "chrome_find_ms=", "chrome_profile_begin",
+              "profile_ms=", "existing_probe_begin", "probe_ms="]
+    if not reuse:
+        phases.extend(["app_start_required=1", "app_spawned spawn_ms=", "wait_begin", "wait_ms="])
+    phases.extend(["health_ready", "chrome_cmd=", "chrome_started spawn_ms=", "launcher_complete"])
+    assert [log.index(phase) for phase in phases] == sorted(log.index(phase) for phase in phases)
+    assert all(int(value) >= 0 for value in re.findall(r"(?:context|chrome_find|profile|probe|spawn|wait)_ms=(\d+)", log))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows direct process creation")
+def test_direct_process_preserves_unicode_arguments_working_directory_and_environment(run_ps, tmp_path):
+    directory = tmp_path / "中文 ! & APS"
+    directory.mkdir()
+    child = directory / "child.ps1"
+    child.write_text(
+        "param([string]$Received)\n"
+        "$rows = @([IO.Directory]::GetCurrentDirectory(), $Received, $env:APS_CHILD_SENTINEL)\n"
+        "[IO.File]::WriteAllLines($env:APS_CHILD_RESULT, [string[]]$rows, (New-Object Text.UTF8Encoding($false)))\n",
+        encoding="utf-8-sig",
+    )
+    output = directory / "result.txt"
+    rows = run_ps(r'''
+$executable = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+$arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $env:APS_CHILD_SCRIPT + '" "你好 ! & space"'
+Start-ApsProcess $executable $arguments $env:APS_CHILD_DIRECTORY
+$timer = [Diagnostics.Stopwatch]::StartNew()
+while (-not [IO.File]::Exists($env:APS_CHILD_RESULT) -and $timer.ElapsedMilliseconds -lt 5000) {
+    Start-Sleep -Milliseconds 50
+}
+if (-not [IO.File]::Exists($env:APS_CHILD_RESULT)) { throw 'Direct child process did not finish' }
+'OK'
+''', APS_CHILD_SCRIPT=str(child), APS_CHILD_DIRECTORY=str(directory), APS_CHILD_RESULT=str(output),
+        APS_CHILD_SENTINEL="inherited APS environment")
+    assert "OK" in rows
+    assert output.read_text(encoding="utf-8").splitlines() == [str(directory), "你好 ! & space", "inherited APS environment"]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Native CMD quoting and Windows PowerShell entry")
-def test_cmd_entry_preserves_unicode_bang_path_under_inherited_delayed_expansion(tmp_path):
+@pytest.mark.parametrize("entry_source,companion_name", [
+    (ROOT / "assets" / "启动_排产系统_Chrome.bat", "aps-launcher.ps1"),
+    (ROOT / "packaging" / "win7" / "Start.cmd", "Start.ps1"),
+])
+def test_cmd_entry_preserves_unicode_bang_path_without_path_search(tmp_path, entry_source, companion_name):
     app = tmp_path / "中文 ! APS"
     app.mkdir()
     entry = app / "Start.cmd"
-    shutil.copyfile(str(ROOT / "assets" / "启动_排产系统_Chrome.bat"), str(entry))
-    (app / "aps-launcher.ps1").write_text(
+    shutil.copyfile(str(entry_source), str(entry))
+    (app / companion_name).write_text(
+        "param([string]$Mode)\n"
         "[IO.File]::WriteAllText((Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'called.txt'), 'once')\nexit 0\n",
         encoding="ascii",
     )
-    result = subprocess.run(["cmd.exe", "/d", "/v:on", "/c", str(entry)], capture_output=True, timeout=15)
+    cmd = str(Path(os.environ["SystemRoot"]) / "System32" / "cmd.exe")
+    result = subprocess.run([cmd, "/d", "/v:on", "/c", str(entry)],
+                            env=dict(os.environ, PATH=str(app / "unavailable PATH")), capture_output=True, timeout=15)
     assert result.returncode == 0, result.stdout + result.stderr
     assert (app / "called.txt").read_text() == "once"
 
@@ -240,7 +292,7 @@ def test_native_entry_uses_single_powershell_and_payload_requires_companion(tmp_
 
     entry = (ROOT / "assets" / "启动_排产系统_Chrome.bat").read_bytes()
     assert b"DisableDelayedExpansion" in entry and b"\r\n" in entry
-    assert entry.lower().count(b"powershell -noprofile") == 1
+    assert entry.lower().count(b'powershell.exe" -noprofile') == 1
     assert SCRIPT.read_bytes().isascii()
     for relative in REQUIRED_FILES:
         path = tmp_path / relative

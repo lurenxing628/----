@@ -6,7 +6,7 @@ import threading
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_run_adoption import ADOPT_ACTION, CandidateAdoptionBlocked, adoption_input
 from core.models.workbench_run_job import validate_run_ref
-from core.services.scheduler import schedule_service
+from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 
@@ -93,7 +93,7 @@ class WorkbenchRunCandidateAdoptionService:
         # Serialize short adoption requests, but do not wait behind a long worker.
         # BEGIN IMMEDIATE still serializes writers on independent connections.
         with _ADOPTION_LOCK:
-            run_lock = schedule_service._RUN_SCHEDULE_LOCK
+            run_lock = RUN_SCHEDULE_LOCK
             if not run_lock.acquire(blocking=False):
                 raise WorkbenchCommandRejected("scheduling_busy", "正在排产，这次采用没有执行，正式计划没有改动。请等排产结束后重试。")
             try:

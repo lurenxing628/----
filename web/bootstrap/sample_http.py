@@ -17,8 +17,9 @@ class SampleAPIError(RuntimeError):
 
 
 class SampleClient:
-    def __init__(self, base_url, timeout=120):
+    def __init__(self, base_url, timeout=120, request_prefix="complex-sample-"):
         self.base_url, self.timeout = base_url.rstrip("/"), timeout
+        self.request_prefix = request_prefix
         self.request_count = 0
 
     def document(self, path, value=None, status=200):
@@ -45,7 +46,7 @@ class SampleClient:
         return self.document(path, value, status)
 
     def command(self, path, context, value):
-        return self.post(path, {"request_key": "complex-sample-" + uuid.uuid4().hex,
+        return self.post(path, {"request_key": self.request_prefix + uuid.uuid4().hex,
                                 "write_token": context["write_token"], "input": value})
 
     def create(self, kind, payload):

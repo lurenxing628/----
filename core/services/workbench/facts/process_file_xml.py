@@ -5,8 +5,6 @@ from shutil import copyfileobj
 from tempfile import SpooledTemporaryFile
 from xml.etree import ElementTree
 
-from openpyxl.utils import column_index_from_string
-
 from core.models.workbench_process_file import file_error
 
 _NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -15,6 +13,8 @@ _COORDINATE = re.compile(r"([A-Z]{1,3})([1-9][0-9]*)\Z")
 
 def check_sheet_order(stream):
     """Reject duplicate/out-of-order physical records before read-only iteration."""
+    from openpyxl.utils import column_index_from_string
+
     previous, data = 0, None
     for event, node in ElementTree.iterparse(stream, events=("start", "end")):
         if event == "start" and node.tag == _NS + "sheetData":

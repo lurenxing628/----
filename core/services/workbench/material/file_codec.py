@@ -20,13 +20,6 @@ import math
 import re
 from tempfile import SpooledTemporaryFile
 
-import openpyxl
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.cell.cell import TYPE_STRING
-from openpyxl.comments import Comment
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-
 from core.errors import ValidationError
 from core.models.workbench_material_file import (
     COLUMNS,
@@ -208,6 +201,10 @@ def _write_csv(rows, filename):
 
 
 def _xlsx_headers(ws, template, descriptor):
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.comments import Comment
+    from openpyxl.styles import Font
+
     headers, notes = [], cell_notes(descriptor)
     for index, value in enumerate(HEADERS):
         cell = WriteOnlyCell(ws, value=value)
@@ -219,6 +216,9 @@ def _xlsx_headers(ws, template, descriptor):
 
 
 def _xlsx_row(ws, row, number):
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.cell.cell import TYPE_STRING
+
     cells = []
     for field in COLUMNS:
         value = _number_text(_export_value(row[field], field, number, "xlsx"))
@@ -231,6 +231,9 @@ def _xlsx_row(ws, row, number):
 
 
 def _write_xlsx(rows, filename, template, descriptor):
+    import openpyxl
+    from openpyxl.utils import get_column_letter
+
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet(descriptor["sheet_name"])
     sheets, count = [ws], 0

@@ -34,3 +34,8 @@ def make_native_method_guard(service_type):
 def make_timing_memo_guard(service_type):
     """The certificate guard plus the certificate method itself, which the per-decode memo also answers."""
     return _make_guard(service_type, _MEMO_SERVICE_METHODS, NATIVE_TIMING_METHODS)
+
+
+def make_calendar_days_guard(service_type):
+    """External scoring needs the untouched natural-day method in both service and engine."""
+    return _make_guard(service_type, ("add_calendar_days",), ("add_calendar_days",))

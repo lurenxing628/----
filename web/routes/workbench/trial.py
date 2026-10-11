@@ -10,7 +10,6 @@ from core.models.workbench_trial import fields
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
 from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
-from core.services.workbench.trial.service import WorkbenchTrialService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
@@ -19,6 +18,8 @@ from .write_context import issue_write_context, validate_write_context
 
 
 def _service():
+    from core.services.workbench.trial.service import WorkbenchTrialService
+
     return WorkbenchTrialService(g.db, context_factory=issue_write_context, context_validator=validate_write_context)
 
 

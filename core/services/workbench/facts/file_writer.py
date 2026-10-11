@@ -6,12 +6,6 @@ import math
 import re
 from tempfile import SpooledTemporaryFile
 
-import openpyxl
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.comments import Comment
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
-
 from core.models.workbench_command import canonical_json
 from core.models.workbench_resource_file import (
     ENUM_CODES,
@@ -114,6 +108,10 @@ def _csv(kind, rows, filename):
 
 
 def _headers(kind, ws, template, descriptor):
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.comments import Comment
+    from openpyxl.styles import Font
+
     cells, notes = [], cell_notes(descriptor)
     for index, item in enumerate(public_columns(kind)):
         cell = WriteOnlyCell(ws, value=item["label"])
@@ -125,6 +123,10 @@ def _headers(kind, ws, template, descriptor):
 
 
 def _xlsx(kind, rows, filename, template, descriptor):
+    import openpyxl
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.utils import get_column_letter
+
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet(descriptor["sheet_name"])
     sheets, count = [ws], 0

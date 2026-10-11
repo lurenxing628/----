@@ -125,6 +125,9 @@ class ExecutionResourceCalendar:
     def add_effective_hours(self, start: datetime, hours: Any, priority=None, machine_id=None, operator_id=None) -> datetime:
         return self._calendar.add_effective_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
 
+    def add_calendar_days(self, *args, **kwargs) -> datetime:
+        return self._calendar.add_calendar_days(*args, **kwargs)
+
     def get_efficiency(self, dt: datetime, machine_id=None, operator_id=None) -> Any:
         return self._calendar.get_efficiency(dt, machine_id=machine_id, operator_id=operator_id)
 
@@ -151,6 +154,7 @@ class ExecutionResourceCalendar:
 
 _OVERLAY_GUARDED_MEMBERS = TIMING_METHODS + ACCESSOR_HOOKS + ("__dict__", "_release")
 _OVERLAY_CLASS_UNCHANGED = member_identity_guard(ExecutionResourceCalendar, _OVERLAY_GUARDED_MEMBERS)
+_OVERLAY_CALENDAR_DAYS_UNCHANGED = member_identity_guard(ExecutionResourceCalendar, ("add_calendar_days",))
 
 
 def _native_release_floors(releases: Any) -> bool:
@@ -171,5 +175,12 @@ def native_execution_overlay_timing(overlay: Any) -> bool:
     return native_timing_calendar(fields.get("_calendar"))
 
 
+def _native_execution_calendar_days(overlay: Any) -> bool:
+    if not _OVERLAY_CALENDAR_DAYS_UNCHANGED() or "add_calendar_days" in vars(overlay):
+        return False
+    return native_timing_calendar(overlay._calendar, include_calendar_days=True)
+
+
 register_checkpoint_calendar(ExecutionResourceCalendar, ExecutionResourceCalendar.certified_decode_checkpoint_snapshot)
-register_calendar_timing_guard(ExecutionResourceCalendar, native_execution_overlay_timing)
+register_calendar_timing_guard(ExecutionResourceCalendar, native_execution_overlay_timing,
+                               calendar_days_guard=_native_execution_calendar_days)

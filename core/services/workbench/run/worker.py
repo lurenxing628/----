@@ -8,7 +8,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, validate_run_ref
-from core.services.scheduler import schedule_service
+from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.run_policy import public_run
@@ -58,7 +58,7 @@ class WorkbenchRunWorker:
         validate_run_ref(run_ref)
         if self.conn.in_transaction:
             raise RuntimeError("Run worker must own its connection's transactions")
-        lock = schedule_service._RUN_SCHEDULE_LOCK
+        lock = RUN_SCHEDULE_LOCK
         if not lock.acquire(blocking=False):
             raise WorkbenchCommandRejected("scheduling_busy", "已经有一次排产在跑，这次没有重复计算。请等它结束后再看。")
         try:

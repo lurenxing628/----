@@ -9,6 +9,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_preflight import SCHEDULING_PREFERENCES_ACTION, SCHEDULING_PREFERENCES_KEY
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES, WorkbenchPreflightFactsRepository
 
 TABLES = PREFLIGHT_TABLES
@@ -29,7 +30,7 @@ def quote(name):
 
 
 def non_input_row(table, row, receipt_columns, *, skip_runs=True):
-    """这一行不影响排产输入：日志/维护状态的自增计数、排产自己的回执、试调和看板处置回执、“无改动”回执。
+    """这一行不影响排产输入：界面保存的排产范围、日志/配置的自增计数、排产自己的回执、试调和看板处置回执、“无改动”回执。
 
     回执只增不改；已提交、部分提交的其他回执和读不出来的行都保守地留在比对里。
     skip_runs=False 时排产回执也留在比对里（排产检查到开始排产之间用）。
@@ -37,12 +38,16 @@ def non_input_row(table, row, receipt_columns, *, skip_runs=True):
     if type(row) not in (list, tuple):
         return False
     if table == "sqlite_sequence":
-        return len(row) == 2 and row[0] in ("OperationLogs", "SystemJobState")
+        return len(row) == 2 and row[0] in ("OperationLogs", "SystemJobState", "SystemConfig")
+    if table == "SystemConfig":
+        # SystemConfig's id/key/value/description/time storage order is shared by every supported schema.
+        return len(row) == 5 and row[1] == SCHEDULING_PREFERENCES_KEY
     if table != "WorkbenchCommandReceipts" or len(row) != len(receipt_columns):
         return False
     receipt = dict(zip(receipt_columns, row))
     action = receipt.get("action")
-    if type(action) is str and (skip_runs and action == "scheduling.run" or action.startswith(_NON_INPUT_ACTIONS)):
+    if type(action) is str and (action == SCHEDULING_PREFERENCES_ACTION
+                               or skip_runs and action == "scheduling.run" or action.startswith(_NON_INPUT_ACTIONS)):
         return True
     return _no_change_outcome(receipt.get("outcome_json"))
 

@@ -30675,6 +30675,13 @@ function SMExport({
       completed_policy: 'preserve_actuals'
     };
   }
+  function preferences(response) {
+    const data = response && response.data,
+      context = data && data.write_context;
+    if (!object(data) || !own(data, 'input') || !object(context) || !token(context.write_token) || !object(context.capabilities) || context.capabilities['scheduling.preferences.save'] !== true || !issues(context.blocked_reasons)) throw fail('保存的排产范围读取不完整，请刷新后重试。');
+    if (data.input !== null) input(data.input);
+    return response;
+  }
   function initial(context) {
     if (context === undefined) return defaults();
     if (!object(context) || Object.keys(context).some(key => !fields.concat(['hold_window', 'scope', 'entity_ref', 'return_to']).includes(key))) throw fail('传入的排产范围无效或已过期，未自动扩大为全部批次。');
@@ -30743,6 +30750,7 @@ function SMExport({
     input,
     initial,
     defaults,
+    preferences,
     result,
     selection,
     refs,
@@ -30762,6 +30770,24 @@ function SMExport({
       batches = window.APSBatchAPI.create(),
       C = window.PreflightContract;
     return {
+      async preferences(signal) {
+        return C.preferences(await transport.query('scheduling/preferences', {}, signal));
+      },
+      async savePreferences(value, signal) {
+        const input = C.input(value),
+          current = C.preferences(await transport.query('scheduling/preferences', {}, signal)).data;
+        if (current.input !== null && JSON.stringify(C.input(current.input)) === JSON.stringify(input)) return input;
+        const bytes = new Uint8Array(24);
+        window.crypto.getRandomValues(bytes);
+        const request_key = 'preferences-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join('');
+        const receipt = await transport.execute('scheduling/preferences', {
+          request_key,
+          write_token: current.write_context.write_token,
+          input
+        }, signal);
+        if (JSON.stringify(C.input(receipt.data.input)) !== JSON.stringify(input)) throw C.fail('保存的排产范围与本次选择不一致，请重新检查。');
+        return input;
+      },
       async preflight(value, signal) {
         const input = C.input(value),
           result = await transport.preview('scheduling/preflight', input, signal);
@@ -31606,8 +31632,7 @@ function SMExport({
     // 上次检查按交付设置推算出的不重排时段（从开始日期起算）；开始日期没变时继续用它填显示值。
     const [holdDefault, setHoldDefault] = React.useState(null);
     const serial = React.useRef(0),
-      active = React.useRef(null),
-      context = React.useRef(initialContext);
+      active = React.useRef(null);
     const remembered = React.useMemo(() => {
       try {
         return C.input(value);
@@ -31636,14 +31661,31 @@ function SMExport({
       }));
     }
     React.useEffect(() => {
-      if (context.current !== initialContext) {
-        context.current = initialContext;
-        const next = contextState(initialContext);
-        invalidate();
-        setInitial(next);
-        setValue(next.value);
+      invalidate();
+      const id = ++serial.current,
+        controller = new AbortController();
+      active.current = controller;
+      setBusy(true);
+      async function open() {
+        try {
+          const saved = await adapter.preferences(controller.signal);
+          if (serial.current !== id) return;
+          const next = contextState(initialContext === undefined ? saved.data.input === null ? undefined : saved.data.input : initialContext);
+          setInitial(next);
+          setValue(next.value);
+          if (!next.error && next.value.batch_refs.length) await read(C.input(next.value), controller, id);
+        } catch (problem) {
+          if (serial.current === id) setError(problem);
+        } finally {
+          if (serial.current === id) setBusy(false);
+        }
       }
-    }, [initialContext]);
+      open();
+      return () => {
+        controller.abort();
+        if (serial.current === id) serial.current++;
+      };
+    }, [adapter, initialContext]);
     React.useEffect(() => () => {
       serial.current++;
       if (active.current) active.current.abort();
@@ -31656,18 +31698,22 @@ function SMExport({
       active.current = controller;
       setBusy(true);
       try {
-        const input = C.input(value),
-          response = await adapter.preflight(input, controller.signal);
-        C.result(response, input);
-        if (serial.current === id) {
-          setResult(response);
-          setNeedsRecheck(false);
-          rememberHold(input, response.data.effective_config);
-        }
+        const input = C.input(value);
+        await adapter.savePreferences(input, controller.signal);
+        if (serial.current === id) await read(input, controller, id);
       } catch (problem) {
         if (serial.current === id) setError(problem);
       } finally {
         if (serial.current === id) setBusy(false);
+      }
+    }
+    async function read(input, controller, id) {
+      const response = await adapter.preflight(input, controller.signal);
+      C.result(response, input);
+      if (serial.current === id) {
+        setResult(response);
+        setNeedsRecheck(false);
+        rememberHold(input, response.data.effective_config);
       }
     }
     function rememberHold(input, config) {
@@ -32609,6 +32655,9 @@ function SMExport({
       if (previewRequest.current) previewRequest.current.abort();
     }, [inputRef, api]);
     React.useEffect(() => {
+      if (inputRef && !storageError && !pendingActive) inspect();
+    }, [inputRef, api]);
+    React.useEffect(() => {
       function changed(event) {
         if (![A.PENDING_KEY, A.RECENT_KEY, null].includes(event.key)) return;
         try {
@@ -32686,6 +32735,8 @@ function SMExport({
               return;
             }
           }
+          // 活跃任务保持正常读取频率；待恢复记录、未决结果和读取失败沿用退避。
+          if (!result.recovery_required) attempt = 0;
           setRun(result);
           setVerified(true);
           unsettledSince = null;
@@ -32730,7 +32781,7 @@ function SMExport({
       };
     }, [api, intent && intent.request_key, revision, storageError]);
     async function inspect() {
-      if (locked.current || storageError || !inputRef || pendingActive) return;
+      if (locked.current && !(previewRequest.current && previewRequest.current.signal.aborted) || storageError || !inputRef || pendingActive) return;
       locked.current = true;
       setBusy(true);
       clearError();
@@ -32752,8 +32803,11 @@ function SMExport({
           if (['run_schema_unavailable', 'run_worker_not_connected'].includes(e.code)) setUnavailable(A.message(e));
         }
       } finally {
-        locked.current = false;
-        if (alive.current) setBusy(false);
+        if (previewRequest.current === controller) {
+          previewRequest.current = null;
+          locked.current = false;
+          if (alive.current) setBusy(false);
+        }
       }
     }
     async function submit() {

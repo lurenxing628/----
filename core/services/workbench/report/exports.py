@@ -5,14 +5,10 @@ from __future__ import annotations
 import csv
 import io
 
-import openpyxl
-from openpyxl.cell import WriteOnlyCell
-from openpyxl.styles import Alignment
-
+from core.models.report_export import ReportExport
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.common.excel_templates import _sanitize_export_cell
 from core.services.report.exporters.xlsx import SUMMARY_IDENTITY_LABELS, _append_write_only_row
-from core.services.report.report_engine import ReportExport
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
@@ -80,6 +76,9 @@ def _export_values(columns, rows, format_name):
 
 
 def _append_xlsx_metadata(sheet, data, snapshot):
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Alignment
+
     for label, value in metadata(data, snapshot):
         if label not in IDENTITY_LABELS:
             _append_write_only_row(sheet, [label, value])
@@ -108,6 +107,8 @@ def export_table(engine, data, rows, snapshot, format_name):
         for row in values:
             writer.writerow([_csv_cell(value) for value in row + [snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), data["provenance"], "；".join(data["data_gaps"])]])
         return ReportExport(filename + ".csv", "text/csv;charset=utf-8", io.BytesIO(output.getvalue().encode("utf-8-sig")), estimated_rows=len(rows))
+    import openpyxl
+
     workbook = openpyxl.Workbook(write_only=True)
     output = io.BytesIO()
     try:

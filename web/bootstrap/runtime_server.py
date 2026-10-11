@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import socket
 from http.server import HTTPServer
+from socketserver import TCPServer
+from typing import cast
 
 from werkzeug.serving import BaseWSGIServer, ThreadedWSGIServer, make_server
 
@@ -25,7 +27,11 @@ class _WindowsExclusiveBinding(HTTPServer):
     def server_bind(self):
         try:
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-            super().server_bind()
+            # HTTPServer resolves getfqdn here. The runtime publishes the bound
+            # address itself and does not need a reverse DNS lookup at startup.
+            TCPServer.server_bind(self)
+            host, self.server_port = self.server_address[:2]
+            self.server_name = cast(str, host)
         except OSError as exc:
             raise RuntimeBindError(str(exc)) from exc
 

@@ -19,7 +19,7 @@ from .admin import CalendarAdmin
 from .checkpoint_certificate import calendar_checkpoint_snapshot
 from .engine import CalendarEngine, DayPolicy
 from .multi_start_certificate import multi_start_calendar_snapshot
-from .native_timing import make_native_method_guard, make_timing_memo_guard
+from .native_timing import make_calendar_days_guard, make_native_method_guard, make_timing_memo_guard
 from .sgs_certificate import policy_snapshot
 
 
@@ -320,5 +320,6 @@ _NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
 _SGS_SERVICE_GUARD = make_class_guard(CalendarService)
 register_sgs_calendar_certificate(CalendarService, CalendarService.certified_sgs_policy_snapshot)
 register_multi_start_calendar_certificate(CalendarService, CalendarService.certified_multi_start_snapshot)
-register_calendar_timing_guard(CalendarService, make_timing_memo_guard(CalendarService))
+register_calendar_timing_guard(CalendarService, make_timing_memo_guard(CalendarService),
+                               calendar_days_guard=make_calendar_days_guard(CalendarService))
 register_checkpoint_calendar(CalendarService, CalendarService.certified_decode_checkpoint_snapshot)

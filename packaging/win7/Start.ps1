@@ -1,6 +1,8 @@
 #Requires -Version 2.0
 # ASCII source; the outer portable launcher selects an independent sample folder.
 param([ValidateSet('Start','SampleOn','SampleOff')][string]$Mode='Start')
+$script:ApsSelectionClock=[Diagnostics.Stopwatch]::StartNew()
+$script:ApsSelectionStartedUtc=[DateTime]::UtcNow
 $ErrorActionPreference='Stop'
 
 function Get-ApsApplicationPath([string]$Root,[bool]$Sample){
@@ -72,7 +74,7 @@ function Read-ApsSampleState([string]$Directory){
 
 function Start-ApsApplication([string]$Directory){
  . (Join-Path $Directory 'aps-launcher.ps1')
- return (Invoke-ApsLauncher $Directory)
+ return (Invoke-ApsLauncher $Directory $script:ApsSelectionClock $script:ApsSelectionStartedUtc)
 }
 
 function Start-ApsSelectedApplication([string]$Directory,[bool]$Sample){

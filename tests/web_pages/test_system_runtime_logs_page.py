@@ -88,6 +88,8 @@ def test_empty_and_missing_and_filtered_out_states(app_client):
     empty = _read(app_client)
     assert empty["rows"] == [] and _source(empty, "aps_error.log")["state"] == "empty"
     assert _source(empty, "aps_error.log")["count"] == 0
+    # Startup now records its stages; explicitly create the missing-source scenario.
+    (Path(app_client.application.config["LOG_DIR"]) / "launcher.log").unlink(missing_ok=True)
     missing = _read(app_client, file="launcher.log")
     assert missing["rows"] == [] and _source(missing, "launcher.log")["state"] == "missing"
     assert _source(missing, "launcher.log")["count"] is None

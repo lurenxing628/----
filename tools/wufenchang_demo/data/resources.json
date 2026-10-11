@@ -1,0 +1,776 @@
+{
+  "purpose": "APS五分厂演示版真实资源选取，源文件只读",
+  "equipment": [
+    {
+      "business_code": "2102077",
+      "label": "普通车床 CY6140",
+      "group": "普车",
+      "equipment_name": "普通车床",
+      "equipment_model": "CY6140",
+      "specification": "Φ400*1000",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 225,
+        "business_code_cell": "B225",
+        "equipment_name_cell": "C225",
+        "equipment_model_cell": "D225",
+        "status_cell": "N225"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2102091",
+      "label": "普通车床 CD6240A",
+      "group": "普车",
+      "equipment_name": "普通车床",
+      "equipment_model": "CD6240A",
+      "specification": "Φ400*1000",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 226,
+        "business_code_cell": "B226",
+        "equipment_name_cell": "C226",
+        "equipment_model_cell": "D226",
+        "status_cell": "N226"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2102092",
+      "label": "普通车床 CD6240A",
+      "group": "普车",
+      "equipment_name": "普通车床",
+      "equipment_model": "CD6240A",
+      "specification": "Φ400*1000",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 227,
+        "business_code_cell": "B227",
+        "equipment_name_cell": "C227",
+        "equipment_model_cell": "D227",
+        "status_cell": "N227"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2140027",
+      "label": "数控车床 QTN200ⅡL/1000",
+      "group": "数车",
+      "equipment_name": "数控车床",
+      "equipment_model": "QTN200ⅡL/1000",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 228,
+        "business_code_cell": "B228",
+        "equipment_name_cell": "C228",
+        "equipment_model_cell": "D228",
+        "status_cell": "N228"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2140028",
+      "label": "数控车床 QTN200ⅡL/500",
+      "group": "数车",
+      "equipment_name": "数控车床",
+      "equipment_model": "QTN200ⅡL/500",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 229,
+        "business_code_cell": "B229",
+        "equipment_name_cell": "C229",
+        "equipment_model_cell": "D229",
+        "status_cell": "N229"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2140036",
+      "label": "高精度数控车床 u3000/280L",
+      "group": "数车",
+      "equipment_name": "高精度数控车床",
+      "equipment_model": "u3000/280L",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 230,
+        "business_code_cell": "B230",
+        "equipment_name_cell": "C230",
+        "equipment_model_cell": "D230",
+        "status_cell": "N230"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2140037",
+      "label": "数控车床 TC-200",
+      "group": "数车",
+      "equipment_name": "数控车床",
+      "equipment_model": "TC-200",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 231,
+        "business_code_cell": "B231",
+        "equipment_name_cell": "C231",
+        "equipment_model_cell": "D231",
+        "status_cell": "N231"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2202073",
+      "label": "立式升降台铣床 X5032",
+      "group": "普铣",
+      "equipment_name": "立式升降台铣床",
+      "equipment_model": "X5032",
+      "specification": "320*1320",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 232,
+        "business_code_cell": "B232",
+        "equipment_name_cell": "C232",
+        "equipment_model_cell": "D232",
+        "status_cell": "N232"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2202077",
+      "label": "立式升降台铣床 XA5032/1",
+      "group": "普铣",
+      "equipment_name": "立式升降台铣床",
+      "equipment_model": "XA5032/1",
+      "specification": "320*1250",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 233,
+        "business_code_cell": "B233",
+        "equipment_name_cell": "C233",
+        "equipment_model_cell": "D233",
+        "status_cell": "N233"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2202082",
+      "label": "立式升降台铣床 XA5040",
+      "group": "普铣",
+      "equipment_name": "立式升降台铣床",
+      "equipment_model": "XA5040",
+      "specification": "400*1700",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 234,
+        "business_code_cell": "B234",
+        "equipment_name_cell": "C234",
+        "equipment_model_cell": "D234",
+        "status_cell": "N234"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2202083",
+      "label": "立式升降台铣床 XA5032 (数显)",
+      "group": "普铣",
+      "equipment_name": "立式升降台铣床",
+      "equipment_model": "XA5032 (数显)",
+      "specification": "320*1250",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 235,
+        "business_code_cell": "B235",
+        "equipment_name_cell": "C235",
+        "equipment_model_cell": "D235",
+        "status_cell": "N235"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "3140071",
+      "label": "三坐标高速立式加工中心 D165",
+      "group": "三轴中心",
+      "equipment_name": "三坐标高速立式加工中心",
+      "equipment_model": "D165",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 280,
+        "business_code_cell": "B280",
+        "equipment_name_cell": "C280",
+        "equipment_model_cell": "D280",
+        "status_cell": "N280"
+      },
+      "classification": {
+        "kind": "engineering_selection",
+        "assumption": true,
+        "basis": "原表设备名称为三坐标立式/高速立式加工中心；演示将其按三轴中心归组。原表无独立轴数字段。"
+      },
+      "axis_count": 3
+    },
+    {
+      "business_code": "3140073",
+      "label": "三坐标立式加工中心 CFV1050i",
+      "group": "三轴中心",
+      "equipment_name": "三坐标立式加工中心",
+      "equipment_model": "CFV1050i",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 281,
+        "business_code_cell": "B281",
+        "equipment_name_cell": "C281",
+        "equipment_model_cell": "D281",
+        "status_cell": "N281"
+      },
+      "classification": {
+        "kind": "engineering_selection",
+        "assumption": true,
+        "basis": "原表设备名称为三坐标立式/高速立式加工中心；演示将其按三轴中心归组。原表无独立轴数字段。"
+      },
+      "axis_count": 3
+    },
+    {
+      "business_code": "3140074",
+      "label": "三坐标立式加工中心 CFV1050i",
+      "group": "三轴中心",
+      "equipment_name": "三坐标立式加工中心",
+      "equipment_model": "CFV1050i",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 282,
+        "business_code_cell": "B282",
+        "equipment_name_cell": "C282",
+        "equipment_model_cell": "D282",
+        "status_cell": "N282"
+      },
+      "classification": {
+        "kind": "engineering_selection",
+        "assumption": true,
+        "basis": "原表设备名称为三坐标立式/高速立式加工中心；演示将其按三轴中心归组。原表无独立轴数字段。"
+      },
+      "axis_count": 3
+    },
+    {
+      "business_code": "3140101",
+      "label": "立式加工中心 DMC1035V ECOLINE(三轴)",
+      "group": "三轴中心",
+      "equipment_name": "立式加工中心",
+      "equipment_model": "DMC1035V ECOLINE(三轴)",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 287,
+        "business_code_cell": "B287",
+        "equipment_name_cell": "C287",
+        "equipment_model_cell": "D287",
+        "status_cell": "N287"
+      },
+      "classification": {
+        "kind": "source_explicit",
+        "basis": "设备型号原文明确标注三轴。"
+      },
+      "axis_count": 3
+    },
+    {
+      "business_code": "3140094",
+      "label": "立式加工中心（带A轴） GX1300",
+      "group": "四轴中心",
+      "equipment_name": "立式加工中心（带A轴）",
+      "equipment_model": "GX1300",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 285,
+        "business_code_cell": "B285",
+        "equipment_name_cell": "C285",
+        "equipment_model_cell": "D285",
+        "status_cell": "N285"
+      },
+      "classification": {
+        "kind": "engineering_selection",
+        "assumption": true,
+        "basis": "设备名称原文为立式加工中心（带A轴）；演示按三直线轴加A轴的四轴中心归组。原表未直接写四轴。"
+      },
+      "axis_count": 4
+    },
+    {
+      "business_code": "3140099",
+      "label": "五坐标立卧转换加工中心 DMU80P duoBLOCK",
+      "group": "五轴中心",
+      "equipment_name": "五坐标立卧转换加工中心",
+      "equipment_model": "DMU80P duoBLOCK",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 286,
+        "business_code_cell": "B286",
+        "equipment_name_cell": "C286",
+        "equipment_model_cell": "D286",
+        "status_cell": "N286"
+      },
+      "classification": {
+        "kind": "engineering_selection",
+        "assumption": true,
+        "basis": "设备名称原文为五坐标立卧转换加工中心；演示按五轴中心归组。原表无独立轴数字段。"
+      },
+      "axis_count": 5
+    },
+    {
+      "business_code": "2401030",
+      "label": "立式钻床 Z5125A",
+      "group": "钻床",
+      "equipment_name": "立式钻床",
+      "equipment_model": "Z5125A",
+      "specification": "Φ25",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 241,
+        "business_code_cell": "B241",
+        "equipment_name_cell": "C241",
+        "equipment_model_cell": "D241",
+        "status_cell": "N241"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2404014",
+      "label": "摇臂钻床 Z3040x16(I)",
+      "group": "钻床",
+      "equipment_name": "摇臂钻床",
+      "equipment_model": "Z3040x16(I)",
+      "specification": "Ф40",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 244,
+        "business_code_cell": "B244",
+        "equipment_name_cell": "C244",
+        "equipment_model_cell": "D244",
+        "status_cell": "N244"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2701017",
+      "label": "精密卧轴矩台平面磨床 MM7132A",
+      "group": "平磨",
+      "equipment_name": "精密卧轴矩台平面磨床",
+      "equipment_model": "MM7132A",
+      "specification": "320*1000",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 248,
+        "business_code_cell": "B248",
+        "equipment_name_cell": "C248",
+        "equipment_model_cell": "D248",
+        "status_cell": "N248"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2701032",
+      "label": "卧轴矩台平面磨床 M7132H",
+      "group": "平磨",
+      "equipment_name": "卧轴矩台平面磨床",
+      "equipment_model": "M7132H",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 249,
+        "business_code_cell": "B249",
+        "equipment_name_cell": "C249",
+        "equipment_model_cell": "D249",
+        "status_cell": "N249"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2705017",
+      "label": "精密半自动外圆磨床 MMB1420",
+      "group": "外圆磨",
+      "equipment_name": "精密半自动外圆磨床",
+      "equipment_model": "MMB1420",
+      "specification": "Φ200*500",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 251,
+        "business_code_cell": "B251",
+        "equipment_name_cell": "C251",
+        "equipment_model_cell": "D251",
+        "status_cell": "N251"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "2705036",
+      "label": "高精度万能外圆磨床 MGA1432A",
+      "group": "外圆磨",
+      "equipment_name": "高精度万能外圆磨床",
+      "equipment_model": "MGA1432A",
+      "specification": "Φ320*1000",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 252,
+        "business_code_cell": "B252",
+        "equipment_name_cell": "C252",
+        "equipment_model_cell": "D252",
+        "status_cell": "N252"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "3102025",
+      "label": "电火花加工机床 A35R",
+      "group": "电火花",
+      "equipment_name": "电火花加工机床",
+      "equipment_model": "A35R",
+      "specification": "2080*2100*2690",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 261,
+        "business_code_cell": "B261",
+        "equipment_name_cell": "C261",
+        "equipment_model_cell": "D261",
+        "status_cell": "N261"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "3102077",
+      "label": "数控精密电火花成型机 SA30",
+      "group": "电火花",
+      "equipment_name": "数控精密电火花成型机",
+      "equipment_model": "SA30",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 262,
+        "business_code_cell": "B262",
+        "equipment_name_cell": "C262",
+        "equipment_model_cell": "D262",
+        "status_cell": "N262"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    },
+    {
+      "business_code": "3102084",
+      "label": "数控高速走丝电火花线切割机 FW1P",
+      "group": "线切割",
+      "equipment_name": "数控高速走丝电火花线切割机",
+      "equipment_model": "FW1P",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 263,
+        "business_code_cell": "B263",
+        "equipment_name_cell": "C263",
+        "equipment_model_cell": "D263",
+        "status_cell": "N263"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      },
+      "process_capability": "快走丝"
+    },
+    {
+      "business_code": "3102089",
+      "label": "慢走丝线切割机 EDM CA20U",
+      "group": "线切割",
+      "equipment_name": "慢走丝线切割机",
+      "equipment_model": "EDM CA20U",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 264,
+        "business_code_cell": "B264",
+        "equipment_name_cell": "C264",
+        "equipment_model_cell": "D264",
+        "status_cell": "N264"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      },
+      "process_capability": "慢走丝"
+    },
+    {
+      "business_code": "3102108",
+      "label": "中走丝机床 HQZUP",
+      "group": "线切割",
+      "equipment_name": "中走丝机床",
+      "equipment_model": "HQZUP",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 274,
+        "business_code_cell": "B274",
+        "equipment_name_cell": "C274",
+        "equipment_model_cell": "D274",
+        "status_cell": "N274"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      },
+      "process_capability": "中走丝"
+    },
+    {
+      "business_code": "3109043",
+      "label": "激光打标机 YLP-HM50-DZFB",
+      "group": "标印",
+      "equipment_name": "激光打标机",
+      "equipment_model": "YLP-HM50-DZFB",
+      "specification": "",
+      "status_original": "良好",
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/06_近期导入_已作为清洗来源/03_设备台账/五分厂设备台账.xlsx",
+        "sheet": "Sheet1",
+        "row": 276,
+        "business_code_cell": "B276",
+        "equipment_name_cell": "C276",
+        "equipment_model_cell": "D276",
+        "status_cell": "N276"
+      },
+      "classification": {
+        "kind": "source_supported_selection",
+        "basis": "按设备名称及型号进行演示资源归组；本分组不是原表独立字段。"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "钳工1班",
+      "source_label_original": "钳  工 1 班  20人",
+      "roster_count_june": 20,
+      "nonzero_total_count_june": 16,
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/五分厂财务及自统计工时及工装相关信息/工时相关/五分厂自我统计/六月五分厂工时统计表.xlsx",
+        "sheet": "工时统计表1",
+        "label_cell": "A3",
+        "serial_range": "A5:A24",
+        "roster_range": "B5:B24",
+        "total_range": "G5:G24"
+      },
+      "name_origin": "班组标题",
+      "interpretation": "名单条数，不代表同一时刻可用人数；不含个人名。"
+    },
+    {
+      "name": "磨镗班",
+      "source_label_original": "磨  镗  班 5人",
+      "roster_count_june": 5,
+      "nonzero_total_count_june": 3,
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/五分厂财务及自统计工时及工装相关信息/工时相关/五分厂自我统计/六月五分厂工时统计表.xlsx",
+        "sheet": "工时统计表1",
+        "label_cell": "H3",
+        "serial_range": "H5:H9",
+        "roster_range": "I5:I9",
+        "total_range": "N5:N9"
+      },
+      "name_origin": "班组标题",
+      "interpretation": "名单条数，不代表同一时刻可用人数；不含个人名。"
+    },
+    {
+      "name": "车加工班",
+      "source_label_original": "车  加  工 班 10人",
+      "roster_count_june": 10,
+      "nonzero_total_count_june": 10,
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/五分厂财务及自统计工时及工装相关信息/工时相关/五分厂自我统计/六月五分厂工时统计表.xlsx",
+        "sheet": "工时统计表1",
+        "label_cell": "O3",
+        "serial_range": "O5:O14",
+        "roster_range": "P5:P14",
+        "total_range": "U5:U14"
+      },
+      "name_origin": "班组标题",
+      "interpretation": "名单条数，不代表同一时刻可用人数；不含个人名。"
+    },
+    {
+      "name": "铣加工班",
+      "source_label_original": "铣  加  工 班  23人",
+      "roster_count_june": 23,
+      "nonzero_total_count_june": 21,
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/五分厂财务及自统计工时及工装相关信息/工时相关/五分厂自我统计/六月五分厂工时统计表.xlsx",
+        "sheet": "工时统计表1",
+        "label_cell": "V3",
+        "serial_range": "V5:V27",
+        "roster_range": "W5:W27",
+        "total_range": "AB5:AB27"
+      },
+      "name_origin": "班组标题",
+      "interpretation": "名单条数，不代表同一时刻可用人数；不含个人名。"
+    },
+    {
+      "name": "电加工班",
+      "source_label_original": "电  加  工 班 7人",
+      "roster_count_june": 7,
+      "nonzero_total_count_june": 6,
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/五分厂财务及自统计工时及工装相关信息/工时相关/五分厂自我统计/六月五分厂工时统计表.xlsx",
+        "sheet": "工时统计表1",
+        "label_cell": "H16",
+        "serial_range": "H17:H23",
+        "roster_range": "I17:I23",
+        "total_range": "N17:N23"
+      },
+      "name_origin": "班组标题",
+      "interpretation": "名单条数，不代表同一时刻可用人数；不含个人名。"
+    },
+    {
+      "name": "综保装配",
+      "source_label_original": "综保装配",
+      "roster_count_june": 19,
+      "nonzero_total_count_june": 15,
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/五分厂财务及自统计工时及工装相关信息/工时相关/五分厂自我统计/六月五分厂工时统计表.xlsx",
+        "sheet": "工时统计表 2",
+        "label_cell": "D4",
+        "serial_range": "A5:A26",
+        "roster_range": "B5:B26",
+        "total_range": "G5:G26"
+      },
+      "name_origin": "工时类别列标题，原表未另写班组标题",
+      "interpretation": "名单条数，不代表同一时刻可用人数；不含个人名。"
+    },
+    {
+      "name": "伞锁装配",
+      "source_label_original": "伞锁装配",
+      "roster_count_june": 17,
+      "nonzero_total_count_june": 13,
+      "source": {
+        "workbook_path": "/Users/lurenxing/GitHub/五分厂产能调研/01_原始资料/五分厂财务及自统计工时及工装相关信息/工时相关/五分厂自我统计/六月五分厂工时统计表.xlsx",
+        "sheet": "工时统计表 2",
+        "label_cell": "K4",
+        "serial_range": "H5:H21",
+        "roster_range": "I5:I21",
+        "total_range": "N5:N21"
+      },
+      "name_origin": "工时类别列标题，原表未另写班组标题",
+      "interpretation": "名单条数，不代表同一时刻可用人数；不含个人名。"
+    }
+  ],
+  "assumptions": [
+    "资源分类为演示选择；工艺适用机台、班次、效率和人数容量仍须由演示配置明确设定。",
+    "综保装配、伞锁装配使用原表工时类别作为组名，不声称为独立正式组织名称。",
+    "热处理和焊接的能力来源限定为工装，不能自动作为产品内制能力。"
+  ]
+}
