@@ -54,6 +54,8 @@
     const [pendingRow, setPendingRow] = React.useState(A.ref(initialContext.selected_row_ref) ? initialContext.selected_row_ref : null);
     const [tab, setTab] = React.useState((view === 'delay' ? ['tasks', 'unplanned'] : ['tasks', 'unplanned', 'delivery', 'history']).includes(initialContext.candidate_tab) ? initialContext.candidate_tab : 'tasks'), [revision, refresh] = React.useReducer(v => v + 1, 0);
     const [analysisPaused, setAnalysisPaused] = React.useState(false);
+    const [detailsOpen, setDetailsOpen] = React.useState(false);
+    const detailsToggle = React.useRef(null);
     const directory = useRead(signal => adapter.catalog(runRef, catalogQuery, signal),
       [adapter, runRef, catalogQuery, revision], !!runRef && !invalid);
     const read = useRead(async signal => { const v = await adapter.workspace(candidateRef, scope, signal);
@@ -94,6 +96,7 @@
     window.WorkbenchPageContext.useSnapshot(remembered, !!shown && !read.busy && !read.error && !invalid);
     function choose(candidate) { setCandidateRef(candidate.candidate_ref); setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setQuery(''); setSelected(null); setAnalysisPaused(false); }
     function select(task) { setSelected({ task, result }); }
+    function collapseDetails() { setDetailsOpen(false); detailsToggle.current.querySelector('button').focus(); }
     function lastOperation(task) {
       setQuery('');
       const visible = shown.tasks.find(row => row.row_ref === task.row_ref);
@@ -104,8 +107,8 @@
     function rangeSubmit(e) {
       e.preventDefault();
       try {
-        const seconds = value => value.length === 16 ? value + ':00' : value;
-        const next = A.workspaceScope(candidateRef, { ...scope, range_start: seconds(range.start), range_end: seconds(range.end) });
+        const time = window.WorkbenchDatePickerModel.factoryTime;
+        const next = A.workspaceScope(candidateRef, { ...scope, range_start: time(range.start), range_end: time(range.end) });
         setScope(next); setRangeError(null); setSelected(null);
       } catch (error) { setRangeError(error); }
     }
@@ -118,7 +121,6 @@
           {typeof renderAdoption === 'function' ? renderAdoption(candidateRef) : <C.Button icon="check" className="btn primary" reasonDisplay="inline" reason={window.WorkbenchTerms.outcomes.unavailable}>采用方案</C.Button>}
           {typeof renderTrial === 'function' ? renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid }) :
             <C.Button icon="square-pen" reason={window.WorkbenchTerms.outcomes.unavailable}>试调</C.Button>}
-          <small className="rc-muted">试调不影响正式计划</small>
           <C.Button icon="refresh-cw" aria-label="刷新候选方案" disabled={invalid || !runRef && !candidateRef} busy={read.busy || directory.busy} onClick={reload} /></div></div></div>
       {invalid && <C.ErrorBox error={new Error('记录编号无效，请从排产记录重新打开。')} />}
       {!runRef && !candidateRef && <div className="rc-empty" role="status">尚未指定排产或候选方案。请从排产记录里打开候选方案，没有自动选最新的排产。</div>}
@@ -133,19 +135,22 @@
       {shown && <><C.Generation key={shown.candidate.candidate_ref} data={shown} analysis={analysis} /><C.Reasons rows={result.warnings} />
         <C.ErrorBox error={ownershipError(analysisRead)} />
         <div className="rc-heading"><div className="rc-tools"><h3>候选工作区</h3><span className="rc-muted">读取于 {M.timeLabel(result.meta.as_of)}</span></div>
-        <div className="rc-tools"><input type="search" aria-label="搜索候选工序" placeholder="批次、工序、设备、人员" value={query} onChange={e => setQuery(e.target.value)} />
-          <span className="rc-muted">匹配安排 {tasks.length} / {shown.task_count}</span></div>
+        <span className="rc-muted">匹配安排 {tasks.length} / {shown.task_count}</span>
         <div className="rc-tools"><C.Button icon="calendar-days" aria-expanded={rangeOpen} onClick={() => setRangeOpen(!rangeOpen)}>读取范围</C.Button>
           <Export key={result.meta.snapshot_ref} adapter={adapter} result={result} scope={scope} query={query} /></div></div>
-        {rangeOpen && <form className="rc-range" onSubmit={rangeSubmit}><label>开始（包含）<input type="text" placeholder="2026-09-13T08:30:00" spellCheck={false} aria-label="候选读取开始" value={range.start} onChange={e => setRange({ ...range, start: e.target.value })} /></label>
-          <label>结束（不含）<input type="text" placeholder="2026-09-13T08:30:00.800000" spellCheck={false} aria-label="候选读取结束" value={range.end} onChange={e => setRange({ ...range, end: e.target.value })} /></label>
+        {rangeOpen && <form className="rc-range" onSubmit={rangeSubmit}><label>开始（包含）<input type="text" data-picker-type="factory-local" placeholder="2026-10-12 08:30" spellCheck={false} aria-label="候选读取开始" value={range.start} onChange={e => setRange({ ...range, start: e.target.value })} /></label>
+          <label>结束（不含）<input type="text" data-picker-type="factory-local" placeholder="2026-10-14 18:00" spellCheck={false} aria-label="候选读取结束" value={range.end} onChange={e => setRange({ ...range, end: e.target.value })} /></label>
           <C.Button icon="check" type="submit">应用范围</C.Button><C.Button icon="chart-gantt" onClick={() => { setScope({}); setRange({ start: '', end: '' }); setRangeError(null); }}>完整候选</C.Button></form>}
         <C.ErrorBox error={rangeError} /><div className="rc-scope"><span>读取范围：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部时间'}{scope.batch_ref && ' · 指定批次'}
           {' · 安排 ' + shown.task_count + ' / 候选共 ' + shown.candidate_task_count + ' 道 · 未安排 ' + (shown.unplanned_operation_count === null ? '未知（未记录）' : shown.unplanned_operation_count + ' 道')}</span>
           {scope.batch_ref && <window.WorkbenchReference entries={{ '筛选批次编号': scope.batch_ref }} />}
           <details><summary>范围与导出说明</summary><div>时间筛选按重叠读取，保留每道安排完整起止；未安排项没有时间区间，仍随范围保留。搜索只影响页面显示和明细，不改变导出范围。导出当前读取范围全部安排与未安排记录。</div></details></div>
         {view === 'delay' && <C.Delivery data={shown.delivery_risks} onLast={lastOperation} />}
-        <div className="rc-main" data-single-column={['delivery', 'history'].includes(tab) ? 'true' : undefined}><div><window.RunCandidateGantt data={shown} query={query} selected={chosen} onSelect={select} />
+        <div className={'rc-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : '')} data-details-open={view === 'gantt' && detailsOpen && !['delivery', 'history'].includes(tab) || undefined}
+          data-single-column={['delivery', 'history'].includes(tab) || view === 'gantt' && !detailsOpen ? 'true' : undefined}><div className={view === 'gantt' ? 'wb-gantt-main-column' : undefined}>
+          {view === 'gantt' && !['delivery', 'history'].includes(tab) && <div className="wb-gantt-detail-actions" ref={detailsToggle}><span className="wb-gantt-detail-summary">{chosen ? (chosen.batch_label || '批次名称未填写') + ' · ' + (chosen.process_label || '工序名称未填写') : '选中工序后可查看详情'}</span>
+            <C.Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="candidate-gantt-detail" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? '收起详情' : '详情'}</C.Button></div>}
+          <window.RunCandidateGantt data={shown} comparison={analysis} query={query} onQuery={setQuery} selected={chosen} onSelect={select} />
           <section aria-label="候选明细"><div className="rc-heading"><div role="tablist" className="rc-tabs" aria-label="候选明细类别" onKeyDown={event => {
             if (event.altKey || event.ctrlKey || event.metaKey) return;
             const tabs = Array.from(event.currentTarget.querySelectorAll('[role="tab"]')), index = tabs.indexOf(document.activeElement);
@@ -158,7 +163,8 @@
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
                 onBatch={onNavigate && (row => onNavigate('gantt', { run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :
               <window.RunCandidateGantt.TaskList key={tab + ':' + query + ':' + result.meta.snapshot_ref} tasks={tab === 'tasks' ? tasks : unplanned} selected={chosen} onSelect={select} planned={tab === 'tasks'} />}</div></section>
-        </div>{!['delivery', 'history'].includes(tab) && <C.Detail task={chosen} onClose={() => setSelected(null)} />}</div>
+        </div>{!['delivery', 'history'].includes(tab) && (view !== 'gantt' || detailsOpen) && <C.Detail task={chosen} data={shown} onRelated={taskRef => lastOperation({ row_ref: taskRef })}
+          onCollapse={view === 'gantt' ? collapseDetails : undefined} onClose={() => setSelected(null)} />}</div>
         {analysis && <Analysis.Overview data={analysis} />}</>}
     </div>;
   }

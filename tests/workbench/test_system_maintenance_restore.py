@@ -132,6 +132,11 @@ def test_verified_restore_uses_protection_external_result_and_new_connection(sys
     conn.close()
     replay = system_api.file_action("restore", row)
     assert replay.status_code == 503
+    maintenance = system_api.app.test_client().get("/workbench?view=dashboard")
+    assert maintenance.status_code == 503
+    html = maintenance.get_data(as_text=True)
+    assert 'href="/workbench?view=dashboard">重新检查启动状态</a>' in html
+    assert "返回工作台" not in html
     looked_up = system_api.read("/results/system-test-request-0001")["data"]["operation"]
     assert looked_up["replayed"] is True
     assert looked_up["job_ref"] == result["job_ref"]

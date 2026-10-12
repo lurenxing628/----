@@ -3,31 +3,49 @@
   const C = window.FieldContract, { Button, ErrorBox, Issues, State } = window.FieldControls;
   function Timeline({ task }) {
     const [selected, setSelected] = React.useState(null), [tip, setTip] = React.useState(null);
-    const parse = value => value ? Date.parse(value.replace(' ', 'T') + 'Z') : null;
+    const axisHost = React.useRef(null), [width, setWidth] = React.useState(640);
+    const printing = window.WorkbenchControls.usePrintLayout(), V = window.GanttPresentation;
+    const parse = value => value ? window.PlanGanttModel.instant(value) : null;
     const plan = { ...task, start: task.planned_start, end: task.planned_end };
-    const rows = [{ key: 'plan', label: '计划安排', start: plan.start, end: plan.end, point: window.PointContract.isPoint(plan) },
-      ...task.execution.reports.map(row => ({ key: row.report_ref, label: row.report_no, start: row.actual_start, end: row.actual_end,
+    const rows = [{ key: 'plan', label: '计划安排', detail: '所选计划', start: plan.start, end: plan.end, point: window.PointContract.isPoint(plan) },
+      ...task.execution.reports.map(row => ({ key: row.report_ref, label: '实际报工', detail: row.report_no, start: row.actual_start, end: row.actual_end,
         point: !!row.actual_start && (!row.actual_end || row.actual_start === row.actual_end) }))];
     const points = rows.flatMap(row => [parse(row.start), parse(row.end)]).filter(Number.isFinite);
-    const axis = window.PointGanttModel.bounds(Math.min(...points), Math.max(...points), rows.some(row => row.point));
+    const bounds = window.PointGanttModel.bounds(Math.min(...points), Math.max(...points), rows.some(row => row.point));
+    const axis = V.axis({ ...bounds, width, viewport: width });
+    const position = value => (parse(value) - bounds.start) / (bounds.end - bounds.start) * 100;
+    React.useLayoutEffect(() => {
+      const measure = () => setWidth(axisHost.current.clientWidth);
+      measure(); const observer = new ResizeObserver(measure); observer.observe(axisHost.current);
+      return () => observer.disconnect();
+    }, []);
     function hover(title, event) {
       if (!event) { setTip(null); return; }
       const rect = event.currentTarget.getBoundingClientRect();
       setTip({ title, x: rect.left, y: rect.bottom });
     }
-    return <div className="field-timeline" role="region" aria-label="作业时间线"><div className="field-timeline-axis"><span>{C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))}</span><span>{C.date(new Date(Math.max(...points)).toISOString().slice(0, 19))}</span></div>
+    return <div className="field-timeline" role="region" aria-label="作业时间线" data-field-timeline>
+      <div className="field-timeline-legend"><span><i className="planned" />计划安排</span><span><i className="actual" />实际报工</span><span>菱形表示零工时工序或已记录的开工时刻</span></div>
+      <div className="field-timeline-axis-row"><div className="field-timeline-corner">计划 / 实际</div><div ref={axisHost} className="field-timeline-axis">
+        <window.GanttPresentationUI.Axis axis={axis} width={width} printing={printing} /></div></div>
       {rows.map(row => {
         const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段')
-          + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
-        const left = ((parse(row.start) - axis.start) / (axis.end - axis.start)) * 100 + '%';
-        return <div key={row.key} className="field-timeline-row"><span>{row.label}</span><div className="field-timeline-track" title={title}>
-          {!row.start ? <span>实际开工待补</span> : row.point ? <window.PointGantt.Marker
-            task={row.key === 'plan' ? plan : { task_ref: row.key, start: row.start }} x={left} top={0} title={title}
+          + '\n' + task.operation_label + ' · ' + C.pieceLabel(task) + '\n' + row.detail + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
+        const left = position(row.start), span = row.end ? position(row.end) - left : 0;
+        const lines = V.taskLines({ process: task.operation_label, batch: row.detail, piece: C.pieceLabel(task) }, 'machine', span / 100 * width);
+        return <div key={row.key} className="field-timeline-row" data-field-time-kind={row.key === 'plan' ? 'plan' : 'report'}>
+          <div className="field-timeline-label"><strong>{row.label}</strong><small>{row.detail}{!row.end && ' · 结束待补'}</small></div><div className="field-timeline-track">
+          {axis.ticks.map(tick => <i key={tick.at} className="field-timeline-grid" style={{ left: tick.x / width * 100 + '%' }} aria-hidden="true" />)}
+          {!row.start ? <span className="field-timeline-missing">实际开工待补</span> : row.point ? <window.PointGantt.Marker
+            task={row.key === 'plan' ? plan : { task_ref: row.key, start: row.start }} x={left + '%'} top={12} title={title}
             tone={row.key === 'plan' ? 'plan' : ''} selected={selected === row.key} data-field-point={row.key === 'plan' ? 'plan' : 'report'}
             data-task-ref={task.task_ref} data-report-ref={row.key === 'plan' ? undefined : row.key}
             onSelect={() => setSelected(row.key)} onHover={event => hover(title, event)} onFocus={event => hover(title, event)} onBlur={() => setTip(null)} />
-            : <i className={row.key === 'plan' ? 'planned' : 'actual'} style={{ left, width: ((parse(row.end) - parse(row.start)) / (axis.end - axis.start)) * 100 + '%' }} />}
-        </div><span>{row.end ? '' : '结束待补'}</span></div>;
+            : <button type="button" className={'field-timeline-bar ' + (row.key === 'plan' ? 'planned' : 'actual')} style={{ left: left + '%', width: span + '%' }}
+              aria-label={title} aria-pressed={selected === row.key} title={title} onClick={() => setSelected(row.key)}
+              onMouseEnter={event => hover(title, event)} onMouseLeave={() => setTip(null)} onFocus={event => hover(title, event)} onBlur={() => setTip(null)}>
+              {row.key !== 'plan' && lines.primary && <><strong>{lines.primary}</strong>{lines.secondary && <small>{lines.secondary}</small>}</>}</button>}
+        </div></div>;
       })}
       {tip && <div className="field-point-tip" role="tooltip" style={{ left: Math.max(8, Math.min(tip.x, window.innerWidth - 336)), top: Math.max(8, Math.min(tip.y + 8, window.innerHeight - 170)) }}>{tip.title}</div>}
     </div>;

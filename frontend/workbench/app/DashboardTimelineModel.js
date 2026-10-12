@@ -10,14 +10,16 @@
       projections: { calendar: { resources: [] }, occupancy: { resources: [] }, baseline: { state: 'unavailable' } } }, 'machine', '', false, width);
     const windows = new Map();
     for (const row of stops) { if (!windows.has(row.machine_ref)) windows.set(row.machine_ref, []); windows.get(row.machine_ref).push(row); }
-    return { ...model, windows };
+    const risks = new Map(data.deliveries.map(row => [row.batch_ref, row.risk]));
+    return { ...model, windows, risks };
   }
-  function title(task) {
+  function title(task, risk) {
     return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label,
-      G.timeLabel(task.start) + ' 至 ' + G.timeLabel(task.end), '计划时长 ' + window.WorkbenchFormat.hours(task.span_hours),
+      G.timeLabel(task.start) + ' 至 ' + G.timeLabel(task.end), '计划跨度 ' + window.WorkbenchFormat.hours(task.span_hours),
       task.start === task.end ? '零工时工序，不占设备人员' : null,
-      '设备：' + (task.machine_label || '名称未填写')].filter(Boolean).join('\n');
+      '设备：' + (task.machine_label || '名称未填写'),
+      risk ? '批次交付：' + window.WorkbenchTerms.delivery_risks[risk] : null].filter(Boolean).join('\n');
   }
-  window.DashboardTimelineModel = { layout, title, instant: G.instant, wire: G.wire, ticks: G.ticks,
+  window.DashboardTimelineModel = { layout, title, instant: G.instant, wire: G.wire,
     visibleRows: G.visibleRows, visibleItems: G.visibleItems, number: (value, options) => window.WorkbenchFormat.number(value, options), timeLabel: G.timeLabel };
 })();

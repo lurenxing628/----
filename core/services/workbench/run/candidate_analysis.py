@@ -21,7 +21,7 @@ def read_candidate_analysis(conn, candidate_ref):
         baseline, _ = baseline_reader._baseline(source, admission, rows, RunCandidateBaselineScope(candidate_ref))
         run_ref, capture = source.run["run_ref"], source.capture
         refs = sorted(admission.settings["batch_refs"])
-        before = _baseline_deliveries(admission, capture, refs)
+        before = _baseline_deliveries(admission, baseline["comparisons"], refs)
         after = [row for row in workspace["delivery_risks"]["items"] if row["batch_ref"] in refs]
         batches = _delivery_rows(before, after, refs)
         old_metrics = delivery_metrics(before, _delivery_summary(before))

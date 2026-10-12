@@ -56,6 +56,13 @@ def test_full_workspace_keeps_two_version_quantities_and_exact_uncached_output(a
     data, state = _workspace(case, second)
     baseline = data["projections"]["baseline"]
     assert baseline["state"] == "available" and baseline["baseline_plan"]["plan_ref"] == first["plan_ref"]
+    provenance = data["provenance"]
+    assert provenance["state"] == "available" and provenance["source_kind"] == "candidate_adoption"
+    assert provenance["baseline"]["baseline_ref"] == first["plan_ref"]
+    assert provenance["baseline"]["version"] == first["version"]
+    assert provenance["baseline"]["captured_at"] == provenance["accepted_at"]
+    assert provenance["algorithm"]["mode"] == "greedy" and provenance["source_label"] == "原算法"
+    assert provenance["run_ref"] and provenance["source_ref"] and provenance["adopted_at"]
     assert data["tasks"][0]["quantity"] == 5
     assert baseline["items"][0]["before"]["quantity"] == 3
     assert baseline["items"][0]["after"]["quantity"] == 5
@@ -81,7 +88,7 @@ def test_dashboard_has_one_complete_source_proof_and_frozen_quantity(adopted_ver
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
 
 
-def test_quantity_without_reuse_scope_still_verifies_source_once(adopted_versions, monkeypatch):
+def test_task_facts_without_reuse_scope_still_verify_source_once(adopted_versions, monkeypatch):
     case, _, second = adopted_versions
     before, changes = snapshot(case.conn), case.conn.total_changes
     calls = _track_sources(monkeypatch)
@@ -89,8 +96,9 @@ def test_quantity_without_reuse_scope_still_verifies_source_once(adopted_version
     # This standalone reader has a transaction but intentionally no evidence
     # scope. It must use the facts returned with its proof, not reprove them.
     with reader.read_snapshot():
-        quantities, reason = projection._adopted_quantities(case.conn, second["plan_ref"])
+        quantities, reason, operations = projection._adopted_task_facts(case.conn, second["plan_ref"])
     assert reason is None and quantities[case.op_id]["quantity"] == 5
+    assert operations[case.op_id]["source"] == "internal"
     assert len(calls) == 1
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
 

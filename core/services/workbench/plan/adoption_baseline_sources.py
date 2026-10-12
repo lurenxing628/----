@@ -6,7 +6,10 @@ from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, _blob
 from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
+from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_origin
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import _resource
+from core.services.workbench.facts.candidate_values import gap
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
@@ -67,7 +70,7 @@ def _candidate_source(conn, audit):
                        ("baseline_hash", input_fingerprint(capture["baseline"])),
                        ("candidate_hash", input_fingerprint({"candidate": candidate, "tasks": tasks, "scope": scope}))):
         require(same(proof[key], value), "candidate.proof." + key)
-    return capture["baseline"], tables, [row["payload"] for row in tasks], facts
+    return capture["baseline"], tables, [row["payload"] for row in tasks], facts, candidate_origin(candidate, run, capture)
 
 
 def _candidate_tables(archive):
@@ -81,6 +84,10 @@ def _candidate_tables(archive):
 
 
 def trial_source(conn, audit):
+    return trial_source_evidence(conn, audit)[:3]
+
+
+def trial_source_evidence(conn, audit):
     key = ("trial_adoption_source", input_fingerprint(audit))
     return verified_read(conn, key, lambda: _trial_source(conn, audit))
 
@@ -112,7 +119,11 @@ def _trial_source(conn, audit):
     _scenario_row_bindings(conn, saved)
     arranged = [{"op_id": row["original"]["operation"]["id"], **row["current"],
                  "start_time": row["current"]["start"], "end_time": row["current"]["end"]} for row in rows]
-    return admission["baseline"], tables, arranged
+    origin = {"source_kind": "trial_adoption", "source_ref": audit["scenario_ref"], "source_label": saved["name"],
+              "run_ref": None, "accepted_at": head["created_at"], "finished_at": saved["saved_at"],
+              "algorithm": None, "baseline": baseline_capture(admission["baseline"], head["created_at"],
+                                                                kind="trial_creation_official")}
+    return admission["baseline"], tables, arranged, origin
 
 
 def _scenario_row_bindings(conn, saved):
@@ -128,3 +139,61 @@ def _scenario_row_bindings(conn, saved):
 def decoded_baseline(baseline):
     require(type(baseline) is dict and set(baseline) == {"plan_ref", "version", "rows"}, "baseline_shape")
     return dict(baseline, rows=_decode_rows(baseline["rows"]))
+
+
+class _TrialResourceFacts:
+    """Read the trial's archived dictionaries through the resource projector."""
+
+    def __init__(self, archive):
+        tables = archive["tables"]
+        self.tables = {name: {row[key]: row for row in tables.get(name, [])} for name, key in (
+            ("Suppliers", "supplier_id"), ("Machines", "machine_id"), ("Operators", "operator_id"))}
+        self.entity_refs = {(row["kind"], row["entity_key"]): row["ref"]
+                            for row in tables.get("WorkbenchEntityRefs", []) if row["active"] == 1}
+
+    def related(self, name, key, field, gaps):
+        row = self.tables[name].get(key) if type(key) in (str, int) else None
+        if row is None:
+            gaps.append(gap(field, "source_missing"))
+        return row or {}
+
+
+def read_adoption_operation_facts(conn, evidence):
+    """Read actual adopted assignments and supplier identity from their frozen sources."""
+    audit = evidence["audit"]
+    source_ref = audit["candidate_ref"] if evidence["basis"] == "candidate_adoption" else audit["scenario_ref"]
+    key = ("adoption_operation_facts", evidence["basis"], audit["version"], source_ref)
+    return verified_read(conn, key, lambda: _adoption_operation_facts(conn, evidence))
+
+
+def _adoption_operation_facts(conn, evidence):
+    if evidence["basis"] == "candidate_adoption":
+        resources = evidence["generation_facts"]
+        assigned_resources = resources
+        operations = resources.tables["BatchOperations"]
+    else:
+        _, head, rows = load_saved_scenario(conn, evidence["audit"]["scenario_ref"])
+        operations = {row["original"]["operation"]["id"]: row["original"]["operation"] for row in rows}
+        admission = head["admission"]
+        capture = admission["source"].get("capture")
+        resources = GenerationFacts(capture) if capture is not None else _TrialResourceFacts(admission["facts"])
+        assigned_resources = _TrialResourceFacts(admission["facts"])
+    result = {}
+    for row in evidence["arranged"]:
+        op = operations.get(row["op_id"], {})
+        gaps = []
+        source = op.get("source")
+        if source not in ("internal", "external"):
+            gaps.append(gap("source", "not_recorded" if source is None else "invalid_stored_value"))
+            source = None
+        if "supplier_id" not in op:
+            supplier = None
+            gaps.append(gap("supplier", "not_recorded"))
+        else:
+            supplier = _resource(resources, "supplier", op["supplier_id"], gaps)
+        assigned = {kind: _resource(assigned_resources, kind, row[kind + "_id"], gaps) for kind in ("machine", "operator")}
+        assigned["supplier"] = supplier
+        directory = [{"kind": kind, "ref": value["ref"], "business_code": op["supplier_id"] if kind == "supplier" else row[kind + "_id"],
+                      "label": value["label"]} for kind, value in assigned.items() if value is not None and value["ref"] is not None]
+        result[row["op_id"]] = {"source": source, **assigned, "resource_directory": directory, "data_gaps": gaps}
+    return result

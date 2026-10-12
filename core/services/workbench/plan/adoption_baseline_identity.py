@@ -85,6 +85,9 @@ def _arrangement_matches(row, original):
 
 
 def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None):
+    from .adoption_baseline_sources import read_adoption_operation_facts
+    from .projection import _adopted_source_record
+
     ref, version = baseline["plan_ref"], baseline["version"]
     references = WorkbenchPlanIdentityRepository(conn)
     if not WorkbenchPlanBaselineRepository(conn).history_version_exists(version):
@@ -104,18 +107,28 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None):
         fail("adoption_baseline_drift", "Schedule.complete_original_values_and_types")
     task_refs, operations = _task_bindings(conn, baseline, tables, references)
     resources = _resources(conn, captured, tables)
+    source = _adopted_source_record(conn, ref)
+    if source is None:
+        fail("adoption_evidence_missing", "baseline.original_adoption")
+    origins = read_adoption_operation_facts(conn, source)
     ops, batches = indexed(tables["BatchOperations"], "id"), indexed(tables["Batches"], "batch_id")
     detail = []
     for row in captured:
         op = ops.get(row["op_id"])
         if op is None or op["batch_id"] not in batches:
             fail(gap="baseline.original_operation_and_batch")
+        origin = origins.get(row["op_id"])
+        if origin is None or any(item["field"] in ("source", "supplier", "supplier.ref") for item in origin["data_gaps"]):
+            fail("adoption_evidence_missing", "baseline.original_source_and_supplier")
+        supplier = next((item for item in origin["resource_directory"] if item["kind"] == "supplier"), None)
+        if supplier is not None:
+            resources["supplier"][supplier["business_code"]] = SimpleNamespace(ref=supplier["ref"])
         detail.append({**row, "schedule_id": row["id"], "batch_id": op["batch_id"],
-                       "seq": op["seq"], "piece_id": op["piece_id"], "op_type_name": op["op_type_name"], "supplier_id": None})
-    # As in RunBaseline, Schedule has no historical supplier/effective-hours field.
+                       "seq": op["seq"], "piece_id": op["piece_id"], "op_type_name": op["op_type_name"],
+                       "supplier_id": supplier["business_code"] if supplier is not None else None})
     if point_annotator is not None:
         detail = point_annotator(detail)
-    return project_tasks(ref, detail, task_refs, operations, resources, conn=conn)
+    return project_tasks(ref, detail, task_refs, operations, resources, conn=conn, facts=facts)
 
 
 def _captured_tasks(baseline, tables):

@@ -13,7 +13,6 @@
     .field-files-summary{display:flex;gap:22px;flex-wrap:wrap;padding:var(--space-4) 0}.field-workspace button:disabled{cursor:default;color:var(--ui-info-muted)}.field-history{padding:var(--space-3) 18px;background:var(--surface-2);overflow-wrap:anywhere}.field-history dl{display:grid;grid-template-columns:120px minmax(0,1fr);gap:var(--space-2)}.field-history dd{margin:0}.field-history>div{padding:var(--space-2) 0;border-top:1px solid var(--border)}
     @media(max-width:900px){.field-entry-grid{grid-template-columns:1fr}.field-entry-grid section+section{border:0;padding:0}.field-time-grid,.field-extra{grid-template-columns:1fr}.field-table{min-width:850px}.field-toolbar{gap:var(--space-2)}}
     .field-upload{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}.field-upload>span{overflow-wrap:anywhere;min-width:0}
-    .field-timeline{border-bottom:1px solid var(--border);padding:var(--space-3) 0;max-height:300px;overflow:auto}.field-timeline-axis{display:flex;justify-content:space-between;margin:0 80px var(--space-2) 180px;color:var(--muted);font-size:var(--font-size-1)}.field-timeline-row{display:grid;grid-template-columns:170px minmax(100px,1fr) 70px;gap:var(--space-2);align-items:center;min-height:32px;font-size:var(--font-size-1)}.field-timeline-row>span{overflow-wrap:anywhere}.field-timeline-track{position:relative;height:22px;background:var(--surface-2);border-left:1px solid var(--border);border-right:1px solid var(--border)}.field-timeline-track i{position:absolute;top:5px;height:12px;display:block;min-width:2px}.field-timeline-track .planned{background:var(--ui-info-border);box-shadow:inset 0 0 0 1px var(--ui-info-text)}.field-timeline-track .actual{background:var(--ui-success)}
 
 /* Field workspace owns its scroll budget; headers stick inside this frame. */
 .field-workspace > .field-toolbar { padding: 0 0 var(--space-3); border-bottom: 0; }
@@ -61,8 +60,6 @@ body.aps-workbench .field-workspace .field-selected > .wb-col-actions { backgrou
 .field-workspace .field-entry-grid { grid-template-columns: minmax(160px,1fr) minmax(290px,2fr) minmax(145px,1fr); gap: var(--space-4); }
 .field-workspace .field-entry-grid section+section { padding-left: var(--space-4); }
 .field-workspace .field-point-tip { position: fixed; z-index: var(--wb-z-popup); max-width: 320px; padding: var(--space-2); background: var(--ui-card-bg); color: var(--ui-text); border: 1px solid var(--ui-border); white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; }
-.field-workspace .field-timeline-track { height: 26px; }
-.field-workspace .field-timeline-track i { min-width: 0; }
 .field-workspace .field-report-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); max-width: 100%; }
 /* File previews scroll inside the dialog, keeping its title and actions in the viewport. */
 .field-workspace > .modal-bg { padding: var(--space-4); }

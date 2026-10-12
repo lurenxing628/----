@@ -27,12 +27,10 @@ def _resource(facts, kind, key, gaps):
         return None
     table = {"machine": "Machines", "operator": "Operators", "supplier": "Suppliers"}[kind]
     row = facts.related(table, key, kind, gaps)
-    if not row:
-        return None
     ref = facts.entity_refs.get((kind, key))
     if ref is None:
         gaps.append(gap(kind + ".ref", "source_missing"))
-    return {"ref": ref, "label": text(row.get("name"), kind + ".label", gaps)}
+    return {"ref": ref, "label": text(row.get("name"), kind + ".label", gaps) if row else None}
 
 
 def _execution(facts, ref, gaps):

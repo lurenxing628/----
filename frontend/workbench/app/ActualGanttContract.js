@@ -91,6 +91,8 @@
       if (e) { count += e.reports.length; e.reports.concat(e.legacy_facts).forEach(r => used.push(r.actual_machine_ref, r.actual_operator_ref)); if (e.remaining_plan) used.push(e.remaining_plan.machine_ref, e.remaining_plan.operator_ref); }
       if (used.some(r => r != null && (!ref(r) || !resourceRefs.has(r)))) fail('实际或计划资源清单不完整。');
     });
+    if (!window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.items.map(item => item.task), taskRef: 'task_ref', time: local,
+      sequence: C.positiveInt64, processLabel: value => typeof value === 'string' && !!value.trim() })) fail('现场甘特的工序关联与所选计划不一致，请刷新重试。');
     if (d.availability.state === 'available' ? d.report_count !== count || count > 50000 : d.report_count !== null || !d.availability.reason) fail('报工数量或不可用原因不完整。');
     validateChain(d.critical_chain, d, query, meta);
     return result;

@@ -55,6 +55,9 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label, inval
     row["label"] = calendar["label"] if calendar is not None else label
     available = available_intervals(calendar) if calendar is not None else None
     metrics = _bounding_window_metrics(intervals, available)
+    issues = list(calendar["issues"]) if calendar is not None else [issue("calendar_unavailable")]
+    if metrics["reason"] == "zero_available_capacity":
+        issues.append(issue("zero_available_capacity"))
     invalid_outside = bool(set(operations) & invalid_operations) or bool(calendar and calendar.get("status") != "active")
     capacity_measures, utilization, insufficient = _capacity_measures(metrics, invalid_outside)
     measures = {"arranged_hours": arranged_hours, "occupied_hours": occupied_hours,
@@ -66,7 +69,7 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label, inval
                utilization=utilization,
                has_overlap=overlap_hours > 1e-9,
                capacity_insufficient=insufficient,
-               issues=calendar["issues"] if calendar is not None else [issue("calendar_unavailable")],
+               issues=issues,
                segments=[{"start": wire(low), "end": wire(high), "concurrent_operations": count}
                          for low, high, count in swept])
     return row

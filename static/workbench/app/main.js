@@ -4357,37 +4357,233 @@ function SMExport({
     }
     return queue.length === operations.size;
   }
-  function relationships(data, selected) {
-    const order = data.projections.process_order,
-      task = selected && selected.task;
-    if (!task || selected.before || order.state !== 'available') return null;
-    const current = order.items.find(row => row.task_ref === task.task_ref);
-    if (!current) return null;
-    const tasks = new Map(data.tasks.map(row => [row.task_ref, row])),
-      byOperation = new Map();
-    for (const row of order.items) {
-      if (!byOperation.has(row.operation_ref)) byOperation.set(row.operation_ref, []);
-      byOperation.get(row.operation_ref).push(row);
-    }
-    const expand = operations => operations.flatMap(operation => {
-      const rows = byOperation.get(operation);
-      return rows ? rows.map(row => ({
-        task_ref: row.task_ref,
-        task: tasks.get(row.task_ref) || null
-      })) : [{
-        task_ref: null,
-        task: null
-      }];
-    });
-    const successors = new Set(order.items.filter(row => row.predecessor_operation_refs.includes(task.operation_ref)).map(row => row.operation_ref));
-    return {
-      previous: expand(current.predecessor_operation_refs),
-      next: expand(Array.from(successors))
-    };
+  function missingPredecessors(order, taskRef) {
+    if (order.state !== 'available') return 0;
+    const current = order.items.find(row => row.task_ref === taskRef),
+      scheduled = new Set(order.items.map(row => row.operation_ref));
+    return current.predecessor_operation_refs.filter(ref => !scheduled.has(ref)).length;
   }
   window.PlanProcessOrder = {
     validate,
-    relationships
+    missingPredecessors
+  };
+})();
+
+;
+(function () {
+  'use strict';
+
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const ref = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
+  const edgeKey = edge => edge.from_task_ref + ':' + edge.to_task_ref + ':' + edge.edge_type;
+  // Both workspaces validate this shared graph once, at their existing API boundary.
+  function validate(graph, {
+    scope,
+    tasks,
+    taskRef,
+    time,
+    sequence,
+    processLabel,
+    completeCount
+  }) {
+    if (!object(graph) || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state) || !['nodes', 'edges', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))) return false;
+    if (graph.state === 'unavailable') return typeof graph.reason === 'string' && !!graph.reason.trim() && !graph.nodes.length && !graph.edges.length && !graph.critical_task_refs.length && !graph.critical_edges.length;
+    if (graph.reason !== null || completeCount !== undefined && graph.nodes.length !== completeCount) return false;
+    const nodes = new Map();
+    for (const node of graph.nodes) {
+      if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || nodes.has(node.task_ref) || typeof node.batch_id !== 'string' || !node.batch_id.trim() || !(node.piece_id === null || typeof node.piece_id === 'string' && !!node.piece_id.trim()) || !sequence(node.sequence) || !processLabel(node.process_label) || !time(node.start) || !time(node.end) || node.end < node.start) return false;
+      nodes.set(node.task_ref, node);
+    }
+    if (!tasks.every(task => {
+      const node = nodes.get(task[taskRef]);
+      return node && ['operation_ref', 'piece_id', 'start', 'end'].every(key => node[key] === task[key]);
+    })) return false;
+    const critical = new Set(graph.critical_task_refs);
+    if (critical.size !== graph.critical_task_refs.length || !graph.critical_task_refs.every(key => nodes.has(key))) return false;
+    function edgesValid(edges, types, members) {
+      const seen = new Set();
+      return edges.every(edge => {
+        if (!object(edge) || !nodes.has(edge.from_task_ref) || !nodes.has(edge.to_task_ref) || edge.from_task_ref === edge.to_task_ref || !types.includes(edge.edge_type) || members && (!members.has(edge.from_task_ref) || !members.has(edge.to_task_ref))) return false;
+        const key = edgeKey(edge);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+    return edgesValid(graph.edges, ['process']) && edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
+  }
+  function create(graph) {
+    const nodes = new Map(graph.nodes.map(node => [node.task_ref, node])),
+      batches = new Map();
+    for (const node of graph.nodes) {
+      if (!batches.has(node.batch_id)) batches.set(node.batch_id, []);
+      batches.get(node.batch_id).push(node);
+    }
+    return {
+      graph,
+      nodes,
+      batches
+    };
+  }
+  function selection(index, {
+    enabled = false,
+    targetRef = null
+  } = {}) {
+    const {
+        graph
+      } = index,
+      target = index.nodes.get(targetRef) || null;
+    const critical = new Set(graph.critical_task_refs),
+      related = new Set(),
+      edges = new Map();
+    const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
+    if (enabled && !target) graph.critical_edges.forEach(edge => edges.set(connection(edge), {
+      ...edge,
+      kind: 'critical'
+    }));
+    if (target) {
+      // A piece shares its common operations, but those operations must not lead into sibling pieces.
+      for (const node of index.batches.get(target.batch_id)) if (target.piece_id === null || node.piece_id === null || node.piece_id === target.piece_id) related.add(node.task_ref);
+      graph.edges.forEach(edge => {
+        if (related.has(edge.from_task_ref) && related.has(edge.to_task_ref)) edges.set(connection(edge), {
+          ...edge,
+          kind: 'related'
+        });
+      });
+    }
+    return {
+      graph,
+      target,
+      critical,
+      related,
+      edges: Array.from(edges.values())
+    };
+  }
+  function route(index, targetRef) {
+    const target = index.nodes.get(targetRef);
+    if (!target) return null;
+    const nodes = index.batches.get(target.batch_id),
+      previous = new Map(nodes.map(node => [node.task_ref, []]));
+    const next = new Map(nodes.map(node => [node.task_ref, []])),
+      groups = new Map();
+    for (const edge of index.graph.edges) if (previous.has(edge.to_task_ref)) previous.get(edge.to_task_ref).push(index.nodes.get(edge.from_task_ref));
+    for (const node of nodes) for (const parent of previous.get(node.task_ref)) next.get(parent.task_ref).push(node);
+    const pending = new Map(nodes.map(node => [node.task_ref, previous.get(node.task_ref).length]));
+    const sequence = node => node.sequence === null ? Infinity : Number(node.sequence);
+    const compare = (a, b) => sequence(a) - sequence(b) || String(a.sequence).localeCompare(String(b.sequence), 'en', {
+      numeric: true
+    }) || a.task_ref.localeCompare(b.task_ref);
+    let layer = nodes.filter(node => pending.get(node.task_ref) === 0);
+    while (layer.length) {
+      const following = [];
+      for (const node of layer.sort(compare)) {
+        if (!groups.has(node.piece_id)) groups.set(node.piece_id, []);
+        groups.get(node.piece_id).push(node);
+        for (const child of next.get(node.task_ref)) {
+          const count = pending.get(child.task_ref) - 1;
+          pending.set(child.task_ref, count);
+          if (!count) following.push(child);
+        }
+      }
+      layer = following;
+    }
+    return {
+      target,
+      count: nodes.length,
+      previous,
+      groups: Array.from(groups, ([pieceId, items]) => ({
+        pieceId,
+        nodes: items
+      })).sort((a, b) => a.pieceId === null ? -1 : b.pieceId === null ? 1 : a.pieceId.localeCompare(b.pieceId, 'zh-CN', {
+        numeric: true
+      }))
+    };
+  }
+  function locations(model, {
+    candidate = false
+  } = {}) {
+    const result = new Map();
+    for (const row of model.rows) {
+      if (row.before || row.baseline) continue;
+      const y = row.top + 27;
+      const markHeight = row.point ? 14 : 40;
+      for (const item of row.items) result.set(item.task[candidate ? 'row_ref' : 'task_ref'], {
+        start: item.start,
+        end: item.end,
+        y,
+        markTop: y - markHeight / 2,
+        markBottom: y + markHeight / 2,
+        top: row.top,
+        bottom: row.top + row.height
+      });
+    }
+    return result;
+  }
+  function paths(active, model, width, viewport, options) {
+    const points = options && options.locations || locations(model, options),
+      visible = new Set(),
+      scale = width / (model.end - model.start);
+    const x = value => (value - model.start) * scale;
+    for (const [key, point] of points) {
+      const pad = point.start === point.end ? 12 : 0;
+      if (point.bottom > viewport.top && point.top < viewport.top + viewport.height && x(point.end) + pad >= viewport.left && x(point.start) - pad <= viewport.left + viewport.width) visible.add(key);
+    }
+    const drawn = active.edges.filter(edge => visible.has(edge.from_task_ref) && visible.has(edge.to_task_ref)).map(edge => {
+      const from = points.get(edge.from_task_ref),
+        to = points.get(edge.to_task_ref),
+        a = x(from.end),
+        b = x(to.start);
+      let d,
+        endY = to.y,
+        arrowX = Math.min(4, b - a),
+        arrowY = 0;
+      if (b < a) {
+        // A backward detour is reserved for a real overlap in the scheduled dependency.
+        d = 'M' + a + ',' + from.y + ' H' + (a + 6) + ' V' + (from.bottom - 3) + ' H' + (b - 6) + ' V' + to.y + ' H' + b;
+        arrowX = 4;
+      } else if (from.y === to.y) {
+        // Adjacent operations share one seam: a compact arrow is enough, without drawing a loop.
+        d = 'M' + a + ',' + from.y + ' H' + b;
+        if (a === b) arrowX = 3;
+      } else {
+        const down = to.y > from.y,
+          startY = down ? from.markBottom : from.markTop;
+        endY = down ? to.markTop : to.markBottom;
+        if (a === b) {
+          d = 'M' + a + ',' + startY + ' V' + endY;
+          arrowX = 0;
+          arrowY = Math.sign(endY - startY) * Math.min(4, Math.abs(endY - startY));
+        } else {
+          const middle = (a + b) / 2;
+          d = 'M' + a + ',' + startY + ' H' + middle + ' V' + endY + ' H' + b;
+          arrowX = Math.min(4, b - middle);
+        }
+      }
+      const wing = Math.min(2.5, Math.abs(arrowX || arrowY));
+      const cap = arrowY ? ' M' + (b - wing) + ',' + (endY - arrowY) + ' L' + b + ',' + endY + ' L' + (b + wing) + ',' + (endY - arrowY) : ' M' + (b - arrowX) + ',' + (endY - wing) + ' L' + b + ',' + endY + ' L' + (b - arrowX) + ',' + (endY + wing);
+      return {
+        ...edge,
+        d: d + cap,
+        top: Math.min(from.top, to.top),
+        bottom: Math.max(from.bottom, to.bottom)
+      };
+    });
+    const count = refs => Array.from(refs).filter(key => visible.has(key)).length;
+    return {
+      paths: drawn,
+      visible,
+      criticalVisible: count(active.critical),
+      relatedVisible: count(active.related),
+      focused: !!active.target
+    };
+  }
+  window.GanttGraph = {
+    validate,
+    create,
+    selection,
+    route,
+    locations,
+    paths
   };
 })();
 
@@ -4482,10 +4678,10 @@ function SMExport({
     envelope(result, query);
     const d = result.data,
       p = d && d.page;
-    if (!exact(d, ['plans', 'page']) || !Array.isArray(d.plans) || !d.plans.every(plan) || !uniqueRefs(d.plans, 'plan_ref') || !exact(p, ['collection', 'size', 'unit', 'has_more', 'next_cursor']) || p.collection !== query.collection || p.size !== query.size || p.unit !== (query.collection === 'history' ? 'version' : 'scenario') || typeof p.has_more !== 'boolean' || (p.has_more ? !token(p.next_cursor) || !d.plans.length || p.next_cursor === query.cursor : p.next_cursor !== null) || d.plans.some(row => row.kind === 'scenario' !== (query.collection === 'scenario')) || d.plans.filter(row => row.is_current_official).length > 1) throw C.failure('读到的计划列表、类型或分页跟这次查询不一致，没有当作完整列表使用。请点「刷新」重试。');
+    if (!exact(d, ['plans', 'page']) || !Array.isArray(d.plans) || !d.plans.every(plan) || !uniqueRefs(d.plans, 'plan_ref') || !exact(p, ['collection', 'size', 'unit', 'has_more', 'next_cursor']) || p.collection !== query.collection || p.size !== query.size || p.unit !== (query.collection === 'history' ? 'version' : 'scenario') || typeof p.has_more !== 'boolean' || (p.has_more ? !token(p.next_cursor) || !d.plans.length || p.next_cursor === query.cursor : p.next_cursor !== null) || d.plans.some(row => row.kind === 'scenario' !== (query.collection === 'scenario')) || d.plans.filter(row => row.is_current_official).length > 1) throw C.failure('计划列表的类型或分页与查询不一致，请刷新。');
     // A history page counts versions, not role entries; null versions cannot be grouped by guessed identity.
     const units = query.collection === 'scenario' ? d.plans.length : new Set(d.plans.filter(row => row.version !== null).map(row => String(row.version))).size + d.plans.filter(row => row.version === null).length;
-    if (units > query.size) throw C.failure('读到的计划条数超过了每页上限，没有当作完整列表使用。请点「刷新」重试。');
+    if (units > query.size) throw C.failure('计划列表条数超过每页上限，请刷新。');
     return result;
   }
   function task(row, planRef, planSpan, timeScope) {
@@ -4513,7 +4709,8 @@ function SMExport({
       byRef.set(row.ref, row);
     }
     const used = new Set();
-    for (const row of data.tasks) for (const kind of ['machine', 'operator', 'supplier']) {
+    const tasks = data.tasks.concat(data.projections.baseline.items.flatMap(row => [row.before, row.after].filter(Boolean)));
+    for (const row of tasks) for (const kind of ['machine', 'operator', 'supplier']) {
       const value = row[kind + '_ref'];
       if (value === null) continue;
       if (!byRef.has(value) || byRef.get(value).kind !== kind) return false;
@@ -4590,7 +4787,7 @@ function SMExport({
     const source = calendars.get(row.resource_ref);
     if (row.capacity_basis !== (source ? expected : 'unknown')) return false;
     if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null) && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
-    return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours && typeof row.capacity_insufficient === 'boolean' && row.issues.length === 0 && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
+    return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours && typeof row.capacity_insufficient === 'boolean' && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
   function occupancy(value, data) {
     if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state) || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only' || !projectedResources(value.resources, data) || !projectionIssues(value.issues, true)) return false;
@@ -4646,11 +4843,26 @@ function SMExport({
     }
     return data.task_span.start === start && data.task_span.end === end && (!whole || start === data.plan_span.start && end === data.plan_span.end);
   }
+  function provenance(value) {
+    if (!exact(value, ['state', 'reason', 'source_kind', 'source_ref', 'source_label', 'run_ref', 'accepted_at', 'finished_at', 'adopted_at', 'algorithm', 'baseline']) || !['available', 'unavailable'].includes(value.state)) return false;
+    if (value.state === 'unavailable') return label(value.reason) && ['source_kind', 'source_ref', 'source_label', 'run_ref', 'accepted_at', 'finished_at', 'adopted_at', 'algorithm', 'baseline'].every(key => value[key] === null);
+    const origin = value.baseline,
+      algorithm = value.algorithm;
+    return value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.source_kind) && ref(value.source_ref) && nullableRef(value.run_ref) && nullableLabel(value.source_label) && ['accepted_at', 'finished_at', 'adopted_at'].every(key => nullableLabel(value[key])) && exact(origin, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && nullableRef(origin.baseline_ref) && (origin.version === null || int64(origin.version)) && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at) && (origin.captured_task_count === null || count(origin.captured_task_count)) && (algorithm === null ? value.source_kind === 'trial_adoption' : exact(algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(algorithm).every(nullableLabel));
+  }
   function workspace(result, planRef, scope = {}) {
     const query = workspaceScope(planRef, scope);
     envelope(result, query);
     const d = result.data;
-    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections']) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query) || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000 || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref') || !taskSpans(d, query) || !resourceDirectory(d) || !exact(d.projections, projections) || !baseline(d.projections.baseline, d) || !calendar(d.projections.calendar, d) || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d) || !window.PlanProcessOrder.validate(d.projections.process_order, d)) throw C.failure('读到的工序安排、时间范围或分析数据不完整或来源对不上，没有当作完整结果使用。请点「刷新」重试。');
+    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance']) || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query) || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000 || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref') || !taskSpans(d, query) || !exact(d.projections, projections) || !baseline(d.projections.baseline, d) || !resourceDirectory(d) || !calendar(d.projections.calendar, d) || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d) || !window.PlanProcessOrder.validate(d.projections.process_order, d) || !window.GanttGraph.validate(d.gantt_graph, {
+      scope: 'full_plan',
+      tasks: d.tasks,
+      taskRef: 'task_ref',
+      time: localTime,
+      sequence: int64,
+      processLabel: label,
+      completeCount: d.scope.range_start === null ? d.tasks.length : undefined
+    })) throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
     return result;
   }
   window.APSPlanContract = {
@@ -5981,7 +6193,10 @@ function SMExport({
       onClick: () => onZoom(timelineZoomStep(zoom, -1, max))
     }), /*#__PURE__*/React.createElement("span", {
       className: "wb-zoom-level"
-    }, zoom, "\xD7"), /*#__PURE__*/React.createElement(Button, {
+    }, window.WorkbenchFormat.number(zoom, {
+      digits: 2,
+      trim: true
+    }), "\xD7"), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       className: className,
       "aria-label": '放大' + axis,
@@ -6099,6 +6314,7 @@ function SMExport({
   function kind(input) {
     if (!input || !available(input)) return null;
     if (input.tagName === 'SELECT' && !input.multiple && input.size <= 1) return 'select';
+    if (input.tagName === 'INPUT' && input.type === 'text' && input.dataset.pickerType === 'factory-local') return 'factory-local';
     return input.tagName === 'INPUT' && pickerTypes.includes(input.type) ? input.type : null;
   }
   function rows(input) {
@@ -6816,7 +7032,7 @@ function SMExport({
   'use strict';
 
   const C = window.APSCalendarContract;
-  const types = ['date', 'time', 'month', 'datetime-local'];
+  const types = ['date', 'time', 'month', 'datetime-local', 'factory-local'];
   const pad = (value, size = 2) => String(value).padStart(size, '0');
   const monthKey = (year, month) => pad(year, 4) + '-' + pad(month);
   const dateKey = (year, month, day) => monthKey(year, month) + '-' + pad(day);
@@ -6876,10 +7092,19 @@ function SMExport({
     input.setAttribute('value', (props.valueAttribute === undefined ? props.value : props.valueAttribute) || '');
     return input;
   }
-  function hasShape(type, value) {
+  // Factory-local inputs retain microseconds as text; Date and native datetime inputs only retain milliseconds.
+  function factoryTime(value) {
+    if (!value.trim()) return '';
+    const text = window.WorkbenchFormat.dateTime(value.trim(), {
+      seconds: true,
+      fractions: true
+    });
+    return text.replace(' ', 'T').replace(/\.(\d+)$/, (_, fraction) => '.' + fraction.padEnd(6, '0'));
+  }
+  function hasShape(type, value, fractionDigits = 3) {
     if (type === 'date') return !!dateParts(value);
     if (type === 'month') return !!monthParts(value);
-    if (type === 'time') return /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/.test(value);
+    if (type === 'time') return new RegExp('^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,' + fractionDigits + '})?)?$').test(value);
     if (type === 'datetime-local') {
       const parts = value.split('T');
       return parts.length === 2 && !!dateParts(parts[0]) && hasShape('time', parts[1]);
@@ -6899,6 +7124,34 @@ function SMExport({
       valid: false,
       message: '不支持的日期或时间类型。'
     };
+    if (props.type === 'factory-local') {
+      let normalized;
+      try {
+        normalized = factoryTime(value);
+      } catch (_) {
+        return {
+          valid: false,
+          message: '请选择完整、有效的日期和时间。'
+        };
+      }
+      if (!normalized) return {
+        valid: false,
+        message: '请选择完整、有效的日期和时间。'
+      };
+      if (props.min && normalized < factoryTime(props.min)) return {
+        valid: false,
+        message: '不能早于 ' + limitText(props, props.min) + '。'
+      };
+      if (props.max && normalized > factoryTime(props.max)) return {
+        valid: false,
+        message: '不能晚于 ' + limitText(props, props.max) + '。'
+      };
+      return {
+        valid: true,
+        value: normalized,
+        message: ''
+      };
+    }
     if (!value || !hasShape(props.type, value)) return {
       valid: false,
       message: '请选择完整、有效的日期或时间。'
@@ -6937,6 +7190,7 @@ function SMExport({
     };
   }
   function daySelectable(props, day) {
+    if (props.type === 'factory-local') return !!dateParts(day) && (!props.min || day >= props.min.slice(0, 10)) && (!props.max || day <= props.max.slice(0, 10));
     if (props.type !== 'datetime-local') return validate(props, day).valid;
     const input = nativeField(props),
       start = day + 'T00:00';
@@ -6956,7 +7210,7 @@ function SMExport({
     const parts = monthParts(month);
     if (!parts) return false;
     if (props.type === 'month') return validate(props, month).valid;
-    if (!['date', 'datetime-local'].includes(props.type)) return false;
+    if (!['date', 'datetime-local', 'factory-local'].includes(props.type)) return false;
     // Month navigation keeps the original date/time constraints, including their step base.
     for (let day = 1; day <= C.monthDays(parts[0], parts[1]); day++) {
       if (daySelectable(props, month + '-' + pad(day))) return true;
@@ -6964,23 +7218,24 @@ function SMExport({
     return false;
   }
   function precision(props) {
-    const values = [props.value, props.valueAttribute, props.min, props.max].filter(value => typeof value === 'string');
+    const values = [props.value, props.valueAttribute, props.min, props.max].filter(value => typeof value === 'string').map(value => value.trim());
     const numericStep = Number(props.step),
       step = Number.isFinite(numericStep) && numericStep > 0 ? numericStep : 60;
     const any = String(props.step).toLowerCase() === 'any';
     const fraction = any || step > 0 && step % 1 !== 0 || values.some(value => /:\d{2}\.\d+$/.test(value));
     return {
-      seconds: fraction || step > 0 && step % 60 !== 0 || values.some(value => /\d{2}:\d{2}:\d{2}/.test(value)),
-      fraction
+      seconds: props.type === 'factory-local' || fraction || step > 0 && step % 60 !== 0 || values.some(value => /\d{2}:\d{2}:\d{2}/.test(value)),
+      fraction,
+      digits: props.type === 'factory-local' ? 6 : 3
     };
   }
   function readTime(value, units) {
-    const raw = (value || '').split('T').pop();
-    if (!hasShape('time', raw)) return {
+    const raw = (value || '').trim().replace(' ', 'T').split('T').pop();
+    if (!hasShape('time', raw, units.digits)) return {
       hour: '',
       minute: '',
       second: '',
-      millisecond: ''
+      fraction: ''
     };
     const parts = raw.split(':'),
       fraction = (parts[2] || '').split('.');
@@ -6988,26 +7243,26 @@ function SMExport({
       hour: parts[0],
       minute: parts[1],
       second: units.seconds ? fraction[0] || '00' : '',
-      millisecond: units.fraction ? (fraction[1] || '').padEnd(3, '0') : ''
+      fraction: units.fraction ? (fraction[1] || '').padEnd(units.digits, '0') : ''
     };
   }
   function timeValue(time, units) {
-    const required = ['hour', 'minute'].concat(units.seconds ? ['second'] : [], units.fraction ? ['millisecond'] : []);
+    const required = ['hour', 'minute'].concat(units.seconds ? ['second'] : [], units.fraction ? ['fraction'] : []);
     const limits = {
       hour: 23,
       minute: 59,
       second: 59,
-      millisecond: 999
+      fraction: 10 ** units.digits - 1
     };
     if (required.some(key => !/^\d+$/.test(time[key]) || Number(time[key]) > limits[key])) return '';
     let value = pad(Number(time.hour)) + ':' + pad(Number(time.minute));
     if (units.seconds) value += ':' + pad(Number(time.second));
-    if (units.fraction) value += '.' + pad(Number(time.millisecond), 3);
+    if (units.fraction) value += '.' + pad(Number(time.fraction), units.digits);
     return value;
   }
   function seed(props) {
-    const current = (props.value || '').slice(0, 10),
-      minimum = (props.min || '').slice(0, 10);
+    const current = (props.value || '').trim().slice(0, 10),
+      minimum = (props.min || '').trim().slice(0, 10);
     return dateParts(current) ? current : monthParts(current) ? current + '-01' : dateParts(minimum) ? minimum : monthParts(minimum) ? minimum + '-01' : today();
   }
   window.WorkbenchDatePickerModel = {
@@ -7022,6 +7277,7 @@ function SMExport({
     moveDay,
     moveMonth,
     nativeField,
+    factoryTime,
     hasShape,
     validate,
     daySelectable,
@@ -7126,17 +7382,18 @@ function SMExport({
     onChange,
     initial
   }) {
-    const fields = [['hour', '时', 23], ['minute', '分', 59]].concat(units.seconds ? [['second', '秒', 59]] : [], units.fraction ? [['millisecond', '毫秒', 999]] : []);
+    const fields = [['hour', '时', 23], ['minute', '分', 59]].concat(units.seconds ? [['second', '秒', 59]] : [], units.fraction ? [['fraction', units.digits === 6 ? '微秒' : '毫秒', 10 ** units.digits - 1]] : []);
     return /*#__PURE__*/React.createElement("div", {
       className: "wb-picker-fields",
       role: "group",
       "aria-label": "\u65F6\u95F4\uFF0824\u5C0F\u65F6\u5236\uFF09",
-      "data-columns": fields.length
+      "data-columns": fields.length,
+      "data-fraction-digits": units.fraction ? units.digits : undefined
     }, fields.map(([key, label, maximum]) => /*#__PURE__*/React.createElement(NumberField, {
       key: key,
       label: label,
       maximum: maximum,
-      width: key === 'millisecond' ? 3 : 2,
+      width: key === 'fraction' ? units.digits : 2,
       initial: initial && key === 'hour',
       value: time[key],
       onChange: value => onChange({
@@ -7316,11 +7573,12 @@ function SMExport({
   function DatePickerBody(props) {
     const {
       type,
-      value = '',
+      value: rawValue = '',
       onCommit,
       onClose,
       label
     } = props;
+    const value = type === 'factory-local' ? rawValue.trim().replace(' ', 'T') : rawValue;
     const initial = M.seed(props),
       units = M.precision(props),
       root = React.useRef(null),
@@ -7336,9 +7594,10 @@ function SMExport({
     const [time, setTime] = React.useState(() => M.readTime(value, units)),
       [edited, setEdited] = React.useState(false);
     const hasDate = type !== 'time',
-      hasTime = ['time', 'datetime-local'].includes(type);
+      dateTime = ['datetime-local', 'factory-local'].includes(type),
+      hasTime = type === 'time' || dateTime;
     const clock = M.timeValue(time, units),
-      candidate = type === 'datetime-local' ? selected && clock ? selected + 'T' + clock : '' : type === 'time' ? clock : selected;
+      candidate = dateTime ? selected && clock ? selected + 'T' + clock : '' : type === 'time' ? clock : selected;
     const check = M.validate(props, candidate),
       id = React.useId();
     React.useLayoutEffect(() => {
@@ -7366,7 +7625,7 @@ function SMExport({
       setEdited(true);
       setSelected(next);
       if (type !== 'month') setPickerView('days');
-      if (type === 'datetime-local') browse(next, false);else onCommit(M.validate(props, next).value);
+      if (dateTime) browse(next, false);else onCommit(M.validate(props, next).value);
     }
     function chooseMonth(key) {
       if (type === 'month') {
@@ -7425,7 +7684,8 @@ function SMExport({
       date: '选择日期',
       time: '选择时间',
       month: '选择月份',
-      'datetime-local': '选择日期和时间'
+      'datetime-local': '选择日期和时间',
+      'factory-local': '选择日期和时间'
     }[type];
     return /*#__PURE__*/React.createElement("div", {
       className: "wb-date-picker",
@@ -7513,7 +7773,7 @@ function SMExport({
       onChoose: choose
     })), hasTime && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: 'wb-picker-actions wb-picker-time-head' + (hasDate ? ' has-date' : '')
-    }, /*#__PURE__*/React.createElement("span", null, type === 'datetime-local' ? selected || '尚未选择日期' : '24 小时制')), /*#__PURE__*/React.createElement(TimeFields, {
+    }, /*#__PURE__*/React.createElement("span", null, dateTime ? selected || '尚未选择日期' : '24 小时制')), /*#__PURE__*/React.createElement(TimeFields, {
       time: time,
       units: units,
       initial: type === 'time',
@@ -7697,7 +7957,7 @@ function SMExport({
         }
         const input = target(event),
           type = B.kind(input);
-        if (type && (['F4', 'Enter', ' '].includes(event.key) || event.altKey && event.key === 'ArrowDown' || type === 'select' && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key))) {
+        if (type && (event.key === 'F4' || type !== 'factory-local' && ['Enter', ' '].includes(event.key) || event.altKey && event.key === 'ArrowDown' || type === 'select' && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key))) {
           event.preventDefault();
           event.stopImmediatePropagation();
           open(input);
@@ -7756,7 +8016,7 @@ function SMExport({
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['disabled', 'readonly', 'aria-hidden', 'inert', 'type', 'value', 'min', 'max', 'step']
+        attributeFilter: ['disabled', 'readonly', 'aria-hidden', 'inert', 'type', 'data-picker-type', 'value', 'min', 'max', 'step']
       });
       const size = new ResizeObserver(place);
       size.observe(owner);
@@ -7766,7 +8026,8 @@ function SMExport({
           place();
           return;
         }
-        if (event.type === 'scroll' && popup.current && popup.current.contains(event.target)) return;
+        // Only scrolling an ancestor moves the anchor; typing long text also scrolls the input itself.
+        if (event.type === 'scroll' && (event.target === owner || !event.target.contains(owner))) return;
         close(true);
       }
       window.addEventListener('resize', viewportChanged);
@@ -7799,7 +8060,7 @@ function SMExport({
         B.selectIndex(owner, value);
       } else {
         if (value && !window.WorkbenchDatePickerModel.validate({
-          type: owner.type,
+          type: opened.type,
           min: owner.min,
           max: owner.max,
           step: owner.step,
@@ -24048,6 +24309,7 @@ function SMExport({
 
   const hitSize = 24,
     gap = 28;
+  const itemRef = item => item.task ? item.task.task_ref || item.task.row_ref : item.segment.row_ref;
   function bounds(start, end, hasPoints) {
     if (start === null || !hasPoints) return {
       start,
@@ -24063,7 +24325,7 @@ function SMExport({
     const lanes = [],
       heap = [],
       scale = Math.max(1, width) / (end - start);
-    for (const item of items.slice().sort((a, b) => a.start - b.start || String(a.task.task_ref || a.task.row_ref).localeCompare(String(b.task.task_ref || b.task.row_ref)))) {
+    for (const item of items.slice().sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)))) {
       const x = (item.start - start) * scale;
       let slot;
       if (heap.length && heap[0].end <= x) {
@@ -24118,7 +24380,7 @@ function SMExport({
       at = model.start + (x + left) / scale;
     return visible(items, at, at, scale).find(item => Math.abs((item.start - model.start) * scale - left - x) <= hitSize / 2);
   }
-  function paint(ctx, x, y, fill, edge, selected) {
+  function paint(ctx, x, y, fill, edge, selected, lineWidth = selected ? 2 : 1) {
     ctx.save();
     ctx.setLineDash([]);
     ctx.beginPath();
@@ -24130,7 +24392,7 @@ function SMExport({
     ctx.fillStyle = fill;
     ctx.fill();
     ctx.strokeStyle = edge;
-    ctx.lineWidth = selected ? 2 : 1;
+    ctx.lineWidth = lineWidth;
     ctx.stroke();
     ctx.restore();
   }
@@ -24236,7 +24498,8 @@ function SMExport({
   'use strict';
 
   // Factory-local wall-clock coordinates, deliberately independent of browser DST.
-  const instant = value => Date.parse(value + 'Z');
+  // Date truncates below milliseconds; add the factory-local fractional seconds separately.
+  const instant = value => value ? Date.parse(value.slice(0, 19) + 'Z') + Number(value.slice(19) || 0) * 1000 : NaN;
   // Axis labels only. Business task/scope strings bypass Date so all six fractional digits remain intact.
   const wire = value => new Date(value).toISOString().slice(0, 19);
   const timeLabel = value => window.WorkbenchFormat.dateTime(value, {
@@ -24249,7 +24512,7 @@ function SMExport({
   const count = value => window.WorkbenchFormat.number(value, {
     digits: 0
   });
-  const quantityLabel = value => value === null ? '未知' : typeof value === 'string' ? value : number(value);
+  const quantityLabel = (value, reason) => value === null ? quantityReasons[reason] || '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
   // Same three sentences as FieldContract.quantityReasons; this module loads before FieldContract, so the text is repeated here.
   const quantityReasons = {
@@ -24329,13 +24592,15 @@ function SMExport({
   function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
     const labels = names(data),
       needle = query.trim().toLocaleLowerCase();
+    const directory = new Map(data.resources.map(row => [row.ref, row]));
     const comparison = data.projections.baseline;
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const matches = task => (!changedOnly || changed.has(task.operation_ref)) && (!needle || searchText(task, labels).includes(needle));
     const selected = data.tasks.filter(matches),
       groups = new Map(),
       conflicts = new Set(),
-      locations = new Map();
+      locations = new Map(),
+      baselineLocations = new Map();
     let start = instant(data.plan_span.start),
       end = instant(data.plan_span.end);
     const add = (task, before) => {
@@ -24350,12 +24615,17 @@ function SMExport({
         end = Math.max(end, item.end);
       }
       const id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
-      if (!groups.has(id)) groups.set(id, {
-        id,
-        label: resourceLabel(task, mode, labels),
-        tasks: [],
-        before: []
-      });
+      if (!groups.has(id)) {
+        const label = resourceLabel(task, mode, labels),
+          resource = directory.get(id);
+        groups.set(id, {
+          id,
+          label,
+          code: resource && resource.business_code !== label ? resource.business_code : null,
+          tasks: [],
+          before: []
+        });
+      }
       groups.get(id)[before ? 'before' : 'tasks'].push(item);
     };
     data.tasks.forEach(task => add(task, false));
@@ -24369,17 +24639,18 @@ function SMExport({
     end = bounds.end;
     let top = 0;
     const rows = [];
-    const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref, row.segments.filter(item => item.concurrent_operations > 1).map(item => ({
-      start: instant(item.start),
-      end: instant(item.end)
-    }))]));
+    const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref, row]));
     for (const group of groups.values()) {
       const overlap = new Set();
       const split = (items, conflicts) => [...tracks(items.filter(i => !P.isPoint(i.task)), conflicts), ...G.tracks(items.filter(i => P.isPoint(i.task)), start, end, width)];
       const current = split(group.tasks, overlap),
         old = split(group.before, new Set());
       // Visual overlap splits tracks; actual conflict color comes from the same server occupancy snapshot.
-      const segments = occupancy.get(group.id) || [];
+      const resourceOccupancy = occupancy.get(group.id);
+      const segments = resourceOccupancy ? resourceOccupancy.segments.filter(item => item.concurrent_operations > 1).map(item => ({
+        start: instant(item.start),
+        end: instant(item.end)
+      })) : [];
       for (const item of group.tasks) {
         if (P.isPoint(item.task)) continue;
         const hit = firstIntersecting(segments, item.start);
@@ -24396,13 +24667,15 @@ function SMExport({
           top,
           height,
           before,
+          occupancy: before ? null : resourceOccupancy,
           point: P.isPoint(items[0].task),
           track: before ? index - current.length : index,
-          trackCount: before ? old.length : current.length,
+          trackCount: (before ? old : current).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length,
+          subrow: (before ? old : current).slice(0, before ? index - current.length : index).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length + 1,
           overlap: P.isPoint(items[0].task) ? 0 : overlap.size,
           key: group.id + ':' + index
         };
-        items.forEach(item => locations.set(item.task.task_ref, {
+        items.forEach(item => (before ? baselineLocations : locations).set(item.task.task_ref, {
           row: rows.length,
           top,
           item
@@ -24412,6 +24685,7 @@ function SMExport({
       });
     }
     return {
+      mode,
       labels,
       rows,
       height: top,
@@ -24419,6 +24693,7 @@ function SMExport({
       end,
       conflicts,
       locations,
+      baselineLocations,
       tasks: selected,
       groupCount: new Set(rows.map(row => row.id)).size
     };
@@ -24449,10 +24724,13 @@ function SMExport({
     for (let index = low; index < rows.length && rows[index].top < end; index++) result.push(rows[index]);
     return result;
   }
-  function ticks(start, end, width, left, visibleWidth) {
+  function tickStep(start, end, width) {
     const target = (end - start) / Math.max(1, width / 125);
     const steps = [1000, 5000, 15000, 30000, 60000, 300000, 900000, 1800000, 3600000, 10800000, 21600000, 43200000, 86400000, 172800000, 604800000, 2592000000, 31536000000];
-    const step = steps.find(value => value >= target) || Math.ceil(target / 31536000000) * 31536000000;
+    return steps.find(value => value >= target) || Math.ceil(target / 31536000000) * 31536000000;
+  }
+  function ticks(start, end, width, left, visibleWidth) {
+    const step = tickStep(start, end, width);
     const low = start + Math.max(0, left - 150) / width * (end - start),
       high = Math.min(end, start + (left + visibleWidth + 150) / width * (end - start));
     const result = [];
@@ -24466,10 +24744,8 @@ function SMExport({
   function taskTitle(task, labels, conflict) {
     return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label, pieceLabel(task), '本工序目标量：' + quantityLabel(task.quantity) + ' · 计划来源整批量：' + quantityLabel(task.batch_quantity), task.quantity_reason ? quantityReasons[task.quantity_reason] : null, window.PointContract.isPoint(task) ? '零工时工序 · 0 小时 · 不占设备人员' : null, timeLabel(task.start) + ' 至 ' + timeLabel(task.end), resourceLabel(task, 'machine', labels) + ' / ' + resourceLabel(task, 'operator', labels), conflict ? '资源时间冲突（安排重叠）' : null].filter(Boolean).join('\n');
   }
-  function tone(task, conflicts, risks) {
-    if (conflicts.has(task.task_ref)) return 'critical';
-    const risk = risks.get(task.batch_id);
-    return risk === 'overdue' ? 'critical' : risk === 'on_time' ? 'success' : 'primary';
+  function tone(task, risks) {
+    return risks.get(task.batch_id) === 'overdue' ? 'critical' : 'primary';
   }
   window.PlanGanttModel = {
     instant,
@@ -24486,6 +24762,7 @@ function SMExport({
     layout,
     visibleItems,
     visibleRows,
+    tickStep,
     ticks,
     taskTitle,
     tone,
@@ -24497,20 +24774,449 @@ function SMExport({
 (function () {
   'use strict';
 
-  const M = window.PlanGanttModel;
+  const DAY = 86400000,
+    weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  function axis({
+    start,
+    end,
+    width,
+    left = 0,
+    viewport = width
+  }) {
+    if (start === null) return {
+      bands: [],
+      ticks: []
+    };
+    const scale = width / (end - start),
+      low = start + left / scale,
+      high = Math.min(end, start + (left + viewport) / scale);
+    const unit = DAY * scale >= 54 ? 'day' : DAY * 30 * scale >= 70 ? 'month' : 'year';
+    const date = new Date(low),
+      year = date.getUTCFullYear(),
+      month = date.getUTCMonth();
+    let at = Date.UTC(year, unit === 'year' ? 0 : month, unit === 'day' ? date.getUTCDate() : 1);
+    const bands = [],
+      crossYear = new Date(start).getUTCFullYear() !== new Date(end).getUTCFullYear();
+    while (at < high) {
+      const d = new Date(at),
+        wire = d.toISOString(),
+        y = d.getUTCFullYear(),
+        m = d.getUTCMonth();
+      const next = unit === 'day' ? at + DAY : unit === 'month' ? Date.UTC(y, m + 1, 1) : Date.UTC(y + 1, 0, 1);
+      const label = unit === 'day' ? wire.slice(crossYear ? 0 : 5, 10) + ' ' + weekdays[d.getUTCDay()] : unit === 'month' ? y + '年' + (m + 1) + '月' : y + '年';
+      const begin = Math.max(start, low, at),
+        finish = Math.min(end, high, next);
+      bands.push({
+        at,
+        x: (begin - start) * scale,
+        width: (finish - begin) * scale,
+        label
+      });
+      at = next;
+    }
+    const ticks = window.PlanGanttModel.ticks(start, end, width, left, viewport);
+    const step = window.PlanGanttModel.tickStep(start, end, width);
+    if (left === 0 && (!ticks.length || ticks[0].x > 75)) ticks.unshift({
+      at: start,
+      x: 0,
+      label: window.PlanGanttModel.wire(start)
+    });
+    return {
+      bands,
+      ticks: ticks.map(tick => ({
+        ...tick,
+        label: step >= DAY * 28 ? tick.label.slice(0, 7) : step >= DAY ? tick.label.slice(5, 10) : step < 60000 ? tick.label.slice(11, 19) : tick.label.slice(11, 16)
+      }))
+    };
+  }
+  function taskLines({
+    sequence,
+    process,
+    batch,
+    piece,
+    resource
+  }, mode, width) {
+    if (width < 28) return {
+      primary: '',
+      secondary: ''
+    };
+    return {
+      primary: width < 75 ? process : [sequence, process].filter(value => value !== null && value !== undefined && value !== '').join(' '),
+      secondary: width < 75 ? '' : [mode === 'batch' ? resource : batch, piece].filter(Boolean).join(' · ')
+    };
+  }
   function palette(node) {
     const style = getComputedStyle(node),
-      value = key => style.getPropertyValue(key).trim();
-    const colors = {};
-    for (const tone of ['primary', 'critical', 'success', 'plan']) colors[tone] = {
+      value = key => style.getPropertyValue(key).trim(),
+      colors = {};
+    for (const tone of ['primary', 'critical', 'success', 'plan', 'overlap']) colors[tone] = {
       fill: value('--wb-gantt-' + tone + '-fill'),
-      edge: value('--wb-gantt-' + tone + '-edge')
+      edge: value('--wb-gantt-' + tone + '-edge'),
+      ink: value('--wb-gantt-' + tone + '-ink')
     };
-    colors.gold = value('--wb-gantt-gold');
-    colors.text = value('--ui-text');
-    colors.font = value('--wb-gantt-font') || '11px sans-serif';
-    return colors;
+    return {
+      ...colors,
+      gold: value('--wb-gantt-gold'),
+      text: value('--ui-text'),
+      font: value('--wb-gantt-font')
+    };
   }
+  function rounded(ctx, x, y, width, height) {
+    const radius = Math.min(4, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+  }
+  function fitText(ctx, text, width) {
+    if (ctx.measureText(text).width <= width) return text;
+    if (ctx.measureText('…').width > width) return '';
+    let low = 0,
+      high = text.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (ctx.measureText(text.slice(0, mid) + '…').width <= width) low = mid;else high = mid - 1;
+    }
+    return text.slice(0, low) + '…';
+  }
+  function paintBar(ctx, {
+    x,
+    y,
+    width,
+    height,
+    fill,
+    edge,
+    lineWidth = 1,
+    dashed = false,
+    texture = null,
+    textureColor = edge,
+    textColor,
+    font,
+    lines,
+    viewport,
+    onTime = false,
+    locked = false,
+    statusColor,
+    critical = false,
+    criticalColor = edge,
+    muted = false
+  }) {
+    if (width <= 0) return;
+    ctx.save();
+    if (muted) ctx.globalAlpha = .66;
+    rounded(ctx, x, y, width, height);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (texture) {
+      ctx.save();
+      ctx.clip();
+      ctx.strokeStyle = textureColor;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = .25;
+      const spacing = texture === 'external' ? 10 : 6;
+      for (let stripe = Math.floor((Math.max(0, -x) - height) / spacing) * spacing; stripe < Math.min(width, viewport - x); stripe += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x + stripe, texture === 'external' ? y : y + height);
+        ctx.lineTo(x + stripe + height, texture === 'external' ? y + height : y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.min(lineWidth, width);
+    ctx.setLineDash(dashed ? [4, 3] : []);
+    rounded(ctx, x + ctx.lineWidth / 2, y + ctx.lineWidth / 2, width - ctx.lineWidth, height - ctx.lineWidth);
+    ctx.stroke();
+    if (critical) {
+      ctx.save();
+      rounded(ctx, x, y, width, height);
+      ctx.clip();
+      ctx.fillStyle = criticalColor;
+      ctx.fillRect(x, y, width, 3);
+      ctx.restore();
+    }
+    if (lines && lines.primary) {
+      const textX = Math.max(0, x) + 4,
+        room = Math.min(viewport, x + width) - textX - 4;
+      ctx.font = font;
+      ctx.fillStyle = textColor;
+      ctx.fillText(fitText(ctx, lines.primary, room), textX, y + (lines.secondary ? 16 : height / 2 + 4));
+      if (lines.secondary) ctx.fillText(fitText(ctx, lines.secondary, room), textX, y + 31);
+    }
+    if (width >= 28 && (onTime || locked)) {
+      ctx.fillStyle = statusColor;
+      if (locked) ctx.fillRect(x + width - 8, y + 3, 4, 4);
+      if (onTime) {
+        ctx.beginPath();
+        ctx.arc(x + width - 6, y + height - 5, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+  window.GanttPresentation = {
+    axis,
+    taskLines,
+    palette,
+    paintBar
+  };
+})();
+
+;
+(function () {
+  'use strict';
+
+  function Axis({
+    axis,
+    width,
+    offset = 0,
+    printing = false
+  }) {
+    const x = value => printing ? value / width * 100 + '%' : value - offset;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-axis"
+    }, axis.bands.map(band => /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-axis-band",
+      key: band.at,
+      style: {
+        left: x(band.x),
+        width: printing ? band.width / width * 100 + '%' : band.width
+      },
+      title: band.label
+    }, band.label)), axis.ticks.map(tick => /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-axis-tick",
+      key: tick.at,
+      style: {
+        left: x(tick.x)
+      }
+    }, tick.label)));
+  }
+  function useExpanded() {
+    const [expanded, setExpanded] = React.useState(false),
+      trigger = React.useRef(null);
+    React.useEffect(() => {
+      if (!expanded) return;
+      const overflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      const close = event => {
+        if (event.key === 'Escape' && !event.target.closest('input,textarea,select')) {
+          event.preventDefault();
+          setExpanded(false);
+        }
+      };
+      document.addEventListener('keydown', close);
+      return () => {
+        document.body.style.overflow = overflow;
+        document.removeEventListener('keydown', close);
+        if (trigger.current && trigger.current.isConnected) trigger.current.focus();
+      };
+    }, [expanded]);
+    return {
+      expanded,
+      toggle: event => {
+        if (!expanded) trigger.current = event.currentTarget;
+        setExpanded(value => !value);
+      },
+      collapse: () => setExpanded(false)
+    };
+  }
+  window.GanttPresentationUI = {
+    Axis,
+    useExpanded
+  };
+})();
+
+;
+(function () {
+  'use strict';
+
+  function Controls({
+    graph,
+    enabled,
+    onChange,
+    active,
+    geometry,
+    onClear,
+    disabled = false
+  }) {
+    if (graph.state === 'unavailable') return /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-graph-note",
+      role: "status"
+    }, "\u5DE5\u5E8F\u5173\u8054\u6682\u4E0D\u53EF\u7528\uFF1A", graph.reason);
+    const unseen = active.related.size - geometry.relatedVisible,
+      criticalUnseen = active.critical.size - geometry.criticalVisible;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-graph-tools"
+    }, /*#__PURE__*/React.createElement("label", {
+      title: "\u5173\u952E\u4EFB\u52A1\u59CB\u7EC8\u7528\u91D1\u8272\u6807\u8BB0\u3002\u5F00\u542F\u540E\u663E\u793A\u5168\u90E8\u5173\u952E\u94FE\uFF1B\u6307\u5411\u6216\u9009\u4E2D\u5DE5\u5E8F\u65F6\u53EA\u663E\u793A\u8BE5\u5206\u4EF6\u5DE5\u827A\u3002"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: enabled,
+      disabled: disabled,
+      onChange: event => onChange(event.target.checked)
+    }), "\u663E\u793A\u5173\u952E\u94FE\u8FDE\u7EBF"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "wb-gantt-chain-swatch"
+    }), active.critical.size, " \u9053\u5173\u952E\u4EFB\u52A1", criticalUnseen > 0 && '（画面外 ' + criticalUnseen + ' 道）'), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-route-caption",
+      "data-gantt-route-count": active.target ? true : undefined
+    }, active.target ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("i", {
+      className: "wb-gantt-route-swatch"
+    }), active.target.batch_id, " \xB7 ", active.target.piece_id === null ? '全部工艺分支' : '分件 ' + active.target.piece_id + ' 的完整工艺', " ", active.related.size, " \u9053", unseen > 0 && '（画面外 ' + unseen + ' 道）') : '指向工序查看前后关联，点击保留。'), onClear && /*#__PURE__*/React.createElement(window.ResourceControls.Button, {
+      className: "btn mini",
+      style: {
+        visibility: active.target ? 'visible' : 'hidden'
+      },
+      disabled: disabled || !active.target,
+      onClick: onClear
+    }, "\u6E05\u9664\u5DE5\u827A\u805A\u7126"));
+  }
+  function Lines({
+    geometry,
+    width,
+    height,
+    labelWidth,
+    top = 0,
+    rowTop = null
+  }) {
+    // Printed rows paginate independently. Each row carries its own vertical slice of the same graph.
+    const paths = rowTop === null ? geometry.paths : geometry.paths.filter(edge => edge.bottom > rowTop && edge.top < rowTop + height);
+    return /*#__PURE__*/React.createElement("svg", {
+      className: "wb-gantt-graph-lines",
+      style: {
+        left: labelWidth,
+        top,
+        width,
+        height
+      },
+      viewBox: '0 ' + (rowTop === null ? 0 : rowTop) + ' ' + width + ' ' + Math.max(1, height),
+      preserveAspectRatio: "none",
+      "aria-label": "\u5173\u952E\u94FE\u4E0E\u5DE5\u5E8F\u524D\u540E\u5173\u8054",
+      "data-gantt-graph-lines": true,
+      "data-gantt-graph-slice": rowTop === null ? undefined : rowTop,
+      "data-route-active": geometry.focused || undefined
+    }, paths.map(edge => /*#__PURE__*/React.createElement("path", {
+      key: edge.from_task_ref + ':' + edge.to_task_ref + ':' + edge.edge_type,
+      d: edge.d,
+      "data-gantt-edge": edge.edge_type,
+      "data-gantt-edge-kind": edge.kind,
+      "data-from-task": edge.from_task_ref,
+      "data-to-task": edge.to_task_ref,
+      strokeDasharray: edge.edge_type === 'process' ? undefined : '5 4'
+    })));
+  }
+  window.GanttGraphLayer = {
+    Controls,
+    Lines
+  };
+})();
+
+;
+(function () {
+  'use strict';
+
+  const {
+      Button
+    } = window.ResourceControls,
+    G = window.GanttGraph,
+    F = window.WorkbenchFormat;
+  const pieceLabel = node => node.piece_id === null ? '共同工序' : '分件 ' + node.piece_id;
+  const operationLabel = node => (node.sequence === null ? '' : node.sequence + ' ') + (node.process_label || '工序名称未记录');
+  function RouteGroup({
+    group,
+    selectedPiece,
+    collapsible,
+    children
+  }) {
+    const label = group.pieceId === null ? '共同工序' : '分件 ' + group.pieceId;
+    return collapsible ? /*#__PURE__*/React.createElement("details", {
+      className: "gantt-route-group",
+      open: group.pieceId === null || group.pieceId === selectedPiece
+    }, /*#__PURE__*/React.createElement("summary", {
+      className: "gantt-route-group-heading"
+    }, label, /*#__PURE__*/React.createElement("small", null, " \xB7 ", group.nodes.length, " \u9053")), children) : /*#__PURE__*/React.createElement("div", {
+      className: "gantt-route-group"
+    }, /*#__PURE__*/React.createElement("h4", null, label), children);
+  }
+  function GanttRouteList({
+    graph,
+    targetRef,
+    loadedRefs,
+    onSelect,
+    disabled = false,
+    collapsible = false,
+    children
+  }) {
+    const route = React.useMemo(() => G.route(G.create(graph), targetRef), [graph, targetRef]);
+    return /*#__PURE__*/React.createElement("section", {
+      className: "gantt-route",
+      "aria-label": "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), graph.state !== 'available' ? /*#__PURE__*/React.createElement("p", {
+      className: "gantt-route-summary"
+    }, graph.reason) : !route ? /*#__PURE__*/React.createElement("p", {
+      className: "gantt-route-summary"
+    }, "\u6B64\u5DE5\u5E8F\u672A\u5B89\u6392\uFF0C\u6682\u65E0\u7518\u7279\u8282\u70B9\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      className: "gantt-route-summary"
+    }, route.target.batch_id, " \xB7 ", route.count, " \u9053\u5DF2\u5B89\u6392", route.groups.filter(group => group.pieceId !== null).length > 0 && ' · ' + route.groups.filter(group => group.pieceId !== null).length + ' 个分件', "\u3002\u70B9\u51FB\u5DE5\u5E8F\u5B9A\u4F4D\uFF1B\u524D\u5E8F\u6309\u5B9E\u9645\u5173\u7CFB\u663E\u793A\u3002"), route.groups.map(group => /*#__PURE__*/React.createElement(RouteGroup, {
+      group: group,
+      selectedPiece: route.target.piece_id,
+      collapsible: collapsible,
+      key: (route.target.piece_id || 'common') + ':' + (group.pieceId === null ? 'common' : 'piece:' + group.pieceId)
+    }, /*#__PURE__*/React.createElement("ul", {
+      className: "gantt-route-list"
+    }, group.nodes.map(node => {
+      const outside = !loadedRefs.has(node.task_ref),
+        previous = route.previous.get(node.task_ref);
+      const related = route.target.piece_id === null || node.piece_id === null || node.piece_id === route.target.piece_id;
+      const start = F.dateTime(node.start),
+        end = F.dateTime(node.end),
+        sameDay = start.slice(0, 10) === end.slice(0, 10);
+      return /*#__PURE__*/React.createElement("li", {
+        key: node.task_ref,
+        className: "gantt-route-node",
+        "data-gantt-route-node": node.task_ref,
+        "data-selected": node.task_ref === targetRef || undefined,
+        "data-related": related || undefined,
+        "data-outside": outside || undefined
+      }, /*#__PURE__*/React.createElement(Button, {
+        className: "btn gantt-route-select",
+        disabled: disabled || !onSelect,
+        "aria-current": node.task_ref === targetRef ? 'step' : undefined,
+        "aria-label": '定位工序 ' + pieceLabel(node) + ' · ' + operationLabel(node),
+        onClick: () => onSelect(node.task_ref),
+        title: F.dateTime(node.start, {
+          seconds: true,
+          fractions: true
+        }) + ' 至 ' + F.dateTime(node.end, {
+          seconds: true,
+          fractions: true
+        })
+      }, /*#__PURE__*/React.createElement("strong", null, operationLabel(node)), /*#__PURE__*/React.createElement("small", null, start.slice(5), " \u2192 ", end.slice(sameDay ? 11 : 5), outside && ' · 范围外')), !!previous.length && /*#__PURE__*/React.createElement("div", {
+        className: "gantt-route-dependencies"
+      }, /*#__PURE__*/React.createElement("span", null, "\u524D\u5E8F"), previous.map(parent => /*#__PURE__*/React.createElement(Button, {
+        key: parent.task_ref,
+        className: "linkbtn gantt-route-predecessor",
+        disabled: disabled || !onSelect,
+        onClick: () => onSelect(parent.task_ref),
+        "aria-label": '定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)
+      }, pieceLabel(parent), " \xB7 ", operationLabel(parent)))));
+    }))))), children);
+  }
+  window.GanttRouteList = GanttRouteList;
+})();
+
+;
+(function () {
+  'use strict';
+
+  const M = window.PlanGanttModel,
+    V = window.GanttPresentation;
   function usePaint(ref, paint, deps) {
     React.useLayoutEffect(() => {
       const draw = () => {
@@ -24524,7 +25230,7 @@ function SMExport({
         node.height = Math.max(1, Math.round(height * scale));
         const ctx = node.getContext('2d');
         ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        paint(ctx, width, height, palette(node));
+        paint(ctx, width, height, V.palette(node));
       };
       draw();
       const theme = new MutationObserver(draw);
@@ -24552,6 +25258,8 @@ function SMExport({
     printing,
     printNumbers,
     selectedRef,
+    selectedBefore,
+    active,
     risks,
     onSelect,
     onHover
@@ -24567,32 +25275,55 @@ function SMExport({
           barWidth = (item.end - item.start) * paintScale;
         const inset = Math.min(2, barWidth * 0.1),
           painted = Math.max(0, barWidth - inset * 2);
-        const tone = row.before ? 'plan' : M.tone(item.task, model.conflicts, risks),
+        const tone = row.before ? 'plan' : M.tone(item.task, risks),
           y = row.before ? 9 : 7,
           height = row.before ? 8 : 40;
+        const chosen = item.task.task_ref === selectedRef && !!row.before === !!selectedBefore;
+        const related = !row.before && active.related.has(item.task.task_ref),
+          critical = !row.before && active.critical.has(item.task.task_ref);
+        const edge = chosen || related || critical ? colors.gold : colors[tone].edge,
+          lineWidth = chosen || critical ? 2 : related ? 1.5 : 1;
         if (row.point) {
-          G.paint(ctx, x, row.before ? 13 : 27, colors[tone].fill, item.task.task_ref === selectedRef ? colors.gold : colors[tone].edge, item.task.task_ref === selectedRef);
+          ctx.save();
+          if (active.target && !row.before && !related && !critical) ctx.globalAlpha = .66;
+          G.paint(ctx, x, row.before ? 13 : 27, colors[tone].fill, edge, chosen, lineWidth);
+          ctx.restore();
           continue;
         }
-        ctx.fillStyle = colors[tone].fill;
-        ctx.fillRect(x + inset, y, painted, height);
-        ctx.strokeStyle = item.task.task_ref === selectedRef ? colors.gold : colors[tone].edge;
-        ctx.lineWidth = Math.min(item.task.task_ref === selectedRef ? 2 : 1, painted);
-        ctx.setLineDash(row.before || model.conflicts.has(item.task.task_ref) ? [3, 2] : []);
-        if (painted > 0) ctx.strokeRect(x + inset + ctx.lineWidth / 2, y + ctx.lineWidth / 2, painted - ctx.lineWidth, height - ctx.lineWidth);
-        if (!row.before && painted > (printing ? 20 : 60)) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(Math.max(0, x + inset + 3), y, Math.max(0, Math.min(w, x + barWidth - inset) - Math.max(0, x + inset + 3) - 3), height);
-          ctx.clip();
-          ctx.fillStyle = colors.text;
-          ctx.font = colors.font;
-          ctx.fillText(printing ? printNumbers.get(item.task.task_ref) : item.task.batch_id, Math.max(3, x + inset + 4), y + 16);
-          if (!printing && painted > 100) ctx.fillText(item.task.sequence + ' ' + item.task.process_label + ' · ' + M.pieceLabel(item.task), Math.max(3, x + inset + 4), y + 31);
-          ctx.restore();
-        }
+        const task = item.task,
+          lines = row.before ? null : printing ? {
+            primary: String(printNumbers.get(task.task_ref)),
+            secondary: ''
+          } : V.taskLines({
+            sequence: task.sequence,
+            process: task.process_label,
+            batch: task.batch_id,
+            piece: M.pieceLabel(task),
+            resource: M.resourceLabel(task, 'machine', model.labels) + ' / ' + M.resourceLabel(task, 'operator', model.labels)
+          }, model.mode, painted);
+        V.paintBar(ctx, {
+          x: x + inset,
+          y,
+          width: painted,
+          height,
+          fill: colors[tone].fill,
+          edge,
+          lineWidth,
+          dashed: row.before,
+          texture: !row.before && model.conflicts.has(task.task_ref) ? 'conflict' : null,
+          textureColor: colors.overlap.edge,
+          textColor: colors[tone].ink,
+          font: colors.font,
+          lines,
+          viewport: w,
+          critical,
+          criticalColor: colors.gold,
+          muted: !row.before && !!active.target && !related && !critical,
+          onTime: !row.before && risks.get(task.batch_id) === 'on_time',
+          statusColor: colors.success.edge
+        });
       }
-    }, [items, selectedRef, width, left, viewport, printing, risks]);
+    }, [items, selectedRef, selectedBefore, active, width, left, viewport, printing, risks]);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(),
         at = model.start + (event.clientX - box.left + left) / scale;
@@ -24610,7 +25341,7 @@ function SMExport({
         left,
         width: viewport
       },
-      "aria-label": row.label + '，' + row.items.length + ' 道' + (row.before ? '初始计划' : '安排'),
+      "aria-label": row.label + '，' + row.items.length + ' 道' + (row.before ? '原安排' : '安排'),
       onMouseMove: event => {
         const item = hit(event);
         onHover(item ? {
@@ -24706,6 +25437,7 @@ function SMExport({
   'use strict';
 
   const M = window.PlanGanttModel,
+    V = window.GanttPresentation,
     {
       Button,
       Icon,
@@ -24785,7 +25517,7 @@ function SMExport({
     }, index) => /*#__PURE__*/React.createElement("tr", {
       key: task.task_ref,
       "data-plan-print-task": task.task_ref
-    }, /*#__PURE__*/React.createElement("td", null, chunk * 10 + index + 1, baseline && /*#__PURE__*/React.createElement("small", null, "\u521D\u59CB")), /*#__PURE__*/React.createElement("td", null, task.batch_id, /*#__PURE__*/React.createElement("small", null, M.pieceLabel(task))), /*#__PURE__*/React.createElement("td", null, task.sequence, " ", task.process_label, window.PointContract.isPoint(task) && /*#__PURE__*/React.createElement("small", null, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, M.timeLabel(task.start), /*#__PURE__*/React.createElement("small", null, M.timeLabel(task.end))), /*#__PURE__*/React.createElement("td", null, M.resourceLabel(task, 'machine', labels), /*#__PURE__*/React.createElement("small", null, M.resourceLabel(task, 'operator', labels)))))))));
+    }, /*#__PURE__*/React.createElement("td", null, chunk * 10 + index + 1, baseline && /*#__PURE__*/React.createElement("small", null, "\u539F")), /*#__PURE__*/React.createElement("td", null, task.batch_id, /*#__PURE__*/React.createElement("small", null, M.pieceLabel(task))), /*#__PURE__*/React.createElement("td", null, task.sequence, " ", task.process_label, window.PointContract.isPoint(task) && /*#__PURE__*/React.createElement("small", null, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, M.timeLabel(task.start), /*#__PURE__*/React.createElement("small", null, M.timeLabel(task.end))), /*#__PURE__*/React.createElement("td", null, M.resourceLabel(task, 'machine', labels), /*#__PURE__*/React.createElement("small", null, M.resourceLabel(task, 'operator', labels)))))))));
   }
   function Bar({
     item,
@@ -24794,6 +25526,8 @@ function SMExport({
     printing,
     printNumbers,
     selectedRef,
+    selectedBefore,
+    active,
     risks,
     onSelect,
     onHover
@@ -24802,16 +25536,29 @@ function SMExport({
       size = (item.end - item.start) / (model.end - model.start) * width;
     const at = value => (value - model.start) / (model.end - model.start) * (printing ? 100 : width);
     const left = printing ? at(item.start) + '%' : at(item.start);
-    const title = (item.baseline ? '初始计划\n' : '') + M.taskTitle(task, model.labels, !item.baseline && model.conflicts.has(task.task_ref));
+    const title = (item.baseline ? '原安排\n' : '') + M.taskTitle(task, model.labels, !item.baseline && model.conflicts.has(task.task_ref));
+    const lines = V.taskLines({
+      sequence: task.sequence,
+      process: task.process_label,
+      batch: task.batch_id,
+      piece: M.pieceLabel(task),
+      resource: M.resourceLabel(task, 'machine', model.labels) + ' / ' + M.resourceLabel(task, 'operator', model.labels)
+    }, model.mode, size);
+    const chosen = selectedRef === task.task_ref && !!item.baseline === !!selectedBefore;
+    const critical = !item.baseline && active.critical.has(task.task_ref),
+      related = !item.baseline && active.related.has(task.task_ref);
     if (window.PointContract.isPoint(task)) return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
       task: task,
       "data-plan-task": task.task_ref,
       "data-before": item.baseline || undefined,
+      "data-gantt-critical": critical || undefined,
+      "data-gantt-related": related || undefined,
+      "data-gantt-muted": !item.baseline && active.target && !related && !critical || undefined,
       title: title,
       x: left,
       top: item.baseline ? 1 : 15,
-      selected: selectedRef === task.task_ref,
-      tone: item.baseline ? 'before' : M.tone(task, model.conflicts, risks),
+      selected: chosen,
+      tone: item.baseline ? 'before' : M.tone(task, risks),
       onSelect: () => onSelect(task, item.baseline),
       onHover: event => onHover(event ? {
         task,
@@ -24824,9 +25571,12 @@ function SMExport({
       type: "button",
       "data-plan-task": task.task_ref,
       "data-before": item.baseline || undefined,
-      className: 'plan-bar ' + (item.baseline ? 'before' : M.tone(task, model.conflicts, risks)) + (model.conflicts.has(task.task_ref) && !item.baseline ? ' conflict' : ''),
+      "data-gantt-critical": critical || undefined,
+      "data-gantt-related": related || undefined,
+      "data-gantt-muted": !item.baseline && active.target && !related && !critical || undefined,
+      className: 'plan-bar ' + (item.baseline ? 'before' : M.tone(task, risks)) + (model.conflicts.has(task.task_ref) && !item.baseline ? ' conflict' : ''),
       "aria-label": title,
-      "aria-pressed": selectedRef === task.task_ref,
+      "aria-pressed": chosen,
       title: title,
       style: {
         left,
@@ -24846,7 +25596,23 @@ function SMExport({
         padding: !item.baseline && size >= 28 ? 2 : 0,
         borderWidth: size < 4 ? 0 : 1
       }
-    }, printing && !item.baseline ? /*#__PURE__*/React.createElement("strong", null, printNumbers.get(task.task_ref)) : !item.baseline && size >= 28 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_id), size >= 75 && /*#__PURE__*/React.createElement("small", null, task.sequence, " ", task.process_label, " \xB7 ", M.pieceLabel(task)))));
+    }, printing && !item.baseline ? /*#__PURE__*/React.createElement("strong", null, printNumbers.get(task.task_ref)) : !item.baseline && size >= 28 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, lines.primary), lines.secondary && /*#__PURE__*/React.createElement("small", null, lines.secondary), risks.get(task.batch_id) === 'on_time' && /*#__PURE__*/React.createElement("i", {
+      className: "wb-gantt-on-time",
+      title: "\u9884\u8BA1\u6309\u671F"
+    }))));
+  }
+  function Source({
+    data
+  }) {
+    const p = data.provenance,
+      baseline = data.projections.baseline;
+    const algorithm = p && p.algorithm,
+      captured = p && p.baseline;
+    const identity = plan => [plan.kind === 'official' ? '正式计划' : plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario, plan.display_name, plan.version === null ? null : 'v' + plan.version].filter(Boolean).join(' · ');
+    return /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-comparison-source",
+      "data-gantt-comparison-source": true
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u5F53\u524D\u5B89\u6392\uFF1A", identity(data.plan)), p && p.state === 'available' ? p.source_kind === 'candidate_adoption' ? /*#__PURE__*/React.createElement(React.Fragment, null, "\uFF0C\u91C7\u7528\u7B97\u6CD5\u751F\u6210\u7684\u5019\u9009\u300C", p.source_label || '未命名', "\u300D\uFF1B\u7B97\u6CD5\uFF1A", algorithm.mode_label || algorithm.mode || '未记录', algorithm.strategy_label && ' · ' + algorithm.strategy_label, "\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, "\uFF0C\u91C7\u7528\u4FDD\u5B58\u7684\u8BD5\u8C03\u65B9\u6848\u300C", p.source_label || '未命名', "\u300D\u3002") : '，' + p.reason), baseline.state === 'available' ? /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u539F\u5B89\u6392\uFF1A", identity(baseline.baseline_plan)), "\uFF0C", captured ? (captured.kind === 'admission_official' ? '提交该次试排时' : '创建该次试调时') + '自动保存' : baseline.basis === 'scenario_base' ? '创建试调时保存的基础安排' : '生成此方案时记录的对照安排', "\u3002") : /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\uFF1A", baseline.reason));
   }
   function PlanGantt({
     data,
@@ -24861,7 +25627,10 @@ function SMExport({
       [baseline, setBaseline] = React.useState(false),
       [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false),
-      [expanded, setExpanded] = React.useState(false);
+      {
+        expanded,
+        toggle
+      } = window.GanttPresentationUI.useExpanded();
     const [position, setPosition] = React.useState({
         left: 0,
         top: 0,
@@ -24869,12 +25638,12 @@ function SMExport({
         height: 440
       }),
       [hover, setHover] = React.useState(null);
+    const [chainEnabled, setChainEnabled] = React.useState(false);
     const printing = window.WorkbenchControls.usePrintLayout();
     const board = React.useRef(null),
       search = React.useRef(null),
       pending = React.useRef(null),
-      frame = React.useRef(null),
-      expandButton = React.useRef(null);
+      frame = React.useRef(null);
     const printState = React.useRef(false),
       printPosition = React.useRef(null),
       restorePosition = React.useRef(null);
@@ -24894,10 +25663,29 @@ function SMExport({
     const renderLeft = printing ? 0 : position.left,
       renderViewport = printing ? width : viewport;
     const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
+    const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
+    const targetRef = hover && !hover.before ? hover.task.task_ref : selected && !selected.before ? selectedRef : null;
+    const active = React.useMemo(() => window.GanttGraph.selection(graph, {
+      enabled: chainEnabled,
+      targetRef
+    }), [graph, chainEnabled, targetRef]);
+    const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
+      left: renderLeft,
+      top: printing ? 0 : position.top,
+      width: renderViewport,
+      height: printing ? model.height : position.height - 52
+    }), [active, model, width, renderLeft, renderViewport, position.top, position.height, printing]);
     const printItems = printing ? model.rows.flatMap(row => row.items) : [];
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
-    const ticks = M.ticks(model.start, model.end, width, renderLeft, renderViewport);
+    const axis = V.axis({
+        start: model.start,
+        end: model.end,
+        width,
+        left: renderLeft,
+        viewport: renderViewport
+      }),
+      ticks = axis.ticks;
     const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'),
       now = M.instant(asOf);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
@@ -24956,23 +25744,7 @@ function SMExport({
       });
     }, [position.top, position.left]);
     React.useEffect(() => {
-      if (!expanded) return undefined;
-      const overflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      board.current.focus();
-      // Escape inside the search box (or any field) belongs to that field; only a bare Escape collapses the board.
-      const close = event => {
-        if (event.key === 'Escape' && !event.target.closest('input,textarea,select')) {
-          event.preventDefault();
-          setExpanded(false);
-        }
-      };
-      document.addEventListener('keydown', close);
-      return () => {
-        document.body.style.overflow = overflow;
-        document.removeEventListener('keydown', close);
-        if (expandButton.current) expandButton.current.focus();
-      };
+      if (expanded) board.current.focus();
     }, [expanded]);
     function changeZoom(next) {
       pending.current = (position.left + viewport / 2) / width;
@@ -24984,8 +25756,8 @@ function SMExport({
       board.current.scrollLeft = 0;
       measure();
     }
-    function locate(taskRef = selectedRef) {
-      const location = model.locations.get(taskRef);
+    function locate(taskRef = selectedRef, beforeTask = !!(selected && selected.before)) {
+      const location = (beforeTask ? model.baselineLocations : model.locations).get(taskRef);
       if (!location) return;
       const {
           item,
@@ -24998,10 +25770,14 @@ function SMExport({
     }
     const located = React.useRef(null);
     React.useEffect(() => {
-      if (selected && selected.locate && located.current !== selected && model.locations.has(selectedRef)) {
-        located.current = selected;
-        locate(selectedRef);
+      if (!selected || !selected.locate || located.current === selected) return;
+      const locations = selected.before ? model.baselineLocations : model.locations;
+      if (!locations.has(selectedRef)) {
+        if (!selected.before && displayChangedOnly) setChangedOnly(false);
+        return;
       }
+      located.current = selected;
+      locate(selectedRef, selected.before);
     }, [selected, model]);
     function select(task, beforeTask) {
       setHover(null);
@@ -25013,7 +25789,7 @@ function SMExport({
       const next = tasks[Math.max(0, Math.min(tasks.length - 1, index < 0 ? 0 : index + direction))];
       if (next) {
         onSelect(next, false);
-        locate(next.task_ref);
+        locate(next.task_ref, false);
       }
     }
     const currentIndex = model.tasks.findIndex(task => task.task_ref === selectedRef);
@@ -25053,25 +25829,25 @@ function SMExport({
       onChange: setMode,
       label: "\u7518\u7279\u5206\u7EC4",
       disabled: disabled
-    }), /*#__PURE__*/React.createElement("label", {
+    }), showBaseline && /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
-      title: showBaseline ? '和初始计划对照' : before.reason || '初始计划暂无数据'
+      title: "\u663E\u793A\u4FDD\u5B58\u7684\u539F\u5B89\u6392"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
-      "aria-label": "\u663E\u793A\u521D\u59CB\u8BA1\u5212",
+      "aria-label": "\u663E\u793A\u539F\u5B89\u6392",
       checked: displayBaseline,
-      disabled: !showBaseline || disabled,
+      disabled: disabled,
       onChange: event => setBaseline(event.target.checked)
-    }), window.WorkbenchTerms.initial_plan), /*#__PURE__*/React.createElement("label", {
+    }), "\u663E\u793A\u539F\u5B89\u6392"), showBaseline && /*#__PURE__*/React.createElement("label", {
       className: "plan-check",
-      title: showBaseline ? '只看和初始计划不一样的安排' : before.reason || '初始计划暂无数据'
+      title: "\u7B5B\u9009\u8D77\u6B62\u65F6\u95F4\u3001\u8BBE\u5907\u6216\u4EBA\u5458\u53D1\u751F\u53D8\u5316\uFF0C\u4EE5\u53CA\u65B0\u589E\u3001\u79FB\u9664\u7684\u5DE5\u5E8F"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
-      "aria-label": "\u4EC5\u53D8\u66F4",
+      "aria-label": "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F",
       checked: displayChangedOnly,
-      disabled: !showBaseline || disabled,
+      disabled: disabled,
       onChange: event => setChangedOnly(event.target.checked)
-    }), "\u4EC5\u53D8\u66F4"), /*#__PURE__*/React.createElement("label", {
+    }), "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("label", {
       className: "search plan-search"
     }, /*#__PURE__*/React.createElement("span", {
       className: "ic"
@@ -25105,24 +25881,32 @@ function SMExport({
       className: "btn plan-icon",
       "aria-label": "\u5B9A\u4F4D\u9009\u4E2D\u4EFB\u52A1",
       title: "\u5B9A\u4F4D\u9009\u4E2D\u4EFB\u52A1 (L)",
-      disabled: !model.locations.has(selectedRef),
+      disabled: !(selected && selected.before ? model.baselineLocations : model.locations).has(selectedRef),
       onClick: () => locate()
     }), /*#__PURE__*/React.createElement(Button, {
       icon: expanded ? 'x' : 'chart-gantt',
-      className: "btn plan-icon",
+      className: "btn",
       "aria-label": expanded ? '收起甘特' : '展开甘特',
       title: expanded ? '返回完整工作区' : '展开甘特工作区',
       "aria-expanded": expanded,
       disabled: disabled,
-      onClick: event => {
-        expandButton.current = event.currentTarget;
-        setExpanded(!expanded);
-      }
-    }))), !showBaseline && /*#__PURE__*/React.createElement("div", {
-      className: "plan-note"
-    }, "\u521D\u59CB\u8BA1\u5212\uFF1A", before.reason || '暂无数据'), /*#__PURE__*/React.createElement("div", {
+      onClick: toggle
+    }, expanded ? '收起' : '展开'))), /*#__PURE__*/React.createElement(window.GanttGraphLayer.Controls, {
+      graph: data.gantt_graph,
+      enabled: chainEnabled,
+      onChange: setChainEnabled,
+      active: active,
+      geometry: geometry,
+      onClear: () => {
+        setHover(null);
+        onSelect(null);
+      },
+      disabled: disabled
+    }), /*#__PURE__*/React.createElement(Source, {
+      data: data
+    }), /*#__PURE__*/React.createElement("div", {
       className: "plan-board-frame"
-    }, /*#__PURE__*/React.createElement(Overview, {
+    }, !printing && width > viewport && /*#__PURE__*/React.createElement(Overview, {
       model: model,
       tasks: data.tasks,
       width: width,
@@ -25163,17 +25947,24 @@ function SMExport({
       style: {
         width
       }
-    }, ticks.map(tick => /*#__PURE__*/React.createElement("div", {
-      className: "plan-tick",
-      key: tick.at,
-      style: {
-        left: axisLeft(tick.at)
-      }
-    }, M.timeLabel(tick.label).slice(0, 10), /*#__PURE__*/React.createElement("small", null, M.timeLabel(tick.label).slice(11)))))), visibleRows.map(row => {
+    }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
+      axis: axis,
+      width: width,
+      printing: printing
+    }))), visibleRows.map(row => {
       const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
+      const meta = row.before ? '原安排' : [row.code, row.tasks.length + ' 道工序', row.point ? '零工时节点 · 不占资源' : row.trackCount > 1 ? '重叠子行 ' + row.subrow + '/' + row.trackCount : null].filter(Boolean).join(' · ');
+      const summary = row.occupancy ? '计划占用 ' + window.WorkbenchFormat.hours(row.occupancy.occupied_hours, {
+        digits: 1,
+        trim: true
+      }) + (row.occupancy.utilization === null ? '' : ' · ' + window.WorkbenchFormat.percent(row.occupancy.utilization, {
+        digits: 0
+      })) : '';
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
         className: 'plan-lane' + (row.before ? ' baseline' : ''),
+        "data-gantt-row-kind": row.before ? 'original' : row.point ? 'point' : row.trackCount > 1 ? 'overlap' : 'current',
+        "data-gantt-subrow": row.subrow,
         style: {
           top: row.top + 52,
           height: row.height,
@@ -25181,8 +25972,16 @@ function SMExport({
         }
       }, /*#__PURE__*/React.createElement("div", {
         className: "plan-resource",
-        title: row.label + ' · ' + (row.before ? '初始计划' : row.tasks.length + ' 道安排 · 子轨 ' + (row.track + 1) + '/' + row.trackCount + (row.overlap ? ' · 存在重叠' : ''))
-      }, /*#__PURE__*/React.createElement("strong", null, row.label), !row.before && /*#__PURE__*/React.createElement("small", null, row.tasks.length, " \u9053\u5B89\u6392", row.trackCount > 1 ? ' · 子轨 ' + (row.track + 1) + '/' + row.trackCount : '', row.overlap ? ' · 重叠' : ''), row.before && /*#__PURE__*/React.createElement("small", null, "\u521D\u59CB\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
+        title: [row.label, meta, summary, row.overlap ? '同一组存在同时进行的安排，已上下分行' : null].filter(Boolean).join(' · ')
+      }, row.before ? /*#__PURE__*/React.createElement("small", {
+        className: "plan-resource-meta"
+      }, row.tasks.length ? '原安排' : row.label + ' · 原安排') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, row.label, !row.point && row.trackCount > 1 && /*#__PURE__*/React.createElement("em", {
+        className: "wb-gantt-subrow-badge"
+      }, row.subrow, "/", row.trackCount)), /*#__PURE__*/React.createElement("small", {
+        className: "plan-resource-meta"
+      }, meta), summary && /*#__PURE__*/React.createElement("small", {
+        className: "plan-resource-summary"
+      }, summary))), /*#__PURE__*/React.createElement("div", {
         className: "plan-track",
         style: {
           width
@@ -25202,6 +26001,8 @@ function SMExport({
         viewport: renderViewport,
         left: renderLeft,
         selectedRef: selectedRef,
+        selectedBefore: selected && selected.before,
+        active: active,
         risks: risks,
         onSelect: select,
         onHover: setHover
@@ -25213,10 +26014,24 @@ function SMExport({
         printing: printing,
         printNumbers: printNumbers,
         selectedRef: selectedRef,
+        selectedBefore: selected && selected.before,
+        active: active,
         risks: risks,
         onSelect: select,
         onHover: setHover
-      }))));
+      }))), printing && /*#__PURE__*/React.createElement(window.GanttGraphLayer.Lines, {
+        geometry: geometry,
+        width: width,
+        height: row.height,
+        labelWidth: labelWidth,
+        rowTop: row.top
+      }));
+    }), !printing && /*#__PURE__*/React.createElement(window.GanttGraphLayer.Lines, {
+      geometry: geometry,
+      width: width,
+      height: model.height,
+      labelWidth: labelWidth,
+      top: 52
     }), [['today', today, '今日零点（按数据日期）'], ['as-of', now, '数据时点']].filter(([, at]) => at >= model.start && at <= model.end).map(([kind, at, label]) => /*#__PURE__*/React.createElement("i", {
       key: kind,
       className: 'plan-time-line ' + kind,
@@ -25252,11 +26067,11 @@ function SMExport({
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch"
-    }), "\u5B89\u6392"), /*#__PURE__*/React.createElement("span", {
+    }), "\u8BA1\u5212\u5B89\u6392"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
-      className: "plan-swatch success"
-    }), "\u5DF2\u786E\u8BA4\u51C6\u65F6"), /*#__PURE__*/React.createElement("span", {
+      className: "wb-gantt-status-dot"
+    }), "\u9884\u8BA1\u6309\u671F"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch critical"
@@ -25264,11 +26079,11 @@ function SMExport({
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch conflict"
-    }), "\u8D44\u6E90\u91CD\u53E0"), /*#__PURE__*/React.createElement("span", {
+    }), "\u8D44\u6E90\u51B2\u7A81"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch before"
-    }), window.WorkbenchTerms.initial_plan), /*#__PURE__*/React.createElement("span", {
+    }), "\u539F\u5B89\u6392"), /*#__PURE__*/React.createElement("span", {
       className: "plan-legend"
     }, /*#__PURE__*/React.createElement("i", {
       className: "plan-swatch point"
@@ -25303,7 +26118,7 @@ function SMExport({
         overflow: 'auto',
         overflowWrap: 'anywhere'
       }
-    }, (hover.before ? '初始计划\n' : '') + M.taskTitle(hover.task, model.labels, !hover.before && model.conflicts.has(hover.task.task_ref))));
+    }, (hover.before ? '原安排\n' : '') + M.taskTitle(hover.task, model.labels, !hover.before && model.conflicts.has(hover.task.task_ref))));
   }
   window.PlanGantt = PlanGantt;
   window.PlanSegmentUI = Segment;
@@ -25602,46 +26417,46 @@ function SMExport({
       onClick: () => setPage(page + 1)
     }))));
   }
-  function Relations({
+  function DetailSection({
+    title,
+    collapsible,
+    children
+  }) {
+    return collapsible ? /*#__PURE__*/React.createElement("details", {
+      className: "wb-gantt-detail-section"
+    }, /*#__PURE__*/React.createElement("summary", null, title), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section-body"
+    }, children)) : /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, title), children);
+  }
+  function Route({
     data,
     selected,
-    onRelated
+    onRelated,
+    disabled,
+    collapsible
   }) {
-    const order = data.projections.process_order;
-    const relations = window.PlanProcessOrder.relationships(data, selected);
-    return /*#__PURE__*/React.createElement("section", {
-      "aria-label": "\u5DE5\u827A\u524D\u540E\u5E8F"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u827A\u524D\u540E\u5E8F"), relations ? ['previous', 'next'].map(kind => /*#__PURE__*/React.createElement("div", {
-      key: kind
-    }, /*#__PURE__*/React.createElement("h4", null, kind === 'previous' ? '前序' : '后序'), !relations[kind].length && /*#__PURE__*/React.createElement("p", {
+    const loadedRefs = React.useMemo(() => new Set(data.tasks.map(task => task.task_ref)), [data.tasks]);
+    if (selected.before) return /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, kind === 'previous' ? '无前序工序' : '无后序工序'), /*#__PURE__*/React.createElement("div", {
-      className: "plan-actions"
-    }, relations[kind].map((row, index) => {
-      const task = row.task,
-        prefix = kind === 'previous' ? '前序' : '后序';
-      const label = task ? prefix + ' ' + task.batch_id + ' · ' + task.sequence + ' ' + task.process_label + ' · ' + M.pieceLabel(task) : prefix + '安排在当前读取范围外';
-      return row.task_ref ? /*#__PURE__*/React.createElement(Button, {
-        key: row.task_ref,
-        icon: kind === 'previous' ? 'chevron-left' : 'chevron-right',
-        title: label,
-        "aria-label": label,
-        disabled: !onRelated,
-        onClick: () => onRelated(row.task_ref),
-        className: "btn plan-relation-button"
-      }, task ? label : '读取完整计划并定位' + prefix) : /*#__PURE__*/React.createElement("span", {
-        key: 'unplanned:' + index,
-        className: "plan-muted"
-      }, prefix, "\u672A\u5728\u672C\u8BA1\u5212\u5B89\u6392");
-    })))) : /*#__PURE__*/React.createElement("p", {
+    }, "\u5207\u6362\u5230\u5F53\u524D\u5B89\u6392\u67E5\u770B\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF\u3002"));
+    const missing = window.PlanProcessOrder.missingPredecessors(data.projections.process_order, selected.task.task_ref);
+    return /*#__PURE__*/React.createElement(window.GanttRouteList, {
+      graph: data.gantt_graph,
+      targetRef: selected.task.task_ref,
+      loadedRefs: loadedRefs,
+      onSelect: onRelated,
+      disabled: disabled,
+      collapsible: collapsible
+    }, missing > 0 && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, !selected ? '尚未选中任务' : selected.before ? '这里的前后序只属于所选计划，初始安排的前后序没有单独查询。' : order.issues.map(row => row.message).join('；') || '暂无该工序的前后序信息。'));
+    }, "\u6240\u9009\u5DE5\u5E8F\u6709 ", missing, " \u9053\u524D\u5E8F\u672A\u5728\u672C\u8BA1\u5212\u5B89\u6392\u3002"));
   }
   function TaskDetail({
     data,
     selected,
     onSelect,
     onRelated,
+    onCollapse,
     renderTrial,
     scope = {},
     query = '',
@@ -25651,26 +26466,58 @@ function SMExport({
       labels = React.useMemo(() => M.names(data), [data]);
     const baseline = data.projections.baseline;
     const comparison = task && baseline.state === 'available' && baseline.items.find(item => item.operation_ref === task.operation_ref);
+    const changes = [];
+    if (comparison && comparison.before && comparison.after) {
+      for (const [field, label] of [['start', '开始'], ['end', '结束']]) {
+        const delta = M.instant(comparison.after[field]) - M.instant(comparison.before[field]);
+        if (delta) {
+          const minutes = Math.abs(delta) >= 60000,
+            value = Math.abs(delta) / (minutes ? 60000 : 1000);
+          changes.push([label + '变化', (delta < 0 ? '提前 ' : '延后 ') + window.WorkbenchFormat.number(value, {
+            digits: minutes ? 2 : 6,
+            trim: true
+          }) + (minutes ? ' 分钟' : ' 秒')]);
+        }
+      }
+      for (const [kind, label] of [['machine', '设备'], ['operator', '人员']]) if (comparison.before[kind + '_ref'] !== comparison.after[kind + '_ref']) changes.push([label + '变化', M.resourceLabel(comparison.before, kind, labels) + ' → ' + M.resourceLabel(comparison.after, kind, labels)]);
+    }
     const risk = task && data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id);
     const resources = task ? data.projections.occupancy.resources.filter(row => [task.machine_ref, task.operator_ref].includes(row.resource_ref)) : [];
+    const compact = !!onCollapse,
+      panel = React.useRef(null);
+    React.useEffect(() => {
+      if (compact && window.matchMedia('(max-width:1050px)').matches) panel.current.scrollIntoView({
+        block: 'nearest'
+      });
+    }, [compact]);
     return /*#__PURE__*/React.createElement("aside", {
-      className: "plan-inspector",
+      ref: panel,
+      className: 'plan-inspector' + (compact ? ' wb-gantt-detail-panel' : ''),
+      id: compact ? 'plan-gantt-detail' : undefined,
       "aria-label": "\u4EFB\u52A1\u8BE6\u60C5",
       "data-plan-inspector": true,
       "data-plan-inspector-empty": !task || undefined,
-      "data-wb-scroll-key": "plan-inspector"
-    }, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h2", null, "\u4EFB\u52A1\u8BE6\u60C5"), !task ? /*#__PURE__*/React.createElement("div", {
+      "data-wb-scroll-key": compact ? undefined : 'plan-inspector'
+    }, compact && /*#__PURE__*/React.createElement("header", {
+      className: "wb-gantt-detail-header"
+    }, /*#__PURE__*/React.createElement("h2", null, "\u4EFB\u52A1\u8BE6\u60C5"), /*#__PURE__*/React.createElement(Button, {
+      icon: "panel-right-close",
+      onClick: onCollapse
+    }, "\u6536\u8D77\u8BE6\u60C5")), /*#__PURE__*/React.createElement("div", {
+      className: compact ? 'wb-gantt-detail-body' : undefined,
+      "data-wb-scroll-key": compact ? 'plan-inspector' : undefined
+    }, /*#__PURE__*/React.createElement("section", null, !compact && /*#__PURE__*/React.createElement("h2", null, "\u4EFB\u52A1\u8BE6\u60C5"), !task ? /*#__PURE__*/React.createElement("div", {
       className: "plan-empty"
-    }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1\u3002\u5728\u8BA1\u5212\u7518\u7279\u91CC\u70B9\u4E00\u9053\u5B89\u6392\uFF0C\u6216\u5728\u4EA4\u4ED8\u98CE\u9669\u5217\u8868\u91CC\u70B9\u6279\u6B21\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u5DE5\u827A\u524D\u540E\u5E8F\u3001\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u3001\u4EA4\u4ED8\u98CE\u9669\u548C\u8D44\u6E90\u5360\u7528\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1\u3002\u5728\u8BA1\u5212\u7518\u7279\u91CC\u70B9\u4E00\u9053\u5B89\u6392\uFF0C\u6216\u5728\u4EA4\u4ED8\u98CE\u9669\u5217\u8868\u91CC\u70B9\u6279\u6B21\uFF0C\u8FD9\u91CC\u4F1A\u663E\u793A\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF\u3001\u539F\u5B89\u6392\u5BF9\u7167\u3001\u4EA4\u4ED8\u98CE\u9669\u548C\u8D44\u6E90\u5360\u7528\u3002") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "plan-muted plan-inspector-kind"
-    }, selected.before ? '初始计划安排' : '当前所选计划安排'), /*#__PURE__*/React.createElement("h3", {
+    }, selected.before ? '原安排' : '当前所选计划安排'), /*#__PURE__*/React.createElement("h3", {
       className: "plan-inspector-title"
     }, task.batch_id, " \xB7 ", task.sequence), /*#__PURE__*/React.createElement("p", {
       className: "plan-wrap"
     }, task.process_label), /*#__PURE__*/React.createElement(Facts, {
       items: [['分件', /*#__PURE__*/React.createElement("span", {
         className: "plan-wrap"
-      }, M.pieceLabel(task))], ['本工序目标量', M.quantityLabel(task.quantity)], ['计划来源整批量', M.quantityLabel(task.batch_quantity)], ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录'], ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []), ['计划开始', M.timeLabel(task.start)], ['计划结束', M.timeLabel(task.end)], ['时长', window.WorkbenchFormat.hours((M.instant(task.end) - M.instant(task.start)) / 3600000, 2)], ['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)], ['供应商', selected.before && ['candidate_adoption', 'trial_adoption'].includes(baseline.basis) ? '未记录' : task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' : '未选']]
+      }, M.pieceLabel(task))], ['本工序目标量', M.quantityLabel(task.quantity, task.quantity_reason)], ...(!compact ? [['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)], ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']] : []), ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []), ['计划开始', M.timeLabel(task.start)], ['计划结束', M.timeLabel(task.end)], ['时长', window.WorkbenchFormat.hours((M.instant(task.end) - M.instant(task.start)) / 3600000, 2)], ['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)], ['供应商', task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' : data.provenance.state === 'unavailable' ? data.provenance.reason : '未选']]
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
     }, typeof renderTrial === 'function' ? renderTrial({
@@ -25687,58 +26534,74 @@ function SMExport({
     }) : /*#__PURE__*/React.createElement(Button, {
       icon: "square-pen",
       reason: window.WorkbenchTerms.outcomes.unavailable
-    }, "\u8C03\u6574\u6B64\u5DE5\u5E8F")))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Relations, {
+    }, "\u8C03\u6574\u6B64\u5DE5\u5E8F")))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Route, {
       data: data,
       selected: selected,
-      onRelated: onRelated
-    }), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u521D\u59CB\u8BA1\u5212\u5BF9\u7167"), comparison ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
+      onRelated: onRelated,
+      disabled: disabled,
+      collapsible: compact
+    }), compact && /*#__PURE__*/React.createElement(DetailSection, {
+      title: "\u8BA1\u5212\u6765\u6E90",
+      collapsible: true
+    }, /*#__PURE__*/React.createElement(Facts, {
+      items: [['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)], ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']]
+    })), baseline.state === 'available' && /*#__PURE__*/React.createElement(DetailSection, {
+      title: "\u539F\u5B89\u6392\u5BF9\u7167",
+      collapsible: compact
+    }, comparison ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
       items: [['变化', {
         added: '新增安排',
         removed: '移除安排',
         changed: '安排已变更',
         unchanged: '安排未变更'
-      }[comparison.change]], ['初始开始', comparison.before ? M.timeLabel(comparison.before.start) : '未记录'], ['初始结束', comparison.before ? M.timeLabel(comparison.before.end) : '未记录'], ['当前开始', comparison.after ? M.timeLabel(comparison.after.start) : '未记录'], ['当前结束', comparison.after ? M.timeLabel(comparison.after.end) : '未记录']]
+      }[comparison.change]], ...changes, ['原开始', comparison.before ? M.timeLabel(comparison.before.start) : '未记录'], ['原结束', comparison.before ? M.timeLabel(comparison.before.end) : '未记录'], ['当前开始', comparison.after ? M.timeLabel(comparison.after.start) : '未记录'], ['当前结束', comparison.after ? M.timeLabel(comparison.after.end) : '未记录']]
     }), !comparison.before_in_scope && comparison.before && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u521D\u59CB\u5B89\u6392\u5728\u6240\u9009\u65F6\u95F4\u8303\u56F4\u5916\uFF0C\u4ECD\u663E\u793A\u5B8C\u6574\u8D77\u6B62\u65F6\u95F4\u3002"), !comparison.after_in_scope && comparison.after && /*#__PURE__*/React.createElement("p", {
+    }, "\u539F\u5B89\u6392\u5728\u6240\u9009\u65F6\u95F4\u8303\u56F4\u5916\uFF0C\u4ECD\u663E\u793A\u5B8C\u6574\u8D77\u6B62\u65F6\u95F4\u3002"), !comparison.after_in_scope && comparison.after && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5F53\u524D\u5B89\u6392\u5DF2\u79FB\u51FA\u6240\u9009\u65F6\u95F4\u8303\u56F4\uFF0C\u4ECD\u663E\u793A\u5B8C\u6574\u8D77\u6B62\u65F6\u95F4\u3002"), comparison.before && !selected.before && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: () => onSelect(comparison.before, true)
-    }, "\u67E5\u770B\u521D\u59CB\u5B89\u6392"), comparison.after && selected.before && /*#__PURE__*/React.createElement(Button, {
+    }, "\u67E5\u770B\u539F\u5B89\u6392"), comparison.after && selected.before && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       onClick: () => onSelect(comparison.after, false)
     }, "\u67E5\u770B\u5F53\u524D\u5B89\u6392")) : /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, baseline.reason || (task ? '未找到对应对照记录' : '尚未选中任务'))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u4EA4\u4ED8\u98CE\u9669"), !task ? /*#__PURE__*/React.createElement("p", {
+    }, "\u672A\u627E\u5230\u5BF9\u5E94\u5BF9\u7167\u8BB0\u5F55")), /*#__PURE__*/React.createElement(DetailSection, {
+      title: "\u4EA4\u4ED8\u98CE\u9669",
+      collapsible: compact
+    }, !task ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5C1A\u672A\u9009\u4E2D\u4EFB\u52A1") : selected.before ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u6682\u65E0\u521D\u59CB\u8BA1\u5212\u7684\u4EA4\u4ED8\u98CE\u9669\u6570\u636E\u3002") : risk ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
+    }, "\u6682\u65E0\u539F\u5B89\u6392\u7684\u4EA4\u4ED8\u98CE\u9669\u6570\u636E\u3002") : risk ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Facts, {
       items: [['判定', /*#__PURE__*/React.createElement("span", {
         className: risk.risk === 'overdue' ? 'plan-danger' : ''
-      }, riskLabel[risk.risk])], ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)], [window.WorkbenchTerms.delay_hours, risk.delay_hours === null ? '未知' : window.WorkbenchFormat.hours(risk.delay_hours, 2)], ['未排工序', M.count(risk.unscheduled_operation_count)]]
+      }, riskLabel[risk.risk])], ['交期', risk.due_date || '未记录'], ['计划完工', M.timeLabel(risk.planned_finish)], [window.WorkbenchTerms.delay_hours, risk.delay_hours === null ? issueText(risk.issues) : window.WorkbenchFormat.hours(risk.delay_hours, 2)], ['未排工序', M.count(risk.unscheduled_operation_count)]]
     }), risk.partial_planned_finish && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5DF2\u6392\u5DE5\u5E8F\u7ED3\u675F\u65F6\u95F4\uFF1A", M.timeLabel(risk.partial_planned_finish)), risk.issues.length > 0 && /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, issueText(risk.issues))) : /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u6682\u65E0\u6570\u636E")), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u8D44\u6E90\u5360\u7528"), window.PointContract.isPoint(task) ? /*#__PURE__*/React.createElement("p", {
+    }, "\u6682\u65E0\u6570\u636E")), /*#__PURE__*/React.createElement(DetailSection, {
+      title: "\u8D44\u6E90\u5360\u7528",
+      collapsible: compact
+    }, window.PointContract.isPoint(task) ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F\uFF0C\u4E0D\u5360\u8BBE\u5907\u4EBA\u5458\u3002") : selected && selected.before ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
-    }, "\u6682\u65E0\u521D\u59CB\u8BA1\u5212\u7684\u73ED\u8868\u548C\u8D44\u6E90\u5360\u7528\u6570\u636E\u3002") : !resources.length ? /*#__PURE__*/React.createElement("p", {
+    }, "\u6682\u65E0\u539F\u5B89\u6392\u7684\u73ED\u8868\u548C\u8D44\u6E90\u5360\u7528\u6570\u636E\u3002") : !resources.length ? /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u6682\u65E0\u8D44\u6E90\u5360\u7528\u6570\u636E") : resources.map(row => /*#__PURE__*/React.createElement("div", {
       key: row.resource_ref
     }, /*#__PURE__*/React.createElement("strong", null, row.label || labels.get(row.resource_ref) || '资源名称未填写'), /*#__PURE__*/React.createElement(Facts, {
-      items: [['班表内占用', row.available_occupied_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)], ['占用率', row.utilization === null ? '暂无数据' : window.WorkbenchFormat.percent(row.utilization, 2)], ['重叠时间', /*#__PURE__*/React.createElement("span", {
+      items: [['班表内占用', row.available_occupied_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_occupied_hours, 2)], ['可用时间', row.available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.available_hours, 2)], ['占用率', row.utilization === null ? issueText(row.issues) : window.WorkbenchFormat.percent(row.utilization, 2)], ['重叠时间', /*#__PURE__*/React.createElement("span", {
         className: row.has_overlap ? 'plan-danger' : ''
       }, window.WorkbenchFormat.hours(row.overlap_hours, 2))], ['班表外占用', row.outside_available_hours === null ? '暂无数据' : window.WorkbenchFormat.hours(row.outside_available_hours, 2)]]
     }), /*#__PURE__*/React.createElement(Issues, {
       issues: row.issues
-    }))))));
+    })))))));
   }
   function conflictRows(data) {
     const projection = data.projections.occupancy,
@@ -25913,7 +26776,7 @@ function SMExport({
       className: "plan-muted"
     }, M.kindLabels[row.kind])), tab === 'load' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("td", null, M.number(row.arranged_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.available_occupied_hours)), /*#__PURE__*/React.createElement("td", null, M.number(row.available_hours)), /*#__PURE__*/React.createElement("td", {
       className: row.has_overlap ? 'plan-danger' : ''
-    }, M.number(row.overlap_hours)), /*#__PURE__*/React.createElement("td", null, row.utilization === null ? '未知' : /*#__PURE__*/React.createElement(React.Fragment, null, window.WorkbenchFormat.percent(row.utilization, 2), /*#__PURE__*/React.createElement("span", {
+    }, M.number(row.overlap_hours)), /*#__PURE__*/React.createElement("td", null, row.utilization === null ? issueText(row.issues) : /*#__PURE__*/React.createElement(React.Fragment, null, window.WorkbenchFormat.percent(row.utilization, 2), /*#__PURE__*/React.createElement("span", {
       className: "plan-meter"
     }, /*#__PURE__*/React.createElement("i", {
       style: {
@@ -26131,6 +26994,8 @@ function SMExport({
     const [query, setQuery] = React.useState(typeof initialContext.query === 'string' ? initialContext.query : ''),
       [selected, setSelected] = React.useState(null);
     const [relatedRef, setRelatedRef] = React.useState(null);
+    const [detailsOpen, setDetailsOpen] = React.useState(false);
+    const detailsToggle = React.useRef(null);
     const initialTaskRef = React.useRef(typeof initialContext.selected_task_ref === 'string' ? initialContext.selected_task_ref : null);
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
@@ -26196,14 +27061,18 @@ function SMExport({
     }
     function selectTask(task, before = false, locate = false) {
       initialTaskRef.current = null;
-      setSelected({
+      setSelected(task ? {
         task,
         before,
         result,
         ...(locate ? {
           locate: true
         } : {})
-      });
+      } : null);
+    }
+    function collapseDetails() {
+      setDetailsOpen(false);
+      detailsToggle.current.querySelector('button').focus();
     }
     function selectRelated(ref) {
       initialTaskRef.current = null;
@@ -26231,10 +27100,10 @@ function SMExport({
       event.preventDefault();
       if (!selection || disabled) return;
       try {
-        const seconds = value => value && value.length === 16 ? value + ':00' : value;
+        const time = window.WorkbenchDatePickerModel.factoryTime;
         const next = P.workspaceScope(selection.plan_ref, {
-          range_start: seconds(range.start),
-          range_end: seconds(range.end)
+          range_start: time(range.start),
+          range_end: time(range.end)
         });
         initialTaskRef.current = null;
         setScope(next);
@@ -26326,7 +27195,8 @@ function SMExport({
       className: "field"
     }, /*#__PURE__*/React.createElement("span", null, "\u5F00\u59CB\uFF08\u5305\u542B\uFF09"), /*#__PURE__*/React.createElement("input", {
       type: "text",
-      placeholder: "2026-09-13T08:30:00",
+      "data-picker-type": "factory-local",
+      placeholder: "2026-10-12 08:30",
       spellCheck: false,
       "aria-label": "\u8BFB\u53D6\u5F00\u59CB\u65F6\u95F4",
       value: range.start,
@@ -26338,7 +27208,8 @@ function SMExport({
       className: "field"
     }, /*#__PURE__*/React.createElement("span", null, "\u7ED3\u675F\uFF08\u4E0D\u542B\uFF09"), /*#__PURE__*/React.createElement("input", {
       type: "text",
-      placeholder: "2026-09-13T08:30:00.800000",
+      "data-picker-type": "factory-local",
+      placeholder: "2026-10-14 18:00",
       spellCheck: false,
       "aria-label": "\u8BFB\u53D6\u7ED3\u675F\u65F6\u95F4",
       value: range.end,
@@ -26392,8 +27263,21 @@ function SMExport({
     }, label), /*#__PURE__*/React.createElement("span", {
       className: "sv wb-metric-value"
     }, value))))), data && /*#__PURE__*/React.createElement("div", {
-      className: "plan-main"
-    }, /*#__PURE__*/React.createElement("div", null, view === 'gantt' && /*#__PURE__*/React.createElement(window.PlanGantt, {
+      className: 'plan-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : ''),
+      "data-details-open": view === 'gantt' && detailsOpen || undefined
+    }, /*#__PURE__*/React.createElement("div", {
+      className: view === 'gantt' ? 'wb-gantt-main-column' : undefined
+    }, view === 'gantt' && /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-actions",
+      ref: detailsToggle
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "wb-gantt-detail-summary"
+    }, chosen ? chosen.task.batch_id + ' · ' + chosen.task.sequence + ' ' + chosen.task.process_label : '选中工序后可查看详情'), /*#__PURE__*/React.createElement(Button, {
+      icon: detailsOpen ? 'panel-right-close' : 'panel-right-open',
+      "aria-expanded": detailsOpen,
+      "aria-controls": "plan-gantt-detail",
+      onClick: () => setDetailsOpen(!detailsOpen)
+    }, detailsOpen ? '收起详情' : '详情')), view === 'gantt' && /*#__PURE__*/React.createElement(window.PlanGantt, {
       key: 'gantt:' + data.plan.plan_ref,
       data: data,
       asOf: result.meta.as_of,
@@ -26414,11 +27298,12 @@ function SMExport({
     }), view === 'delay' && /*#__PURE__*/React.createElement(Conflicts, {
       key: 'conflicts:' + result.meta.snapshot_ref,
       data: data
-    })), /*#__PURE__*/React.createElement(TaskDetail, {
+    })), (view !== 'gantt' || detailsOpen) && /*#__PURE__*/React.createElement(TaskDetail, {
       data: data,
       selected: chosen,
       onSelect: selectTask,
       onRelated: selectRelated,
+      onCollapse: view === 'gantt' ? collapseDetails : undefined,
       renderTrial: renderTrial,
       scope: scope,
       query: query,
@@ -27534,7 +28419,11 @@ function SMExport({
   }) {
     const [selected, setSelected] = React.useState(null),
       [tip, setTip] = React.useState(null);
-    const parse = value => value ? Date.parse(value.replace(' ', 'T') + 'Z') : null;
+    const axisHost = React.useRef(null),
+      [width, setWidth] = React.useState(640);
+    const printing = window.WorkbenchControls.usePrintLayout(),
+      V = window.GanttPresentation;
+    const parse = value => value ? window.PlanGanttModel.instant(value) : null;
     const plan = {
       ...task,
       start: task.planned_start,
@@ -27543,18 +28432,33 @@ function SMExport({
     const rows = [{
       key: 'plan',
       label: '计划安排',
+      detail: '所选计划',
       start: plan.start,
       end: plan.end,
       point: window.PointContract.isPoint(plan)
     }, ...task.execution.reports.map(row => ({
       key: row.report_ref,
-      label: row.report_no,
+      label: '实际报工',
+      detail: row.report_no,
       start: row.actual_start,
       end: row.actual_end,
       point: !!row.actual_start && (!row.actual_end || row.actual_start === row.actual_end)
     }))];
     const points = rows.flatMap(row => [parse(row.start), parse(row.end)]).filter(Number.isFinite);
-    const axis = window.PointGanttModel.bounds(Math.min(...points), Math.max(...points), rows.some(row => row.point));
+    const bounds = window.PointGanttModel.bounds(Math.min(...points), Math.max(...points), rows.some(row => row.point));
+    const axis = V.axis({
+      ...bounds,
+      width,
+      viewport: width
+    });
+    const position = value => (parse(value) - bounds.start) / (bounds.end - bounds.start) * 100;
+    React.useLayoutEffect(() => {
+      const measure = () => setWidth(axisHost.current.clientWidth);
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(axisHost.current);
+      return () => observer.disconnect();
+    }, []);
     function hover(title, event) {
       if (!event) {
         setTip(null);
@@ -27570,25 +28474,58 @@ function SMExport({
     return /*#__PURE__*/React.createElement("div", {
       className: "field-timeline",
       role: "region",
-      "aria-label": "\u4F5C\u4E1A\u65F6\u95F4\u7EBF"
+      "aria-label": "\u4F5C\u4E1A\u65F6\u95F4\u7EBF",
+      "data-field-timeline": true
     }, /*#__PURE__*/React.createElement("div", {
+      className: "field-timeline-legend"
+    }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "planned"
+    }), "\u8BA1\u5212\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "actual"
+    }), "\u5B9E\u9645\u62A5\u5DE5"), /*#__PURE__*/React.createElement("span", null, "\u83F1\u5F62\u8868\u793A\u96F6\u5DE5\u65F6\u5DE5\u5E8F\u6216\u5DF2\u8BB0\u5F55\u7684\u5F00\u5DE5\u65F6\u523B")), /*#__PURE__*/React.createElement("div", {
+      className: "field-timeline-axis-row"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "field-timeline-corner"
+    }, "\u8BA1\u5212 / \u5B9E\u9645"), /*#__PURE__*/React.createElement("div", {
+      ref: axisHost,
       className: "field-timeline-axis"
-    }, /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.min(...points)).toISOString().slice(0, 19))), /*#__PURE__*/React.createElement("span", null, C.date(new Date(Math.max(...points)).toISOString().slice(0, 19)))), rows.map(row => {
-      const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段') + '\n' + row.label + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
-      const left = (parse(row.start) - axis.start) / (axis.end - axis.start) * 100 + '%';
+    }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
+      axis: axis,
+      width: width,
+      printing: printing
+    }))), rows.map(row => {
+      const title = (row.key === 'plan' ? row.point ? '零工时工序，无资源占用。' : '计划安排' : row.point ? '报工时刻' : '实际报工时段') + '\n' + task.operation_label + ' · ' + C.pieceLabel(task) + '\n' + row.detail + '\n' + C.date(row.start) + ' 至 ' + (row.end ? C.date(row.end) : '结束未填写');
+      const left = position(row.start),
+        span = row.end ? position(row.end) - left : 0;
+      const lines = V.taskLines({
+        process: task.operation_label,
+        batch: row.detail,
+        piece: C.pieceLabel(task)
+      }, 'machine', span / 100 * width);
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
-        className: "field-timeline-row"
-      }, /*#__PURE__*/React.createElement("span", null, row.label), /*#__PURE__*/React.createElement("div", {
-        className: "field-timeline-track",
-        title: title
-      }, !row.start ? /*#__PURE__*/React.createElement("span", null, "\u5B9E\u9645\u5F00\u5DE5\u5F85\u8865") : row.point ? /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
+        className: "field-timeline-row",
+        "data-field-time-kind": row.key === 'plan' ? 'plan' : 'report'
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "field-timeline-label"
+      }, /*#__PURE__*/React.createElement("strong", null, row.label), /*#__PURE__*/React.createElement("small", null, row.detail, !row.end && ' · 结束待补')), /*#__PURE__*/React.createElement("div", {
+        className: "field-timeline-track"
+      }, axis.ticks.map(tick => /*#__PURE__*/React.createElement("i", {
+        key: tick.at,
+        className: "field-timeline-grid",
+        style: {
+          left: tick.x / width * 100 + '%'
+        },
+        "aria-hidden": "true"
+      })), !row.start ? /*#__PURE__*/React.createElement("span", {
+        className: "field-timeline-missing"
+      }, "\u5B9E\u9645\u5F00\u5DE5\u5F85\u8865") : row.point ? /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
         task: row.key === 'plan' ? plan : {
           task_ref: row.key,
           start: row.start
         },
-        x: left,
-        top: 0,
+        x: left + '%',
+        top: 12,
         title: title,
         tone: row.key === 'plan' ? 'plan' : '',
         selected: selected === row.key,
@@ -27599,13 +28536,22 @@ function SMExport({
         onHover: event => hover(title, event),
         onFocus: event => hover(title, event),
         onBlur: () => setTip(null)
-      }) : /*#__PURE__*/React.createElement("i", {
-        className: row.key === 'plan' ? 'planned' : 'actual',
+      }) : /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        className: 'field-timeline-bar ' + (row.key === 'plan' ? 'planned' : 'actual'),
         style: {
-          left,
-          width: (parse(row.end) - parse(row.start)) / (axis.end - axis.start) * 100 + '%'
-        }
-      })), /*#__PURE__*/React.createElement("span", null, row.end ? '' : '结束待补'));
+          left: left + '%',
+          width: span + '%'
+        },
+        "aria-label": title,
+        "aria-pressed": selected === row.key,
+        title: title,
+        onClick: () => setSelected(row.key),
+        onMouseEnter: event => hover(title, event),
+        onMouseLeave: () => setTip(null),
+        onFocus: event => hover(title, event),
+        onBlur: () => setTip(null)
+      }, row.key !== 'plan' && lines.primary && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, lines.primary), lines.secondary && /*#__PURE__*/React.createElement("small", null, lines.secondary)))));
     }), tip && /*#__PURE__*/React.createElement("div", {
       className: "field-point-tip",
       role: "tooltip",
@@ -28399,8 +29345,7 @@ function SMExport({
   'use strict';
 
   const HOUR = 3600000;
-  // UTC is only a numeric coordinate system here, never the wire time zone.
-  const instant = value => value ? Date.parse(value + 'Z') : NaN;
+  const instant = window.PlanGanttModel.instant;
   const wire = value => new Date(value).toISOString().slice(0, 19);
   // Same label rule as the field records: minute precision, seconds shown only when they are not :00.
   const time = value => window.FieldContract.date(value);
@@ -28429,6 +29374,18 @@ function SMExport({
     forecastLate: '剩余安排预计晚完成'
   };
   const names = data => new Map(data.resources.map(row => [row.ref, row.label || row.business_code]));
+  // 与报表相同：整道确认完工减去所选计划完工；逐次报工结束不能代替整道完工。
+  const finishMinutes = item => item.execution.confirmed_finish === null ? null : (instant(item.execution.confirmed_finish) - instant(item.task.end)) / 60000;
+  function finishDeviation(item) {
+    if (!item.execution || item.execution.execution_state !== 'complete') return null;
+    const minutes = finishMinutes(item);
+    if (minutes === null) return '缺少确认完工时间，请核对现场完工记录';
+    const rounded = Math.round(Math.abs(minutes) * 100) / 100;
+    return rounded === 0 ? '按计划完成' : (minutes < 0 ? '提前 ' : '延后 ') + window.WorkbenchFormat.number(rounded, {
+      digits: 2,
+      trim: true
+    }) + ' 分钟';
+  }
   function deadlines(item, asOf) {
     const e = item.execution,
       end = instant(item.task.end);
@@ -28438,7 +29395,7 @@ function SMExport({
       forecastLate: false
     };
     return {
-      finishLate: e.execution_state === 'complete' && instant(e.confirmed_finish) - end > 600000,
+      finishLate: e.execution_state === 'complete' && finishMinutes(item) > 10,
       unclosed: e.execution_state !== 'complete' && end <= instant(asOf),
       forecastLate: e.execution_state !== 'complete' && !!e.remaining_plan && instant(e.remaining_plan.end) - end > 600000
     };
@@ -28664,26 +29621,41 @@ function SMExport({
     });
     return result;
   }
+  function graphLocations(model) {
+    const result = new Map();
+    for (const row of model.rows) {
+      if (row.kind !== 'actual') continue;
+      const candidates = marks(row),
+        reports = candidates.filter(mark => mark.report);
+      const mark = reports.sort((a, b) => b.end - a.end)[0] || candidates[0];
+      if (!mark) continue;
+      const ref = row.item.task.task_ref,
+        previous = result.get(ref),
+        reported = !!mark.report;
+      if (previous && (previous.reported && !reported || previous.reported === reported && previous.end >= mark.end)) continue;
+      // 连接已绘制的最近报工；没有报工时连接原计划细基线，不借用图节点的计划坐标冒充实际。
+      result.set(ref, {
+        start: mark.start,
+        end: mark.end,
+        y: row.top + mark.y + mark.height / 2,
+        markTop: row.top + mark.y,
+        markBottom: row.top + mark.y + mark.height,
+        top: row.top,
+        bottom: row.top + row.height,
+        reported
+      });
+    }
+    return result;
+  }
   function tickStep(model, width) {
-    const steps = [1000, 10000, 60000, 300000, 900000, HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, 24 * HOUR, 7 * 24 * HOUR, 30 * 24 * HOUR, 365 * 24 * HOUR];
-    const target = (model.end - model.start) * 135 / width;
-    return steps.find(v => v >= target) || Math.ceil(target / HOUR) * HOUR;
+    return window.PlanGanttModel.tickStep(model.start, model.end, width);
   }
   function tickLabel(step) {
     const unit = [[24 * HOUR, '天'], [HOUR, '小时'], [60000, '分钟'], [1000, '秒']].find(([size]) => step % size === 0);
     return step / unit[0] + ' ' + unit[1];
   }
   function ticks(model, width, left, viewport) {
-    const step = tickStep(model, width);
-    const low = model.start + left / width * (model.end - model.start),
-      high = model.start + (left + viewport) / width * (model.end - model.start),
-      result = [];
-    for (let at = Math.ceil(low / step) * step; at < high; at += step) result.push({
-      at,
-      x: (at - model.start) / (model.end - model.start) * width,
-      label: wire(at)
-    });
-    return result;
+    return window.PlanGanttModel.ticks(model.start, model.end, width, left, viewport);
   }
   function describe(item, labels, report) {
     const t = item.task,
@@ -28696,8 +29668,12 @@ function SMExport({
     if (window.PointContract.isPoint(t)) result.push('零工时工序，无资源占用。');
     if (t.quantity_reason) result.push(quantityReasons[t.quantity_reason]);
     if (!e) return result.concat('报工记录不可用');
-    result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件', '整道实际完工：' + time(e.confirmed_finish), '剩余数量：' + number(e.remaining_quantity), e.completion_basis === 'legacy_finish_event' ? '历史完工记录确认完成；当时的数量与工时可能没有记录' : '完成依据：逐次报工记录');
-    if (report) result.push('本次报工：' + report.report_no, '实际：' + time(report.actual_start) + ' 至 ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'), '本次数量：' + number(report.completed_quantity) + ' 件 · 有效工时：' + hours(report.effective_processing_hours), '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
+    result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件', '整道实际完工：' + (e.confirmed_finish ? time(e.confirmed_finish) : e.execution_state === 'complete' ? '已标记完工，确认完工时间缺失' : '尚未确认整道完工'), '剩余数量：' + (e.remaining_quantity === null ? '当前记录无法计算，见记录问题' : number(e.remaining_quantity)));
+    if (e.completion_basis) result.push(e.completion_basis === 'legacy_finish_event' ? '完成依据：历史完工记录' : '完成依据：逐次报工记录');
+    const deviation = finishDeviation(item);
+    result.push('整道完工偏差：' + (deviation || '未完工，不计算完成偏差'));
+    e.data_gaps.forEach(gap => result.push('记录问题：' + gap.message));
+    if (report) result.push('本次报工：' + report.report_no, '实际：' + (report.actual_start ? time(report.actual_start) : '本次开工未填写') + ' 至 ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'), '本次数量：' + (report.completed_quantity === null ? '本条报工未填写完成数量' : number(report.completed_quantity) + ' 件') + ' · 有效工时：' + (report.effective_processing_hours === null ? '本条报工未填写有效工时' : hours(report.effective_processing_hours)), '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
     return result;
   }
   function markTitle(mark, item, labels) {
@@ -28721,8 +29697,8 @@ function SMExport({
       const state = item.execution.execution_state;
       if (state === 'complete') {
         complete++;
-        const delta = (instant(item.execution.confirmed_finish) - instant(item.task.end)) / 60000;
-        if (Number.isFinite(delta)) {
+        const delta = finishMinutes(item);
+        if (delta !== null) {
           deltaCount++;
           deltaTotal += delta;
         }
@@ -28748,6 +29724,7 @@ function SMExport({
     views,
     lateLabels,
     names,
+    finishDeviation,
     deadlines,
     searchText,
     filter,
@@ -28755,6 +29732,7 @@ function SMExport({
     layout,
     visibleRows,
     marks,
+    graphLocations,
     tickStep,
     tickLabel,
     ticks,
@@ -28967,6 +29945,14 @@ function SMExport({
       }
       if (used.some(r => r != null && (!ref(r) || !resourceRefs.has(r)))) fail('实际或计划资源清单不完整。');
     });
+    if (!window.GanttGraph.validate(d.gantt_graph, {
+      scope: 'full_plan',
+      tasks: d.items.map(item => item.task),
+      taskRef: 'task_ref',
+      time: local,
+      sequence: C.positiveInt64,
+      processLabel: value => typeof value === 'string' && !!value.trim()
+    })) fail('现场甘特的工序关联与所选计划不一致，请刷新重试。');
     if (d.availability.state === 'available' ? d.report_count !== count || count > 50000 : d.report_count !== null || !d.availability.reason) fail('报工数量或不可用原因不完整。');
     validateChain(d.critical_chain, d, query, meta);
     return result;
@@ -29154,15 +30140,7 @@ function SMExport({
       className: "fg-lg"
     }, /*#__PURE__*/React.createElement("i", {
       className: "fg-sw-remaining"
-    }), "\u5DF2\u6709\u5269\u4F59\u5B89\u6392"), data.critical_chain.state === 'available' && /*#__PURE__*/React.createElement("label", {
-      className: "fg-chain-toggle"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: view.chain,
-      onChange: e => patch({
-        chain: e.target.checked
-      })
-    }), "\u5173\u952E\u94FE")), /*#__PURE__*/React.createElement("div", {
+    }), "\u5DF2\u6709\u5269\u4F59\u5B89\u6392")), /*#__PURE__*/React.createElement("div", {
       className: "fg-toolbar-chart-actions"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "fg-icon-button",
@@ -29181,24 +30159,14 @@ function SMExport({
       onChange: e => patch({
         onlySelected: e.target.checked
       })
-    }), "\u53EA\u770B\u9009\u4E2D"), /*#__PURE__*/React.createElement("label", {
-      className: "fg-chain-toggle"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: view.details,
-      onChange: e => patch({
-        details: e.target.checked
+    }), "\u53EA\u770B\u9009\u4E2D"), /*#__PURE__*/React.createElement(Button, {
+      icon: view.details ? 'panel-right-close' : 'panel-right-open',
+      "aria-expanded": view.details,
+      "aria-controls": "actual-gantt-detail",
+      onClick: () => patch({
+        details: !view.details
       })
-    }), "\u8BE6\u60C5"), view.chain && data.critical_chain.state === 'available' && /*#__PURE__*/React.createElement("label", {
-      className: "fg-chain-toggle"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: view.chainLines !== false,
-      disabled: !data.critical_chain.edges.length,
-      onChange: e => patch({
-        chainLines: e.target.checked
-      })
-    }), "\u5173\u952E\u94FE\u8FDE\u7EBF"), /*#__PURE__*/React.createElement(TimelineZoom, {
+    }, view.details ? '收起详情' : '详情'), /*#__PURE__*/React.createElement(TimelineZoom, {
       zoom: zoom,
       max: 1024,
       onZoom: onZoom,
@@ -29217,51 +30185,47 @@ function SMExport({
     }))));
   }
   function Chain({
-    chain,
+    graph,
     model,
     onLocate
   }) {
-    const visible = new Set(model.items.map(item => item.task.task_ref));
+    const visible = new Set(model.items.map(item => item.task.task_ref)),
+      nodes = new Map(graph.nodes.map(node => [node.task_ref, node]));
+    const incoming = new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge]));
+    const edgeLabels = {
+      process: '工艺先后',
+      machine: '设备接续',
+      operator: '人员接续'
+    };
     return /*#__PURE__*/React.createElement("div", {
       className: "fg-chain-strip",
-      "aria-label": "\u6240\u9009\u8BA1\u5212\u5173\u952E\u94FE",
-      "data-chain-context": chain.mode,
-      "data-chain-target": chain.target_task_ref || ''
+      "aria-label": "\u6240\u9009\u8BA1\u5212\u5173\u952E\u94FE"
     }, /*#__PURE__*/React.createElement("div", {
-      className: "fg-chain-heading"
-    }, /*#__PURE__*/React.createElement("strong", null, chain.mode === 'related' ? '所选工序的前置工序链（近似）' : '计划关键链（近似）'), " \xB7 ", chain.mode === 'related' ? '计划结束' : '最晚结束', " ", M.time(chain.makespan_end), chain.partial && /*#__PURE__*/React.createElement("span", {
-      role: "status"
-    }, " \xB7 \u5DF2\u7565\u53BB ", chain.omitted_point_count, " \u9053\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), chain.state === 'unavailable' ? /*#__PURE__*/React.createElement("span", {
-      role: "status"
-    }, "\u5173\u8054\u94FE\u4E0D\u53EF\u7528\uFF1A", chain.reason) : /*#__PURE__*/React.createElement("div", {
       className: "fg-chain-flow",
-      tabIndex: 0,
       role: "group",
-      "aria-label": "\u5173\u952E\u94FE\u5DE5\u5E8F\uFF0C\u53EF\u6A2A\u5411\u6EDA\u52A8"
-    }, chain.nodes.map((node, index) => /*#__PURE__*/React.createElement("div", {
-      className: "fg-chain-step",
-      key: node.task_ref
-    }, index > 0 && /*#__PURE__*/React.createElement("span", {
-      className: "fg-chain-edge-label",
-      "data-edge-type": chain.edges[index - 1].edge_type,
-      "data-chain-edge-reason": true
-    }, /*#__PURE__*/React.createElement("span", null, chain.edges[index - 1].reason), /*#__PURE__*/React.createElement("small", null, "\u95F4\u9694 ", chain.edges[index - 1].gap_minutes, " \u5206\u949F"), /*#__PURE__*/React.createElement("svg", {
-      viewBox: "0 0 120 12",
-      "aria-hidden": "true"
-    }, /*#__PURE__*/React.createElement("path", {
-      d: "M0 6h117m-5-4 5 4-5 4"
-    }))), /*#__PURE__*/React.createElement(Button, {
-      className: "fg-chain-node",
-      icon: "search",
-      disabled: !visible.has(node.task_ref),
-      "data-chain-node": node.task_ref,
-      title: M.taskLabel(node),
-      onClick: () => onLocate(node.task_ref)
-    }, /*#__PURE__*/React.createElement("span", {
-      className: "fg-chain-node-label"
-    }, /*#__PURE__*/React.createElement("span", null, node.batch_id), /*#__PURE__*/React.createElement("small", null, node.sequence, " ", node.process_label)))))), /*#__PURE__*/React.createElement("span", {
+      "aria-label": "\u5173\u952E\u94FE\u5DE5\u5E8F"
+    }, graph.critical_task_refs.map(ref => {
+      const node = nodes.get(ref),
+        edge = incoming.get(ref);
+      return /*#__PURE__*/React.createElement("div", {
+        className: "fg-chain-step",
+        key: ref
+      }, edge && /*#__PURE__*/React.createElement("span", {
+        className: "fg-chain-edge-label",
+        "data-edge-type": edge.edge_type,
+        "data-chain-edge-reason": true
+      }, edgeLabels[edge.edge_type]), /*#__PURE__*/React.createElement(Button, {
+        className: "fg-chain-node",
+        icon: "search",
+        "data-chain-node": ref,
+        title: M.taskLabel(node) + ' · ' + M.time(node.start) + ' 至 ' + M.time(node.end),
+        onClick: () => onLocate(ref)
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "fg-chain-node-label"
+      }, /*#__PURE__*/React.createElement("span", null, node.batch_id, " \xB7 ", M.pieceLabel(node)), /*#__PURE__*/React.createElement("small", null, node.sequence, " ", node.process_label), /*#__PURE__*/React.createElement("small", null, M.time(node.start), " \u81F3 ", M.time(node.end), !visible.has(ref) && ' · 当前视图外'))));
+    })), /*#__PURE__*/React.createElement("span", {
       className: "fg-muted"
-    }, "\u5F53\u524D\u663E\u793A ", chain.task_refs.filter(ref => visible.has(ref)).length, " / ", chain.task_refs.length, " \u9053\u5DE5\u5E8F \xB7 \u5DE5\u827A\u4F9D\u8D56\uFF1A\u5B9E\u7EBF \xB7 \u8D44\u6E90\u4F9D\u8D56\uFF1A\u865A\u7EBF"));
+    }, "\u5F53\u524D\u663E\u793A ", graph.critical_task_refs.filter(ref => visible.has(ref)).length, " / ", graph.critical_task_refs.length, " \u9053\u5173\u952E\u5DE5\u5E8F \xB7 \u4E0E\u56FE\u4E2D\u7684\u91D1\u8272\u6807\u8BB0\u4E00\u81F4"));
   }
   function Range({
     scope,
@@ -29401,6 +30365,7 @@ function SMExport({
     viewport,
     left,
     selected,
+    graphActive,
     onSelect,
     onHover,
     renderMark
@@ -29414,17 +30379,27 @@ function SMExport({
     const activeIndex = Math.max(0, marks.findIndex(mark => mark.key === activeKey)),
       active = marks[activeIndex];
     usePaint(ref, (ctx, w, h, colors) => {
+      const critical = graphActive.critical.has(row.item.task.task_ref),
+        related = graphActive.related.has(row.item.task.task_ref);
+      const chosen = selected === row.item.task.task_ref;
       for (const mark of marks) {
         const x = (mark.start - model.start) * scale - left,
           size = (mark.end - mark.start) * scale;
         if (x > w + 12 || x + size < -12) continue;
+        ctx.save();
+        if (graphActive.target && !related && !critical) ctx.globalAlpha = .66;
         ctx.fillStyle = colors[mark.kind].fill;
-        ctx.strokeStyle = selected === row.item.task.task_ref ? colors.selected : colors[mark.kind].edge;
-        if (mark.kind === 'point' || mark.kind === 'plan-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, selected === row.item.task.task_ref);else {
+        ctx.strokeStyle = chosen || critical || related ? colors.selected : colors[mark.kind].edge;
+        ctx.setLineDash([]);
+        if (mark.kind === 'point' || mark.kind === 'plan-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);else {
           ctx.fillRect(x, mark.y, size, mark.height);
-          ctx.lineWidth = Math.min(1, size);
+          ctx.lineWidth = Math.min(chosen ? 2 : related ? 1.5 : 1, size);
           ctx.setLineDash(['plan', 'remaining'].includes(mark.kind) ? [3, 2] : []);
           if (size > 0) ctx.strokeRect(x + ctx.lineWidth / 2, mark.y + ctx.lineWidth / 2, size - ctx.lineWidth, mark.height - ctx.lineWidth);
+          if (critical && mark.kind === 'actual') {
+            ctx.fillStyle = colors.selected;
+            ctx.fillRect(x, mark.y, size, 3);
+          }
         }
         if (focused && active && mark.key === active.key) {
           const box = window.ActualGanttWindow.markBox(mark, model, width, left);
@@ -29433,8 +30408,9 @@ function SMExport({
           ctx.strokeStyle = colors.selected;
           ctx.strokeRect(box.hitLeft - 2, mark.y - 2, box.hitWidth + 4, mark.height + 4);
         }
+        ctx.restore();
       }
-    }, [row, width, viewport, left, selected, focused, active && active.key]);
+    }, [row, width, viewport, left, selected, graphActive, focused, active && active.key]);
     function reveal(mark) {
       if (!mark) return;
       const board = ref.current.closest('[data-actual-scroll]');
@@ -29557,6 +30533,7 @@ function SMExport({
     model,
     width,
     selected,
+    active,
     onSelect,
     onHover,
     canvasPainted = false
@@ -29572,6 +30549,13 @@ function SMExport({
       remaining: 'remaining'
     }[mark.kind];
     const title = M.markTitle(mark, row.item, model.labels);
+    const critical = active.critical.has(row.item.task.task_ref),
+      related = active.related.has(row.item.task.task_ref);
+    const emphasis = {
+      'data-gantt-critical': critical || undefined,
+      'data-gantt-related': related || undefined,
+      'data-gantt-muted': active.target && !critical && !related || undefined
+    };
     function atPointer(event) {
       const track = event.currentTarget.closest('.fg-track').getBoundingClientRect();
       return window.ActualGanttWindow.hitMark(M.marks(row), model, width, 0, event.clientX - track.left, event.clientY - track.top);
@@ -29596,6 +30580,7 @@ function SMExport({
       });
     }
     if (mark.kind === 'plan-point' || mark.kind === 'point') return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
+      ...emphasis,
       task: mark.report ? {
         task_ref: mark.report.report_ref,
         start: mark.report.actual_start
@@ -29616,6 +30601,7 @@ function SMExport({
     return /*#__PURE__*/React.createElement("button", {
       type: "button",
       className: 'fg-mark fg-' + kind,
+      ...emphasis,
       "data-actual-mark": mark.kind,
       "data-report-ref": mark.report && mark.report.report_ref,
       "data-task-ref": row.item.task.task_ref,
@@ -29647,44 +30633,6 @@ function SMExport({
       }
     }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.hours(mark.report.effective_processing_hours) : M.time(row.item.execution.remaining_plan.start)))));
   }
-  function ChainLines({
-    chain,
-    model,
-    width,
-    labelWidth,
-    top,
-    height
-  }) {
-    const paths = chain.edges.flatMap(edge => {
-      const from = model.locations.get(edge.from_task_ref),
-        to = model.locations.get(edge.to_task_ref);
-      if (!from || !to || !from.baseline || !to.baseline || Math.min(from.top, to.top) > top + height || Math.max(from.top, to.top) + 88 < top) return [];
-      const x = value => (M.instant(value) - model.start) / (model.end - model.start) * width;
-      const a = x(from.item.task.end),
-        b = x(to.item.task.start),
-        middle = Math.max(a + 8, (a + b) / 2);
-      return [{
-        ...edge,
-        d: 'M' + a + ',' + (from.top + 78) + ' H' + middle + ' V' + (to.top + 78) + ' H' + b
-      }];
-    });
-    return /*#__PURE__*/React.createElement("svg", {
-      className: "fg-chain-lines",
-      style: {
-        left: labelWidth,
-        top: 52
-      },
-      width: width,
-      height: model.height,
-      role: "img",
-      "aria-label": "\u5F53\u524D\u8BA1\u5212\u5173\u952E\u94FE\u8FDE\u7EBF"
-    }, paths.map(edge => /*#__PURE__*/React.createElement("path", {
-      key: edge.from_task_ref + ':' + edge.to_task_ref,
-      d: edge.d,
-      "data-chain-edge": edge.edge_type,
-      strokeDasharray: edge.edge_type === 'process' ? undefined : '4 3'
-    }, /*#__PURE__*/React.createElement("title", null, edge.reason, " \xB7 \u95F4\u9694 ", edge.gap_minutes, " \u5206\u949F"))));
-  }
   function Rows({
     model,
     view,
@@ -29695,10 +30643,10 @@ function SMExport({
     height,
     labelWidth,
     dense,
+    active,
     onSelect,
     onHover,
     onChainTarget,
-    chain,
     patch
   }) {
     const visible = M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100),
@@ -29715,9 +30663,7 @@ function SMExport({
         style: style,
         "data-resource": row.group.id
       }, /*#__PURE__*/React.createElement("div", {
-        className: "fg-frozen",
-        onMouseEnter: () => onChainTarget(Array.from(row.group.members.keys())),
-        onMouseLeave: () => onChainTarget(null)
+        className: "fg-frozen"
       }, /*#__PURE__*/React.createElement(Button, {
         className: "fg-icon-button",
         icon: view.collapsed[row.group.id] ? 'chevron-right' : 'chevron-down',
@@ -29734,7 +30680,7 @@ function SMExport({
         title: row.group.label
       }, row.group.label)), /*#__PURE__*/React.createElement("div", {
         className: "fg-group-summary"
-      }, row.group.members.size, " \u9053\u5DE5\u5E8F \xB7 ", model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? '实报工时未知' : '已知实报工时 ' + M.hours(row.group.knownHours)) + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') + (row.group.legacyCount ? ' · ' + row.group.legacyCount + ' 条历史记录' : '') : '报工记录不可用'));
+      }, row.group.members.size, " \u9053\u5DE5\u5E8F \xB7 ", model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? row.group.reportCount ? '本组报工未填写有效工时' : '本组暂无逐次报工工时' : '已知实报工时 ' + M.hours(row.group.knownHours)) + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') + (row.group.legacyCount ? ' · ' + row.group.legacyCount + ' 条历史记录' : '') : '报工记录不可用'));
       const {
           item
         } = row,
@@ -29747,6 +30693,7 @@ function SMExport({
         row,
         model,
         width,
+        active,
         onSelect,
         onHover,
         canvasPainted,
@@ -29755,11 +30702,13 @@ function SMExport({
       const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '剩余数量还没安排';
       const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
       const timing = M.deadlines(item, M.wire(model.asOf));
+      const deviation = M.finishDeviation(item);
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
         className: 'fg-virtual-row' + (view.selected === t.task_ref ? ' is-selected' : ''),
         "data-task-row": t.task_ref,
         "data-kind": row.kind,
+        "data-gantt-critical": active.critical.has(t.task_ref) || undefined,
         style: style
       }, /*#__PURE__*/React.createElement("div", {
         className: "fg-frozen"
@@ -29778,9 +30727,11 @@ function SMExport({
       }, row.kind === 'remaining' ? '执行剩余 ' + M.number(e.remaining_quantity) + ' 件' : e ? M.states[e.execution_state] + ' · 已知 ' + M.number(e.known_completed_quantity) + ' / 计划 ' + M.number(t.quantity) : '计划应做 ' + M.number(t.quantity) + ' 件 · 报工记录不可用'), /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption",
         title: !row.reports.length && row.kind === 'actual' ? emptyReports(row, view.mode) : undefined
-      }, row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : emptyReports(row, view.mode)), row.kind !== 'remaining' && (timing.finishLate || timing.unclosed || timing.forecastLate) && /*#__PURE__*/React.createElement("span", {
-        className: "fg-row-caption"
-      }, timing.finishLate ? '已晚完成' : timing.unclosed ? '到期未确认完成' : '剩余安排预计晚完成')), /*#__PURE__*/React.createElement("div", {
+      }, row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : emptyReports(row, view.mode)), row.kind !== 'remaining' && (deviation || timing.unclosed || timing.forecastLate) && /*#__PURE__*/React.createElement("span", {
+        className: "fg-row-caption",
+        title: deviation || undefined,
+        "data-finish-deviation": deviation || undefined
+      }, timing.unclosed ? '未完工 · 到期未确认完成' : timing.forecastLate ? '未完工 · 剩余安排预计晚完成' : deviation)), /*#__PURE__*/React.createElement("div", {
         className: "fg-track",
         style: {
           width
@@ -29814,6 +30765,7 @@ function SMExport({
         onSelect,
         onHover,
         renderMark,
+        graphActive: active,
         selected: view.selected
       }) : marks.filter(mark => (mark.end - model.start) / (model.end - model.start) * width >= left - 12 && (mark.start - model.start) / (model.end - model.start) * width <= left + viewport + 12).map(mark => renderMark(mark)), row.kind === 'remaining' && !e.remaining_plan && /*#__PURE__*/React.createElement("span", {
         className: "fg-wait"
@@ -29822,13 +30774,6 @@ function SMExport({
       }, emptyReports(row, view.mode)), row.reports.some(r => !r.actual_start) && /*#__PURE__*/React.createElement("span", {
         className: "fg-wait"
       }, "\u672C\u6B21\u5F00\u5DE5\u5F85\u8865\uFF0C\u672A\u7ED8\u5236\u65F6\u6BB5")));
-    }), chain && view.chainLines !== false && /*#__PURE__*/React.createElement(ChainLines, {
-      chain,
-      model,
-      width,
-      labelWidth,
-      top,
-      height
     }));
   }
   window.ActualGanttRows = Rows;
@@ -29881,8 +30826,8 @@ function SMExport({
     let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
     if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
-    if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回来源不是已登记的工作台页面。';
-    if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，没有改指其他记录。';
+    if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回页面未登记。';
+    if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
     if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
     if (context.plan_ref) scope.plan_ref = context.plan_ref;
@@ -29923,7 +30868,7 @@ function SMExport({
       late: 'all',
       collapsed: {},
       onlySelected: false,
-      details: !!seed.report,
+      details: false,
       chain: false
     });
     const [zoom, setZoom] = React.useState(saved ? saved.zoom : seed.persisted ? seed.persisted.zoom : 1),
@@ -29937,12 +30882,12 @@ function SMExport({
       [exporting, setExporting] = React.useState(false),
       [exportBusy, setExportBusy] = React.useState(false);
     const [chainTarget, setChainTarget] = React.useState(null);
-    const [relatedChain, setRelatedChain] = React.useState(null);
-    const lastChain = React.useRef(null);
+    const [locateNotice, setLocateNotice] = React.useState('');
     const [exportError, setExportError] = React.useState(null),
       [exportNotice, setExportNotice] = React.useState(''),
       [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
     const board = React.useRef(null),
+      detailsPanel = React.useRef(null),
       frame = React.useRef(null),
       pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? {
         task: seed.selected
@@ -29963,6 +30908,17 @@ function SMExport({
       ...change
     }));
     React.useEffect(() => {
+      if (view.details && detailsPanel.current && window.innerWidth <= 1050) detailsPanel.current.scrollIntoView({
+        block: 'nearest'
+      });
+    }, [view.details]);
+    function collapseDetails() {
+      patch({
+        details: false
+      });
+      document.querySelector('[aria-controls="actual-gantt-detail"]').focus();
+    }
+    React.useEffect(() => {
       const controller = new AbortController();
       let active = true;
       setLoading(true);
@@ -29974,7 +30930,7 @@ function SMExport({
           let input = scope;
           if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
           if (!input.plan_ref) {
-            if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少明确计划，未自动扩大范围。');
+            if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少计划，请选择计划。');
             const catalog = await window.APSPlanAPI.create().catalog({
               collection: 'history',
               size: 20
@@ -29990,7 +30946,7 @@ function SMExport({
           const response = await api.load(input, controller.signal);
           if (initialContext.operation_ref && seed.selected) {
             const task = response.data.items.find(item => item.task.task_ref === seed.selected);
-            if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，未改指其他安排。');
+            if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，请重新选择工序。');
           }
           if (active) setResult(response);
         } catch (failure) {
@@ -30145,7 +31101,13 @@ function SMExport({
       }
     }
     function locate(taskRef = view.selected) {
-      if (!model || !model.items.some(item => item.task.task_ref === taskRef)) return;
+      if (!model) return;
+      if (!data.items.some(item => item.task.task_ref === taskRef)) {
+        setLocateNotice('这道工序不在当前日期、资源或批次范围内，请调整范围后定位。');
+        return;
+      }
+      setLocateNotice('');
+      const hidden = !model.items.some(item => item.task.task_ref === taskRef);
       const collapsed = {
         ...view.collapsed
       };
@@ -30155,7 +31117,13 @@ function SMExport({
       };
       patch({
         selected: taskRef,
-        collapsed
+        report: taskRef === view.selected ? view.report : null,
+        collapsed: hidden ? {} : collapsed,
+        ...(hidden ? {
+          query: '',
+          late: 'all',
+          onlySelected: false
+        } : {})
       });
     }
     function apply(next) {
@@ -30190,6 +31158,7 @@ function SMExport({
       setExportNotice('');
     }
     function select(item, report) {
+      setLocateNotice('');
       patch({
         selected: item.task.task_ref,
         report: report ? report.report_ref : null
@@ -30197,47 +31166,30 @@ function SMExport({
     }
     const selected = taskIndex && taskIndex.get(view.selected);
     const report = selected && selected.execution && selected.execution.reports.find(r => r.report_ref === view.report);
-    const targetTask = React.useMemo(() => taskIndex && chainTarget && Array.from(new Set(chainTarget)).map(ref => taskIndex.get(ref)).filter(Boolean).map(item => item.task).sort((a, b) => a.end.localeCompare(b.end) || a.task_ref.localeCompare(b.task_ref)).pop(), [taskIndex, chainTarget]);
-    const targetRef = targetTask ? targetTask.task_ref : null;
-    React.useEffect(() => {
-      if (!view.chain || !targetRef || !data) return;
-      const controller = new AbortController();
-      setRelatedChain({
-        target: targetRef,
-        busy: true
+    const graph = React.useMemo(() => data ? window.GanttGraph.create(data.gantt_graph) : null, [data]);
+    const targetRef = chainTarget && chainTarget[0] || view.selected;
+    const active = React.useMemo(() => graph ? window.GanttGraph.selection(graph, {
+      enabled: view.chain,
+      targetRef
+    }) : null, [graph, view.chain, targetRef]);
+    const graphLocations = React.useMemo(() => model ? M.graphLocations(model) : null, [model]);
+    const geometry = React.useMemo(() => model ? window.GanttGraph.paths(active, model, width, {
+      top: Math.max(0, position.top - 52),
+      height: position.height,
+      left: position.left,
+      width: viewport
+    }, {
+      locations: graphLocations
+    }) : null, [active, model, width, position.top, position.left, position.height, viewport, graphLocations]);
+    function clearTarget() {
+      setHover(null);
+      setChainTarget(null);
+      patch({
+        selected: null,
+        report: null,
+        onlySelected: false
       });
-      const timer = setTimeout(async () => {
-        try {
-          if (typeof api.related !== 'function') throw window.APSResourceContract.failure('dependency not wired: actual_gantt.related');
-          const result = await api.related({
-            ...scope,
-            snapshot_ref: data.critical_chain.snapshot_ref
-          }, targetRef, data, controller.signal);
-          if (!controller.signal.aborted) setRelatedChain({
-            target: targetRef,
-            result,
-            busy: false
-          });
-        } catch (error) {
-          if (!controller.signal.aborted) setRelatedChain({
-            target: targetRef,
-            error,
-            busy: false
-          });
-        }
-      }, 120);
-      return () => {
-        clearTimeout(timer);
-        controller.abort();
-      };
-    }, [api, data, scope, targetRef, view.chain]);
-    const chain = view.chain && data && data.critical_chain.state === 'available' ? targetRef ? relatedChain && relatedChain.target === targetRef && relatedChain.result : data.critical_chain : null;
-    const visibleChain = chain && chain.state === 'available' ? chain : null;
-    // Keep the previous strip mounted while a hovered target's chain loads: swapping it for the status note
-    // collapsed the slot, moved the rows under the pointer and restarted the hover in a loop.
-    if (chain) lastChain.current = chain;
-    const loadingRelated = !!(targetRef && (!relatedChain || relatedChain.target !== targetRef || relatedChain.busy));
-    const shownChain = chain || (loadingRelated ? lastChain.current : null);
+    }
     const hoverMark = value => {
       setHover(value);
       setChainTarget(value && value.item ? [value.item.task.task_ref] : null);
@@ -30367,14 +31319,19 @@ function SMExport({
     }, data.availability.reason), /*#__PURE__*/React.createElement("dl", {
       className: "fg-metrics",
       "aria-label": "\u5F53\u524D\u8303\u56F4\u6982\u51B5"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5DF2\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.complete === null ? '暂无数据' : stats.complete)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u62A5\u5DE5 \xB7 \u672A\u6574\u9053\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.reported === null ? '暂无数据' : stats.reported)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F85\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.pending === null ? '暂无数据' : stats.pending)), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6574\u9053\u5DF2\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.complete === null ? '报工数据不可用' : stats.complete)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u62A5\u5DE5 \xB7 \u672A\u6574\u9053\u5B8C\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.reported === null ? '报工数据不可用' : stats.reported)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F85\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, stats.pending === null ? '报工数据不可用' : stats.pending)), /*#__PURE__*/React.createElement("div", {
       title: "\u4EC5\u7EDF\u8BA1\u6709\u786E\u8BA4\u5B8C\u5DE5\u65F6\u95F4\u7684\u5DF2\u5B8C\u5DE5\u5DE5\u5E8F"
-    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? '暂无数据' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, {
+    }, /*#__PURE__*/React.createElement("dt", null, "\u5E73\u5747\u6574\u9053\u5B8C\u5DE5\u504F\u5DEE"), /*#__PURE__*/React.createElement("dd", null, stats.average === null ? stats.complete === null ? '报工数据不可用' : stats.complete ? '完工时间待核对' : '尚无已完工工序' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, {
       digits: 0
     }) + ' 分钟'))), exportNotice && /*#__PURE__*/React.createElement("p", {
       className: "fg-note",
       role: "status"
-    }, exportNotice), /*#__PURE__*/React.createElement("section", {
+    }, exportNotice), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-layout",
+      "data-details-open": view.details
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-main-column"
+    }, /*#__PURE__*/React.createElement("section", {
       className: "gb-workspace fg-workspace",
       "aria-label": "\u73B0\u573A\u5B9E\u9645\u7518\u7279\u5DE5\u4F5C\u533A",
       onKeyDown: zoomKeys
@@ -30394,54 +31351,25 @@ function SMExport({
         setExporting(true);
       },
       busy: exportBusy
-    }), data.critical_chain.state === 'unavailable' && /*#__PURE__*/React.createElement("div", {
+    }), /*#__PURE__*/React.createElement(window.GanttGraphLayer.Controls, {
+      graph: data.gantt_graph,
+      enabled: view.chain,
+      onChange: chain => patch({
+        chain
+      }),
+      active: active,
+      geometry: geometry,
+      onClear: clearTarget
+    }), locateNotice && /*#__PURE__*/React.createElement("p", {
       className: "fg-note",
       role: "status"
-    }, "\u5173\u952E\u94FE\u4E0D\u53EF\u7528\uFF1A", data.critical_chain.reason), view.chain && data.critical_chain.state === 'available' && /*#__PURE__*/React.createElement("div", {
-      className: "fg-chain-slot"
-    }, shownChain && /*#__PURE__*/React.createElement(Chain, {
-      chain: shownChain,
-      model: model,
-      onLocate: locate
-    }), loadingRelated && /*#__PURE__*/React.createElement("div", {
-      className: "fg-note",
-      role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u6240\u9009\u5DE5\u5E8F\u7684\u5173\u8054\u94FE\u2026"), targetRef && relatedChain && relatedChain.target === targetRef && /*#__PURE__*/React.createElement(ErrorBox, {
-      error: relatedChain.error
-    })), view.selected && !model.items.some(i => i.task.task_ref === view.selected) && /*#__PURE__*/React.createElement("div", {
+    }, locateNotice), view.selected && !model.items.some(i => i.task.task_ref === view.selected) && /*#__PURE__*/React.createElement("div", {
       role: "status",
       className: "fg-note"
-    }, "\u9009\u4E2D\u5DE5\u5E8F\u4E0D\u5728\u5F53\u524D\u7B5B\u9009\u8303\u56F4\uFF0C\u672A\u6269\u5927\u6765\u6E90\u6761\u4EF6\u3002"), view.report && selected && !report && /*#__PURE__*/React.createElement("div", {
+    }, "\u9009\u4E2D\u5DE5\u5E8F\u5728\u5F53\u524D\u7B5B\u9009\u8303\u56F4\u5916\uFF0C\u8BF7\u8C03\u6574\u7B5B\u9009\u3002"), view.report && selected && !report && /*#__PURE__*/React.createElement("div", {
       role: "alert",
       className: "fg-note"
-    }, "\u539F\u62A5\u5DE5\u8BB0\u5F55\u4E0D\u5728\u6240\u9009\u5DE5\u5E8F\u4E2D\uFF0C\u672A\u6539\u6307\u5176\u4ED6\u8BB0\u5F55\u3002"), view.details && /*#__PURE__*/React.createElement("div", {
-      className: "fg-details",
-      role: "region",
-      "aria-label": "\u5DE5\u5E8F\u8BE6\u60C5"
-    }, selected ? /*#__PURE__*/React.createElement(React.Fragment, null, describe(selected, model.labels, report).map((line, i) => /*#__PURE__*/React.createElement("span", {
-      key: i
-    }, line)), selected.execution && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "fg-report-selector"
-    }, /*#__PURE__*/React.createElement("label", null, "\u9010\u6B21\u62A5\u5DE5 ", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u9009\u62E9\u62A5\u5DE5\u8BE6\u60C5",
-      value: view.report || '',
-      onChange: e => patch({
-        report: e.target.value || null
-      })
-    }, /*#__PURE__*/React.createElement("option", {
-      value: ""
-    }, "\u6574\u9053\u5DE5\u5E8F"), selected.execution.reports.map(r => /*#__PURE__*/React.createElement("option", {
-      key: r.report_ref,
-      value: r.report_ref
-    }, r.report_no)))), /*#__PURE__*/React.createElement(Button, {
-      className: "fg-icon-button",
-      icon: "search",
-      "aria-label": "\u5B9A\u4F4D\u672C\u6B21\u62A5\u5DE5",
-      disabled: !report || !report.actual_start,
-      onClick: () => locate()
-    })), selected.execution.remaining_plan && /*#__PURE__*/React.createElement("span", null, "\u5269\u4F59\u5B89\u6392\uFF1A", M.time(selected.execution.remaining_plan.start), " \u81F3 ", M.time(selected.execution.remaining_plan.end)), selected.execution.data_gaps.map((gap, i) => /*#__PURE__*/React.createElement("span", {
-      key: 'gap' + i
-    }, gap.message || '报工记录待核对')), report && /*#__PURE__*/React.createElement("span", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761"))) : /*#__PURE__*/React.createElement("span", null, "\u672A\u9009\u4E2D\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", {
+    }, "\u539F\u62A5\u5DE5\u8BB0\u5F55\u4E0D\u5728\u6240\u9009\u5DE5\u5E8F\u4E2D\uFF0C\u672A\u6539\u6307\u5176\u4ED6\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "fg-board",
       ref: board,
       "data-actual-scroll": true,
@@ -30471,15 +31399,16 @@ function SMExport({
       style: {
         width
       }
-    }, M.ticks(model, width, position.left, viewport).map(tick => /*#__PURE__*/React.createElement("div", {
-      className: "fg-tick",
-      key: tick.at,
-      title: M.time(tick.label),
-      style: {
-        left: tick.x,
-        width: Math.min(134, width - tick.x)
-      }
-    }, tick.x + 110 <= width && /*#__PURE__*/React.createElement(React.Fragment, null, M.time(tick.label).slice(0, 10), /*#__PURE__*/React.createElement("small", null, M.time(tick.label).slice(11, 19))))), /*#__PURE__*/React.createElement("i", {
+    }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
+      axis: window.GanttPresentation.axis({
+        start: model.start,
+        end: model.end,
+        width,
+        left: position.left,
+        viewport
+      }),
+      width: width
+    }), /*#__PURE__*/React.createElement("i", {
       className: "fg-clock",
       style: {
         left: (model.asOf - model.start) / (model.end - model.start) * width
@@ -30500,7 +31429,13 @@ function SMExport({
       onSelect: select,
       onHover: hoverMark,
       onChainTarget: setChainTarget,
-      chain: visibleChain
+      active: active
+    }), /*#__PURE__*/React.createElement(window.GanttGraphLayer.Lines, {
+      geometry: geometry,
+      width: width,
+      height: model.height,
+      labelWidth: labelWidth,
+      top: 52
     }), !model.items.length && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: view.query || view.late !== 'all' || view.onlySelected ? 'filtered' : 'empty',
       title: "\u5F53\u524D\u8303\u56F4\u6CA1\u6709\u5339\u914D\u7684\u5DE5\u5E8F\u3002",
@@ -30522,7 +31457,75 @@ function SMExport({
       step: "any",
       onChange: e => pan(Number(e.target.value)),
       disabled: zoom === 1
-    }), /*#__PURE__*/React.createElement("span", null, M.time(M.wire(model.end)))))), hover && model && /*#__PURE__*/React.createElement("div", {
+    }), /*#__PURE__*/React.createElement("span", null, M.time(M.wire(model.end)))))), view.details && /*#__PURE__*/React.createElement("aside", {
+      ref: detailsPanel,
+      className: "wb-gantt-detail-panel fg-detail-panel",
+      id: "actual-gantt-detail",
+      "aria-label": "\u5DE5\u5E8F\u8BE6\u60C5"
+    }, /*#__PURE__*/React.createElement("header", {
+      className: "wb-gantt-detail-header"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u5E8F\u8BE6\u60C5"), /*#__PURE__*/React.createElement(Button, {
+      icon: "x",
+      "aria-label": "\u6536\u8D77\u5DE5\u5E8F\u8BE6\u60C5",
+      onClick: collapseDetails
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-body"
+    }, selected ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
+      className: "wb-gantt-detail-section",
+      open: true
+    }, /*#__PURE__*/React.createElement("summary", null, "\u6267\u884C\u4E0E\u5B8C\u5DE5\u504F\u5DEE"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section-body fg-detail-facts"
+    }, describe(selected, model.labels, report).map((line, i) => /*#__PURE__*/React.createElement("p", {
+      key: i
+    }, line)), selected.execution && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
+      className: "fg-report-selector"
+    }, "\u9010\u6B21\u62A5\u5DE5 ", /*#__PURE__*/React.createElement("select", {
+      "aria-label": "\u9009\u62E9\u62A5\u5DE5\u8BE6\u60C5",
+      value: view.report || '',
+      onChange: e => patch({
+        report: e.target.value || null
+      })
+    }, /*#__PURE__*/React.createElement("option", {
+      value: ""
+    }, "\u6574\u9053\u5DE5\u5E8F"), selected.execution.reports.map(r => /*#__PURE__*/React.createElement("option", {
+      key: r.report_ref,
+      value: r.report_ref
+    }, r.report_no)))), /*#__PURE__*/React.createElement(Button, {
+      icon: "search",
+      disabled: !report || !report.actual_start,
+      onClick: () => locate()
+    }, "\u5B9A\u4F4D\u672C\u6B21\u62A5\u5DE5"), selected.execution.remaining_plan && /*#__PURE__*/React.createElement("p", null, "\u5269\u4F59\u5B89\u6392\uFF1A", M.time(selected.execution.remaining_plan.start), " \u81F3 ", M.time(selected.execution.remaining_plan.end)), selected.execution.reports.filter(row => selected.execution.data_gaps.some(gap => gap.report_ref === row.report_ref)).map(row => /*#__PURE__*/React.createElement(Button, {
+      key: row.report_ref,
+      icon: "search",
+      onClick: () => patch({
+        report: row.report_ref
+      })
+    }, "\u67E5\u770B\u5F85\u8865\u62A5\u5DE5 ", row.report_no)), report && /*#__PURE__*/React.createElement("p", null, "\u767B\u8BB0\uFF1A", M.time(report.recorded_at), " \xB7 \u5386\u53F2\u7248\u672C ", report.correction_history.length, " \u6761")), onNavigate && /*#__PURE__*/React.createElement(Button, {
+      icon: "arrow-right",
+      onClick: () => navigate('field')
+    }, "\u5230\u73B0\u573A\u8BB0\u5F55\u6838\u5BF9\u6216\u8865\u9F50"))), /*#__PURE__*/React.createElement("details", {
+      className: "wb-gantt-detail-section",
+      open: true
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section-body"
+    }, /*#__PURE__*/React.createElement(window.GanttRouteList, {
+      graph: data.gantt_graph,
+      targetRef: selected.task.task_ref,
+      loadedRefs: new Set(model.items.map(item => item.task.task_ref)),
+      onSelect: ref => {
+        locate(ref);
+      }
+    }))), data.gantt_graph.state === 'available' && data.gantt_graph.critical_task_refs.length > 0 && /*#__PURE__*/React.createElement("details", {
+      className: "wb-gantt-detail-section"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u5212\u5173\u952E\u94FE"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section-body"
+    }, /*#__PURE__*/React.createElement(Chain, {
+      graph: data.gantt_graph,
+      model: model,
+      onLocate: locate
+    })))) : /*#__PURE__*/React.createElement("p", {
+      className: "fg-muted"
+    }, "\u70B9\u51FB\u5DE5\u5E8F\u67E5\u770B\u8BE6\u60C5\u4E0E\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF\u3002"))))), hover && model && /*#__PURE__*/React.createElement("div", {
       className: "fg-tip",
       role: "tooltip",
       style: {
@@ -33723,6 +34726,7 @@ function SMExport({
   const nullableText = v => v === null || text(v);
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 || text(v) && /^[1-9]\d{15,}$/.test(v) && (v.length > 16 || v > '9007199254740991');
   const nullableNumber = v => v === null || number(v);
+  const version = v => v === null || (typeof v === 'string' ? number(v) : Number.isSafeInteger(v) && v > 0);
   const caps = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual'], ['trial']) && typeof v.view === 'boolean' && typeof v.export === 'boolean' && v.edit_draft === false && v.adopt === false && v.report_actual === false && (v.trial === undefined || v.trial === false);
   const blocked = v => Array.isArray(v) && v.every(r => shape(r, ['capability', 'code', 'message']) && [r.capability, r.code, r.message].every(text));
   const metricKeys = ['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'changeover_count', 'weighted_tardiness_hours', 'machine_used_count', 'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg', 'elapsed_seconds'];
@@ -33816,7 +34820,7 @@ function SMExport({
   function workspace(v, candidateRef, query = {}, runRef) {
     const d = envelope(v),
       q = workspaceScope(candidateRef, query);
-    check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span', 'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks']));
+    check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span', 'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks', 'gantt_graph']));
     summary(d.candidate, runRef);
     check(d.candidate.candidate_ref === candidateRef);
     check(Array.isArray(d.tasks) && count(d.task_count) && d.task_count === d.tasks.length && d.tasks_complete === true && d.candidate_task_count === d.candidate.task_count && d.task_count <= d.candidate_task_count && span(d.candidate_span) && span(d.task_span) && d.task_count === 0 === (d.task_span === null) && d.candidate_task_count === 0 === (d.candidate_span === null) && caps(d.capabilities) && blocked(d.blocked_reasons) && gaps(d.data_gaps) && (!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref) && d.batch_ref === (q.batch_ref || null));
@@ -33855,8 +34859,17 @@ function SMExport({
       });
     }
     const g = d.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window']) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && shape(g.baseline, ['captured_task_count', 'comparison_available', 'reason']) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)) && g.baseline.comparison_available === false && shape(g.baseline.reason, ['code', 'message']) && text(g.baseline.reason.message));
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window']) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && shape(g.algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(g.algorithm).every(nullableText) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
     delivery(d.delivery_risks, d, q);
+    check(window.GanttGraph.validate(d.gantt_graph, {
+      scope: 'full_candidate',
+      tasks: d.tasks,
+      taskRef: 'row_ref',
+      time,
+      sequence: nullableNumber,
+      processLabel: nullableText,
+      completeCount: d.candidate_task_count
+    }));
     return d;
   }
   function failure(payload, status) {
@@ -33958,6 +34971,7 @@ function SMExport({
     check,
     ref,
     time,
+    version,
     shape,
     envelope,
     catalog,
@@ -34032,6 +35046,18 @@ function SMExport({
     }
   };
   const executionValue = (v, key = 'execution_state') => Object.prototype.hasOwnProperty.call(executionTexts[key] || {}, v) ? executionTexts[key][v] : typeof v === 'string' ? v : number(v);
+  function executionField(task, key) {
+    const value = task.execution_at_generation[key];
+    if (value !== null) return executionValue(value, key);
+    const problem = task.data_gaps.find(row => row.field === 'execution_at_generation.' + key || row.field === 'execution_at_generation');
+    return problem ? problem.message : '提交试排时未保存' + executionLabels[key] + '。';
+  }
+  function quantityLabel(task, key = 'quantity') {
+    if (task[key] !== null) return number(task[key]);
+    const fields = key === 'quantity' ? ['quantity', 'execution_at_generation.target_quantity', 'execution_at_generation.target_basis', 'execution_at_generation', 'piece_id'] : ['batch_quantity', 'batch'];
+    const problem = fields.map(field => task.data_gaps.find(item => item.field === field)).find(Boolean);
+    return problem ? problem.message : key === 'quantity' ? '生成时工序目标量缺少依据。' : '生成时整批量缺少依据。';
+  }
   const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
   const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t), t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
   const matching = (tasks, query) => {
@@ -34042,8 +35068,33 @@ function SMExport({
     ref: t.batch_ref,
     label: t.batch_label
   } : t[mode];
+  function resourceLabel(side, kind) {
+    const value = side[kind],
+      label = kind === 'supplier' ? '供应商' : kindLabels[kind];
+    if (value && value.label && value.ref !== null) return value.label;
+    const gap = field => side.data_gaps.find(item => item.field === field);
+    if (value) {
+      const nameProblem = !value.label && (gap(kind + '.label') || gap(kind));
+      const identityProblem = value.ref === null && (gap(kind + '.ref') || gap(kind));
+      return (value.label || label + '名称未记录' + (nameProblem ? '：' + nameProblem.message : '')) + (value.ref === null ? '（身份未记录' + (identityProblem ? '：' + identityProblem.message : '') + '）' : '');
+    }
+    const problem = gap(kind) || gap(kind + '.ref');
+    if (problem) return label + '身份未记录：' + problem.message;
+    if (['unscheduled', 'skipped'].includes(side.status)) return '尚未安排';
+    if (kind === 'supplier' && side.source === 'internal') return '不适用（内部工序）';
+    if (kind !== 'supplier' && side.source === 'external') return '不适用（外协工序）';
+    if (kind !== 'supplier' && window.PointContract.isPoint(side)) return '不占用（零工时工序）';
+    return '未指定';
+  }
+  function laneLabel(row) {
+    const count = row.baseline || row.point ? row.laneCount : row.normalLaneCount;
+    const suffix = count > 1 ? ' ' + (row.lane + 1) + '/' + count : '';
+    if (row.baseline) return '原安排' + (row.baselinePoint ? ' · 零工时点' : '') + suffix;
+    if (row.point) return '零工时点' + suffix;
+    return count > 1 ? '重叠子行' + suffix : '新安排';
+  }
   function title(t) {
-    return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t), '本工序目标量：' + number(t.quantity) + ' · 生成时整批量：' + number(t.batch_quantity), timeLabel(t.start) + ' 至 ' + timeLabel(t.end), window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : null, '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录')].filter(Boolean).join('\n');
+    return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t), '本工序目标量：' + quantityLabel(t) + ' · 生成时整批量：' + quantityLabel(t, 'batch_quantity'), timeLabel(t.start) + ' 至 ' + timeLabel(t.end), window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : null, t.locked ? '固定工序' : null, '设备：' + resourceLabel(t, 'machine'), '人员：' + resourceLabel(t, 'operator'), t.source === 'external' ? '供应商：' + resourceLabel(t, 'supplier') : null].filter(Boolean).join('\n');
   }
   function push(heap, item) {
     let i = heap.length;
@@ -34074,8 +35125,14 @@ function SMExport({
   function tracks(items) {
     const heap = [],
       lanes = [];
+    let furthest = null;
     items.sort((a, b) => a.start - b.start || a.end - b.end || a.task.row_ref.localeCompare(b.task.row_ref));
     for (const item of items) {
+      if (furthest && item.start < furthest.end) {
+        furthest.overlap = true;
+        item.overlap = true;
+      }
+      if (!furthest || item.end > furthest.end) furthest = item;
       const lane = heap.length && heap[0].end <= item.start ? pop(heap).lane : lanes.length;
       if (!lanes[lane]) lanes[lane] = [];
       lanes[lane].push(item);
@@ -34086,11 +35143,11 @@ function SMExport({
     }
     return lanes;
   }
-  function layout(data, mode, query, width = 1000) {
+  function layout(data, mode, query, width = 1000, operationRefs = null) {
     const groups = new Map(),
       rows = [],
-      locations = new Map(),
-      tasks = matching(data.tasks, query);
+      locations = new Map();
+    const tasks = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref));
     const P = window.PointContract,
       G = window.PointGanttModel;
     const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, data.tasks.some(P.isPoint));
@@ -34100,7 +35157,7 @@ function SMExport({
         id = r && r.ref || 'missing:' + task.row_ref;
       if (!groups.has(id)) groups.set(id, {
         id,
-        label: r && r.label || kindLabels[mode] + '未记录',
+        label: mode === 'batch' ? r.label || '批次未记录' : resourceLabel(task, mode),
         items: []
       });
       groups.get(id).items.push({
@@ -34120,7 +35177,7 @@ function SMExport({
           label: group.label,
           items,
           top,
-          height: 48,
+          height: 56,
           lane,
           laneCount: lanes.length,
           normalLaneCount: normal.length,
@@ -34158,11 +35215,15 @@ function SMExport({
     matching,
     layout,
     title,
+    laneLabel,
     pieceLabel,
+    quantityLabel,
+    resourceLabel,
     kindLabels,
     metricLabels,
     executionLabels,
-    executionValue
+    executionValue,
+    executionField
   };
 })();
 
@@ -34359,7 +35420,7 @@ function SMExport({
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
-    }, "\u4EA4\u4ED8\u6307\u6807\u4EC5\u8986\u76D6\u5B8C\u6210\u6279\u6B21\uFF1B\u8D44\u6E90\u6307\u6807\u4EC5\u8986\u76D6\u5DF2\u6392\u7ED3\u679C\uFF0C\u7F3A\u9879\u4E0D\u6309\u96F6\u8BA1\u7B97\u3002"), /*#__PURE__*/React.createElement(Pager, {
+    }, "\u4EA4\u4ED8\u6307\u6807\uFF1A\u5B8C\u6210\u6279\u6B21 \xB7 \u8D44\u6E90\u6307\u6807\uFF1A\u5DF2\u6392\u5B89\u6392"), /*#__PURE__*/React.createElement(Pager, {
       page: d.page.number,
       pages: Math.max(1, Math.ceil(d.page.total / d.page.size)),
       disabled: busy,
@@ -34386,7 +35447,7 @@ function SMExport({
       candidate: data.candidate
     }), /*#__PURE__*/React.createElement("span", {
       className: "rc-pending"
-    }, "\u751F\u6210\u65F6\u8FD8\u6CA1\u6210\u4E3A\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("span", null, "\u751F\u6210\u65E5\u671F\uFF1A", input.start_date || '未记录', " \u81F3 ", input.end_date || '未记录')), /*#__PURE__*/React.createElement("div", {
+    }, "\u5019\u9009\u65B9\u6848")), /*#__PURE__*/React.createElement("span", null, "\u751F\u6210\u65E5\u671F\uFF1A", input.start_date || '未记录', " \u81F3 ", input.end_date || '未记录')), /*#__PURE__*/React.createElement("div", {
       className: "rc-source-summary"
     }, /*#__PURE__*/React.createElement("details", {
       className: "rc-reasons rc-generation wb-ref"
@@ -34397,9 +35458,9 @@ function SMExport({
     }, window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window')))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
       auto_assign: '自动分配',
       exclude: '暂不排'
-    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement("div", {
+    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
-    }, "\u540D\u79F0\u3001\u8D44\u6E90\u3001\u4EA4\u671F\u548C\u6267\u884C\u72B6\u6001\u6765\u81EA\u751F\u6210\u65F6\u4FDD\u5B58\u7684\u8D44\u6599\uFF0C\u672A\u8BFB\u53D6\u540E\u6765\u7684\u4FEE\u6539\u3002", analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message), /*#__PURE__*/React.createElement("div", {
+    }, "\u751F\u6210\u8D44\u6599\uFF1A\u63D0\u4EA4\u8BD5\u6392\u65F6\u4FDD\u5B58\u3002", analysis && analysis.baseline.reason && analysis.baseline.reason.message), /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
     }, analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '排产时的批次清单暂不可用。'), /*#__PURE__*/React.createElement("div", null, "\u6392\u4EA7\u8BB0\u5F55\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("code", null, g.run_ref)), /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u8BB0\u5F55\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("code", null, data.candidate.candidate_ref)), /*#__PURE__*/React.createElement("dl", {
       className: "rc-meta"
@@ -34408,43 +35469,93 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("dt", null, M.metricLabels[k]), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(Metric, {
       metric: data.candidate.metrics[k],
       kind: k
-    })))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5B9E\u9645\u5DE5\u65F6 / \u6210\u672C"), /*#__PURE__*/React.createElement("dd", null, "\u6682\u65E0\u6570\u636E", /*#__PURE__*/React.createElement("small", null, "\u7CFB\u7EDF\u8FD8\u6CA1\u6709\u5B9E\u9645\u5DE5\u65F6\u548C\u6210\u672C\u8BB0\u5F55\u3002"))))), /*#__PURE__*/React.createElement("span", {
+    })))))), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
     }, analysis ? '完整排产范围 ' + analysis.batch_refs.length + ' 批' : '完整排产范围待核对'), /*#__PURE__*/React.createElement(Reasons, {
       rows: [...data.data_gaps, ...data.candidate.data_gaps, ...g.data_gaps, ...data.blocked_reasons, ...data.candidate.blocked_reasons]
     })));
   }
+  function DetailFacts({
+    rows
+  }) {
+    return /*#__PURE__*/React.createElement("dl", null, rows.map(([key, value]) => /*#__PURE__*/React.createElement("div", {
+      key: key
+    }, /*#__PURE__*/React.createElement("dt", null, key), /*#__PURE__*/React.createElement("dd", null, value == null ? '未记录' : value))));
+  }
   function Detail({
+    data,
     task,
-    onClose
+    onClose,
+    onRelated,
+    onCollapse
   }) {
     const M = window.RunCandidateModel;
-    return /*#__PURE__*/React.createElement("aside", {
-      className: "rc-detail",
-      "aria-label": "\u5019\u9009\u5DE5\u5E8F\u8BE6\u60C5"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "rc-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u5E8F\u8BE6\u60C5"), task && /*#__PURE__*/React.createElement(Button, {
-      icon: "x",
-      "aria-label": "\u5173\u95ED\u5DE5\u5E8F\u8BE6\u60C5",
-      onClick: onClose
-    })), !task ? /*#__PURE__*/React.createElement("p", {
-      className: "rc-muted"
-    }, "\u5C1A\u672A\u9009\u62E9\u5DE5\u5E8F") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_label || '批次名称未填写', " \xB7 ", task.process_label || '工序名称未填写'), /*#__PURE__*/React.createElement("dl", null, [['零件', task.part_label], ['工序顺序', M.number(task.sequence)], ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id], ['本工序目标量', M.number(task.quantity)], ['生成时整批量', M.number(task.batch_quantity)], ['交期', task.due_date], ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', task.machine && task.machine.label], ['人员', task.operator && task.operator.label], ['外协商', task.supplier && task.supplier.label], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null], ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排']].map(([k, v]) => /*#__PURE__*/React.createElement("div", {
-      key: k
-    }, /*#__PURE__*/React.createElement("dt", null, k), /*#__PURE__*/React.createElement("dd", null, v == null ? '未记录' : v)))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    const loadedRefs = React.useMemo(() => new Set(data.tasks.map(row => row.row_ref)), [data.tasks]);
+    const compact = !!onCollapse,
+      RecordSection = compact ? 'details' : 'section',
+      RecordHeading = compact ? 'summary' : 'h4',
+      panel = React.useRef(null);
+    React.useEffect(() => {
+      if (compact && window.matchMedia('(max-width:1050px)').matches) panel.current.scrollIntoView({
+        block: 'nearest'
+      });
+    }, [compact]);
+    const sourceKeys = new Set(['生成时整批量', '外协商', '来源', '生成时锁定']);
+    const facts = task ? [['零件', task.part_label], ['工序顺序', M.number(task.sequence)], ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id], ['本工序目标量', M.quantityLabel(task)], ['生成时整批量', M.quantityLabel(task, 'batch_quantity')], ['交期', task.due_date], ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', M.resourceLabel(task, 'machine')], ['人员', M.resourceLabel(task, 'operator')], ['外协商', M.resourceLabel(task, 'supplier')], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null], ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排']] : [];
+    const reference = task && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '安排编号': task.row_ref,
         '工序编号': task.operation_ref,
-        '批次编号': task.batch_ref
+        '批次编号': task.batch_ref,
+        '设备编号': task.machine && task.machine.ref,
+        '人员编号': task.operator && task.operator.ref,
+        '供应商编号': task.supplier && task.supplier.ref
       }
-    }), /*#__PURE__*/React.createElement("h4", null, "\u751F\u6210\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u8BB0\u5F55"), task.execution_at_generation ? /*#__PURE__*/React.createElement("dl", null, Object.entries(task.execution_at_generation).map(([k, v]) => /*#__PURE__*/React.createElement("div", {
-      key: k
-    }, /*#__PURE__*/React.createElement("dt", null, M.executionLabels[k]), /*#__PURE__*/React.createElement("dd", null, v === null ? '未知' : M.executionValue(v, k))))) : /*#__PURE__*/React.createElement("p", {
+    });
+    return /*#__PURE__*/React.createElement("aside", {
+      ref: panel,
+      className: 'rc-detail' + (compact ? ' wb-gantt-detail-panel' : ''),
+      id: compact ? 'candidate-gantt-detail' : undefined,
+      "aria-label": "\u5019\u9009\u5DE5\u5E8F\u8BE6\u60C5"
+    }, /*#__PURE__*/React.createElement("header", {
+      className: compact ? 'wb-gantt-detail-header' : 'rc-heading'
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u5E8F\u8BE6\u60C5"), compact ? /*#__PURE__*/React.createElement(Button, {
+      icon: "panel-right-close",
+      onClick: onCollapse
+    }, "\u6536\u8D77\u8BE6\u60C5") : task && /*#__PURE__*/React.createElement(Button, {
+      icon: "x",
+      "aria-label": "\u5173\u95ED\u5DE5\u5E8F\u8BE6\u60C5",
+      onClick: onClose
+    })), /*#__PURE__*/React.createElement("div", {
+      className: compact ? 'wb-gantt-detail-body' : undefined,
+      "data-wb-scroll-key": compact ? 'candidate-inspector' : undefined
+    }, !task ? /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
-    }, "\u672A\u8BB0\u5F55\u6392\u4EA7\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u72B6\u6001\u3002"), /*#__PURE__*/React.createElement(Reasons, {
+    }, "\u5C1A\u672A\u9009\u62E9\u5DE5\u5E8F") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, task.batch_label || '批次名称未填写', " \xB7 ", task.process_label || '工序名称未填写'), /*#__PURE__*/React.createElement(DetailFacts, {
+      rows: compact ? facts.filter(([key]) => !sourceKeys.has(key)) : facts
+    }), !compact && reference, /*#__PURE__*/React.createElement(window.GanttRouteList, {
+      graph: data.gantt_graph,
+      targetRef: task.row_ref,
+      loadedRefs: loadedRefs,
+      onSelect: onRelated,
+      collapsible: compact
+    }), compact && /*#__PURE__*/React.createElement("details", {
+      className: "wb-gantt-detail-section"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u6765\u6E90\u4E0E\u8BB0\u5F55\u7F16\u53F7"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section-body"
+    }, /*#__PURE__*/React.createElement(DetailFacts, {
+      rows: facts.filter(([key]) => sourceKeys.has(key))
+    }), reference)), /*#__PURE__*/React.createElement(RecordSection, {
+      className: compact ? 'wb-gantt-detail-section' : undefined
+    }, /*#__PURE__*/React.createElement(RecordHeading, null, "\u751F\u6210\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u8BB0\u5F55"), /*#__PURE__*/React.createElement("div", {
+      className: compact ? 'wb-gantt-detail-section-body' : undefined
+    }, task.execution_at_generation ? /*#__PURE__*/React.createElement(DetailFacts, {
+      rows: Object.keys(task.execution_at_generation).map(key => [M.executionLabels[key], M.executionField(task, key)])
+    }) : /*#__PURE__*/React.createElement("p", {
+      className: "rc-muted"
+    }, "\u63D0\u4EA4\u8BD5\u6392\u65F6\u7684\u5F00\u5DE5\u548C\u5B8C\u5DE5\u8BB0\u5F55\u7F3A\u5931\uFF0C\u8BF7\u6838\u5BF9\u8BE5\u5DE5\u5E8F\u7684\u751F\u6210\u8D44\u6599\u3002"))), /*#__PURE__*/React.createElement(Reasons, {
       rows: task.data_gaps
-    })));
+    }))));
   }
   function Delivery({
     data,
@@ -34473,7 +35584,7 @@ function SMExport({
       key: label
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, M.number(value))))), /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
-    }, "\u4F9D\u636E\uFF1A\u6392\u4EA7\u65F6\u7684\u8D44\u6599\u548C\u540C\u6279\u5B8C\u6574\u5019\u9009\u5B89\u6392\u3002\u4E0D\u662F\u5B9E\u9645\u5B8C\u5DE5\u6216\u53D1\u8D27\uFF1B\u6CA1\u6709\u6838\u5BF9\u7B49\u5F85\u3001\u505C\u673A\u6216\u7F3A\u6599\u7684\u539F\u56E0\u3002"), data.issues.map((issue, index) => /*#__PURE__*/React.createElement("p", {
+    }, "\u9884\u8BA1\u4EA4\u4ED8\u4F9D\u636E\uFF1A\u63D0\u4EA4\u8BD5\u6392\u65F6\u7684\u4EA4\u671F\u4E0E\u672C\u5019\u9009\u5B89\u6392\u3002"), data.issues.map((issue, index) => /*#__PURE__*/React.createElement("p", {
       className: "rc-notice",
       key: index
     }, issue.message)), /*#__PURE__*/React.createElement("div", {
@@ -34578,7 +35689,7 @@ function SMExport({
       report_actual: false
     }));
     const b = d.baseline;
-    check(shape(b, ['baseline_ref', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason']) && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count) && typeof b.comparison_available === 'boolean' && (b.available ? ref(b.baseline_ref) : b.baseline_ref === null && b.captured_task_count === 0) && (b.comparison_available ? b.reason === null : reason(b.reason)));
+    check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason']) && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count) && A.version(b.version) && time(b.captured_at) && typeof b.comparison_available === 'boolean' && (b.available ? ref(b.baseline_ref) && b.version !== null : b.baseline_ref === null && b.version === null && b.captured_task_count === 0) && (b.comparison_available ? b.reason === null : reason(b.reason)));
     d.batches.forEach(row => {
       check(shape(row, ['batch_ref', 'batch_id', 'part_label', 'before', 'after', 'delay_delta_hours']) && text(row.batch_id));
       delivery(row.before, row);
@@ -34599,7 +35710,8 @@ function SMExport({
       lists = ['operation_refs', 'changed_operation_refs', 'machine_changed_operation_refs', 'unknown_operation_refs', 'machine_unknown_operation_refs'];
     check(shape(o, [...lists, 'issues']) && lists.every(key => refs(o[key])) && Array.isArray(o.issues));
     const all = new Set(o.operation_refs);
-    check(lists.slice(1).every(key => o[key].every(value => all.has(value))) && new Set(o.issues.map(row => row.operation_ref)).size === o.issues.length);
+    const issueRefs = new Set(o.issues.map(row => row.operation_ref));
+    check(lists.slice(1).every(key => o[key].every(value => all.has(value))) && issueRefs.size === o.issues.length && o.unknown_operation_refs.every(value => issueRefs.has(value)));
     o.issues.forEach(row => check(shape(row, ['operation_ref', 'reasons']) && all.has(row.operation_ref) && Array.isArray(row.reasons) && row.reasons.length && row.reasons.every(reason)));
     [['changed_operation_count', 'changed_operation_refs', 'unknown_operation_refs'], ['machine_change_count', 'machine_changed_operation_refs', 'machine_unknown_operation_refs']].forEach(([key, changed, unknown]) => {
       metric(d.metrics[key], key);
@@ -34714,7 +35826,7 @@ function SMExport({
       "aria-label": "\u5019\u9009\u53D8\u5316\u4E0E\u53D6\u820D"
     }, Object.keys(data.delivery_deltas).map(key => /*#__PURE__*/React.createElement("span", {
       key: key
-    }, labels[key], "\uFF1A", data.delivery_deltas[key] === null ? '对比基准或候选依据不足，变化未知' : M.signedChange(data.delivery_deltas[key]))), /*#__PURE__*/React.createElement("span", null, "\u8C03\u6574\u5DE5\u5E8F\uFF1A", data.metrics.changed_operation_count.value === null ? '完整数量待确认' : data.metrics.changed_operation_count.value + ' 道'), /*#__PURE__*/React.createElement("span", null, "\u6362\u8BBE\u5907\uFF1A", data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道')), !data.baseline.comparison_available && /*#__PURE__*/React.createElement("p", {
+    }, labels[key], "\uFF1A", !data.baseline.available ? '无原安排，不作对比' : data.delivery_deltas[key] === null ? '原安排或候选的交付依据不完整，暂不能比较' : M.signedChange(data.delivery_deltas[key]))), /*#__PURE__*/React.createElement("span", null, "\u8C03\u6574\u5DE5\u5E8F\uFF1A", data.metrics.changed_operation_count.value === null ? '完整数量待确认' : data.metrics.changed_operation_count.value + ' 道'), /*#__PURE__*/React.createElement("span", null, "\u6362\u8BBE\u5907\uFF1A", data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道')), !data.baseline.comparison_available && /*#__PURE__*/React.createElement("p", {
       className: "rc-notice"
     }, data.baseline.reason.message), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: data.operations.issues.flatMap(row => row.reasons)
@@ -34754,11 +35866,11 @@ function SMExport({
     }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.batches.slice((current - 1) * 20, current * 20).map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.batch_ref,
       "data-analysis-batch": row.batch_ref
-    }, /*#__PURE__*/React.createElement("td", null, row.batch_id, /*#__PURE__*/React.createElement("small", null, row.part_label || '名称未填写')), /*#__PURE__*/React.createElement("td", null, row.after.due_date || '未记录'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Finish, {
+    }, /*#__PURE__*/React.createElement("td", null, row.batch_id, /*#__PURE__*/React.createElement("small", null, row.part_label || '名称未填写')), /*#__PURE__*/React.createElement("td", null, row.after.due_date || '未记录'), /*#__PURE__*/React.createElement("td", null, data.baseline.available ? /*#__PURE__*/React.createElement(Finish, {
       row: row.before
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Finish, {
+    }) : '无原安排'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Finish, {
       row: row.after
-    })), /*#__PURE__*/React.createElement("td", null, row.delay_delta_hours === null ? '未知' : M.signedChange(row.delay_delta_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
+    })), /*#__PURE__*/React.createElement("td", null, !data.baseline.available ? '不适用' : row.delay_delta_hours === null ? '交付依据不完整，暂不能比较' : M.signedChange(row.delay_delta_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chart-gantt",
       disabled: !onBatch,
       "aria-label": '查看批次甘特 ' + row.batch_id,
@@ -34853,7 +35965,7 @@ function SMExport({
   const statuses = ['matched', 'newly_scheduled', 'unscheduled', 'baseline_only', 'not_comparable'];
   const deltaKeys = ['start_hours', 'end_hours', 'elapsed_hours', 'machine_changed', 'operator_changed', 'supplier_changed', 'effective_processing_hours'];
   function check(ok) {
-    if (!ok) throw new Error('初始计划对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新初始计划」。');
+    if (!ok) throw new Error('原安排对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新原安排」。');
   }
   function equal(a, b) {
     if (a === b) return true;
@@ -34871,12 +35983,17 @@ function SMExport({
     // A baseline read owns its own snapshot. Never accept or forward a workspace token.
     return A.workspaceScope(data.candidate.candidate_ref, q);
   }
+  function resourceIdentity(side, kind) {
+    const value = side[kind];
+    if (value !== null) return value.ref === null ? undefined : value.ref;
+    return side.data_gaps.some(gap => gap.field === kind || gap.field === kind + '.ref') ? undefined : null;
+  }
   function interval(v, baseline) {
-    const keys = ['row_ref', 'start', 'end', 'elapsed_hours', 'machine', 'operator', 'supplier', 'effective_processing_hours', 'data_gaps'];
-    check(shape(v, keys.concat(baseline ? ['interval_comparable'] : ['source', 'locked', ...(P.isPoint(v) ? P.fields : [])])) && ref(v.row_ref) && [v.start, v.end].every(nullable(time)) && nullable(finite)(v.elapsed_hours) && ['machine', 'operator', 'supplier'].every(k => resource(v[k])) && v.effective_processing_hours === null && gaps(v.data_gaps));
+    const keys = ['row_ref', 'start', 'end', 'elapsed_hours', 'source', 'machine', 'operator', 'supplier', 'effective_processing_hours', 'data_gaps'];
+    check(shape(v, keys.concat(baseline ? ['interval_comparable'] : ['locked'], P.isPoint(v) ? P.fields : [])) && ref(v.row_ref) && [v.start, v.end].every(nullable(time)) && nullable(finite)(v.elapsed_hours) && ['machine', 'operator', 'supplier'].every(k => resource(v[k])) && v.effective_processing_hours === null && gaps(v.data_gaps));
     if (v.start !== null && v.end !== null) check(timeKey(v.start) <= timeKey(v.end) && Math.abs(v.elapsed_hours - (stamp(v.end) - stamp(v.start)) / 3600000) < 0.000001);else check(v.elapsed_hours === null);
-    const valid = v.start !== null && v.end !== null && (timeKey(v.start) < timeKey(v.end) || !baseline && P.isPoint(v));
-    if (baseline) check(v.interval_comparable === valid && v.supplier === null);else check(valid && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
+    const valid = v.start !== null && v.end !== null && (timeKey(v.start) < timeKey(v.end) || P.isPoint(v));
+    if (baseline) check(v.interval_comparable === valid && (['internal', 'external'].includes(v.source) || v.source === null && v.data_gaps.some(gap => gap.field === 'source')));else check(valid && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
   }
   function comparison(row, q, seen, segments, candidateRefs) {
     check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date', 'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status', 'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons']) && ref(row.operation_ref) && !seen.has(row.operation_ref) && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean' && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status) && ['batch_label', 'part_label', 'process_label', 'due_date'].every(k => nullable(text)(row[k])) && A.quantityContext(row, true) && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
@@ -34902,13 +36019,13 @@ function SMExport({
     if (expected !== 'matched') check(Object.values(row.delta).every(v => v === null));else {
       const expectedDelta = [(stamp(c.start) - stamp(b[0].start)) / 3600000, (stamp(c.end) - stamp(b[0].end)) / 3600000, c.elapsed_hours - b[0].elapsed_hours];
       ['start_hours', 'end_hours', 'elapsed_hours'].forEach((k, i) => check(finite(row.delta[k]) && Math.abs(row.delta[k] - expectedDelta[i]) < 0.000001));
-      for (const k of ['machine', 'operator']) {
-        const before = b[0][k],
-          after = c[k],
-          changed = !before || !after || before.ref === null || after.ref === null ? null : before.ref !== after.ref;
+      for (const k of ['machine', 'operator', 'supplier']) {
+        const before = resourceIdentity(b[0], k),
+          after = resourceIdentity(c, k);
+        const changed = before === undefined || after === undefined ? null : before !== after;
         check(row.delta[k + '_changed'] === changed);
       }
-      check(row.delta.supplier_changed === null && row.delta.effective_processing_hours === null);
+      check(row.delta.effective_processing_hours === null);
     }
     if (q.range_start && c) {
       const sides = [c].concat(b);
@@ -34950,7 +36067,7 @@ function SMExport({
       segments = new Set(),
       candidateRefs = new Set(),
       counts = {};
-    check(shape(b, ['baseline_ref', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason']) && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count) && b.captured_task_count <= 20000 && (b.available ? ref(b.baseline_ref) : b.baseline_ref === null && b.captured_task_count === 0));
+    check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason']) && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count) && b.captured_task_count <= 20000 && b.version === wg.baseline.version && b.captured_at === wg.baseline.captured_at && b.baseline_ref === wg.baseline.baseline_ref && (b.available ? ref(b.baseline_ref) : b.baseline_ref === null && b.captured_task_count === 0));
     d.comparisons.forEach(row => {
       comparison(row, q, seen, segments, candidateRefs);
       counts[row.status] = (counts[row.status] || 0) + 1;
@@ -34988,7 +36105,7 @@ function SMExport({
           });
           const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
           const payload = json ? await response.json() : null;
-          if (!response.ok) throw new Error(payload && payload.error && text(payload.error.message) ? payload.error.message : '初始计划读取失败，没有显示上次结果。请点「刷新初始计划」。');
+          if (!response.ok) throw new Error(payload && payload.error && text(payload.error.message) ? payload.error.message : '原安排读取失败，没有显示上次结果。请点「刷新原安排」。');
           check(response.status === 200 && json);
           validate(payload, workspace);
           return payload;
@@ -35002,7 +36119,8 @@ function SMExport({
   window.RunBaselineAPI = {
     create,
     validate,
-    scope
+    scope,
+    resourceIdentity
   };
 })();
 
@@ -35011,21 +36129,38 @@ function SMExport({
   'use strict';
 
   const M = window.RunCandidateModel;
+  const resourceLabels = {
+    machine: '设备',
+    operator: '人员',
+    supplier: '供应商'
+  };
+  const sourceLabel = side => side.source === 'internal' ? '内部' : side.source === 'external' ? '外协' : '来源未记录';
   const statusLabels = {
     matched: '可对照安排',
     newly_scheduled: '新增安排',
     unscheduled: '候选未排',
-    baseline_only: '仅初始计划',
+    baseline_only: '仅原安排',
     not_comparable: '无法一一对照'
   };
   function matching(rows, query) {
     const needle = query.trim().toLocaleLowerCase();
-    return !needle ? rows : rows.filter(r => [r.operation_ref, r.row_ref, r.batch_ref, r.batch_label, r.part_label, r.sequence, r.process_label, r.candidate, ...r.baseline_segments].flatMap(v => typeof v === 'object' && v ? [v.row_ref, v.machine && v.machine.label, v.operator && v.operator.label] : [v]).filter(v => v != null).join(' ').toLocaleLowerCase().includes(needle));
+    return !needle ? rows : rows.filter(r => [r.operation_ref, r.row_ref, r.batch_ref, r.batch_label, r.part_label, r.sequence, r.process_label, r.candidate, ...r.baseline_segments].flatMap(v => typeof v === 'object' && v ? [v.row_ref, v.machine && v.machine.label, v.operator && v.operator.label, v.supplier && v.supplier.label] : [v]).filter(v => v != null).join(' ').toLocaleLowerCase().includes(needle));
   }
   function title(item) {
     const r = item.comparison,
       s = item.segment;
-    return ['初始计划 · ' + (r.batch_label || '批次未记录') + ' · ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录'), M.timeLabel(s.start) + ' 至 ' + M.timeLabel(s.end), '设备：' + (s.machine && s.machine.label || '未记录'), '人员：' + (s.operator && s.operator.label || '未记录'), statusLabels[r.status]].join('\n');
+    return ['原安排 · ' + (r.batch_label || '批次未记录') + ' · ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录'), M.timeLabel(s.start) + ' 至 ' + M.timeLabel(s.end), '来源：' + sourceLabel(s), ...Object.keys(resourceLabels).map(kind => resourceLabels[kind] + '：' + resourceLabel(s, kind)), statusLabels[r.status], ...(r.comparison_available ? Object.keys(resourceLabels).map(kind => resourceLabels[kind] + '变化：' + resourceChange(r, kind)) : [])].join('\n');
+  }
+  const resourceLabel = (side, kind) => M.resourceLabel(side, kind);
+  function resourceChange(row, kind) {
+    const changed = row.delta[kind + '_changed'];
+    if (changed !== null) return changed ? '有' : '无';
+    if (!row.candidate || row.baseline_segments.length !== 1) return statusLabels[row.status];
+    const label = resourceLabels[kind];
+    return [['原安排', row.baseline_segments[0]], ['新安排', row.candidate]].filter(([, side]) => window.RunBaselineAPI.resourceIdentity(side, kind) === undefined).map(([name, side]) => {
+      const problem = side.data_gaps.find(gap => gap.field === kind || gap.field === kind + '.ref');
+      return name + label + '身份无法核对：' + (problem ? problem.message : '历史记录未保存资源身份。');
+    }).join('；') || '原安排起止不可比较';
   }
   function push(heap, value) {
     let i = heap.length;
@@ -35068,14 +36203,14 @@ function SMExport({
     }
     return rows;
   }
-  function compose(candidate, baseline, mode, query) {
+  function compose(candidate, baseline, mode, query, operationRefs = null, width = 1000) {
     if (!baseline) return candidate;
     const groups = new Map(),
       rows = [],
       locations = new Map(),
       baselineLocations = new Map();
-    const comparisons = matching(baseline.comparisons, query),
-      included = new Set(comparisons.map(r => r.operation_ref));
+    const comparisons = matching(baseline.comparisons, query).filter(row => !operationRefs || operationRefs.has(row.operation_ref));
+    const included = new Set(comparisons.map(r => r.operation_ref));
     for (const row of candidate.rows) {
       if (!groups.has(row.id)) groups.set(row.id, {
         label: row.label,
@@ -35085,7 +36220,8 @@ function SMExport({
       groups.get(row.id).current.push(row);
     }
     let start = candidate.start,
-      end = candidate.end;
+      end = candidate.end,
+      hasPoints = false;
     for (const comparison of baseline.comparisons) for (const segment of comparison.baseline_segments) {
       if (!segment.interval_comparable) continue;
       const item = {
@@ -35094,6 +36230,7 @@ function SMExport({
         start: M.instant(segment.start),
         end: M.instant(segment.end)
       };
+      hasPoints = hasPoints || window.PointContract.isPoint(segment);
       start = start === null ? item.start : Math.min(start, item.start);
       end = end === null ? item.end : Math.max(end, item.end);
       if (!included.has(comparison.operation_ref)) continue;
@@ -35103,12 +36240,16 @@ function SMExport({
       } : segment[mode];
       const id = resource && resource.ref || 'baseline-missing:' + segment.row_ref;
       if (!groups.has(id)) groups.set(id, {
-        label: resource && resource.label || M.kindLabels[mode] + '未记录',
+        label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(segment, mode),
         current: [],
         before: []
       });
       groups.get(id).before.push(item);
     }
+    if (hasPoints) ({
+      start,
+      end
+    } = window.PointGanttModel.bounds(start, end, true));
     let top = 0;
     for (const [id, group] of groups) {
       for (const original of group.current) {
@@ -35124,18 +36265,21 @@ function SMExport({
         rows.push(row);
         top += row.height;
       }
-      const lanes = tracks(group.before);
-      lanes.forEach((items, lane) => {
+      const isPoint = item => window.PointContract.isPoint(item.segment);
+      const intervals = tracks(group.before.filter(item => !isPoint(item)));
+      const points = window.PointGanttModel.tracks(group.before.filter(isPoint), start, end, width);
+      for (const [baselinePoint, lanes] of [[false, intervals], [true, points]]) lanes.forEach((items, lane) => {
         const row = {
           id,
-          key: 'baseline:' + id + ':' + lane,
+          key: 'baseline:' + id + ':' + (baselinePoint ? 'point:' : '') + lane,
           label: group.label,
           items,
           top,
           height: 30,
           lane,
           laneCount: lanes.length,
-          baseline: true
+          baseline: true,
+          baselinePoint
         };
         items.forEach(item => baselineLocations.set(item.segment.row_ref, {
           row: rows.length,
@@ -35162,6 +36306,9 @@ function SMExport({
     compose,
     matching,
     title,
+    resourceLabel,
+    resourceChange,
+    sourceLabel,
     statusLabels
   };
 })();
@@ -35178,7 +36325,7 @@ function SMExport({
   function usePrintLayout() {
     return window.WorkbenchControls.usePrintLayout();
   }
-  function useBaseline(data) {
+  function useBaseline(data, available) {
     const [enabled, setEnabled] = React.useState(false),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
     const [state, setState] = React.useState({
@@ -35187,7 +36334,8 @@ function SMExport({
         busy: false
       }),
       request = React.useRef(null);
-    const identity = React.useMemo(() => ({}), [data, enabled, revision]);
+    const active = enabled && available;
+    const identity = React.useMemo(() => ({}), [data, active, revision]);
     React.useLayoutEffect(() => {
       const controller = new AbortController();
       request.current = controller;
@@ -35195,9 +36343,9 @@ function SMExport({
         identity,
         result: null,
         error: null,
-        busy: enabled
+        busy: active
       });
-      if (enabled) window.RunBaselineAPI.create().read(data, controller.signal).then(result => {
+      if (active) window.RunBaselineAPI.create().read(data, controller.signal).then(result => {
         if (!controller.signal.aborted) setState({
           identity,
           result,
@@ -35208,7 +36356,7 @@ function SMExport({
         if (!controller.signal.aborted) setState({
           identity,
           result: null,
-          error: new Error(error.name === 'AbortError' ? '初始计划读取超时，请刷新初始计划。' : error.message),
+          error: new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message),
           busy: false
         });
       });
@@ -35226,9 +36374,9 @@ function SMExport({
       ...(state.identity === identity ? state : {
         result: null,
         error: null,
-        busy: enabled
+        busy: active
       }),
-      enabled,
+      enabled: active,
       toggle,
       retry
     };
@@ -35237,12 +36385,50 @@ function SMExport({
     state
   }) {
     return /*#__PURE__*/React.createElement("label", {
-      className: "rb-toggle"
+      className: "rb-toggle",
+      title: "\u53E0\u52A0\u63D0\u4EA4\u8BD5\u6392\u65F6\u51BB\u7ED3\u7684\u6B63\u5F0F\u7248\u5B89\u6392\uFF0C\u4E0E\u65B0\u5B89\u6392\u5BF9\u7167"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       checked: state.enabled,
       onChange: e => state.toggle(e.target.checked)
-    }), window.WorkbenchTerms.initial_plan);
+    }), "\u663E\u793A\u539F\u5B89\u6392");
+  }
+  function Source({
+    workspace,
+    comparison
+  }) {
+    const {
+      algorithm,
+      baseline
+    } = workspace.generation;
+    const algorithmLabel = [algorithm.mode_label, algorithm.strategy_label].filter(Boolean).join(' · ');
+    return /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-comparison-source",
+      "data-candidate-comparison-source": true
+    }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "\u65B0\u5B89\u6392"), "\uFF1A", workspace.candidate.label || '当前候选', " \xB7 ", algorithmLabel ? algorithmLabel + '的排产结果' : '算法排产结果（算法名称未记录）'), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("strong", null, "\u539F\u5B89\u6392"), "\uFF1A", baseline.version === null ? '提交试排时没有正式版安排' : /*#__PURE__*/React.createElement(React.Fragment, null, "\u63D0\u4EA4\u8BD5\u6392\u65F6\u81EA\u52A8\u51BB\u7ED3\u7684\u6B63\u5F0F v", M.number(baseline.version), " \xB7 ", M.timeLabel(baseline.captured_at)), baseline.version !== null && comparison && !comparison.baseline.comparison_available && ' · 当前没有可对照工序'));
+  }
+  function Problems({
+    workspace,
+    issues,
+    onInspect
+  }) {
+    const labels = React.useMemo(() => new Map([...workspace.gantt_graph.nodes, ...workspace.tasks, ...(workspace.unplanned_operations || [])].map(row => [row.operation_ref, row])), [workspace]);
+    if (!issues.length) return null;
+    return /*#__PURE__*/React.createElement("details", {
+      className: "rb-panel",
+      "data-candidate-change-unknown": true
+    }, /*#__PURE__*/React.createElement("summary", null, "\u67E5\u770B\u65E0\u6CD5\u5BF9\u7167\u5DE5\u5E8F\uFF08", issues.length, " \u9053\uFF09"), /*#__PURE__*/React.createElement("ul", null, issues.map(issue => {
+      const task = labels.get(issue.operation_ref);
+      return /*#__PURE__*/React.createElement("li", {
+        key: issue.operation_ref
+      }, /*#__PURE__*/React.createElement("strong", null, task ? (task.batch_label || task.batch_id || '批次名称未记录') + ' · ' + M.number(task.sequence) + ' ' + (task.process_label || '工序名称未记录') : '当前范围没有该工序的名称记录'), task && /*#__PURE__*/React.createElement("span", null, " \xB7 ", M.pieceLabel(task)), issue.reasons.map(reason => /*#__PURE__*/React.createElement("div", {
+        key: reason.code
+      }, reason.message)), /*#__PURE__*/React.createElement(Button, {
+        icon: "search",
+        className: "mini",
+        onClick: () => onInspect(issue.operation_ref)
+      }, "\u67E5\u770B\u539F\u5B89\u6392\u8BE6\u60C5"));
+    })));
   }
   function Segments({
     row,
@@ -35262,7 +36448,7 @@ function SMExport({
       className: "rb-segments",
       "data-baseline-segments": true,
       role: "region",
-      "aria-label": "\u521D\u59CB\u8BA1\u5212\u5B8C\u6574\u5206\u6BB5",
+      "aria-label": "\u539F\u5B89\u6392\u5B8C\u6574\u5206\u6BB5",
       onScroll: e => setTop(e.currentTarget.scrollTop)
     }, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -35278,9 +36464,9 @@ function SMExport({
         top: (first + i) * 76
       },
       "aria-current": !!chosen && chosen.row_ref === s.row_ref ? 'true' : undefined
-    }, /*#__PURE__*/React.createElement("div", null, M.timeLabel(s.start), " \u81F3 ", M.timeLabel(s.end), !s.interval_comparable && ' · 起止不可比较'), /*#__PURE__*/React.createElement("div", null, "\u8BBE\u5907 ", s.machine && s.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", s.operator && s.operator.label || '未记录', " \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(s.elapsed_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("small", null, s.data_gaps.map(g => g.message).join(' · ')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("div", null, M.timeLabel(s.start), " \u81F3 ", M.timeLabel(s.end), !s.interval_comparable && ' · 起止不可比较'), /*#__PURE__*/React.createElement("div", null, B.sourceLabel(s), " \xB7 \u8BBE\u5907 ", B.resourceLabel(s, 'machine'), " \xB7 \u4EBA\u5458 ", B.resourceLabel(s, 'operator'), " \xB7 \u4F9B\u5E94\u5546 ", B.resourceLabel(s, 'supplier'), " \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(s.elapsed_hours), " \u5C0F\u65F6"), /*#__PURE__*/React.createElement("small", null, s.data_gaps.map(g => g.message).join(' · ')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       value: s.row_ref
-    })))), !row.baseline_segments.length && /*#__PURE__*/React.createElement("div", null, "\u521D\u59CB\u8BA1\u5212\u6CA1\u6709\u8BE5\u5DE5\u5E8F\u5B89\u6392\u3002"));
+    })))), !row.baseline_segments.length && /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\u6CA1\u6709\u8BE5\u5DE5\u5E8F\u5B89\u6392\u3002"));
   }
   function Detail({
     row,
@@ -35288,24 +36474,27 @@ function SMExport({
     workspace
   }) {
     const c = row.candidate,
-      delta = row.delta;
+      delta = row.delta,
+      execution = row.execution_at_generation;
     return /*#__PURE__*/React.createElement("div", {
       className: "rb-detail",
       role: "region",
-      "aria-label": "\u521D\u59CB\u8BA1\u5212\u5DE5\u5E8F\u5BF9\u7167"
+      "aria-label": "\u539F\u5B89\u6392\u5DE5\u5E8F\u5BF9\u7167"
     }, /*#__PURE__*/React.createElement("strong", null, row.batch_label || '批次未记录', " \xB7 ", M.number(row.sequence), " ", row.process_label || '工序未记录', " \xB7 ", B.statusLabels[row.status]), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '工序编号': row.operation_ref
       }
-    }), c ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u5019\u9009\u5B89\u6392\uFF1A", M.timeLabel(c.start), " \u81F3 ", M.timeLabel(c.end), " \xB7 \u8BBE\u5907 ", c.machine && c.machine.label || '未记录', " \xB7 \u4EBA\u5458 ", c.operator && c.operator.label || '未记录'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }), c ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u65B0\u5B89\u6392\uFF1A", M.timeLabel(c.start), " \u81F3 ", M.timeLabel(c.end), " \xB7 ", B.sourceLabel(c), " \xB7 \u8BBE\u5907 ", B.resourceLabel(c, 'machine'), " \xB7 \u4EBA\u5458 ", B.resourceLabel(c, 'operator'), " \xB7 \u4F9B\u5E94\u5546 ", B.resourceLabel(c, 'supplier')), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '候选安排编号': c.row_ref
+        '新安排编号': c.row_ref
       }
-    }), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u5019\u9009\u5B89\u6392\u5728\u6240\u9009\u65F6\u95F4\u8303\u56F4\u5916\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u6B64\u5019\u9009\u65B9\u6848\u672A\u5B89\u6392\u8BE5\u5DE5\u5E8F\u3002"), /*#__PURE__*/React.createElement(Segments, {
+    }), !workspace.tasks.some(t => t.row_ref === c.row_ref) && /*#__PURE__*/React.createElement("div", null, "\u8BE5\u65B0\u5B89\u6392\u5728\u6240\u9009\u65F6\u95F4\u8303\u56F4\u5916\u3002")) : /*#__PURE__*/React.createElement("div", null, "\u6B64\u5019\u9009\u65B9\u6848\u672A\u5B89\u6392\u8BE5\u5DE5\u5E8F\u3002"), /*#__PURE__*/React.createElement(Segments, {
       key: row.operation_ref,
       row: row,
       chosen: segment
-    }), row.comparison_available && /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\uFF08\u5019\u9009\u51CF\u521D\u59CB\u8BA1\u5212\uFF09\uFF1A\u5F00\u59CB ", M.number(delta.start_hours), " \u5C0F\u65F6 \xB7 \u7ED3\u675F ", M.number(delta.end_hours), " \u5C0F\u65F6 \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(delta.elapsed_hours), " \u5C0F\u65F6", /*#__PURE__*/React.createElement("small", null, "\u8BBE\u5907\u53D8\u5316 ", delta.machine_changed === null ? '未知' : delta.machine_changed ? '有' : '无', " \xB7 \u4EBA\u5458\u53D8\u5316 ", delta.operator_changed === null ? '未知' : delta.operator_changed ? '有' : '无')), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u62A5\u5DE5\uFF1A", row.execution_at_generation ? M.executionValue(row.execution_at_generation.execution_state) : '未记录', row.execution_affected && ' · 已有报工影响或数量未知'), row.reasons.concat(row.data_gaps).map((r, i) => /*#__PURE__*/React.createElement("div", {
+    }), row.comparison_available && /*#__PURE__*/React.createElement("div", null, "\u5B89\u6392\u53D8\u52A8\uFF08\u65B0\u5B89\u6392\u51CF\u539F\u5B89\u6392\uFF09\uFF1A\u5F00\u59CB ", M.number(delta.start_hours), " \u5C0F\u65F6 \xB7 \u7ED3\u675F ", M.number(delta.end_hours), " \u5C0F\u65F6 \xB7 \u8D77\u6B62\u65F6\u957F ", M.number(delta.elapsed_hours), " \u5C0F\u65F6", /*#__PURE__*/React.createElement("small", null, "\u8BBE\u5907\u53D8\u5316\uFF1A", B.resourceChange(row, 'machine'), " \xB7 \u4EBA\u5458\u53D8\u5316\uFF1A", B.resourceChange(row, 'operator'), " \xB7 \u4F9B\u5E94\u5546\u53D8\u5316\uFF1A", B.resourceChange(row, 'supplier'))), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u62A5\u5DE5\uFF1A", execution ? M.executionField(row, 'execution_state') : '提交试排时的报工记录缺失'), execution && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, ['target_quantity', 'known_completed_quantity', 'remaining_quantity'].map(key => /*#__PURE__*/React.createElement("div", {
+      key: key
+    }, M.executionLabels[key], "\uFF1A", M.executionField(row, key)))), execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("div", null, "\u7F3A\u5C11\u5B8C\u6210\u6570\u91CF\u7684\u62A5\u5DE5\u8BB0\u5F55\uFF1A", execution.unknown_record_count, " \u6761"), execution.legacy_unavailable_field_count > 0 && /*#__PURE__*/React.createElement("div", null, "\u5386\u53F2\u62A5\u5DE5\u672A\u4FDD\u5B58\u7684\u5B57\u6BB5\uFF1A", execution.legacy_unavailable_field_count, " \u9879"), /*#__PURE__*/React.createElement("div", null, "\u751F\u6210\u65F6\u62A5\u5DE5\u6570\u636E\u8D28\u91CF\uFF1A", M.executionField(row, 'data_quality'))), row.reasons.filter(reason => !['execution_affected', 'resource_identity_unavailable'].includes(reason.code)).concat(row.data_gaps.filter(gap => !gap.field.startsWith('execution_at_generation'))).map((r, i) => /*#__PURE__*/React.createElement("div", {
       key: i
     }, r.message)));
   }
@@ -35329,7 +36518,7 @@ function SMExport({
       className: "rb-list",
       "data-baseline-list": true,
       role: "region",
-      "aria-label": "\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u5217\u8868",
+      "aria-label": "\u539F\u5B89\u6392\u5BF9\u7167\u5217\u8868",
       onScroll: e => setTop(e.currentTarget.scrollTop)
     }, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -35352,7 +36541,7 @@ function SMExport({
     }, M.number(r.sequence), " ", r.process_label || '未记录'), /*#__PURE__*/React.createElement("span", null, B.statusLabels[r.status]), /*#__PURE__*/React.createElement("span", null, r.baseline_segments.length, " \u6BB5", r.execution_affected && ' · 有报工影响'), /*#__PURE__*/React.createElement(Button, {
       icon: "search",
       className: "mini",
-      "aria-label": '初始计划对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录'),
+      "aria-label": '原安排对照 ' + (r.batch_label || '批次未记录') + ' ' + M.number(r.sequence) + ' ' + (r.process_label || '工序未记录'),
       onClick: () => onChoose({
         comparison: r,
         segment: null
@@ -35366,32 +36555,37 @@ function SMExport({
     rows,
     chosen,
     onChoose,
-    workspace
+    workspace,
+    inspecting = false,
+    onShowAll
   }) {
     const [open, setOpen] = React.useState(false),
       d = state.result && state.result.data;
     React.useEffect(() => {
-      if (chosen) setOpen(true);
-    }, [chosen]);
+      if (chosen || inspecting) setOpen(true);
+    }, [chosen, inspecting]);
     return /*#__PURE__*/React.createElement(React.Fragment, null, state.enabled && /*#__PURE__*/React.createElement(React.Fragment, null, state.busy && /*#__PURE__*/React.createElement("div", {
       className: "rc-muted",
       role: "status"
-    }, "\u6B63\u5728\u8BFB\u53D6\u6392\u4EA7\u65F6\u7684\u521D\u59CB\u8BA1\u5212\u3002"), state.error && /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u8BFB\u53D6\u6392\u4EA7\u65F6\u7684\u539F\u5B89\u6392\u3002"), state.error && /*#__PURE__*/React.createElement("div", {
       role: "alert"
     }, state.error.message, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: state.retry
-    }, "\u5237\u65B0\u521D\u59CB\u8BA1\u5212")), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u5237\u65B0\u539F\u5B89\u6392")), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rb-legend"
-    }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u5019\u9009\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+    }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u65B0\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "rb-before"
-    }), window.WorkbenchTerms.initial_plan), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+    }), "\u539F\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "rb-selected"
     }), "\u5DF2\u9009\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("details", {
       className: "rb-panel",
       open: open,
       onToggle: e => setOpen(e.currentTarget.open)
-    }, /*#__PURE__*/React.createElement("summary", null, "\u521D\u59CB\u8BA1\u5212\u5BF9\u7167\u660E\u7EC6\uFF08", rows.length, "\uFF09 \xB7 \u8BF4\u660E"), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u63D0\u4EA4\u4E8E ", M.timeLabel(d.generation.accepted_at), " \xB7 ", d.baseline.captured_task_count, " \u6BB5\u521D\u59CB\u5B89\u6392 \xB7 \u6709\u62A5\u5DE5\u5F71\u54CD ", d.execution_affected_count, " \u9053"), d.baseline.reason && /*#__PURE__*/React.createElement("div", null, d.baseline.reason.message), d.data_gaps.concat(state.result.warnings).filter(g => !['not_an_optimization_score', 'input_digest_not_recorded'].includes(g.code)).map((g, i) => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("summary", null, inspecting ? '无法对照工序' : '原安排对照明细', "\uFF08", rows.length, "\uFF09"), open && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, "\u63D0\u4EA4\u4E8E ", M.timeLabel(d.generation.accepted_at), " \xB7 ", d.baseline.captured_task_count, " \u6BB5\u539F\u5B89\u6392 \xB7 \u6709\u62A5\u5DE5\u5F71\u54CD ", d.execution_affected_count, " \u9053"), inspecting && onShowAll && /*#__PURE__*/React.createElement(Button, {
+      className: "mini",
+      onClick: onShowAll
+    }, "\u67E5\u770B\u5168\u90E8\u5BF9\u7167"), inspecting && !rows.length && /*#__PURE__*/React.createElement("div", null, "\u8FD9\u4E9B\u5DE5\u5E8F\u4F4D\u4E8E\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5916\uFF0C\u8BF7\u5728\u201C\u8BFB\u53D6\u8303\u56F4\u201D\u9009\u62E9\u201C\u5B8C\u6574\u5019\u9009\u201D\u3002"), d.baseline.reason && /*#__PURE__*/React.createElement("div", null, d.baseline.reason.message), d.data_gaps.concat(state.result.warnings).filter(g => !['not_an_optimization_score', 'input_digest_not_recorded'].includes(g.code)).map((g, i) => /*#__PURE__*/React.createElement("div", {
       key: i
     }, g.message)), /*#__PURE__*/React.createElement(ComparisonList, {
       rows: rows,
@@ -35401,7 +36595,7 @@ function SMExport({
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "x",
-      "aria-label": "\u5173\u95ED\u521D\u59CB\u8BA1\u5212\u5DE5\u5E8F\u5BF9\u7167",
+      "aria-label": "\u5173\u95ED\u539F\u5B89\u6392\u5DE5\u5E8F\u5BF9\u7167",
       onClick: () => onChoose(null)
     })), /*#__PURE__*/React.createElement(Detail, {
       row: chosen.comparison,
@@ -35413,6 +36607,8 @@ function SMExport({
     useBaseline,
     usePrintLayout,
     Toggle,
+    Source,
+    Problems,
     Panel
   };
 })();
@@ -35436,12 +36632,14 @@ function SMExport({
   function PointLane({
     row,
     model,
+    risks,
     width,
     left,
     viewport,
     printing,
     selected,
     baselineSelected,
+    active,
     onSelect,
     onHover
   }) {
@@ -35461,10 +36659,16 @@ function SMExport({
       key: item.task.row_ref,
       task: item.task,
       title: M.title(item.task),
+      "data-gantt-critical": active.critical.has(item.task.row_ref) || undefined,
+      "data-gantt-related": active.related.has(item.task.row_ref) || undefined,
+      "data-gantt-muted": !!active.target && !active.related.has(item.task.row_ref) && !active.critical.has(item.task.row_ref) || undefined,
       x: printing ? (item.start - model.start) / (model.end - model.start) * 100 + '%' : (item.start - model.start) * scale - left,
-      selected: baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : selected && selected.row_ref === item.task.row_ref,
+      top: 15,
+      tone: risks.get(item.task.batch_ref) === 'overdue' ? 'critical' : '',
+      selected: !baselineSelected && selected && selected.row_ref === item.task.row_ref,
       onSelect: () => onSelect(item.task),
       onHover: event => onHover(event ? {
+        taskRef: item.task.row_ref,
         text: M.title(item.task),
         x: event.clientX,
         y: event.clientY
@@ -35474,19 +36678,22 @@ function SMExport({
   function Lane({
     row,
     model,
+    mode,
+    risks,
     width,
     left,
     viewport,
     printing,
     selected,
     baselineSelected,
+    active,
     onSelect,
     onBaselineSelect,
     onHover
   }) {
     const ref = React.useRef(null),
       scale = width / (model.end - model.start);
-    const items = M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
+    const items = row.baselinePoint ? window.PointGanttModel.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale) : M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
     React.useLayoutEffect(() => {
       function paint() {
         const node = ref.current,
@@ -35497,75 +36704,65 @@ function SMExport({
         node.height = h * ratio;
         const ctx = node.getContext('2d');
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        const styles = getComputedStyle(node),
-          value = k => styles.getPropertyValue(k).trim();
+        const P = window.GanttPresentation,
+          colors = P.palette(node);
         for (const item of items) {
           const x = (item.start - model.start) * scale - left,
             barWidth = (item.end - item.start) * scale;
           if (row.baseline) {
-            const chosen = baselineSelected ? baselineSelected.comparison.operation_ref === item.comparison.operation_ref : selected && selected.operation_ref === item.comparison.operation_ref;
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(x, 0, barWidth, h);
-            ctx.clip();
-            ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--ui-text');
-            ctx.lineWidth = chosen ? 2 : 1;
-            ctx.setLineDash([4, 3]);
-            ctx.strokeRect(x + Math.min(barWidth, ctx.lineWidth) / 2, 11, Math.max(0, barWidth - Math.min(barWidth, ctx.lineWidth)), 7);
-            ctx.restore();
+            const chosen = baselineSelected && baselineSelected.comparison.operation_ref === item.comparison.operation_ref;
+            if (row.baselinePoint) {
+              window.PointGanttModel.paint(ctx, x, 15, colors.plan.fill, chosen ? colors.gold : colors.plan.edge, chosen);
+              continue;
+            }
+            P.paintBar(ctx, {
+              x,
+              y: 11,
+              width: barWidth,
+              height: 7,
+              fill: 'transparent',
+              edge: chosen ? colors.gold : colors.plan.edge,
+              lineWidth: chosen ? 2 : 1,
+              dashed: true,
+              viewport: w
+            });
             continue;
           }
-          const tone = item.task.source === 'external' ? 'plan' : row.normalLaneCount > 1 ? 'overlap' : 'primary';
-          const chosen = baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : item.task.row_ref === (selected && selected.row_ref);
-          ctx.fillStyle = value('--wb-gantt-' + tone + '-fill');
-          ctx.fillRect(x, 7, barWidth, 33);
-          if (tone === 'overlap') {
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(x, 7, barWidth, 33);
-            ctx.clip();
-            ctx.strokeStyle = value('--wb-gantt-overlap-edge');
-            ctx.lineWidth = 1;
-            for (let stripe = -33; stripe < barWidth; stripe += 6) {
-              ctx.beginPath();
-              ctx.moveTo(x + stripe, 40);
-              ctx.lineTo(x + stripe + 33, 7);
-              ctx.stroke();
-            }
-            ctx.restore();
-          }
-          const external = item.task.source === 'external';
-          if (external) {
-            // External operations differ by shape as well as colour: a sparse hatch and a dashed edge (the legend swatch matches).
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(x, 7, barWidth, 33);
-            ctx.clip();
-            ctx.strokeStyle = value('--wb-gantt-plan-edge');
-            ctx.lineWidth = 1;
-            for (let stripe = -33; stripe < barWidth; stripe += 10) {
-              ctx.beginPath();
-              ctx.moveTo(x + stripe, 7);
-              ctx.lineTo(x + stripe + 33, 40);
-              ctx.stroke();
-            }
-            ctx.restore();
-          }
-          ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--wb-gantt-' + tone + '-edge');
-          ctx.lineWidth = Math.min(barWidth, chosen ? 2 : 1);
-          ctx.setLineDash(external ? [4, 3] : []);
-          ctx.strokeRect(x + ctx.lineWidth / 2, 7 + ctx.lineWidth / 2, Math.max(0, barWidth - ctx.lineWidth), 33 - ctx.lineWidth);
-          ctx.setLineDash([]);
-          if (barWidth > 80) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(Math.max(0, x + 4), 9, Math.max(0, Math.min(w, x + barWidth) - Math.max(0, x + 4) - 4), 28);
-            ctx.clip();
-            ctx.fillStyle = value('--ui-text');
-            ctx.font = value('--wb-gantt-font') || '11px sans-serif';
-            ctx.fillText(M.pieceLabel(item.task) + ' · ' + (item.task.batch_label || '未记录') + ' · ' + M.number(item.task.sequence), Math.max(4, x + 5), 28);
-            ctx.restore();
-          }
+          const external = item.task.source === 'external',
+            risk = risks.get(item.task.batch_ref);
+          const colorsForTask = colors[risk === 'overdue' ? 'critical' : 'primary'];
+          const chosen = !baselineSelected && item.task.row_ref === (selected && selected.row_ref);
+          const related = active.related.has(item.task.row_ref),
+            critical = active.critical.has(item.task.row_ref);
+          const lines = P.taskLines({
+            sequence: M.number(item.task.sequence),
+            process: item.task.process_label || '工序未记录',
+            batch: item.task.batch_label || '批次未记录',
+            piece: M.pieceLabel(item.task),
+            resource: [item.task.machine && item.task.machine.label, item.task.operator && item.task.operator.label].filter(Boolean).join(' / ') || '资源未记录'
+          }, mode, barWidth);
+          P.paintBar(ctx, {
+            x,
+            y: 7,
+            width: barWidth,
+            height: 40,
+            fill: colorsForTask.fill,
+            edge: chosen || related || critical ? colors.gold : colorsForTask.edge,
+            lineWidth: chosen || critical ? 2 : related ? 1.5 : 1,
+            dashed: external,
+            texture: external ? 'external' : item.overlap ? 'overlap' : null,
+            textureColor: external ? colors.plan.edge : colors.overlap.edge,
+            textColor: colorsForTask.ink,
+            font: colors.font,
+            lines,
+            viewport: w,
+            critical,
+            criticalColor: colors.gold,
+            muted: !!active.target && !related && !critical,
+            onTime: risk === 'on_time',
+            locked: item.task.locked,
+            statusColor: colors.success.edge
+          });
         }
       }
       paint();
@@ -35584,11 +36781,11 @@ function SMExport({
           if (typeof media.removeEventListener === 'function') media.removeEventListener('change', paint);else media.removeListener(paint);
         }
       };
-    }, [row, model, width, left, viewport, printing, selected, baselineSelected]);
+    }, [row, model, mode, risks, width, left, viewport, printing, selected, baselineSelected, active]);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(),
         at = model.start + (event.clientX - box.left + left) / scale;
-      return M.visibleItems(row.items, at, at + 0.001)[0];
+      return row.baselinePoint ? window.PointGanttModel.hit(row.items, event.clientX - box.left, event.clientY - box.top, model, width, left, 15) : M.visibleItems(row.items, at, at + 0.001)[0];
     }
     const choose = item => row.baseline ? onBaselineSelect(item) : onSelect(item.task);
     const selectedItem = row.items.find(item => !row.baseline && selected && item.task.row_ref === selected.row_ref);
@@ -35599,7 +36796,7 @@ function SMExport({
       "data-item-count": row.items.length,
       role: "button",
       tabIndex: 0,
-      "aria-label": (row.baseline ? '初始计划 ' : '') + row.label + '，第 ' + (row.lane + 1) + ' 轨，' + row.items.length + ' 道安排' + (selectedItem ? '\n' + M.title(selectedItem.task) : ''),
+      "aria-label": row.label + '，' + M.laneLabel(row) + '，' + row.items.length + ' 道安排' + (selectedItem ? '\n' + M.title(selectedItem.task) : ''),
       style: {
         position: 'absolute',
         left,
@@ -35609,6 +36806,7 @@ function SMExport({
       onMouseMove: event => {
         const item = hit(event);
         onHover(item ? {
+          taskRef: row.baseline ? null : item.task.row_ref,
           text: row.baseline ? B.title(item) : M.title(item.task),
           x: event.clientX,
           y: event.clientY
@@ -35761,7 +36959,9 @@ function SMExport({
   }
   function RunCandidateGantt({
     data,
+    comparison,
     query,
+    onQuery,
     selected,
     onSelect
   }) {
@@ -35775,6 +36975,12 @@ function SMExport({
       [hover, setHover] = React.useState(null),
       host = React.useRef(null),
       owner = React.useRef(null);
+    const [chainEnabled, setChainEnabled] = React.useState(false),
+      [changedOnly, setChangedOnly] = React.useState(false);
+    const [viewportHeight, setViewportHeight] = React.useState(310),
+      expansion = window.GanttPresentationUI.useExpanded();
+    const search = React.useRef(null);
+    const [inspection, setInspection] = React.useState(null);
     const printing = BC.usePrintLayout();
     const printState = React.useRef(false),
       savedScroll = React.useRef(null),
@@ -35782,31 +36988,86 @@ function SMExport({
     if (printing && !printState.current) savedScroll.current = scroll;
     if (!printing && printState.current) restoreScroll.current = savedScroll.current;
     printState.current = printing;
-    const baseline = BC.useBaseline(data),
+    const canCompare = !!comparison && comparison.baseline.comparison_available;
+    const inspectedRef = inspection && inspection.candidateRef === data.candidate.candidate_ref ? inspection.operationRef : null;
+    const baseline = BC.useBaseline(data, canCompare || !!inspectedRef),
       [selection, setSelection] = React.useState(null),
       result = baseline.result;
-    const chosen = selection && selection.result === result && B.matching([selection.item.comparison], query).length ? selection.item : null;
+    const changed = React.useMemo(() => new Set(comparison ? comparison.operations.changed_operation_refs : []), [comparison]);
+    const unknown = React.useMemo(() => new Set(comparison ? comparison.operations.unknown_operation_refs : []), [comparison]);
+    const problems = React.useMemo(() => comparison ? comparison.operations.issues.filter(row => unknown.has(row.operation_ref)) : [], [comparison, unknown]);
+    const displayChangedOnly = canCompare && changedOnly;
+    const operationRefs = displayChangedOnly ? changed : null;
+    const inspected = React.useMemo(() => {
+      const row = result && inspectedRef && result.data.comparisons.find(row => row.operation_ref === inspectedRef);
+      return row ? {
+        comparison: row,
+        segment: row.baseline_segments[0] || null
+      } : null;
+    }, [result, inspectedRef]);
+    const selectedItem = selection && selection.result === result ? selection.item : inspected;
+    const chosen = selectedItem && (!operationRefs || operationRefs.has(selectedItem.comparison.operation_ref)) && B.matching([selectedItem.comparison], query).length ? selectedItem : null;
     // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
     const labelWidth = 156,
       width = printing ? 640 : Math.max(1, viewport) * zoom;
-    const candidate = React.useMemo(() => M.layout(data, mode, query, width), [data, mode, query, width]);
-    const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query), width), [candidate, result, mode, query, width]);
+    const candidate = React.useMemo(() => M.layout(data, mode, query, width, operationRefs), [data, mode, query, width, operationRefs]);
+    const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query, operationRefs, width), width), [candidate, result, mode, query, width, operationRefs]);
+    const risks = React.useMemo(() => new Map(data.delivery_risks.items.map(row => [row.batch_ref, row.risk])), [data]);
+    const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
+    const targetRef = hover && hover.taskRef || !chosen && selected && selected.row_ref || null;
+    const active = React.useMemo(() => window.GanttGraph.selection(graph, {
+      enabled: chainEnabled,
+      targetRef
+    }), [graph, chainEnabled, targetRef]);
     function selectBaseline(item) {
       setSelection(item ? {
         item,
         result
       } : null);
-      if (item) onSelect(null);
+      if (item) onSelect(null);else setInspection(null);
       setHover(null);
     }
     function selectCandidate(task) {
+      setInspection(null);
       setSelection(null);
+      setHover(null);
       onSelect(task);
     }
+    function inspectProblem(operationRef) {
+      setInspection({
+        candidateRef: data.candidate.candidate_ref,
+        operationRef
+      });
+      setSelection(null);
+      setChangedOnly(false);
+      onQuery('');
+      onSelect(null);
+      setHover(null);
+      baseline.toggle(true);
+    }
+    function filterChanges(value) {
+      setChangedOnly(value);
+      setHover(null);
+      if (value) setInspection(null);
+      if (value && selected && !changed.has(selected.operation_ref)) onSelect(null);
+      if (value && chosen && !changed.has(chosen.comparison.operation_ref)) setSelection(null);
+    }
+    React.useEffect(() => {
+      if (!canCompare) setChangedOnly(false);
+    }, [canCompare]);
+    React.useEffect(() => {
+      // Route and delivery links can select a task outside the current change filter.
+      if (selected && !changed.has(selected.operation_ref)) setChangedOnly(false);
+    }, [selected]);
+    React.useEffect(() => {
+      setHover(null);
+      if (expansion.expanded) owner.current.focus();
+    }, [expansion.expanded]);
     React.useLayoutEffect(() => {
       const measure = () => {
         if (printState.current || window.matchMedia('print').matches) return;
         setViewport(Math.max(1, owner.current.clientWidth - labelWidth));
+        setViewportHeight(owner.current.clientHeight);
       };
       const observe = new ResizeObserver(measure);
       observe.observe(host.current);
@@ -35836,15 +37097,15 @@ function SMExport({
         top: 0
       });
       setHover(null);
-    }, [mode, query, data, result]);
+    }, [mode, query, data, result, displayChangedOnly]);
     React.useLayoutEffect(() => {
       const loc = chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref) : selected && model.locations.get(selected.row_ref),
         node = owner.current;
       if (!node || !loc || printing || restoreScroll.current) return;
-      if (loc.top < node.scrollTop || loc.top + 48 > node.scrollTop + 288) node.scrollTop = loc.top;
+      if (loc.top < node.scrollTop || loc.top + model.rows[loc.row].height > node.scrollTop + viewportHeight) node.scrollTop = loc.top;
       const x = (loc.item.start - model.start) / (model.end - model.start) * width;
       if (x < node.scrollLeft || x > node.scrollLeft + viewport) node.scrollLeft = Math.max(0, x - viewport / 3);
-    }, [selected, chosen, model, width, viewport, printing]);
+    }, [selected, chosen, model, width, viewport, viewportHeight, printing]);
     function pan(left) {
       if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left));
     }
@@ -35852,7 +37113,31 @@ function SMExport({
       setZoom(1);
       pan(0);
     }
+    function locate(task) {
+      const loc = task ? model.locations.get(task.row_ref) : chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref) : selected && model.locations.get(selected.row_ref),
+        node = owner.current;
+      if (!node || !loc) return;
+      node.scrollTop = Math.max(0, loc.top - node.clientHeight / 3);
+      pan((loc.item.start + loc.item.end - 2 * model.start) / 2 / (model.end - model.start) * width - viewport / 2);
+    }
+    function move(direction) {
+      const index = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+      const task = model.tasks[Math.max(0, Math.min(model.tasks.length - 1, index < 0 ? 0 : index + direction))];
+      if (task) {
+        selectCandidate(task);
+        locate(task);
+      }
+    }
     function zoomKeys(event) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
+      if (event.key === '/') {
+        event.preventDefault();
+        search.current.focus();
+      }
+      if (event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        locate();
+      }
       const action = timelineZoomKey(event);
       if (!action) return;
       event.preventDefault();
@@ -35860,57 +37145,124 @@ function SMExport({
     }
     const renderLeft = printing ? 0 : scroll.left,
       renderViewport = printing ? width : viewport;
-    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
-    // Leave room for the last printed tick label; the exact end remains in the range heading above.
-    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport).filter(tick => !printing || tick.x <= width * 0.85);
+    const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
+      left: renderLeft,
+      top: printing ? 0 : scroll.top,
+      width: renderViewport,
+      height: printing ? model.height : viewportHeight
+    }, {
+      candidate: true
+    }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing]);
+    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
+    const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+    const axis = window.GanttPresentation.axis({
+      start: model.start,
+      end: model.end,
+      width,
+      left: renderLeft,
+      viewport: renderViewport
+    });
     return /*#__PURE__*/React.createElement("section", {
       ref: host,
-      className: "rc-gantt",
+      className: 'rc-gantt' + (expansion.expanded ? ' rc-expanded' : ''),
       "aria-label": "\u5019\u9009\u7518\u7279\u56FE",
       onKeyDown: zoomKeys
     }, /*#__PURE__*/React.createElement("div", {
-      className: "rc-heading"
-    }, /*#__PURE__*/React.createElement("div", {
-      role: "group",
-      className: "rc-tabs",
-      "aria-label": "\u5019\u9009\u7518\u7279\u7EF4\u5EA6"
-    }, Object.entries(M.kindLabels).map(([key, label]) => /*#__PURE__*/React.createElement(Button, {
-      key: key,
-      "aria-pressed": mode === key,
-      onClick: () => setMode(key)
-    }, label))), /*#__PURE__*/React.createElement("div", {
-      className: "rc-tools"
-    }, /*#__PURE__*/React.createElement(BC.Toggle, {
+      className: "rc-gantt-toolbar"
+    }, /*#__PURE__*/React.createElement(window.PlanSegmentUI, {
+      value: mode,
+      options: Object.entries(M.kindLabels),
+      onChange: setMode,
+      label: "\u5019\u9009\u7518\u7279\u7EF4\u5EA6"
+    }), canCompare && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(BC.Toggle, {
       state: baseline
-    }), /*#__PURE__*/React.createElement(TimelineZoom, {
+    }), /*#__PURE__*/React.createElement("label", {
+      className: "rb-toggle",
+      title: "\u53EA\u663E\u793A\u548C\u539F\u5B89\u6392\u76F8\u6BD4\uFF0C\u65F6\u95F4\u6216\u8D44\u6E90\u6709\u53D8\u5316\u7684\u5DE5\u5E8F"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      "aria-label": "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F",
+      checked: displayChangedOnly,
+      onChange: event => filterChanges(event.target.checked)
+    }), "\u53EA\u770B\u6709\u53D8\u5316\u7684\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("label", {
+      className: "search plan-search"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "ic"
+    }, /*#__PURE__*/React.createElement(window.ResourceControls.Icon, {
+      name: "search"
+    })), /*#__PURE__*/React.createElement("input", {
+      ref: search,
+      type: "search",
+      "aria-label": "\u641C\u7D22\u5019\u9009\u5DE5\u5E8F",
+      placeholder: "\u6279\u6B21\u3001\u5DE5\u5E8F\u3001\u8D44\u6E90",
+      value: query,
+      onChange: event => onQuery(event.target.value),
+      onKeyDown: event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          move(event.shiftKey ? -1 : 1);
+        }
+        if (event.key === 'Escape') onQuery('');
+      }
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "rc-tools"
+    }, /*#__PURE__*/React.createElement(TimelineZoom, {
       zoom: zoom,
       max: ZOOM_MAX,
       scope: "\u5019\u9009",
       onZoom: setZoom,
       onFit: fit
-    }))), /*#__PURE__*/React.createElement(BC.Panel, {
+    }), /*#__PURE__*/React.createElement(Button, {
+      icon: "search",
+      "aria-label": "\u5B9A\u4F4D\u9009\u4E2D\u5019\u9009\u4EFB\u52A1",
+      title: "\u5B9A\u4F4D\u9009\u4E2D\u4EFB\u52A1 (L)",
+      disabled: !(chosen && chosen.segment && model.baselineLocations.has(chosen.segment.row_ref)) && !(selected && model.locations.has(selected.row_ref)),
+      onClick: () => locate()
+    }), /*#__PURE__*/React.createElement(Button, {
+      icon: expansion.expanded ? 'x' : 'chart-gantt',
+      "aria-label": expansion.expanded ? '收起甘特' : '展开甘特',
+      title: expansion.expanded ? '返回完整工作区' : '展开甘特工作区',
+      "aria-expanded": expansion.expanded,
+      onClick: expansion.toggle
+    }, expansion.expanded ? '收起' : '展开'))), /*#__PURE__*/React.createElement(BC.Source, {
+      workspace: data,
+      comparison: comparison
+    }), /*#__PURE__*/React.createElement(BC.Problems, {
+      workspace: data,
+      issues: problems,
+      onInspect: inspectProblem
+    }), /*#__PURE__*/React.createElement(BC.Panel, {
       state: baseline,
-      rows: model.comparisons || [],
+      rows: (model.comparisons || []).filter(row => !inspectedRef || unknown.has(row.operation_ref)),
       chosen: chosen,
       onChoose: selectBaseline,
-      workspace: data
-    }), /*#__PURE__*/React.createElement("div", {
-      className: "rc-legend rc-muted"
-    }, /*#__PURE__*/React.createElement("span", null, model.groupCount, " \u7EC4 \xB7 ", model.rows.length, " \u8F68"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
-      className: "rc-overlap"
-    }), "\u65F6\u95F4\u91CD\u53E0\u7684\u5B89\u6392\uFF08\u5206\u884C\u663E\u793A\uFF09"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
-      className: "rc-external"
-    }), "\u5916\u534F\u5DE5\u5E8F")), model.start !== null && /*#__PURE__*/React.createElement("div", {
+      workspace: data,
+      inspecting: !!inspectedRef,
+      onShowAll: canCompare ? () => setInspection(null) : undefined
+    }), /*#__PURE__*/React.createElement(window.GanttGraphLayer.Controls, {
+      graph: data.gantt_graph,
+      enabled: chainEnabled,
+      onChange: setChainEnabled,
+      active: active,
+      geometry: geometry,
+      onClear: () => {
+        setHover(null);
+        onSelect(null);
+      }
+    }), model.start !== null && /*#__PURE__*/React.createElement("div", {
       className: "rc-heading rc-muted"
     }, /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.start))), /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.end)))), /*#__PURE__*/React.createElement("div", {
+      className: "rc-axis-row"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "rc-axis-corner"
+    }, M.kindLabels[mode], " / \u5DE5\u5E8F", /*#__PURE__*/React.createElement("small", null, model.groupCount, " \u7EC4")), /*#__PURE__*/React.createElement("div", {
       className: "rc-axis"
-    }, tickRows.map(t => /*#__PURE__*/React.createElement("span", {
-      key: t.at,
-      className: "rc-tick",
-      style: {
-        left: printing ? t.x / width * 100 + '%' : t.x - renderLeft
-      }
-    }, M.timeLabel(t.label).slice(5, 10), /*#__PURE__*/React.createElement("br", null), M.timeLabel(t.label).slice(11)))), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
+      axis: axis,
+      width: width,
+      offset: renderLeft,
+      printing: printing
+    }))), /*#__PURE__*/React.createElement("div", {
       ref: owner,
       className: "rc-scroll",
       "data-candidate-gantt-scroll": true,
@@ -35928,13 +37280,15 @@ function SMExport({
       style: {
         position: 'relative',
         width: width + labelWidth,
-        height: Math.max(288, model.height)
+        height: Math.max(120, model.height)
       }
     }, visible.map(row => /*#__PURE__*/React.createElement("div", {
       key: row.key,
       className: "rc-lane",
       "data-candidate-track": row.baseline ? undefined : row.key,
       "data-baseline-track": row.baseline ? row.key : undefined,
+      "data-gantt-row-kind": row.baseline ? 'original' : row.point ? 'point' : row.normalLaneCount > 1 ? 'overlap' : 'current',
+      "data-gantt-subrow": row.lane + 1,
       style: {
         top: row.top,
         height: row.height
@@ -35945,8 +37299,12 @@ function SMExport({
         height: row.height - 1,
         paddingTop: row.baseline ? 5 : 7
       },
-      title: row.label + (row.baseline ? ' · 初始计划' : '')
-    }, row.label, row.baseline ? ' · 初始' : /*#__PURE__*/React.createElement("small", null, "\u7B2C ", row.lane + 1, " / ", row.laneCount, " \u8F68 \xB7 ", row.items.length, " \u9053\u5B89\u6392")), /*#__PURE__*/React.createElement("div", {
+      title: row.label + ' · ' + M.laneLabel(row)
+    }, /*#__PURE__*/React.createElement("strong", null, row.label), row.baseline ? /*#__PURE__*/React.createElement("span", {
+      className: "rc-lane-kind"
+    }, " \xB7 ", M.laneLabel(row)) : /*#__PURE__*/React.createElement("small", null, /*#__PURE__*/React.createElement("span", {
+      className: "rc-lane-kind"
+    }, M.laneLabel(row)), " \xB7 ", row.items.length, " \u9053")), /*#__PURE__*/React.createElement("div", {
       className: "rc-bar-space",
       style: {
         width,
@@ -35956,18 +37314,32 @@ function SMExport({
     }, React.createElement(row.point ? PointLane : Lane, {
       row,
       model,
+      mode,
+      risks,
       width,
       left: renderLeft,
       viewport: renderViewport,
       printing,
       selected,
       baselineSelected: chosen,
+      active,
       onSelect: selectCandidate,
       onBaselineSelect: selectBaseline,
       onHover: setHover
-    })))), !model.rows.length && /*#__PURE__*/React.createElement("div", {
+    })), printing && /*#__PURE__*/React.createElement(window.GanttGraphLayer.Lines, {
+      geometry: geometry,
+      width: width,
+      height: row.height,
+      labelWidth: labelWidth,
+      rowTop: row.top
+    }))), !printing && /*#__PURE__*/React.createElement(window.GanttGraphLayer.Lines, {
+      geometry: geometry,
+      width: width,
+      height: model.height,
+      labelWidth: labelWidth
+    }), !model.rows.length && /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
-    }, "\u6CA1\u6709\u53EF\u7ED8\u5236\u7684\u5339\u914D\u5B89\u6392\uFF1B\u672A\u5B89\u6392\u4E0E\u5931\u8D25\u8BB0\u5F55\u4ECD\u4FDD\u7559\u5728\u660E\u7EC6\u4E2D\u3002"))), /*#__PURE__*/React.createElement("input", {
+    }, displayChangedOnly ? '当前范围没有匹配的已确认变更安排。' : '没有可绘制的匹配安排；未安排与失败记录仍保留在明细中。'))), zoom > 1 && /*#__PURE__*/React.createElement("input", {
       type: "range",
       "aria-label": "\u5019\u9009\u65F6\u95F4\u8F74\u6C34\u5E73\u4F4D\u7F6E",
       style: {
@@ -35977,9 +37349,32 @@ function SMExport({
       max: Math.max(0, width - viewport),
       step: "any",
       value: Math.min(scroll.left, Math.max(0, width - viewport)),
-      disabled: zoom === 1,
       onChange: e => pan(Number(e.target.value))
-    }), window.PointContract.isPoint(selected) && /*#__PURE__*/React.createElement("dl", {
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "rc-legend rc-muted"
+    }, /*#__PURE__*/React.createElement("span", null, model.tasks.length, " / ", data.task_count, " \u9053\u5B89\u6392 \xB7 ", model.groupCount, " \u7EC4"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "rc-risk"
+    }), "\u9884\u8BA1\u8D85\u671F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "rc-on-time"
+    }), "\u9884\u8BA1\u6309\u671F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "rc-fixed"
+    }), "\u56FA\u5B9A\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "rc-external"
+    }), "\u5916\u534F\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "rc-overlap"
+    }), "\u540C\u65F6\u6BB5\u5B89\u6392\u5206\u5B50\u884C\u663E\u793A"), /*#__PURE__*/React.createElement("span", null, "\u25C7 \u96F6\u5DE5\u65F6\u70B9\u72EC\u7ACB\u884C\uFF0C\u4E0D\u5360\u8D44\u6E90"), /*#__PURE__*/React.createElement("span", {
+      className: "rc-tools"
+    }, /*#__PURE__*/React.createElement(Button, {
+      icon: "chevron-left",
+      "aria-label": "\u4E0A\u4E00\u5339\u914D\u5019\u9009\u4EFB\u52A1",
+      disabled: currentIndex <= 0,
+      onClick: () => move(-1)
+    }), /*#__PURE__*/React.createElement("span", null, currentIndex < 0 ? '未选任务' : '第 ' + (currentIndex + 1) + ' 道匹配'), /*#__PURE__*/React.createElement(Button, {
+      icon: "chevron-right",
+      "aria-label": "\u4E0B\u4E00\u5339\u914D\u5019\u9009\u4EFB\u52A1",
+      disabled: !model.tasks.length || currentIndex >= model.tasks.length - 1,
+      onClick: () => move(1)
+    }))), window.PointContract.isPoint(selected) && /*#__PURE__*/React.createElement("dl", {
       className: "rc-meta",
       "data-candidate-point-facts": true
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5B89\u6392\u7C7B\u578B"), /*#__PURE__*/React.createElement("dd", null, "\u96F6\u5DE5\u65F6\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u53D1\u751F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(selected.start))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u5DE5\u5E8F\u5360\u7528"), /*#__PURE__*/React.createElement("dd", null, "0 \u5C0F\u65F6 \xB7 \u4E0D\u5360\u8BBE\u5907\u4EBA\u5458"))), hover && /*#__PURE__*/React.createElement("div", {
@@ -36138,6 +37533,8 @@ function SMExport({
     const [tab, setTab] = React.useState((view === 'delay' ? ['tasks', 'unplanned'] : ['tasks', 'unplanned', 'delivery', 'history']).includes(initialContext.candidate_tab) ? initialContext.candidate_tab : 'tasks'),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
     const [analysisPaused, setAnalysisPaused] = React.useState(false);
+    const [detailsOpen, setDetailsOpen] = React.useState(false);
+    const detailsToggle = React.useRef(null);
     const directory = useRead(signal => adapter.catalog(runRef, catalogQuery, signal), [adapter, runRef, catalogQuery, revision], !!runRef && !invalid);
     const read = useRead(async signal => {
       const v = await adapter.workspace(candidateRef, scope, signal);
@@ -36218,6 +37615,10 @@ function SMExport({
         result
       });
     }
+    function collapseDetails() {
+      setDetailsOpen(false);
+      detailsToggle.current.querySelector('button').focus();
+    }
     function lastOperation(task) {
       setQuery('');
       const visible = shown.tasks.find(row => row.row_ref === task.row_ref);
@@ -36246,11 +37647,11 @@ function SMExport({
     function rangeSubmit(e) {
       e.preventDefault();
       try {
-        const seconds = value => value.length === 16 ? value + ':00' : value;
+        const time = window.WorkbenchDatePickerModel.factoryTime;
         const next = A.workspaceScope(candidateRef, {
           ...scope,
-          range_start: seconds(range.start),
-          range_end: seconds(range.end)
+          range_start: time(range.start),
+          range_end: time(range.end)
         });
         setScope(next);
         setRangeError(null);
@@ -36302,9 +37703,7 @@ function SMExport({
     }) : /*#__PURE__*/React.createElement(C.Button, {
       icon: "square-pen",
       reason: window.WorkbenchTerms.outcomes.unavailable
-    }, "\u8BD5\u8C03"), /*#__PURE__*/React.createElement("small", {
-      className: "rc-muted"
-    }, "\u8BD5\u8C03\u4E0D\u5F71\u54CD\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u8BD5\u8C03"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u5019\u9009\u65B9\u6848",
       disabled: invalid || !runRef && !candidateRef,
@@ -36371,17 +37770,9 @@ function SMExport({
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5019\u9009\u5DE5\u4F5C\u533A"), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
-    }, "\u8BFB\u53D6\u4E8E ", M.timeLabel(result.meta.as_of))), /*#__PURE__*/React.createElement("div", {
-      className: "rc-tools"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "search",
-      "aria-label": "\u641C\u7D22\u5019\u9009\u5DE5\u5E8F",
-      placeholder: "\u6279\u6B21\u3001\u5DE5\u5E8F\u3001\u8BBE\u5907\u3001\u4EBA\u5458",
-      value: query,
-      onChange: e => setQuery(e.target.value)
-    }), /*#__PURE__*/React.createElement("span", {
+    }, "\u8BFB\u53D6\u4E8E ", M.timeLabel(result.meta.as_of))), /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
-    }, "\u5339\u914D\u5B89\u6392 ", tasks.length, " / ", shown.task_count)), /*#__PURE__*/React.createElement("div", {
+    }, "\u5339\u914D\u5B89\u6392 ", tasks.length, " / ", shown.task_count), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "calendar-days",
@@ -36398,7 +37789,8 @@ function SMExport({
       onSubmit: rangeSubmit
     }, /*#__PURE__*/React.createElement("label", null, "\u5F00\u59CB\uFF08\u5305\u542B\uFF09", /*#__PURE__*/React.createElement("input", {
       type: "text",
-      placeholder: "2026-09-13T08:30:00",
+      "data-picker-type": "factory-local",
+      placeholder: "2026-10-12 08:30",
       spellCheck: false,
       "aria-label": "\u5019\u9009\u8BFB\u53D6\u5F00\u59CB",
       value: range.start,
@@ -36408,7 +37800,8 @@ function SMExport({
       })
     })), /*#__PURE__*/React.createElement("label", null, "\u7ED3\u675F\uFF08\u4E0D\u542B\uFF09", /*#__PURE__*/React.createElement("input", {
       type: "text",
-      placeholder: "2026-09-13T08:30:00.800000",
+      "data-picker-type": "factory-local",
+      placeholder: "2026-10-14 18:00",
       spellCheck: false,
       "aria-label": "\u5019\u9009\u8BFB\u53D6\u7ED3\u675F",
       value: range.end,
@@ -36441,11 +37834,26 @@ function SMExport({
       data: shown.delivery_risks,
       onLast: lastOperation
     }), /*#__PURE__*/React.createElement("div", {
-      className: "rc-main",
-      "data-single-column": ['delivery', 'history'].includes(tab) ? 'true' : undefined
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(window.RunCandidateGantt, {
+      className: 'rc-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : ''),
+      "data-details-open": view === 'gantt' && detailsOpen && !['delivery', 'history'].includes(tab) || undefined,
+      "data-single-column": ['delivery', 'history'].includes(tab) || view === 'gantt' && !detailsOpen ? 'true' : undefined
+    }, /*#__PURE__*/React.createElement("div", {
+      className: view === 'gantt' ? 'wb-gantt-main-column' : undefined
+    }, view === 'gantt' && !['delivery', 'history'].includes(tab) && /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-actions",
+      ref: detailsToggle
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "wb-gantt-detail-summary"
+    }, chosen ? (chosen.batch_label || '批次名称未填写') + ' · ' + (chosen.process_label || '工序名称未填写') : '选中工序后可查看详情'), /*#__PURE__*/React.createElement(C.Button, {
+      icon: detailsOpen ? 'panel-right-close' : 'panel-right-open',
+      "aria-expanded": detailsOpen,
+      "aria-controls": "candidate-gantt-detail",
+      onClick: () => setDetailsOpen(!detailsOpen)
+    }, detailsOpen ? '收起详情' : '详情')), /*#__PURE__*/React.createElement(window.RunCandidateGantt, {
       data: shown,
+      comparison: analysis,
       query: query,
+      onQuery: setQuery,
       selected: chosen,
       onSelect: select
     }), /*#__PURE__*/React.createElement("section", {
@@ -36508,8 +37916,13 @@ function SMExport({
       selected: chosen,
       onSelect: select,
       planned: tab === 'tasks'
-    })))), !['delivery', 'history'].includes(tab) && /*#__PURE__*/React.createElement(C.Detail, {
+    })))), !['delivery', 'history'].includes(tab) && (view !== 'gantt' || detailsOpen) && /*#__PURE__*/React.createElement(C.Detail, {
       task: chosen,
+      data: shown,
+      onRelated: taskRef => lastOperation({
+        row_ref: taskRef
+      }),
+      onCollapse: view === 'gantt' ? collapseDetails : undefined,
       onClose: () => setSelected(null)
     })), analysis && /*#__PURE__*/React.createElement(Analysis.Overview, {
       data: analysis
@@ -37387,9 +38800,7 @@ function SMExport({
       "aria-current": "page"
     }, /*#__PURE__*/React.createElement(window.ResourceControls.Icon, {
       name: "chart"
-    }), window.WorkbenchTerms.candidate), candidate && /*#__PURE__*/React.createElement("span", {
-      className: "scheduling-source"
-    }, "\u4E0D\u662F\u6B63\u5F0F\u8BA1\u5212"));
+    }), window.WorkbenchTerms.candidate));
     return /*#__PURE__*/React.createElement(React.Fragment, null, (candidate || history) && navigation, candidate ? /*#__PURE__*/React.createElement(window.RunCandidateWorkspace, {
       view: view,
       initialContext: initialContext,
@@ -38892,7 +40303,7 @@ function SMExport({
       TimelineZoom
     } = window.ResourceControls,
     ZOOM_MAX = 8,
-    wall = value => Date.parse(value + 'Z');
+    wall = window.PlanGanttModel.instant;
   const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
   const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
   function resourceNames(data) {
@@ -38915,9 +40326,11 @@ function SMExport({
     // When the local preference cannot be read, the gantt still renders with defaults and view changes stay on this page.
     const [local, setLocal] = React.useState(null),
       values = preferences.value || local || V.defaults(data);
+    // A trial compares with its own original arrangements, not the official plan at creation.
+    const hasOriginal = data.tasks.length > 0;
     const view = values.mode,
-      baseline = values.baseline,
-      changed = values.only_changed,
+      baseline = hasOriginal && values.baseline,
+      changed = hasOriginal && values.only_changed,
       query = values.query;
     const update = patch => {
       if (!preferences.change(patch)) setLocal({
@@ -38939,14 +40352,23 @@ function SMExport({
       });
     const [limit, setLimit] = React.useState(true);
     const [page, setPage] = React.useState(1),
-      [zoom, setZoom] = React.useState(1),
-      [expanded, setExpanded] = React.useState(false);
+      [zoom, setZoom] = React.useState(1);
+    const {
+      expanded,
+      toggle: toggleExpanded
+    } = window.GanttPresentationUI.useExpanded();
+    const [chart, setChart] = React.useState({
+      width: 1000,
+      viewport: 1000,
+      left: 0
+    });
     const [hover, setHover] = React.useState(null);
     const scope = limit ? data.scope : {},
       filtered = React.useMemo(() => matching(data, scope, query, changed), [data, scope, query, changed]);
     const name = resourceNames(data),
       key = view === 'batch' ? 'batch_ref' : view + '_ref',
-      board = React.useRef(null);
+      board = React.useRef(null),
+      axisHost = React.useRef(null);
     const rows = React.useMemo(() => {
       const entries = [];
       filtered.forEach(t => {
@@ -38978,8 +40400,26 @@ function SMExport({
         end: end + pad
       };
     }, [data]);
-    // Same tick ladder as the plan gantt: 1000 axis units per zoom step, placed by percentage of the timeline width.
-    const ticks = React.useMemo(() => window.PlanGanttModel.ticks(bounds.start, bounds.end, 1000 * zoom, 0, 1000 * zoom), [bounds, zoom]);
+    const axis = window.GanttPresentation.axis({
+      ...bounds,
+      ...chart
+    });
+    const measure = () => {
+      const node = board.current,
+        track = axisHost.current;
+      if (node && track) setChart({
+        width: track.clientWidth,
+        viewport: node.clientWidth - node.querySelector('.tt-corner').getBoundingClientRect().width,
+        left: node.scrollLeft
+      });
+    };
+    React.useLayoutEffect(() => {
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(board.current);
+      observer.observe(axisHost.current);
+      return () => observer.disconnect();
+    }, []);
     const position = t => ({
       left: (wall(t.start) - bounds.start) / (bounds.end - bounds.start) * 100 + '%',
       width: (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * 100 + '%'
@@ -38998,7 +40438,7 @@ function SMExport({
         "data-baseline-ref": original ? t.task_ref : undefined,
         title: title,
         x: position(value).left,
-        top: original ? 36 : 10,
+        top: original ? 46 : 15,
         tone: original ? 'before' : t.issues.length ? 'critical' : t.locked ? 'success' : '',
         selected: selected === t.task_ref,
         onSelect: () => {
@@ -39017,15 +40457,31 @@ function SMExport({
       const index = rows.findIndex(r => !r.ghost && r.t.task_ref === selected);
       if (index >= 0) setPage(Math.floor(index / 30) + 1);
     }, [selected]);
-    React.useEffect(() => {
-      if (expanded) {
-        const handler = e => {
-          if (e.key === 'Escape') setExpanded(false);
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-      }
-    }, [expanded]);
+    function bar(t) {
+      const width = (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * chart.width;
+      const lines = window.GanttPresentation.taskLines({
+        sequence: t.sequence,
+        process: t.process_label,
+        batch: t.batch_id,
+        piece: pieceLabel(t),
+        resource: name(t.machine_ref)
+      }, view, width);
+      return /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        className: 'tt-bar' + (t.issues.length ? ' conflict' : '') + (t.locked ? ' locked' : ''),
+        "data-task-ref": t.task_ref,
+        "aria-label": '安排时段 ' + taskLabel(t),
+        "aria-pressed": selected === t.task_ref,
+        title: taskLabel(t) + '\n本工序目标量 ' + U.number(t.quantity) + ' · 整批量 ' + U.number(t.batch_quantity) + '\n' + U.timeLabel(t.start) + ' 至 ' + U.timeLabel(t.end),
+        style: position(t),
+        onClick: () => onSelect(t.task_ref)
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "tt-bar-face"
+      }, /*#__PURE__*/React.createElement("strong", null, lines.primary), lines.secondary && /*#__PURE__*/React.createElement("small", null, lines.secondary), t.locked && /*#__PURE__*/React.createElement("i", {
+        className: "tt-lock-mark",
+        "aria-hidden": "true"
+      })));
+    }
     return /*#__PURE__*/React.createElement("section", {
       className: 'tt-gantt' + (expanded ? ' tt-expanded' : ''),
       "aria-label": "\u8BD5\u8C03\u7518\u7279"
@@ -39036,7 +40492,7 @@ function SMExport({
       className: "tt-heading"
     }, /*#__PURE__*/React.createElement("h3", null, "\u8BD5\u8C03\u6392\u7A0B\u56FE"), /*#__PURE__*/React.createElement("span", {
       className: "tt-muted"
-    }, "\u542B\u591C\u95F4")), /*#__PURE__*/React.createElement("div", {
+    }, "\u542B\u591C\u95F4 \xB7 \u6BCF\u9053\u5DE5\u5E8F\u72EC\u7ACB\u4E00\u884C")), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools tt-gantt-tools"
     }, /*#__PURE__*/React.createElement(U.Tabs, {
       value: view,
@@ -39046,13 +40502,13 @@ function SMExport({
         setView(v);
         setPage(1);
       }
-    }), /*#__PURE__*/React.createElement("label", {
+    }), hasOriginal && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", {
       className: "tt-check"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       checked: baseline,
       onChange: e => setBaseline(e.target.checked)
-    }), "\u539F\u5B89\u6392"), /*#__PURE__*/React.createElement("label", {
+    }), "\u539F\u8BD5\u8C03\u57FA\u7840"), /*#__PURE__*/React.createElement("label", {
       className: "tt-check"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
@@ -39061,7 +40517,7 @@ function SMExport({
         setChanged(e.target.checked);
         setPage(1);
       }
-    }), "\u4EC5\u53D8\u66F4"), !!Object.keys(data.scope).length && /*#__PURE__*/React.createElement("label", {
+    }), "\u4EC5\u53D8\u66F4")), !!Object.keys(data.scope).length && /*#__PURE__*/React.createElement("label", {
       className: "tt-check"
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
@@ -39089,11 +40545,15 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(U.Button, {
       icon: "chart-gantt",
       "aria-label": expanded ? '收起甘特' : '展开甘特',
-      onClick: () => setExpanded(!expanded)
-    })), /*#__PURE__*/React.createElement("div", {
+      "aria-expanded": expanded,
+      onClick: toggleExpanded
+    }, expanded ? '收起' : '展开')), /*#__PURE__*/React.createElement("div", {
       className: "tt-board",
       ref: board,
-      onScroll: () => setHover(null)
+      onScroll: () => {
+        setHover(null);
+        measure();
+      }
     }, /*#__PURE__*/React.createElement("div", {
       className: "tt-timeline",
       style: {
@@ -39104,20 +40564,19 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("div", {
       className: "tt-corner"
     }, "\u5DE5\u5E8F / \u8D44\u6E90"), /*#__PURE__*/React.createElement("div", {
-      className: "tt-ticks"
-    }, ticks.map(tick => /*#__PURE__*/React.createElement("span", {
-      key: tick.at,
-      className: "tt-tick",
-      style: {
-        left: tick.x / (10 * zoom) + '%'
-      }
-    }, U.timeLabel(tick.label).slice(5, 10), /*#__PURE__*/React.createElement("small", null, U.timeLabel(tick.label).slice(11)))))), visible.map((r, i) => /*#__PURE__*/React.createElement(React.Fragment, {
+      className: "tt-ticks",
+      ref: axisHost
+    }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
+      axis: axis,
+      width: chart.width
+    }))), visible.map((r, i) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: r.t.task_ref + ':' + r.ghost
     }, (i === 0 || visible[i - 1].group !== r.group) && /*#__PURE__*/React.createElement("div", {
       className: "tt-group"
     }, view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未填写') : name(r.group)), /*#__PURE__*/React.createElement("div", {
       className: 'tt-gantt-row' + (selected === r.t.task_ref ? ' selected' : ''),
-      "data-trial-task": r.t.task_ref
+      "data-trial-task": r.t.task_ref,
+      "data-show-baseline": baseline || undefined
     }, /*#__PURE__*/React.createElement("button", {
       type: "button",
       className: "tt-task-label",
@@ -39125,18 +40584,15 @@ function SMExport({
       "aria-pressed": selected === r.t.task_ref,
       "aria-label": '选择工序 ' + taskLabel(r.t),
       title: taskLabel(r.t) + '\n本工序目标量 ' + U.number(r.t.quantity) + ' · 整批量 ' + U.number(r.t.batch_quantity)
-    }, /*#__PURE__*/React.createElement("strong", null, pieceLabel(r.t), " \xB7 ", r.t.sequence), /*#__PURE__*/React.createElement("small", null, r.t.batch_id, " \xB7 ", r.t.process_label, " \xB7 ", r.ghost ? '原资源' : U.number(r.t.quantity) + ' 件')), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("strong", null, r.t.sequence, " ", r.t.process_label), /*#__PURE__*/React.createElement("small", null, r.t.batch_id, " \xB7 ", pieceLabel(r.t), r.ghost ? ' · 原资源' : '')), /*#__PURE__*/React.createElement("div", {
       className: "tt-track"
-    }, !r.ghost && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, false) : /*#__PURE__*/React.createElement("button", {
-      type: "button",
-      className: 'tt-bar' + (r.t.issues.length ? ' conflict' : '') + (r.t.locked ? ' locked' : ''),
-      "data-task-ref": r.t.task_ref,
-      "aria-label": '安排时段 ' + taskLabel(r.t),
-      "aria-pressed": selected === r.t.task_ref,
-      title: taskLabel(r.t) + '\n本工序目标量 ' + U.number(r.t.quantity) + ' · 整批量 ' + U.number(r.t.batch_quantity) + '\n' + U.timeLabel(r.t.start) + ' 至 ' + U.timeLabel(r.t.end),
-      style: position(r.t),
-      onClick: () => onSelect(r.t.task_ref)
-    })), baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, true) : /*#__PURE__*/React.createElement("span", {
+    }, axis.ticks.map(tick => /*#__PURE__*/React.createElement("i", {
+      key: tick.at,
+      className: "tt-gridline",
+      style: {
+        left: tick.x / chart.width * 100 + '%'
+      }
+    })), !r.ghost && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, false) : bar(r.t)), baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, true) : /*#__PURE__*/React.createElement("span", {
       className: "tt-baseline",
       "data-baseline-ref": r.t.task_ref,
       role: "img",
@@ -39149,13 +40605,13 @@ function SMExport({
       className: "tt-heading"
     }, /*#__PURE__*/React.createElement("div", {
       className: "tt-legend"
-    }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u8BD5\u8C03\u5B89\u6392"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+    }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", null), "\u8BD5\u8C03\u5B89\u6392"), baseline && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "baseline"
     }), "\u539F\u8BD5\u8C03\u57FA\u7840"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "conflict"
     }), "\u7EA6\u675F\u95EE\u9898"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "locked"
-    }), "\u5DF2\u9501\u5B9A\uFF0C\u4E0D\u80FD\u8C03\u6574")), /*#__PURE__*/React.createElement("span", {
+    }), "\u5DF2\u9501\u5B9A")), /*#__PURE__*/React.createElement("span", {
       className: "tt-muted"
     }, "\u5339\u914D ", filtered.length, " / \u5B8C\u6574 ", data.task_count, " \u9053 \xB7 ", zoom, "\xD7")), /*#__PURE__*/React.createElement(U.Pager, {
       page: {
@@ -39267,12 +40723,12 @@ function SMExport({
     async function submit(e) {
       e.preventDefault();
       setError(null);
-      const value = {
-        ...form,
-        start: form.start.length === 16 ? form.start + ':00' : form.start
-      };
       try {
-        C.check(C.time(value.start), '开工时间请按 2026-09-13T08:30:00 填写；需要小数秒时保留六位，例如 08:30:00.800000。');
+        const value = {
+          ...form,
+          start: window.WorkbenchDatePickerModel.factoryTime(form.start)
+        };
+        C.check(C.time(value.start), '请选择有效的开工日期和时间。');
         C.check(external ? value.machine_ref === null && value.operator_ref === null : C.ref(value.machine_ref) && C.ref(value.operator_ref), '请选择设备和人员。');
         const ok = await commands.execute({
           action: 'change',
@@ -39317,8 +40773,9 @@ function SMExport({
       disabled: r.status !== 'active'
     }, r.business_code, " \xB7 ", r.label || '名称未填写', r.status !== 'active' ? '（不可用）' : ''))))), /*#__PURE__*/React.createElement("label", null, "\u8C03\u6574\u5F00\u5DE5", /*#__PURE__*/React.createElement("input", {
       type: "text",
+      "data-picker-type": "factory-local",
       "aria-label": "\u8C03\u6574\u5F00\u5DE5",
-      placeholder: "2026-09-13T08:30:00",
+      placeholder: "\u9009\u62E9\u65E5\u671F\u548C\u65F6\u95F4",
       spellCheck: false,
       required: true,
       value: form.start,
@@ -39329,7 +40786,7 @@ function SMExport({
       })
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u8BF7\u6309 2026-09-13T08:30 \u8FD9\u6837\u586B\uFF1B\u5DF2\u6709\u5C0F\u6570\u79D2\u4F1A\u5B8C\u6574\u4FDD\u7559\u3002\u6309\u73ED\u8868\u8BA1\u7B97\u5B8C\u5DE5\u65F6\u95F4\uFF1B\u5176\u4ED6\u5DE5\u5E8F\u9700\u5206\u522B\u8C03\u6574\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
+    }, "\u6309\u73ED\u8868\u8BA1\u7B97\u5B8C\u5DE5\u65F6\u95F4\uFF0C\u9010\u9053\u4FDD\u5B58\u8C03\u6574\uFF1B\u5DF2\u6709\u5C0F\u6570\u79D2\u5B8C\u6574\u4FDD\u7559\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
       className: "tt-notice"
     }, "\u6240\u9009\u4EBA\u5458\u5C1A\u672A\u53D6\u5F97\u8BE5\u8BBE\u5907\u7684\u64CD\u4F5C\u6388\u6743\u3002"), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
@@ -39366,25 +40823,26 @@ function SMExport({
     onEditing,
     onRecheck,
     guardOwner,
-    editorRevision
+    editorRevision,
+    onCollapse
   }) {
     const task = data.tasks.find(t => t.task_ref === selected),
       name = window.TrialGantt.resourceNames(data);
-    if (!task) return /*#__PURE__*/React.createElement("aside", {
-      className: "tt-detail"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u5E8F\u8BE6\u60C5"), /*#__PURE__*/React.createElement("div", {
-      className: "tt-empty"
-    }, "\u5C1A\u672A\u9009\u62E9\u5DE5\u5E8F"));
     return /*#__PURE__*/React.createElement("aside", {
-      className: "tt-detail",
+      className: "tt-detail wb-gantt-detail-panel",
+      id: "trial-gantt-detail",
       "aria-label": "\u5DE5\u5E8F\u8BE6\u60C5"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "tt-heading"
+    }, /*#__PURE__*/React.createElement("header", {
+      className: "wb-gantt-detail-header"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5DE5\u5E8F\u8BE6\u60C5"), /*#__PURE__*/React.createElement(U.Button, {
-      icon: "x",
-      "aria-label": "\u5173\u95ED\u5DE5\u5E8F\u8BE6\u60C5",
-      onClick: () => onSelect(null)
-    })), /*#__PURE__*/React.createElement("h4", null, task.batch_id, " \xB7 ", task.process_label), /*#__PURE__*/React.createElement("p", null, task.part_no, " \xB7 ", task.part_name || '零件名称未填写'), /*#__PURE__*/React.createElement(Editor, {
+      icon: "panel-right-close",
+      onClick: onCollapse
+    }, "\u6536\u8D77\u8BE6\u60C5")), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-body",
+      "data-wb-scroll-key": "trial-gantt-detail"
+    }, !task ? /*#__PURE__*/React.createElement("div", {
+      className: "tt-empty"
+    }, "\u5C1A\u672A\u9009\u62E9\u5DE5\u5E8F") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, task.batch_id, " \xB7 ", task.process_label), /*#__PURE__*/React.createElement("p", null, task.part_no, " \xB7 ", task.part_name || '零件名称未填写'), /*#__PURE__*/React.createElement(Editor, {
       key: task.task_ref,
       data,
       task,
@@ -39401,7 +40859,7 @@ function SMExport({
       normal: '普通',
       urgent: '急件',
       critical: '特急'
-    }[task.priority] || '未知'], ['交期', task.due_date || '未记录'], ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)], ['当前开工', U.timeLabel(task.start)], ['当前完工', U.timeLabel(task.end)], ['原设备', name(task.original.machine_ref)], ['原人员', name(task.original.operator_ref)], ['原开工', U.timeLabel(task.original.start)], ['原完工', U.timeLabel(task.original.end)], ['原准备工时', U.hours(task.hours.setup_hours)], ['原单件工时', U.hours(task.hours.unit_hours)], ['原总工时', U.hours(task.hours.total_hours)], ['工时依据', hoursBasis(task.hours.basis)], ...(task.source === 'external' ? [['原周期（天）', U.number(task.hours.days)]] : [])].map(([label, value]) => /*#__PURE__*/React.createElement(React.Fragment, {
+    }[task.priority] || '未知'], ['交期', task.due_date || '未记录'], ['来源', task.source === 'internal' ? '自制' : '外协'], ['当前设备', name(task.machine_ref)], ['当前人员', name(task.operator_ref)], ['当前开工', U.timeLabel(task.start)], ['当前完工', U.timeLabel(task.end)]].map(([label, value]) => /*#__PURE__*/React.createElement(React.Fragment, {
       key: label
     }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))), /*#__PURE__*/React.createElement("div", {
       className: "tt-tools"
@@ -39426,15 +40884,27 @@ function SMExport({
       onSelect: onSelect
     }), /*#__PURE__*/React.createElement(U.Issues, {
       rows: task.data_gaps
-    })), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6267\u884C\u4F9D\u636E"), /*#__PURE__*/React.createElement(Execution, {
+    })), /*#__PURE__*/React.createElement("details", {
+      className: "wb-gantt-detail-section"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u539F\u8BD5\u8C03\u57FA\u7840\u4E0E\u5DE5\u65F6"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section-body"
+    }, /*#__PURE__*/React.createElement("dl", {
+      className: "tt-facts"
+    }, [['原设备', name(task.original.machine_ref)], ['原人员', name(task.original.operator_ref)], ['原开工', U.timeLabel(task.original.start)], ['原完工', U.timeLabel(task.original.end)], ['原准备工时', U.hours(task.hours.setup_hours)], ['原单件工时', U.hours(task.hours.unit_hours)], ['原总工时', U.hours(task.hours.total_hours)], ['工时依据', hoursBasis(task.hours.basis)], ...(task.source === 'external' ? [['原周期（天）', U.number(task.hours.days)]] : [])].map(([label, value]) => /*#__PURE__*/React.createElement(React.Fragment, {
+      key: label
+    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, value)))))), /*#__PURE__*/React.createElement("details", {
+      className: "wb-gantt-detail-section"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u6267\u884C\u4F9D\u636E"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section-body"
+    }, /*#__PURE__*/React.createElement(Execution, {
       title: "\u5EFA\u8349\u7A3F\u65F6\u7684\u62A5\u5DE5\u8BB0\u5F55",
       value: task.execution_at_creation
     }), /*#__PURE__*/React.createElement(Execution, {
       title: "\u672C\u6B21\u8BFB\u53D6\u7684\u62A5\u5DE5\u8BB0\u5F55",
       value: task.execution
-    })), /*#__PURE__*/React.createElement(References, {
+    }))), /*#__PURE__*/React.createElement(References, {
       task: task
-    }));
+    }))));
   }
   window.TrialDetails = Detail;
 })();
@@ -40051,6 +41521,7 @@ function SMExport({
     const [stored, setStored] = React.useState(null),
       [selected, setSelected] = React.useState(null),
       [editing, setEditing] = React.useState(false);
+    const [detailsOpen, setDetailsOpen] = React.useState(false);
     const [error, setError] = React.useState(null),
       [notice, setNotice] = React.useState(''),
       [directory, setDirectory] = React.useState(true);
@@ -40164,6 +41635,9 @@ function SMExport({
     async function select(ref) {
       if (ref === selected || (await guard())) setSelected(ref);
     }
+    async function toggleDetails() {
+      if (!detailsOpen) setDetailsOpen(true);else if (await guard()) setDetailsOpen(false);
+    }
     async function open(next) {
       if (!(await guard())) return;
       try {
@@ -40177,6 +41651,7 @@ function SMExport({
         setTarget(canonical);
         setStored(null);
         setSelected(null);
+        setDetailsOpen(false);
         locatedOrigin.current = null;
         setNotice('');
         setDirectory(false);
@@ -40191,6 +41666,7 @@ function SMExport({
       refresh();
     }
     const title = data ? data.name || U.sourceLabel(data.base_identity) : '尚未选择试调草稿或试调方案';
+    const selectedTask = data && data.tasks.find(task => task.task_ref === selected);
     return /*#__PURE__*/React.createElement("div", {
       className: "plana trial-workspace",
       "data-trial-workspace": true,
@@ -40272,11 +41748,23 @@ function SMExport({
       data: data
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u5EFA\u8349\u7A3F\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\uFF1A", data.baseline.plan_ref ? '第 ' + data.baseline.version + ' 版' : '当时还没有正式计划', " \xB7 \u5BF9\u6BD4\u59CB\u7EC8\u4F7F\u7528\u539F\u8BD5\u8C03\u57FA\u7840"), /*#__PURE__*/React.createElement(window.TrialResults.Summary, {
+    }, "\u539F\u5B89\u6392\uFF1A\u521B\u5EFA\u8BD5\u8C03\u65F6\u4FDD\u5B58 \xB7 \u8BD5\u8C03\u5B89\u6392\uFF1A\u5F53\u524D\u7F16\u8F91\u7ED3\u679C"), /*#__PURE__*/React.createElement(window.TrialResults.Summary, {
       data: data
     }), /*#__PURE__*/React.createElement("div", {
-      className: "tt-main"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(window.TrialGantt, {
+      className: "tt-main wb-gantt-detail-layout",
+      "data-details-open": detailsOpen || undefined
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-main-column"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-actions"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "wb-gantt-detail-summary"
+    }, selectedTask ? selectedTask.batch_id + ' · ' + selectedTask.sequence + ' ' + selectedTask.process_label : '选中工序后可查看详情并调整安排'), /*#__PURE__*/React.createElement(U.Button, {
+      icon: detailsOpen ? 'panel-right-close' : 'panel-right-open',
+      "aria-expanded": detailsOpen,
+      "aria-controls": "trial-gantt-detail",
+      onClick: toggleDetails
+    }, detailsOpen ? '收起详情' : '详情')), /*#__PURE__*/React.createElement(window.TrialGantt, {
       key: key,
       data: data,
       selected: selected,
@@ -40285,7 +41773,7 @@ function SMExport({
       key: key,
       data: data,
       onSelect: select
-    })), /*#__PURE__*/React.createElement(window.TrialDetails, {
+    })), detailsOpen && /*#__PURE__*/React.createElement(window.TrialDetails, {
       data: data,
       selected: selected,
       commands: actions,
@@ -40293,7 +41781,8 @@ function SMExport({
       onEditing: setEditing,
       onRecheck: reload,
       guardOwner: guardOwner,
-      editorRevision: editorRevision
+      editorRevision: editorRevision,
+      onCollapse: toggleDetails
     })), /*#__PURE__*/React.createElement("footer", {
       className: "tt-footer"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u6574\u4F53\u7EA6\u675F\uFF1A", U.statusLabel(data.validation.constraints_status)), /*#__PURE__*/React.createElement("div", {
@@ -46243,14 +47732,21 @@ function SMExport({
     rollback_failed: '还原失败，需人工核对',
     recovery_required: '结果不确定，需人工核对'
   };
+  const hostLabels = {
+    ready: '系统运行中',
+    draining: '正在准备数据库恢复',
+    restoring: '正在恢复数据库',
+    restart_required: '恢复已结束，请重启软件',
+    recovery_required: '恢复记录需要核对'
+  };
   const origins = {
     selected_backup: '来自所选备份',
     protection_backup: '已还原到恢复前的保护副本',
     unchanged: '原数据库未被替换',
-    unconfirmed: '未知，不能确认当前数据库内容'
+    unconfirmed: '维护记录尚未确认数据库来源'
   };
   function check(ok) {
-    if (!ok) throw new Error('恢复状态不完整或互相矛盾，系统现在只能读不能写。请不要再操作，联系维护人员。');
+    if (!ok) throw new Error('维护状态数据不完整或存在冲突，请重新查询并核对维护记录。');
   }
   function validateHost(host) {
     check(object(host) && ['ready', 'draining', 'restoring', 'restart_required', 'recovery_required'].includes(host.state) && host.restart_required === (host.state !== 'ready') && host.automatic_resume === false && typeof host.operations_available === 'boolean' && (host.state === 'ready' || host.operations_available === false) && host.result_source === source && typeof host.references === 'string' && (host.request_key === null || typeof host.request_key === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(host.request_key)));
@@ -46290,7 +47786,7 @@ function SMExport({
       title: !host ? '无法读取维护状态' : !stopped ? op && op.terminal ? '上次维护结果已确认' : '维护结果还没有确认' : uncertain ? '系统已暂停，维护结果待确认' : '维护已结束，请重启整个软件',
       state: op ? labels[op.state] : '尚未查到可确认的维护结果',
       origin: op ? origins[op.database_origin] : origins.unconfirmed,
-      guidance: !host ? '还不能确认软件维护状态，当前页面已暂停业务读写。请点「查询结果」重试，保留已有记录，不要重复恢复。' : !stopped ? op && op.terminal ? '维护已完成，请刷新页面后继续使用。' : '上次维护操作还没有确认结果。请等待结果或点「查询结果」，不要重复提交。' : uncertain ? '恢复结果待核对，请保留操作编号和备份，联系维护人员；勿重复恢复。' : '请关闭整个 APS 软件后重新启动。',
+      guidance: !host ? '恢复请求结果待确认，请查询维护记录。' : !stopped ? op && op.terminal ? '维护已完成，请刷新页面后继续使用。' : '上次维护操作还没有确认结果。请等待结果或点「查询结果」，不要重复提交。' : uncertain ? '恢复结果待核对，请保留操作编号和备份，联系维护人员；勿重复恢复。' : '请关闭整个 APS 软件后重新启动。',
       uncertain
     };
   }
@@ -46321,6 +47817,7 @@ function SMExport({
     download,
     labels,
     origins,
+    hostLabels,
     DIAGNOSTIC_FILENAME
   };
 })();
@@ -46477,17 +47974,17 @@ function SMExport({
       },
       finish(intent) {
         const saved = this.read();
-        check(saved && saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。');
-        storage.removeItem(PENDING_KEY);
+        check(!saved || saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。');
+        if (saved) storage.removeItem(PENDING_KEY);
       }
     };
   }
   function errorResponse(value, status) {
     const valid = object(value) && value.ok === false && object(value.error) && text(value.error.message) && text(value.error.code);
-    const problem = new Error(valid ? value.error.message : '没有读到有效的维护结果，这次没有改动。请点「查询结果」。');
+    const problem = new Error(valid ? value.error.message : '维护接口返回的数据格式无效，请重新查询。');
     problem.code = valid ? value.error.code : 'invalid_response';
     problem.status = status;
-    problem.rejected = valid && value.committed === false && status >= 400 && status < 500 && ['invalid_input', 'stale_write', 'constraint_conflict', 'entity_not_found'].includes(problem.code);
+    problem.rejected = valid && value.committed === false && status >= 400;
     return problem;
   }
   function inspectPending() {
@@ -46585,7 +48082,7 @@ function SMExport({
         });
         return await consume(response);
       } catch (problem) {
-        if (expired) throw new Error(window.WorkbenchTerms.outcomes.pending('维护操作'));
+        if (expired) throw new Error(options.method === 'POST' ? window.WorkbenchTerms.outcomes.pending('维护操作') : '维护查询超时，请重新查询。');
         throw problem;
       } finally {
         clearTimeout(timer);
@@ -46595,7 +48092,7 @@ function SMExport({
     async function request(path, options = {}) {
       return exchange(path, options, async response => {
         const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (mime !== 'application/json') throw new Error(window.WorkbenchTerms.outcomes.unknown('维护操作'));
+        if (mime !== 'application/json') throw errorResponse(null, response.status);
         const payload = await response.json();
         if (!response.ok || payload.ok !== true) throw errorResponse(payload, response.status);
         return payload;
@@ -46603,9 +48100,18 @@ function SMExport({
     }
     return {
       async host(signal) {
-        return window.SystemRestoreStatus.host(await request('/restore-host', {
-          signal
-        }));
+        try {
+          return window.SystemRestoreStatus.host(await request('/restore-host', {
+            signal
+          }));
+        } catch (problem) {
+          if (problem.name === 'AbortError') throw problem;
+          const message = problem.status === 404 ? '维护状态接口未注册（HTTP 404），请检查服务启动配置。' : problem.name === 'TypeError' ? '维护状态服务连接失败，请检查软件服务后重新查询。' : '维护状态查询失败' + (problem.status ? '（HTTP ' + problem.status + '）' : '') + '：' + problem.message;
+          const error = new Error(message);
+          error.code = problem.code;
+          error.status = problem.status;
+          throw error;
+        }
       },
       async read(kind, input, signal) {
         check(['backups', 'logs', 'config'].includes(kind));
@@ -46828,12 +48334,12 @@ function SMExport({
     command
   }) {
     const {
-      intent,
       result,
       error,
       busy,
       storageError
     } = command;
+    const intent = command.intent || result && result.intent;
     if (!intent && !storageError) return null;
     const op = result && result.kind === 'file_operation' && result.operation;
     return /*#__PURE__*/React.createElement("section", {
@@ -46847,7 +48353,7 @@ function SMExport({
       icon: "refresh-cw",
       busy: busy,
       onClick: command.lookup
-    }, window.WorkbenchTerms.actions.query_result), result && result.terminal && !command.suspended && /*#__PURE__*/React.createElement(Button, {
+    }, window.WorkbenchTerms.actions.query_result), command.intent && result && result.terminal && !command.suspended && /*#__PURE__*/React.createElement(Button, {
       icon: "check",
       disabled: busy,
       onClick: command.acknowledge
@@ -46985,7 +48491,7 @@ function SMExport({
     }, []);
     const result = query ? query.result : command.result;
     const op = result && result.kind === 'file_operation' ? result.operation : null;
-    const description = R.describe(command.hostError ? null : host, op),
+    const description = R.describe(host, op),
       waiting = busy || command.busy || command.hostBusy;
     const problem = error || command.hostError || command.storageError || command.error;
     async function lookup(event) {
@@ -47014,7 +48520,7 @@ function SMExport({
         setBusy(false);
       }
     }
-    const fields = [['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'], ['操作记录', op && op.audit_persisted ? '已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']];
+    const fields = [['结果来源', '维护记录'], ['该次维护记录的数据库来源', description.origin], ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')], ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'], ['操作记录', op && op.audit_persisted ? '已留存；当前数据库内容仍需重启后读取' : '未确认留存'], ['软件状态', host ? R.hostLabels[host.state] : '恢复请求结果待确认']];
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
       className: "sm-workbench sm-maintenance-workspace plana sm-restore-screen",
       "data-restore-maintenance": "warm",
@@ -47033,7 +48539,7 @@ function SMExport({
       onChange: () => onSetTheme(value)
     }), label)))), /*#__PURE__*/React.createElement("main", {
       className: "sm-restore-content"
-    }, /*#__PURE__*/React.createElement("h1", null, command.hostError ? '无法读取维护状态' : description.title), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h1", null, description.title), /*#__PURE__*/React.createElement("p", {
       className: "sm-meta"
     }, "\u7EF4\u62A4\u72B6\u6001"), /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u7EF4\u62A4\u7ED3\u679C"
@@ -47041,11 +48547,12 @@ function SMExport({
       className: op && op.state === 'succeeded' && !description.uncertain ? 'sm-tone-success' : 'sm-tone-warning'
     }, description.state), /*#__PURE__*/React.createElement("p", {
       className: "sm-notice"
-    }, description.guidance), /*#__PURE__*/React.createElement(C.ErrorBox, {
-      error: problem
-    }), waiting && /*#__PURE__*/React.createElement("p", {
+    }, description.guidance), problem && /*#__PURE__*/React.createElement("p", {
+      className: "sm-notice sm-tone-danger",
+      role: "alert"
+    }, problem.message), waiting && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u67E5\u8BE2\u7EF4\u62A4\u72B6\u6001\uFF0C\u6CA1\u6709\u91CD\u65B0\u63D0\u4EA4\u6062\u590D\u3002"), notice && /*#__PURE__*/React.createElement("p", {
+    }, "\u6B63\u5728\u67E5\u8BE2\u7EF4\u62A4\u72B6\u6001\u2026"), notice && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, notice), op && /*#__PURE__*/React.createElement("p", null, op.message), result && result.kind === 'not_recorded' && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -47080,16 +48587,14 @@ function SMExport({
       onClick: () => {
         try {
           R.download(host, result, problem);
-          setNotice(window.WorkbenchTerms.download_started(R.DIAGNOSTIC_FILENAME) + '，不含数据库和完整日志。');
+          setNotice(window.WorkbenchTerms.download_started(R.DIAGNOSTIC_FILENAME) + '。');
         } catch (problem) {
           setError(problem);
         }
       }
     }, "\u5BFC\u51FA\u7EF4\u62A4\u8BCA\u65AD"), /*#__PURE__*/React.createElement("a", {
-      href: "/workbench?view=system"
-    }, "\u8FD4\u56DE\u5DE5\u4F5C\u53F0")), /*#__PURE__*/React.createElement("p", {
-      className: "sm-meta"
-    }, "\u70B9\u300C\u8FD4\u56DE\u5DE5\u4F5C\u53F0\u300D\u4F1A\u91CD\u65B0\u67E5\u8BE2\u7EF4\u62A4\u72B6\u6001\uFF1B\u9700\u8981\u91CD\u542F\u6216\u4EBA\u5DE5\u6838\u5BF9\u65F6\u4ECD\u7136\u505C\u5728\u7EF4\u62A4\u9875\u3002")), /*#__PURE__*/React.createElement("section", {
+      href: "/workbench?view=dashboard"
+    }, "\u91CD\u65B0\u68C0\u67E5\u542F\u52A8\u72B6\u6001"))), /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u6309\u7F16\u53F7\u67E5\u8BE2"
     }, /*#__PURE__*/React.createElement("h2", null, "\u67E5\u8BE2\u5176\u4ED6\u7EF4\u62A4\u7ED3\u679C"), /*#__PURE__*/React.createElement("form", {
       onSubmit: lookup
@@ -47124,7 +48629,7 @@ function SMExport({
       key: index
     }, window.WorkbenchFormat.dateTime(step.time), " \xB7 ", R.labels[step.state])), [['所选备份 SHA-256', op.target_sha256], ['保护副本 SHA-256', op.protection_sha256], ['维护结束数据库 SHA-256', op.database_after_sha256]].map(([label, value]) => /*#__PURE__*/React.createElement("p", {
       key: label
-    }, label, "\uFF1A", /*#__PURE__*/React.createElement("code", null, value || '未确认'))), /*#__PURE__*/React.createElement("p", null, "\u4E0A\u9762\u7684\u6307\u7EB9\u6765\u81EA\u7EF4\u62A4\u8BB0\u5F55\uFF0C\u672C\u9875\u6CA1\u6709\u91CD\u65B0\u6253\u5F00\u6216\u68C0\u67E5\u6570\u636E\u5E93\u3002\u6570\u636E\u5E93\u91CC\u65E7\u7684\u7ED3\u679C\u53EF\u80FD\u5DF2\u88AB\u6062\u590D\u8986\u76D6\u3002")))), document.body);
+    }, label, "\uFF1A", /*#__PURE__*/React.createElement("code", null, value || '未确认'))), /*#__PURE__*/React.createElement("p", null, "\u6821\u9A8C\u8BB0\u5F55\u6765\u81EA\u5BF9\u5E94\u7EF4\u62A4\u4EFB\u52A1\u3002")))), document.body);
   }
   window.SystemRestorePanel = Panel;
 })();
@@ -47485,7 +48990,7 @@ function SMExport({
         setDownloadBusy(false);
       }
     }
-    const writeReason = command.locked ? '上次维护操作还没有确认结果。请先点「查询结果」。' : request.loading || !data ? '请先读取有效的备份清单。' : '';
+    const writeReason = command.locked ? command.lockedReason : request.loading || !data ? '请先读取有效的备份清单。' : '';
     const sharedReason = kind === 'backups' ? writeReason || data && data.capabilities.blocked_reason || '' : '';
     const ask = (action, row) => {
       if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) {
@@ -47554,7 +49059,7 @@ function SMExport({
     }, !stableSelection ? '原先选中的记录编号不完整，没有按同名文件或第一条记录乱猜。请重新选择。' : '这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。', /*#__PURE__*/React.createElement(C.Button, {
       icon: "x",
       onClick: () => setSelected(null)
-    }, "\u6E05\u9664\u539F\u9009\u62E9")), kind === 'backups' && sharedReason && /*#__PURE__*/React.createElement("p", {
+    }, "\u6E05\u9664\u539F\u9009\u62E9")), kind === 'backups' && sharedReason && !command.storageError && /*#__PURE__*/React.createElement("p", {
       className: "sm-note",
       role: "status"
     }, sharedReason), request.loading && /*#__PURE__*/React.createElement("p", {
@@ -47715,7 +49220,7 @@ function SMExport({
       }
     }, [incoming]);
     const ready = incoming && base === incoming && !request.loading && !request.error;
-    const reason = command.locked ? '上次维护操作还没有确认结果。请先点「查询结果」。' : !ready ? '请先点「刷新配置」读取正式配置。' : '';
+    const reason = command.locked ? command.lockedReason : !ready ? '请先点「刷新配置」读取正式配置。' : '';
     function refreshNow() {
       setReplace(false);
       setBase(null);
@@ -47848,7 +49353,7 @@ function SMExport({
 
   const A = window.SystemMaintenanceAPI,
     C = window.SystemMaintenanceControls;
-  function useCommand(api, onChanged) {
+  function useCommand(api, onChanged, revision) {
     const [initial] = React.useState(A.inspectPending),
       [intent, setIntent] = React.useState(initial.intent),
       [storageError, setStorageError] = React.useState(initial.storageError);
@@ -47858,7 +49363,8 @@ function SMExport({
     const [host, setHost] = React.useState(null),
       [hostError, setHostError] = React.useState(null),
       [hostBusy, setHostBusy] = React.useState(true);
-    const startedHere = React.useRef(false);
+    const startedHere = React.useRef(false),
+      hostSequence = React.useRef(0);
     const [selection, setSelection] = React.useState(null);
     const current = React.useRef(intent),
       found = React.useRef(null),
@@ -47874,24 +49380,26 @@ function SMExport({
       }
     }
     async function inspectHost() {
+      const sequence = ++hostSequence.current;
       if (mounted.current) setHostBusy(true);
       try {
         const value = await api.host();
-        if (mounted.current) {
+        if (mounted.current && sequence === hostSequence.current) {
           setHost(value);
           setHostError(null);
         }
         return value;
       } catch (problem) {
-        if (mounted.current) setHostError(problem);
+        if (mounted.current && sequence === hostSequence.current) setHostError(problem);
         return null;
       } finally {
-        if (mounted.current) setHostBusy(false);
+        if (mounted.current && sequence === hostSequence.current) setHostBusy(false);
       }
     }
     async function lookup() {
       const original = current.current;
       if (!original || running.current) return;
+      if (found.current && found.current.kind === 'rejected') return inspectHost();
       running.current = true;
       setBusy(true);
       setError(null);
@@ -47923,9 +49431,9 @@ function SMExport({
           settle(null);
           setError(null);
         }
-        if (state.intent) lookup();
+        if (state.intent) lookup();else inspectHost();
       }
-      if (current.current) lookup();else inspectHost();
+      reload();
       window.addEventListener('online', reload);
       window.addEventListener('storage', reload);
       return () => {
@@ -47933,7 +49441,7 @@ function SMExport({
         window.removeEventListener('online', reload);
         window.removeEventListener('storage', reload);
       };
-    }, [api]);
+    }, [api, revision]);
     async function execute(action, token, input, selected = null) {
       if (running.current || current.current || storageError || !host || hostError || host.state !== 'ready' || !host.operations_available) return;
       let original;
@@ -47955,10 +49463,20 @@ function SMExport({
         settle(await api.command(original, token, input));
       } catch (problem) {
         if (mounted.current) setError(problem);
-        if (problem.rejected) settle({
-          kind: 'rejected',
-          terminal: true
-        });
+        if (problem.rejected) {
+          settle({
+            kind: 'rejected',
+            terminal: true,
+            intent: original
+          });
+          try {
+            A.pending().finish(original);
+            current.current = null;
+            if (mounted.current) setIntent(null);
+          } catch (storageProblem) {
+            if (mounted.current) setStorageError(storageProblem);
+          }
+        }
       } finally {
         await inspectHost();
         running.current = false;
@@ -47966,7 +49484,10 @@ function SMExport({
       }
     }
     const restorePending = !!(intent && intent.action === 'restore' && !(result && result.terminal && (result.kind === 'rejected' || !startedHere.current)));
-    const suspended = !!storageError || !!hostError || !host || host.state !== 'ready' || restorePending;
+    const maintenanceRequired = restorePending || !!(host && host.state !== 'ready');
+    const suspended = maintenanceRequired || !!hostError || !host;
+    const readReason = maintenanceRequired ? host && host.state !== 'ready' ? window.SystemRestoreStatus.hostLabels[host.state] : '恢复请求结果待确认。' : hostError ? hostError.message : !host ? '正在查询维护状态。' : '';
+    const lockedReason = storageError ? storageError.message : readReason || (intent ? intent.summary + '结果待确认，请查询结果。' : busy ? '正在执行维护操作。' : !host.operations_available ? '当前维护操作暂不可用，请重新查询状态。' : '');
     function acknowledge() {
       if (suspended || running.current || !current.current || !found.current || !found.current.terminal) return;
       try {
@@ -47994,9 +49515,12 @@ function SMExport({
       hostError,
       hostBusy,
       suspended,
+      readReason,
+      maintenanceRequired,
       inspectHost,
       selection,
-      locked: suspended || !!intent || busy || !host.operations_available,
+      lockedReason,
+      locked: !!lockedReason,
       execute,
       lookup,
       acknowledge
@@ -48025,11 +49549,11 @@ function SMExport({
     const command = useCommand(api, (intent, result) => {
       refresh();
       if (onChanged) onChanged(intent, result);
-    });
+    }, revision);
     const suspended = command.suspended;
     React.useLayoutEffect(() => {
-      if (onReadSuspendedChange) onReadSuspendedChange(suspended);
-    }, [suspended, onReadSuspendedChange]);
+      if (onReadSuspendedChange) onReadSuspendedChange(suspended, command.readReason);
+    }, [suspended, command.readReason, onReadSuspendedChange]);
     const enabled = !suspended,
       serial = revision + ':' + version;
     const [visited, setVisited] = React.useState({});
@@ -48042,17 +49566,35 @@ function SMExport({
     return /*#__PURE__*/React.createElement("div", {
       className: "sm-maintenance-workspace sm-maintenance-workspace-flush plana",
       "data-system-maintenance": "v1"
-    }, suspended && !(command.hostBusy && !command.intent && !command.hostError && !command.storageError && !command.host) ? /*#__PURE__*/React.createElement(window.SystemRestorePanel, {
+    }, command.maintenanceRequired ? /*#__PURE__*/React.createElement(window.SystemRestorePanel, {
       command: command,
       api: api,
       theme: theme,
       onSetTheme: onSetTheme
-    }) : /*#__PURE__*/React.createElement(C.Outcome, {
+    }) : /*#__PURE__*/React.createElement(React.Fragment, null, command.hostError && /*#__PURE__*/React.createElement("section", {
+      className: "sm-section sm-notice sm-tone-danger",
+      role: "alert",
+      "data-system-status-error": true
+    }, /*#__PURE__*/React.createElement("h3", null, "\u7EF4\u62A4\u72B6\u6001\u67E5\u8BE2\u5931\u8D25"), /*#__PURE__*/React.createElement("p", null, command.hostError.message), /*#__PURE__*/React.createElement("div", {
+      className: "sm-actions"
+    }, /*#__PURE__*/React.createElement(C.Button, {
+      icon: "refresh-cw",
+      busy: command.hostBusy,
+      onClick: command.inspectHost
+    }, "\u91CD\u65B0\u67E5\u8BE2"), /*#__PURE__*/React.createElement("a", {
+      href: "/workbench?view=dashboard"
+    }, "\u8FD4\u56DE\u5DE5\u4F5C\u53F0"))), !command.hostError && command.host && !command.host.operations_available && /*#__PURE__*/React.createElement("div", {
+      className: "sm-actions"
+    }, /*#__PURE__*/React.createElement(C.Button, {
+      icon: "refresh-cw",
+      busy: command.hostBusy,
+      onClick: command.inspectHost
+    }, "\u91CD\u65B0\u67E5\u8BE2\u7EF4\u62A4\u72B6\u6001")), /*#__PURE__*/React.createElement(C.Outcome, {
       command: command
-    }), suspended && command.hostBusy && !command.intent && /*#__PURE__*/React.createElement("p", {
+    })), !command.maintenanceRequired && command.hostBusy && /*#__PURE__*/React.createElement("p", {
       className: "sm-note",
       role: "status"
-    }, "\u6B63\u5728\u6838\u5BF9\u8F6F\u4EF6\u7EF4\u62A4\u72B6\u6001\uFF0C\u8FD8\u6CA1\u6709\u8BFB\u53D6\u6570\u636E\u5E93\u3002"), tab === 'overview' && !suspended && children, ['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? /*#__PURE__*/React.createElement("div", {
+    }, "\u6B63\u5728\u67E5\u8BE2\u7EF4\u62A4\u72B6\u6001\u2026"), tab === 'overview' && !suspended && children, ['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? /*#__PURE__*/React.createElement("div", {
       key: kind,
       hidden: !enabled || tab !== kind
     }, /*#__PURE__*/React.createElement(window.SystemMaintenanceRecords, {
@@ -48112,7 +49654,15 @@ function SystemLive({
     ...previous,
     [kind]: value
   }), []);
-  const [readSuspended, setReadSuspended] = React.useState(true);
+  const [readState, setReadState] = React.useState({
+    suspended: true,
+    reason: '正在查询维护状态。'
+  });
+  const readSuspended = readState.suspended;
+  const onReadState = React.useCallback((suspended, reason) => setReadState({
+    suspended,
+    reason
+  }), []);
   const [local, setLocal] = React.useState(() => ({
     checks: [],
     checkedAt: new Date().toISOString()
@@ -48232,11 +49782,11 @@ function SystemLive({
   }), /*#__PURE__*/React.createElement(Metric, {
     label: "\u672C\u673A\u6570\u636E\u8BFB\u53D6",
     value: readSuspended ? '读取已暂停' : loading ? '读取中' : error ? '读取失败' : payload ? '已连接' : '未读取',
-    helper: readSuspended ? '请先查询上次维护操作的结果' : '来自本机数据',
+    helper: readSuspended ? readState.reason : '来自本机数据',
     tone: error ? 'danger' : undefined
   }), /*#__PURE__*/React.createElement(Metric, {
     label: "\u6570\u636E\u5E93\u72B6\u6001",
-    value: data ? stateLabel(data.database.state) : '未知',
+    value: data ? stateLabel(data.database.state) : '待读取',
     helper: "\u5C1A\u672A\u6267\u884C\u5B8C\u6574\u6027\u68C0\u67E5",
     tone: data && data.database.state === 'error' ? 'danger' : undefined
   }), /*#__PURE__*/React.createElement(Metric, {
@@ -48293,7 +49843,7 @@ function SystemLive({
     onCompact: setCompact,
     revision: revision,
     onChanged: refresh,
-    onReadSuspendedChange: setReadSuspended,
+    onReadSuspendedChange: onReadState,
     recordContexts: recordContexts,
     onRecordContext: recordContext
   }, loading ? /*#__PURE__*/React.createElement("p", {
@@ -48301,7 +49851,7 @@ function SystemLive({
     className: "sm-note"
   }, "\u6B63\u5728\u8BFB\u53D6\u672C\u673A\u72B6\u6001\u2026") : !data ? /*#__PURE__*/React.createElement(SMUnavailable, {
     title: "\u672C\u673A\u72B6\u6001\u672A\u80FD\u8BFB\u53D6"
-  }, "\u9875\u9762\u6CA1\u6709\u7528\u5176\u4ED6\u6570\u636E\u4EE3\u66FF\uFF0C\u8BF7\u70B9\u300C\u91CD\u65B0\u68C0\u67E5\u300D\u91CD\u8BD5\u3002") : /*#__PURE__*/React.createElement(SystemLiveOverview, {
+  }, "\u8BF7\u70B9\u300C\u91CD\u65B0\u68C0\u67E5\u300D\u8BFB\u53D6\u672C\u673A\u72B6\u6001\u3002") : /*#__PURE__*/React.createElement(SystemLiveOverview, {
     data: data,
     report: local,
     onTab: onTab
@@ -50303,20 +51853,21 @@ function SystemLiveOverview({
       if (!windows.has(row.machine_ref)) windows.set(row.machine_ref, []);
       windows.get(row.machine_ref).push(row);
     }
+    const risks = new Map(data.deliveries.map(row => [row.batch_ref, row.risk]));
     return {
       ...model,
-      windows
+      windows,
+      risks
     };
   }
-  function title(task) {
-    return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label, G.timeLabel(task.start) + ' 至 ' + G.timeLabel(task.end), '计划时长 ' + window.WorkbenchFormat.hours(task.span_hours), task.start === task.end ? '零工时工序，不占设备人员' : null, '设备：' + (task.machine_label || '名称未填写')].filter(Boolean).join('\n');
+  function title(task, risk) {
+    return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label, G.timeLabel(task.start) + ' 至 ' + G.timeLabel(task.end), '计划跨度 ' + window.WorkbenchFormat.hours(task.span_hours), task.start === task.end ? '零工时工序，不占设备人员' : null, '设备：' + (task.machine_label || '名称未填写'), risk ? '批次交付：' + window.WorkbenchTerms.delivery_risks[risk] : null].filter(Boolean).join('\n');
   }
   window.DashboardTimelineModel = {
     layout,
     title,
     instant: G.instant,
     wire: G.wire,
-    ticks: G.ticks,
     visibleRows: G.visibleRows,
     visibleItems: G.visibleItems,
     number: (value, options) => window.WorkbenchFormat.number(value, options),
@@ -50329,13 +51880,80 @@ function SystemLiveOverview({
   'use strict';
 
   const M = window.DashboardTimelineModel,
+    V = window.GanttPresentation,
     {
-      Button,
       TimelineZoom,
       timelineZoomKey,
       timelineZoomStep
     } = window.ResourceControls,
     ZOOM_MAX = 64;
+  function TaskBar({
+    item,
+    model,
+    width,
+    selectedBatch,
+    onSelect,
+    onHover
+  }) {
+    const task = item.task,
+      point = window.PointContract.isPoint(task),
+      risk = model.risks.get(task.batch_ref);
+    const title = M.title(task, risk),
+      x = (item.start - model.start) / (model.end - model.start) * width;
+    const size = (item.end - item.start) / (model.end - model.start) * width;
+    const selected = selectedBatch === task.batch_ref,
+      choose = () => {
+        onHover(null);
+        onSelect(task.batch_ref);
+      };
+    const hover = event => onHover(event, title);
+    if (point) return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
+      task: task,
+      x: x,
+      top: 15,
+      title: title,
+      selected: selected,
+      tone: risk === 'overdue' ? 'critical' : '',
+      "data-analysis-task": task.task_ref,
+      "data-analysis-batch": task.batch_ref,
+      onSelect: choose,
+      onHover: hover,
+      onFocus: hover,
+      onBlur: () => onHover(null)
+    });
+    const lines = V.taskLines({
+      sequence: task.sequence,
+      process: task.process_label,
+      batch: task.batch_id
+    }, 'machine', size);
+    return /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      "data-analysis-task": task.task_ref,
+      "data-analysis-batch": task.batch_ref,
+      "aria-label": title,
+      title: title,
+      "aria-pressed": selected,
+      "data-delivery-risk": risk,
+      className: "dy-analysis-bar",
+      style: {
+        left: x,
+        width: size
+      },
+      onClick: choose,
+      onMouseEnter: hover,
+      onMouseLeave: () => onHover(null),
+      onFocus: hover,
+      onBlur: () => onHover(null)
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "dy-analysis-bar-face",
+      style: {
+        borderWidth: size < 4 ? 0 : 1
+      }
+    }, lines.primary && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, lines.primary), lines.secondary && /*#__PURE__*/React.createElement("small", null, lines.secondary), risk === 'on_time' && /*#__PURE__*/React.createElement("i", {
+      className: "wb-gantt-on-time",
+      title: "\u9884\u8BA1\u6309\u671F"
+    }))));
+  }
   function Timeline({
     data,
     mode = 'delivery',
@@ -50352,9 +51970,10 @@ function SystemLiveOverview({
       width: 900,
       height: 330
     });
-    const labelWidth = 150,
-      viewport = Math.max(200, position.width - labelWidth),
-      width = Math.max(640, viewport) * zoom;
+    const pendingCenter = React.useRef(null),
+      labelWidth = position.width < 550 ? 140 : 170;
+    const viewport = Math.max(80, position.width - labelWidth),
+      width = viewport * zoom;
     const model = React.useMemo(() => M.layout(data, mode, width), [data, mode, width]);
     const measure = () => {
       const node = board.current;
@@ -50371,6 +51990,13 @@ function SystemLiveOverview({
       observer.observe(board.current);
       return () => observer.disconnect();
     }, []);
+    React.useLayoutEffect(() => {
+      if (pendingCenter.current !== null) {
+        board.current.scrollLeft = Math.max(0, pendingCenter.current * width - viewport / 2);
+        pendingCenter.current = null;
+      }
+      measure();
+    }, [width]);
     React.useEffect(() => {
       setHover(null);
     }, [position.left, position.top, mode]);
@@ -50383,11 +52009,21 @@ function SystemLiveOverview({
       if (left < position.left || left > position.left + viewport) board.current.scrollLeft = Math.max(0, left - viewport / 3);
       // Only a new selection scrolls; zoom and resize rebuild the model but must keep the user's own position.
     }, [selectedBatch, focusTask]);
-    const ticks = M.ticks(model.start, model.end, width, position.left, viewport);
+    const axis = V.axis({
+      start: model.start,
+      end: model.end,
+      width,
+      left: position.left,
+      viewport
+    });
     const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
     const rangeStart = model.start + position.left / width * (model.end - model.start),
       rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
     function show(event, text) {
+      if (!event) {
+        setHover(null);
+        return;
+      }
       const rect = event.currentTarget.getBoundingClientRect();
       setHover({
         text,
@@ -50395,30 +52031,38 @@ function SystemLiveOverview({
         y: rect.bottom
       });
     }
+    function zoomTo(next) {
+      pendingCenter.current = (position.left + viewport / 2) / width;
+      setZoom(next);
+    }
     function fit() {
+      pendingCenter.current = .5;
       setZoom(1);
-      if (board.current) board.current.scrollLeft = 0;
+      if (board.current) {
+        board.current.scrollLeft = 0;
+        measure();
+      }
     }
     function zoomKeys(event) {
       const action = timelineZoomKey(event);
       if (!action) return;
       event.preventDefault();
-      if (action === 'fit') fit();else setZoom(z => timelineZoomStep(z, action === 'in' ? 1 : -1, ZOOM_MAX));
+      if (action === 'fit') fit();else zoomTo(timelineZoomStep(zoom, action === 'in' ? 1 : -1, ZOOM_MAX));
     }
     return /*#__PURE__*/React.createElement("section", {
       className: "dy-timeline",
-      "aria-label": mode === 'downtime' ? '停机时段与原计划时间轴' : '关联资源关键时段',
+      "aria-label": mode === 'downtime' ? '停机时段与计划安排' : '关联资源计划时间轴',
       "data-dashboard-timeline": mode,
       onKeyDown: zoomKeys
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, mode === 'downtime' ? '停机时段与原计划' : '关联资源的关键时段'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, mode === 'downtime' ? '停机时段与计划安排' : '关联资源计划时间轴'), /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
     }, /*#__PURE__*/React.createElement(TimelineZoom, {
       zoom: zoom,
       max: ZOOM_MAX,
       scope: "\u5206\u6790",
-      onZoom: setZoom,
+      onZoom: zoomTo,
       onFit: fit
     }))), /*#__PURE__*/React.createElement("label", {
       className: "dy-run-picker"
@@ -50442,13 +52086,13 @@ function SystemLiveOverview({
       tabIndex: 0,
       style: {
         '--dy-label-width': labelWidth + 'px',
-        height: Math.max(120, Math.min(330, model.height + 48))
+        height: Math.max(120, Math.min(330, model.height + 52))
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-timeline-inner",
       style: {
         width: labelWidth + width,
-        height: Math.max(110, model.height + 48)
+        height: Math.max(110, model.height + 52)
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-timeline-axis"
@@ -50459,29 +52103,28 @@ function SystemLiveOverview({
       style: {
         width
       }
-    }, ticks.map(tick => /*#__PURE__*/React.createElement("div", {
-      key: tick.at,
-      style: {
-        left: tick.x
-      }
-    }, M.timeLabel(tick.label).slice(0, 10), /*#__PURE__*/React.createElement("small", null, M.timeLabel(tick.label).slice(11)))))), rows.map(row => {
+    }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
+      axis: axis,
+      width: width
+    }))), rows.map(row => {
       const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
         className: "dy-timeline-row",
+        "data-analysis-row-kind": row.point ? 'point' : row.overlap ? 'overlap' : 'task',
         style: {
-          top: row.top + 48,
+          top: row.top + 52,
           height: row.height,
           width: labelWidth + width
         }
       }, /*#__PURE__*/React.createElement("div", {
         className: "dy-timeline-label"
-      }, /*#__PURE__*/React.createElement("b", null, row.label), /*#__PURE__*/React.createElement("small", null, row.tasks.length, " \u9053\u5B89\u6392", row.trackCount > 1 ? ' · 子轨 ' + (row.track + 1) : '')), /*#__PURE__*/React.createElement("div", {
+      }, /*#__PURE__*/React.createElement("b", null, row.label), /*#__PURE__*/React.createElement("small", null, row.items.length, " \u9053", row.point ? '零工时工序' : '安排', !row.point && row.overlap > 0 ? ' · 时间重叠分行' : '')), /*#__PURE__*/React.createElement("div", {
         className: "dy-timeline-track",
         style: {
           width
         }
-      }, ticks.map(tick => /*#__PURE__*/React.createElement("i", {
+      }, axis.ticks.map(tick => /*#__PURE__*/React.createElement("i", {
         className: "dy-timeline-grid",
         key: tick.at,
         style: {
@@ -50508,40 +52151,36 @@ function SystemLiveOverview({
           onFocus: event => show(event, text),
           onBlur: () => setHover(null)
         }) : null;
-      }), items.map(item => {
-        const task = item.task,
-          point = task.start === task.end,
-          title = M.title(task),
-          pixels = Math.max(point ? 10 : 2, (item.end - item.start) / (model.end - model.start) * width);
-        return /*#__PURE__*/React.createElement("button", {
-          type: "button",
-          key: task.task_ref,
-          "data-analysis-task": task.task_ref,
-          "data-analysis-batch": task.batch_ref,
-          "aria-label": title,
-          title: title,
-          "aria-pressed": selectedBatch === task.batch_ref,
-          className: 'dy-analysis-bar' + (point ? ' point' : '') + (selectedBatch === task.batch_ref ? ' selected' : ''),
-          style: {
-            left: (item.start - model.start) / (model.end - model.start) * width - (point ? 5 : 0),
-            width: pixels
-          },
-          onMouseEnter: event => show(event, title),
-          onMouseLeave: () => setHover(null),
-          onFocus: event => show(event, title),
-          onBlur: () => setHover(null),
-          onClick: () => {
-            setHover(null);
-            onSelect(task.batch_ref);
-          }
-        }, pixels >= 65 && /*#__PURE__*/React.createElement("span", null, task.batch_id, " \xB7 ", task.process_label));
-      })));
+      }), items.map(item => /*#__PURE__*/React.createElement(TaskBar, {
+        key: item.task.task_ref,
+        item,
+        model,
+        width,
+        selectedBatch,
+        onSelect,
+        onHover: show
+      }))));
     }), !model.rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u6CA1\u6709\u53EF\u663E\u793A\u7684\u8BBE\u5907\u5B89\u6392\u3002"
     }))), /*#__PURE__*/React.createElement("div", {
+      className: "dy-timeline-legend",
+      "aria-label": "\u5206\u6790\u65F6\u95F4\u8F74\u56FE\u4F8B"
+    }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "dy-plan-swatch"
+    }), "\u8BA1\u5212\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "dy-risk-swatch"
+    }), "\u6279\u6B21\u9884\u8BA1\u8D85\u671F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "dy-on-time-swatch"
+    }), "\u9884\u8BA1\u6309\u671F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "dy-selected-swatch"
+    }), "\u9009\u4E2D\u6279\u6B21"), model.tasks.some(window.PointContract.isPoint) && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "dy-point-swatch"
+    }), "\u96F6\u5DE5\u65F6\u5DE5\u5E8F"), mode === 'downtime' && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+      className: "dy-downtime-swatch"
+    }), "\u505C\u673A\u65F6\u6BB5")), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.start)), " \u81F3 ", M.timeLabel(M.wire(model.end))), /*#__PURE__*/React.createElement("span", null, mode === 'downtime' ? '停机时段 / 原计划工序' : '原计划工序', " \xB7 ", model.tasks.length, " \u9053")), hover && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, M.timeLabel(M.wire(model.start)), " \u81F3 ", M.timeLabel(M.wire(model.end))), /*#__PURE__*/React.createElement("span", null, "\u8FDE\u7EED\u65F6\u95F4 \xB7 ", model.tasks.length, " \u9053\u8BA1\u5212\u5DE5\u5E8F", mode === 'downtime' ? ' · 阴影为已登记停机，不改变计划' : '')), hover && /*#__PURE__*/React.createElement("div", {
       role: "tooltip",
       className: "dy-analysis-tooltip",
       style: {
@@ -54143,6 +55782,7 @@ function SystemLiveOverview({
       onClick: () => switchTab(id)
     }, boot.titles[id]))), /*#__PURE__*/React.createElement("div", {
       id: "wb-view-panel",
+      className: "wb-surface wb-surface-body",
       tabIndex: -1,
       role: showPlanTabs ? 'tabpanel' : undefined,
       "aria-labelledby": showPlanTabs ? 'wb-view-tab-' + view : undefined

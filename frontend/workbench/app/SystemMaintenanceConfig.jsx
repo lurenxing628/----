@@ -12,7 +12,7 @@
       if (incoming && (!changed || matchesDraft)) { setBase(incoming); setDraft({ ...incoming.values }); setValidated(false); }
     }, [incoming]);
     const ready = incoming && base === incoming && !request.loading && !request.error;
-    const reason = command.locked ? '上次维护操作还没有确认结果。请先点「查询结果」。' : !ready ? '请先点「刷新配置」读取正式配置。' : '';
+    const reason = command.locked ? command.lockedReason : !ready ? '请先点「刷新配置」读取正式配置。' : '';
     function refreshNow() { setReplace(false); setBase(null); setDraft(null); reload(); }
     return <div className="sm-configuration sm-configuration-full">
       <C.Preferences {...preferences} />

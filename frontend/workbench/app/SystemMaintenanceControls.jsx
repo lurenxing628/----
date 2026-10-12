@@ -35,13 +35,14 @@
   const rejectedText = { create: '系统拒绝了这次提交，没有新增备份。', delete: '系统拒绝了这次提交，没有删除备份。',
     restore: '系统拒绝了这次提交，没有开始恢复。', config: '系统拒绝了这次提交，配置没有改动。' };
   function Outcome({ command }) {
-    const { intent, result, error, busy, storageError } = command;
+    const { result, error, busy, storageError } = command;
+    const intent = command.intent || result && result.intent;
     if (!intent && !storageError) return null;
     const op = result && result.kind === 'file_operation' && result.operation;
     return <section className="sm-section sm-maintenance-outcome" aria-label="上次维护操作的结果">
       <div className="sm-section-head"><h3>{intent ? intent.summary : '上次操作记录不可用'}</h3><div className="sm-actions">
         {intent && !(result && result.kind === 'rejected') && <Button icon="refresh-cw" busy={busy} onClick={command.lookup}>{window.WorkbenchTerms.actions.query_result}</Button>}
-        {result && result.terminal && !command.suspended && <Button icon="check" disabled={busy} onClick={command.acknowledge}>确认结果</Button>}
+        {command.intent && result && result.terminal && !command.suspended && <Button icon="check" disabled={busy} onClick={command.acknowledge}>确认结果</Button>}
       </div></div>
       {intent && <window.WorkbenchReference label="操作编号" value={intent.request_key} />}
       <ErrorBox error={storageError || error} />

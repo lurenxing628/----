@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from heapq import heappop, heappush
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.degradation import DegradationCollector
@@ -99,12 +100,13 @@ def _unavailable_result(reason: str) -> Dict[str, Any]:
     return result
 
 
-def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationCollector] = None) -> Dict[str, Dict[str, Any]]:
+def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationCollector] = None,
+                 include_points: bool = False) -> Dict[str, Dict[str, Any]]:
     nodes: Dict[str, Dict[str, Any]] = {}
     for r in rows:
         st = _parse_dt(r.get("start_time"))
         et = _parse_dt(r.get("end_time"))
-        if not st or not et or not (st < et):
+        if not st or not et or st > et or (st == et and not include_points):
             if collector is not None:
                 _record_bad_time_row(collector, scope="gantt.critical_chain", row=dict(r))
             continue
@@ -113,6 +115,7 @@ def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationC
 
         nodes[task_id] = {
             "id": task_id,
+            "sort_id": str(r.get("operation_ref") or task_id),
             "start": st,
             "end": et,
             "batch_id": str(r.get("batch_id") or "").strip(),
@@ -149,6 +152,8 @@ def _build_process_prev(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
 def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: str) -> Dict[str, str]:
     groups: Dict[str, List[Dict[str, Any]]] = {}
     for n in nodes.values():
+        if n.get("start") == n.get("end"):
+            continue
         rid = str(n.get(resource_key) or "").strip()
         if not rid:
             continue
@@ -156,7 +161,7 @@ def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: s
 
     prev_map: Dict[str, str] = {}
     for _, items in groups.items():
-        items.sort(key=lambda x: (x.get("start"), x.get("end"), str(x.get("id") or "")))
+        items.sort(key=lambda x: (x.get("start"), x.get("end"), int(x.get("order") or 0), str(x.get("id") or "")))
         prev: Optional[Dict[str, Any]] = None
         for n in items:
             if prev:
@@ -187,9 +192,9 @@ def _eligible_resource_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
 
 
 def _process_prev_candidate(
-    nodes: Dict[str, Dict[str, Any]], tid: str, n: Dict[str, Any], *, proc_prev: Dict[str, str]
+    nodes: Dict[str, Dict[str, Any]], tid: str, n: Dict[str, Any], *, predecessor: str
 ) -> Optional[Dict[str, Any]]:
-    pid_proc = proc_prev.get(tid)
+    pid_proc = predecessor
     if not pid_proc:
         return None
     pn = nodes.get(pid_proc)
@@ -202,6 +207,7 @@ def _process_prev_candidate(
         "edge_type": "process",
         "reason": "工艺前驱",
         "from_end": pn.get("end"),
+        "from_order": pn.get("order", 0),
         "to_start": n.get("start"),
     }
 
@@ -227,6 +233,7 @@ def _resource_prev_candidate(
         "edge_type": edge_type,
         "reason": "资源前驱（设备）" if edge_type == "machine" else "资源前驱（人员）",
         "from_end": pn.get("end"),
+        "from_order": pn.get("order", 0),
         "to_start": n.get("start"),
     }
 
@@ -234,7 +241,7 @@ def _resource_prev_candidate(
 def _pick_latest_candidate(cands: List[Dict[str, Any]]) -> Optional[Tuple[str, Dict[str, Any]]]:
     if not cands:
         return None
-    cands.sort(key=lambda x: (x.get("from_end"), str(x.get("from") or "")))
+    cands.sort(key=lambda x: (x.get("from_end"), int(x.get("from_order") or 0), str(x.get("from") or "")))
     chosen = cands[-1]
     from_id = str(chosen.get("from") or "")
     if not from_id:
@@ -245,7 +252,7 @@ def _pick_latest_candidate(cands: List[Dict[str, Any]]) -> Optional[Tuple[str, D
 def _choose_control_prev(
     nodes: Dict[str, Dict[str, Any]],
     *,
-    proc_prev: Dict[str, str],
+    proc_prev: Dict[str, List[str]],
     mach_prev: Dict[str, str],
     op_prev: Dict[str, str],
 ) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
@@ -255,9 +262,10 @@ def _choose_control_prev(
     for tid, n in nodes.items():
         cands: List[Dict[str, Any]] = []
 
-        proc_cand = _process_prev_candidate(nodes, tid, n, proc_prev=proc_prev)
-        if proc_cand:
-            cands.append(proc_cand)
+        for predecessor in proc_prev.get(tid, []):
+            proc_cand = _process_prev_candidate(nodes, tid, n, predecessor=predecessor)
+            if proc_cand:
+                cands.append(proc_cand)
 
         for edge_type, prev_map in (("machine", mach_prev), ("operator", op_prev)):
             rc = _resource_prev_candidate(nodes, tid, n, edge_type=edge_type, prev_map=prev_map)
@@ -284,7 +292,7 @@ def _choose_control_prev(
 
 
 def _sink_id(nodes: Dict[str, Dict[str, Any]]) -> str:
-    sink = max(nodes.values(), key=lambda x: (x.get("end"), str(x.get("id") or "")))
+    sink = max(nodes.values(), key=lambda x: (x.get("end"), int(x.get("order") or 0), str(x.get("id") or "")))
     return str(sink.get("id") or "")
 
 
@@ -359,12 +367,16 @@ def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]], *, targ
     elif not nodes:
         return _empty_result(dropped_count=dropped)
 
-    proc_prev = _build_process_prev(nodes)
+    proc_prev = {key: [value] for key, value in _build_process_prev(nodes).items()}
+    return _chain_result(nodes, proc_prev, dropped_count=dropped, sink_id=sink_id)
+
+
+def _chain_result(nodes, proc_prev, *, dropped_count=0, sink_id=""):
     mach_prev = _build_prev_by_resource(nodes, resource_key="machine_id")
     op_prev = _build_prev_by_resource(nodes, resource_key="operator_id")
 
     ctrl_prev, ctrl_prev_edge = _choose_control_prev(nodes, proc_prev=proc_prev, mach_prev=mach_prev, op_prev=op_prev)
-    if target_id is None:
+    if not sink_id:
         sink_id = _sink_id(nodes)
     chain, edges = _backtrace_chain(sink_id, ctrl_prev=ctrl_prev, ctrl_prev_edge=ctrl_prev_edge, nodes=nodes)
     sink_end = _node_dt(nodes[sink_id], "end") if sink_id in nodes else None
@@ -376,9 +388,42 @@ def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]], *, targ
         "makespan_end": makespan_end,
         "edge_type_stats": _edge_type_stats(edges),
         "edge_count": len(edges),
-        "dropped_count": dropped,
-        "critical_chain_partial": dropped > 0,
+        "dropped_count": dropped_count,
+        "critical_chain_partial": dropped_count > 0,
     }
+
+
+def compute_critical_chain_from_dependencies(rows, predecessor_ids):
+    """Use captured process edges, including joins and point operations.
+
+    Process order breaks equal-time ties and keeps downstream point stages in
+    the chain; permanent operation identities keep adoption from changing it.
+    """
+    nodes = _build_nodes(rows, include_points=True)
+    if not nodes:
+        return _empty_result()
+    previous = {key: [parent for parent in predecessor_ids.get(key, []) if parent in nodes] for key in nodes}
+    counts = {key: len(parents) for key, parents in previous.items()}
+    following: Dict[str, List[str]] = {key: [] for key in nodes}
+    for key, parents in previous.items():
+        for parent in parents:
+            following[parent].append(key)
+    ready = []
+    for key, count in counts.items():
+        if count == 0:
+            heappush(ready, (nodes[key]["start"], nodes[key]["end"], nodes[key]["sort_id"], key))
+    order = 0
+    while ready:
+        _, _, _, key = heappop(ready)
+        nodes[key]["order"] = order
+        order += 1
+        for child in following[key]:
+            counts[child] -= 1
+            if counts[child] == 0:
+                heappush(ready, (nodes[child]["start"], nodes[child]["end"], nodes[child]["sort_id"], child))
+    if order != len(nodes):
+        raise ValueError("工艺前后关系形成循环，无法计算关键链。")
+    return _chain_result(nodes, previous)
 
 
 def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:

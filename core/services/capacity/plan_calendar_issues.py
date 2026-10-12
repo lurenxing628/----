@@ -10,6 +10,7 @@ _MESSAGES = {
     "resource_status_unknown": "设备或人员状态无效，请到资料总览核对。",
     "downtime_invalid": "设备停机时间或状态有误，产能算不出来。请到资料总览核对设备停机。",
     "calendar_unavailable": "工作日历产能算不出来；工时和时间冲突还是照常显示。",
+    "zero_available_capacity": "此时段没有可用班时，占用率不适用。",
     "assignment_source_unknown": "这条安排是自制还是外协分不清，系统不猜设备人员占用。请到基础资料核对工序归属。",
     "assignment_resource_missing": "自制安排没有填设备或人员，确认不了会不会冲突。请到基础资料补齐。",
     "assignment_priority_unknown": "这条安排的优先级读不出来，分不清按普通还是急件的班表算。请到批次管理核对优先级。",

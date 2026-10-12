@@ -33,6 +33,21 @@ if (process.argv[2] === '--timezone') {
   assert.equal(F.dateTime('2026-09-12T08:03:09', { seconds: true, fractions: true }), '2026-09-12 08:03:09');
   invalid(() => F.dateTime('2026-09-12T08:03:09.123456\n', { fractions: true }));
   invalid(() => F.dateTime('2026-09-12T08:03:09', { fractions: 1 }));
+  // The shared picker and both plan range forms retain exact factory-local microseconds.
+  for (const name of ['CalendarContract.js', 'WorkbenchDatePickerModel.js'])
+    vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8'), context);
+  const picker = context.window.WorkbenchDatePickerModel, precise = '2026-09-12T08:03:09.123456';
+  assert.equal(picker.factoryTime('2026-09-12 08:03'), '2026-09-12T08:03:00');
+  assert.equal(picker.factoryTime('2026-09-12 08:03:09.8'), '2026-09-12T08:03:09.800000');
+  assert.equal(picker.factoryTime(precise), precise);
+  assert.equal(picker.factoryTime('2026-09-12T08:03:09.000000'), '2026-09-12T08:03:09');
+  invalid(() => picker.factoryTime('2026-09-12T08:03:09.1234567'));
+  const units = picker.precision({ type: 'factory-local', value: ' ' + precise + ' ' }), clock = picker.readTime(' ' + precise + ' ', units);
+  assert.equal(picker.validate({ type: 'factory-local' }, '2026-09-13T' + picker.timeValue(clock, units)).value, '2026-09-13T08:03:09.123456');
+  assert.equal(picker.validate({ type: 'factory-local', max: precise }, '2026-09-12T08:03:09.123457').valid, false);
+  assert.equal(picker.validate({ type: 'factory-local' }, '2026-02-29T08:00:00').valid, false);
+  const nativeUnits = picker.precision({ type: 'datetime-local', value: '2026-09-12T08:03:09.123' });
+  assert.equal(picker.timeValue(picker.readTime('2026-09-12T08:03:09.123', nativeUnits), nativeUnits), '08:03:09.123');
   for (const value of ['2026-02-29', '1900-02-29', '2026-04-31', '2026-00-01', '2026-13-01', '2026-01-00',
     '0000-01-01', '2026-9-12', '2026/09/12', ' 2026-09-12', '2026-09-12 ', 0, false, {}, []]) invalid(() => F.date(value));
   for (const value of ['2026-09-12', '2026-09-12T24:00', '2026-09-12T08:60', '2026-09-12T08:00:60',

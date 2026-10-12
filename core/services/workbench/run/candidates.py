@@ -2,13 +2,20 @@
 
 from dataclasses import dataclass
 from datetime import date
+from functools import cached_property
 from typing import Optional
 
 from core.models.workbench_command import input_fingerprint
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities
 from core.services.workbench.facts.candidate_facts import GenerationFacts
-from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
+from core.services.workbench.facts.candidate_projection import (
+    algorithm_facts,
+    baseline_capture,
+    candidate_summary,
+    dispositions,
+    validate_manifest,
+)
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import (
     filter_workspace,
@@ -17,6 +24,7 @@ from core.services.workbench.facts.candidate_tasks import (
     unplanned_projection,
 )
 from core.services.workbench.facts.candidate_values import corrupt, gap
+from core.services.workbench.facts.gantt_graph import candidate_gantt_graph
 
 from .candidate_delivery import candidate_delivery_risks
 
@@ -31,6 +39,10 @@ class CandidateReadSource:
     raw_tasks: list
     tasks: list
     unplanned: Optional[list]
+
+    @cached_property
+    def gantt_graph(self):
+        return candidate_gantt_graph(self.tasks, self.facts, self.raw_tasks)
 
 
 class WorkbenchRunCandidateQueryService:
@@ -92,7 +104,8 @@ class WorkbenchRunCandidateQueryService:
         delivery = candidate_delivery_risks(source.candidate, source.facts, source.tasks, source.disposition, scope,
                                             source.capture["input"], tasks, unplanned)
         data = {"candidate": candidate_summary(source.candidate, source.disposition),
-                "generation": _generation(source.run, source.capture), "tasks": tasks, "task_count": len(tasks),
+                "generation": _generation(source.run, source.capture, source.candidate), "tasks": tasks, "task_count": len(tasks),
+                "gantt_graph": source.gantt_graph,
                 "tasks_complete": True, "candidate_task_count": source.candidate["task_count"],
                 "candidate_span": task_span(source.tasks), "task_span": task_span(tasks),
                 "unplanned_operations": unplanned,
@@ -106,7 +119,7 @@ class WorkbenchRunCandidateQueryService:
         return data, input_fingerprint(data)
 
 
-def _generation(run, capture):
+def _generation(run, capture, candidate):
     settings = capture["input"]
     values, gaps = {}, []
     domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage", "split")}
@@ -128,11 +141,8 @@ def _generation(run, capture):
         values[key] = value if valid else None
         if not valid:
             gaps.append(gap("input." + key, "not_recorded" if value is None else "invalid_stored_value"))
-    baseline = capture["baseline"].get("rows")
     return {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
             "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
             "current_entities_consulted": False, "formal_version_allocated": False,
-            "input": values, "data_gaps": gaps,
-            "baseline": {"captured_task_count": len(baseline) if type(baseline) is list else None,
-                         "comparison_available": False, "reason": {"code": "candidate_baseline_comparison_not_connected",
-                         "message": "排产时的正式计划已经存下来了，这个列表还不支持逐道工序对比。请打开候选方案详情查看对比。"}}}
+            "input": values, "data_gaps": gaps, "algorithm": algorithm_facts(candidate["artifact"]),
+            "baseline": baseline_capture(capture["baseline"], run["accepted_at"])}

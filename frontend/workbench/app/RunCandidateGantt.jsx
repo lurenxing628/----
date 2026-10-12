@@ -2,58 +2,49 @@
   'use strict';
   const M = window.RunCandidateModel, B = window.RunBaselineModel, BC = window.RunBaselineControls, { Button } = window.RunCandidateControls;
   const { TimelineZoom, timelineZoomKey, timelineZoomStep } = window.ResourceControls, ZOOM_MAX = 128;
-  function PointLane({ row, model, width, left, viewport, printing, selected, baselineSelected, onSelect, onHover }) {
+  function PointLane({ row, model, risks, width, left, viewport, printing, selected, baselineSelected, active, onSelect, onHover }) {
     const scale = width / (model.end - model.start), G = window.PointGanttModel;
     const items = G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale);
     return <div data-candidate-point-lane style={{ position: 'absolute', left, width: viewport, height: row.height, overflow: 'hidden' }}>
       {items.map(item => <window.PointGantt.Marker key={item.task.row_ref} task={item.task} title={M.title(item.task)}
-        x={printing ? (item.start - model.start) / (model.end - model.start) * 100 + '%' : (item.start - model.start) * scale - left} selected={baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : selected && selected.row_ref === item.task.row_ref}
-        onSelect={() => onSelect(item.task)} onHover={event => onHover(event ? { text: M.title(item.task), x: event.clientX, y: event.clientY } : null)} />)}
+        data-gantt-critical={active.critical.has(item.task.row_ref) || undefined} data-gantt-related={active.related.has(item.task.row_ref) || undefined} data-gantt-muted={!!active.target && !active.related.has(item.task.row_ref) && !active.critical.has(item.task.row_ref) || undefined}
+        x={printing ? (item.start - model.start) / (model.end - model.start) * 100 + '%' : (item.start - model.start) * scale - left} top={15}
+        tone={risks.get(item.task.batch_ref) === 'overdue' ? 'critical' : ''} selected={!baselineSelected && selected && selected.row_ref === item.task.row_ref}
+        onSelect={() => onSelect(item.task)} onHover={event => onHover(event ? { taskRef: item.task.row_ref, text: M.title(item.task), x: event.clientX, y: event.clientY } : null)} />)}
     </div>;
   }
-  function Lane({ row, model, width, left, viewport, printing, selected, baselineSelected, onSelect, onBaselineSelect, onHover }) {
+  function Lane({ row, model, mode, risks, width, left, viewport, printing, selected, baselineSelected, active, onSelect, onBaselineSelect, onHover }) {
     const ref = React.useRef(null), scale = width / (model.end - model.start);
-    const items = M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
+    const items = row.baselinePoint ? window.PointGanttModel.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale)
+      : M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
     React.useLayoutEffect(() => {
       function paint() {
         const node = ref.current, ratio = devicePixelRatio || 1, w = Math.max(1, viewport), h = row.height;
         node.width = Math.round(w * ratio); node.height = h * ratio;
         const ctx = node.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        const styles = getComputedStyle(node), value = k => styles.getPropertyValue(k).trim();
+        const P = window.GanttPresentation, colors = P.palette(node);
         for (const item of items) {
           const x = (item.start - model.start) * scale - left, barWidth = (item.end - item.start) * scale;
           if (row.baseline) {
-            const chosen = baselineSelected ? baselineSelected.comparison.operation_ref === item.comparison.operation_ref : selected && selected.operation_ref === item.comparison.operation_ref;
-            ctx.save(); ctx.beginPath(); ctx.rect(x, 0, barWidth, h); ctx.clip();
-            ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--ui-text'); ctx.lineWidth = chosen ? 2 : 1; ctx.setLineDash([4, 3]);
-            ctx.strokeRect(x + Math.min(barWidth, ctx.lineWidth) / 2, 11, Math.max(0, barWidth - Math.min(barWidth, ctx.lineWidth)), 7); ctx.restore();
+            const chosen = baselineSelected && baselineSelected.comparison.operation_ref === item.comparison.operation_ref;
+            if (row.baselinePoint) { window.PointGanttModel.paint(ctx, x, 15, colors.plan.fill, chosen ? colors.gold : colors.plan.edge, chosen); continue; }
+            P.paintBar(ctx, { x, y: 11, width: barWidth, height: 7, fill: 'transparent', edge: chosen ? colors.gold : colors.plan.edge,
+              lineWidth: chosen ? 2 : 1, dashed: true, viewport: w });
             continue;
           }
-          const tone = item.task.source === 'external' ? 'plan' : row.normalLaneCount > 1 ? 'overlap' : 'primary';
-          const chosen = baselineSelected ? baselineSelected.comparison.operation_ref === item.task.operation_ref : item.task.row_ref === (selected && selected.row_ref);
-          ctx.fillStyle = value('--wb-gantt-' + tone + '-fill'); ctx.fillRect(x, 7, barWidth, 33);
-          if (tone === 'overlap') {
-            ctx.save(); ctx.beginPath(); ctx.rect(x, 7, barWidth, 33); ctx.clip();
-            ctx.strokeStyle = value('--wb-gantt-overlap-edge'); ctx.lineWidth = 1;
-            for (let stripe = -33; stripe < barWidth; stripe += 6) { ctx.beginPath(); ctx.moveTo(x + stripe, 40); ctx.lineTo(x + stripe + 33, 7); ctx.stroke(); }
-            ctx.restore();
-          }
-          const external = item.task.source === 'external';
-          if (external) {
-            // External operations differ by shape as well as colour: a sparse hatch and a dashed edge (the legend swatch matches).
-            ctx.save(); ctx.beginPath(); ctx.rect(x, 7, barWidth, 33); ctx.clip();
-            ctx.strokeStyle = value('--wb-gantt-plan-edge'); ctx.lineWidth = 1;
-            for (let stripe = -33; stripe < barWidth; stripe += 10) { ctx.beginPath(); ctx.moveTo(x + stripe, 7); ctx.lineTo(x + stripe + 33, 40); ctx.stroke(); }
-            ctx.restore();
-          }
-          ctx.strokeStyle = value(chosen ? '--wb-gantt-gold' : '--wb-gantt-' + tone + '-edge');
-          ctx.lineWidth = Math.min(barWidth, chosen ? 2 : 1); ctx.setLineDash(external ? [4, 3] : []);
-          ctx.strokeRect(x + ctx.lineWidth / 2, 7 + ctx.lineWidth / 2, Math.max(0, barWidth - ctx.lineWidth), 33 - ctx.lineWidth); ctx.setLineDash([]);
-          if (barWidth > 80) {
-            ctx.save(); ctx.beginPath(); ctx.rect(Math.max(0, x + 4), 9, Math.max(0, Math.min(w, x + barWidth) - Math.max(0, x + 4) - 4), 28); ctx.clip();
-            ctx.fillStyle = value('--ui-text'); ctx.font = value('--wb-gantt-font') || '11px sans-serif';
-            ctx.fillText(M.pieceLabel(item.task) + ' · ' + (item.task.batch_label || '未记录') + ' · ' + M.number(item.task.sequence), Math.max(4, x + 5), 28); ctx.restore();
-          }
+          const external = item.task.source === 'external', risk = risks.get(item.task.batch_ref);
+          const colorsForTask = colors[risk === 'overdue' ? 'critical' : 'primary'];
+          const chosen = !baselineSelected && item.task.row_ref === (selected && selected.row_ref);
+          const related = active.related.has(item.task.row_ref), critical = active.critical.has(item.task.row_ref);
+          const lines = P.taskLines({ sequence: M.number(item.task.sequence), process: item.task.process_label || '工序未记录',
+            batch: item.task.batch_label || '批次未记录', piece: M.pieceLabel(item.task),
+            resource: [item.task.machine && item.task.machine.label, item.task.operator && item.task.operator.label].filter(Boolean).join(' / ') || '资源未记录' }, mode, barWidth);
+          P.paintBar(ctx, { x, y: 7, width: barWidth, height: 40, fill: colorsForTask.fill,
+            edge: chosen || related || critical ? colors.gold : colorsForTask.edge, lineWidth: chosen || critical ? 2 : related ? 1.5 : 1,
+            dashed: external, texture: external ? 'external' : item.overlap ? 'overlap' : null, textureColor: external ? colors.plan.edge : colors.overlap.edge,
+            textColor: colorsForTask.ink, font: colors.font, lines, viewport: w,
+            critical, criticalColor: colors.gold, muted: !!active.target && !related && !critical,
+            onTime: risk === 'on_time', locked: item.task.locked, statusColor: colors.success.edge });
         }
       }
       paint(); const theme = new MutationObserver(paint), media = typeof matchMedia === 'function' ? matchMedia('print') : null;
@@ -69,13 +60,14 @@
           else media.removeListener(paint);
         }
       };
-    }, [row, model, width, left, viewport, printing, selected, baselineSelected]);
-    function hit(event) { const box = ref.current.getBoundingClientRect(), at = model.start + (event.clientX - box.left + left) / scale; return M.visibleItems(row.items, at, at + 0.001)[0]; }
+    }, [row, model, mode, risks, width, left, viewport, printing, selected, baselineSelected, active]);
+    function hit(event) { const box = ref.current.getBoundingClientRect(), at = model.start + (event.clientX - box.left + left) / scale;
+      return row.baselinePoint ? window.PointGanttModel.hit(row.items, event.clientX - box.left, event.clientY - box.top, model, width, left, 15) : M.visibleItems(row.items, at, at + 0.001)[0]; }
     const choose = item => row.baseline ? onBaselineSelect(item) : onSelect(item.task);
     const selectedItem = row.items.find(item => !row.baseline && selected && item.task.row_ref === selected.row_ref);
-    return <canvas ref={ref} data-candidate-lane={row.baseline ? undefined : true} data-baseline-lane={row.baseline ? true : undefined} data-item-count={row.items.length} role="button" tabIndex={0} aria-label={(row.baseline ? '初始计划 ' : '') + row.label + '，第 ' + (row.lane + 1) + ' 轨，' + row.items.length + ' 道安排' + (selectedItem ? '\n' + M.title(selectedItem.task) : '')}
+    return <canvas ref={ref} data-candidate-lane={row.baseline ? undefined : true} data-baseline-lane={row.baseline ? true : undefined} data-item-count={row.items.length} role="button" tabIndex={0} aria-label={row.label + '，' + M.laneLabel(row) + '，' + row.items.length + ' 道安排' + (selectedItem ? '\n' + M.title(selectedItem.task) : '')}
       style={{ position: 'absolute', left, width: viewport, height: row.height }}
-      onMouseMove={event => { const item = hit(event); onHover(item ? { text: row.baseline ? B.title(item) : M.title(item.task), x: event.clientX, y: event.clientY } : null); }} onMouseLeave={() => onHover(null)}
+      onMouseMove={event => { const item = hit(event); onHover(item ? { taskRef: row.baseline ? null : item.task.row_ref, text: row.baseline ? B.title(item) : M.title(item.task), x: event.clientX, y: event.clientY } : null); }} onMouseLeave={() => onHover(null)}
       onClick={event => { const item = hit(event); if (item) choose(item); }}
       onKeyDown={event => {
         if (!row.items.length || !['Enter', ' ', 'Home', 'End', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
@@ -119,26 +111,64 @@
             <TaskCells task={t} planned={planned} onSelect={onSelect} /></div>)}
         </div></div></div>{!tasks.length && <window.WorkbenchListControls.EmptyState title="当前范围没有匹配记录" />}</>;
   }
-  function RunCandidateGantt({ data, query, selected, onSelect }) {
+  function RunCandidateGantt({ data, comparison, query, onQuery, selected, onSelect }) {
     const [mode, setMode] = React.useState('machine'), [zoom, setZoom] = React.useState(1), [viewport, setViewport] = React.useState(600);
     const [scroll, setScroll] = React.useState({ left: 0, top: 0 }), [hover, setHover] = React.useState(null), host = React.useRef(null), owner = React.useRef(null);
+    const [chainEnabled, setChainEnabled] = React.useState(false), [changedOnly, setChangedOnly] = React.useState(false);
+    const [viewportHeight, setViewportHeight] = React.useState(310), expansion = window.GanttPresentationUI.useExpanded();
+    const search = React.useRef(null);
+    const [inspection, setInspection] = React.useState(null);
     const printing = BC.usePrintLayout();
     const printState = React.useRef(false), savedScroll = React.useRef(null), restoreScroll = React.useRef(null);
     if (printing && !printState.current) savedScroll.current = scroll;
     if (!printing && printState.current) restoreScroll.current = savedScroll.current;
     printState.current = printing;
-    const baseline = BC.useBaseline(data), [selection, setSelection] = React.useState(null), result = baseline.result;
-    const chosen = selection && selection.result === result && B.matching([selection.item.comparison], query).length ? selection.item : null;
+    const canCompare = !!comparison && comparison.baseline.comparison_available;
+    const inspectedRef = inspection && inspection.candidateRef === data.candidate.candidate_ref ? inspection.operationRef : null;
+    const baseline = BC.useBaseline(data, canCompare || !!inspectedRef), [selection, setSelection] = React.useState(null), result = baseline.result;
+    const changed = React.useMemo(() => new Set(comparison ? comparison.operations.changed_operation_refs : []), [comparison]);
+    const unknown = React.useMemo(() => new Set(comparison ? comparison.operations.unknown_operation_refs : []), [comparison]);
+    const problems = React.useMemo(() => comparison ? comparison.operations.issues.filter(row => unknown.has(row.operation_ref)) : [], [comparison, unknown]);
+    const displayChangedOnly = canCompare && changedOnly;
+    const operationRefs = displayChangedOnly ? changed : null;
+    const inspected = React.useMemo(() => {
+      const row = result && inspectedRef && result.data.comparisons.find(row => row.operation_ref === inspectedRef);
+      return row ? { comparison: row, segment: row.baseline_segments[0] || null } : null;
+    }, [result, inspectedRef]);
+    const selectedItem = selection && selection.result === result ? selection.item : inspected;
+    const chosen = selectedItem && (!operationRefs || operationRefs.has(selectedItem.comparison.operation_ref))
+      && B.matching([selectedItem.comparison], query).length ? selectedItem : null;
     // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
     const labelWidth = 156, width = printing ? 640 : Math.max(1, viewport) * zoom;
-    const candidate = React.useMemo(() => M.layout(data, mode, query, width), [data, mode, query, width]);
-    const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query), width), [candidate, result, mode, query, width]);
-    function selectBaseline(item) { setSelection(item ? { item, result } : null); if (item) onSelect(null); setHover(null); }
-    function selectCandidate(task) { setSelection(null); onSelect(task); }
+    const candidate = React.useMemo(() => M.layout(data, mode, query, width, operationRefs), [data, mode, query, width, operationRefs]);
+    const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, result && result.data, mode, query, operationRefs, width), width), [candidate, result, mode, query, width, operationRefs]);
+    const risks = React.useMemo(() => new Map(data.delivery_risks.items.map(row => [row.batch_ref, row.risk])), [data]);
+    const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
+    const targetRef = hover && hover.taskRef || !chosen && selected && selected.row_ref || null;
+    const active = React.useMemo(() => window.GanttGraph.selection(graph, { enabled: chainEnabled, targetRef }), [graph, chainEnabled, targetRef]);
+    function selectBaseline(item) { setSelection(item ? { item, result } : null); if (item) onSelect(null); else setInspection(null); setHover(null); }
+    function selectCandidate(task) { setInspection(null); setSelection(null); setHover(null); onSelect(task); }
+    function inspectProblem(operationRef) {
+      setInspection({ candidateRef: data.candidate.candidate_ref, operationRef }); setSelection(null); setChangedOnly(false);
+      onQuery(''); onSelect(null); setHover(null); baseline.toggle(true);
+    }
+    function filterChanges(value) {
+      setChangedOnly(value); setHover(null);
+      if (value) setInspection(null);
+      if (value && selected && !changed.has(selected.operation_ref)) onSelect(null);
+      if (value && chosen && !changed.has(chosen.comparison.operation_ref)) setSelection(null);
+    }
+    React.useEffect(() => { if (!canCompare) setChangedOnly(false); }, [canCompare]);
+    React.useEffect(() => {
+      // Route and delivery links can select a task outside the current change filter.
+      if (selected && !changed.has(selected.operation_ref)) setChangedOnly(false);
+    }, [selected]);
+    React.useEffect(() => { setHover(null); if (expansion.expanded) owner.current.focus(); }, [expansion.expanded]);
     React.useLayoutEffect(() => {
       const measure = () => {
         if (printState.current || window.matchMedia('print').matches) return;
         setViewport(Math.max(1, owner.current.clientWidth - labelWidth));
+        setViewportHeight(owner.current.clientHeight);
       };
       const observe = new ResizeObserver(measure); observe.observe(host.current); observe.observe(owner.current);
       return () => observe.disconnect();
@@ -150,41 +180,78 @@
       restore(); restoreScroll.current = null;
       const frame = requestAnimationFrame(restore); return () => cancelAnimationFrame(frame);
     }, [printing]);
-    React.useLayoutEffect(() => { if (owner.current) { owner.current.scrollTop = 0; owner.current.scrollLeft = 0; } setScroll({ left: 0, top: 0 }); setHover(null); }, [mode, query, data, result]);
+    React.useLayoutEffect(() => { if (owner.current) { owner.current.scrollTop = 0; owner.current.scrollLeft = 0; } setScroll({ left: 0, top: 0 }); setHover(null); }, [mode, query, data, result, displayChangedOnly]);
     React.useLayoutEffect(() => {
       const loc = chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref) : selected && model.locations.get(selected.row_ref), node = owner.current;
       if (!node || !loc || printing || restoreScroll.current) return;
-      if (loc.top < node.scrollTop || loc.top + 48 > node.scrollTop + 288) node.scrollTop = loc.top;
+      if (loc.top < node.scrollTop || loc.top + model.rows[loc.row].height > node.scrollTop + viewportHeight) node.scrollTop = loc.top;
       const x = (loc.item.start - model.start) / (model.end - model.start) * width;
       if (x < node.scrollLeft || x > node.scrollLeft + viewport) node.scrollLeft = Math.max(0, x - viewport / 3);
-    }, [selected, chosen, model, width, viewport, printing]);
+    }, [selected, chosen, model, width, viewport, viewportHeight, printing]);
     function pan(left) { if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left)); }
     function fit() { setZoom(1); pan(0); }
+    function locate(task) {
+      const loc = task ? model.locations.get(task.row_ref) : chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref)
+        : selected && model.locations.get(selected.row_ref), node = owner.current;
+      if (!node || !loc) return;
+      node.scrollTop = Math.max(0, loc.top - node.clientHeight / 3);
+      pan((loc.item.start + loc.item.end - 2 * model.start) / 2 / (model.end - model.start) * width - viewport / 2);
+    }
+    function move(direction) {
+      const index = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+      const task = model.tasks[Math.max(0, Math.min(model.tasks.length - 1, index < 0 ? 0 : index + direction))];
+      if (task) { selectCandidate(task); locate(task); }
+    }
     function zoomKeys(event) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
+      if (event.key === '/') { event.preventDefault(); search.current.focus(); }
+      if (event.key.toLowerCase() === 'l') { event.preventDefault(); locate(); }
       const action = timelineZoomKey(event);
       if (!action) return;
       event.preventDefault();
       if (action === 'fit') fit(); else setZoom(z => timelineZoomStep(z, action === 'in' ? 1 : -1, ZOOM_MAX));
     }
     const renderLeft = printing ? 0 : scroll.left, renderViewport = printing ? width : viewport;
-    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 48, scroll.top + 384);
-    // Leave room for the last printed tick label; the exact end remains in the range heading above.
-    const tickRows = model.start === null ? [] : M.ticks(model.start, model.end, width, renderLeft, renderViewport)
-      .filter(tick => !printing || tick.x <= width * 0.85);
-    return <section ref={host} className="rc-gantt" aria-label="候选甘特图" onKeyDown={zoomKeys}><div className="rc-heading"><div role="group" className="rc-tabs" aria-label="候选甘特维度">{Object.entries(M.kindLabels).map(([key, label]) =>
-      <Button key={key} aria-pressed={mode === key} onClick={() => setMode(key)}>{label}</Button>)}</div>
-      <div className="rc-tools"><BC.Toggle state={baseline} /><TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="候选" onZoom={setZoom} onFit={fit} /></div></div>
-      <BC.Panel state={baseline} rows={model.comparisons || []} chosen={chosen} onChoose={selectBaseline} workspace={data} />
-      <div className="rc-legend rc-muted"><span>{model.groupCount} 组 · {model.rows.length} 轨</span><span><i />安排</span><span><i className="rc-overlap" />时间重叠的安排（分行显示）</span><span><i className="rc-external" />外协工序</span></div>
+    const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
+      left: renderLeft, top: printing ? 0 : scroll.top, width: renderViewport, height: printing ? model.height : viewportHeight
+    }, { candidate: true }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing]);
+    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
+    const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+    const axis = window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport });
+    return <section ref={host} className={'rc-gantt' + (expansion.expanded ? ' rc-expanded' : '')} aria-label="候选甘特图" onKeyDown={zoomKeys}>
+      <div className="rc-gantt-toolbar"><window.PlanSegmentUI value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="候选甘特维度" />
+        {canCompare && <><BC.Toggle state={baseline} />
+          <label className="rb-toggle" title="只显示和原安排相比，时间或资源有变化的工序">
+            <input type="checkbox" aria-label="只看有变化的工序" checked={displayChangedOnly} onChange={event => filterChanges(event.target.checked)} />只看有变化的工序</label></>}
+        <label className="search plan-search"><span className="ic"><window.ResourceControls.Icon name="search" /></span><input ref={search} type="search" aria-label="搜索候选工序" placeholder="批次、工序、资源" value={query}
+          onChange={event => onQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); move(event.shiftKey ? -1 : 1); } if (event.key === 'Escape') onQuery(''); }} /></label>
+        <div className="rc-tools"><TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="候选" onZoom={setZoom} onFit={fit} />
+          <Button icon="search" aria-label="定位选中候选任务" title="定位选中任务 (L)" disabled={!(chosen && chosen.segment && model.baselineLocations.has(chosen.segment.row_ref)) && !(selected && model.locations.has(selected.row_ref))} onClick={() => locate()} />
+          <Button icon={expansion.expanded ? 'x' : 'chart-gantt'} aria-label={expansion.expanded ? '收起甘特' : '展开甘特'} title={expansion.expanded ? '返回完整工作区' : '展开甘特工作区'} aria-expanded={expansion.expanded} onClick={expansion.toggle}>{expansion.expanded ? '收起' : '展开'}</Button>
+        </div></div>
+      <BC.Source workspace={data} comparison={comparison} />
+      <BC.Problems workspace={data} issues={problems} onInspect={inspectProblem} />
+      <BC.Panel state={baseline} rows={(model.comparisons || []).filter(row => !inspectedRef || unknown.has(row.operation_ref))} chosen={chosen} onChoose={selectBaseline} workspace={data}
+        inspecting={!!inspectedRef} onShowAll={canCompare ? () => setInspection(null) : undefined} />
+      <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} onClear={() => { setHover(null); onSelect(null); }} />
       {model.start !== null && <div className="rc-heading rc-muted"><span>{M.timeLabel(M.wire(model.start))}</span><span>{M.timeLabel(M.wire(model.end))}</span></div>}
-      <div className="rc-axis">{tickRows.map(t => <span key={t.at} className="rc-tick" style={{ left: printing ? t.x / width * 100 + '%' : t.x - renderLeft }}>{M.timeLabel(t.label).slice(5, 10)}<br />{M.timeLabel(t.label).slice(11)}</span>)}</div>
+      <div className="rc-axis-row"><div className="rc-axis-corner">{M.kindLabels[mode]} / 工序<small>{model.groupCount} 组</small></div><div className="rc-axis"><window.GanttPresentationUI.Axis axis={axis} width={width} offset={renderLeft} printing={printing} /></div></div>
       <div ref={owner} className="rc-scroll" data-candidate-gantt-scroll role="region" aria-label="候选时间安排" tabIndex={0}
         onScroll={e => { if (!printState.current && !window.matchMedia('print').matches) setScroll({ left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop }); setHover(null); }}>
-        <div style={{ position: 'relative', width: width + labelWidth, height: Math.max(288, model.height) }}>
-          {visible.map(row => <div key={row.key} className="rc-lane" data-candidate-track={row.baseline ? undefined : row.key} data-baseline-track={row.baseline ? row.key : undefined} style={{ top: row.top, height: row.height }}><div className="rc-lane-label" style={{ height: row.height - 1, paddingTop: row.baseline ? 5 : 7 }} title={row.label + (row.baseline ? ' · 初始计划' : '')}>{row.label}{row.baseline ? ' · 初始' : <small>第 {row.lane + 1} / {row.laneCount} 轨 · {row.items.length} 道安排</small>}</div>
-            <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, model, width, left: renderLeft, viewport: renderViewport, printing, selected, baselineSelected: chosen, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div></div>)}
-          {!model.rows.length && <div className="rc-empty">没有可绘制的匹配安排；未安排与失败记录仍保留在明细中。</div>}</div></div>
-      <input type="range" aria-label="候选时间轴水平位置" style={{ width: '100%' }} min="0" max={Math.max(0, width - viewport)} step="any" value={Math.min(scroll.left, Math.max(0, width - viewport))} disabled={zoom === 1} onChange={e => pan(Number(e.target.value))} />
+        <div style={{ position: 'relative', width: width + labelWidth, height: Math.max(120, model.height) }}>
+          {visible.map(row => <div key={row.key} className="rc-lane" data-candidate-track={row.baseline ? undefined : row.key} data-baseline-track={row.baseline ? row.key : undefined}
+            data-gantt-row-kind={row.baseline ? 'original' : row.point ? 'point' : row.normalLaneCount > 1 ? 'overlap' : 'current'} data-gantt-subrow={row.lane + 1}
+            style={{ top: row.top, height: row.height }}><div className="rc-lane-label" style={{ height: row.height - 1, paddingTop: row.baseline ? 5 : 7 }} title={row.label + ' · ' + M.laneLabel(row)}>
+              <strong>{row.label}</strong>{row.baseline ? <span className="rc-lane-kind"> · {M.laneLabel(row)}</span> : <small><span className="rc-lane-kind">{M.laneLabel(row)}</span> · {row.items.length} 道</small>}</div>
+            <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, model, mode, risks, width, left: renderLeft, viewport: renderViewport, printing, selected, baselineSelected: chosen, active, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div>
+            {printing && <window.GanttGraphLayer.Lines geometry={geometry} width={width} height={row.height} labelWidth={labelWidth} rowTop={row.top} />}</div>)}
+          {!printing && <window.GanttGraphLayer.Lines geometry={geometry} width={width} height={model.height} labelWidth={labelWidth} />}
+          {!model.rows.length && <div className="rc-empty">{displayChangedOnly ? '当前范围没有匹配的已确认变更安排。' : '没有可绘制的匹配安排；未安排与失败记录仍保留在明细中。'}</div>}</div></div>
+      {zoom > 1 && <input type="range" aria-label="候选时间轴水平位置" style={{ width: '100%' }} min="0" max={Math.max(0, width - viewport)} step="any" value={Math.min(scroll.left, Math.max(0, width - viewport))} onChange={e => pan(Number(e.target.value))} />}
+      <div className="rc-legend rc-muted"><span>{model.tasks.length} / {data.task_count} 道安排 · {model.groupCount} 组</span><span><i />安排</span>
+        <span><i className="rc-risk" />预计超期</span><span><i className="rc-on-time" />预计按期</span><span><i className="rc-fixed" />固定工序</span><span><i className="rc-external" />外协工序</span>
+        <span><i className="rc-overlap" />同时段安排分子行显示</span><span>◇ 零工时点独立行，不占资源</span><span className="rc-tools"><Button icon="chevron-left" aria-label="上一匹配候选任务" disabled={currentIndex <= 0} onClick={() => move(-1)} />
+          <span>{currentIndex < 0 ? '未选任务' : '第 ' + (currentIndex + 1) + ' 道匹配'}</span><Button icon="chevron-right" aria-label="下一匹配候选任务" disabled={!model.tasks.length || currentIndex >= model.tasks.length - 1} onClick={() => move(1)} /></span></div>
       {window.PointContract.isPoint(selected) && <dl className="rc-meta" data-candidate-point-facts><div><dt>安排类型</dt><dd>零工时工序</dd></div><div><dt>发生时间</dt><dd>{M.timeLabel(selected.start)}</dd></div><div><dt>本工序占用</dt><dd>0 小时 · 不占设备人员</dd></div></dl>}
       {hover && <div role="tooltip" className="rc-tooltip" style={{ left: Math.max(8, Math.min(innerWidth - 358, hover.x + 12)), top: Math.max(8, Math.min(innerHeight - 238, hover.y + 14)) }}>{hover.text}</div>}
     </section>;

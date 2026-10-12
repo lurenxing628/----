@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   const hitSize = 24, gap = 28;
+  const itemRef = item => item.task ? item.task.task_ref || item.task.row_ref : item.segment.row_ref;
   function bounds(start, end, hasPoints) {
     if (start === null || !hasPoints) return { start, end };
     const pad = Math.max(60000, (end - start) * .04);
@@ -8,7 +9,7 @@
   }
   function tracks(items, start, end, width) {
     const lanes = [], heap = [], scale = Math.max(1, width) / (end - start);
-    for (const item of items.slice().sort((a, b) => a.start - b.start || String(a.task.task_ref || a.task.row_ref).localeCompare(String(b.task.task_ref || b.task.row_ref)))) {
+    for (const item of items.slice().sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)))) {
       const x = (item.start - start) * scale;
       let slot;
       if (heap.length && heap[0].end <= x) {
@@ -42,10 +43,10 @@
     const scale = width / (model.end - model.start), at = model.start + (x + left) / scale;
     return visible(items, at, at, scale).find(item => Math.abs((item.start - model.start) * scale - left - x) <= hitSize / 2);
   }
-  function paint(ctx, x, y, fill, edge, selected) {
+  function paint(ctx, x, y, fill, edge, selected, lineWidth = selected ? 2 : 1) {
     ctx.save(); ctx.setLineDash([]); ctx.beginPath();
     ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath();
-    ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = edge; ctx.lineWidth = selected ? 2 : 1; ctx.stroke(); ctx.restore();
+    ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = edge; ctx.lineWidth = lineWidth; ctx.stroke(); ctx.restore();
   }
   function candidateRows(model, width) {
     const groups = new Map(), rows = [], locations = new Map(), baselineLocations = new Map(), done = new Set();

@@ -22,13 +22,12 @@
   --wb-gantt-radius-control: var(--wb-radius-control);
   --wb-gantt-overlap-fill: var(--wb-gantt-primary-fill);
   --wb-gantt-overlap-edge: var(--wb-gantt-primary-edge);
-  --wb-gantt-critical-stripe: repeating-linear-gradient(135deg, var(--wb-gantt-critical-edge) 0 1px, transparent 1px 6px);
+  --wb-gantt-overlap-ink: var(--wb-gantt-primary-ink);
   --wb-gantt-overlap-stripe: repeating-linear-gradient(135deg, var(--wb-gantt-overlap-edge) 0 1px, transparent 1px 6px);
   /* 外协工序斜纹：RunCandidateGantt 画布按 10px 水平步距画 --wb-gantt-plan-edge 细线（左上→右下），换算成垂直于条纹的周期 ≈ 7px；图例 .rc-external 用它与画布对齐。 */
   --wb-gantt-external-stripe: repeating-linear-gradient(45deg, var(--wb-gantt-plan-edge) 0 1px, transparent 1px 7px);
-  /* 甘特画布文字：PlanGanttCanvas / RunCandidateGantt 的 ctx.font 由 JSX 用 getComputedStyle 读本变量；值与画布现有字面量 '11px sans-serif' 一致，调字号 / 字体只改这里。 */
-  --wb-gantt-font: 11px sans-serif;
-  --wb-gantt-success-ring: inset 0 0 0 2px var(--wb-gantt-success-edge);
+  /* 与 DOM 任务条同字号，正式与候选画布从共同展示层读取。 */
+  --wb-gantt-font: 12px sans-serif;
   --wb-sev-ok: var(--ui-success);
   --wb-sev-notice: var(--ui-primary);
   --wb-sev-warning: var(--ui-warning);

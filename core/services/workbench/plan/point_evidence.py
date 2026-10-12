@@ -3,35 +3,29 @@
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.facts.zero_duration import PointEventError
 from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, trial_point_evidence
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .adoption_baseline import _audit
-from .adoption_baseline_identity import verify_arranged
-from .adoption_baseline_sources import candidate_source, trial_source
+from .adoption_baseline import read_adoption_source
 from .adoption_baseline_values import AdoptionBaselineUnavailable
 
 
-def official_point_work(conn, version):
+def official_point_work(conn, version, *, evidence=None):
     try:
-        refs = WorkbenchPlanIdentityRepository(conn)
-        plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
-        history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(version)
-        recorded = _audit(conn, plan_ref, version, history)
-        if recorded is None:
+        if evidence is None:
+            refs = WorkbenchPlanIdentityRepository(conn)
+            plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
+            history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(version)
+            evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history)
+        if evidence is None or evidence["audit"]["version"] != version:
             raise PointEventError("point_evidence_missing", "这一版正式计划没有可核对的采用记录，证明不了这道零工时工序。")
-        basis, audit, _ = recorded
-        load = candidate_source if basis == "candidate_adoption" else trial_source
-        _, tables, arranged = load(conn, audit)
-        verify_arranged(conn, plan_ref, version, tables, arranged)
+        basis, audit = evidence["basis"], evidence["audit"]
         if basis == "candidate_adoption":
-            candidate, _, tasks, capture = load_adoption_candidate(conn, audit["candidate_ref"])
-            facts = GenerationFacts(capture)
-            reader = CandidatePointReader(candidate, facts)
+            candidate, _, tasks, _ = load_adoption_candidate(conn, audit["candidate_ref"])
+            reader = CandidatePointReader(candidate, evidence["generation_facts"])
             return {row["payload"]["op_id"]: reader.work(row["operation_ref"], row["payload"])
                     for row in tasks if row["payload"]["start_time"] == row["payload"]["end_time"]}
         _, _, rows = load_saved_scenario(conn, audit["scenario_ref"])

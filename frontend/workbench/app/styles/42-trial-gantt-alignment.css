@@ -1,0 +1,22 @@
+/* Trial keeps one editable operation per row and shares the Gantt presentation. */
+.trial-workspace .tt-axis { height:52px; }
+.trial-workspace .tt-ticks { display:block; padding:0; min-width:0; }
+.trial-workspace .tt-corner { padding:var(--space-3) 10px; }
+.trial-workspace .tt-gantt-row { height:56px; }
+.trial-workspace .tt-gantt-row[data-show-baseline] { height:72px; }
+.trial-workspace .tt-track { background-image:none; }
+.trial-workspace .tt-gridline { position:absolute; top:0; bottom:0; border-left:1px solid var(--ui-border); pointer-events:none; }
+.trial-workspace .tt-bar { top:7px; height:40px; color:var(--wb-gantt-primary-ink); background:transparent; box-shadow:none; text-align:left; }
+.trial-workspace .tt-bar-face { position:absolute; inset:0 min(2px,10%); display:flex; flex-direction:column; justify-content:center; padding:2px 4px; overflow:hidden; border:1px solid var(--wb-gantt-primary-edge); border-radius:var(--wb-gantt-radius-bar); background:var(--wb-gantt-primary-fill); pointer-events:none; }
+.trial-workspace .tt-bar-face strong,.trial-workspace .tt-bar-face small { display:block; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--font-size-1); font-weight:500; line-height:16px; }
+.trial-workspace .tt-bar.conflict { color:var(--wb-gantt-critical-ink); }
+.trial-workspace .tt-bar.conflict .tt-bar-face { background:var(--wb-gantt-critical-fill); border-color:var(--wb-gantt-critical-edge); }
+.trial-workspace .tt-bar[aria-pressed=true] .tt-bar-face { box-shadow:inset 0 0 0 1px var(--wb-gantt-gold); border-color:var(--wb-gantt-gold); }
+.trial-workspace .tt-lock-mark { position:absolute; right:4px; top:4px; width:4px; height:4px; background:var(--wb-gantt-success-edge); }
+.trial-workspace .tt-baseline { top:55px; height:6px; background:var(--wb-gantt-plan-fill); border:1px dashed var(--wb-gantt-plan-edge); box-shadow:none; }
+.trial-workspace .tt-legend i.baseline { border-style:dashed; }
+.trial-workspace .tt-legend i.conflict { background:var(--wb-gantt-critical-fill); }
+.trial-workspace .tt-legend i.locked { width:5px; height:5px; background:var(--wb-gantt-success-edge); border:0; box-shadow:none; border-radius:0; }
+.trial-workspace .tt-expanded { display:flex; flex-direction:column; }
+.trial-workspace .tt-expanded .tt-board { flex:1; min-height:0; height:auto; max-height:none; }
+.trial-workspace .tt-expanded>:not(.tt-board) { flex:none; }

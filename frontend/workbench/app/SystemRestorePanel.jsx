@@ -19,7 +19,7 @@
     }, []);
     const result = query ? query.result : command.result;
     const op = result && result.kind === 'file_operation' ? result.operation : null;
-    const description = R.describe(command.hostError ? null : host, op), waiting = busy || command.busy || command.hostBusy;
+    const description = R.describe(host, op), waiting = busy || command.busy || command.hostBusy;
     const problem = error || command.hostError || command.storageError || command.error;
     async function lookup(event) {
       event.preventDefault(); if (waiting) return;
@@ -30,21 +30,21 @@
       finally { await command.inspectHost(); setBusy(false); }
     }
     const fields = [
-      ['结果来源', '来自本机数据库以外的维护记录，不是数据库里的业务结果'],
+      ['结果来源', '维护记录'],
       ['该次维护记录的数据库来源', description.origin],
       ['选定备份', op && op.filename || (!query && command.selection ? command.selection.filename + '（页面上选的，还没有确认）' : '维护记录尚未确认')],
       ['恢复前保护副本', op && op.protection_filename || '保护副本状态待确认'],
       ['操作记录', op && op.audit_persisted ? '已留存；当前数据库内容仍需重启后读取' : '未确认留存'],
-      ['软件状态', command.hostError || !host ? '无法读取维护状态，当前页面已暂停业务读写' : host.restart_required ? '业务操作已停用，须重启整个软件' : '维护状态还没有确认，当前页面已暂停业务读写']
+      ['软件状态', host ? R.hostLabels[host.state] : '恢复请求结果待确认']
     ];
     return ReactDOM.createPortal(<div className="sm-workbench sm-maintenance-workspace plana sm-restore-screen" data-restore-maintenance="warm" ref={screen} tabIndex={-1}>
 
       <header className="sm-restore-bar"><strong>APS 智能排产 · 系统维护</strong><fieldset className="sm-choice"><legend>主题</legend>{[['light', '浅色'], ['dark', '深色']].map(([value, label]) =>
         <label key={value}><input type="radio" name="restore-theme" checked={theme === value} onChange={() => onSetTheme(value)} />{label}</label>)}</fieldset></header>
-      <main className="sm-restore-content"><h1>{command.hostError ? '无法读取维护状态' : description.title}</h1><p className="sm-meta">维护状态</p>
+      <main className="sm-restore-content"><h1>{description.title}</h1><p className="sm-meta">维护状态</p>
         <section aria-label="维护结果"><h2 className={op && op.state === 'succeeded' && !description.uncertain ? 'sm-tone-success' : 'sm-tone-warning'}>{description.state}</h2>
           <p className="sm-notice">{description.guidance}</p>
-          <C.ErrorBox error={problem} />{waiting && <p role="status">正在查询维护状态，没有重新提交恢复。</p>}
+          {problem && <p className="sm-notice sm-tone-danger" role="alert">{problem.message}</p>}{waiting && <p role="status">正在查询维护状态…</p>}
           {notice && <p role="status">{notice}</p>}
           {op && <p>{op.message}</p>}{result && result.kind === 'not_recorded' && <p role="status">{result.message} 请查询结果，勿重复提交。</p>}
           <dl className="sm-restore-facts">{fields.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
@@ -52,8 +52,8 @@
           {op && (!host || host.request_key !== op.request_key) && <p className="sm-note">当前显示历史维护记录；软件仍处于维护停止状态。</p>}
           {op && <><window.WorkbenchReference label="这条结果的操作编号" value={op.request_key} /><p className="sm-meta">更新时间 {window.WorkbenchFormat.dateTime(op.updated_at)}</p></>}
           <div className="sm-actions"><C.Button icon="refresh-cw" busy={waiting} onClick={() => { setQuery(null); setError(null); intent ? command.lookup() : command.inspectHost(); }}>{window.WorkbenchTerms.actions.query_result}</C.Button>
-            <C.Button transfer="export" onClick={() => { try { R.download(host, result, problem); setNotice(window.WorkbenchTerms.download_started(R.DIAGNOSTIC_FILENAME) + '，不含数据库和完整日志。'); } catch (problem) { setError(problem); } }}>导出维护诊断</C.Button>
-            <a href="/workbench?view=system">返回工作台</a></div><p className="sm-meta">点「返回工作台」会重新查询维护状态；需要重启或人工核对时仍然停在维护页。</p>
+            <C.Button transfer="export" onClick={() => { try { R.download(host, result, problem); setNotice(window.WorkbenchTerms.download_started(R.DIAGNOSTIC_FILENAME) + '。'); } catch (problem) { setError(problem); } }}>导出维护诊断</C.Button>
+            <a href="/workbench?view=dashboard">重新检查启动状态</a></div>
         </section>
         <section aria-label="按编号查询"><h2>查询其他维护结果</h2><form onSubmit={lookup}>
           <fieldset className="sm-choice sm-choice-gap"><legend>编号类型</legend>{[['request', '操作编号'], ['job', '维护记录编号']].map(([value, label]) =>
@@ -64,7 +64,7 @@
         {op && <details className="sm-rules"><summary>维护阶段与核对信息</summary><p>维护记录编号：<code>{op.job_ref}</code> · 结果代码：<code>{op.code}</code></p>
           {op.history.map((step, index) => <p key={index}>{window.WorkbenchFormat.dateTime(step.time)} · {R.labels[step.state]}</p>)}
           {[['所选备份 SHA-256', op.target_sha256], ['保护副本 SHA-256', op.protection_sha256], ['维护结束数据库 SHA-256', op.database_after_sha256]].map(([label, value]) => <p key={label}>{label}：<code>{value || '未确认'}</code></p>)}
-          <p>上面的指纹来自维护记录，本页没有重新打开或检查数据库。数据库里旧的结果可能已被恢复覆盖。</p></details>}
+          <p>校验记录来自对应维护任务。</p></details>}
       </main>
     </div>, document.body);
   }

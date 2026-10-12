@@ -31,6 +31,10 @@ runtime.React = Object.assign({}, realReact, {
     const initial = Object.prototype.hasOwnProperty.call(values, index) ? values[index] : typeof value === 'function' ? value() : value;
     return [initial, next => updates.push({name: current.name, index, value: typeof next === 'function' ? next(initial) : next})];
   },
+  useReducer(reducer, value) {
+    const [state, setState] = runtime.React.useState(value);
+    return [state, action => setState(current => reducer(current, action))];
+  },
   useMemo: fn => fn(), useCallback: fn => fn, useRef: value => ({current:value}),
   useId: () => ':gantt-contract-' + (++nextId) + ':',
   useContext: context => contextValues.has(context) ? contextValues.get(context) : context._currentValue,
@@ -102,6 +106,8 @@ function fixture(specs) {
       quantity_reason:'plan_target_not_recorded', quantity_basis:null, start, end,
       machine_ref:reference(200), operator_ref:reference(201), supplier_ref:null}));
   return {plan:{plan_ref:reference(100),kind:'official',version:5}, tasks, task_count:tasks.length, tasks_complete:true,
+    provenance:{state:'unavailable',reason:'No generation evidence',source_kind:null,source_ref:null,source_label:null,run_ref:null,accepted_at:null,finished_at:null,adopted_at:null,algorithm:null,baseline:null},
+    gantt_graph:{state:'unavailable',reason:'Frozen process order unavailable',scope:'full_plan',nodes:[],edges:[],critical_task_refs:[],critical_edges:[]},
     scope:{plan_ref:reference(100),range_start:null,range_end:null},
     plan_span:{start:tasks[0].start,end:tasks[tasks.length-1].end},
     time_scope:{range_start:tasks[0].start,range_end:tasks[tasks.length-1].end,selection:'overlap',boundary:'half_open',time_basis:'factory_local'},
@@ -124,6 +130,10 @@ function processFixture() {
   const data = fixture(['A1','A2','A3'].map((label,index) => [label,'2026-05-11T'+String(8+index).padStart(2,'0')+':00:00','2026-05-11T'+String(9+index).padStart(2,'0')+':00:00']));
   data.projections.process_order = {state:'available',basis:'run_admission',issues:[],items:data.tasks.map((task,index) => ({
     task_ref:task.task_ref,operation_ref:task.operation_ref,predecessor_operation_refs:index ? [data.tasks[index-1].operation_ref] : []}))};
+  const edges = data.tasks.slice(1).map((task,index) => ({from_task_ref:data.tasks[index].task_ref,to_task_ref:task.task_ref,edge_type:'process'}));
+  data.gantt_graph = {state:'available',reason:null,scope:'full_plan',
+    nodes:data.tasks.map(task => Object.fromEntries(['task_ref','operation_ref','batch_id','piece_id','sequence','process_label','start','end'].map(key => [key,task[key]]))),
+    edges,critical_task_refs:data.tasks.map(task => task.task_ref),critical_edges:edges};
   assert(runtime.PlanProcessOrder.validate(data.projections.process_order,data));
   return data;
 }

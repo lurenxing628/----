@@ -18,25 +18,33 @@
       return () => { theme.disconnect(); resize.disconnect(); };
     }, deps);
   }
-  function DenseRow({ row, model, width, viewport, left, selected, onSelect, onHover, renderMark }) {
+  function DenseRow({ row, model, width, viewport, left, selected, graphActive, onSelect, onHover, renderMark }) {
     const ref = React.useRef(null), marks = M.marks(row), scale = width / (model.end - model.start);
     const pointerFocus = React.useRef(false), [activeKey, setActiveKey] = React.useState(null), [focused, setFocused] = React.useState(false);
     const activeIndex = Math.max(0, marks.findIndex(mark => mark.key === activeKey)), active = marks[activeIndex];
     usePaint(ref, (ctx, w, h, colors) => {
+      const critical = graphActive.critical.has(row.item.task.task_ref), related = graphActive.related.has(row.item.task.task_ref);
+      const chosen = selected === row.item.task.task_ref;
       for (const mark of marks) {
         const x = (mark.start - model.start) * scale - left, size = (mark.end - mark.start) * scale;
         if (x > w + 12 || x + size < -12) continue;
-        ctx.fillStyle = colors[mark.kind].fill; ctx.strokeStyle = selected === row.item.task.task_ref ? colors.selected : colors[mark.kind].edge;
-        if (mark.kind === 'point' || mark.kind === 'plan-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, selected === row.item.task.task_ref);
-        else { ctx.fillRect(x, mark.y, size, mark.height); ctx.lineWidth = Math.min(1, size); ctx.setLineDash(['plan', 'remaining'].includes(mark.kind) ? [3, 2] : []);
-          if (size > 0) ctx.strokeRect(x + ctx.lineWidth / 2, mark.y + ctx.lineWidth / 2, size - ctx.lineWidth, mark.height - ctx.lineWidth); }
+        ctx.save();
+        if (graphActive.target && !related && !critical) ctx.globalAlpha = .66;
+        ctx.fillStyle = colors[mark.kind].fill; ctx.strokeStyle = chosen || critical || related ? colors.selected : colors[mark.kind].edge;
+        ctx.setLineDash([]);
+        if (mark.kind === 'point' || mark.kind === 'plan-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);
+        else { ctx.fillRect(x, mark.y, size, mark.height); ctx.lineWidth = Math.min(chosen ? 2 : related ? 1.5 : 1, size); ctx.setLineDash(['plan', 'remaining'].includes(mark.kind) ? [3, 2] : []);
+          if (size > 0) ctx.strokeRect(x + ctx.lineWidth / 2, mark.y + ctx.lineWidth / 2, size - ctx.lineWidth, mark.height - ctx.lineWidth);
+          if (critical && mark.kind === 'actual') { ctx.fillStyle = colors.selected; ctx.fillRect(x, mark.y, size, 3); }
+        }
         if (focused && active && mark.key === active.key) {
           const box = window.ActualGanttWindow.markBox(mark, model, width, left);
           ctx.setLineDash([]); ctx.lineWidth = 2; ctx.strokeStyle = colors.selected;
           ctx.strokeRect(box.hitLeft - 2, mark.y - 2, box.hitWidth + 4, mark.height + 4);
         }
+        ctx.restore();
       }
-    }, [row, width, viewport, left, selected, focused, active && active.key]);
+    }, [row, width, viewport, left, selected, graphActive, focused, active && active.key]);
     function reveal(mark) {
       if (!mark) return;
       const board = ref.current.closest('[data-actual-scroll]'); if (!board) return;

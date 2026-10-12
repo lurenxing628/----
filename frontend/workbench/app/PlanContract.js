@@ -103,11 +103,11 @@
         || (p.has_more ? !token(p.next_cursor) || !d.plans.length || p.next_cursor === query.cursor : p.next_cursor !== null)
         || d.plans.some(row => (row.kind === 'scenario') !== (query.collection === 'scenario'))
         || d.plans.filter(row => row.is_current_official).length > 1)
-      throw C.failure('读到的计划列表、类型或分页跟这次查询不一致，没有当作完整列表使用。请点「刷新」重试。');
+      throw C.failure('计划列表的类型或分页与查询不一致，请刷新。');
     // A history page counts versions, not role entries; null versions cannot be grouped by guessed identity.
     const units = query.collection === 'scenario' ? d.plans.length : new Set(d.plans.filter(row => row.version !== null).map(row => String(row.version))).size
       + d.plans.filter(row => row.version === null).length;
-    if (units > query.size) throw C.failure('读到的计划条数超过了每页上限，没有当作完整列表使用。请点「刷新」重试。');
+    if (units > query.size) throw C.failure('计划列表条数超过每页上限，请刷新。');
     return result;
   }
   function task(row, planRef, planSpan, timeScope) {
@@ -145,7 +145,8 @@
       byRef.set(row.ref, row);
     }
     const used = new Set();
-    for (const row of data.tasks) for (const kind of ['machine', 'operator', 'supplier']) {
+    const tasks = data.tasks.concat(data.projections.baseline.items.flatMap(row => [row.before, row.after].filter(Boolean)));
+    for (const row of tasks) for (const kind of ['machine', 'operator', 'supplier']) {
       const value = row[kind + '_ref'];
       if (value === null) continue;
       if (!byRef.has(value) || byRef.get(value).kind !== kind) return false;
@@ -256,7 +257,7 @@
     if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null)
       && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
     return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours
-      && typeof row.capacity_insufficient === 'boolean' && row.issues.length === 0
+      && typeof row.capacity_insufficient === 'boolean'
       && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
   function occupancy(value, data) {
@@ -324,23 +325,42 @@
     return data.task_span.start === start && data.task_span.end === end && (!whole
       || start === data.plan_span.start && end === data.plan_span.end);
   }
+  function provenance(value) {
+    if (!exact(value, ['state', 'reason', 'source_kind', 'source_ref', 'source_label', 'run_ref', 'accepted_at', 'finished_at', 'adopted_at', 'algorithm', 'baseline'])
+        || !['available', 'unavailable'].includes(value.state)) return false;
+    if (value.state === 'unavailable') return label(value.reason)
+      && ['source_kind', 'source_ref', 'source_label', 'run_ref', 'accepted_at', 'finished_at', 'adopted_at', 'algorithm', 'baseline'].every(key => value[key] === null);
+    const origin = value.baseline, algorithm = value.algorithm;
+    return value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.source_kind)
+      && ref(value.source_ref) && nullableRef(value.run_ref) && nullableLabel(value.source_label)
+      && ['accepted_at', 'finished_at', 'adopted_at'].every(key => nullableLabel(value[key]))
+      && exact(origin, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count'])
+      && nullableRef(origin.baseline_ref) && (origin.version === null || int64(origin.version))
+      && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at)
+      && (origin.captured_task_count === null || count(origin.captured_task_count))
+      && (algorithm === null ? value.source_kind === 'trial_adoption'
+        : exact(algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(algorithm).every(nullableLabel));
+  }
   function workspace(result, planRef, scope = {}) {
     const query = workspaceScope(planRef, scope);
     envelope(result, query);
     const d = result.data;
-    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections'])
-        || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef
+    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance'])
+        || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef
         || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production'
         || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef
         || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null)
         || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query)
         || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000
         || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref')
-        || !taskSpans(d, query) || !resourceDirectory(d) || !exact(d.projections, projections)
-        || !baseline(d.projections.baseline, d) || !calendar(d.projections.calendar, d)
+        || !taskSpans(d, query) || !exact(d.projections, projections)
+        || !baseline(d.projections.baseline, d) || !resourceDirectory(d) || !calendar(d.projections.calendar, d)
         || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d)
-        || !window.PlanProcessOrder.validate(d.projections.process_order, d))
-      throw C.failure('读到的工序安排、时间范围或分析数据不完整或来源对不上，没有当作完整结果使用。请点「刷新」重试。');
+        || !window.PlanProcessOrder.validate(d.projections.process_order, d)
+        || !window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.tasks, taskRef: 'task_ref', time: localTime,
+          sequence: int64, processLabel: label,
+          completeCount: d.scope.range_start === null ? d.tasks.length : undefined }))
+      throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
     return result;
   }
   window.APSPlanContract = { catalogScope, workspaceScope, exportScope, catalog, workspace, download };

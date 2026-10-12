@@ -33,22 +33,10 @@
     }
     return queue.length === operations.size;
   }
-  function relationships(data, selected) {
-    const order = data.projections.process_order, task = selected && selected.task;
-    if (!task || selected.before || order.state !== 'available') return null;
-    const current = order.items.find(row => row.task_ref === task.task_ref);
-    if (!current) return null;
-    const tasks = new Map(data.tasks.map(row => [row.task_ref, row])), byOperation = new Map();
-    for (const row of order.items) {
-      if (!byOperation.has(row.operation_ref)) byOperation.set(row.operation_ref, []);
-      byOperation.get(row.operation_ref).push(row);
-    }
-    const expand = operations => operations.flatMap(operation => {
-      const rows = byOperation.get(operation);
-      return rows ? rows.map(row => ({ task_ref: row.task_ref, task: tasks.get(row.task_ref) || null })) : [{ task_ref: null, task: null }];
-    });
-    const successors = new Set(order.items.filter(row => row.predecessor_operation_refs.includes(task.operation_ref)).map(row => row.operation_ref));
-    return { previous: expand(current.predecessor_operation_refs), next: expand(Array.from(successors)) };
+  function missingPredecessors(order, taskRef) {
+    if (order.state !== 'available') return 0;
+    const current = order.items.find(row => row.task_ref === taskRef), scheduled = new Set(order.items.map(row => row.operation_ref));
+    return current.predecessor_operation_refs.filter(ref => !scheduled.has(ref)).length;
   }
-  window.PlanProcessOrder = { validate, relationships };
+  window.PlanProcessOrder = { validate, missingPredecessors };
 })();

@@ -89,7 +89,7 @@
         }}>{planTabs.map(id => <button type="button" key={id} role="tab" id={'wb-view-tab-' + id}
           aria-controls="wb-view-panel" aria-selected={id === view} tabIndex={id === view ? 0 : -1}
           onClick={() => switchTab(id)}>{boot.titles[id]}</button>)}</div>}
-        <div id="wb-view-panel" tabIndex={-1} role={showPlanTabs ? 'tabpanel' : undefined}
+        <div id="wb-view-panel" className="wb-surface wb-surface-body" tabIndex={-1} role={showPlanTabs ? 'tabpanel' : undefined}
           aria-labelledby={showPlanTabs ? 'wb-view-tab-' + view : undefined}>{children}</div></main></div>
     </div>;
   }

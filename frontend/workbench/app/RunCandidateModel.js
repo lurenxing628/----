@@ -18,16 +18,57 @@
   // 生成时的执行记录按项取词：执行状态与现场记录同一套叫法；数据质量的 complete 是“完整”，不能和执行状态的“已完工”混成一个词。
   const executionTexts = { execution_state: window.WorkbenchTerms.execution_states, data_quality: window.WorkbenchTerms.data_quality, target_basis: { piece: '件', batch: '批' } };
   const executionValue = (v, key = 'execution_state') => Object.prototype.hasOwnProperty.call(executionTexts[key] || {}, v) ? executionTexts[key][v] : typeof v === 'string' ? v : number(v);
+  function executionField(task, key) {
+    const value = task.execution_at_generation[key];
+    if (value !== null) return executionValue(value, key);
+    const problem = task.data_gaps.find(row => row.field === 'execution_at_generation.' + key || row.field === 'execution_at_generation');
+    return problem ? problem.message : '提交试排时未保存' + executionLabels[key] + '。';
+  }
+  function quantityLabel(task, key = 'quantity') {
+    if (task[key] !== null) return number(task[key]);
+    const fields = key === 'quantity'
+      ? ['quantity', 'execution_at_generation.target_quantity', 'execution_at_generation.target_basis', 'execution_at_generation', 'piece_id']
+      : ['batch_quantity', 'batch'];
+    const problem = fields.map(field => task.data_gaps.find(item => item.field === field)).find(Boolean);
+    return problem ? problem.message : key === 'quantity' ? '生成时工序目标量缺少依据。' : '生成时整批量缺少依据。';
+  }
   const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
   const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t),
     t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
   const matching = (tasks, query) => { const needle = query.trim().toLocaleLowerCase(); return needle ? tasks.filter(t => searchText(t).includes(needle)) : tasks; };
   const resource = (t, mode) => mode === 'batch' ? { ref: t.batch_ref, label: t.batch_label } : t[mode];
+  function resourceLabel(side, kind) {
+    const value = side[kind], label = kind === 'supplier' ? '供应商' : kindLabels[kind];
+    if (value && value.label && value.ref !== null) return value.label;
+    const gap = field => side.data_gaps.find(item => item.field === field);
+    if (value) {
+      const nameProblem = !value.label && (gap(kind + '.label') || gap(kind));
+      const identityProblem = value.ref === null && (gap(kind + '.ref') || gap(kind));
+      return (value.label || label + '名称未记录' + (nameProblem ? '：' + nameProblem.message : ''))
+        + (value.ref === null ? '（身份未记录' + (identityProblem ? '：' + identityProblem.message : '') + '）' : '');
+    }
+    const problem = gap(kind) || gap(kind + '.ref');
+    if (problem) return label + '身份未记录：' + problem.message;
+    if (['unscheduled', 'skipped'].includes(side.status)) return '尚未安排';
+    if (kind === 'supplier' && side.source === 'internal') return '不适用（内部工序）';
+    if (kind !== 'supplier' && side.source === 'external') return '不适用（外协工序）';
+    if (kind !== 'supplier' && window.PointContract.isPoint(side)) return '不占用（零工时工序）';
+    return '未指定';
+  }
+  function laneLabel(row) {
+    const count = row.baseline || row.point ? row.laneCount : row.normalLaneCount;
+    const suffix = count > 1 ? ' ' + (row.lane + 1) + '/' + count : '';
+    if (row.baseline) return '原安排' + (row.baselinePoint ? ' · 零工时点' : '') + suffix;
+    if (row.point) return '零工时点' + suffix;
+    return count > 1 ? '重叠子行' + suffix : '新安排';
+  }
   function title(t) {
     return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t),
-      '本工序目标量：' + number(t.quantity) + ' · 生成时整批量：' + number(t.batch_quantity), timeLabel(t.start) + ' 至 ' + timeLabel(t.end),
+      '本工序目标量：' + quantityLabel(t) + ' · 生成时整批量：' + quantityLabel(t, 'batch_quantity'), timeLabel(t.start) + ' 至 ' + timeLabel(t.end),
       window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : null,
-      '设备：' + (t.machine && t.machine.label || '未记录'), '人员：' + (t.operator && t.operator.label || '未记录')].filter(Boolean).join('\n');
+      t.locked ? '固定工序' : null,
+      '设备：' + resourceLabel(t, 'machine'), '人员：' + resourceLabel(t, 'operator'),
+      t.source === 'external' ? '供应商：' + resourceLabel(t, 'supplier') : null].filter(Boolean).join('\n');
   }
   function push(heap, item) {
     let i = heap.length; heap.push(item);
@@ -45,22 +86,26 @@
   }
   function tracks(items) {
     const heap = [], lanes = [];
+    let furthest = null;
     items.sort((a, b) => a.start - b.start || a.end - b.end || a.task.row_ref.localeCompare(b.task.row_ref));
     for (const item of items) {
+      if (furthest && item.start < furthest.end) { furthest.overlap = true; item.overlap = true; }
+      if (!furthest || item.end > furthest.end) furthest = item;
       const lane = heap.length && heap[0].end <= item.start ? pop(heap).lane : lanes.length;
       if (!lanes[lane]) lanes[lane] = [];
       lanes[lane].push(item); push(heap, { end: item.end, lane });
     }
     return lanes;
   }
-  function layout(data, mode, query, width = 1000) {
-    const groups = new Map(), rows = [], locations = new Map(), tasks = matching(data.tasks, query);
+  function layout(data, mode, query, width = 1000, operationRefs = null) {
+    const groups = new Map(), rows = [], locations = new Map();
+    const tasks = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref));
     const P = window.PointContract, G = window.PointGanttModel;
     const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, data.tasks.some(P.isPoint));
     // Missing references never merge unrelated named resources into an invented identity.
     for (const task of tasks) {
       const r = resource(task, mode), id = r && r.ref || 'missing:' + task.row_ref;
-      if (!groups.has(id)) groups.set(id, { id, label: r && r.label || kindLabels[mode] + '未记录', items: [] });
+      if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? r.label || '批次未记录' : resourceLabel(task, mode), items: [] });
       groups.get(id).items.push({ task, start: instant(task.start), end: instant(task.end) });
     }
     let top = 0;
@@ -69,12 +114,12 @@
       const lanes = [...normal,
         ...G.tracks(group.items.filter(i => P.isPoint(i.task)), bounds.start, bounds.end, width)];
       lanes.forEach((items, lane) => {
-        const row = { id: group.id, key: group.id + ':' + lane, label: group.label, items, top, height: 48, lane, laneCount: lanes.length, normalLaneCount: normal.length, point: P.isPoint(items[0].task) };
+        const row = { id: group.id, key: group.id + ':' + lane, label: group.label, items, top, height: 56, lane, laneCount: lanes.length, normalLaneCount: normal.length, point: P.isPoint(items[0].task) };
         items.forEach(item => locations.set(item.task.row_ref, { row: rows.length, top, item })); rows.push(row); top += row.height;
       });
     }
     return { rows, height: top, locations, tasks, groupCount: groups.size,
       start: bounds.start, end: bounds.end };
   }
-  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, pieceLabel, kindLabels, metricLabels, executionLabels, executionValue };
+  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, kindLabels, metricLabels, executionLabels, executionValue, executionField };
 })();

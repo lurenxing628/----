@@ -24,6 +24,7 @@
   const nullableText = v => v === null || text(v);
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0 || text(v) && /^[1-9]\d{15,}$/.test(v) && (v.length > 16 || v > '9007199254740991');
   const nullableNumber = v => v === null || number(v);
+  const version = v => v === null || (typeof v === 'string' ? number(v) : Number.isSafeInteger(v) && v > 0);
   const caps = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual'], ['trial']) && typeof v.view === 'boolean' && typeof v.export === 'boolean'
     && v.edit_draft === false && v.adopt === false && v.report_actual === false && (v.trial === undefined || v.trial === false);
   const blocked = v => Array.isArray(v) && v.every(r => shape(r, ['capability', 'code', 'message']) && [r.capability, r.code, r.message].every(text));
@@ -164,7 +165,7 @@
   function workspace(v, candidateRef, query = {}, runRef) {
     const d = envelope(v), q = workspaceScope(candidateRef, query);
     check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span',
-      'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks']));
+      'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks', 'gantt_graph']));
     summary(d.candidate, runRef); check(d.candidate.candidate_ref === candidateRef);
     check(Array.isArray(d.tasks) && count(d.task_count) && d.task_count === d.tasks.length && d.tasks_complete === true
       && d.candidate_task_count === d.candidate.task_count && d.task_count <= d.candidate_task_count && span(d.candidate_span) && span(d.task_span)
@@ -195,7 +196,7 @@
       d.unplanned_operations.forEach(t => { operation(t, false); check(!seen.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref)); seen.add(t.operation_ref); });
     }
     const g = d.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline'])
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm'])
       && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at))
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
       && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps)
@@ -204,9 +205,14 @@
       && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window'))
       && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k]))
       && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean')
-      && shape(g.baseline, ['captured_task_count', 'comparison_available', 'reason']) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count))
-      && g.baseline.comparison_available === false && shape(g.baseline.reason, ['code', 'message']) && text(g.baseline.reason.message));
+      && shape(g.algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(g.algorithm).every(nullableText)
+      && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count'])
+      && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at)
+      && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref))
+      && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
     delivery(d.delivery_risks, d, q);
+    check(window.GanttGraph.validate(d.gantt_graph, { scope: 'full_candidate', tasks: d.tasks, taskRef: 'row_ref', time,
+      sequence: nullableNumber, processLabel: nullableText, completeCount: d.candidate_task_count }));
     return d;
   }
   function failure(payload, status) {
@@ -259,5 +265,5 @@
       workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
     });
   }
-  window.RunCandidateAPI = { create, adapter, check, ref, time, shape, envelope, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
+  window.RunCandidateAPI = { create, adapter, check, ref, time, version, shape, envelope, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
 })();

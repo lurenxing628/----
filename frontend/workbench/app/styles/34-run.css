@@ -141,13 +141,31 @@
       @media(max-width:1280px){.run-candidate-workspace .rc-main{grid-template-columns:minmax(0,1fr)}.run-candidate-workspace .rc-detail{border-left:0;border-top:1px solid var(--ui-border);padding:0}.run-candidate-workspace .rc-detail dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:var(--space-3)}}
 
 /* RunCandidateGantt.jsx */
-.rc-gantt{min-width:0}.rc-gantt .rc-axis{height:40px;overflow:hidden;border-bottom:1px solid var(--ui-border);position:relative;margin-left:156px}.rc-gantt .rc-tick{position:absolute;top:0;white-space:nowrap;color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:18px;border-left:1px solid var(--ui-border);padding-left:var(--space-1)}
-      .rc-gantt .rc-scroll{height:310px;overflow:auto;position:relative;isolation:isolate;border-bottom:1px solid var(--ui-border);outline-offset:-2px}.rc-gantt .rc-lane{position:absolute;left:0;right:0;border-bottom:1px solid var(--ui-border);height:48px}.rc-gantt .rc-lane-label{position:sticky;left:0;width:156px;height:47px;padding:7px var(--space-2);background:var(--ui-surface);border-right:1px solid var(--ui-border);z-index:var(--wb-z-sticky);font-size:var(--font-size-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rc-gantt .rc-lane-label small{white-space:nowrap}.rc-gantt .rc-bar-space{position:absolute;left:156px;top:0;height:48px}
+.run-candidate-workspace .rc-gantt{min-width:0;padding:0;border:1px solid var(--ui-border);background:var(--ui-card-bg)}
+.rc-gantt-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 10px}
+.rc-gantt .rc-axis-row{display:flex;height:52px;border-bottom:1px solid var(--ui-border);background:var(--ui-surface-muted)}
+.rc-gantt .rc-axis-corner{width:156px;flex:none;padding:6px 10px;border-right:1px solid var(--ui-border);font-size:var(--font-size-1)}
+.rc-gantt .rc-axis-corner small{display:block;color:var(--ui-info-muted)}
+.rc-gantt .rc-axis{height:52px;overflow:hidden;position:relative;flex:1;min-width:0}
+.rc-gantt .rc-scroll{max-height:392px;min-height:120px;overflow:auto;position:relative;isolation:isolate;border-bottom:1px solid var(--ui-border);outline-offset:-2px}
+.rc-gantt .rc-lane{position:absolute;left:0;right:0;border-bottom:1px solid var(--ui-border);height:56px}
+.rc-gantt .rc-lane-label{position:sticky;left:0;width:156px;height:55px;padding:7px var(--space-2);background:var(--ui-surface-muted);border-right:1px solid var(--ui-border);z-index:var(--wb-z-gantt-frozen);font-size:var(--font-size-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-gantt .rc-lane-label strong{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis}
+.rc-gantt .rc-lane-label small{display:block;white-space:nowrap;color:var(--ui-info-muted)}
+.rc-gantt .rc-bar-space{position:absolute;left:156px;top:0;height:56px}
+.rc-gantt .plan-search{position:relative;display:block;flex:1;min-width:140px;max-width:280px}
+.rc-gantt .plan-search .ic{position:absolute;left:10px;top:50%;transform:translateY(-50%);pointer-events:none;display:flex}
+.run-candidate-workspace .rc-gantt .plan-search input{width:100%;padding-left:32px}
+.rc-gantt>.rc-heading,.rc-gantt>[data-candidate-change-unknown]{padding:5px 10px;font-size:var(--font-size-1)}
+.rc-gantt .rb-panel{padding:0 10px}
+.run-candidate-workspace .rc-expanded{position:fixed;inset:16px;z-index:var(--wb-z-modal);display:flex;flex-direction:column;padding:12px}
+.rc-expanded .rc-scroll{flex:1;min-height:0;max-height:none}
+.rc-expanded>*:not(.rc-scroll){flex:none}
       .run-candidate-workspace .rc-tooltip{position:fixed;pointer-events:none;z-index:var(--wb-z-popup);max-width:350px;max-height:calc(100vh - 16px);overflow:auto;padding:10px var(--space-3);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);background:var(--ui-surface);color:var(--ui-text);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--font-size-1);line-height:1.6;box-shadow:var(--ui-shadow-md)}
 
 /* RunBaselineControls.jsx */
 .rc-gantt .rb-toggle{display:inline-flex;align-items:center;gap:var(--space-1);white-space:nowrap;font-size:var(--font-size-1);margin:0}
-      .rc-gantt .rb-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;font-size:var(--font-size-1);color:var(--ui-info-muted);padding:var(--space-1) 0}.rb-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}.rb-legend i{display:inline-block;width:22px;height:9px;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}.rb-legend .rb-before{height:5px;background:transparent;border:1px dashed var(--ui-text)}.rb-legend .rb-selected{border:2px solid var(--wb-gantt-gold)}
+      .rc-gantt .rb-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;font-size:var(--font-size-1);color:var(--ui-info-muted);padding:var(--space-1) 0}.rb-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}.rb-legend i{display:inline-block;width:22px;height:9px;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}.rb-legend .rb-before{height:5px;background:transparent;border:1px dashed var(--wb-gantt-plan-edge)}.rb-legend .rb-selected{border:2px solid var(--wb-gantt-gold)}
       .rc-gantt .rb-panel{border-bottom:1px solid var(--ui-border);font-size:var(--font-size-1);min-width:0}.rb-panel summary{cursor:pointer;padding:6px 0}.rb-panel small{display:block}.rc-gantt .rb-list{max-height:240px;overflow:auto;position:relative;border-block:1px solid var(--ui-border)}.rc-gantt .rb-row{position:absolute;left:0;right:0;height:40px;display:grid;grid-template-columns:minmax(80px,1fr) minmax(120px,1.5fr) 108px 120px 36px;align-items:center;gap:var(--space-2);padding:0 5px;border-bottom:1px solid var(--ui-border)}.rb-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rb-row[aria-current=true]{outline:1px solid var(--wb-gantt-gold);outline-offset:-1px}
       .rc-gantt .rb-detail{padding:var(--space-2) 0;line-height:var(--wb-line-relaxed);overflow-wrap:anywhere}.rc-gantt .rb-segments{max-height:180px;overflow:auto;border-block:1px solid var(--ui-border);margin:6px 0}.rc-gantt .rb-segment{position:absolute;left:0;right:0;height:76px;border-bottom:1px solid var(--ui-border);padding:var(--space-1) 6px;overflow:auto}.rb-segment[aria-current=true]{border-left:2px solid var(--wb-gantt-gold)}
 
@@ -218,10 +236,13 @@
 .rc-export-format{display:flex;flex-wrap:wrap;gap:var(--space-3)}.rc-export-format label{display:inline-flex;align-items:center;gap:var(--space-2)}
 
 /* RunCandidateGantt legend: swatches must teach the same channels the canvas paints. */
-.rc-gantt .rc-legend{display:flex;gap:var(--space-4);flex-wrap:wrap;align-items:center;padding:var(--space-1) 0}
+.rc-gantt .rc-legend{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center;padding:8px 10px;font-size:var(--font-size-1)}
 .rc-legend span{display:inline-flex;align-items:center;gap:var(--space-1)}
 .rc-legend i{display:inline-block;width:22px;height:9px;flex:none;background:var(--wb-gantt-primary-fill);border:1px solid var(--wb-gantt-primary-edge)}
 .rc-legend i.rc-overlap{background:var(--wb-gantt-overlap-stripe),var(--wb-gantt-overlap-fill);border-color:var(--wb-gantt-overlap-edge)}
+.rc-legend i.rc-risk{background:var(--wb-gantt-critical-fill);border-color:var(--wb-gantt-critical-edge)}
+.rc-legend i.rc-on-time,.rc-legend i.rc-fixed{width:5px;height:5px;border:0;background:var(--wb-gantt-success-edge)}
+.rc-legend i.rc-on-time{border-radius:50%}
 /* 外协：画布画的是 tone 底色 + 4/3 虚线边 + --wb-gantt-plan-edge 稀疏斜纹；CSS 边框只能 dashed，斜纹用 00-tokens 的 --wb-gantt-external-stripe。 */
 .rc-legend i.rc-external{border-style:dashed;background:var(--wb-gantt-external-stripe),var(--wb-gantt-primary-fill)}
 

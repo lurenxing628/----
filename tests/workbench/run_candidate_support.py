@@ -91,14 +91,17 @@ def read(client, path, **query):
     return data
 
 
-def public(value):
+def public(value, path=()):
     if type(value) is dict:
-        assert not PRIVATE.intersection(value)
-        for child in value.values():
-            public(child)
+        private = PRIVATE - {"task_ref"} if path[-2:] == ("gantt_graph", "nodes") else PRIVATE
+        if path[-2:] == ("generation", "baseline"):
+            private = private - {"version"}
+        assert not private.intersection(value)
+        for key, child in value.items():
+            public(child, path + (key,))
     elif type(value) is list:
         for child in value:
-            public(child)
+            public(child, path)
 
 
 def state(conn):

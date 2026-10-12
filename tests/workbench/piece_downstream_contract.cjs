@@ -2,8 +2,9 @@
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
 const window = { APSResourceContract: {}, PointContract: { isPoint: () => false } };
 const context = vm.createContext({ window, Date, Number, Map, Set });
-for (const file of ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', file), 'utf8'), context);
+for (const file of ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'PlanGanttModel.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', file), 'utf8'), context);
 const C = window.FieldContract, M = window.ActualGanttModel;
+assert.strictEqual(M.instant, window.PlanGanttModel.instant, 'Actual and planned marks share the factory-local coordinate parser');
 const base = { piece_id: 'item-A', quantity: 1, batch_quantity: 3, quantity_basis: 'run_admission', quantity_reason: null };
 assert(C.planQuantity(base));
 for (const patch of [{ piece_id: undefined }, { quantity: undefined }, { quantity: true }, { quantity: -1 }, { quantity: 1.5 }, { quantity_basis: 'guessed' }, { quantity_reason: 'guessed' }]) assert(!C.planQuantity({ ...base, ...patch }));
@@ -25,4 +26,27 @@ for (const piece of ['item-A', 'item-B', 'item-C', '分件原始中文身份']) 
   const large = M.describe({ task: { ...task, quantity: '9007199254740993', batch_quantity: '9223372036854775807' }, execution: null }, new Map()).join('\n');
   assert(large.includes('计划应做：9,007,199,254,740,993 件 · 批次：9,223,372,036,854,775,807 件'));
 }
+// 整道完工偏差复用确认完工时间；逐次报工结束和剩余安排不冒充完成。
+const complete = { task: { ...base, task_ref: 'completed', batch_id: 'B1', sequence: 20, process_label: '车削', start: '2026-09-09T08:00:00', end: '2026-09-09T09:00:00' },
+  execution: { execution_state: 'complete', confirmed_finish: '2026-09-09T09:20:00', known_completed_quantity: 1, remaining_quantity: 0, completion_basis: 'complete_reports', data_gaps: [] } };
+const early = { ...complete, execution: { ...complete.execution, confirmed_finish: '2026-09-09T08:58:30' } };
+const unknown = { ...complete, execution: { ...complete.execution, confirmed_finish: null } };
+const partial = { ...complete, execution: { ...complete.execution, execution_state: 'partial', confirmed_finish: null,
+  reports: [{ actual_end: '2026-09-09T09:30:00' }], remaining_plan: { end: '2026-09-09T09:40:00' } } };
+assert.equal(M.finishDeviation(complete), '延后 20 分钟'); assert.equal(M.finishDeviation(early), '提前 1.5 分钟');
+assert.equal(M.finishDeviation({ ...complete, execution: { ...complete.execution, confirmed_finish: complete.task.end } }), '按计划完成');
+assert.equal(M.finishDeviation(unknown), '缺少确认完工时间，请核对现场完工记录'); assert.equal(M.finishDeviation(partial), null);
+assert(M.describe(complete, new Map()).includes('整道完工偏差：延后 20 分钟'));
+assert.deepEqual(JSON.parse(JSON.stringify(M.deadlines(partial, '2026-09-09T10:00:00'))), { finishLate: false, unclosed: true, forecastLate: true });
+assert.equal(M.metrics({ availability: { state: 'available' }, items: [complete, early, unknown, partial] }).average, 9.25);
+const report = { report_ref: 'actual-on-other-resource', actual_start: '2026-09-09T08:10:00', actual_end: '2026-09-09T09:20:00' };
+const located = M.graphLocations({ rows: [
+  { kind: 'actual', top: 0, height: 88, item: complete, baseline: true, reports: [] },
+  { kind: 'actual', top: 300, height: 88, item: complete, baseline: false, reports: [report] }
+] }).get(complete.task.task_ref);
+assert.equal(located.start, M.instant(report.actual_start)); assert.equal(located.end, M.instant(report.actual_end));
+assert.equal(located.y, 333); assert.equal(located.reported, true);
+const shortReport = { ...report, actual_start: '2026-10-12T08:00:00.000001', actual_end: '2026-10-12T08:00:00.000002' };
+const shortMark = M.marks({ kind: 'actual', item: complete, baseline: false, reports: [shortReport] })[0];
+assert.equal(shortMark.kind, 'actual'); assert(shortMark.end > shortMark.start, 'A positive microsecond report is not collapsed to a point');
 console.log('FB field contract, original identity, null/zero and actual descriptions passed');

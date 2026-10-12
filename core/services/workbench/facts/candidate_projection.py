@@ -1,6 +1,7 @@
 """Public candidate summaries from persisted artifacts, without inferred costs."""
 
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities, reference
+from core.services.scheduler.config.config_field_spec import choice_label_map_for
 
 from .candidate_values import corrupt, gap, number, text
 
@@ -146,3 +147,27 @@ def candidate_summary(row, disposition):
             "completeness": completeness, "metrics": metrics(artifact, gaps),
             "metric_scopes": {"delivery": "completed_batches_only", "resources": "scheduled_results_only"},
             "capabilities": read_capabilities(), "blocked_reasons": reasons, "data_gaps": gaps}
+
+
+def algorithm_facts(artifact):
+    mode = text(artifact.get("algo_mode"), "algo_mode", [])
+    strategy = text(artifact.get("used_strategy"), "used_strategy", [])
+    return {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode),
+            "strategy": strategy, "strategy_label": choice_label_map_for("sort_strategy").get(strategy)}
+
+
+def baseline_capture(baseline, captured_at, *, kind="admission_official"):
+    rows = baseline.get("rows")
+    version = baseline.get("version")
+    return {"baseline_ref": baseline.get("plan_ref"),
+            "version": number(version, "baseline.version", [], integer=True) if version is not None else None,
+            "kind": kind, "captured_at": captured_at,
+            "captured_task_count": len(rows) if type(rows) is list else None}
+
+
+def candidate_origin(candidate, run, capture):
+    return {"source_kind": "candidate_adoption", "source_ref": candidate["candidate_ref"],
+            "source_label": text(candidate["artifact"].get("label"), "label", []),
+            "run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
+            "algorithm": algorithm_facts(candidate["artifact"]),
+            "baseline": baseline_capture(capture["baseline"], run["accepted_at"])}

@@ -27,9 +27,10 @@
       </span></div></div>;
   }
   function TimeFields({ time, units, onChange, initial }) {
-    const fields = [['hour', '时', 23], ['minute', '分', 59]].concat(units.seconds ? [['second', '秒', 59]] : [], units.fraction ? [['millisecond', '毫秒', 999]] : []);
-    return <div className="wb-picker-fields" role="group" aria-label="时间（24小时制）" data-columns={fields.length}>
-      {fields.map(([key, label, maximum]) => <NumberField key={key} label={label} maximum={maximum} width={key === 'millisecond' ? 3 : 2} initial={initial && key === 'hour'}
+    const fields = [['hour', '时', 23], ['minute', '分', 59]].concat(units.seconds ? [['second', '秒', 59]] : [],
+      units.fraction ? [['fraction', units.digits === 6 ? '微秒' : '毫秒', 10 ** units.digits - 1]] : []);
+    return <div className="wb-picker-fields" role="group" aria-label="时间（24小时制）" data-columns={fields.length} data-fraction-digits={units.fraction ? units.digits : undefined}>
+      {fields.map(([key, label, maximum]) => <NumberField key={key} label={label} maximum={maximum} width={key === 'fraction' ? units.digits : 2} initial={initial && key === 'hour'}
         value={time[key]} onChange={value => onChange({ ...time, [key]: value })} />)}</div>;
   }
   function DateGrid({ view, cursor, selected, props, root, onBrowse, onChoose }) {
@@ -90,7 +91,8 @@
     </div>;
   }
   function DatePickerBody(props) {
-    const { type, value = '', onCommit, onClose, label } = props;
+    const { type, value: rawValue = '', onCommit, onClose, label } = props;
+    const value = type === 'factory-local' ? rawValue.trim().replace(' ', 'T') : rawValue;
     const initial = M.seed(props), units = M.precision(props), root = React.useRef(null), focus = React.useRef(false);
     const [view, setView] = React.useState(initial), [cursor, setCursor] = React.useState(initial);
     const [pickerView, setPickerView] = React.useState(type === 'month' ? 'months' : type === 'time' ? 'time' : 'days');
@@ -98,8 +100,8 @@
     const [year, setYear] = React.useState(initial.slice(0, 4)), [yearError, setYearError] = React.useState('');
     const [selected, setSelected] = React.useState(type === 'month' ? M.monthParts(value) ? value : '' : M.dateParts(value.slice(0, 10)) ? value.slice(0, 10) : '');
     const [time, setTime] = React.useState(() => M.readTime(value, units)), [edited, setEdited] = React.useState(false);
-    const hasDate = type !== 'time', hasTime = ['time', 'datetime-local'].includes(type);
-    const clock = M.timeValue(time, units), candidate = type === 'datetime-local' ? selected && clock ? selected + 'T' + clock : '' : type === 'time' ? clock : selected;
+    const hasDate = type !== 'time', dateTime = ['datetime-local', 'factory-local'].includes(type), hasTime = type === 'time' || dateTime;
+    const clock = M.timeValue(time, units), candidate = dateTime ? selected && clock ? selected + 'T' + clock : '' : type === 'time' ? clock : selected;
     const check = M.validate(props, candidate), id = React.useId();
     React.useLayoutEffect(() => {
       if (!focus.current || !root.current) return;
@@ -117,7 +119,7 @@
       if (!allowed) return;
       setEdited(true); setSelected(next);
       if (type !== 'month') setPickerView('days');
-      if (type === 'datetime-local') browse(next, false);
+      if (dateTime) browse(next, false);
       else onCommit(M.validate(props, next).value);
     }
     function chooseMonth(key) {
@@ -150,7 +152,7 @@
     const browseYear = /^\d{1,4}$/.test(year) && Number(year) >= 1 ? Number(year) : Number(view.slice(0, 4));
     const browseBase = M.dateKey(browseYear, Number(view.slice(5, 7)), Math.min(Number(view.slice(8)), C.monthDays(browseYear, Number(view.slice(5, 7)))));
     const previous = M.moveMonth(browseBase, -move), next = M.moveMonth(browseBase, move);
-    const title = label || ({ date: '选择日期', time: '选择时间', month: '选择月份', 'datetime-local': '选择日期和时间' })[type];
+    const title = label || ({ date: '选择日期', time: '选择时间', month: '选择月份', 'datetime-local': '选择日期和时间', 'factory-local': '选择日期和时间' })[type];
     return <div className="wb-date-picker" data-picker-type={type} data-picker-view={pickerView}
       onKeyDown={event => { if (event.key === 'Enter' && event.target.tagName === 'INPUT' && event.target.closest('.wb-picker-fields')) { event.preventDefault(); event.stopPropagation(); confirm(); } }}>
 
@@ -172,7 +174,7 @@
           : <DateGrid {...{ view, cursor, selected, props, root }} onBrowse={browse} onChoose={choose} />}
       </>}
       {hasTime && <><div className={'wb-picker-actions wb-picker-time-head' + (hasDate ? ' has-date' : '')}>
-        <span>{type === 'datetime-local' ? selected || '尚未选择日期' : '24 小时制'}</span></div>
+        <span>{dateTime ? selected || '尚未选择日期' : '24 小时制'}</span></div>
         <TimeFields time={time} units={units} initial={type === 'time'} onChange={nextTime => { setTime(nextTime); setEdited(true); }} /></>}
       {(yearError || edited && !check.valid && hasTime) && <div role="status" className="wb-picker-error">{yearError || check.message}</div>}
       <div className="wb-popup-footer">

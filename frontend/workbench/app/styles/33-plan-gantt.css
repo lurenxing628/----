@@ -1,6 +1,6 @@
 /* Plan and actual Gantt views: layout only; business spans remain untouched. */
 body.aps-workbench .plan-view-tabs {margin-bottom:0;padding:0 var(--wb-section-padding);border-bottom:1px solid var(--ui-border);border-radius:var(--wb-radius-control) var(--wb-radius-control) 0 0;}
-body.aps-workbench .plan-view-tabs + #wb-view-panel .plan-scope {border-top:0;border-radius:0 0 var(--wb-radius-control) var(--wb-radius-control);}
+body.aps-workbench .plan-view-tabs + #wb-view-panel {border-top:0;border-radius:0 0 var(--wb-radius-control) var(--wb-radius-control);}
 .plan-workspace .plan-scope {margin-bottom:var(--wb-section-gap);}
 .plan-workspace .plan-scope-heading>div:first-child {display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;}
 .plan-workspace .plan-scope-heading h3 {margin:0;font-size:var(--font-size-3);}
@@ -38,8 +38,6 @@ body.aps-workbench .plan-workspace .plan-global input[type="range"] { display: b
 .plan-workspace .plan-note { padding: var(--space-1) 10px; }
 .plan-workspace .plan-time-line { position: absolute; width: 0; border-left: 1px dashed var(--wb-sev-notice); pointer-events: none; }
 .plan-workspace .plan-time-line.as-of { border-left-style: solid; border-left-color: var(--wb-sev-warning); }
-.plan-workspace .plan-swatch.success { background: var(--wb-gantt-success-fill); border-color: var(--wb-gantt-success-edge); box-shadow: var(--wb-gantt-success-ring); }
-.plan-workspace .plan-swatch.conflict { background: var(--wb-gantt-critical-fill); border: 1px dashed var(--wb-gantt-critical-edge); }
 .plan-workspace .plan-swatch.point { width: 9px; height: 9px; transform: rotate(45deg); }
 .plan-workspace .plan-swatch.today { width: 0; height: 12px; background: transparent; border-left: 1px dashed var(--wb-sev-notice); }
 .plan-workspace .plan-footer { padding: 6px var(--space-2); gap: var(--space-2) var(--space-2); }

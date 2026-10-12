@@ -36,8 +36,8 @@
     let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
     if (input.baseline_ref && input.baseline_ref !== (context.plan_ref || input.plan_ref)) issue = '现场实际甘特以所选计划为对比基准，没有换成另一个计划版本。';
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
-    if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回来源不是已登记的工作台页面。';
-    if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，没有改指其他记录。';
+    if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回页面未登记。';
+    if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
     if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
       if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
@@ -53,19 +53,25 @@
     const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope), [refresh, setRefresh] = React.useState(0);
     const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null);
     const [view, setView] = React.useState(saved ? saved.view : seed.persisted ? seed.persisted.view : { mode: seed.scope.resource_type || 'machine', query: seed.query, selected: seed.selected,
-      report: seed.report, late: 'all', collapsed: {}, onlySelected: false, details: !!seed.report, chain: false });
+      report: seed.report, late: 'all', collapsed: {}, onlySelected: false, details: false, chain: false });
     const [zoom, setZoom] = React.useState(saved ? saved.zoom : seed.persisted ? seed.persisted.zoom : 1), [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 480 });
     const [hover, setHover] = React.useState(null), [exporting, setExporting] = React.useState(false), [exportBusy, setExportBusy] = React.useState(false);
     const [chainTarget, setChainTarget] = React.useState(null);
-    const [relatedChain, setRelatedChain] = React.useState(null);
-    const lastChain = React.useRef(null);
+    const [locateNotice, setLocateNotice] = React.useState('');
     const [exportError, setExportError] = React.useState(null), [exportNotice, setExportNotice] = React.useState(''), [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
-    const board = React.useRef(null), frame = React.useRef(null), pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
+    const board = React.useRef(null), detailsPanel = React.useRef(null), frame = React.useRef(null), pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
     const defaultWindowApplied = React.useRef(!!saved || !!seed.persisted);
     const measuredWidth = React.useRef(null), zoomRef = React.useRef(zoom), restoreRef = React.useRef(restore);
     zoomRef.current = zoom; restoreRef.current = restore;
     const { labelWidth, viewport } = W.dimensions(position.width);
     const patch = change => setView(previous => ({ ...previous, ...change }));
+    React.useEffect(() => {
+      if (view.details && detailsPanel.current && window.innerWidth <= 1050) detailsPanel.current.scrollIntoView({ block: 'nearest' });
+    }, [view.details]);
+    function collapseDetails() {
+      patch({ details: false });
+      document.querySelector('[aria-controls="actual-gantt-detail"]').focus();
+    }
     React.useEffect(() => {
       const controller = new AbortController(); let active = true;
       setLoading(true); setResult(null); setError(null);
@@ -75,7 +81,7 @@
           let input = scope;
           if (input.source && input.source !== 'production') throw window.APSResourceContract.failure('数据来源无效，请重新打开现场实际甘特。');
           if (!input.plan_ref) {
-            if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少明确计划，未自动扩大范围。');
+            if (Object.keys(input).some(k => k !== 'source')) throw window.APSResourceContract.failure('来源范围缺少计划，请选择计划。');
             const catalog = await window.APSPlanAPI.create().catalog({ collection: 'history', size: 20 }, controller.signal);
             const current = catalog.data.plans.filter(p => p.is_current_official && p.capabilities.view);
             if (current.length !== 1) throw window.APSResourceContract.failure('没有唯一可读取的当前正式计划，请先选择计划。');
@@ -86,7 +92,7 @@
           const response = await api.load(input, controller.signal);
           if (initialContext.operation_ref && seed.selected) {
             const task = response.data.items.find(item => item.task.task_ref === seed.selected);
-            if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，未改指其他安排。');
+            if (task && task.task.operation_ref !== initialContext.operation_ref) throw window.APSResourceContract.failure('来源工序与所选计划任务不一致，请重新选择工序。');
           }
           if (active) setResult(response);
         } catch (failure) { if (active) setError(failure); }
@@ -168,10 +174,16 @@
     }
     function pan(left) { if (board.current) { board.current.scrollLeft = Math.max(0, left); measure(); } }
     function locate(taskRef = view.selected) {
-      if (!model || !model.items.some(item => item.task.task_ref === taskRef)) return;
+      if (!model) return;
+      if (!data.items.some(item => item.task.task_ref === taskRef)) {
+        setLocateNotice('这道工序不在当前日期、资源或批次范围内，请调整范围后定位。'); return;
+      }
+      setLocateNotice('');
+      const hidden = !model.items.some(item => item.task.task_ref === taskRef);
       const collapsed = { ...view.collapsed };
       model.groups.filter(g => g.members.has(taskRef)).forEach(g => delete collapsed[g.id]);
-      pending.current = { task: taskRef }; patch({ selected: taskRef, collapsed });
+      pending.current = { task: taskRef }; patch({ selected: taskRef, report: taskRef === view.selected ? view.report : null, collapsed: hidden ? {} : collapsed,
+        ...(hidden ? { query: '', late: 'all', onlySelected: false } : {}) });
     }
     function apply(next) {
       try {
@@ -185,34 +197,17 @@
       const next = { ...scope }; delete next.snapshot_ref;
       setResult(null); setLoading(true); setScope(next); setRefresh(n => n + 1); setExportNotice('');
     }
-    function select(item, report) { patch({ selected: item.task.task_ref, report: report ? report.report_ref : null }); }
+    function select(item, report) { setLocateNotice(''); patch({ selected: item.task.task_ref, report: report ? report.report_ref : null }); }
     const selected = taskIndex && taskIndex.get(view.selected);
     const report = selected && selected.execution && selected.execution.reports.find(r => r.report_ref === view.report);
-    const targetTask = React.useMemo(() => taskIndex && chainTarget && Array.from(new Set(chainTarget))
-      .map(ref => taskIndex.get(ref)).filter(Boolean).map(item => item.task)
-      .sort((a, b) => a.end.localeCompare(b.end) || a.task_ref.localeCompare(b.task_ref)).pop(), [taskIndex, chainTarget]);
-    const targetRef = targetTask ? targetTask.task_ref : null;
-    React.useEffect(() => {
-      if (!view.chain || !targetRef || !data) return;
-      const controller = new AbortController();
-      setRelatedChain({ target: targetRef, busy: true });
-      const timer = setTimeout(async () => {
-        try {
-          if (typeof api.related !== 'function') throw window.APSResourceContract.failure('dependency not wired: actual_gantt.related');
-          const result = await api.related({ ...scope, snapshot_ref: data.critical_chain.snapshot_ref }, targetRef, data, controller.signal);
-          if (!controller.signal.aborted) setRelatedChain({ target: targetRef, result, busy: false });
-        } catch (error) { if (!controller.signal.aborted) setRelatedChain({ target: targetRef, error, busy: false }); }
-      }, 120);
-      return () => { clearTimeout(timer); controller.abort(); };
-    }, [api, data, scope, targetRef, view.chain]);
-    const chain = view.chain && data && data.critical_chain.state === 'available'
-      ? targetRef ? relatedChain && relatedChain.target === targetRef && relatedChain.result : data.critical_chain : null;
-    const visibleChain = chain && chain.state === 'available' ? chain : null;
-    // Keep the previous strip mounted while a hovered target's chain loads: swapping it for the status note
-    // collapsed the slot, moved the rows under the pointer and restarted the hover in a loop.
-    if (chain) lastChain.current = chain;
-    const loadingRelated = !!(targetRef && (!relatedChain || relatedChain.target !== targetRef || relatedChain.busy));
-    const shownChain = chain || (loadingRelated ? lastChain.current : null);
+    const graph = React.useMemo(() => data ? window.GanttGraph.create(data.gantt_graph) : null, [data]);
+    const targetRef = chainTarget && chainTarget[0] || view.selected;
+    const active = React.useMemo(() => graph ? window.GanttGraph.selection(graph, { enabled: view.chain, targetRef }) : null, [graph, view.chain, targetRef]);
+    const graphLocations = React.useMemo(() => model ? M.graphLocations(model) : null, [model]);
+    const geometry = React.useMemo(() => model ? window.GanttGraph.paths(active, model, width, {
+      top: Math.max(0, position.top - 52), height: position.height, left: position.left, width: viewport
+    }, { locations: graphLocations }) : null, [active, model, width, position.top, position.left, position.height, viewport, graphLocations]);
+    function clearTarget() { setHover(null); setChainTarget(null); patch({ selected: null, report: null, onlySelected: false }); }
     const hoverMark = value => { setHover(value); setChainTarget(value && value.item ? [value.item.task.task_ref] : null); };
     const viewScope = () => ({ ...scope, snapshot_ref: result.meta.snapshot_ref, format: 'csv', local_query: view.query.trim(), late_filter: view.late,
       ...(view.onlySelected ? { selected_task_ref: view.selected } : {}) });
@@ -252,37 +247,49 @@
       {!data && !loading && onNavigate && <Button icon="chart-gantt" onClick={() => onNavigate('analysis', {})}>选择计划</Button>}
       {data && <><Range scope={scope} resources={data.resources} onApply={apply} busy={loading} />
         {data.availability.state !== 'available' && <div role="status" className="fg-note">{data.availability.reason}</div>}
-        <dl className="fg-metrics" aria-label="当前范围概况"><div><dt>整道已完工</dt><dd>{stats.complete === null ? '暂无数据' : stats.complete}</dd></div>
-          <div><dt>已报工 · 未整道完工</dt><dd>{stats.reported === null ? '暂无数据' : stats.reported}</dd></div>
-          <div><dt>待报工</dt><dd>{stats.pending === null ? '暂无数据' : stats.pending}</dd></div>
-          <div title="仅统计有确认完工时间的已完工工序"><dt>平均整道完工偏差</dt><dd>{stats.average === null ? '暂无数据' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, { digits: 0 }) + ' 分钟'}</dd></div></dl>
+        <dl className="fg-metrics" aria-label="当前范围概况"><div><dt>整道已完工</dt><dd>{stats.complete === null ? '报工数据不可用' : stats.complete}</dd></div>
+          <div><dt>已报工 · 未整道完工</dt><dd>{stats.reported === null ? '报工数据不可用' : stats.reported}</dd></div>
+          <div><dt>待报工</dt><dd>{stats.pending === null ? '报工数据不可用' : stats.pending}</dd></div>
+          <div title="仅统计有确认完工时间的已完工工序"><dt>平均整道完工偏差</dt><dd>{stats.average === null ? stats.complete === null ? '报工数据不可用' : stats.complete ? '完工时间待核对' : '尚无已完工工序' : (stats.average > 0 ? '+' : '') + window.WorkbenchFormat.number(Math.round(stats.average) + 0, { digits: 0 }) + ' 分钟'}</dd></div></dl>
         {exportNotice && <p className="fg-note" role="status">{exportNotice}</p>}
-        <section className="gb-workspace fg-workspace" aria-label="现场实际甘特工作区" onKeyDown={zoomKeys}><Toolbar {...{ view, patch, model, data, zoom, width }} onZoom={zoomTo}
+        <div className="wb-gantt-detail-layout" data-details-open={view.details}><div className="wb-gantt-main-column"><section className="gb-workspace fg-workspace" aria-label="现场实际甘特工作区" onKeyDown={zoomKeys}><Toolbar {...{ view, patch, model, data, zoom, width }} onZoom={zoomTo}
           onFit={fitView} onLocate={() => locate()} onExport={() => { setExportError(null); setExportNotice(''); setExporting(true); }} busy={exportBusy} />
-          {data.critical_chain.state === 'unavailable' && <div className="fg-note" role="status">关键链不可用：{data.critical_chain.reason}</div>}
-          {view.chain && data.critical_chain.state === 'available' && <div className="fg-chain-slot">
-            {shownChain && <Chain chain={shownChain} model={model} onLocate={locate} />}
-            {loadingRelated && <div className="fg-note" role="status">正在读取所选工序的关联链…</div>}
-            {targetRef && relatedChain && relatedChain.target === targetRef && <ErrorBox error={relatedChain.error} />}
-          </div>}
-          {view.selected && !model.items.some(i => i.task.task_ref === view.selected) && <div role="status" className="fg-note">选中工序不在当前筛选范围，未扩大来源条件。</div>}
+          <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={view.chain} onChange={chain => patch({ chain })}
+            active={active} geometry={geometry} onClear={clearTarget} />
+          {locateNotice && <p className="fg-note" role="status">{locateNotice}</p>}
+          {view.selected && !model.items.some(i => i.task.task_ref === view.selected) && <div role="status" className="fg-note">选中工序在当前筛选范围外，请调整筛选。</div>}
           {view.report && selected && !report && <div role="alert" className="fg-note">原报工记录不在所选工序中，未改指其他记录。</div>}
-          {view.details && <div className="fg-details" role="region" aria-label="工序详情">{selected ? <>{describe(selected, model.labels, report).map((line, i) => <span key={i}>{line}</span>)}
-            {selected.execution && <><div className="fg-report-selector"><label>逐次报工 <select aria-label="选择报工详情" value={view.report || ''} onChange={e => patch({ report: e.target.value || null })}><option value="">整道工序</option>{selected.execution.reports.map(r => <option key={r.report_ref} value={r.report_ref}>{r.report_no}</option>)}</select></label>
-              <Button className="fg-icon-button" icon="search" aria-label="定位本次报工" disabled={!report || !report.actual_start} onClick={() => locate()} /></div>
-              {selected.execution.remaining_plan && <span>剩余安排：{M.time(selected.execution.remaining_plan.start)} 至 {M.time(selected.execution.remaining_plan.end)}</span>}
-              {selected.execution.data_gaps.map((gap, i) => <span key={'gap' + i}>{gap.message || '报工记录待核对'}</span>)}
-              {report && <span>登记：{M.time(report.recorded_at)} · 历史版本 {report.correction_history.length} 条</span>}</>}</> : <span>未选中工序</span>}</div>}
           <div className="fg-board" ref={board} data-actual-scroll tabIndex={0} aria-label="分次报工甘特" style={{ '--fg-label': labelWidth + 'px' }} onScroll={() => { cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure); }}>
             <div className="fg-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}><div className="fg-axis"><div className="fg-corner">{M.views[view.mode]} / 工序<small className="fg-muted fg-corner-note">含夜间</small></div>
-              <div className="fg-ticks" style={{ width }}>{M.ticks(model, width, position.left, viewport).map(tick => <div className="fg-tick" key={tick.at} title={M.time(tick.label)} style={{ left: tick.x, width: Math.min(134, width - tick.x) }}>{tick.x + 110 <= width && <>{M.time(tick.label).slice(0, 10)}<small>{M.time(tick.label).slice(11, 19)}</small></>}</div>)}
+              <div className="fg-ticks" style={{ width }}><window.GanttPresentationUI.Axis axis={window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: position.left, viewport })} width={width} />
                 <i className="fg-clock" style={{ left: (model.asOf - model.start) / (model.end - model.start) * width }} title={'数据截至 ' + M.time(result.meta.as_of)} aria-hidden="true" /></div></div>
               <window.ActualGanttRows {...{ model, view, width, viewport, labelWidth, patch }} left={position.left} top={position.top} height={position.height} dense={data.task_count >= 1000}
-                onSelect={select} onHover={hoverMark} onChainTarget={setChainTarget} chain={visibleChain} />
+                onSelect={select} onHover={hoverMark} onChainTarget={setChainTarget} active={active} />
+              <window.GanttGraphLayer.Lines geometry={geometry} width={width} height={model.height} labelWidth={labelWidth} top={52} />
               {!model.items.length && <window.WorkbenchControls.EmptyState kind={view.query || view.late !== 'all' || view.onlySelected ? 'filtered' : 'empty'} title="当前范围没有匹配的工序。"
                 action={view.query || view.late !== 'all' || view.onlySelected ? <Button onClick={() => patch({ query: '', late: 'all', onlySelected: false })}>清除筛选</Button> : undefined} />}</div></div>
           <div className="fg-foot"><span>{M.time(M.wire(model.start))}</span><input type="range" aria-label="时间轴水平位置" min={0} max={Math.max(0, width - viewport)} value={Math.min(position.left, width - viewport)} step="any" onChange={e => pan(Number(e.target.value))} disabled={zoom === 1} /><span>{M.time(M.wire(model.end))}</span></div>
-        </section></>}
+        </section></div>{view.details && <aside ref={detailsPanel} className="wb-gantt-detail-panel fg-detail-panel" id="actual-gantt-detail" aria-label="工序详情">
+          <header className="wb-gantt-detail-header"><h3>工序详情</h3><Button icon="x" aria-label="收起工序详情" onClick={collapseDetails} /></header>
+          <div className="wb-gantt-detail-body">{selected ? <>
+            <details className="wb-gantt-detail-section" open><summary>执行与完工偏差</summary><div className="wb-gantt-detail-section-body fg-detail-facts">
+              {describe(selected, model.labels, report).map((line, i) => <p key={i}>{line}</p>)}
+              {selected.execution && <><label className="fg-report-selector">逐次报工 <select aria-label="选择报工详情" value={view.report || ''} onChange={e => patch({ report: e.target.value || null })}><option value="">整道工序</option>{selected.execution.reports.map(r => <option key={r.report_ref} value={r.report_ref}>{r.report_no}</option>)}</select></label>
+                <Button icon="search" disabled={!report || !report.actual_start} onClick={() => locate()}>定位本次报工</Button>
+                {selected.execution.remaining_plan && <p>剩余安排：{M.time(selected.execution.remaining_plan.start)} 至 {M.time(selected.execution.remaining_plan.end)}</p>}
+                {selected.execution.reports.filter(row => selected.execution.data_gaps.some(gap => gap.report_ref === row.report_ref)).map(row => <Button key={row.report_ref} icon="search"
+                  onClick={() => patch({ report: row.report_ref })}>查看待补报工 {row.report_no}</Button>)}
+                {report && <p>登记：{M.time(report.recorded_at)} · 历史版本 {report.correction_history.length} 条</p>}</>}
+              {onNavigate && <Button icon="arrow-right" onClick={() => navigate('field')}>到现场记录核对或补齐</Button>}
+            </div></details>
+            <details className="wb-gantt-detail-section" open><summary>完整工艺路线</summary><div className="wb-gantt-detail-section-body">
+              <window.GanttRouteList graph={data.gantt_graph} targetRef={selected.task.task_ref} loadedRefs={new Set(model.items.map(item => item.task.task_ref))}
+                onSelect={ref => { locate(ref); }} />
+            </div></details>
+            {data.gantt_graph.state === 'available' && data.gantt_graph.critical_task_refs.length > 0 && <details className="wb-gantt-detail-section"><summary>计划关键链</summary><div className="wb-gantt-detail-section-body">
+              <Chain graph={data.gantt_graph} model={model} onLocate={locate} /></div></details>}
+          </> : <p className="fg-muted">点击工序查看详情与完整工艺路线。</p>}</div>
+        </aside>}</div></>}
       {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hover.title || describe(hover.item, model.labels, hover.report).join('\n')}</div>}
       {exporting && data && <Modal title="导出现场实际甘特" icon="download" onClose={() => { if (downloadController.current) downloadController.current.abort(); setExporting(false); }} footer={<><Button onClick={() => setExporting(false)} disabled={exportBusy}>取消</Button><Button transfer="export" busy={exportBusy} onClick={download}>下载 CSV</Button></>}>
         <div className="modal-b"><p>按当前查询范围和本次读取的数据导出全部 {model.items.length} 道匹配工序及其逐次报工，不受滚动、折叠和详情开关影响。</p>

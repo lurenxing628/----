@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.workbench.plan.process_order import project_process_order
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 
 from .actual_gantt_chain import plan_chain
@@ -96,10 +97,10 @@ class ActualGanttService:
                 raise
             projection = None
             availability = {"state": "unavailable", "reason_code": exc.code,
-                            "reason": "现场报工数据还没装好，现在只显示计划；实际进度和剩余量暂无数据。"}
+                            "reason": str(exc) + " 当前仅显示计划安排。"}
         if projection is None:
             if scope.resource_ref is not None:
-                raise WorkbenchCommandRejected("execution_ledger_unavailable", "现场报工记录读不出来，按设备或人员筛选的结果会不全。请刷新后重试。")
+                raise WorkbenchCommandRejected("execution_ledger_unavailable", availability["reason"] + " 当前资源筛选需要完整的现场报工记录。")
             items = [{"task": task, "execution": None} for task in planned["tasks"]]
             resources = planned["resources"]
         else:
@@ -115,11 +116,13 @@ class ActualGanttService:
         )
         projection, items, resources, availability = self._execution(planned, scope)
         items = [item for item in items if cohort_match(item, scope)]
+        _, _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref)
         data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
                 "axis_span": _span(planned["plan_span"], items), "availability": availability,
                 "items": items, "task_count": len(items), "items_complete": True,
                 "report_count": sum(len(item["execution"]["reports"]) for item in items) if projection else None,
                 "resources": resources, "calendar": planned["projections"]["calendar"],
+                "gantt_graph": gantt_graph,
                 "critical_chain": plan_chain(self.plans, planned, plan_state, {item["task"]["task_ref"] for item in items}),
                 "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
                               "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",

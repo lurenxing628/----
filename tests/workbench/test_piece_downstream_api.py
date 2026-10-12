@@ -25,6 +25,7 @@ def verify_chain(client, case, plan):
     formal = workspace(case.conn, plan['plan_ref'])
     field = read(client, FIELD + '/tasks', plan_ref=plan['plan_ref'])
     actual = read(client, ACTUAL, plan_ref=plan['plan_ref'])
+    assert actual['data']['gantt_graph'] == formal['gantt_graph']
     original = {t['task_ref']: t for t in formal['tasks']}
     actual_items = {i['task']['task_ref']: i for i in actual['data']['items']}
     assert set(original) == set(actual_items) == {t['task_ref'] for t in field['data']['tasks']}

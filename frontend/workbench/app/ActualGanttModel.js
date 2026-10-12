@@ -1,8 +1,7 @@
 (function () {
   'use strict';
   const HOUR = 3600000;
-  // UTC is only a numeric coordinate system here, never the wire time zone.
-  const instant = value => value ? Date.parse(value + 'Z') : NaN;
+  const instant = window.PlanGanttModel.instant;
   const wire = value => new Date(value).toISOString().slice(0, 19);
   // Same label rule as the field records: minute precision, seconds shown only when they are not :00.
   const time = value => window.FieldContract.date(value);
@@ -18,10 +17,20 @@
   const views = { machine: '设备', operator: '人员', batch: '批次' };
   const lateLabels = { all: '全部工序', finishLate: '已晚完成', unclosed: '到期未确认完成', forecastLate: '剩余安排预计晚完成' };
   const names = data => new Map(data.resources.map(row => [row.ref, row.label || row.business_code]));
+  // 与报表相同：整道确认完工减去所选计划完工；逐次报工结束不能代替整道完工。
+  const finishMinutes = item => item.execution.confirmed_finish === null ? null :
+    (instant(item.execution.confirmed_finish) - instant(item.task.end)) / 60000;
+  function finishDeviation(item) {
+    if (!item.execution || item.execution.execution_state !== 'complete') return null;
+    const minutes = finishMinutes(item);
+    if (minutes === null) return '缺少确认完工时间，请核对现场完工记录';
+    const rounded = Math.round(Math.abs(minutes) * 100) / 100;
+    return rounded === 0 ? '按计划完成' : (minutes < 0 ? '提前 ' : '延后 ') + window.WorkbenchFormat.number(rounded, { digits: 2, trim: true }) + ' 分钟';
+  }
   function deadlines(item, asOf) {
     const e = item.execution, end = instant(item.task.end);
     if (!e) return { finishLate: false, unclosed: false, forecastLate: false };
-    return { finishLate: e.execution_state === 'complete' && instant(e.confirmed_finish) - end > 600000,
+    return { finishLate: e.execution_state === 'complete' && finishMinutes(item) > 10,
       unclosed: e.execution_state !== 'complete' && end <= instant(asOf),
       forecastLate: e.execution_state !== 'complete' && !!e.remaining_plan && instant(e.remaining_plan.end) - end > 600000 };
   }
@@ -137,20 +146,31 @@
     if (row.kind === 'remaining' && e.remaining_plan) result.push({ key: 'remaining', kind: 'remaining', start: instant(e.remaining_plan.start), end: instant(e.remaining_plan.end), y: 14, height: 34 });
     return result;
   }
+  function graphLocations(model) {
+    const result = new Map();
+    for (const row of model.rows) {
+      if (row.kind !== 'actual') continue;
+      const candidates = marks(row), reports = candidates.filter(mark => mark.report);
+      const mark = reports.sort((a, b) => b.end - a.end)[0] || candidates[0];
+      if (!mark) continue;
+      const ref = row.item.task.task_ref, previous = result.get(ref), reported = !!mark.report;
+      if (previous && (previous.reported && !reported || previous.reported === reported && previous.end >= mark.end)) continue;
+      // 连接已绘制的最近报工；没有报工时连接原计划细基线，不借用图节点的计划坐标冒充实际。
+      result.set(ref, { start: mark.start, end: mark.end, y: row.top + mark.y + mark.height / 2,
+        markTop: row.top + mark.y, markBottom: row.top + mark.y + mark.height,
+        top: row.top, bottom: row.top + row.height, reported });
+    }
+    return result;
+  }
   function tickStep(model, width) {
-    const steps = [1000, 10000, 60000, 300000, 900000, HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, 24 * HOUR, 7 * 24 * HOUR, 30 * 24 * HOUR, 365 * 24 * HOUR];
-    const target = (model.end - model.start) * 135 / width;
-    return steps.find(v => v >= target) || Math.ceil(target / HOUR) * HOUR;
+    return window.PlanGanttModel.tickStep(model.start, model.end, width);
   }
   function tickLabel(step) {
     const unit = [[24 * HOUR, '天'], [HOUR, '小时'], [60000, '分钟'], [1000, '秒']].find(([size]) => step % size === 0);
     return step / unit[0] + ' ' + unit[1];
   }
   function ticks(model, width, left, viewport) {
-    const step = tickStep(model, width);
-    const low = model.start + left / width * (model.end - model.start), high = model.start + (left + viewport) / width * (model.end - model.start), result = [];
-    for (let at = Math.ceil(low / step) * step; at < high; at += step) result.push({ at, x: (at - model.start) / (model.end - model.start) * width, label: wire(at) });
-    return result;
+    return window.PlanGanttModel.ticks(model.start, model.end, width, left, viewport);
   }
   function describe(item, labels, report) {
     const t = item.task, e = item.execution;
@@ -161,10 +181,14 @@
     if (t.quantity_reason) result.push(quantityReasons[t.quantity_reason]);
     if (!e) return result.concat('报工记录不可用');
     result.push(states[e.execution_state] + ' · 已知完成 ' + number(e.known_completed_quantity) + ' 件',
-      '整道实际完工：' + time(e.confirmed_finish), '剩余数量：' + number(e.remaining_quantity),
-      e.completion_basis === 'legacy_finish_event' ? '历史完工记录确认完成；当时的数量与工时可能没有记录' : '完成依据：逐次报工记录');
-    if (report) result.push('本次报工：' + report.report_no, '实际：' + time(report.actual_start) + ' 至 ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'),
-      '本次数量：' + number(report.completed_quantity) + ' 件 · 有效工时：' + hours(report.effective_processing_hours),
+      '整道实际完工：' + (e.confirmed_finish ? time(e.confirmed_finish) : e.execution_state === 'complete' ? '已标记完工，确认完工时间缺失' : '尚未确认整道完工'),
+      '剩余数量：' + (e.remaining_quantity === null ? '当前记录无法计算，见记录问题' : number(e.remaining_quantity)));
+    if (e.completion_basis) result.push(e.completion_basis === 'legacy_finish_event' ? '完成依据：历史完工记录' : '完成依据：逐次报工记录');
+    const deviation = finishDeviation(item);
+    result.push('整道完工偏差：' + (deviation || '未完工，不计算完成偏差'));
+    e.data_gaps.forEach(gap => result.push('记录问题：' + gap.message));
+    if (report) result.push('本次报工：' + report.report_no, '实际：' + (report.actual_start ? time(report.actual_start) : '本次开工未填写') + ' 至 ' + (report.actual_end ? time(report.actual_end) : '本次结束未填写'),
+      '本次数量：' + (report.completed_quantity === null ? '本条报工未填写完成数量' : number(report.completed_quantity) + ' 件') + ' · 有效工时：' + (report.effective_processing_hours === null ? '本条报工未填写有效工时' : hours(report.effective_processing_hours)),
       '实际资源：' + (labels.get(report.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(report.actual_operator_ref) || '人员未填写'), '备注：' + (report.remark || '未填写'));
     return result;
   }
@@ -180,12 +204,12 @@
       const state = item.execution.execution_state;
       if (state === 'complete') {
         complete++;
-        const delta = (instant(item.execution.confirmed_finish) - instant(item.task.end)) / 60000;
-        if (Number.isFinite(delta)) { deltaCount++; deltaTotal += delta; }
+        const delta = finishMinutes(item);
+        if (delta !== null) { deltaCount++; deltaTotal += delta; }
       } else if (state === 'unreported') pending++;
       else reported++;
     });
     return { complete, reported, pending, average: deltaCount ? deltaTotal / deltaCount : null };
   }
-  window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, deadlines, searchText, filter, tracks, layout, visibleRows, marks, tickStep, tickLabel, ticks, describe, markTitle, metrics };
+  window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, searchText, filter, tracks, layout, visibleRows, marks, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

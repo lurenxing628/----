@@ -126,16 +126,16 @@
         check(this.read().request_key === value.request_key, '操作编号没能存下来，这次没有发起操作。请刷新后重试。'); return value;
       },
       finish(intent) {
-        const saved = this.read(); check(saved && saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。'); storage.removeItem(PENDING_KEY);
+        const saved = this.read(); check(!saved || saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。');
+        if (saved) storage.removeItem(PENDING_KEY);
       }
     };
   }
   function errorResponse(value, status) {
     const valid = object(value) && value.ok === false && object(value.error) && text(value.error.message) && text(value.error.code);
-    const problem = new Error(valid ? value.error.message : '没有读到有效的维护结果，这次没有改动。请点「查询结果」。');
+    const problem = new Error(valid ? value.error.message : '维护接口返回的数据格式无效，请重新查询。');
     problem.code = valid ? value.error.code : 'invalid_response'; problem.status = status;
-    problem.rejected = valid && value.committed === false && status >= 400 && status < 500
-      && ['invalid_input', 'stale_write', 'constraint_conflict', 'entity_not_found'].includes(problem.code);
+    problem.rejected = valid && value.committed === false && status >= 400;
     return problem;
   }
   function inspectPending() {
@@ -187,20 +187,29 @@
         const response = await fetcher(BASE + path, { credentials: 'same-origin', cache: 'no-store', redirect: 'error', ...options, signal: controller.signal });
         return await consume(response);
       } catch (problem) {
-        if (expired) throw new Error(window.WorkbenchTerms.outcomes.pending('维护操作'));
+        if (expired) throw new Error(options.method === 'POST' ? window.WorkbenchTerms.outcomes.pending('维护操作') : '维护查询超时，请重新查询。');
         throw problem;
       } finally { clearTimeout(timer); if (external) external.removeEventListener('abort', abort); }
     }
     async function request(path, options = {}) {
       return exchange(path, options, async response => {
         const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
-        if (mime !== 'application/json') throw new Error(window.WorkbenchTerms.outcomes.unknown('维护操作'));
+        if (mime !== 'application/json') throw errorResponse(null, response.status);
         const payload = await response.json(); if (!response.ok || payload.ok !== true) throw errorResponse(payload, response.status);
         return payload;
       });
     }
     return {
-      async host(signal) { return window.SystemRestoreStatus.host(await request('/restore-host', { signal })); },
+      async host(signal) {
+        try { return window.SystemRestoreStatus.host(await request('/restore-host', { signal })); }
+        catch (problem) {
+          if (problem.name === 'AbortError') throw problem;
+          const message = problem.status === 404 ? '维护状态接口未注册（HTTP 404），请检查服务启动配置。'
+            : problem.name === 'TypeError' ? '维护状态服务连接失败，请检查软件服务后重新查询。'
+            : '维护状态查询失败' + (problem.status ? '（HTTP ' + problem.status + '）' : '') + '：' + problem.message;
+          const error = new Error(message); error.code = problem.code; error.status = problem.status; throw error;
+        }
+      },
       async read(kind, input, signal) {
         check(['backups', 'logs', 'config'].includes(kind));
         const value = await request('/' + kind + parameters(input), { signal });

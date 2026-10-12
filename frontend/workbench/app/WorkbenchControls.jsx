@@ -86,7 +86,7 @@
           return;
         }
         const input = target(event), type = B.kind(input);
-        if (type && (['F4', 'Enter', ' '].includes(event.key) || event.altKey && event.key === 'ArrowDown' || type === 'select' && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key))) {
+        if (type && (event.key === 'F4' || type !== 'factory-local' && ['Enter', ' '].includes(event.key) || event.altKey && event.key === 'ArrowDown' || type === 'select' && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key))) {
           event.preventDefault(); event.stopImmediatePropagation(); open(input);
         }
       }
@@ -121,12 +121,13 @@
       const observer = new MutationObserver(() => {
         if (B.kind(owner) !== opened.type || owner.closest('[aria-hidden="true"]') || opened.type !== 'select' && owner.value !== opened.value) close(false);
       });
-      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'readonly', 'aria-hidden', 'inert', 'type', 'value', 'min', 'max', 'step'] });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'readonly', 'aria-hidden', 'inert', 'type', 'data-picker-type', 'value', 'min', 'max', 'step'] });
       const size = new ResizeObserver(place); size.observe(owner);
       if (popup.current) size.observe(popup.current);
       function viewportChanged(event) {
         if (opened.type === 'select') { place(); return; }
-        if (event.type === 'scroll' && popup.current && popup.current.contains(event.target)) return;
+        // Only scrolling an ancestor moves the anchor; typing long text also scrolls the input itself.
+        if (event.type === 'scroll' && (event.target === owner || !event.target.contains(owner))) return;
         close(true);
       }
       window.addEventListener('resize', viewportChanged); document.addEventListener('scroll', viewportChanged, true);
@@ -147,7 +148,7 @@
         if (!B.rows(owner).some(row => row.index === value && !row.disabled)) return;
         B.selectIndex(owner, value);
       } else {
-        if (value && !window.WorkbenchDatePickerModel.validate({ type: owner.type, min: owner.min, max: owner.max, step: owner.step, valueAttribute: owner.getAttribute('value') }, value).valid) return;
+        if (value && !window.WorkbenchDatePickerModel.validate({ type: opened.type, min: owner.min, max: owner.max, step: owner.step, valueAttribute: owner.getAttribute('value') }, value).valid) return;
         B.setValue(owner, value);
       }
       close(true);

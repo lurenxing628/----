@@ -129,4 +129,47 @@ for (const R of [P.risk, A.risk]) {
   assert.equal(R({ risk: 'unknown', delay_hours: null }), '暂无数据');
 }
 assert.equal(A.value(0.004), '不到 0.01');
+// 交付/停机共用真实时间轴：跨日仍连续，零工时独立点轨，停机只标登记范围。
+for (const name of ['PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'DashboardTimelineModel.js'])
+  vm.runInNewContext(fs.readFileSync(path.join(app, name), 'utf8'), { window: real });
+const timelineReact = { ...react, useRef: value => ({ current: value }), useState: value => [typeof value === 'function' ? value() : value, noop],
+  useMemo: fn => fn(), useEffect: noop, useLayoutEffect: noop };
+real.ResourceControls = { ...real.ResourceControls, TimelineZoom: 'timeline-zoom' };
+real.WorkbenchListControls = window.WorkbenchListControls;
+const timelineSources = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+  sources: ['PointGantt.jsx', 'GanttPresentationUI.jsx', 'DashboardTimeline.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) });
+for (const file of timelineSources.outputs) vm.runInNewContext(file.code, { React: timelineReact, window: real });
+const reference = id => String(id).padStart(48, '0'), stamp = (day, hour) => '2026-10-' + day + 'T' + hour + ':00:00';
+const planned = (id, machine, batch, start, end) => ({ task_ref: reference(id), operation_ref: reference(id + 20),
+  batch_ref: reference(batch), batch_id: '批次 ' + batch, sequence: id * 10, process_label: '工序 ' + id,
+  machine_ref: reference(machine), machine_label: '设备 ' + machine, source: 'internal', start, end,
+  span_hours: (Date.parse(end + 'Z') - Date.parse(start + 'Z')) / 3600000,
+  ...(start === end ? { event_kind: 'point', duration_seconds: 0, occupies_resources: false } : {}) });
+const timelineData = { time_scope: { range_start: stamp(12, '22'), range_end: stamp(13, '02') },
+  tasks: [planned(1, 200, 300, stamp(12, '23'), stamp(13, '01')), planned(2, 200, 301, stamp(12, '23'), stamp(13, '00')),
+    planned(3, 200, 300, stamp(13, '01'), stamp(13, '01')), planned(4, 201, 302, stamp(12, '22'), stamp(12, '23'))],
+  resources: [200, 201].map(id => ({ resource_ref: reference(id), label: '设备 ' + id })),
+  deliveries: [{ batch_ref: reference(300), risk: 'overdue' }, { batch_ref: reference(301), risk: 'on_time' }],
+  downtimes: [{ downtime_ref: reference(500), machine_ref: reference(200), valid: true,
+    start: stamp(12, '23'), end: stamp(13, '00'), recorded_at: stamp(12, '20'), reason: '保养' }] };
+const timelineBefore = JSON.stringify(timelineData), selectedBatches = [];
+for (const mode of ['delivery', 'downtime']) {
+  const model = real.DashboardTimelineModel.layout(timelineData, mode, 800);
+  assert.equal(model.tasks.length, mode === 'delivery' ? 4 : 3);
+  assert.equal(model.locations.get(reference(1)).item.end - model.locations.get(reference(1)).item.start, 7200000, '跨午夜不折叠夜间');
+  assert(model.rows.some(row => row.point) && model.rows.filter(row => row.point).every(row => row.overlap === 0), '点轨不是重叠冲突');
+  const timeline = expand(h(real.DashboardTimeline, { data: timelineData, mode, selectedBatch: reference(300), onSelect: value => selectedBatches.push(value) }));
+  const all = nodes(timeline), bands = all.filter(row => row.props.className === 'wb-gantt-axis-band');
+  assert.equal(bands.length, 2); assert(bands.some(row => text(row).includes('10-13')), '跨日日期分层来自共用时间轴');
+  const bar = all.find(row => row.props['data-analysis-task'] === reference(1));
+  assert.equal(bar.props['data-delivery-risk'], 'overdue'); assert.equal(bar.props['aria-pressed'], true);
+  assert(text(bar).includes('10 工序 1') && text(bar).includes('批次 300'), '任务主次文案不再只拼批次和工序');
+  bar.props.onClick();
+  const point = all.find(row => row.props['data-analysis-task'] === reference(3));
+  assert.equal(point.props['data-point-at'], stamp(13, '01')); assert.match(point.props.className, /wb-point/);
+  assert.equal(all.filter(row => row.props['data-downtime-ref']).length, mode === 'downtime' ? 3 : 0);
+  assert(!text(timeline).includes('关键链') && !text(timeline).includes('初始计划'), '分析轴没有未经支持的链或基线含义');
+}
+assert.deepEqual(selectedBatches, [reference(300), reference(300)]);
+assert.equal(JSON.stringify(timelineData), timelineBefore, '展示和选择不改计划或停机数据');
 console.log('analysis UI source evidence contracts passed');

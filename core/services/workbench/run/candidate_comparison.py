@@ -4,6 +4,7 @@ from collections import defaultdict
 
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
 from core.models.workbench_command import canonical_json, input_fingerprint
+from core.models.workbench_run_analysis import operation_change
 from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, RunCandidateReadScope, reject
 from core.services.workbench.facts.candidate_facts import _table
@@ -44,13 +45,17 @@ def _baseline_finish(schedules, intervals):
     return finish
 
 
-def _baseline_deliveries(admission, capture, refs):
+def _baseline_deliveries(admission, comparisons, refs):
     facts, schedules, operations = admission.facts, [], defaultdict(list)
+    point_refs = {segment["row_ref"] for item in comparisons for segment in item["baseline_segments"]
+                  if segment.get("event_kind") == "point"}
+    point_ids = {row["id"] for rows in admission.by_operation.values() for row in rows if row["row_ref"] in point_refs}
     for op in facts.tables["BatchOperations"].values():
         operations[op["batch_id"]].append({**op, "op_id": op["id"]})
     for row in admission.baseline["rows"]:
         op = facts.tables["BatchOperations"][row["op_id"]]
-        schedules.append({**row, "schedule_id": row["id"], "batch_id": op["batch_id"]})
+        schedules.append({**row, "schedule_id": row["id"], "batch_id": op["batch_id"],
+                          "_point_work": row["id"] in point_ids})
     intervals = task_intervals(schedules)
     if admission.baseline["version"] is None:
         incomplete, uncertain = set(), ["no_admission_baseline"]
@@ -95,15 +100,16 @@ def _delivery_rows(before, after, refs):
 
 def _machine_changes(baseline, refs):
     selected = [row for row in baseline["comparisons"] if row["batch_ref"] in refs]
-    changed = [row["operation_ref"] for row in selected if row["delta"]["machine_changed"] is True]
-    unknown = sum(row["delta"]["machine_changed"] is None for row in selected)
+    machines = [(row["operation_ref"], operation_change(row)[1]) for row in selected]
+    changed = [ref for ref, changed in machines if changed is True]
+    unknown = sum(changed is None for _, changed in machines)
     return {"count": None if unknown else len(changed), "known_count": len(changed),
             "unknown_count": unknown, "operation_refs": changed, "basis": "matched_operation_permanent_identity"}
 
 
 def _projection(workspace, baseline, full_workspace, full_baseline, admission, capture, scope):
     refs = _common_batches(admission, scope.batch_ref)
-    before_delivery = _baseline_deliveries(admission, capture, refs)
+    before_delivery = _baseline_deliveries(admission, full_baseline["comparisons"], refs)
     after_delivery = [row for row in full_workspace["delivery_risks"]["items"] if row["batch_ref"] in refs]
     batches = _delivery_rows(before_delivery, after_delivery, refs)
     before = [row for row in _baseline_tasks(full_baseline, admission) if row["batch_ref"] in refs]

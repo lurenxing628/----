@@ -15,34 +15,35 @@
         <Button transfer="export" busy={busy} disabled={!model.items.length || data.availability.state !== 'available'} onClick={onExport}>导出</Button>
       </div>
       <div className="fg-toolbar-chart"><div className="fg-legend"><span className="fg-lg"><i className="fg-sw-plan" />原计划</span><span className="fg-lg"><i className="fg-sw-act" />实际报工</span><span className="fg-lg"><i className="fg-sw-remaining" />已有剩余安排</span>
-        {data.critical_chain.state === 'available' && <label className="fg-chain-toggle"><input type="checkbox" checked={view.chain} onChange={e => patch({ chain: e.target.checked })} />关键链</label>}</div>
+        </div>
         <div className="fg-toolbar-chart-actions">
           <Button className="fg-icon-button" icon={allCollapsed ? 'unfold-vertical' : 'fold-vertical'} aria-label={allCollapsed ? '全部展开' : '全部折叠'} disabled={!model.groups.length} onClick={() => patch({ collapsed: allCollapsed ? {} : Object.fromEntries(model.groups.map(g => [g.id, true])) })} />
           <label className="fg-chain-toggle"><input type="checkbox" checked={view.onlySelected} disabled={!view.selected && !view.onlySelected} onChange={e => patch({ onlySelected: e.target.checked })} />只看选中</label>
-          <label className="fg-chain-toggle"><input type="checkbox" checked={view.details} onChange={e => patch({ details: e.target.checked })} />详情</label>
-          {view.chain && data.critical_chain.state === 'available' && <label className="fg-chain-toggle"><input type="checkbox" checked={view.chainLines !== false}
-            disabled={!data.critical_chain.edges.length} onChange={e => patch({ chainLines: e.target.checked })} />关键链连线</label>}
+          <Button icon={view.details ? 'panel-right-close' : 'panel-right-open'} aria-expanded={view.details} aria-controls="actual-gantt-detail" onClick={() => patch({ details: !view.details })}>{view.details ? '收起详情' : '详情'}</Button>
           <TimelineZoom zoom={zoom} max={1024} onZoom={onZoom} onFit={onFit} className="fg-icon-button" />
           <span className="fg-muted" aria-label="时间轴刻度" data-tick-step={M.tickStep(model, width)}>刻度 {M.tickLabel(M.tickStep(model, width))}</span>
           <Button className="fg-icon-button" icon="search" aria-label="定位选中工序" disabled={!model.items.some(i => i.task.task_ref === view.selected)} onClick={onLocate} />
         </div></div>
     </div>;
   }
-  function Chain({ chain, model, onLocate }) {
-    const visible = new Set(model.items.map(item => item.task.task_ref));
-    return <div className="fg-chain-strip" aria-label="所选计划关键链" data-chain-context={chain.mode} data-chain-target={chain.target_task_ref || ''}>
-      <div className="fg-chain-heading"><strong>{chain.mode === 'related' ? '所选工序的前置工序链（近似）' : '计划关键链（近似）'}</strong> · {chain.mode === 'related' ? '计划结束' : '最晚结束'} {M.time(chain.makespan_end)}
-        {chain.partial && <span role="status"> · 已略去 {chain.omitted_point_count} 道零工时工序</span>}</div>
-      {chain.state === 'unavailable' ? <span role="status">关联链不可用：{chain.reason}</span> : <div className="fg-chain-flow" tabIndex={0} role="group" aria-label="关键链工序，可横向滚动">
-        {chain.nodes.map((node, index) => <div className="fg-chain-step" key={node.task_ref}>
-          {index > 0 && <span className="fg-chain-edge-label" data-edge-type={chain.edges[index - 1].edge_type} data-chain-edge-reason>
-            <span>{chain.edges[index - 1].reason}</span><small>间隔 {chain.edges[index - 1].gap_minutes} 分钟</small>
-            <svg viewBox="0 0 120 12" aria-hidden="true"><path d="M0 6h117m-5-4 5 4-5 4" /></svg>
-          </span>}
-          <Button className="fg-chain-node" icon="search" disabled={!visible.has(node.task_ref)} data-chain-node={node.task_ref}
-            title={M.taskLabel(node)} onClick={() => onLocate(node.task_ref)}><span className="fg-chain-node-label"><span>{node.batch_id}</span><small>{node.sequence} {node.process_label}</small></span></Button>
-        </div>)}</div>}
-      <span className="fg-muted">当前显示 {chain.task_refs.filter(ref => visible.has(ref)).length} / {chain.task_refs.length} 道工序 · 工艺依赖：实线 · 资源依赖：虚线</span>
+  function Chain({ graph, model, onLocate }) {
+    const visible = new Set(model.items.map(item => item.task.task_ref)), nodes = new Map(graph.nodes.map(node => [node.task_ref, node]));
+    const incoming = new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge]));
+    const edgeLabels = { process: '工艺先后', machine: '设备接续', operator: '人员接续' };
+    return <div className="fg-chain-strip" aria-label="所选计划关键链">
+      <div className="fg-chain-flow" role="group" aria-label="关键链工序">
+        {graph.critical_task_refs.map(ref => {
+          const node = nodes.get(ref), edge = incoming.get(ref);
+          return <div className="fg-chain-step" key={ref}>
+            {edge && <span className="fg-chain-edge-label" data-edge-type={edge.edge_type} data-chain-edge-reason>{edgeLabels[edge.edge_type]}</span>}
+            <Button className="fg-chain-node" icon="search" data-chain-node={ref}
+              title={M.taskLabel(node) + ' · ' + M.time(node.start) + ' 至 ' + M.time(node.end)} onClick={() => onLocate(ref)}>
+              <span className="fg-chain-node-label"><span>{node.batch_id} · {M.pieceLabel(node)}</span><small>{node.sequence} {node.process_label}</small>
+                <small>{M.time(node.start)} 至 {M.time(node.end)}{!visible.has(ref) && ' · 当前视图外'}</small></span>
+            </Button>
+          </div>;
+        })}</div>
+      <span className="fg-muted">当前显示 {graph.critical_task_refs.filter(ref => visible.has(ref)).length} / {graph.critical_task_refs.length} 道关键工序 · 与图中的金色标记一致</span>
     </div>;
   }
   function Range({ scope, resources, onApply, busy }) {

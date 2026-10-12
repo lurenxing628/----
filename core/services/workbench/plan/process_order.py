@@ -1,18 +1,16 @@
 """Frozen process relations for one complete adopted plan, never current BOM."""
 
-from types import SimpleNamespace
-
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
-from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
+from core.services.workbench.facts.gantt_graph import build_gantt_graph, frozen_process_relations, unavailable_graph
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline_identity import _live_sources
 from .adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
-from .projection import check_payload_size, read_adopted_source
+from .projection import check_payload_size, public_time, read_adopted_source, wire_positive_int64
 
 
 def _unavailable(facts, code, gap):
@@ -20,7 +18,7 @@ def _unavailable(facts, code, gap):
                "工序顺序数据不完整。")
     facts.update(outcome=code, evidence_gap=gap)
     return {"state": "unavailable", "basis": None, "items": [],
-            "issues": [{"code": code, "message": message}]}, facts
+            "issues": [{"code": code, "message": message}]}, facts, unavailable_graph("full_plan", message)
 
 
 def _frozen_operations(conn, tables, arranged):
@@ -40,12 +38,6 @@ def _frozen_operations(conn, tables, arranged):
     refs = {key: by_key[str(key)]["ref"] for key in related}
     require(len(set(refs.values())) == len(refs), "process_order.unique_operation_refs")
     return related, {key: batches[key] for key in batch_ids}, refs
-
-
-def _candidate_relations(operations, batches, refs):
-    scope = build_piece_adoption_scope([SimpleNamespace(**row) for row in operations.values()],
-                                      {key: SimpleNamespace(**row) for key, row in batches.items()})
-    return {refs[row.op_id]: [refs[key] for key in row.predecessor_op_ids] for row in scope.operations}
 
 
 def _trial_relations(conn, audit, refs):
@@ -111,7 +103,7 @@ def project_process_order(conn, *, plan_ref):
         facts.update(adoption=audit, selected_rows=selected)
         operations, batches, refs = _frozen_operations(conn, tables, arranged)
         if basis == "candidate_adoption":
-            relations = _candidate_relations(operations, batches, refs)
+            relations = frozen_process_relations(operations, batches, refs)
         else:
             relations = _trial_relations(conn, audit, refs)
         _acyclic(relations)
@@ -120,7 +112,8 @@ def project_process_order(conn, *, plan_ref):
                 "items": items, "issues": []}
         check_payload_size(data)
         facts.update(relations=relations, items=items)
-        return data, facts
+        tasks = _graph_tasks(selected, items, operations, refs)
+        return data, facts, build_gantt_graph(tasks, relations, scope="full_plan")
     except AdoptionBaselineUnavailable as exc:
         return _unavailable(facts, "process_order_unavailable", exc.code + ":" + exc.gap)
     except (WorkbenchPlanReferenceError, PieceAdoptionBlocked) as exc:
@@ -131,3 +124,13 @@ def project_process_order(conn, *, plan_ref):
         return _unavailable(facts, "process_order_unavailable", exc.code)
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         return _unavailable(facts, "process_order_unavailable", "frozen_shape:" + type(exc).__name__)
+
+
+def _graph_tasks(rows, items, operations, refs):
+    task_refs = {item["operation_ref"]: item["task_ref"] for item in items}
+    return [{"task_ref": task_refs[refs[row["op_id"]]], "operation_ref": refs[row["op_id"]],
+             "batch_id": operations[row["op_id"]]["batch_id"], "piece_id": operations[row["op_id"]]["piece_id"],
+             "sequence": wire_positive_int64(operations[row["op_id"]]["seq"]),
+             "process_label": operations[row["op_id"]]["op_type_name"],
+             "start": public_time(row["start_time"]), "end": public_time(row["end_time"]),
+             "machine_ref": row["machine_id"], "operator_ref": row["operator_id"]} for row in rows]

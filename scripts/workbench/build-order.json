@@ -53,6 +53,7 @@
     "ProcessContract.js",
     "PointContract.js",
     "PlanProcessOrder.js",
+    "GanttGraph.js",
     "PlanContract.js",
     "PlanAPI.js",
     "resource-session.js",
@@ -130,6 +131,10 @@
     "PointGanttModel.js",
     "PointGantt.jsx",
     "PlanGanttModel.js",
+    "GanttPresentation.js",
+    "GanttPresentationUI.jsx",
+    "GanttGraphLayer.jsx",
+    "GanttRouteList.jsx",
     "PlanGanttCanvas.jsx",
     "PlanGantt.jsx",
     "PlanSelectionModel.js",
@@ -279,6 +284,11 @@
     "35-field.css",
     "36-analysis.css",
     "37-reports.css",
-    "37-system.css"
+    "37-system.css",
+    "39-gantt-details.css",
+    "40-actual-gantt-alignment.css",
+    "41-field-timeline.css",
+    "42-trial-gantt-alignment.css",
+    "43-dashboard-timeline.css"
   ]
 }

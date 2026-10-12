@@ -45,40 +45,54 @@
           <td className="wb-col-actions"><Button icon="search" className="mini" aria-label={'查看候选 ' + (c.label || '第 ' + ((d.page.number - 1) * d.page.size + index + 1) + ' 项')} disabled={busy || d.capabilities.view !== true || c.capabilities.view !== true} onClick={() => onSelect(c)}>查看</Button></td></tr>)}</tbody></table></div>
         {!d.candidates.length && <p className="rc-muted">这次排产在当前筛选下没有候选方案。</p>}
         {!d.catalog_complete && <p className="rc-notice">这次排产还没结束，候选方案列表还不完整。</p>}
-        <div className="rc-heading"><span className="rc-muted">交付指标仅覆盖完成批次；资源指标仅覆盖已排结果，缺项不按零计算。</span>
+        <div className="rc-heading"><span className="rc-muted">交付指标：完成批次 · 资源指标：已排安排</span>
           <Pager page={d.page.number} pages={Math.max(1, Math.ceil(d.page.total / d.page.size))} disabled={busy} label="候选" onPage={page => onQuery({ page }, true)} /></div></>}
     </section></details>;
   }
   function Generation({ data, analysis }) {
     const g = data.generation, input = g.input, M = window.RunCandidateModel;
-    return <section aria-label="生成时范围"><div className="rc-heading"><div className="rc-tools"><h3>当前：{data.candidate.label || window.WorkbenchTerms.name_missing}</h3><Status candidate={data.candidate} /><span className="rc-pending">生成时还没成为正式计划</span></div>
+    return <section aria-label="生成时范围"><div className="rc-heading"><div className="rc-tools"><h3>当前：{data.candidate.label || window.WorkbenchTerms.name_missing}</h3><Status candidate={data.candidate} /><span className="rc-pending">候选方案</span></div>
       <span>生成日期：{input.start_date || '未记录'} 至 {input.end_date || '未记录'}</span></div>
       <div className="rc-source-summary"><details className="rc-reasons rc-generation wb-ref"><summary>生成资料与记录编号</summary><dl className="rc-meta">
         <div><dt>提交 / 结束时间</dt><dd>{M.timeLabel(g.accepted_at)}<small>{M.timeLabel(g.finished_at)}</small></dd></div>
         <div><dt>物料齐套规则</dt><dd>{window.WorkbenchTerms.material_strategy(input.material_strategy, input.ready_check)}</dd></div><div><dt>不重排时段</dt><dd data-hold-window>{window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window'))}</dd></div><div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
-        <div><dt>{'已有执行 / ' + window.WorkbenchTerms.baseline_plan}</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未知' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
-      <div className="rc-muted">名称、资源、交期和执行状态来自生成时保存的资料，未读取后来的修改。{analysis ? analysis.baseline.reason && analysis.baseline.reason.message : g.baseline.reason.message}</div>
+        <div><dt>{'已有执行 / ' + window.WorkbenchTerms.baseline_plan}</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
+      <div className="rc-muted">生成资料：提交试排时保存。{analysis && analysis.baseline.reason && analysis.baseline.reason.message}</div>
       <div className="rc-muted">{analysis ? '排产时选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '排产时的批次清单暂不可用。'}</div>
       <div>排产记录编号：<code>{g.run_ref}</code></div><div>候选记录编号：<code>{data.candidate.candidate_ref}</code></div>
-        <dl className="rc-meta">{window.RunCandidateAPI.metricKeys.map(k => <div key={k}><dt>{M.metricLabels[k]}</dt><dd><Metric metric={data.candidate.metrics[k]} kind={k} /></dd></div>)}
-          <div><dt>实际工时 / 成本</dt><dd>暂无数据<small>系统还没有实际工时和成本记录。</small></dd></div></dl></details>
+        <dl className="rc-meta">{window.RunCandidateAPI.metricKeys.map(k => <div key={k}><dt>{M.metricLabels[k]}</dt><dd><Metric metric={data.candidate.metrics[k]} kind={k} /></dd></div>)}</dl></details>
       <span className="rc-muted">{analysis ? '完整排产范围 ' + analysis.batch_refs.length + ' 批' : '完整排产范围待核对'}</span>
       <Reasons rows={[...data.data_gaps, ...data.candidate.data_gaps, ...g.data_gaps, ...data.blocked_reasons, ...data.candidate.blocked_reasons]} /></div>
     </section>;
   }
-  function Detail({ task, onClose }) {
+  function DetailFacts({ rows }) {
+    return <dl>{rows.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value == null ? '未记录' : value}</dd></div>)}</dl>;
+  }
+  function Detail({ data, task, onClose, onRelated, onCollapse }) {
     const M = window.RunCandidateModel;
-    return <aside className="rc-detail" aria-label="候选工序详情"><div className="rc-heading"><h3>工序详情</h3>{task && <Button icon="x" aria-label="关闭工序详情" onClick={onClose} />}</div>
-      {!task ? <p className="rc-muted">尚未选择工序</p> : <><strong>{task.batch_label || '批次名称未填写'} · {task.process_label || '工序名称未填写'}</strong>
-        <dl>{[['零件', task.part_label], ['工序顺序', M.number(task.sequence)],
+    const loadedRefs = React.useMemo(() => new Set(data.tasks.map(row => row.row_ref)), [data.tasks]);
+    const compact = !!onCollapse, RecordSection = compact ? 'details' : 'section', RecordHeading = compact ? 'summary' : 'h4', panel = React.useRef(null);
+    React.useEffect(() => { if (compact && window.matchMedia('(max-width:1050px)').matches) panel.current.scrollIntoView({ block: 'nearest' }); }, [compact]);
+    const sourceKeys = new Set(['生成时整批量', '外协商', '来源', '生成时锁定']);
+    const facts = task ? [['零件', task.part_label], ['工序顺序', M.number(task.sequence)],
           ['分件', task.piece_id === null ? task.data_gaps.some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : task.piece_id],
-          ['本工序目标量', M.number(task.quantity)], ['生成时整批量', M.number(task.batch_quantity)], ['交期', task.due_date],
-          ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', task.machine && task.machine.label], ['人员', task.operator && task.operator.label],
-          ['外协商', task.supplier && task.supplier.label], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null],
-          ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排']].map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v == null ? '未记录' : v}</dd></div>)}</dl>
-        <window.WorkbenchReference entries={{ '安排编号': task.row_ref, '工序编号': task.operation_ref, '批次编号': task.batch_ref }} />
-        <h4>生成时的开工和完工记录</h4>{task.execution_at_generation ? <dl>{Object.entries(task.execution_at_generation).map(([k, v]) => <div key={k}><dt>{M.executionLabels[k]}</dt><dd>{v === null ? '未知' : M.executionValue(v, k)}</dd></div>)}</dl> : <p className="rc-muted">未记录排产时的开工和完工状态。</p>}
-        <Reasons rows={task.data_gaps} /></>}
+          ['本工序目标量', M.quantityLabel(task)], ['生成时整批量', M.quantityLabel(task, 'batch_quantity')], ['交期', task.due_date],
+          ['开始', task.start && M.timeLabel(task.start)], ['结束', task.end && M.timeLabel(task.end)], ['设备', M.resourceLabel(task, 'machine')], ['人员', M.resourceLabel(task, 'operator')],
+          ['外协商', M.resourceLabel(task, 'supplier')], ['来源', task.source === 'internal' ? '内部' : task.source === 'external' ? '外协' : null],
+          ['生成时锁定', typeof task.locked === 'boolean' ? task.locked ? '是' : '否' : null], ['安排状态', task.reason ? task.reason.message : '已保存候选安排']] : [];
+    const reference = task && <window.WorkbenchReference entries={{ '安排编号': task.row_ref, '工序编号': task.operation_ref, '批次编号': task.batch_ref,
+      '设备编号': task.machine && task.machine.ref, '人员编号': task.operator && task.operator.ref, '供应商编号': task.supplier && task.supplier.ref }} />;
+    return <aside ref={panel} className={'rc-detail' + (compact ? ' wb-gantt-detail-panel' : '')} id={compact ? 'candidate-gantt-detail' : undefined} aria-label="候选工序详情">
+      <header className={compact ? 'wb-gantt-detail-header' : 'rc-heading'}><h3>工序详情</h3>{compact ? <Button icon="panel-right-close" onClick={onCollapse}>收起详情</Button> : task && <Button icon="x" aria-label="关闭工序详情" onClick={onClose} />}</header>
+      <div className={compact ? 'wb-gantt-detail-body' : undefined} data-wb-scroll-key={compact ? 'candidate-inspector' : undefined}>
+      {!task ? <p className="rc-muted">尚未选择工序</p> : <><strong>{task.batch_label || '批次名称未填写'} · {task.process_label || '工序名称未填写'}</strong>
+        <DetailFacts rows={compact ? facts.filter(([key]) => !sourceKeys.has(key)) : facts} />
+        {!compact && reference}
+        <window.GanttRouteList graph={data.gantt_graph} targetRef={task.row_ref} loadedRefs={loadedRefs} onSelect={onRelated} collapsible={compact} />
+        {compact && <details className="wb-gantt-detail-section"><summary>来源与记录编号</summary><div className="wb-gantt-detail-section-body"><DetailFacts rows={facts.filter(([key]) => sourceKeys.has(key))} />{reference}</div></details>}
+        <RecordSection className={compact ? 'wb-gantt-detail-section' : undefined}><RecordHeading>生成时的开工和完工记录</RecordHeading><div className={compact ? 'wb-gantt-detail-section-body' : undefined}>
+          {task.execution_at_generation ? <DetailFacts rows={Object.keys(task.execution_at_generation).map(key => [M.executionLabels[key], M.executionField(task, key)])} /> : <p className="rc-muted">提交试排时的开工和完工记录缺失，请核对该工序的生成资料。</p>}
+        </div></RecordSection><Reasons rows={task.data_gaps} /></>}</div>
     </aside>;
   }
   function Delivery({ data, onLast }) {
@@ -91,7 +105,7 @@
     return <section aria-label="候选逐批交付风险"><h3>逐批交付风险</h3>
       <dl className="rc-meta">{[[summary.overdue_count, '已确认预计超期'], [summary.total_tardiness_hours, '完整范围超期（小时）'],
         [summary.unknown_count, '交付待确认'], [summary.batch_count, '关联批次']].map(([value, label]) => <div key={label}><dt>{label}</dt><dd>{M.number(value)}</dd></div>)}</dl>
-      <p className="rc-muted">依据：排产时的资料和同批完整候选安排。不是实际完工或发货；没有核对等待、停机或缺料的原因。</p>
+      <p className="rc-muted">预计交付依据：提交试排时的交期与本候选安排。</p>
       {data.issues.map((issue, index) => <p className="rc-notice" key={index}>{issue.message}</p>)}
       <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选交付风险列表"><caption className="wb-visually-hidden">候选交付风险列表</caption><thead><tr>{['批次 / 零件', '批量 / 工序覆盖', '交期', '全批计划完工', '预计交付', '末端工序 / 依据'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref}>

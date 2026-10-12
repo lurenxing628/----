@@ -76,7 +76,6 @@
       <U.Button icon="files" aria-pressed={!candidate && !history} onClick={() => onNavigate(view, {})}>计划版本</U.Button>
       <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate('analysis', { source: 'run_history', ...(historyQuery ? { history_query: historyQuery } : {}) })}>排产记录</U.Button>
       {candidate && <span className="btn scheduling-current" aria-current="page"><window.ResourceControls.Icon name="chart" />{window.WorkbenchTerms.candidate}</span>}
-      {candidate && <span className="scheduling-source">不是正式计划</span>}
     </Navigation>;
     return <>{(candidate || history) && navigation}{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate}
       renderAdoption={candidateRef => <window.RunAdoptionAction candidateRef={candidateRef} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?

@@ -11,7 +11,9 @@ function SystemLive({ boot, theme, initialContext }) {
   const compact = density.density === 'compact', setCompact = value => window.WorkbenchDensity.set(value ? 'compact' : 'comfortable');
   const [recordContexts, setRecordContexts] = React.useState(start.records);
   const recordContext = React.useCallback((kind, value) => setRecordContexts(previous => JSON.stringify(previous[kind]) === JSON.stringify(value) ? previous : { ...previous, [kind]: value }), []);
-  const [readSuspended, setReadSuspended] = React.useState(true);
+  const [readState, setReadState] = React.useState({ suspended: true, reason: '正在查询维护状态。' });
+  const readSuspended = readState.suspended;
+  const onReadState = React.useCallback((suspended, reason) => setReadState({ suspended, reason }), []);
   const [local, setLocal] = React.useState(() => ({ checks: [], checkedAt: new Date().toISOString() }));
   React.useLayoutEffect(() => {
     const report = model.inspectEnvironment(window, { theme, onSetTheme: value => window.APSWorkbenchTheme.set(value) });
@@ -50,8 +52,8 @@ function SystemLive({ boot, theme, initialContext }) {
     </div></header>
     <div className="sm-source-bar"><span className="sm-source-note">{boot.instance_label + (payload ? ' · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(payload.meta.as_of)) : ' · 尚未完成读取')}</span></div>
     <MetricStrip columns={4} className="sm-metrics"><Metric label="当前页面检查" value={ready + ' / ' + local.checks.length} helper="仅页面依赖与资源" />
-      <Metric label="本机数据读取" value={readSuspended ? '读取已暂停' : loading ? '读取中' : error ? '读取失败' : payload ? '已连接' : '未读取'} helper={readSuspended ? '请先查询上次维护操作的结果' : '来自本机数据'} tone={error ? 'danger' : undefined} />
-      <Metric label="数据库状态" value={data ? stateLabel(data.database.state) : '未知'} helper="尚未执行完整性检查" tone={data && data.database.state === 'error' ? 'danger' : undefined} />
+      <Metric label="本机数据读取" value={readSuspended ? '读取已暂停' : loading ? '读取中' : error ? '读取失败' : payload ? '已连接' : '未读取'} helper={readSuspended ? readState.reason : '来自本机数据'} tone={error ? 'danger' : undefined} />
+      <Metric label="数据库状态" value={data ? stateLabel(data.database.state) : '待读取'} helper="尚未执行完整性检查" tone={data && data.database.state === 'error' ? 'danger' : undefined} />
       <Metric label="备份校验" value="未校验" helper={data && data.backups.count != null ? data.backups.count + ' 个备份文件' : '尚未校验'} />
     </MetricStrip>
     {notice && <p className="sm-notice" role="status">{notice}</p>}
@@ -64,8 +66,8 @@ function SystemLive({ boot, theme, initialContext }) {
     <div className="sm-tab-panel" id={'sm-panel-' + tab} role="tabpanel" aria-labelledby={'sm-tab-' + tab}>
       <window.SystemMaintenanceWorkspace tab={tab} theme={theme} onSetTheme={value => window.APSWorkbenchTheme.set(value)}
         pageSize={pageSize} onPageSize={setPageSize} compact={compact} onCompact={setCompact} revision={revision}
-        onChanged={refresh} onReadSuspendedChange={setReadSuspended} recordContexts={recordContexts} onRecordContext={recordContext}>
-        {loading ? <p role="status" className="sm-note">正在读取本机状态…</p> : !data ? <SMUnavailable title="本机状态未能读取">页面没有用其他数据代替，请点「重新检查」重试。</SMUnavailable> :
+        onChanged={refresh} onReadSuspendedChange={onReadState} recordContexts={recordContexts} onRecordContext={recordContext}>
+        {loading ? <p role="status" className="sm-note">正在读取本机状态…</p> : !data ? <SMUnavailable title="本机状态未能读取">请点「重新检查」读取本机状态。</SMUnavailable> :
         <SystemLiveOverview data={data} report={local} onTab={onTab} />}
       </window.SystemMaintenanceWorkspace>
     </div>

@@ -2,14 +2,19 @@
 
 from collections import Counter
 
-from core.models.workbench_command import canonical_json, input_fingerprint
+from core.infrastructure.read_evidence import read_evidence_scope
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
 from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason, elapsed_hours
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reject
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, invalid_baseline
-from core.services.workbench.facts.candidate_projection import candidate_summary
+from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_summary
 from core.services.workbench.facts.candidate_tasks import operation_labels
 from core.services.workbench.facts.candidate_values import bounded_size
+from core.services.workbench.plan.adoption_baseline import read_adoption_source
+from core.services.workbench.plan.adoption_baseline_sources import read_adoption_operation_facts
+from core.services.workbench.plan.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
+from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 from .candidates import WorkbenchRunCandidateQueryService
 
@@ -93,6 +98,24 @@ def _scope_rows(rows, scope):
     return sorted(rows, key=key, reverse=scope.order == "desc")
 
 
+def _baseline_origins(conn, baseline):
+    try:
+        if baseline["version"] is None:
+            return {}, None, None
+        history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(baseline["version"])
+        evidence = read_adoption_source(conn, plan_ref=baseline["plan_ref"], version=baseline["version"], history=history)
+        origins = read_adoption_operation_facts(conn, evidence) if evidence is not None else {}
+        return origins, evidence, None
+    except AdoptionBaselineUnavailable as exc:
+        return {}, None, {"code": exc.code, "message": REASONS[exc.code]}
+    except WorkbenchCommandRejected as exc:
+        if exc.status == 413:
+            raise
+        return {}, None, {"code": exc.code, "message": str(exc)}
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return {}, None, {"code": "adoption_snapshot_invalid", "message": REASONS["adoption_snapshot_invalid"]}
+
+
 class WorkbenchRunCandidateBaselineQueryService:
     def __init__(self, conn):
         self.reader = WorkbenchRunCandidateQueryService(conn)
@@ -104,14 +127,20 @@ class WorkbenchRunCandidateBaselineQueryService:
             admission, rows = self._source(source)
             return self._baseline(source, admission, rows, scope)
 
-    @staticmethod
-    def _source(source):
-        admission = AdmissionBaseline(source.capture, source.facts, source.disposition, source.run["accepted_at"])
-        # Workspace allows missing display metadata; comparison requires exact captured identity.
-        for row in source.raw_tasks:
-            if source.facts.operations.get(row["operation_ref"]) != row["payload"].get("op_id"):
-                invalid_baseline()
-        return admission, _rows(source.tasks, admission, source.disposition)
+    def _source(self, source):
+        from core.services.workbench.plan.point_evidence import official_point_work
+
+        conn, baseline = self.reader.store.conn, source.capture["baseline"]
+        with read_evidence_scope(conn):
+            origins, evidence, origin_issue = _baseline_origins(conn, baseline)
+            admission = AdmissionBaseline(source.capture, source.facts, source.disposition, source.run["accepted_at"],
+                point_work=lambda: official_point_work(conn, baseline["version"], evidence=evidence) if evidence is not None else {},
+                origins=origins, origin_issue=origin_issue)
+            # Workspace allows missing display metadata; comparison requires exact captured identity.
+            for row in source.raw_tasks:
+                if source.facts.operations.get(row["operation_ref"]) != row["payload"].get("op_id"):
+                    invalid_baseline()
+            return admission, _rows(source.tasks, admission, source.disposition)
 
     def _baseline(self, source, admission, all_rows, scope):
         rows = _scope_rows(all_rows, scope)
@@ -131,8 +160,7 @@ class WorkbenchRunCandidateBaselineQueryService:
                     "current_entities_consulted": False, "formal_version_allocated": False, "input": admission.settings,
                     "source_verification": {"facts_digest_verified": True, "baseline_matches_archived_schedule": True,
                                             "execution_matches_archived_evidence": True, "input_independent_digest_recorded": False}},
-                "baseline": {"baseline_ref": admission.baseline["plan_ref"], "kind": "admission_official",
-                             "available": captured, "captured_task_count": len(admission.baseline["rows"]),
+                "baseline": {**baseline_capture(admission.baseline, run["accepted_at"]), "available": captured,
                              "comparison_available": available, "reason": reason},
                 "comparisons": rows, "operation_count": len(rows), "full_operation_count": count, "rows_complete": True,
                 "counts": dict(Counter(row["status"] for row in rows)),
@@ -147,4 +175,4 @@ class WorkbenchRunCandidateBaselineQueryService:
                 "improvement_assessment": None, "capabilities": {"view": True, "adopt": False, "edit_draft": False,
                                                                        "report_actual": False, "export": False},
                 "data_gaps": [baseline_reason(code) for code in ("effective_hours_not_recorded",
-                              "historical_supplier_not_recorded", "not_an_optimization_score", "input_digest_not_recorded")]}
+                              "not_an_optimization_score", "input_digest_not_recorded")]}

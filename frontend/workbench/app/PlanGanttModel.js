@@ -1,13 +1,14 @@
 (function () {
   'use strict';
   // Factory-local wall-clock coordinates, deliberately independent of browser DST.
-  const instant = value => Date.parse(value + 'Z');
+  // Date truncates below milliseconds; add the factory-local fractional seconds separately.
+  const instant = value => value ? Date.parse(value.slice(0, 19) + 'Z') + Number(value.slice(19) || 0) * 1000 : NaN;
   // Axis labels only. Business task/scope strings bypass Date so all six fractional digits remain intact.
   const wire = value => new Date(value).toISOString().slice(0, 19);
   const timeLabel = value => window.WorkbenchFormat.dateTime(value, { seconds: true, fractions: true });
   const number = value => window.WorkbenchFormat.number(value, { digits: 2 });
   const count = value => window.WorkbenchFormat.number(value, { digits: 0 });
-  const quantityLabel = value => value === null ? '未知' : typeof value === 'string' ? value : number(value);
+  const quantityLabel = (value, reason) => value === null ? quantityReasons[reason] || '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
   // Same three sentences as FieldContract.quantityReasons; this module loads before FieldContract, so the text is repeated here.
   const quantityReasons = { plan_target_not_recorded: '原计划未记录应做数量', plan_target_unavailable: '原计划应做数量读不到', plan_target_invalid: '原计划应做数量无效' };
@@ -65,16 +66,20 @@
   }
   function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
     const labels = names(data), needle = query.trim().toLocaleLowerCase();
+    const directory = new Map(data.resources.map(row => [row.ref, row]));
     const comparison = data.projections.baseline;
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const matches = task => (!changedOnly || changed.has(task.operation_ref)) && (!needle || searchText(task, labels).includes(needle));
-    const selected = data.tasks.filter(matches), groups = new Map(), conflicts = new Set(), locations = new Map();
+    const selected = data.tasks.filter(matches), groups = new Map(), conflicts = new Set(), locations = new Map(), baselineLocations = new Map();
     let start = instant(data.plan_span.start), end = instant(data.plan_span.end);
     const add = (task, before) => {
       const item = { task, start: instant(task.start), end: instant(task.end), baseline: before };
       if (before) { start = Math.min(start, item.start); end = Math.max(end, item.end); }
       const id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
-      if (!groups.has(id)) groups.set(id, { id, label: resourceLabel(task, mode, labels), tasks: [], before: [] });
+      if (!groups.has(id)) {
+        const label = resourceLabel(task, mode, labels), resource = directory.get(id);
+        groups.set(id, { id, label, code: resource && resource.business_code !== label ? resource.business_code : null, tasks: [], before: [] });
+      }
       groups.get(id)[before ? 'before' : 'tasks'].push(item);
     };
     data.tasks.forEach(task => add(task, false));
@@ -84,15 +89,16 @@
     start = bounds.start; end = bounds.end;
     let top = 0;
     const rows = [];
-    const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref,
-      row.segments.filter(item => item.concurrent_operations > 1).map(item => ({ start: instant(item.start), end: instant(item.end) }))]));
+    const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref, row]));
     for (const group of groups.values()) {
       const overlap = new Set();
       const split = (items, conflicts) => [...tracks(items.filter(i => !P.isPoint(i.task)), conflicts),
         ...G.tracks(items.filter(i => P.isPoint(i.task)), start, end, width)];
       const current = split(group.tasks, overlap), old = split(group.before, new Set());
       // Visual overlap splits tracks; actual conflict color comes from the same server occupancy snapshot.
-      const segments = occupancy.get(group.id) || [];
+      const resourceOccupancy = occupancy.get(group.id);
+      const segments = resourceOccupancy ? resourceOccupancy.segments.filter(item => item.concurrent_operations > 1)
+        .map(item => ({ start: instant(item.start), end: instant(item.end) })) : [];
       for (const item of group.tasks) {
         if (P.isPoint(item.task)) continue;
         const hit = firstIntersecting(segments, item.start);
@@ -102,13 +108,14 @@
         const items = all.filter(item => matches(item.task));
         if (!items.length) return;
         const before = index >= current.length, height = before ? 26 : 56;
-        const row = { ...group, items, top, height, before, point: P.isPoint(items[0].task), track: before ? index - current.length : index,
-          trackCount: before ? old.length : current.length, overlap: P.isPoint(items[0].task) ? 0 : overlap.size, key: group.id + ':' + index };
-        items.forEach(item => locations.set(item.task.task_ref, { row: rows.length, top, item }));
+        const row = { ...group, items, top, height, before, occupancy: before ? null : resourceOccupancy, point: P.isPoint(items[0].task), track: before ? index - current.length : index,
+          trackCount: (before ? old : current).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length,
+          subrow: (before ? old : current).slice(0, before ? index - current.length : index).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length + 1, overlap: P.isPoint(items[0].task) ? 0 : overlap.size, key: group.id + ':' + index };
+        items.forEach(item => (before ? baselineLocations : locations).set(item.task.task_ref, { row: rows.length, top, item }));
         rows.push(row); top += height;
       });
     }
-    return { labels, rows, height: top, start, end, conflicts, locations, tasks: selected, groupCount: new Set(rows.map(row => row.id)).size };
+    return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks: selected, groupCount: new Set(rows.map(row => row.id)).size };
   }
   function firstIntersecting(items, start) {
     let low = 0, high = items.length;
@@ -128,10 +135,13 @@
     for (let index = low; index < rows.length && rows[index].top < end; index++) result.push(rows[index]);
     return result;
   }
-  function ticks(start, end, width, left, visibleWidth) {
+  function tickStep(start, end, width) {
     const target = (end - start) / Math.max(1, width / 125);
     const steps = [1000, 5000, 15000, 30000, 60000, 300000, 900000, 1800000, 3600000, 10800000, 21600000, 43200000, 86400000, 172800000, 604800000, 2592000000, 31536000000];
-    const step = steps.find(value => value >= target) || Math.ceil(target / 31536000000) * 31536000000;
+    return steps.find(value => value >= target) || Math.ceil(target / 31536000000) * 31536000000;
+  }
+  function ticks(start, end, width, left, visibleWidth) {
+    const step = tickStep(start, end, width);
     const low = start + Math.max(0, left - 150) / width * (end - start), high = Math.min(end, start + (left + visibleWidth + 150) / width * (end - start));
     const result = [];
     for (let at = Math.ceil(low / step) * step; at < high; at += step) result.push({ at, x: (at - start) / (end - start) * width, label: wire(at) });
@@ -145,10 +155,8 @@
       timeLabel(task.start) + ' 至 ' + timeLabel(task.end), resourceLabel(task, 'machine', labels) + ' / ' + resourceLabel(task, 'operator', labels),
       conflict ? '资源时间冲突（安排重叠）' : null].filter(Boolean).join('\n');
   }
-  function tone(task, conflicts, risks) {
-    if (conflicts.has(task.task_ref)) return 'critical';
-    const risk = risks.get(task.batch_id);
-    return risk === 'overdue' ? 'critical' : risk === 'on_time' ? 'success' : 'primary';
+  function tone(task, risks) {
+    return risks.get(task.batch_id) === 'overdue' ? 'critical' : 'primary';
   }
-  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, layout, visibleItems, visibleRows, ticks, taskTitle, tone, kindLabels };
+  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, layout, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels };
 })();

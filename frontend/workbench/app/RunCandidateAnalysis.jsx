@@ -11,7 +11,7 @@
       <div className="rc-heading"><h3>整份候选与排产时的正式计划</h3><span className="rc-muted">{data.batch_refs.length} 批 · {data.operations.operation_refs.length} 道工序</span></div>
       <dl className="rc-meta" data-analysis-metrics>{Object.keys(labels).map(key => <div key={key} data-analysis-metric={key}><dt>{labels[key]}</dt><dd><Value metric={data.metrics[key]} /></dd></div>)}</dl>
       <div className="rc-scope" aria-label="候选变化与取舍">{Object.keys(data.delivery_deltas).map(key => <span key={key}>
-        {labels[key]}：{data.delivery_deltas[key] === null ? '对比基准或候选依据不足，变化未知' : M.signedChange(data.delivery_deltas[key])}</span>)}
+        {labels[key]}：{!data.baseline.available ? '无原安排，不作对比' : data.delivery_deltas[key] === null ? '原安排或候选的交付依据不完整，暂不能比较' : M.signedChange(data.delivery_deltas[key])}</span>)}
         <span>调整工序：{data.metrics.changed_operation_count.value === null ? '完整数量待确认' : data.metrics.changed_operation_count.value + ' 道'}</span>
         <span>换设备：{data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道'}</span></div>
       {!data.baseline.comparison_available && <p className="rc-notice">{data.baseline.reason.message}</p>}
@@ -28,7 +28,7 @@
       <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选批次交付对照"><caption className="wb-visually-hidden">候选批次交付对照</caption><thead><tr>{['批次 / 零件', '交期', '对比基准完工', '候选完工', '超期变化（小时）', '甘特定位'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.batches.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref} data-analysis-batch={row.batch_ref}>
           <td>{row.batch_id}<small>{row.part_label || '名称未填写'}</small></td><td>{row.after.due_date || '未记录'}</td>
-          <td><Finish row={row.before} /></td><td><Finish row={row.after} /></td><td>{row.delay_delta_hours === null ? '未知' : M.signedChange(row.delay_delta_hours)}</td>
+          <td>{data.baseline.available ? <Finish row={row.before} /> : '无原安排'}</td><td><Finish row={row.after} /></td><td>{!data.baseline.available ? '不适用' : row.delay_delta_hours === null ? '交付依据不完整，暂不能比较' : M.signedChange(row.delay_delta_hours)}</td>
           <td><C.Button icon="chart-gantt" disabled={!onBatch} aria-label={'查看批次甘特 ' + row.batch_id} onClick={() => onBatch(row)}>批次甘特</C.Button>
             {(row.after.last_operations || []).map(task => <C.Button key={task.row_ref} icon="search" className="mini" aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}
               onClick={() => onLast(task)}>{M.number(task.sequence)} {task.process_label || '工序未记录'}{task.piece_id && ' · ' + task.piece_id}</C.Button>)}</td>

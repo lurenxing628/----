@@ -1,0 +1,135 @@
+/* Formal and candidate Gantt details share one collapsible layout. */
+body.aps-workbench .wb-gantt-detail-layout {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:var(--space-3);
+  align-items:start;
+}
+body.aps-workbench .wb-gantt-detail-layout[data-details-open=true] {
+  grid-template-columns:minmax(0,1fr) 320px;
+}
+.wb-gantt-detail-layout .wb-gantt-main-column { min-width:0; }
+.wb-gantt-detail-layout .wb-gantt-detail-actions {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:var(--space-2) var(--space-3);
+  min-width:0;
+  margin-bottom:var(--space-2);
+}
+.wb-gantt-detail-layout .wb-gantt-detail-summary,
+.wb-gantt-detail-layout .wb-gantt-detail-actions>span:not(.wb-button-host) {
+  flex:1;
+  min-width:0;
+  color:var(--ui-info-muted);
+  font-size:var(--font-size-1);
+  line-height:var(--wb-line-relaxed);
+  overflow-wrap:anywhere;
+}
+body.aps-workbench .wb-gantt-detail-layout .wb-gantt-detail-panel {
+  position:sticky;
+  top:76px;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  min-height:0;
+  max-height:calc(100vh - 96px);
+  padding:0;
+  overflow:hidden;
+  border:1px solid var(--ui-border);
+  border-radius:var(--wb-radius-control);
+  background:var(--ui-card-bg);
+}
+.wb-gantt-detail-panel .wb-gantt-detail-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex:none;
+  gap:var(--space-2);
+  padding:var(--space-2) var(--space-3);
+  border-bottom:1px solid var(--ui-border);
+}
+.wb-gantt-detail-panel .wb-gantt-detail-header h2,
+.wb-gantt-detail-panel .wb-gantt-detail-header h3 {
+  margin:0;
+  font-size:var(--font-size-3);
+  line-height:22px;
+  font-weight:600;
+}
+.wb-gantt-detail-panel .wb-gantt-detail-body {
+  min-height:0;
+  padding:0 var(--space-3) var(--space-3);
+  overflow:auto;
+  overscroll-behavior:contain;
+  overflow-wrap:anywhere;
+}
+.wb-gantt-detail-panel .wb-gantt-detail-section {
+  margin:0;
+  padding:0;
+  border:0;
+}
+.wb-gantt-detail-panel .wb-gantt-detail-section+.wb-gantt-detail-section {
+  border-top:1px solid var(--ui-border);
+}
+.wb-gantt-detail-panel .wb-gantt-detail-section>summary {
+  padding:var(--space-3) 0;
+  color:var(--ui-text);
+  font-size:var(--font-size-2);
+  line-height:22px;
+  font-weight:600;
+  cursor:pointer;
+}
+.wb-gantt-detail-panel .wb-gantt-detail-section-body { padding-bottom:var(--space-3); }
+.wb-gantt-detail-panel .wb-gantt-detail-section-body>:first-child { margin-top:0; }
+.wb-gantt-detail-panel .wb-gantt-detail-section-body>:last-child { margin-bottom:0; }
+.wb-gantt-detail-panel .gantt-route-group {
+  margin:0;
+  padding:0;
+  border:0;
+}
+.wb-gantt-detail-panel .gantt-route-group+.gantt-route-group {
+  margin-top:var(--space-2);
+  border-top:1px solid var(--ui-border);
+}
+.wb-gantt-detail-panel .gantt-route-group-heading {
+  margin:0;
+  padding:var(--space-2) 0;
+  font-size:var(--font-size-1);
+  line-height:20px;
+  font-weight:500;
+  color:var(--ui-text);
+}
+.wb-gantt-detail-panel summary.gantt-route-group-heading { cursor:pointer; }
+.wb-gantt-detail-panel .gantt-route-group-heading small {
+  color:var(--ui-info-muted);
+  font-weight:400;
+}
+.wb-gantt-detail-panel summary:focus-visible { outline:2px solid var(--ui-primary);outline-offset:2px; }
+body.aps-workbench .wb-gantt-detail-panel.rc-detail dl {
+  display:block;
+  margin:0;
+}
+.wb-gantt-detail-panel.rc-detail dl>div {
+  display:grid;
+  grid-template-columns:96px minmax(0,1fr);
+  gap:var(--space-2);
+}
+.wb-gantt-detail-panel.rc-detail dt { color:var(--ui-info-muted); }
+.wb-gantt-detail-panel.rc-detail dd { margin:0; }
+
+@media (max-width:1050px) {
+  body.aps-workbench .wb-gantt-detail-layout[data-details-open=true] {
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.aps-workbench .wb-gantt-detail-layout .wb-gantt-detail-panel {
+    position:static;
+    max-height:min(55vh,420px);
+  }
+}
+@media print {
+  body.aps-workbench .wb-gantt-detail-layout[data-details-open=true] {
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.aps-workbench .wb-gantt-detail-layout .wb-gantt-detail-actions,
+  body.aps-workbench .wb-gantt-detail-layout .wb-gantt-detail-panel { display:none; }
+}

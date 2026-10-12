@@ -246,7 +246,8 @@ class WorkbenchPlanQueryService:
         task_refs = self.references.get_task_refs(scope.plan_ref, rows)
         operation_refs = self.references.get_operation_refs(row["op_id"] for row in rows)
         resources, resource_state = self._resources(rows)
-        tasks = project_tasks(scope.plan_ref, rows, task_refs, operation_refs, resources, conn=self.conn)
+        task_facts = {}
+        tasks = project_tasks(scope.plan_ref, rows, task_refs, operation_refs, resources, conn=self.conn, facts=task_facts)
         if execution_only:
             projections, facts = {}, {}
             if include_calendar:
@@ -255,13 +256,20 @@ class WorkbenchPlanQueryService:
                 )
                 projections, facts = {"calendar": calendar}, {"calendar": calendar_facts}
         else:
-            projections, facts = workspace_projections(
+            projections, facts, gantt_graph, provenance = workspace_projections(
                 self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, logger=self.logger,
             )
+        baseline_facts = facts.get("baseline", {})
+        source_resources = (task_facts["resource_directory"] + baseline_facts.get("resource_directory", [])
+                            + baseline_facts.get("adoption", {}).get("resource_directory", []))
         data = {"plan": project_plan(entry, scope.plan_ref), "scope": scope.scope(),
                 "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(rows),
                 "tasks": tasks, "task_count": len(tasks), "tasks_complete": True,
-                "resources": resource_directory(rows, resources), "projections": projections}
+                "resources": resource_directory(rows, resources, tasks=tasks, baseline=projections.get("baseline"),
+                                                archived=source_resources), "projections": projections}
+        if not execution_only:
+            data["gantt_graph"] = gantt_graph
+            data["provenance"] = provenance
         check_payload_size(data)
         state = input_fingerprint({"plan_revision": self.references.read_revision(), "data": data,
                                    "resources": resource_state, "projection_facts": plain_plan_facts(facts)})

@@ -1,15 +1,29 @@
 """Real full Flask app integration plus terminal catalog and snapshot boundaries."""
 
+import json
 import sqlite3
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
+import pytest
 from flask import Blueprint
 
+from core.models.workbench_run_analysis import operation_metrics
+from core.models.workbench_run_baseline import RunCandidateBaselineScope, _resource_change
+from core.services.workbench.facts.candidate_archive import load_adoption_candidate
+from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_tasks import _resource
+from core.services.workbench.run.candidate_analysis import read_candidate_analysis
+from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
+from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
+from tests.workbench.run_candidate_adoption_support import INTENT, service
 from tests.workbench.run_candidate_support import BASE, compute, read, state
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.trial_adoption_support import saved_scenario
+from tests.workbench.trial_adoption_support import service as trial_adopter
+from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 
 
@@ -40,6 +54,11 @@ def test_full_app_explicit_registration_only_temporary_connections(candidate_cas
     catalog = read(client, "/runs/" + run_ref + "/candidates")
     assert catalog["data"]["candidate_count"] == 4
     result = read(client, "/candidates/" + refs[0])
+    generation = result["data"]["generation"]
+    assert generation["baseline"] == {"baseline_ref": None, "version": None, "kind": "admission_official",
+                                      "captured_at": generation["accepted_at"], "captured_task_count": 0}
+    assert generation["algorithm"] == {"mode": "greedy", "mode_label": "快速计算",
+                                       "strategy": "priority_first", "strategy_label": "优先级优先"}
     token = result["meta"]["snapshot_ref"]
     for fmt in ("csv", "xlsx"):
         response = client.get(BASE + "/candidates/" + refs[0] + "/export", query_string={"format": fmt, "snapshot_ref": token})
@@ -47,3 +66,130 @@ def test_full_app_explicit_registration_only_temporary_connections(candidate_cas
     assert state(case.conn) == before
     assert connections and str(case.path) in connections
     assert client.post(BASE + "/candidates/" + refs[0]).status_code == 405
+
+
+def test_known_time_change_is_counted_while_resource_and_supplier_gaps_remain_explained():
+    row = {"operation_ref": "op", "batch_ref": "batch", "selected_at_admission": True,
+           "status": "matched", "comparison_available": True, "candidate": {"source": "external"},
+           "baseline_segments": [{"source": "external", "data_gaps": []}],
+           "delta": {"start_hours": 2, "end_hours": 2, "machine_changed": None, "operator_changed": None,
+                     "supplier_changed": None}}
+    baseline = {"comparisons": [row], "rows_complete": True, "operation_count": 1, "full_operation_count": 1}
+    metrics, operations = operation_metrics(baseline, ["batch"])
+    assert metrics["changed_operation_count"]["value"] == 1
+    assert operations["unknown_operation_refs"] == [] and operations["machine_unknown_operation_refs"] == ["op"]
+    assert {reason["code"] for reason in operations["issues"][0]["reasons"]} == {
+        "resource_identity_unavailable", "historical_supplier_not_recorded"}
+    row["delta"].update(start_hours=0, end_hours=0)
+    metrics, operations = operation_metrics(baseline, ["batch"])
+    assert metrics["changed_operation_count"]["value"] is None
+    assert operations["unknown_operation_refs"] == ["op"]
+    row["candidate"]["source"] = "internal"
+    row["baseline_segments"][0]["source"] = None
+    row["delta"].update(machine_changed=False, operator_changed=False)
+    metrics, operations = operation_metrics(baseline, ["batch"])
+    assert metrics["changed_operation_count"]["value"] is None
+    assert {reason["code"] for reason in operations["issues"][0]["reasons"]} == {"historical_source_unavailable"}
+    row["delta"]["start_hours"] = 1
+    metrics, _ = operation_metrics(baseline, ["batch"])
+    assert metrics["changed_operation_count"]["value"] == 1
+
+
+@pytest.mark.parametrize("adoption_source", ["candidate", "trial_candidate", "trial_plan"])
+def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_known(trial_case, adoption_source):
+    case = trial_case
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT','Heat treatment','external')")
+    case.conn.executemany("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES (?,?,'XT',2)",
+                         (("XS1", "Original supplier"), ("XS2", "Second supplier")))
+    case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
+                      "VALUES ('P1',2,'XT','Heat treatment','external','XS1',2)")
+    external = case.operation(seq=2, op_type_id="XT", op_type_name="Heat treatment", source="external",
+                              supplier_id="XS1", ext_days=2, machine_id=None, operator_id=None)
+    case.conn.commit()
+
+    def run(key):
+        accepted = case.accept(key=key)
+        result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+        assert result["state"] == "complete", result
+        return result["candidates"][0]["candidate_ref"]
+
+    original = run("supplier-original-run-0001")
+    first, _ = read_candidate_analysis(case.conn, original)
+    assert first["metrics"]["changed_operation_count"]["value"] == 2
+    assert first["metrics"]["machine_change_count"]["value"] == 0
+    assert first["before_metrics"]["overdue_count"]["reason"]["code"] == "no_admission_baseline"
+    base = {"candidate_ref": original}
+    if adoption_source != "trial_candidate":
+        adopter = service(case.conn)
+        preview = adopter.preview(original)
+        adopted = adopter.adopt(original, preview["write_context"]["write_token"], "supplier-adoption-0001", INTENT)
+        assert adopted["ok"], adopted
+        base = {"plan_ref": adopted["data"]["official_plan"]["plan_ref"]}
+    if adoption_source.startswith("trial"):
+        saved = saved_scenario(case, {"base": base}, changed=False, suffix="supplier")
+        adopter = trial_adopter(case.conn)
+        preview = adopter.preview(saved["scenario_ref"])
+        adopted = adopter.adopt(saved["scenario_ref"], preview["write_context"]["write_token"], "supplier-trial-adoption", INTENT)
+        assert adopted["ok"], adopted
+    unchanged = run("supplier-unchanged-run-0002")
+    comparison, _ = read_candidate_analysis(case.conn, unchanged)
+    assert comparison["metrics"]["changed_operation_count"]["value"] == 0
+    assert comparison["metrics"]["machine_change_count"]["value"] == 0
+    assert comparison["operations"]["issues"] == []
+
+    case.conn.execute("UPDATE Suppliers SET name='Renamed today' WHERE supplier_id='XS1'")
+    case.conn.execute("UPDATE BatchOperations SET supplier_id='XS2' WHERE id=?", (external,))
+    case.conn.commit()
+    changed = run("supplier-changed-run-0003")
+    baseline, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(changed))
+    row = next(item for item in baseline["comparisons"] if item["candidate"]["source"] == "external")
+    assert row["baseline_segments"][0]["source"] == "external"
+    assert row["baseline_segments"][0]["supplier"] == {"ref": case.ref("supplier", "XS1"), "label": "Original supplier"}
+    assert row["candidate"]["supplier"] == {"ref": case.ref("supplier", "XS2"), "label": "Second supplier"}
+    assert row["delta"]["supplier_changed"] is True
+    assert row["delta"]["machine_changed"] is False and row["delta"]["operator_changed"] is False
+    comparison, _ = read_candidate_analysis(case.conn, changed)
+    assert comparison["metrics"]["changed_operation_count"]["value"] == 1
+    assert comparison["metrics"]["machine_change_count"]["value"] == 0
+    if adoption_source == "candidate":
+        audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=1").fetchone()[0])
+        audit["proof"]["candidate_hash"] = "invalid-existing-proof"
+        case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=1", (json.dumps(audit),))
+        case.conn.commit()
+        baseline, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(changed))
+        row = next(item for item in baseline["comparisons"] if item["candidate"]["source"] == "external")
+        gaps = row["baseline_segments"][0]["data_gaps"]
+        assert {item["code"] for item in gaps if item["field"] in ("source", "supplier")} == {"adoption_snapshot_invalid"}
+        comparison, _ = read_candidate_analysis(case.conn, changed)
+        issue = next(item for item in comparison["operations"]["issues"] if item["operation_ref"] == row["operation_ref"])
+        assert issue["reasons"] == [{"code": "adoption_snapshot_invalid", "message": "采用记录与归档数据不一致，无法对比。"}]
+
+
+def test_archived_resource_identity_survives_missing_display_directory(candidate_case):
+    _, refs = compute(candidate_case)
+    _, _, _, capture = load_adoption_candidate(candidate_case.conn, refs[0])
+    facts = GenerationFacts(capture)
+    ref = facts.entity_refs["machine", "M1"]
+    facts.tables["Machines"].clear()
+    gaps = []
+    resource = _resource(facts, "machine", "M1", gaps)
+    assert resource == {"ref": ref, "label": None}
+    assert any(row["field"] == "machine" and row["code"] == "source_missing" for row in gaps)
+    assert _resource_change({"machine": resource, "data_gaps": gaps},
+                            {"machine": {"ref": ref, "label": "Known name"}, "data_gaps": []}, "machine") is False
+
+
+def test_added_removed_and_absent_arrangements_are_known_without_counting_machine_reassignment():
+    segment = {"row_ref": "original", "start": "2026-09-09T08:00:00", "end": "2026-09-09T09:00:00",
+               "source": "internal", "machine": None, "operator": None, "supplier": None,
+               "interval_comparable": True, "elapsed_hours": 1, "effective_processing_hours": None, "data_gaps": []}
+    rows = [{"operation_ref": ref, "batch_ref": "batch", "selected_at_admission": True,
+             "comparison_available": False, "status": status, "baseline_segments": segments}
+            for ref, status, segments in (("added", "newly_scheduled", []), ("removed", "unscheduled", [segment]),
+                                           ("absent", "unscheduled", []))]
+    baseline = {"comparisons": rows, "rows_complete": True, "operation_count": 3, "full_operation_count": 3}
+    metrics, operations = operation_metrics(baseline, ["batch"])
+    assert metrics["changed_operation_count"]["value"] == 2
+    assert metrics["machine_change_count"]["value"] == 0
+    assert operations["changed_operation_refs"] == ["added", "removed"]
+    assert operations["unknown_operation_refs"] == operations["machine_unknown_operation_refs"] == []

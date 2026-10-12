@@ -8,8 +8,8 @@ have no separate initial snapshot; baseline_best is a role, not a baseline.
 Compare the complete plans before filtering: include an operation if either side
 overlaps the half-open Scope. Keep both whole tasks, including the side moved out
 of range. Only machine/operator and times are historical arrangement fields;
-legacy labels/supplier remain live joins, not historical facts. New adoption
-baselines use captured labels and do not invent historical supplier assignments.
+legacy labels remain live joins, not historical facts. Supplier assignments need
+the recorded adoption; new baselines recover identity and labels from that source.
 No draft evaluation, scheduling, latest-plan fallback, or identity allocation.
 """
 
@@ -168,8 +168,11 @@ class _BaselineReader:
         _verify_selected_rows(current, self.selected_rows, self.scope)
         resources, state = _resource_maps(self.conn, current)
         operations = self.references.get_operation_refs(row["op_id"] for row in current)
+        after_facts = {}
         after = project_tasks(self.scope.plan_ref, current,
-                              self.references.get_task_refs(self.scope.plan_ref, current), operations, resources, conn=self.conn)
+                              self.references.get_task_refs(self.scope.plan_ref, current), operations, resources,
+                              conn=self.conn, facts=after_facts)
+        self.facts["resource_directory"] = after_facts["resource_directory"]
         return self._comparison(base_entry, base["plan_ref"], evidence["tasks"], after, state, evidence["basis"])
 
     def _base_entry(self, locator):
@@ -184,7 +187,10 @@ class _BaselineReader:
         return _role_entry(query, history, query.latest, locator.plan_role, option)
 
     def _project(self, base_entry, base_ref, base_rows, current_rows):
+        from .workspace_dto import resource_directory
+
         resources, resource_state = _resource_maps(self.conn, base_rows + current_rows)
+        self.facts["resource_directory"] = resource_directory(base_rows + current_rows, resources)
         operations = self.references.get_operation_refs(row["op_id"] for row in base_rows + current_rows)
         before = project_tasks(base_ref, base_rows, self.references.get_task_refs(base_ref, base_rows), operations, resources, conn=self.conn)
         after = project_tasks(self.scope.plan_ref, current_rows,

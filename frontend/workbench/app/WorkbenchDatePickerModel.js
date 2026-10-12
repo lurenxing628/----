@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const C = window.APSCalendarContract;
-  const types = ['date', 'time', 'month', 'datetime-local'];
+  const types = ['date', 'time', 'month', 'datetime-local', 'factory-local'];
   const pad = (value, size = 2) => String(value).padStart(size, '0');
   const monthKey = (year, month) => pad(year, 4) + '-' + pad(month);
   const dateKey = (year, month, day) => monthKey(year, month) + '-' + pad(day);
@@ -44,10 +44,16 @@
     input.setAttribute('value', (props.valueAttribute === undefined ? props.value : props.valueAttribute) || '');
     return input;
   }
-  function hasShape(type, value) {
+  // Factory-local inputs retain microseconds as text; Date and native datetime inputs only retain milliseconds.
+  function factoryTime(value) {
+    if (!value.trim()) return '';
+    const text = window.WorkbenchFormat.dateTime(value.trim(), { seconds: true, fractions: true });
+    return text.replace(' ', 'T').replace(/\.(\d+)$/, (_, fraction) => '.' + fraction.padEnd(6, '0'));
+  }
+  function hasShape(type, value, fractionDigits = 3) {
     if (type === 'date') return !!dateParts(value);
     if (type === 'month') return !!monthParts(value);
-    if (type === 'time') return /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/.test(value);
+    if (type === 'time') return new RegExp('^(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d{1,' + fractionDigits + '})?)?$').test(value);
     if (type === 'datetime-local') {
       const parts = value.split('T');
       return parts.length === 2 && !!dateParts(parts[0]) && hasShape('time', parts[1]);
@@ -62,6 +68,14 @@
   }
   function validate(props, value) {
     if (!types.includes(props.type)) return { valid: false, message: '不支持的日期或时间类型。' };
+    if (props.type === 'factory-local') {
+      let normalized;
+      try { normalized = factoryTime(value); } catch (_) { return { valid: false, message: '请选择完整、有效的日期和时间。' }; }
+      if (!normalized) return { valid: false, message: '请选择完整、有效的日期和时间。' };
+      if (props.min && normalized < factoryTime(props.min)) return { valid: false, message: '不能早于 ' + limitText(props, props.min) + '。' };
+      if (props.max && normalized > factoryTime(props.max)) return { valid: false, message: '不能晚于 ' + limitText(props, props.max) + '。' };
+      return { valid: true, value: normalized, message: '' };
+    }
     if (!value || !hasShape(props.type, value)) return { valid: false, message: '请选择完整、有效的日期或时间。' };
     const input = nativeField(props); input.value = value;
     if (input.value && input.checkValidity()) return { valid: true, value: input.value, message: '' };
@@ -77,6 +91,7 @@
     return { valid: false, message: '请选择完整、有效的日期或时间。' };
   }
   function daySelectable(props, day) {
+    if (props.type === 'factory-local') return !!dateParts(day) && (!props.min || day >= props.min.slice(0, 10)) && (!props.max || day <= props.max.slice(0, 10));
     if (props.type !== 'datetime-local') return validate(props, day).valid;
     const input = nativeField(props), start = day + 'T00:00';
     input.value = start;
@@ -90,7 +105,7 @@
     const parts = monthParts(month);
     if (!parts) return false;
     if (props.type === 'month') return validate(props, month).valid;
-    if (!['date', 'datetime-local'].includes(props.type)) return false;
+    if (!['date', 'datetime-local', 'factory-local'].includes(props.type)) return false;
     // Month navigation keeps the original date/time constraints, including their step base.
     for (let day = 1; day <= C.monthDays(parts[0], parts[1]); day++) {
       if (daySelectable(props, month + '-' + pad(day))) return true;
@@ -98,33 +113,34 @@
     return false;
   }
   function precision(props) {
-    const values = [props.value, props.valueAttribute, props.min, props.max].filter(value => typeof value === 'string');
+    const values = [props.value, props.valueAttribute, props.min, props.max].filter(value => typeof value === 'string').map(value => value.trim());
     const numericStep = Number(props.step), step = Number.isFinite(numericStep) && numericStep > 0 ? numericStep : 60;
     const any = String(props.step).toLowerCase() === 'any';
     const fraction = any || step > 0 && step % 1 !== 0 || values.some(value => /:\d{2}\.\d+$/.test(value));
-    return { seconds: fraction || step > 0 && step % 60 !== 0 || values.some(value => /\d{2}:\d{2}:\d{2}/.test(value)), fraction };
+    return { seconds: props.type === 'factory-local' || fraction || step > 0 && step % 60 !== 0 || values.some(value => /\d{2}:\d{2}:\d{2}/.test(value)),
+      fraction, digits: props.type === 'factory-local' ? 6 : 3 };
   }
   function readTime(value, units) {
-    const raw = (value || '').split('T').pop();
-    if (!hasShape('time', raw)) return { hour: '', minute: '', second: '', millisecond: '' };
+    const raw = (value || '').trim().replace(' ', 'T').split('T').pop();
+    if (!hasShape('time', raw, units.digits)) return { hour: '', minute: '', second: '', fraction: '' };
     const parts = raw.split(':'), fraction = (parts[2] || '').split('.');
     return { hour: parts[0], minute: parts[1], second: units.seconds ? fraction[0] || '00' : '',
-      millisecond: units.fraction ? (fraction[1] || '').padEnd(3, '0') : '' };
+      fraction: units.fraction ? (fraction[1] || '').padEnd(units.digits, '0') : '' };
   }
   function timeValue(time, units) {
-    const required = ['hour', 'minute'].concat(units.seconds ? ['second'] : [], units.fraction ? ['millisecond'] : []);
-    const limits = { hour: 23, minute: 59, second: 59, millisecond: 999 };
+    const required = ['hour', 'minute'].concat(units.seconds ? ['second'] : [], units.fraction ? ['fraction'] : []);
+    const limits = { hour: 23, minute: 59, second: 59, fraction: 10 ** units.digits - 1 };
     if (required.some(key => !/^\d+$/.test(time[key]) || Number(time[key]) > limits[key])) return '';
     let value = pad(Number(time.hour)) + ':' + pad(Number(time.minute));
     if (units.seconds) value += ':' + pad(Number(time.second));
-    if (units.fraction) value += '.' + pad(Number(time.millisecond), 3);
+    if (units.fraction) value += '.' + pad(Number(time.fraction), units.digits);
     return value;
   }
   function seed(props) {
-    const current = (props.value || '').slice(0, 10), minimum = (props.min || '').slice(0, 10);
+    const current = (props.value || '').trim().slice(0, 10), minimum = (props.min || '').trim().slice(0, 10);
     return dateParts(current) ? current : monthParts(current) ? current + '-01'
       : dateParts(minimum) ? minimum : monthParts(minimum) ? minimum + '-01' : today();
   }
   window.WorkbenchDatePickerModel = { types, pad, monthKey, dateKey, monthParts, dateParts, today, weekday,
-    moveDay, moveMonth, nativeField, hasShape, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed };
+    moveDay, moveMonth, nativeField, factoryTime, hasShape, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed };
 })();

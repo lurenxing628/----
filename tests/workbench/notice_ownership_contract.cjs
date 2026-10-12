@@ -66,6 +66,140 @@ async function contract(h, assert) {
     'The logs collection does not carry backup capabilities');
   w.SystemMaintenanceControls.useRead = readMaintenance;
 
+  // A failed status read stays in system management; only a real stop or pending restore takes over the page.
+  const readyHost = { state: 'ready', request_key: null, restart_required: false, automatic_resume: false,
+    operations_available: true, result_source: 'external_maintenance_journal', references: 'reload_from_database_after_process_restart' };
+  let hostReads = 0;
+  const maintenanceAPI = { host: async () => { hostReads++; return readyHost; } };
+  const maintenanceTree = (states, tab = 'overview') => h.render(w.SystemMaintenanceWorkspace,
+    { api: maintenanceAPI, tab, theme: 'light', onSetTheme: () => {}, pageSize: 10, children: '系统概况内容' },
+    { Workspace: { 6: readyHost, 8: false, ...states } });
+  const restoreScreen = tree => h.walk(tree).find(node => node.props['data-restore-maintenance'] === 'warm');
+  const statusFailure = new Error('维护状态接口未连接，请重新查询。');
+  const failedStatus = maintenanceTree({ 6: null, 7: statusFailure });
+  assert(!restoreScreen(failedStatus), 'A normal status-query error must not open the full-screen restore panel');
+  const inlineStatus = h.walk(failedStatus).find(node => node.props['data-system-status-error']);
+  assert(inlineStatus && visible(inlineStatus).includes(statusFailure.message), 'The local error retains its concrete cause');
+  assert(h.walk(inlineStatus).some(node => node.type === 'a' && node.props.href === '/workbench?view=dashboard'
+    && visible(node) === '返回工作台'), 'Status-query failure must keep a working navigation exit');
+  const retryStatus = h.walk(inlineStatus).find(node => node.type === 'button' && visible(node) === '重新查询');
+  assert(retryStatus, 'Status-query failure retains a local recovery action');
+  await retryStatus.props.onClick({ currentTarget: {} });
+  assert.strictEqual(hostReads, 1);
+  const recoveredState = Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value]));
+  const recoveredStatus = maintenanceTree(recoveredState);
+  assert(!restoreScreen(recoveredStatus) && visible(recoveredStatus).includes('系统概况内容'), 'A successful recheck reopens the ordinary system view');
+
+  w.SystemMaintenanceControls.useRead = () => ({ data: { data: { ...maintenance,
+    capabilities: { create: true, delete: true, restore: true, blocked_reason: '', restore_reason: '' } },
+    meta: { as_of: '2026-10-10T08:00:00' } }, loading: false, error: null });
+  const busyMaintenance = maintenanceTree({ 6: { ...readyHost, operations_available: false } }, 'backups');
+  assert(!restoreScreen(busyMaintenance), 'Temporary unavailability of file operations is not a restore');
+  const createBackup = h.walk(busyMaintenance).find(node => node.type === 'button' && visible(node) === '新增备份');
+  assert(createBackup && (createBackup.props.disabled || createBackup.props['aria-disabled']), 'Unavailable file operations stay blocked');
+  assert.strictEqual(createBackup.props['data-wb-disabled-reason'], '当前维护操作暂不可用，请重新查询状态。', 'Disabled operations explain the actual host restriction');
+  assert(!visible(busyMaintenance).includes('上次维护操作还没有确认结果'), 'A host restriction must not invent an earlier pending operation');
+  const retryMaintenance = h.walk(busyMaintenance).find(node => node.type === 'button' && visible(node) === '重新查询维护状态');
+  assert(retryMaintenance, 'A temporary maintenance lock must offer a host recheck');
+  await retryMaintenance.props.onClick({ currentTarget: {} });
+  const availableAgain = maintenanceTree(Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value])), 'backups');
+  const recoveredCreate = h.walk(availableAgain).find(node => node.type === 'button' && visible(node) === '新增备份');
+  assert(recoveredCreate && !recoveredCreate.props.disabled && !recoveredCreate.props['aria-disabled'], 'Rechecking a released maintenance lock enables operations');
+  w.SystemMaintenanceControls.useRead = readMaintenance;
+  const storageFailure = new Error('浏览器未允许保存维护操作编号。');
+  const storageStatus = maintenanceTree({ 2: storageFailure });
+  assert(!restoreScreen(storageStatus) && visible(storageStatus).includes('系统概况内容'), 'Local storage failure does not stop a ready server or read-only views');
+  once(storageStatus, storageFailure.message);
+  once(maintenanceTree({ 2: storageFailure }, 'backups'), storageFailure.message, 1);
+
+  const restoreIntent = { request_key: 'system-' + '2'.repeat(48), action: 'restore', summary: '恢复所选备份' };
+  for (const states of [{ 1: restoreIntent }, { 6: { ...readyHost, state: 'restart_required', restart_required: true,
+    operations_available: false, request_key: restoreIntent.request_key }, 7: statusFailure }]) {
+    const stopped = maintenanceTree(states), screen = restoreScreen(stopped);
+    assert(screen, 'An unconfirmed restore or previously confirmed stopped host must keep the maintenance screen');
+    assert(!visible(stopped).includes('系统概况内容'));
+    assert(h.walk(screen).some(node => node.type === 'a' && node.props.href === '/workbench?view=dashboard'
+      && visible(node) === '重新检查启动状态'), 'A real restore offers a restart-state check, not a false return promise');
+  }
+  const restoredResult = { kind: 'file_operation', terminal: true, operation: { ...restoreIntent, state: 'succeeded', terminal: true,
+    job_ref: '3'.repeat(32), updated_at: '2026-10-10T08:00:00', history: [], message: '恢复已完成', audit_persisted: true,
+    database_origin: 'selected_backup', filename: 'backup.db', protection_filename: 'before_restore.db', replayed: true } };
+  const previousRestore = maintenanceTree({ 1: restoreIntent, 3: restoredResult });
+  assert(!restoreScreen(previousRestore) && visible(previousRestore).includes('系统概况内容'), 'A historical terminal restore with a ready host must not trap the current session');
+
+  // Both page refresh and reconnection recheck the same host even without a saved command.
+  const originalEffect = w.React.useEffect, originalAdd = w.addEventListener, originalRemove = w.removeEventListener;
+  let lastDeps, dispose, online;
+  w.React.useEffect = (effect, deps) => {
+    if (!deps || !deps.includes(maintenanceAPI) || lastDeps && deps.length === lastDeps.length && deps.every((value, index) => value === lastDeps[index])) return;
+    if (dispose) dispose(); lastDeps = deps; dispose = effect();
+  };
+  w.addEventListener = (type, handler) => { if (type === 'online') online = handler; };
+  w.removeEventListener = () => {};
+  const refreshWorkspace = revision => h.render(w.SystemMaintenanceWorkspace,
+    { api: maintenanceAPI, tab: 'overview', theme: 'light', pageSize: 10, revision }, { Workspace: { 6: readyHost, 8: false } });
+  const beforeRefresh = hostReads;
+  refreshWorkspace(0); refreshWorkspace(0); refreshWorkspace(1);
+  assert.strictEqual(hostReads - beforeRefresh, 2, 'A page refresh must requery maintenance status, while an unchanged render must not');
+  online({ type: 'online' });
+  assert.strictEqual(hostReads - beforeRefresh, 3, 'Reconnection must requery maintenance status without a pending operation');
+  if (dispose) dispose();
+  w.React.useEffect = originalEffect; w.addEventListener = originalAdd; w.removeEventListener = originalRemove;
+
+  const hostRequests = [], racingAPI = { host: () => new Promise((resolve, reject) => hostRequests.push({ resolve, reject })) };
+  const racingTree = h.render(w.SystemMaintenanceWorkspace, { api: racingAPI, tab: 'overview', theme: 'light', pageSize: 10 },
+    { Workspace: { 6: null, 7: statusFailure, 8: false } });
+  const retryRacing = h.walk(racingTree).find(node => node.type === 'button' && visible(node) === '重新查询');
+  const olderRead = retryRacing.props.onClick({ currentTarget: {} }), newerRead = retryRacing.props.onClick({ currentTarget: {} });
+  hostRequests[1].resolve(readyHost); await newerRead;
+  hostRequests[0].reject(statusFailure); await olderRead;
+  const latestHostState = Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value]));
+  assert.strictEqual(latestHostState[6], readyHost);
+  assert.strictEqual(latestHostState[7], null, 'An earlier failed host query must not overwrite a later successful refresh');
+  assert.strictEqual(latestHostState[8], false);
+
+  // Trust the server's explicit non-commit result, including admission failures reported as HTTP 503.
+  const responseFor = committed => ({ ok: false, status: 503, headers: { get: () => 'application/json' },
+    json: async () => ({ ok: false, committed, error: { code: 'maintenance_active', message: '当前维护窗口忙，恢复没有执行。' } }) });
+  for (const committed of [false, 'unknown', undefined]) {
+    const rejectedAPI = w.SystemMaintenanceAPI.create(async () => responseFor(committed));
+    await assert.rejects(rejectedAPI.command(restoreIntent, 'write-context', {}), error => error.rejected === (committed === false));
+  }
+  const originalStorage = w.localStorage, originalCrypto = w.crypto, originalOutcome = w.SystemMaintenanceControls.Outcome;
+  const savedMaintenance = new Map(); let rejectedCommand, rejectedLookups = 0;
+  w.localStorage = { getItem: key => savedMaintenance.get(key) || null, setItem: (key, value) => savedMaintenance.set(key, value), removeItem: key => savedMaintenance.delete(key) };
+  w.crypto = { getRandomValues: bytes => bytes.fill(34) };
+  w.SystemMaintenanceControls.Outcome = ({ command }) => { rejectedCommand = command; return null; };
+  const deniedAPI = { host: async () => readyHost, command: w.SystemMaintenanceAPI.create(async () => responseFor(false)).command,
+    lookup: async () => { rejectedLookups++; return { kind: 'not_recorded', terminal: false }; } };
+  h.render(w.SystemMaintenanceWorkspace, { api: deniedAPI, tab: 'overview', theme: 'light', pageSize: 10 }, { Workspace: { 6: readyHost, 8: false } });
+  await rejectedCommand.execute('restore', 'write-context', {});
+  await rejectedCommand.lookup();
+  assert.strictEqual(rejectedLookups, 0, 'Reconnection must not replace a confirmed rejection with an absent journal record');
+  const deniedState = Object.fromEntries(h.updates().filter(update => update.name === 'Workspace').map(update => [update.index, update.value]));
+  assert.strictEqual(deniedState[3].kind, 'rejected');
+  assert.strictEqual(deniedState[1], null);
+  assert.strictEqual(w.SystemMaintenanceAPI.pending().read(), null, 'Explicit rejection clears the persisted pending intent before any page reload');
+  w.SystemMaintenanceControls.Outcome = originalOutcome;
+  const deniedTree = maintenanceTree(deniedState);
+  assert(!restoreScreen(deniedTree) && visible(deniedTree).includes('系统拒绝了这次提交，没有开始恢复。'), 'The rejection remains readable after unlocking');
+  assert(!h.walk(deniedTree).some(node => node.type === 'button' && visible(node) === '确认结果'));
+  assert(!restoreScreen(maintenanceTree({})), 'A full reload after a rejected restore must not recreate pending maintenance');
+  w.SystemMaintenanceControls.Outcome = ({ command }) => { rejectedCommand = command; return null; };
+  const uncertainAPI = { ...deniedAPI, command: w.SystemMaintenanceAPI.create(async () => responseFor('unknown')).command };
+  h.render(w.SystemMaintenanceWorkspace, { api: uncertainAPI, tab: 'overview', theme: 'light', pageSize: 10 }, { Workspace: { 6: readyHost, 8: false } });
+  await rejectedCommand.execute('restore', 'write-context', {});
+  assert.strictEqual(w.SystemMaintenanceAPI.pending().read().request_key, restoreIntent.request_key, 'An unknown submission result must retain its original pending intent');
+  w.SystemMaintenanceControls.Outcome = originalOutcome;
+  assert(restoreScreen(maintenanceTree({})), 'Reload must continue protecting an unknown restore result');
+  savedMaintenance.clear();
+  const otherIntent = { ...restoreIntent, request_key: 'system-' + '4'.repeat(48) };
+  w.SystemMaintenanceAPI.pending().finish(restoreIntent); // Another tab already confirmed this operation.
+  savedMaintenance.set(w.SystemMaintenanceAPI.PENDING_KEY, JSON.stringify(otherIntent));
+  assert.throws(() => w.SystemMaintenanceAPI.pending().finish(restoreIntent), /上次操作记录已变化/);
+  assert.strictEqual(w.SystemMaintenanceAPI.pending().read().request_key, otherIntent.request_key, 'A different pending operation must be retained');
+  w.localStorage = originalStorage; w.crypto = originalCrypto;
+
   const dashboardRead = w.DashboardSession.useRead, dashboardCommand = w.DashboardSession.useCommand;
   w.DashboardSession.useCommand = () => ({ busy: false, saved: null, storageError: null });
   w.DashboardSession.useRead = (_load, _deps, enabled = true) => ({ result: null, loading: false, error: enabled ? new Error('值班台读取失败，请刷新重试。') : null });

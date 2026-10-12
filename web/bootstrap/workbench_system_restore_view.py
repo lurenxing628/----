@@ -20,7 +20,7 @@ LABELS = {"accepted": "已接收", "checking": "检查中", "protecting": "生�
           "rolled_back": "恢复失败，已还原", "rollback_failed": "还原失败，需人工核对",
           "recovery_required": "结果不确定，需人工核对"}
 ORIGINS = {"selected_backup": "来自所选备份", "protection_backup": "已还原到恢复前的保护副本",
-           "unchanged": "原数据库未被替换", "unconfirmed": "未知，不能确认当前数据库内容"}
+           "unchanged": "原数据库未被替换", "unconfirmed": "维护记录尚未确认数据库来源"}
 
 
 def _query(request, status):

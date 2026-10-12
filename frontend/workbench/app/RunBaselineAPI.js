@@ -13,7 +13,7 @@
   const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
   const statuses = ['matched', 'newly_scheduled', 'unscheduled', 'baseline_only', 'not_comparable'];
   const deltaKeys = ['start_hours', 'end_hours', 'elapsed_hours', 'machine_changed', 'operator_changed', 'supplier_changed', 'effective_processing_hours'];
-  function check(ok) { if (!ok) throw new Error('初始计划对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新初始计划」。'); }
+  function check(ok) { if (!ok) throw new Error('原安排对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新原安排」。'); }
   function equal(a, b) {
     if (a === b) return true;
     return object(a) && object(b) && Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => equal(a[k], b[k]))
@@ -27,16 +27,22 @@
     // A baseline read owns its own snapshot. Never accept or forward a workspace token.
     return A.workspaceScope(data.candidate.candidate_ref, q);
   }
+  function resourceIdentity(side, kind) {
+    const value = side[kind];
+    if (value !== null) return value.ref === null ? undefined : value.ref;
+    return side.data_gaps.some(gap => gap.field === kind || gap.field === kind + '.ref') ? undefined : null;
+  }
   function interval(v, baseline) {
-    const keys = ['row_ref', 'start', 'end', 'elapsed_hours', 'machine', 'operator', 'supplier', 'effective_processing_hours', 'data_gaps'];
-    check(shape(v, keys.concat(baseline ? ['interval_comparable'] : ['source', 'locked', ...(P.isPoint(v) ? P.fields : [])])) && ref(v.row_ref)
+    const keys = ['row_ref', 'start', 'end', 'elapsed_hours', 'source', 'machine', 'operator', 'supplier', 'effective_processing_hours', 'data_gaps'];
+    check(shape(v, keys.concat(baseline ? ['interval_comparable'] : ['locked'], P.isPoint(v) ? P.fields : [])) && ref(v.row_ref)
       && [v.start, v.end].every(nullable(time)) && nullable(finite)(v.elapsed_hours)
       && ['machine', 'operator', 'supplier'].every(k => resource(v[k])) && v.effective_processing_hours === null && gaps(v.data_gaps));
     if (v.start !== null && v.end !== null) check(timeKey(v.start) <= timeKey(v.end)
       && Math.abs(v.elapsed_hours - (stamp(v.end) - stamp(v.start)) / 3600000) < 0.000001);
     else check(v.elapsed_hours === null);
-    const valid = v.start !== null && v.end !== null && (timeKey(v.start) < timeKey(v.end) || !baseline && P.isPoint(v));
-    if (baseline) check(v.interval_comparable === valid && v.supplier === null);
+    const valid = v.start !== null && v.end !== null && (timeKey(v.start) < timeKey(v.end) || P.isPoint(v));
+    if (baseline) check(v.interval_comparable === valid && (['internal', 'external'].includes(v.source)
+      || v.source === null && v.data_gaps.some(gap => gap.field === 'source')));
     else check(valid && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
   }
   function comparison(row, q, seen, segments, candidateRefs) {
@@ -63,11 +69,12 @@
     else {
       const expectedDelta = [(stamp(c.start) - stamp(b[0].start)) / 3600000, (stamp(c.end) - stamp(b[0].end)) / 3600000, c.elapsed_hours - b[0].elapsed_hours];
       ['start_hours', 'end_hours', 'elapsed_hours'].forEach((k, i) => check(finite(row.delta[k]) && Math.abs(row.delta[k] - expectedDelta[i]) < 0.000001));
-      for (const k of ['machine', 'operator']) {
-        const before = b[0][k], after = c[k], changed = !before || !after || before.ref === null || after.ref === null ? null : before.ref !== after.ref;
+      for (const k of ['machine', 'operator', 'supplier']) {
+        const before = resourceIdentity(b[0], k), after = resourceIdentity(c, k);
+        const changed = before === undefined || after === undefined ? null : before !== after;
         check(row.delta[k + '_changed'] === changed);
       }
-      check(row.delta.supplier_changed === null && row.delta.effective_processing_hours === null);
+      check(row.delta.effective_processing_hours === null);
     }
     if (q.range_start && c) {
       const sides = [c].concat(b);
@@ -103,8 +110,9 @@
       && equal(g.source_verification, { facts_digest_verified: true, baseline_matches_archived_schedule: true,
         execution_matches_archived_evidence: true, input_independent_digest_recorded: false }));
     const b = d.baseline, seen = new Set(), segments = new Set(), candidateRefs = new Set(), counts = {};
-    check(shape(b, ['baseline_ref', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])
+    check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])
       && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count) && b.captured_task_count <= 20000
+      && b.version === wg.baseline.version && b.captured_at === wg.baseline.captured_at && b.baseline_ref === wg.baseline.baseline_ref
       && (b.available ? ref(b.baseline_ref) : b.baseline_ref === null && b.captured_task_count === 0));
     d.comparisons.forEach(row => { comparison(row, q, seen, segments, candidateRefs); counts[row.status] = (counts[row.status] || 0) + 1; });
     check(equal(d.counts, counts) && d.execution_affected_count === d.comparisons.filter(r => r.execution_affected).length
@@ -130,10 +138,10 @@
           { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
         const json = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json';
         const payload = json ? await response.json() : null;
-        if (!response.ok) throw new Error(payload && payload.error && text(payload.error.message) ? payload.error.message : '初始计划读取失败，没有显示上次结果。请点「刷新初始计划」。');
+        if (!response.ok) throw new Error(payload && payload.error && text(payload.error.message) ? payload.error.message : '原安排读取失败，没有显示上次结果。请点「刷新原安排」。');
         check(response.status === 200 && json); validate(payload, workspace); return payload;
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
     } };
   }
-  window.RunBaselineAPI = { create, validate, scope };
+  window.RunBaselineAPI = { create, validate, scope, resourceIdentity };
 })();

@@ -101,7 +101,7 @@
         setNotice('已生成并交给浏览器下载：' + file.filename + '（' + file.bytes + ' 字节）。');
       } catch (problem) { setError(problem); } finally { setDownloadBusy(false); }
     }
-    const writeReason = command.locked ? '上次维护操作还没有确认结果。请先点「查询结果」。' : request.loading || !data ? '请先读取有效的备份清单。' : '';
+    const writeReason = command.locked ? command.lockedReason : request.loading || !data ? '请先读取有效的备份清单。' : '';
     const sharedReason = kind === 'backups' ? writeReason || data && data.capabilities.blocked_reason || '' : '';
     const ask = (action, row) => {
       if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) { setError(new Error('维护事件不是可操作的备份文件。')); return; }
@@ -118,7 +118,7 @@
       {selection && data && !selected && <p className="sm-notice" role="status">{!stableSelection
         ? '原先选中的记录编号不完整，没有按同名文件或第一条记录乱猜。请重新选择。'
         : '这一页里找不到原先选中的记录，没有自动换成别的记录。请重新选择。'}<C.Button icon="x" onClick={() => setSelected(null)}>清除原选择</C.Button></p>}
-      {kind === 'backups' && sharedReason && <p className="sm-note" role="status">{sharedReason}</p>}
+      {kind === 'backups' && sharedReason && !command.storageError && <p className="sm-note" role="status">{sharedReason}</p>}
       {request.loading && <p className="sm-note" role="status">正在读取{kind === 'logs' ? '日志' : '备份清单'}…</p>}
       {data && <><Sources data={data} kind={kind} /><div className="sm-meta">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(payload.meta.as_of))}</div>
         {data.rows.length ? <div className="wb-table-shell wb-table-frame" data-sticky-head="true" data-sticky-actions="true"><table className={'wb-table sm-table sm-record-table sm-' + kind + '-table'}>

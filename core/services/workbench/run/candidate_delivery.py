@@ -100,7 +100,8 @@ def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settin
     issues = [{"code": code, "message": "排产时记下的依据不完整，交付结论算不出来；系统没有拿当前资料凑。"}
               for code in sorted(uncertain)]
     if missing:
-        issues.append({"code": "captured_batch_missing", "message": "排产时缺少部分批次资料，这些批次的交付情况算不出来。"})
+        issues.append({"code": "captured_batch_missing", "message": "排产存档中缺少批次资料：" + "、".join(missing)
+                       + "。请在排产记录中核对这些批次。"})
     unknown = sum(item["risk"] == "unknown" for item in items) + len(missing)
     return {"candidate_ref": candidate["candidate_ref"], "scope": scope.scope(),
             "state": "available" if not issues else "partial" if items else "unavailable",

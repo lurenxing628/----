@@ -1,0 +1,18 @@
+/* Actual marks keep their report / baseline / remaining meaning; gold carries process emphasis. */
+.fg-live .fg-track>.fg-mark,.fg-live .fg-track>.wb-point,.fg-live .fg-row-canvas { z-index:var(--wb-z-gantt-mark); }
+.fg-live .fg-mark[data-gantt-muted],.fg-live .wb-point[data-gantt-muted] { opacity:.66; }
+.aps-workbench .fg-live .fg-mark[data-gantt-critical]>.fg-mark-face { outline:1px solid var(--wb-gantt-gold);outline-offset:-1px; }
+.aps-workbench .fg-live .fg-mark.fg-act[data-gantt-critical]>.fg-mark-face { box-shadow:inset 0 3px var(--wb-gantt-gold),inset 0 0 0 1px var(--wb-gantt-gold); }
+.aps-workbench .fg-live .fg-mark[data-gantt-related]>.fg-mark-face { outline:1.5px solid var(--wb-gantt-gold);outline-offset:-1.5px; }
+.aps-workbench .fg-live .fg-mark[aria-pressed=true]>.fg-mark-face { outline:2px solid var(--wb-gantt-gold);outline-offset:-2px; }
+.fg-live .fg-virtual-row[data-gantt-critical]>.fg-frozen { box-shadow:inset 3px 0 var(--wb-gantt-gold); }
+.fg-live .fg-frozen .fg-task-select { font-weight:500; }
+.fg-live .fg-detail-facts { font-size:var(--font-size-1);line-height:1.65; }
+.fg-live .fg-detail-facts p { margin:0 0 var(--space-2); }
+.fg-live .fg-report-selector { display:flex;align-items:center;gap:var(--space-2);margin-block:var(--space-2); }
+.fg-live .fg-report-selector select { flex:1;min-width:0; }
+.fg-live .fg-detail-panel .fg-chain-strip { padding:0; }
+.fg-live .fg-detail-panel .fg-chain-flow { flex-direction:column;overflow:visible; }
+.fg-live .fg-detail-panel .fg-chain-step { flex-direction:column;align-items:stretch; }
+.fg-live .fg-detail-panel .fg-chain-node { width:100%;height:auto;min-height:70px; }
+.fg-live .fg-detail-panel .fg-chain-edge-label { min-width:0;white-space:normal;align-items:flex-start; }

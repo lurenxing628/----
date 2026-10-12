@@ -114,29 +114,30 @@ def _captured_quantities(operation, batch, execution, basis):
             "quantity_reason": None if valid and quantity is not None and not gaps else "plan_target_invalid"}
 
 
-def _adopted_quantities(conn, plan_ref):
+def _adopted_task_facts(conn, plan_ref):
     from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 
+    from .adoption_baseline_sources import read_adoption_operation_facts
     from .adoption_baseline_values import AdoptionBaselineUnavailable, require
 
     if conn is None:
-        return {}, "plan_target_not_recorded"
+        return {}, "plan_target_not_recorded", None
     try:
         evidence = _adopted_source_record(conn, plan_ref)
         if evidence is None:
-            return {}, "plan_target_not_recorded"
+            return {}, "plan_target_not_recorded", None
         basis, audit, arranged = evidence["basis"], evidence["audit"], evidence["arranged"]
         result = _source_quantities(conn, basis, audit, arranged, generation_facts=evidence["generation_facts"])
         require(set(result) == {row["op_id"] for row in arranged}, "quantity.complete_operation_set")
-        return result, None
+        return result, None, read_adoption_operation_facts(conn, evidence)
     except (AdoptionBaselineUnavailable, WorkbenchPlanReferenceError):
-        return {}, "plan_target_unavailable"
+        return {}, "plan_target_unavailable", {}
     except WorkbenchCommandRejected as exc:
         if exc.status == 413:
             raise
-        return {}, "plan_target_unavailable"
+        return {}, "plan_target_unavailable", {}
     except (KeyError, TypeError, ValueError, OverflowError):
-        return {}, "plan_target_unavailable"
+        return {}, "plan_target_unavailable", {}
 
 
 def read_adopted_source(conn, plan_ref):
@@ -185,9 +186,12 @@ def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None):
         for row in saved}
 
 
-def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=None):
+def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=None, facts=None):
     tasks = []
-    quantities, quantity_reason = _adopted_quantities(conn, plan_ref) if rows else ({}, None)
+    quantities, quantity_reason, origins = _adopted_task_facts(conn, plan_ref) if rows else ({}, None, None)
+    if facts is not None:
+        facts["resource_directory"] = [resource for row in rows for resource in
+            (origins or {}).get(row["op_id"], {}).get("resource_directory", [])]
     for row in rows:
         start, end = public_time(row["start_time"]), public_time(row["end_time"])
         if start > end or (start == end and not row.get("_point_work")):
@@ -199,13 +203,16 @@ def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=
             piece = _required_text(piece)
         presentation = quantities.get(row["op_id"], {"piece_id": piece, "quantity": None, "batch_quantity": None,
                                                     "quantity_basis": "unknown", "quantity_reason": quantity_reason})
+        supplier = origins.get(row["op_id"], {}).get("supplier") if origins is not None else None
+        # Schedule has no supplier assignment: only the adopted source can prove it.
+        supplier_ref = supplier["ref"] if supplier is not None else None
         tasks.append({"task_ref": task_refs[row["schedule_id"]], "operation_ref": operation_refs[row["op_id"]],
                       "plan_ref": plan_ref, "batch_id": _required_text(row["batch_id"]),
                       "sequence": _sequence(row["seq"]), "process_label": _required_text(row["op_type_name"]),
                       **presentation,
                       "machine_ref": _resource_ref(row, "machine", resources),
                       "operator_ref": _resource_ref(row, "operator", resources),
-                      "supplier_ref": _resource_ref(row, "supplier", resources), "start": start, "end": end})
+                      "supplier_ref": supplier_ref, "start": start, "end": end})
         if start == end:
             from datetime import datetime
             tasks[-1].update(point_event_dto(datetime.fromisoformat(start), datetime.fromisoformat(end)))

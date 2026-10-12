@@ -19,6 +19,8 @@
     const [rangeOpen, setRangeOpen] = React.useState(false), [rangeError, setRangeError] = React.useState(null), [paused, setPaused] = React.useState(false);
     const [query, setQuery] = React.useState(typeof initialContext.query === 'string' ? initialContext.query : ''), [selected, setSelected] = React.useState(null);
     const [relatedRef, setRelatedRef] = React.useState(null);
+    const [detailsOpen, setDetailsOpen] = React.useState(false);
+    const detailsToggle = React.useRef(null);
     const initialTaskRef = React.useRef(typeof initialContext.selected_task_ref === 'string' ? initialContext.selected_task_ref : null);
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
@@ -50,7 +52,8 @@
     function refresh() {
       const next = { ...scope }; delete next.snapshot_ref; setScope(next); setPaused(false); setSelected(null); read.reload();
     }
-    function selectTask(task, before = false, locate = false) { initialTaskRef.current = null; setSelected({ task, before, result, ...(locate ? { locate: true } : {}) }); }
+    function selectTask(task, before = false, locate = false) { initialTaskRef.current = null; setSelected(task ? { task, before, result, ...(locate ? { locate: true } : {}) } : null); }
+    function collapseDetails() { setDetailsOpen(false); detailsToggle.current.querySelector('button').focus(); }
     function selectRelated(ref) {
       initialTaskRef.current = null;
       const task = data.tasks.find(row => row.task_ref === ref);
@@ -62,8 +65,8 @@
       event.preventDefault();
       if (!selection || disabled) return;
       try {
-        const seconds = value => value && value.length === 16 ? value + ':00' : value;
-        const next = P.workspaceScope(selection.plan_ref, { range_start: seconds(range.start), range_end: seconds(range.end) });
+        const time = window.WorkbenchDatePickerModel.factoryTime;
+        const next = P.workspaceScope(selection.plan_ref, { range_start: time(range.start), range_end: time(range.end) });
         initialTaskRef.current = null;
         setScope(next); setRangeError(null); setPaused(false); setSelected(null); read.reload();
       } catch (error) { setRangeError(error); }
@@ -103,8 +106,8 @@
           {read.loading && <Button icon="x" aria-label="取消计划读取" onClick={() => setPaused(true)}>取消读取</Button>}</div>
       </div>
       {rangeOpen && <form className="plan-range wb-surface-body wb-surface-divider" onSubmit={applyRange}>
-        <label className="field"><span>开始（包含）</span><input type="text" placeholder="2026-09-13T08:30:00" spellCheck={false} aria-label="读取开始时间" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
-        <label className="field"><span>结束（不含）</span><input type="text" placeholder="2026-09-13T08:30:00.800000" spellCheck={false} aria-label="读取结束时间" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label>
+        <label className="field"><span>开始（包含）</span><input type="text" data-picker-type="factory-local" placeholder="2026-10-12 08:30" spellCheck={false} aria-label="读取开始时间" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
+        <label className="field"><span>结束（不含）</span><input type="text" data-picker-type="factory-local" placeholder="2026-10-14 18:00" spellCheck={false} aria-label="读取结束时间" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label>
         <Button type="submit" icon="check" disabled={disabled || read.loading}>应用范围</Button><Button icon="chart-gantt" disabled={disabled || read.loading} onClick={() => { initialTaskRef.current = null; setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setPaused(false); read.reload(); }}>完整计划</Button>
       </form>}
       {(rangeError || read.error || result && result.warnings.length > 0 || !data || paused) && <div className="wb-surface-body plan-read-state">
@@ -116,12 +119,15 @@
           {[[data.task_count, '范围内安排', 'primary'], [risks.length, '关联批次', 'primary'], [risks.filter(row => row.risk === 'overdue').length, '已确认预计超期', 'warn'], [risks.filter(row => row.risk === 'unknown').length, '交付风险暂无数据', 'warn']].map(([value, label, tone]) =>
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
         </div>}</section>
-      {data && <div className="plan-main"><div>
+      {data && <div className={'plan-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : '')} data-details-open={view === 'gantt' && detailsOpen || undefined}><div className={view === 'gantt' ? 'wb-gantt-main-column' : undefined}>
+          {view === 'gantt' && <div className="wb-gantt-detail-actions" ref={detailsToggle}><span className="wb-gantt-detail-summary">{chosen ? chosen.task.batch_id + ' · ' + chosen.task.sequence + ' ' + chosen.task.process_label : '选中工序后可查看详情'}</span>
+            <Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="plan-gantt-detail" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? '收起详情' : '详情'}</Button></div>}
           {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={data} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} />}
           {view !== 'gantt' && <ProjectionTables key={'risk:' + result.meta.snapshot_ref} data={data} onResource={setQuery} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} />}
           {view === 'delay' && <Conflicts key={'conflicts:' + result.meta.snapshot_ref} data={data} />}
-        </div><TaskDetail data={data} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
-          renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} /></div>}
+        </div>{(view !== 'gantt' || detailsOpen) && <TaskDetail data={data} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
+          onCollapse={view === 'gantt' ? collapseDetails : undefined}
+          renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} />}</div>}
     </div>;
   }
   function PlanWorkspace(props) {

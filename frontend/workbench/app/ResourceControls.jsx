@@ -406,7 +406,7 @@
   function TimelineZoom({ zoom, max, scope = '', onZoom, onFit, disabled, className = 'btn', fitClassName }) {
     const axis = scope + '时间轴', range = scope + '时间范围';
     return <><Button icon="minus" className={className} aria-label={'缩小' + axis} title={'缩小' + axis + ' (-)'} disabled={disabled || zoom <= 1} onClick={() => onZoom(timelineZoomStep(zoom, -1, max))} />
-      <span className="wb-zoom-level">{zoom}×</span>
+      <span className="wb-zoom-level">{window.WorkbenchFormat.number(zoom, { digits: 2, trim: true })}×</span>
       <Button icon="plus" className={className} aria-label={'放大' + axis} title={'放大' + axis + ' (+)'} disabled={disabled || zoom >= max} onClick={() => onZoom(timelineZoomStep(zoom, 1, max))} />
       <Button icon="unfold-vertical" className={(fitClassName || className) + ' wb-zoom-fit'} aria-label={'显示完整' + range} title={'显示完整' + range + ' (F)'} disabled={disabled || zoom <= 1} onClick={onFit} /></>;
   }

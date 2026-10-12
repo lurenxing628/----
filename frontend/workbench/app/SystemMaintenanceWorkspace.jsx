@@ -1,23 +1,25 @@
 (function () {
   'use strict';
   const A = window.SystemMaintenanceAPI, C = window.SystemMaintenanceControls;
-  function useCommand(api, onChanged) {
+  function useCommand(api, onChanged, revision) {
     const [initial] = React.useState(A.inspectPending), [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.storageError);
     const [result, setResult] = React.useState(null), [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false);
     const [host, setHost] = React.useState(null), [hostError, setHostError] = React.useState(null), [hostBusy, setHostBusy] = React.useState(true);
-    const startedHere = React.useRef(false);
+    const startedHere = React.useRef(false), hostSequence = React.useRef(0);
     const [selection, setSelection] = React.useState(null);
     const current = React.useRef(intent), found = React.useRef(null), running = React.useRef(false), mounted = React.useRef(true), changed = React.useRef(onChanged);
     changed.current = onChanged;
     function settle(value) { found.current = value; if (mounted.current) { setResult(value); if (value && value.host) setHost(value.host); } }
     async function inspectHost() {
+      const sequence = ++hostSequence.current;
       if (mounted.current) setHostBusy(true);
-      try { const value = await api.host(); if (mounted.current) { setHost(value); setHostError(null); } return value; }
-      catch (problem) { if (mounted.current) setHostError(problem); return null; }
-      finally { if (mounted.current) setHostBusy(false); }
+      try { const value = await api.host(); if (mounted.current && sequence === hostSequence.current) { setHost(value); setHostError(null); } return value; }
+      catch (problem) { if (mounted.current && sequence === hostSequence.current) setHostError(problem); return null; }
+      finally { if (mounted.current && sequence === hostSequence.current) setHostBusy(false); }
     }
     async function lookup() {
       const original = current.current; if (!original || running.current) return;
+      if (found.current && found.current.kind === 'rejected') return inspectHost();
       running.current = true; setBusy(true); setError(null);
       try { settle(await api.lookup(original)); }
       catch (problem) { if (mounted.current) setError(problem); }
@@ -36,12 +38,12 @@
         if (!state.storageError && !current.current) {
           current.current = state.intent; setIntent(state.intent); settle(null); setError(null);
         }
-        if (state.intent) lookup();
+        if (state.intent) lookup(); else inspectHost();
       }
-      if (current.current) lookup(); else inspectHost();
+      reload();
       window.addEventListener('online', reload); window.addEventListener('storage', reload);
       return () => { mounted.current = false; window.removeEventListener('online', reload); window.removeEventListener('storage', reload); };
-    }, [api]);
+    }, [api, revision]);
     async function execute(action, token, input, selected = null) {
       if (running.current || current.current || storageError || !host || hostError || host.state !== 'ready' || !host.operations_available) return;
       let original;
@@ -52,37 +54,57 @@
       try { settle(await api.command(original, token, input)); }
       catch (problem) {
         if (mounted.current) setError(problem);
-        if (problem.rejected) settle({ kind: 'rejected', terminal: true });
+        if (problem.rejected) {
+          settle({ kind: 'rejected', terminal: true, intent: original });
+          try {
+            A.pending().finish(original); current.current = null;
+            if (mounted.current) setIntent(null);
+          } catch (storageProblem) { if (mounted.current) setStorageError(storageProblem); }
+        }
       } finally { await inspectHost(); running.current = false; if (mounted.current) setBusy(false); }
     }
     const restorePending = !!(intent && intent.action === 'restore' && !(result && result.terminal
       && (result.kind === 'rejected' || !startedHere.current)));
-    const suspended = !!storageError || !!hostError || !host || host.state !== 'ready' || restorePending;
+    const maintenanceRequired = restorePending || !!(host && host.state !== 'ready');
+    const suspended = maintenanceRequired || !!hostError || !host;
+    const readReason = maintenanceRequired ? host && host.state !== 'ready' ? window.SystemRestoreStatus.hostLabels[host.state] : '恢复请求结果待确认。'
+      : hostError ? hostError.message : !host ? '正在查询维护状态。' : '';
+    const lockedReason = storageError ? storageError.message : readReason || (intent ? intent.summary + '结果待确认，请查询结果。'
+      : busy ? '正在执行维护操作。' : !host.operations_available ? '当前维护操作暂不可用，请重新查询状态。' : '');
     function acknowledge() {
       if (suspended || running.current || !current.current || !found.current || !found.current.terminal) return;
       try { A.pending().finish(current.current); } catch (problem) { setStorageError(problem); return; }
       const original = current.current, completed = found.current;
       current.current = null; setIntent(null); settle(null); setError(null); setStorageError(null); changed.current(original, completed);
     }
-    return { intent, result, error, storageError, busy, host, hostError, hostBusy, suspended, inspectHost, selection,
-      locked: suspended || !!intent || busy || !host.operations_available, execute, lookup, acknowledge };
+    return { intent, result, error, storageError, busy, host, hostError, hostBusy, suspended, readReason, maintenanceRequired, inspectHost, selection, lockedReason,
+      locked: !!lockedReason, execute, lookup, acknowledge };
   }
   // Keep this component mounted across tab changes: it owns the system-only original request.
   // 系统管理只读本机数据，没有别的数据来源可切换。
   function Workspace({ tab, theme, onSetTheme, pageSize, onPageSize, compact, onCompact, revision = 0, onChanged, onReadSuspendedChange, recordContexts = {}, onRecordContext, api: supplied, children }) {
     const api = React.useMemo(() => supplied || A.create(), [supplied]);
     const [version, refresh] = React.useReducer(value => value + 1, 0);
-    const command = useCommand(api, (intent, result) => { refresh(); if (onChanged) onChanged(intent, result); });
+    const command = useCommand(api, (intent, result) => { refresh(); if (onChanged) onChanged(intent, result); }, revision);
     const suspended = command.suspended;
-    React.useLayoutEffect(() => { if (onReadSuspendedChange) onReadSuspendedChange(suspended); }, [suspended, onReadSuspendedChange]);
+    React.useLayoutEffect(() => { if (onReadSuspendedChange) onReadSuspendedChange(suspended, command.readReason); }, [suspended, command.readReason, onReadSuspendedChange]);
     const enabled = !suspended, serial = revision + ':' + version;
     const [visited, setVisited] = React.useState({});
     React.useEffect(() => { if (enabled && ['backups', 'logs', 'config'].includes(tab)) setVisited(value => ({ ...value, [tab]: true })); }, [enabled, tab]);
     return <div className="sm-maintenance-workspace sm-maintenance-workspace-flush plana" data-system-maintenance="v1">
 
-      {suspended && !(command.hostBusy && !command.intent && !command.hostError && !command.storageError && !command.host)
-        ? <window.SystemRestorePanel command={command} api={api} theme={theme} onSetTheme={onSetTheme} /> : <C.Outcome command={command} />}
-      {suspended && command.hostBusy && !command.intent && <p className="sm-note" role="status">正在核对软件维护状态，还没有读取数据库。</p>}
+      {command.maintenanceRequired ? <window.SystemRestorePanel command={command} api={api} theme={theme} onSetTheme={onSetTheme} /> : <>
+        {command.hostError && <section className="sm-section sm-notice sm-tone-danger" role="alert" data-system-status-error>
+          <h3>维护状态查询失败</h3><p>{command.hostError.message}</p>
+          <div className="sm-actions"><C.Button icon="refresh-cw" busy={command.hostBusy} onClick={command.inspectHost}>重新查询</C.Button>
+            <a href="/workbench?view=dashboard">返回工作台</a></div>
+        </section>}
+        {!command.hostError && command.host && !command.host.operations_available && <div className="sm-actions">
+          <C.Button icon="refresh-cw" busy={command.hostBusy} onClick={command.inspectHost}>重新查询维护状态</C.Button>
+        </div>}
+        <C.Outcome command={command} />
+      </>}
+      {!command.maintenanceRequired && command.hostBusy && <p className="sm-note" role="status">正在查询维护状态…</p>}
       {tab === 'overview' && !suspended && children}
       {['backups', 'logs'].map(kind => visited[kind] || enabled && tab === kind ? <div key={kind} hidden={!enabled || tab !== kind}>
         <window.SystemMaintenanceRecords api={api} kind={kind} pageSize={pageSize} onPageSize={onPageSize} revision={serial} command={command} active={enabled && tab === kind}

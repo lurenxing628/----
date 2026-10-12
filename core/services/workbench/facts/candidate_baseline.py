@@ -3,6 +3,7 @@
 import base64
 import binascii
 from collections import defaultdict
+from types import SimpleNamespace
 from typing import NoReturn
 
 from core.infrastructure.snapshot_connection import ddl_columns
@@ -20,6 +21,7 @@ from .candidate_tasks import _resource
 from .candidate_values import bounded_size, gap, stored_json
 from .execution_projection import project_execution, report_dto
 from .run_input_codec import restore_execution_projections
+from .zero_duration import point_event_dto
 
 
 def invalid_baseline() -> NoReturn:
@@ -29,8 +31,12 @@ def invalid_baseline() -> NoReturn:
 class AdmissionBaseline:
     """Cross-check redundant captures against the SHA-256-checked archived facts."""
 
-    def __init__(self, capture, facts, disposition, accepted_at):
+    def __init__(self, capture, facts, disposition, accepted_at, *, point_work=None, origins=None, origin_issue=None):
         self.facts = facts
+        self._point_work_loader = point_work
+        self._point_work = None
+        self._origins = origins or {}
+        self._origin_issue = origin_issue or {"code": "adoption_not_recorded", "message": "此正式版本未保存可核对的采用来源。"}
         archive = facts.archive
         self.sources = self._required(archive, "WorkbenchPlanSourceRefs")
         self.tasks = _index(self._required(archive, "WorkbenchTaskRefs"), "ref")
@@ -217,12 +223,38 @@ class AdmissionBaseline:
     def _segment(self, row):
         gaps = []
         start, end = _baseline_interval(row, gaps)
-        return {"row_ref": row["row_ref"], "start": start, "end": end,
+        point = self._point(row, start, end, gaps) if start is not None and start == end else {}
+        origin = self._origins.get(row["op_id"], {})
+        source = row.get("source", origin.get("source"))
+        gaps.extend(origin.get("data_gaps", []))
+        if source not in ("internal", "external"):
+            source = None
+            if not any(row["field"] == "source" for row in gaps):
+                gaps.append({"field": "source", **self._origin_issue})
+        if not origin and source != "internal":
+            gaps.append({"field": "supplier", **self._origin_issue})
+        return {"row_ref": row["row_ref"], "start": start, "end": end, **point,
                 "elapsed_hours": elapsed_hours(start, end) if start is not None and end is not None else None,
-                "interval_comparable": start is not None and end is not None and local_time(start) < local_time(end),
+                "interval_comparable": bool(point) or start is not None and end is not None and local_time(start) < local_time(end),
                 "machine": _resource(self.facts, "machine", row.get("machine_id"), gaps),
                 "operator": _resource(self.facts, "operator", row.get("operator_id"), gaps),
-                "supplier": None, "effective_processing_hours": None, "data_gaps": gaps}
+                "source": source, "supplier": origin.get("supplier"), "effective_processing_hours": None, "data_gaps": gaps}
+
+    def _point(self, row, start, end, gaps):
+        if self._point_work is None:
+            try:
+                self._point_work = self._point_work_loader() if self._point_work_loader is not None else {}
+            except WorkbenchCommandRejected as exc:
+                if exc.code != "point_evidence_unproven":
+                    raise
+                self._point_work = {}
+        work = self._point_work.get(row["op_id"])
+        original = SimpleNamespace(op_id=row["op_id"], source="internal", machine_id=row.get("machine_id"),
+                                   operator_id=row.get("operator_id"), start_time=local_time(start), end_time=local_time(end))
+        if work is None or not work["witness"].matches(original):
+            gaps.append(gap("point_evidence", "source_missing" if work is None else "invalid_stored_value"))
+            return {}
+        return point_event_dto(original.start_time, original.end_time)
 
 
 def _blob(value):

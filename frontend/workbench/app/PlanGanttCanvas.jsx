@@ -1,13 +1,6 @@
 (function () {
   'use strict';
-  const M = window.PlanGanttModel;
-  function palette(node) {
-    const style = getComputedStyle(node), value = key => style.getPropertyValue(key).trim();
-    const colors = {};
-    for (const tone of ['primary', 'critical', 'success', 'plan']) colors[tone] = {
-      fill: value('--wb-gantt-' + tone + '-fill'), edge: value('--wb-gantt-' + tone + '-edge') };
-    colors.gold = value('--wb-gantt-gold'); colors.text = value('--ui-text'); colors.font = value('--wb-gantt-font') || '11px sans-serif'; return colors;
-  }
+  const M = window.PlanGanttModel, V = window.GanttPresentation;
   function usePaint(ref, paint, deps) {
     React.useLayoutEffect(() => {
       const draw = () => {
@@ -15,7 +8,7 @@
         const { width, height } = node.getBoundingClientRect();
         node.width = Math.max(1, Math.round(width * scale)); node.height = Math.max(1, Math.round(height * scale));
         const ctx = node.getContext('2d'); ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        paint(ctx, width, height, palette(node));
+        paint(ctx, width, height, V.palette(node));
       };
       draw();
       const theme = new MutationObserver(draw); theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
@@ -28,7 +21,7 @@
       };
     }, deps);
   }
-  function DenseRow({ row, model, width, viewport, left, printing, printNumbers, selectedRef, risks, onSelect, onHover }) {
+  function DenseRow({ row, model, width, viewport, left, printing, printNumbers, selectedRef, selectedBefore, active, risks, onSelect, onHover }) {
     const ref = React.useRef(null), scale = width / (model.end - model.start);
     const G = window.PointGanttModel;
     const items = row.point ? G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale)
@@ -38,32 +31,32 @@
       for (const item of items) {
         const x = (item.start - model.start) * paintScale - left, barWidth = (item.end - item.start) * paintScale;
         const inset = Math.min(2, barWidth * 0.1), painted = Math.max(0, barWidth - inset * 2);
-        const tone = row.before ? 'plan' : M.tone(item.task, model.conflicts, risks), y = row.before ? 9 : 7, height = row.before ? 8 : 40;
+        const tone = row.before ? 'plan' : M.tone(item.task, risks), y = row.before ? 9 : 7, height = row.before ? 8 : 40;
+        const chosen = item.task.task_ref === selectedRef && !!row.before === !!selectedBefore;
+        const related = !row.before && active.related.has(item.task.task_ref), critical = !row.before && active.critical.has(item.task.task_ref);
+        const edge = chosen || related || critical ? colors.gold : colors[tone].edge, lineWidth = chosen || critical ? 2 : related ? 1.5 : 1;
         if (row.point) {
-          G.paint(ctx, x, row.before ? 13 : 27, colors[tone].fill, item.task.task_ref === selectedRef ? colors.gold : colors[tone].edge, item.task.task_ref === selectedRef);
+          ctx.save(); if (active.target && !row.before && !related && !critical) ctx.globalAlpha = .66;
+          G.paint(ctx, x, row.before ? 13 : 27, colors[tone].fill, edge, chosen, lineWidth); ctx.restore();
           continue;
         }
-        ctx.fillStyle = colors[tone].fill; ctx.fillRect(x + inset, y, painted, height);
-        ctx.strokeStyle = item.task.task_ref === selectedRef ? colors.gold : colors[tone].edge;
-        ctx.lineWidth = Math.min(item.task.task_ref === selectedRef ? 2 : 1, painted);
-        ctx.setLineDash(row.before || model.conflicts.has(item.task.task_ref) ? [3, 2] : []);
-        if (painted > 0) ctx.strokeRect(x + inset + ctx.lineWidth / 2, y + ctx.lineWidth / 2, painted - ctx.lineWidth, height - ctx.lineWidth);
-        if (!row.before && painted > (printing ? 20 : 60)) {
-          ctx.save(); ctx.beginPath(); ctx.rect(Math.max(0, x + inset + 3), y, Math.max(0, Math.min(w, x + barWidth - inset) - Math.max(0, x + inset + 3) - 3), height); ctx.clip();
-          ctx.fillStyle = colors.text; ctx.font = colors.font;
-          ctx.fillText(printing ? printNumbers.get(item.task.task_ref) : item.task.batch_id, Math.max(3, x + inset + 4), y + 16);
-          if (!printing && painted > 100) ctx.fillText(item.task.sequence + ' ' + item.task.process_label + ' · ' + M.pieceLabel(item.task), Math.max(3, x + inset + 4), y + 31);
-          ctx.restore();
-        }
+        const task = item.task, lines = row.before ? null : printing ? { primary: String(printNumbers.get(task.task_ref)), secondary: '' }
+          : V.taskLines({ sequence: task.sequence, process: task.process_label, batch: task.batch_id, piece: M.pieceLabel(task),
+            resource: M.resourceLabel(task, 'machine', model.labels) + ' / ' + M.resourceLabel(task, 'operator', model.labels) }, model.mode, painted);
+        V.paintBar(ctx, { x: x + inset, y, width: painted, height, fill: colors[tone].fill, edge, lineWidth, dashed: row.before,
+          texture: !row.before && model.conflicts.has(task.task_ref) ? 'conflict' : null, textureColor: colors.overlap.edge,
+          textColor: colors[tone].ink, font: colors.font, lines, viewport: w,
+          critical, criticalColor: colors.gold, muted: !row.before && !!active.target && !related && !critical,
+          onTime: !row.before && risks.get(task.batch_id) === 'on_time', statusColor: colors.success.edge });
       }
-    }, [items, selectedRef, width, left, viewport, printing, risks]);
+    }, [items, selectedRef, selectedBefore, active, width, left, viewport, printing, risks]);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(), at = model.start + (event.clientX - box.left + left) / scale;
       if (row.point) return G.hit(row.items, event.clientX - box.left, event.clientY - box.top, model, width, left, row.before ? 13 : 27);
       return M.visibleItems(row.items, at, at + 0.001)[0];
     }
     return <canvas ref={ref} className="plan-row-canvas" data-plan-dense-row data-point-row={row.point || undefined} role="button" tabIndex={0}
-      style={{ left, width: viewport }} aria-label={row.label + '，' + row.items.length + ' 道' + (row.before ? '初始计划' : '安排')}
+      style={{ left, width: viewport }} aria-label={row.label + '，' + row.items.length + ' 道' + (row.before ? '原安排' : '安排')}
       onMouseMove={event => { const item = hit(event); onHover(item ? { task: item.task, before: row.before, x: event.clientX, y: event.clientY } : null); }}
       onMouseLeave={() => onHover(null)} onClick={event => { const item = hit(event); if (item) onSelect(item.task, row.before); }}
       onKeyDown={event => {

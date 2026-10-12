@@ -48,9 +48,10 @@
         operation_identity: 'permanent_operation_reference', comparison: 'candidate_minus_admission_official', current_entities_consulted: false, recommendation: null })
       && equal(d.capabilities, { view: true, adopt: false, edit_draft: false, report_actual: false }));
     const b = d.baseline;
-    check(shape(b, ['baseline_ref', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])
+    check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])
       && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count)
-      && typeof b.comparison_available === 'boolean' && (b.available ? ref(b.baseline_ref) : b.baseline_ref === null && b.captured_task_count === 0)
+      && A.version(b.version) && time(b.captured_at)
+      && typeof b.comparison_available === 'boolean' && (b.available ? ref(b.baseline_ref) && b.version !== null : b.baseline_ref === null && b.version === null && b.captured_task_count === 0)
       && (b.comparison_available ? b.reason === null : reason(b.reason)));
     d.batches.forEach(row => {
       check(shape(row, ['batch_ref', 'batch_id', 'part_label', 'before', 'after', 'delay_delta_hours']) && text(row.batch_id));
@@ -66,7 +67,9 @@
     const o = d.operations, lists = ['operation_refs', 'changed_operation_refs', 'machine_changed_operation_refs', 'unknown_operation_refs', 'machine_unknown_operation_refs'];
     check(shape(o, [...lists, 'issues']) && lists.every(key => refs(o[key])) && Array.isArray(o.issues));
     const all = new Set(o.operation_refs);
-    check(lists.slice(1).every(key => o[key].every(value => all.has(value))) && new Set(o.issues.map(row => row.operation_ref)).size === o.issues.length);
+    const issueRefs = new Set(o.issues.map(row => row.operation_ref));
+    check(lists.slice(1).every(key => o[key].every(value => all.has(value))) && issueRefs.size === o.issues.length
+      && o.unknown_operation_refs.every(value => issueRefs.has(value)));
     o.issues.forEach(row => check(shape(row, ['operation_ref', 'reasons']) && all.has(row.operation_ref) && Array.isArray(row.reasons) && row.reasons.length && row.reasons.every(reason)));
     [['changed_operation_count', 'changed_operation_refs', 'unknown_operation_refs'], ['machine_change_count', 'machine_changed_operation_refs', 'machine_unknown_operation_refs']].forEach(([key, changed, unknown]) => {
       metric(d.metrics[key], key); check(d.metrics[key].known_subtotal === o[changed].length && d.metrics[key].unknown_count === o[unknown].length

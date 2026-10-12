@@ -55,8 +55,7 @@
       {% if operation %}<p class="muted">更新时间 {{ operation.updated_at.replace('T', ' ') }}</p>{% endif %}
       {% if operation and host.request_key != operation.request_key %}
       <p class="muted">当前显示历史维护记录；软件仍处于维护停止状态。</p>{% endif %}
-      <div class="actions"><form action="/workbench" method="get"><input type="hidden" name="reference" value="{{ reference }}"><input type="hidden" name="kind" value="{{ kind }}"><button type="submit" name="download" value="diagnostic">导出维护诊断</button></form><a href="/workbench?view=system">返回工作台</a></div>
-      <p class="muted">点「返回工作台」会重新查询维护状态；需要重启或人工核对时仍然停在维护页。</p>
+      <div class="actions"><form action="/workbench" method="get"><input type="hidden" name="reference" value="{{ reference }}"><input type="hidden" name="kind" value="{{ kind }}"><button type="submit" name="download" value="diagnostic">导出维护诊断</button></form><a href="/workbench?view=dashboard">重新检查启动状态</a></div>
     </section>
     <section aria-label="按编号查询"><h2>查询维护结果</h2><form action="/workbench" method="get">
       <fieldset class="choice-gap"><legend>编号类型</legend><label><input type="radio" name="kind" value="request"{% if kind == 'request' %} checked{% endif %}>操作编号</label><label><input type="radio" name="kind" value="job"{% if kind == 'job' %} checked{% endif %}>维护记录编号</label></fieldset>

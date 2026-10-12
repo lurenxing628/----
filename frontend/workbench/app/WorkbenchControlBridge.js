@@ -31,6 +31,7 @@
   function kind(input) {
     if (!input || !available(input)) return null;
     if (input.tagName === 'SELECT' && !input.multiple && input.size <= 1) return 'select';
+    if (input.tagName === 'INPUT' && input.type === 'text' && input.dataset.pickerType === 'factory-local') return 'factory-local';
     return input.tagName === 'INPUT' && pickerTypes.includes(input.type) ? input.type : null;
   }
   function rows(input) {
