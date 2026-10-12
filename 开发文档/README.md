@@ -32,6 +32,14 @@ py -3.8 -m venv .venv
 - 若未先在项目 `.venv` 中安装 `requirements.txt`、`requirements-dev.txt` 和 `requirements-optimizer-lite-win7.txt`，`.pre-commit-config.yaml` 中的 `ruff`、提交说明检查、推送前快门禁、图分析增强以及本地启动都可能无法正常运行。
 - 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它。CI/托管环境会重跑完整质量门禁，不过提交标题检查和“暂存区有没有混入本地运行产物”主要靠本地 hook，绕过后不能当作已经通过本地提交检查。
 
+### Codex hook 授权
+
+项目的 `.codex/hooks.json` 将用户输入和命令检查接入同一套授权规则。用户明确说“把全部改动强推到 main”后，本仓库、当前会话内的 `origin/main` 强推直接执行；普通后续消息保留授权。“不要强推”“撤销授权”或“先只读检查”立即收回相应授权。强推还会核对实际推送地址，远端地址或目标分支变化后需要对应的新授权。
+
+其他受保护操作可用明确命令授权，例如“授权执行 `git reset --hard HEAD`”；放行只覆盖这条命令。引用、示例、工具输出、助手文字以及关于强推的提问不会生成授权。授权记录位于当前 worktree 的 Git 目录下 `codex-hook-authorizations/<session_id>.json`，属于本机会话状态。首次部署到已有会话时，hook 核对会话与仓库后读取已有真实用户消息，沿用已给出的授权和撤销；记录核对失败时保留拦截并报告具体原因。
+
+hook 字段与返回协议见 [OpenAI Hooks 文档](https://learn.chatgpt.com/docs/hooks)。`.codex/hooks.json` 和 Python hook 源码随仓库维护，本机 `.codex/config.toml` 保持本地配置。相关行为回归为 `tests/app_runtime/test_codex_hook_authorization.py`，已登记到运行时职责组。
+
 ## 质量治理入口
 
 ### 日常开发快门禁

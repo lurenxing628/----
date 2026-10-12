@@ -235,7 +235,11 @@ audit/**/_tmp_review/
 .iris/
 
 # Codex 本地工具配置、hook 脚本与浏览器快照（本机工作区产物，不纳入版本控制）
-.codex/
+.codex/*
+!.codex/hooks.json
+!.codex/hooks/
+.codex/hooks/*
+!.codex/hooks/*.py
 .playwright-cli/
 output/
 reports/quality_gate_long_cache_13_rounds_speedup.html

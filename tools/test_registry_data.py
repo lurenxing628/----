@@ -106,6 +106,7 @@ _WORKBENCH_TESTS = (
 
 _RUNTIME_TESTS = (
     *QUALITY_GATE_STARTUP_REGRESSION_ARGS,
+    'tests/app_runtime/test_codex_hook_authorization.py',
     'tests/web_pages/test_system_health_route.py',
     'tests/web_pages/test_system_runtime_logs_page.py',
 )
@@ -200,9 +201,11 @@ REQUIRED_REGRESSION_GROUPS = (
         env_keys=('WORKBENCH_NODE', 'NODE_PATH', 'NODE_OPTIONS'),
     ),
     _group(
-        'runtime', 'Application startup, runtime identity, and system pages', _RUNTIME_TESTS,
+        'runtime', 'Application startup, runtime identity, system pages, and host hooks', _RUNTIME_TESTS,
         (
             'tests/app_runtime/**/*.py',
+            '.codex/hooks/**/*.py',
+            '.codex/hooks.json',
             'tests/web_pages/**/*.py',
             'web/**/*.py',
             'plugins/**/*.py',
