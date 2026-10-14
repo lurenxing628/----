@@ -14,6 +14,7 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("logs/aps_db_path.txt", "APS 本地运行时数据库路径，换机器后无意义"),
     ("logs/aps_runtime.json", "APS 本地运行时状态，换机器后无意义"),
     ("logs/aps_runtime.lock", "APS 本地运行锁文件，提交后会干扰别人"),
+    ("*.lock.guard", "APS 本地运行锁保护文件，换机器后无意义"),
     ("logs/aps_secret_key.txt", "APS 本地密钥文件，不能提交"),
     ("launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),
     ("*/launcher.log", "APS 本地启动日志可能包含本机路径或错误明细，不能提交"),

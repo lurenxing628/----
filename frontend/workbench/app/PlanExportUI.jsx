@@ -37,7 +37,7 @@
         <Button onClick={cancel}>{busy ? '取消导出' : '取消'}</Button><Button transfer="export" className="btn primary" busy={busy} onClick={download}>下载 {format.toUpperCase()}</Button>
       </>}><div className="modal-b plan-export-summary">
         <window.PlanSegmentUI value={format} options={[["csv", "CSV"], ["xlsx", "XLSX"]]} label="计划导出格式" disabled={busy} onChange={setFormat} />
-        <p><strong>{result.data.plan.display_name}</strong></p><p>导出时间范围：{M.timeLabel(result.data.time_scope.range_start)} 至 {M.timeLabel(result.data.time_scope.range_end)}（不含结束时刻）</p>
+        <p><strong>{result.data.plan.display_name}</strong></p><p>{M.scopeCaption(result.data)}</p>
         <p>共 {result.data.task_count} 道工序安排，按当前读取的计划内容导出。</p>
         {query.trim() && <p className="plan-danger">搜索“{query}”找到 {matched} 道安排；本次导出包含所选时间范围的全部 {result.data.task_count} 道安排。</p>}
         <ErrorBox error={error} />

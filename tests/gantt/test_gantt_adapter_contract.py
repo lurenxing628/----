@@ -155,6 +155,7 @@ try {
   const target=navigated[0].context;
   for (const key of ['plan_ref','range_start','range_end','projection_tab','projection_page']) assert.equal(target[key],initial[key],key);
   assert.equal(target.resource_kind,'operator'); assert.equal(target.selected_task_ref,resourceData.tasks[0].task_ref);
+  assert.equal(target.selected_task_side,'current');
   assert.equal(target.query,'','The resource opens by saved task identity rather than the source search text');
   const targetGantt=h.render(h.runtime.PlanGantt,{data:resourceData,asOf:resourceResult.meta.as_of,
     query:target.query,initialMode:target.resource_kind,selected:{task:resourceData.tasks[0],before:false,locate:true},onSelect:()=>{},onQuery:()=>{}});
@@ -168,6 +169,63 @@ try {
   assert.equal(JSON.stringify(resourceData),resourceBefore);
 } finally {
   h.runtime.APSResourceSession.useQuery=oldQuery; h.runtime.WorkbenchPageContext.useSnapshot=oldSnapshot;
+}
+// A saved original task retains its own permanent identity and side on return.
+const returnData=h.fixture(), originalTask={...returnData.tasks[0],plan_ref:h.reference(99),task_ref:h.reference(300),
+  start:'2026-05-11T07:00:00',end:'2026-05-11T08:00:00'};
+Object.assign(returnData.plan,{display_name:'Formal plan 5',is_current_official:true,completeness:'complete',capabilities:{view:true,export:true},blocked_reasons:[]});
+returnData.projections.baseline={state:'available',baseline_plan:{...returnData.plan,plan_ref:originalTask.plan_ref,version:4},
+  items:[{operation_ref:originalTask.operation_ref,change:'changed',before_in_scope:true,after_in_scope:true,before:originalTask,after:returnData.tasks[0]}]};
+const returnResult={data:returnData,meta:{as_of:'2026-05-11T12:00:00',snapshot_ref:'return-read'},warnings:[]},
+  returnedContexts=[], restoreEffects=[], oldEffect=h.runtime.React.useEffect;
+try {
+  h.runtime.APSResourceSession.useQuery=(_read,dependencies)=>({loading:false,error:null,reload:()=>{},
+    result:dependencies.length===3?returnResult:{data:{plans:[returnData.plan],page:{has_more:false}},warnings:[]}});
+  h.runtime.WorkbenchPageContext.useSnapshot=value=>returnedContexts.push(JSON.parse(JSON.stringify(value)));
+  const props={view:'gantt',adapter:{catalog:async()=>{},workspace:async()=>{},export:async()=>{}},
+    initialContext:{plan_ref:returnData.plan.plan_ref},onNavigate:()=>{}};
+  const originalView=h.gantt(returnData,{states:{PlanGantt:{1:true}}});
+  originalView.nodes.find(node=>node.type==='button'&&node.props['data-plan-task']===originalTask.task_ref).props.onClick();
+  assert.equal(originalView.selections[0].task,originalTask); assert.equal(originalView.selections[0].before,true);
+  h.render(h.runtime.PlanWorkspace,props,{WorkspaceSession:{7:{task:originalTask,before:true,result:returnResult}},PlanGantt:{1:true}});
+  const saved=returnedContexts.pop();
+  assert.equal(saved.selected_task_ref,originalTask.task_ref); assert.equal(saved.selected_task_side,'before');
+  h.runtime.React.useEffect=(callback,dependencies)=>{if(dependencies&&dependencies.length===4&&dependencies[1]===returnResult)restoreEffects.push(callback);};
+  const restore=context=>{
+    restoreEffects.length=0;
+    const page=h.render(h.runtime.PlanWorkspace,{...props,initialContext:context});
+    for(const effect of restoreEffects)effect();
+    return {page,updates:h.updates(),selected:h.updates().find(item=>item.name==='WorkspaceSession'&&item.index===7)};
+  };
+  const restored=restore(saved);
+  assert(h.walk(restored.page).some(node=>node.props['data-plan-task']===originalTask.task_ref&&node.props['data-before']), 'The original lane is visible before the saved selection is applied');
+  assert.equal(restored.selected.value.task,originalTask); assert.equal(restored.selected.value.before,true); assert.equal(restored.selected.value.locate,true);
+  const selectedPage=h.render(h.runtime.PlanWorkspace,{...props,initialContext:saved},{WorkspaceSession:{7:restored.selected.value}});
+  assert(h.walk(selectedPage).some(node=>node.props['data-plan-task']===originalTask.task_ref&&node.props['aria-pressed']===true));
+  assert(h.walk(selectedPage).some(node=>node.props.className==='plan-muted plan-inspector-kind'&&h.text(node)==='原安排'));
+  const cleared=returnedContexts[returnedContexts.length-1];
+  assert.equal(cleared.selected_task_ref,originalTask.task_ref); assert.equal(cleared.selected_task_side,'before');
+  returnData.projections.baseline.items[0].before_in_scope=false;
+  const outside=restore(saved);
+  assert.equal(outside.selected.value.task,originalTask); assert.equal(outside.selected.value.before,true);
+  assert.equal(outside.selected.value.locate,undefined,'An original task outside the read scope restores detail without automatic location');
+  const current=restore({...saved,selected_task_ref:returnData.tasks[0].task_ref,selected_task_side:undefined});
+  assert.equal(current.selected.value.task,returnData.tasks[0]); assert.equal(current.selected.value.before,false,'Older contexts restore the current side');
+  returnData.projections.baseline.items=[];
+  const missing=restore(saved);
+  assert(!missing.selected); assert.equal(missing.updates.find(item=>item.name==='WorkspaceSession'&&item.index===4).value.message,'要恢复的原安排已不存在。');
+  const emptyContext=returnedContexts[returnedContexts.length-1];
+  assert(!Object.hasOwn(emptyContext,'selected_task_ref')&&!Object.hasOwn(emptyContext,'selected_task_side'));
+  returnData.plan_span.end_inclusive=true;
+  const caption=h.runtime.PlanGanttModel.scopeCaption(returnData);
+  assert(caption.includes('包含末端零工时工序'));
+  Object.assign(returnData.scope,{range_start:returnData.time_scope.range_start,range_end:returnData.time_scope.range_end});
+  assert(h.runtime.PlanGanttModel.scopeCaption(returnData).includes('不含结束时刻'));
+  returnData.scope.range_start=null; returnData.scope.range_end=null; returnData.plan_span.start=returnData.plan_span.end;
+  assert.equal(h.runtime.PlanGanttModel.scopeCaption(returnData),'计划时刻：'+h.runtime.PlanGanttModel.timeLabel(returnData.plan_span.end));
+} finally {
+  h.runtime.APSResourceSession.useQuery=oldQuery; h.runtime.WorkbenchPageContext.useSnapshot=oldSnapshot;
+  h.runtime.React.useEffect=oldEffect;
 }
 return true;
 """)

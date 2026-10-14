@@ -198,23 +198,21 @@ def _remote_refs_from_stdin(stream: Optional[TextIO] = None) -> List[str]:
     return sorted(dict.fromkeys(ref.remote_ref for ref in _pre_push_refs_from_stdin(stream) if ref.remote_ref))
 
 
-def _pre_commit_input_from_env(env: Optional[Dict[str, str]] = None) -> PrePushInput:
-    source = env if env is not None else os.environ
-    from_ref = str(source.get("PRE_COMMIT_FROM_REF") or "").strip()
-    to_ref = str(source.get("PRE_COMMIT_TO_REF") or "").strip()
-    local_ref = str(source.get("PRE_COMMIT_LOCAL_BRANCH") or "").strip()
-    remote_ref = str(source.get("PRE_COMMIT_REMOTE_BRANCH") or "").strip()
-    if not to_ref:
-        return PrePushInput([], False)
-    if to_ref == ZERO_SHA:
-        return PrePushInput([], True)
-    return PrePushInput([PrePushRef(local_ref, to_ref, remote_ref, from_ref)], True)
-
-
 def _pre_push_input_for_hook(stream: Optional[TextIO] = None) -> PrePushInput:
-    env_input = _pre_commit_input_from_env()
-    if env_input.saw_push_input:
-        return env_input
+    input_file = os.environ.get("APS_PRE_PUSH_INPUT_FILE")
+    if input_file:
+        try:
+            with open(input_file, encoding="utf-8") as handle:
+                return _pre_push_input_from_stdin(handle)
+        except OSError as exc:
+            raise RuntimeError(f"读取本次 Git pre-push 原始输入失败：{exc}") from exc
+    if any(os.environ.get(key) for key in (
+        "PRE_COMMIT_REMOTE_NAME", "PRE_COMMIT_REMOTE_URL", "PRE_COMMIT_REMOTE_BRANCH",
+        "PRE_COMMIT_LOCAL_BRANCH", "PRE_COMMIT_FROM_REF", "PRE_COMMIT_TO_REF",
+    )):
+        raise RuntimeError(
+            "pre-push 缺少完整 Git 原始输入。请用项目 .venv 的 Python 运行 tools/install_git_hooks.py 更新 hook。"
+        )
     return _pre_push_input_from_stdin(stream)
 
 
@@ -241,16 +239,6 @@ def _daily_scope_for_refs(refs: Sequence[PrePushRef], *, remote_name: str) -> Di
     if not refs:
         scope = daily_gate.build_daily_gate_scope()
         return daily_gate.daily_gate_scope_payload(scope)
-    if len(refs) == 1:
-        ref = refs[0]
-        scope = daily_gate.build_daily_gate_scope(
-            pre_push_from_ref=ref.remote_sha,
-            pre_push_to_ref=ref.local_sha,
-            pre_push_remote_name=remote_name,
-            pre_push_remote_ref=ref.remote_ref,
-        )
-        return daily_gate.daily_gate_scope_payload(scope)
-
     changed_paths: List[str] = []
     reasons: List[str] = []
     scope_known = True
@@ -266,18 +254,14 @@ def _daily_scope_for_refs(refs: Sequence[PrePushRef], *, remote_name: str) -> Di
             reasons.append(changed.reason)
         if not changed.scope_known:
             scope_known = False
-    if scope_known:
-        scope = daily_gate.build_daily_gate_scope(
-            pre_push_changed_paths=daily_gate._dedupe_paths(changed_paths),
-            pre_push_scope_reason="multi-ref pre-push: " + "; ".join(sorted(dict.fromkeys(reasons))),
-        )
-    else:
-        scope = daily_gate.build_daily_gate_scope(
-            pre_push_from_ref="",
-            pre_push_to_ref="missing-multi-ref-range",
-            pre_push_remote_name=remote_name,
-            pre_push_remote_ref=",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs))),
-        )
+    changed = daily_gate.ChangedPathSet(
+        sorted(dict.fromkeys(changed_paths)),
+        scope_known,
+        "; ".join(sorted(dict.fromkeys(reasons))),
+    )
+    # 推送范围属于已提交目标，当前 checkout 的 dirty 内容不进入目标范围。
+    impact = daily_gate._build_impact_plan(changed)
+    scope = daily_gate.DailyGateScope(changed, impact, daily_gate._build_ruff_plan(changed, impact))
     return daily_gate.daily_gate_scope_payload(scope)
 
 
@@ -288,14 +272,37 @@ def _daily_gate_command(executable: str, *, scope_file: str = "") -> List[str]:
     return command
 
 
+def _run_target_daily_gate(executable: str, refs: Sequence[PrePushRef], *, remote_name: str) -> int:
+    local_sha = refs[0].local_sha
+    targets = ", ".join(sorted(dict.fromkeys(ref.remote_ref or ref.local_ref for ref in refs)))
+    with tempfile.TemporaryDirectory(prefix="aps-pre-push-target-") as target_dir:
+        worktree = Path(target_dir) / "worktree"
+        scope_file = Path(target_dir) / "scope.json"
+        scope_file.write_text(
+            json.dumps(_daily_scope_for_refs(refs, remote_name=remote_name), ensure_ascii=False), encoding="utf-8",
+        )
+        _run_git(["worktree", "add", "--detach", str(worktree), local_sha])
+        try:
+            print(f"[git-hook] daily gate target: {targets} ({local_sha})", flush=True)
+            returncode = int(subprocess.call(
+                _daily_gate_command(executable, scope_file=str(scope_file)),
+                cwd=str(worktree), env=_quality_gate_env(),
+            ))
+            if returncode:
+                print(f"[git-hook] daily gate failed: {targets} ({local_sha}), exit={returncode}", file=sys.stderr)
+            return returncode
+        finally:
+            _run_git(["worktree", "remove", "--force", str(worktree)])
+
+
 def run_quality_gate(args: argparse.Namespace) -> int:
     try:
         executable = _project_python_executable()
+        pre_push_input = _pre_push_input_for_hook()
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
     remote_name = str(getattr(args, "remote_name", "") or os.environ.get("PRE_COMMIT_REMOTE_NAME") or "")
-    pre_push_input = _pre_push_input_for_hook()
     refs = pre_push_input.refs
     if pre_push_input.saw_push_input and not refs:
         print("[git-hook-cache] pre-push daily gate: no local ref to validate, skipped", flush=True)
@@ -322,12 +329,14 @@ def run_quality_gate(args: argparse.Namespace) -> int:
         print(f"[git-hook-cache] pre-push daily gate cache unavailable: {exc}", flush=True)
 
     if refs:
-        # Keep argv bounded on Windows even when the reviewed ref contains thousands of paths.
-        with tempfile.TemporaryDirectory(prefix="aps-pre-push-scope-") as scope_dir:
-            scope_file = Path(scope_dir) / "scope.json"
-            scope_file.write_text(json.dumps(scope_payload, ensure_ascii=False), encoding="utf-8")
-            command = _daily_gate_command(executable, scope_file=str(scope_file))
-            returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
+        refs_by_sha: Dict[str, List[PrePushRef]] = {}
+        for ref in refs:
+            refs_by_sha.setdefault(ref.local_sha, []).append(ref)
+        returncode = 0
+        for local_sha in sorted(refs_by_sha):
+            returncode = _run_target_daily_gate(executable, refs_by_sha[local_sha], remote_name=remote_name)
+            if returncode:
+                return returncode
     else:
         command = _daily_gate_command(executable)
         returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
@@ -470,8 +479,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    if argv is None:
-        _ensure_project_python_runtime()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args))

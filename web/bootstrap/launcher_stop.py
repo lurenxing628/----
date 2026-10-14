@@ -52,7 +52,11 @@ from .launcher_processes import (
     set_process_log_context,
 )
 from .launcher_shutdown import HOST_STOP_PATH
-from .launcher_stop_cleanup import delete_runtime_contract_files_result_for_stop
+from .launcher_stop_cleanup import (
+    delete_runtime_contract_files_result_for_stop,
+    read_initial_runtime_claims,
+    release_initial_runtime_locks,
+)
 from .launcher_stop_process import runtime_process_inactive
 from .launcher_stop_state import _runtime_state_name, _runtime_stop_is_complete
 
@@ -395,14 +399,20 @@ def _runtime_process_inactive(pid: int, pid_match_hint: Optional[bool] = None) -
     return runtime_process_inactive(pid, pid_match_hint, pid_state_func=_pid_state)
 
 
-def _finalize_stopped_runtime(status: Dict[str, Any], runtime_dir_abs: str, *, stop_aps_chrome: bool, logger) -> int:
+def _finalize_stopped_runtime(
+    status: Dict[str, Any], runtime_dir_abs: str, *, stop_aps_chrome: bool, logger,
+    expected_lock: Optional[Dict[str, Any]], expected_contract: Optional[Dict[str, Any]],
+    expected_database_lock: Optional[Dict[str, Any]],
+) -> int:
     state_dir = str(status.get("state_dir") or "")
-    profile_dir = str(status.get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
+    profile_dir = str((expected_contract or {}).get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
     chrome_result = _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger, state_dir=state_dir)
     if not chrome_result.ok:
         return 1
     cleanup_result = delete_runtime_contract_files_result_for_stop(
         state_dir,
+        expected_lock=expected_lock,
+        expected_contract=expected_contract,
         delete_runtime_contract_files=delete_runtime_contract_files,
         delete_runtime_contract_files_result=delete_runtime_contract_files_result,
         default_delete_runtime_contract_files=_DEFAULT_DELETE_RUNTIME_CONTRACT_FILES,
@@ -414,10 +424,12 @@ def _finalize_stopped_runtime(status: Dict[str, Any], runtime_dir_abs: str, *, s
             "运行时契约相关文件未清理干净，停止命令按失败处理：failures=%s",
             [failure.path for failure in cleanup_result.failures],
             state_dir=state_dir,
-            write_launch_error=True,
         )
         return 1
-    return 0
+    if status.get("db_lock_error"):
+        launcher_log_warning(logger, "原数据库运行锁归属无法确认，已保留当前锁：%s", status["db_lock_error"], state_dir=state_dir)
+        return 1
+    return 0 if release_initial_runtime_locks(state_dir, expected_lock, expected_database_lock) else 1
 
 
 def stop_runtime_from_dir(
@@ -429,14 +441,16 @@ def stop_runtime_from_dir(
 ) -> int:
     runtime_dir_abs, state_dir = resolve_runtime_stop_context(runtime_dir)
     status = _classify_runtime_state(state_dir)
+    original_status = status
+    expected = read_initial_runtime_claims(status)
     if _runtime_stop_is_complete(status):
-        return _finalize_stopped_runtime(status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger)
+        return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger, **expected)
 
     grace_deadline = time.time() + max(min(float(timeout_s), 12.0), 2.0)
     shutdown_requested = _request_runtime_shutdown(status["contract"], timeout_s=3.0) if isinstance(status.get("contract"), dict) else False
     status = _wait_for_runtime_stop(state_dir, grace_deadline)
     if _runtime_stop_is_complete(status):
-        return _finalize_stopped_runtime(status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger)
+        return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger, **expected)
 
     # 关闭请求受理或 HTTP 不再响应，都不能证明后台计算、写入和退出备份已结束。
     # 普通 stop 到期只报告未退出，不能自动强杀或清理仍被占用的运行时。

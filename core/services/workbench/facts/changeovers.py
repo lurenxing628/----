@@ -6,6 +6,19 @@ from core.services.capacity.plan_calendar_intervals import instant
 from .resource_intervals import task_interval
 
 
+def subject_arrangements(tasks, operation_refs, *, task_intervals=None):
+    """Select the compared work without adding full-sequence predecessors."""
+    selected = set(operation_refs)
+    result = []
+    for task in tasks:
+        if task.get("source") != "internal" or task.get("operation_ref") not in selected:
+            continue
+        interval = task_interval(task) if task_intervals is None else task_intervals[task["row_ref"]]
+        if interval is None or interval[0] != interval[1]:
+            result.append(task)
+    return result
+
+
 def changeover_projection(tasks, *, start=None, end=None, work_available=True,
                           machine_ref=None, next_operation_refs=None, task_intervals=None):
     arrangements = []

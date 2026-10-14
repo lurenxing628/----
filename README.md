@@ -25,7 +25,7 @@
 ```powershell
 py -3.8 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-optimizer-lite-win7.txt
-.venv\Scripts\python -m pre_commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
+.venv\Scripts\python tools/install_git_hooks.py
 ```
 
 常用启动入口：
@@ -42,7 +42,7 @@ py -3.8 -m venv .venv
 
 ### 绿色便携版交付
 
-- 联网准备机运行 `python scripts/prepare_win7_offline.py download`，把源码与 `offline/win7/` 一起带到 Win7 SP1 x64 / PowerShell 5.1 打包机；执行 `setup_win7_build.bat` 后运行 `build_win7_portable.bat`，生成 `dist/APS_Portable_Win7_x64.zip` 及 SHA-256 校验文件，无需 Inno Setup。
+- 联网准备机运行 `python scripts/prepare_win7_offline.py download`，把源码与 `offline/win7/` 一起带到 Win7 SP1 x64 / PowerShell 5.1 打包机；执行 `setup_win7_build.bat` 后运行 `build_win7_portable.bat`，生成并检查 `dist/APS_Portable_Win7_x64.zip`，无需 Inno Setup。
 - 目标机完整解压后双击 `启动_排产系统_Chrome.bat`；无需管理员安装，也无需选择本地账户或域账户。
 - 数据库、备份、日志和浏览器配置统一放在便携目录内的 `user-data/`；目录必须对当前账户可写，同一份数据一次只允许一个实例使用。
 - `aps-portable.txt` 标记阻止便携版读取旧安装的注册表目录及数据路径环境变量；旧数据通过系统备份/恢复转入，首次启动不会自动迁移旧库。
@@ -106,10 +106,10 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - 上面这些常用定向命令只适合定位问题，不能当成最终 clean proof。最终 clean proof 需要在干净工作区跑完整质量门禁，并且门禁结束后工作区仍然干净。
 - 质量门禁里的 full pytest 收口检查由 `.venv\Scripts\python tools/check_full_test_debt.py` 完成，它会对照治理台账确认没有新的未登记失败。
 - 单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只会生成本次 full-test-debt 的 current/summary 证明，不会写 long gate success cache。也就是说，它能帮你定位 full-test-debt 本身是否通过，但不会让下一次完整门禁自动复用 long gate 缓存。
-- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync` 和 `quickref_vs_routes`。
+- 长耗时门禁缓存需要显式传 `.venv\Scripts\python scripts/run_quality_gate.py --long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`quickref_vs_routes`、`import_cycles_production` 和 `import_cycles_with_tests`。
 - 要预热最终完整门禁会用到的 long gate 缓存，请跑完整门禁链：`.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。这条命令成功后，才会留下 long gate success cache。
-- CI 里也会复用 long gate cache：GitHub Actions 在完整门禁前恢复缓存，完整门禁成功后再保存缓存。缓存 key 的前缀会带上系统、Python 3.8、`requirements.txt` / `requirements-dev.txt` / `requirements-optimizer-lite-win7.txt` 依赖 hash，以及 workflow、门禁脚本、`tools/**/*.py`、pyright 配置等 tooling hash；保存 key 还会带上本次 `github.sha`，避免不同提交写到同一个精确 key。保存范围只包含已被忽略、下次复用会用到的 `evidence/QualityGate/` 运行产物，例如 `evidence/QualityGate/long_gate/`、几份 long gate proof JSON 和 `evidence/QualityGate/quickref_vs_routes.md`，不会把本机旧证据目录重新提交到仓库。pull request 只允许读取已有缓存，不会把自己的运行产物保存回主仓库缓存；只有 `push` 和手动 `workflow_dispatch` 在完整门禁成功后会保存。
-- long gate cache 不是跳过正式门禁。命中前会校验 command、fingerprint、stdout/stderr 日志、输出 proof、schema、runner/tooling hash 和 repo identity；证据缺失、损坏或 hash 不一致都会自动重跑。未登记的新失败仍然必须失败，已登记测试债务仍然必须被台账管住。
+- `.github/workflows/quality.yml` 当前只通过 `workflow_dispatch` 手动触发。GitHub Actions 在完整门禁前恢复 long gate cache，成功后按 workflow 条件保存；当前实际保存入口也是手动运行。restore/save 使用同一 `quality-long-gate-v2` key，由系统、Python 3.8、`github.ref`、既有提交号 `github.sha`、`github.run_id` 和 `github.run_attempt` 定位；restore-prefix 使用同一系统、Python 和 ref。运输范围包括 `evidence/QualityGate/long_gate/`、`evidence/QualityGate/v4/`、`evidence/QualityGate/collect_nodeids.v2.json` 及保留的旧 proof 路径。恢复后的运行产物仍由仓库内完整内容和真实环境判断是否可复用。
+- 当前 shared proof/receipt 使用 schema 4，manifest、专项 proof、receipts 和日志写入 `evidence/QualityGate/v4/`；long gate cache 使用版本 2，成功/失败结果分别为 `<entry>.v2.success.json` / `<entry>.v2.failure.json`。命中前比较完整 command、源码原字节、登记内容、公开环境、工具 metadata、runner/tooling 源内容、stdout/stderr 日志、输出 proof、schema 和 repo identity；shared v4 以 `run_id`、`command_index`、路径和完整 receipt JSON 绑定本次执行。原字节用可逆 Base64 保存，结构内容用规范 JSON 比较。缺证据或内容变化就重跑对应命令；实际失败继续失败，已登记测试债务继续受台账约束。
 - `--long-gate-cache-explain` 只打印“会不会复用”的判断，不执行门禁，也不能当作通过证明。summary counts 只告诉你本轮执行、复用、失败、planned、disabled 各有多少条，也不是通过证明。CI 日志里看到 cache hit，也只能说明旧运行产物被拿回来参与校验，不能当成这次门禁已经通过。
 - CI 和最终 clean gate 的要求不降低。最终 clean proof 仍要在干净工作区跑 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`，并且门禁结束后 `git status --short` 仍然没有输出。
 - 去掉 `--long-gate-cache` 或加 `--no-long-gate-cache` 只适合维护者强制全量重跑或排查缓存问题；对外收口、PR 和 CI 的最终证明仍按 `--require-clean-worktree --long-gate-cache` 或 `tools\git_hook_checks.py run-final-quality-gate` 口径写。
@@ -118,7 +118,7 @@ full-test-debt proof 的意思是：当前没有未登记的 full pytest 失败�
 - `pyright` 版本固定为 `==1.1.406`。
 - `.pre-commit-config.yaml` 安装后会管三件事：提交前跑 `ruff` 和本地临时文件拦截，提交说明阶段拦截过于含糊的标题，推送前 hook 会通过项目 `.venv` Python 运行 `scripts/run_daily_quality_gate.py`。如果要在本地手动跑最终完整门禁，可以用 `.venv\Scripts\python tools\git_hook_checks.py run-final-quality-gate`，它仍会调用 `scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。
 - 如果只想手动提前检查当前改动的 Python 文件，可以用 `.venv\Scripts\python tools\git_hook_checks.py run-fast-static-precheck`。它不会替代 pre-push daily gate，也不会写 long gate success cache。
-- 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它。CI/托管环境会重跑完整质量门禁，不过提交标题检查和“暂存区有没有混入本地运行产物”主要靠本地 hook，绕过后不能当作已经通过本地提交检查。
+- 推送前快门禁必须使用项目 `.venv` 里的 Python；如果项目 `.venv` 不存在，会直接失败，不会偷偷换成系统 Python，并且会强制使用 UTF-8 环境。本地 hook 不是可选检查，正常提交流程不要绕过它。手动触发的 CI/托管完整门禁使用同一质量入口；提交标题和暂存区本地产物检查由本地 hook 承担，按实际执行记录核验。
 - `pyright` 不在提交前单独快跑，它由 `scripts/run_quality_gate.py` 与 CI 作为硬门禁运行。
 - `pyrightconfig.gate.json` 覆盖主链：`app.py`、`app_new_ui.py`、`config.py`、`core/`、`data/`、`web/`。
 - `pyrightconfig.tools.json` 覆盖门禁和维护脚本；`pyright_tools_full` 使用这个文件，不能用 `pyrightconfig.json` 的全仓债务盘点口径替代。

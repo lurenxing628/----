@@ -24847,6 +24847,11 @@ function SMExport({
     operator: '人员',
     batch: '批次'
   };
+  function scopeCaption(data) {
+    if (!data) return '';
+    const includesPlanEnd = data.scope.range_start === null && data.plan_span.end_inclusive === true;
+    return includesPlanEnd && data.plan_span.start === data.plan_span.end ? `计划时刻：${timeLabel(data.plan_span.start)}` : `计划时间范围：${timeLabel(data.time_scope.range_start)} 至 ${timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
+  }
   function names(data) {
     const result = new Map();
     for (const row of data.resources || []) result.set(row.ref, row.label || row.business_code);
@@ -25088,7 +25093,8 @@ function SMExport({
     ticks,
     taskTitle,
     tone,
-    kindLabels
+    kindLabels,
+    scopeCaption
   };
 })();
 
@@ -25946,10 +25952,11 @@ function SMExport({
     onQuery,
     disabled = false,
     toolbarActions,
-    initialMode
+    initialMode,
+    initialBaseline = false
   }) {
     const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'),
-      [baseline, setBaseline] = React.useState(false),
+      [baseline, setBaseline] = React.useState(initialBaseline),
       [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false),
       {
@@ -27305,7 +27312,7 @@ function SMExport({
       label: "\u8BA1\u5212\u5BFC\u51FA\u683C\u5F0F",
       disabled: busy,
       onChange: setFormat
-    }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, result.data.plan.display_name)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u65F6\u95F4\u8303\u56F4\uFF1A", M.timeLabel(result.data.time_scope.range_start), " \u81F3 ", M.timeLabel(result.data.time_scope.range_end), "\uFF08\u4E0D\u542B\u7ED3\u675F\u65F6\u523B\uFF09"), /*#__PURE__*/React.createElement("p", null, "\u5171 ", result.data.task_count, " \u9053\u5DE5\u5E8F\u5B89\u6392\uFF0C\u6309\u5F53\u524D\u8BFB\u53D6\u7684\u8BA1\u5212\u5185\u5BB9\u5BFC\u51FA\u3002"), query.trim() && /*#__PURE__*/React.createElement("p", {
+    }), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, result.data.plan.display_name)), /*#__PURE__*/React.createElement("p", null, M.scopeCaption(result.data)), /*#__PURE__*/React.createElement("p", null, "\u5171 ", result.data.task_count, " \u9053\u5DE5\u5E8F\u5B89\u6392\uFF0C\u6309\u5F53\u524D\u8BFB\u53D6\u7684\u8BA1\u5212\u5185\u5BB9\u5BFC\u51FA\u3002"), query.trim() && /*#__PURE__*/React.createElement("p", {
       className: "plan-danger"
     }, "\u641C\u7D22\u201C", query, "\u201D\u627E\u5230 ", matched, " \u9053\u5B89\u6392\uFF1B\u672C\u6B21\u5BFC\u51FA\u5305\u542B\u6240\u9009\u65F6\u95F4\u8303\u56F4\u7684\u5168\u90E8 ", result.data.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -27378,7 +27385,10 @@ function SMExport({
     const [relatedRef, setRelatedRef] = React.useState(null);
     const [detailsOpen, setDetailsOpen] = React.useState(!!initialContext.selected_task_ref);
     const detailsToggle = React.useRef(null);
-    const initialTaskRef = React.useRef(typeof initialContext.selected_task_ref === 'string' ? initialContext.selected_task_ref : null);
+    const initialTask = React.useRef(typeof initialContext.selected_task_ref === 'string' ? {
+      ref: initialContext.selected_task_ref,
+      side: initialContext.selected_task_side === 'before' ? 'before' : 'current'
+    } : null);
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
       P.workspaceScope(selection.plan_ref, scope);
@@ -27389,19 +27399,24 @@ function SMExport({
     const chosen = selected && selected.result === result ? selected : null;
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
-      const target = relatedRef || initialTaskRef.current;
+      const target = relatedRef ? {
+        ref: relatedRef,
+        side: 'current'
+      } : initialTask.current;
       // The saved task belongs to this session's first successful read only.
-      initialTaskRef.current = null;
+      initialTask.current = null;
       if (!target) return;
-      const task = data.tasks.find(row => row.task_ref === target);
+      const before = target.side === 'before';
+      const original = before && data.projections.baseline.items.find(row => row.before && row.before.task_ref === target.ref);
+      const task = before ? original && original.before : data.tasks.find(row => row.task_ref === target.ref);
       if (task) setSelected({
         task,
-        before: false,
+        before,
         result,
-        ...(relatedRef || view === 'gantt' ? {
+        ...(relatedRef || view === 'gantt' && (!before || original.before_in_scope) ? {
           locate: true
         } : {})
-      });else setRangeError(C.failure(relatedRef ? '此计划中未找到相关工序。' : '要恢复的工序不在当前范围内。'));
+      });else setRangeError(C.failure(relatedRef ? '此计划中未找到相关工序。' : before ? '要恢复的原安排已不存在。' : '要恢复的工序不在当前范围内。'));
       if (relatedRef) setRelatedRef(null);
     }, [relatedRef, result, read.loading, read.error]);
     const remembered = {
@@ -27413,13 +27428,14 @@ function SMExport({
       projection_tab: projectionTab,
       projection_page: projectionPage
     };
-    for (const key of ['range_start', 'range_end', 'snapshot_ref', 'selected_task_ref']) delete remembered[key];
+    for (const key of ['range_start', 'range_end', 'snapshot_ref', 'selected_task_ref', 'selected_task_side']) delete remembered[key];
     Object.assign(remembered, scope, chosen ? {
-      selected_task_ref: chosen.task.task_ref
+      selected_task_ref: chosen.task.task_ref,
+      selected_task_side: chosen.before ? 'before' : 'current'
     } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
-      initialTaskRef.current = null;
+      initialTask.current = null;
       setSelection(plan);
       setScope({});
       setRange({
@@ -27436,6 +27452,7 @@ function SMExport({
       read.reload();
     }
     function refresh() {
+      initialTask.current = null;
       const next = {
         ...scope
       };
@@ -27447,7 +27464,7 @@ function SMExport({
       read.reload();
     }
     function selectTask(task, before = false, locate = false) {
-      initialTaskRef.current = null;
+      initialTask.current = null;
       setSelected(task ? {
         task,
         before,
@@ -27459,14 +27476,18 @@ function SMExport({
     }
     function openResource(resource) {
       const task = data.tasks.find(row => row[resource.kind + '_ref'] === resource.resource_ref);
-      onNavigate('gantt', {
+      const target = {
         ...remembered,
         query: '',
-        resource_kind: resource.kind,
-        ...(task ? {
-          selected_task_ref: task.task_ref
-        } : {})
+        resource_kind: resource.kind
+      };
+      delete target.selected_task_ref;
+      delete target.selected_task_side;
+      if (task) Object.assign(target, {
+        selected_task_ref: task.task_ref,
+        selected_task_side: 'current'
       });
+      onNavigate('gantt', target);
     }
     function collapseDetails() {
       setDetailsOpen(false);
@@ -27481,7 +27502,7 @@ function SMExport({
     }
     function changeScope(next) {
       const changed = scope.range_start !== next.range_start || scope.range_end !== next.range_end;
-      initialTaskRef.current = null;
+      initialTask.current = null;
       setScope(next);
       setRange({
         start: next.range_start || '',
@@ -27495,7 +27516,7 @@ function SMExport({
       read.reload();
     }
     function selectRelated(ref) {
-      initialTaskRef.current = null;
+      initialTask.current = null;
       const task = data.tasks.find(row => row.task_ref === ref);
       setQuery('');
       setRangeError(null);
@@ -27534,8 +27555,7 @@ function SMExport({
     }, [data, query]);
     const risks = data && data.projections.delivery_risks.items;
     const ready = !!data && !disabled;
-    const includesPlanEnd = data && data.scope.range_start === null && data.plan_span.end_inclusive === true;
-    const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end ? `计划时刻：${M.timeLabel(data.plan_span.start)}` : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} 至 ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
+    const scopeCaption = data ? M.scopeCaption(data) : '';
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
       reference: data.plan.plan_ref,
       label: '正式计划',
@@ -27697,6 +27717,7 @@ function SMExport({
       onQuery: setQuery,
       disabled: disabled,
       initialMode: initialContext.resource_kind,
+      initialBaseline: !!initialTask.current && initialTask.current.side === 'before',
       toolbarActions: /*#__PURE__*/React.createElement("span", {
         ref: detailsToggle
       }, /*#__PURE__*/React.createElement(Button, {
@@ -51532,22 +51553,30 @@ function SMExport({
         seconds: true,
         fractions: true
       })
-    }, window.WorkbenchFormat.compactRange(data.time_scope.start, data.time_scope.end)), /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\uFF1A", U.sourceLabel(data.base_identity), " \xB7 \u521B\u5EFA\u8349\u7A3F\u65F6\u4FDD\u5B58"), /*#__PURE__*/React.createElement("div", null, "\u8BD5\u8C03\u5B89\u6392\uFF1A", data.scenario_ref ? '已保存的调整结果' : '当前调整结果'), data.baseline.version !== null && /*#__PURE__*/React.createElement("div", null, "\u5EFA\u8349\u7A3F\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\uFF1A\u7B2C ", data.baseline.version, " \u7248"), /*#__PURE__*/React.createElement("div", null, "\u5F00\u59CB\uFF1A", window.WorkbenchFormat.dateTime(data.time_scope.start, {
+    }, window.WorkbenchFormat.compactRange(data.time_scope.start, data.time_scope.end)), /*#__PURE__*/React.createElement("div", {
+      className: "tt-source-body"
+    }, /*#__PURE__*/React.createElement("dl", {
+      className: "tt-source-facts"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u5B89\u6392"), /*#__PURE__*/React.createElement("dd", null, U.sourceLabel(data.base_identity), " \xB7 \u521B\u5EFA\u8349\u7A3F\u65F6\u4FDD\u5B58")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BD5\u8C03\u5B89\u6392"), /*#__PURE__*/React.createElement("dd", null, data.scenario_ref ? '已保存的调整结果' : '当前调整结果')), data.baseline.version !== null && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5EFA\u8349\u7A3F\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212"), /*#__PURE__*/React.createElement("dd", null, "\u7B2C ", data.baseline.version, " \u7248")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F00\u59CB"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchFormat.dateTime(data.time_scope.start, {
       seconds: true,
       fractions: true
-    })), /*#__PURE__*/React.createElement("div", null, "\u7ED3\u675F\uFF1A", window.WorkbenchFormat.dateTime(data.time_scope.end, {
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7ED3\u675F"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchFormat.dateTime(data.time_scope.end, {
       seconds: true,
       fractions: true
-    })), result && /*#__PURE__*/React.createElement("div", null, "\u672C\u6B21\u5237\u65B0\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.meta.as_of, {
+    }))), result && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u5237\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchFormat.dateTime(result.meta.as_of, {
       seconds: true,
       fractions: true
-    })), /*#__PURE__*/React.createElement("div", null, "\u8349\u7A3F\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("span", {
-      className: "tt-ref"
-    }, data.draft_ref)), data.scenario_ref && /*#__PURE__*/React.createElement("div", null, "\u8BD5\u8C03\u65B9\u6848\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("span", {
-      className: "tt-ref"
-    }, data.scenario_ref)), /*#__PURE__*/React.createElement("div", null, "\u6765\u6E90\u7F16\u53F7\uFF1A", /*#__PURE__*/React.createElement("span", {
-      className: "tt-ref"
-    }, Object.values(data.base)[0])), /*#__PURE__*/React.createElement("div", null, "\u4EA4\u671F\u6570\u636E\uFF1A", window.WorkbenchTerms.delivery_coverage(data.comparison.delivery_summary))))), /*#__PURE__*/React.createElement(U.ErrorBox, {
+    })))), /*#__PURE__*/React.createElement("div", {
+      className: "tt-source-wide"
+    }, "\u4EA4\u671F\u6570\u636E\uFF1A", window.WorkbenchTerms.delivery_coverage(data.comparison.delivery_summary)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '草稿编号': data.draft_ref,
+        ...(data.scenario_ref ? {
+          '试调方案编号': data.scenario_ref
+        } : {}),
+        '来源编号': Object.values(data.base)[0]
+      }
+    }))))), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
@@ -61638,7 +61667,7 @@ function SystemLiveOverview({
   function tradeoffs(value, data) {
     C.check(shape(value, ['recommendation_version', 'scope', 'benefits', 'costs', 'all_differences']) && value.recommendation_version === 'decision-recommendation-v1' && value.scope === 'admission_selected_batches' && ['benefits', 'costs', 'all_differences'].every(key => Array.isArray(value[key])) && value.benefits.length <= 3 && value.costs.length <= 3);
     value.all_differences.forEach(item => {
-      C.check(window.RecommendationContract.entry(item) && item.metric_version === 'decision-preparation-v4', '所选候选的取舍资料缺项，请刷新。');
+      C.check(window.RecommendationContract.entry(item) && item.metric_version === (item.source === 'archived_resource_calendar' ? data.resource_common.metric_version : 'decision-preparation-v4'), '所选候选的取舍资料缺项，请刷新。');
       item.supporting_refs.forEach(target => {
         const drill = target.drill;
         C.check(target.candidate_ref === data.candidate.candidate_ref && drill.candidate_ref === data.candidate.candidate_ref && drill.selected_candidate_ref === data.candidate.candidate_ref && drill.reference_candidate_ref === null && drill.run_ref === data.generation.run_ref && drill.comparison_mode === 'admission_official' && (drill.resource_view === undefined || drill.resource_view === 'selected_batches'), '取舍支撑与当前所选候选不一致，请刷新。');
@@ -62385,14 +62414,21 @@ function SystemLiveOverview({
   }) {
     const value = data.tradeoffs;
     return /*#__PURE__*/React.createElement("section", {
+      className: "dy-tradeoffs",
       "aria-label": "\u65B9\u6848\u6536\u76CA\u4E0E\u4EE3\u4EF7"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u65B9\u6848\u6536\u76CA\u4E0E\u4EE3\u4EF7"), /*#__PURE__*/React.createElement("div", {
-      className: "dy-context"
-    }, [['benefits', '主要收益'], ['costs', '主要代价']].map(([key, label]) => /*#__PURE__*/React.createElement("section", {
-      key: key
+    }, /*#__PURE__*/React.createElement("h3", null, "\u65B9\u6848\u6536\u76CA\u4E0E\u4EE3\u4EF7"), data.baseline.available ? /*#__PURE__*/React.createElement("div", {
+      className: "dy-tradeoff-grid"
+    }, [['benefits', '主要收益', 'success', '收益'], ['costs', '主要代价', 'warning', '代价']].map(([key, label, tone, kind]) => /*#__PURE__*/React.createElement("div", {
+      key: key,
+      className: "dy-tradeoff",
+      "data-tone": value[key].length ? tone : 'neutral'
     }, /*#__PURE__*/React.createElement("h4", null, label), value[key].length ? /*#__PURE__*/React.createElement("ul", null, value[key].map(item => /*#__PURE__*/React.createElement("li", {
       key: item.metric_key
-    }, /*#__PURE__*/React.createElement("strong", null, item.label), /*#__PURE__*/React.createElement("p", null, item.text), item.reason && /*#__PURE__*/React.createElement("small", null, item.reason.message)))) : /*#__PURE__*/React.createElement("p", null, "\u672C\u8303\u56F4\u6CA1\u6709\u53EF\u786E\u8BA4\u7684", label, "\u9879\u3002")))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u5168\u90E8\u5DEE\u503C\u4E0E\u6BD4\u8F83\u4F9D\u636E \xB7 ", value.all_differences.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("strong", null, item.label), /*#__PURE__*/React.createElement("p", null, item.text), item.reason && /*#__PURE__*/React.createElement("small", null, item.reason.message)))) : /*#__PURE__*/React.createElement("p", null, "\u672C\u8303\u56F4\u6682\u65E0\u5DF2\u786E\u8BA4\u7684", kind, "\u3002")))) : /*#__PURE__*/React.createElement("p", {
+      className: "dy-tradeoff-unavailable"
+    }, "\u6392\u4EA7\u65F6\u6CA1\u6709\u6B63\u5F0F\u8BA1\u5212\uFF0C\u6536\u76CA\u4E0E\u4EE3\u4EF7\u6682\u65E0\u6CD5\u6BD4\u8F83\u3002"), /*#__PURE__*/React.createElement("details", {
+      className: "dy-tradeoff-details"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5168\u90E8\u5DEE\u503C\u4E0E\u6BD4\u8F83\u4F9D\u636E \xB7 ", value.all_differences.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
     }, /*#__PURE__*/React.createElement("table", {
       className: "dy-analysis-table",
@@ -62442,6 +62478,7 @@ function SystemLiveOverview({
     const old = data.summary.before,
       selected = data.summary.after;
     return /*#__PURE__*/React.createElement("section", {
+      className: "dy-comparison-metrics",
       "aria-label": "\u6240\u9009\u5019\u9009\u6BD4\u8F83"
     }, /*#__PURE__*/React.createElement(Tradeoffs, {
       data: data
@@ -62665,8 +62702,18 @@ function SystemLiveOverview({
     const api = React.useMemo(() => A.create(), []),
       baselineApi = React.useMemo(() => B.create(), []),
       comparisonApi = React.useMemo(() => Q.create(), []);
-    const [choice, setChoice] = React.useState(() => Q.context(initialContext)),
+    const [choice, setChoice] = React.useState(() => {
+        const value = Q.context(initialContext);
+        delete value.batch_ref;
+        return value;
+      }),
       [revision, refresh] = React.useReducer(n => n + 1, 0);
+    const context = Q.context({
+      ...choice,
+      ...(issueBatchRef ? {
+        batch_ref: issueBatchRef
+      } : {})
+    });
     const [list, setList] = React.useState({
       run: null,
       data: null,
@@ -62686,7 +62733,7 @@ function SystemLiveOverview({
       [rangeError, setRangeError] = React.useState(null);
     const [summary, setSummary] = React.useState(false),
       [rangeOpen, setRangeOpen] = React.useState(false),
-      signature = JSON.stringify(choice);
+      signature = JSON.stringify(context);
     React.useEffect(() => {
       setRange({
         start: choice.range_start || '',
@@ -62726,28 +62773,30 @@ function SystemLiveOverview({
         signature,
         data: null,
         error: null,
-        loading: !!choice.candidate_ref
+        loading: !!context.candidate_ref
       });
-      if (!choice.candidate_ref) return () => controller.abort();
+      if (!context.candidate_ref) return () => controller.abort();
       const load = async () => {
-        if (!choice.range_start || !choice.range_end) {
-          const first = await api.workspace(choice.candidate_ref, {}, controller.signal);
-          C.check(first.data.candidate.run_ref === choice.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
-          if (!controller.signal.aborted) setChoice(previous => JSON.stringify(previous) === signature ? {
+        if (!context.range_start || !context.range_end) {
+          const first = await api.workspace(context.candidate_ref, context.batch_ref ? {
+            batch_ref: context.batch_ref
+          } : {}, controller.signal);
+          C.check(first.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
+          if (!controller.signal.aborted) setChoice(previous => C.equal(previous, choice) ? {
             ...previous,
             ...rangeFor(first.data.generation.input)
           } : previous);
           return;
         }
         const scope = {
-          range_start: choice.range_start,
-          range_end: choice.range_end,
-          ...(choice.batch_ref ? {
-            batch_ref: choice.batch_ref
+          range_start: context.range_start,
+          range_end: context.range_end,
+          ...(context.batch_ref ? {
+            batch_ref: context.batch_ref
           } : {})
         };
-        const workspace = await api.workspace(choice.candidate_ref, scope, controller.signal);
-        C.check(workspace.data.candidate.run_ref === choice.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
+        const workspace = await api.workspace(context.candidate_ref, scope, controller.signal);
+        C.check(workspace.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
         const baseline = await baselineApi.read(workspace.data, controller.signal);
         const comparison = await comparisonApi.read(workspace.data, baseline.data, controller.signal);
         if (!controller.signal.aborted) setRead({
@@ -62784,7 +62833,7 @@ function SystemLiveOverview({
     const captionKey = JSON.stringify(caption);
     React.useLayoutEffect(() => {
       if (onState) onState({
-        context: choice,
+        context,
         caption
       });
     }, [onState, signature, captionKey]);
@@ -62805,10 +62854,7 @@ function SystemLiveOverview({
       }
       setChoice({
         run_ref: ref,
-        ...bounds,
-        ...(issueBatchRef ? {
-          batch_ref: issueBatchRef
-        } : {})
+        ...bounds
       });
     }
     function applyRange(event) {
@@ -62879,11 +62925,11 @@ function SystemLiveOverview({
       error: list.error
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: rangeError || current && current.error
-    }), issueBatchRef && /*#__PURE__*/React.createElement("div", {
+    }), context.batch_ref && /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
     }, "\u4EC5\u6BD4\u8F83\u539F\u95EE\u9898\u6279\u6B21\u3002", /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
-        '原问题批次编号': issueBatchRef
+        '原问题批次编号': context.batch_ref
       }
     })), list.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -62891,7 +62937,8 @@ function SystemLiveOverview({
       className: "dy-candidate-options"
     }, /*#__PURE__*/React.createElement("legend", null, "\u5019\u9009\u65B9\u6848"), options.candidates.map(row => /*#__PURE__*/React.createElement("label", {
       key: row.candidate_ref,
-      "data-candidate-choice": row.candidate_ref
+      "data-candidate-choice": row.candidate_ref,
+      "data-selected": choice.candidate_ref === row.candidate_ref
     }, /*#__PURE__*/React.createElement("input", {
       type: "radio",
       name: "dashboard-candidate",
@@ -62934,9 +62981,7 @@ function SystemLiveOverview({
       type: "submit"
     }, "\u5E94\u7528\u8303\u56F4")), current && current.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u6B63\u5728\u6838\u5BF9\u6240\u9009\u5019\u9009\u65B9\u6848\u3001\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\u548C\u5171\u540C\u8303\u56F4\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, !data.baseline.available && /*#__PURE__*/React.createElement("p", {
-      className: "dy-note warning"
-    }, "\u7F3A\u5C11\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\uFF0C\u65E0\u6CD5\u6BD4\u8F83\u53D8\u5316\u91CF\u3002"), /*#__PURE__*/React.createElement(P.Metrics, {
+    }, "\u6B63\u5728\u6838\u5BF9\u6240\u9009\u5019\u9009\u65B9\u6848\u3001\u6392\u4EA7\u65F6\u7684\u6B63\u5F0F\u8BA1\u5212\u548C\u5171\u540C\u8303\u56F4\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(P.Metrics, {
       data: data
     }), /*#__PURE__*/React.createElement(P.Batches, {
       data: data,
@@ -64670,6 +64715,8 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("h2", {
       className: "wb-page-title"
     }, "\u503C\u73ED\u53F0"), /*#__PURE__*/React.createElement("header", {
+      className: "dy-page-toolbar"
+    }, /*#__PURE__*/React.createElement("div", {
       className: "dy-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -64680,16 +64727,22 @@ function SystemLiveOverview({
     }, "\u5237\u65B0"), command.saved && /*#__PURE__*/React.createElement(Button, {
       icon: "history",
       onClick: () => setDialog(true)
-    }, command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'), data && /*#__PURE__*/React.createElement("details", {
-      className: "dy-evidence"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u9875\u9762\u8BE6\u60C5"), /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u5237\u65B0\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(data.as_of, {
+    }, command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果')), data && /*#__PURE__*/React.createElement("span", {
+      className: "dy-page-updated"
+    }, "\u66F4\u65B0\u4E8E ", window.WorkbenchFormat.dateTime(data.as_of, {
       seconds: true,
       fractions: true
-    })), /*#__PURE__*/React.createElement("p", null, "\u8D44\u6599\u6765\u6E90\uFF1A\u6B63\u5F0F\u8BA1\u5212\u3001\u62A5\u5DE5\u8BB0\u5F55\u3001\u8D44\u6E90\u73ED\u8868\u3001\u9F50\u5957\u8BB0\u5F55\u3001\u5916\u534F\u767B\u8BB0"), data.categories.delivery.due_evaluation_count !== undefined && /*#__PURE__*/React.createElement("p", null, "\u4EA4\u671F\u6570\u636E\u8303\u56F4\uFF1A", window.WorkbenchTerms.delivery_coverage({
+    }))), data && /*#__PURE__*/React.createElement("details", {
+      className: "dy-page-evidence"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u9875\u9762\u8BE6\u60C5"), /*#__PURE__*/React.createElement("div", {
+      className: "dy-page-evidence-body"
+    }, /*#__PURE__*/React.createElement("dl", {
+      className: "dy-page-facts"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8D44\u6599\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, "\u6B63\u5F0F\u8BA1\u5212\u3001\u62A5\u5DE5\u8BB0\u5F55\u3001\u8D44\u6E90\u73ED\u8868\u3001\u9F50\u5957\u8BB0\u5F55\u3001\u5916\u534F\u767B\u8BB0")), data.categories.delivery.due_evaluation_count !== undefined && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4EA4\u671F\u7EDF\u8BA1"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.delivery_coverage({
       ...data.categories.delivery,
       known_due_count: data.categories.delivery.assessed_count,
       unknown_due_count: data.categories.delivery.unknown_count
-    })), data.plan && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    })))), data.plan && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '正式计划编号': data.plan.plan_ref
       }

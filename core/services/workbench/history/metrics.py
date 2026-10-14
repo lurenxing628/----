@@ -21,6 +21,7 @@ from core.services.workbench.facts.preparation_projection import (
 )
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.facts.resource_projection import resource_cohort
+from core.services.workbench.facts.trial_origin import delivery_origin as trial_delivery_origin
 from core.services.workbench.run.decision_metrics import (
     admission_operations,
     delivery_metric_values,
@@ -31,7 +32,6 @@ from core.services.workbench.run.decision_resources import DecisionResources
 from core.services.workbench.run.preflight import batch_dependencies, classify, task_row
 from core.services.workbench.trial.capacity import _tasks as trial_resource_tasks
 from core.services.workbench.trial.preparation import preparation_projection, trial_changeovers
-from core.services.workbench.trial.projection import _delivery_origin as trial_delivery_origin
 from core.services.workbench.trial.projection import comparison as trial_comparison
 from core.services.workbench.trial.projection import scenario_comparison
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES
@@ -319,22 +319,18 @@ def _trial(packet, window):
     completion_reason = _reason("trial_pending_members_missing", "保存的未安排数量与实际工序身份不齐，应排、待料和其他未安排范围待确认。")
     if condition is not None:
         _batches, _operations, deferred_ids, deferred_issues = trial_delivery_origin(head["admission"], projected)
-        operations.update(condition.operations)
+        operations = set(condition.operations)
+        batches = set(condition.batches)
         if not deferred_issues:
             effort_by_ref = {row["operation_ref"]: row for row in efforts or []}
-            saved_pending = {row["operation_ref"]: row for row in unplanned}
             missing = []
             for ref in sorted(operations - scheduled):
-                operation = condition.operations.get(ref)
-                if operation is None:
-                    break
-                task = saved_pending.get(ref) or {"operation_ref": ref, "sequence": operation["seq"],
-                    "batch_ref": condition.original_entity_refs.get(("batch", operation["batch_id"]))}
-                missing.append({**effort_by_ref.get(ref, {}), **task, "arranged": False,
+                operation = condition.operations[ref]
+                missing.append({**effort_by_ref.get(ref, {}), "operation_ref": ref, "sequence": operation["seq"],
+                    "batch_ref": condition.original_entity_refs.get(("batch", operation["batch_id"])), "arranged": False,
                     "source": operation["source"], "allocation_state": "deferred" if operation["id"] in deferred_ids else "unplanned"})
-            else:
-                completion = project_completion_scope([row["after"] for row in comparison["batches"]], missing)
-                deferred, ordinary = set(completion["deferred_operation_refs"]), set(completion["unplanned_operation_refs"])
+            completion = project_completion_scope([row["after"] for row in comparison["batches"]], missing)
+            deferred, ordinary = set(completion["deferred_operation_refs"]), set(completion["unplanned_operation_refs"])
     else:
         roles = {row["operation_ref"]: (row.get("operation_effort") or {}).get("after", {}).get("allocation_state") for row in unplanned}
         known_deferred = {ref for ref, role in roles.items() if role == "deferred"}
@@ -442,6 +438,11 @@ def _path(packet, definition):
             return "parsed_summary.counts." + field
         return "parsed_summary.algo.metrics." + key
     if packet["kind"] == "trial":
+        if key == "scheduled_operation_count":
+            return "saved.tasks"
+        if packet.get("head") is not None and key in (
+                "expected_operation_count", "deferred_operation_count", "unplanned_operation_count"):
+            return "head.admission"
         if key == "makespan_hours":
             return "saved.tasks.start/end"
         if origin == "archived_resource_calendar":

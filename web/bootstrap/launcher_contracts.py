@@ -17,6 +17,7 @@ from core.infrastructure.safe_files import (
 from .launcher_cleanup_result import (
     RuntimeCleanupFailure,
     RuntimeCleanupResult,
+    _contracts_match,
 )
 from .launcher_contract_result import (
     CONTRACT_STATUS_INVALID as CONTRACT_STATUS_INVALID,
@@ -43,7 +44,10 @@ from .launcher_contract_result import (
     read_runtime_contract_result as read_runtime_contract_result,
 )
 from .launcher_lock_result import (
+    LOCK_STATUS_MISSING,
+    RuntimeLockReadResult,
     read_key_value_file,
+    read_runtime_lock_result_from_path,
 )
 from .launcher_lock_result import (
     read_runtime_lock_result as read_runtime_lock_result,
@@ -58,6 +62,7 @@ from .launcher_paths import (
     resolve_runtime_state_dir,
     resolve_runtime_state_dir_for_read,
     runtime_dir_from_state_dir,
+    runtime_lock_path,
     runtime_log_dir,
     runtime_log_mirror_dir,
     state_contract_paths,
@@ -72,6 +77,11 @@ from .launcher_runtime_lock import (
     _is_runtime_lock_active as _is_runtime_lock_active,
 )
 from .launcher_runtime_lock import (
+    _lock_identity_fields,
+    _lock_process_identity_fields,
+    runtime_lock_mutation_guard,
+)
+from .launcher_runtime_lock import (
     acquire_runtime_lock as acquire_runtime_lock,
 )
 from .launcher_runtime_lock import (
@@ -84,9 +94,16 @@ from .launcher_runtime_lock import (
 _LAUNCHER_CLEANUP_API = (RuntimeCleanupFailure, RuntimeCleanupResult)
 
 
-def delete_runtime_contract_files_result(runtime_dir: str) -> RuntimeCleanupResult:
+def delete_runtime_contract_files_result(
+    runtime_dir: str,
+    *,
+    expected_lock: Optional[Dict[str, Any]],
+    expected_contract: Optional[Dict[str, Any]],
+) -> RuntimeCleanupResult:
     cleanup_result_mod = importlib.import_module("web.bootstrap.launcher_cleanup_result")
-    return cleanup_result_mod.delete_runtime_contract_files_result(runtime_dir)
+    return cleanup_result_mod.delete_runtime_contract_files_result(
+        runtime_dir, expected_lock=expected_lock, expected_contract=expected_contract
+    )
 
 
 def _write_runtime_state_triplet(state_dir: str, host: str, port: int, db_for_runtime: str) -> None:
@@ -131,37 +148,6 @@ def clear_launch_error(runtime_dir_or_state_dir: str) -> None:
         pass
     except (OSError, TypeError, ValueError) as exc:
         launcher_log_warning(None, "清理启动错误文件失败，已继续：path=%s error=%s", error_path, exc, state_dir=state_dir)
-
-
-def write_runtime_host_port_files(
-    runtime_dir: str,
-    cfg_log_dir: Optional[str],
-    host: str,
-    port: int,
-    db_path: Optional[str] = None,
-    *,
-    logger: Optional[logging.Logger] = None,
-) -> None:
-    db_for_runtime = _normalize_db_path_for_runtime(db_path)
-    state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
-    os.makedirs(state_dir, exist_ok=True)
-    _write_runtime_state_triplet(state_dir, host, port, db_for_runtime)
-
-    mirror_log_dir = runtime_log_mirror_dir(runtime_dir, cfg_log_dir)
-    if mirror_log_dir:
-        try:
-            os.makedirs(mirror_log_dir, exist_ok=True)
-            _write_runtime_state_triplet(mirror_log_dir, host, port, db_for_runtime)
-        except (OSError, TypeError, ValueError) as exc:
-            safe_log(logger, "warning", "写入运行时镜像端点文件失败，主状态文件已写入：dir=%s error=%s", mirror_log_dir, exc)
-    if logger is not None:
-        try:
-            host_file, port_file, db_file, _contract_file = state_contract_paths(state_dir)
-            logger.info(f"端口已写入：{port_file} -> {int(port)}")
-            logger.info(f"Host 已写入：{host_file}")
-            logger.info(f"DB 路径已写入：{db_file} -> {db_for_runtime}")
-        except (TypeError, ValueError) as exc:
-            safe_log(logger, "warning", "记录运行时端点文件日志失败，已继续：%s", exc)
 
 
 def _runtime_contract_payload(
@@ -228,7 +214,14 @@ def write_runtime_contract_file(
     chrome_profile_dir: Optional[str] = None,
     owner: Optional[str] = None,
     logger: Optional[logging.Logger] = None,
-) -> str:
+    expected_lock: Dict[str, Any],
+) -> Dict[str, Any]:
+    state_dir_s = str((expected_lock or {}).get("state_dir") or "").strip()
+    if not state_dir_s:
+        raise RuntimeLockError("缺少原壳锁目录，运行时契约发布已停止。")
+    state_dir = os.path.abspath(state_dir_s)
+    if _normalize_db_path_for_runtime(expected_lock.get("path")) != _normalize_db_path_for_runtime(runtime_lock_path(state_dir)):
+        raise RuntimeLockError("原壳锁路径与目录不一致，运行时契约发布已停止。")
     payload = _runtime_contract_payload(
         runtime_dir,
         host,
@@ -244,22 +237,27 @@ def write_runtime_contract_file(
         chrome_profile_dir=chrome_profile_dir,
         owner=owner,
     )
-    state_dir = resolve_runtime_state_dir(runtime_dir, log_dir)
-    os.makedirs(state_dir, exist_ok=True)
-    contract_path = _write_runtime_contract_payload(state_dir, payload)
-    mirror_log_dir = runtime_log_mirror_dir(runtime_dir, log_dir)
-    if mirror_log_dir:
+    contract_path = _publish_runtime_contract_directory(state_dir, payload, expected_lock, primary=True)
+    mirror_dirs = (resolve_runtime_state_dir(runtime_dir, log_dir), runtime_log_mirror_dir(runtime_dir, log_dir))
+    seen = {os.path.normcase(state_dir)}
+    for mirror in mirror_dirs:
+        if not mirror:
+            continue
+        mirror_log_dir = os.path.abspath(mirror)
+        mirror_key = os.path.normcase(mirror_log_dir)
+        if mirror_key in seen:
+            continue
+        seen.add(mirror_key)
         try:
-            os.makedirs(mirror_log_dir, exist_ok=True)
-            _write_runtime_contract_payload(mirror_log_dir, payload)
-        except (OSError, TypeError, ValueError) as exc:
+            _publish_runtime_contract_directory(mirror_log_dir, payload, expected_lock, primary=False)
+        except (RuntimeLockError, OSError, TypeError, ValueError) as exc:
             safe_log(logger, "warning", "写入运行时镜像契约失败，主契约已写入：dir=%s error=%s", mirror_log_dir, exc)
     if logger is not None:
         try:
             logger.info(f"运行时契约已写入：{contract_path}")
         except (TypeError, ValueError) as exc:
             safe_log(logger, "warning", "记录运行时契约日志失败，已继续：%s", exc)
-    return contract_path
+    return {"path": contract_path, "payload": payload}
 
 
 def _write_runtime_contract_payload(state_dir: str, payload: Dict[str, Any]) -> str:
@@ -268,19 +266,62 @@ def _write_runtime_contract_payload(state_dir: str, payload: Dict[str, Any]) -> 
     return contract_path
 
 
+def _publish_runtime_contract_directory(
+    state_dir: str, payload: Dict[str, Any], expected_lock: Dict[str, Any], *, primary: bool
+) -> str:
+    lock_path = runtime_lock_path(state_dir)
+    with runtime_lock_mutation_guard(lock_path):
+        lock_result = read_runtime_lock_result_from_path(lock_path, state_dir=state_dir)
+        if primary:
+            if (not lock_result.ok
+                    or _lock_identity_fields(lock_result.payload or {}) != _lock_identity_fields(expected_lock)
+                    or _lock_process_identity_fields(payload) != _lock_process_identity_fields(expected_lock)):
+                raise RuntimeLockError("运行锁归属已变化，运行时契约发布已停止。")
+        else:
+            _check_mirror_publication_ownership(state_dir, lock_result, payload, expected_lock)
+        _write_runtime_state_triplet(state_dir, payload["host"], payload["port"], payload["db_path"])
+        return _write_runtime_contract_payload(state_dir, payload)
+
+
+def _check_mirror_publication_ownership(
+    state_dir: str, lock_result: RuntimeLockReadResult, payload: Dict[str, Any], expected_lock: Dict[str, Any]
+) -> None:
+    if lock_result.status != LOCK_STATUS_MISSING:
+        if not lock_result.ok:
+            raise RuntimeLockError("镜像目录运行锁归属未知，已保留现有文件。")
+        current = lock_result.payload or {}
+        if _lock_identity_fields(current) != _lock_identity_fields(expected_lock):
+            if _is_runtime_lock_active(current, local_probe_only=True):
+                raise RuntimeLockError("镜像目录正由另一实例使用，已保留现有文件。")
+    contract_result = read_runtime_contract_result(state_dir)
+    if contract_result.status != CONTRACT_STATUS_MISSING:
+        if not contract_result.ok:
+            raise RuntimeLockError("镜像目录运行时契约归属未知，已保留现有文件。")
+        current_contract = contract_result.payload or {}
+        if not _contracts_match(current_contract, payload) and _is_runtime_lock_active(current_contract, local_probe_only=True):
+            raise RuntimeLockError("镜像目录运行时契约属于另一活动实例，已保留现有文件。")
+
+
 def read_runtime_contract(runtime_dir: str) -> Optional[Dict[str, Any]]:
     result = read_runtime_contract_result(runtime_dir)
     return result.payload if result.ok else None
 
 
-def delete_runtime_contract_files(runtime_dir: str) -> None:
+def delete_runtime_contract_files(
+    runtime_dir: str,
+    *,
+    expected_lock: Optional[Dict[str, Any]],
+    expected_contract: Optional[Dict[str, Any]],
+) -> RuntimeCleanupResult:
     """兼容旧调用的尽力清理入口；停止链判断成功与否必须使用 result 版本。"""
-    result = delete_runtime_contract_files_result(runtime_dir)
+    result = delete_runtime_contract_files_result(
+        runtime_dir, expected_lock=expected_lock, expected_contract=expected_contract
+    )
     if not result.ok:
         launcher_log_warning(
             None,
             "运行时契约兼容清理入口未清理干净，调用方如需判断成功必须改用 result 版本：failures=%s",
             [failure.path for failure in result.failures],
             state_dir=result.state_dir,
-            write_launch_error=True,
         )
+    return result

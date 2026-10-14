@@ -1,9 +1,12 @@
 """Shared due and whole-chain contracts, including adopted and staged results."""
 
+import csv
 import json
 from datetime import datetime
+from io import BytesIO, StringIO
 
 import pytest
+from openpyxl import load_workbook
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_plan_scope import PlanReadScope
@@ -16,6 +19,7 @@ from core.services.workbench.facts.delivery_projection import (
     project_delivery_batch,
     task_intervals,
 )
+from core.services.workbench.plan.export import HEADERS, write_plan_export
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
@@ -133,6 +137,29 @@ def test_unspecified_candidate_analysis_and_adopted_plan_share_projection(candid
     assert projection["items"][0]["due_state"] == "unspecified"
     assert projection["items"][0]["schedule_complete"]
     assert projection["summary"]["due_eligible_count"] == 0 and projection["summary"]["excluded_due_count"] == 1
+    item = projection["items"][0]
+    snapshot = {"snapshot_ref": "unspecified-plan-export", "as_of": "2026-09-10T12:00:00"}
+    exported = write_plan_export(plan, snapshot, "csv")
+    rows = list(csv.DictReader(StringIO(exported.content.decode("utf-8-sig"))))
+    assert len(rows) == exported.row_count == plan["task_count"]
+    assert tuple(rows[0]) == HEADERS
+    for row in rows:
+        assert row["交付风险"] == "'未设置交期"
+        assert row["预计完工"] == "'" + item["planned_finish"]
+        assert row["交期"] == "'9999-12-31"
+        assert all(row[key] == r"'\N" for key in ("交期截止（不含）", "超期小时", "超期天数"))
+    workbook = load_workbook(BytesIO(write_plan_export(plan, snapshot, "xlsx").content), read_only=True)
+    try:
+        values = list(workbook.worksheets[0].iter_rows(values_only=True))
+        assert values[0] == HEADERS and len(values) == plan["task_count"] + 1
+        for value in values[1:]:
+            row = dict(zip(HEADERS, value))
+            assert row["交付风险"] == "未设置交期"
+            assert row["预计完工"] == item["planned_finish"]
+            assert row["交期"] == "9999-12-31"
+            assert all(row[key] == r"\N" for key in ("交期截止（不含）", "超期小时", "超期天数"))
+    finally:
+        workbook.close()
 
 
 def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):

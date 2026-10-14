@@ -63,7 +63,7 @@ body.aps-workbench .wb-table-frame tbody tr:focus-within > td:last-child {
 body.aps-workbench .wb-table-frame tbody tr:focus-within > td:only-child {
   --wb-row-focus-shadow: inset 0 0 0 2px var(--ui-primary);
 }
-body.aps-workbench .wb-table-frame tbody tr:is([aria-selected="true"],.selected,.is-selected) :is(.wb-col-key,.wb-col-actions) {
+body.aps-workbench .wb-table-frame[data-sticky-actions] > table.wb-table tbody tr:is([aria-selected="true"],[aria-current="true"],[data-selected="true"],.selected,.is-selected) > :is(.wb-col-key,.wb-col-actions) {
   background: var(--ui-info-bg);
 }
 body.aps-workbench table.wb-table th :is(.aps-filter-btn,.aps-sort-facetbtn,.wb-th-action) { opacity: 0; }

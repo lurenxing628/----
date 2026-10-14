@@ -6,27 +6,28 @@
 - db-scope 排他锁（<db>.lock，B03）：锚定被保护资源（解析后的 DB 文件）所在路径，
   是同库双开的真互斥防线——同 db_path 才互斥，不同 db_path 的实例各自独立放行。
 
-B02（陈旧锁读后删 TOCTOU）：删除陈旧锁前必须重读比对 payload，把"判定所依据的内容"
-与"被删的内容"绑定，掐断并发双启动时 B 把 A 刚重建的新锁当陈旧锁删掉的路径。
+创建、陈旧回收、回滚、退出释放及契约清理共用短期 OS mutation guard。
+guard 固定文件永不删除或截断，每次只保护一处锁的读取、归属判断与修改。
 """
 
 from __future__ import annotations
 
+import errno
 import os
 import sys
 import time
-from typing import Any, Dict, Optional, Tuple
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 from core.infrastructure.safe_files import (
     create_fixed_file_exclusive,
+    open_fixed_file_for_write_binary,
     remove_fixed_file,
 )
 
+from . import launcher_win32
 from .launcher_lock_result import (
-    LOCK_STATUS_EMPTY,
-    LOCK_STATUS_INVALID,
     LOCK_STATUS_MISSING,
-    LOCK_STATUS_UNREADABLE,
     RuntimeLockReadResult,
     read_runtime_lock_result,
     read_runtime_lock_result_from_path,
@@ -54,6 +55,42 @@ class RuntimeLockError(RuntimeError):
             self.pid = 0
 
 
+@contextmanager
+def runtime_lock_mutation_guard(lock_path: str) -> Iterator[None]:
+    """立即取得短期排他权；固定 guard 文件保留供所有后续调用使用。"""
+    try:
+        guard = open_fixed_file_for_write_binary(lock_path + ".guard", append=True)
+    except OSError as exc:
+        if isinstance(exc.__cause__, FileExistsError):
+            raise RuntimeLockError("另一启动或退出操作正在处理运行锁，请稍后重试。") from exc
+        raise RuntimeLockError(f"打开运行锁保护文件失败：{exc}") from exc
+    with guard:
+        fd = guard.fileno()
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            _change_mutation_guard_lock(fd, release=False)
+        except OSError as exc:
+            if exc.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                raise RuntimeLockError("另一启动或退出操作正在处理运行锁，请稍后重试。") from exc
+            raise RuntimeLockError(f"取得运行锁修改权限失败：{exc}") from exc
+        try:
+            yield
+        finally:
+            os.lseek(fd, 0, os.SEEK_SET)
+            _change_mutation_guard_lock(fd, release=True)
+
+
+def _change_mutation_guard_lock(fd: int, *, release: bool) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        msvcrt.locking(fd, msvcrt.LK_UNLCK if release else msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN if release else fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def read_runtime_lock(runtime_dir_or_state_dir: str) -> Optional[Dict[str, Any]]:
     result = read_runtime_lock_result(runtime_dir_or_state_dir)
     return result.payload if result.ok else None
@@ -72,7 +109,7 @@ def _raise_uncertain_runtime_lock(result: RuntimeLockReadResult) -> None:
     raise RuntimeLockError("检测到运行时锁但无法确认归属，为避免重复启动或误删他人锁，请稍后重试。") from None
 
 
-def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "") -> bool:
+def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "", *, local_probe_only: bool = False) -> bool:
     if not isinstance(lock_payload, dict):
         return False
     state_dir = str(lock_payload.get("state_dir") or "")
@@ -84,6 +121,8 @@ def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str
         pid = 0
     if pid <= 0:
         return False
+    if local_probe_only and os.name == "nt":
+        return _native_runtime_lock_active(pid, lock_payload, expected_exe_path)
     pid_state = _pid_state(pid)
     if pid_state is False:
         return False
@@ -96,6 +135,21 @@ def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str
         if pid_match is False:
             return False
     return True
+
+
+def _native_runtime_lock_active(pid: int, payload: Dict[str, Any], expected_exe_path: str) -> bool:
+    if not launcher_win32.available():
+        raise RuntimeLockError("本机原生进程探针不可用，运行锁归属未知，请稍后重试。")
+    try:
+        if not launcher_win32.pid_exists(pid):
+            return False
+        expected = str(payload.get("exe_path") or expected_exe_path or "").strip()
+        if not expected:
+            return True
+        actual = launcher_win32.executable_path(pid)
+        return bool(actual and os.path.normcase(os.path.abspath(actual)) == os.path.normcase(os.path.abspath(expected)))
+    except OSError as exc:
+        raise RuntimeLockError("本机原生进程探测失败，运行锁归属未知，请稍后重试。") from exc
 
 
 def _runtime_lock_payload(owner: Optional[str], exe_path: Optional[str], db_path: Optional[str] = None) -> Dict[str, Any]:
@@ -149,7 +203,7 @@ def _raise_if_runtime_lock_active(
     *,
     db_label: str = "",
 ) -> None:
-    if not _is_runtime_lock_active(existing, expected_exe_path=exe_path_s):
+    if not _is_runtime_lock_active(existing, expected_exe_path=exe_path_s, local_probe_only=True):
         return
     existing_owner = str(existing.get("owner") or "").strip()
     existing_pid = int(existing.get("pid") or 0)
@@ -189,30 +243,13 @@ def _lock_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str, 
     )
 
 
-def _remove_stale_runtime_lock(lock_path: str, expected_stale: Dict[str, Any]) -> bool:
-    """陈旧锁删除守卫（B02 TOCTOU）：删除前重读锁文件，仅当内容仍是刚判定为陈旧的那份
-    payload 才删除；返回 False 表示判定与删除之间锁已被并发替换（对方重建的新锁
-    pid/started_at 必然不同），调用方必须放弃删除、按最新内容重新判定。
-    重读与删除之间的窗口无法完全消除，但判定内容与被删内容绑定后，
-    并发双启动时 B 删掉 A 新锁的路径被掐断。"""
-    recheck = read_runtime_lock_result_from_path(lock_path)
-    if recheck.status == LOCK_STATUS_MISSING:
-        return True
-    if not recheck.ok or _lock_identity_fields(recheck.payload or {}) != _lock_identity_fields(expected_stale):
-        launcher_log_warning(
-            None,
-            "陈旧运行时锁在删除前已被并发替换，放弃删除并按最新内容重新判定：path=%s",
-            lock_path,
-            state_dir=os.path.dirname(lock_path),
-        )
-        return False
-    try:
-        remove_fixed_file(lock_path)
-    except FileNotFoundError:
-        pass
-    except Exception as e:
-        raise RuntimeLockError(f"检测到失效运行时锁，但无法清理：{e}") from e
-    return True
+def _lock_process_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str]:
+    return (
+        str(payload.get("pid") or ""),
+        str(payload.get("owner") or "").strip(),
+        _normalize_db_path_for_runtime(payload.get("exe_path")),
+        _normalize_db_path_for_runtime(payload.get("db_path")),
+    )
 
 
 def _acquire_lock_file(
@@ -224,23 +261,18 @@ def _acquire_lock_file(
     state_dir: str,
     db_label: str = "",
 ) -> Dict[str, Any]:
-    for _ in range(2):
+    with runtime_lock_mutation_guard(lock_path):
+        existing_result = read_runtime_lock_result_from_path(lock_path, state_dir=state_dir)
+        if existing_result.status != LOCK_STATUS_MISSING:
+            if not existing_result.ok:
+                _raise_uncertain_runtime_lock(existing_result)
+            _raise_if_runtime_lock_active(existing_result.payload or {}, owner_s, exe_path_s, db_label=db_label)
+            try:
+                remove_fixed_file(lock_path)
+            except OSError as exc:
+                raise RuntimeLockError(f"检测到失效运行时锁，但无法清理：{exc}") from exc
         if _create_new_runtime_lock(lock_path, payload):
             return payload
-        existing_result = read_runtime_lock_result_from_path(lock_path, state_dir=state_dir)
-        if existing_result.status == LOCK_STATUS_MISSING:
-            continue
-        if existing_result.status in {LOCK_STATUS_EMPTY, LOCK_STATUS_UNREADABLE, LOCK_STATUS_INVALID}:
-            time.sleep(0.15)
-            existing_result = read_runtime_lock_result_from_path(lock_path, state_dir=state_dir)
-        if not existing_result.ok:
-            _raise_uncertain_runtime_lock(existing_result)
-        existing = existing_result.payload or {}
-        _raise_if_runtime_lock_active(existing, owner_s, exe_path_s, db_label=db_label)
-        if not _remove_stale_runtime_lock(lock_path, existing):
-            # B02：陈旧判定后锁内容已被并发替换（对方已重建新锁）——放弃删除，
-            # 下一轮循环按新内容重新判定：活锁即拒启，绝不双实例上线。
-            continue
     raise RuntimeLockError("创建运行时锁失败，请稍后重试。")
 
 
@@ -265,8 +297,14 @@ def _rollback_own_runtime_lock(lock_path: str, own_payload: Dict[str, Any]) -> N
     """db-scope 锁获取失败后回收本进程刚建立的壳锁（守卫式：只删仍是自己 payload 的锁）。
     回收失败只留痕不掩盖原错误——残留壳锁 pid 已死，会被下次启动按陈旧锁自愈。"""
     try:
-        removed = _remove_stale_runtime_lock(lock_path, own_payload)
-    except RuntimeLockError as exc:
+        with runtime_lock_mutation_guard(lock_path):
+            result = read_runtime_lock_result_from_path(lock_path)
+            if result.status == LOCK_STATUS_MISSING:
+                return
+            removed = result.ok and _lock_identity_fields(result.payload or {}) == _lock_identity_fields(own_payload)
+            if removed:
+                remove_fixed_file(lock_path)
+    except (RuntimeLockError, OSError) as exc:
         launcher_log_warning(
             None,
             "db 锁获取失败后回收壳锁失败，残留壳锁将由下次启动按陈旧锁自愈：path=%s error=%s",
@@ -307,7 +345,7 @@ def acquire_runtime_lock(
     # B03 锁命名空间与被保护资源绑定（方案乙）：壳锁位置不动（bat/stop 读取端合同不破），
     # 在解析后的 DB 同路径追加 db-scope 排他锁作为同库双开的真互斥防线。
     try:
-        _acquire_db_scope_lock(db_path_s, owner_s=owner_s, exe_path_s=exe_path_s)
+        acquired["db_lock"] = _acquire_db_scope_lock(db_path_s, owner_s=owner_s, exe_path_s=exe_path_s)
     except Exception:
         _rollback_own_runtime_lock(lock_path, acquired)
         raise
@@ -319,9 +357,10 @@ def _release_lock_from_result(
     expected_pid: Optional[int],
     *,
     fallback_state_dir: str,
-) -> None:
+    expected_payload: Optional[Dict[str, Any]] = None,
+) -> bool:
     if result.status == LOCK_STATUS_MISSING:
-        return
+        return True
     if not result.ok:
         launcher_log_warning(
             None,
@@ -332,10 +371,16 @@ def _release_lock_from_result(
             result.error,
             state_dir=result.state_dir,
         )
-        return
+        return False
     existing = result.payload or {}
+    if expected_payload is not None:
+        if _lock_identity_fields(existing) != _lock_identity_fields(expected_payload):
+            launcher_log_warning(None, "释放运行时锁时归属已变化，已保留当前实例锁：path=%s", result.path, state_dir=result.state_dir)
+            return False
     pid0 = int(existing.get("pid") or 0)
     state_dir = str(existing.get("state_dir") or fallback_state_dir)
+    if expected_pid is None and expected_payload is not None:
+        expected_pid = expected_payload.get("pid")
     if expected_pid is None:
         pid_expected = int(os.getpid())
     else:
@@ -349,36 +394,68 @@ def _release_lock_from_result(
                 exc,
                 state_dir=state_dir,
             )
-            return
+            return False
     if pid_expected <= 0:
         launcher_log_warning(None, "释放运行时锁时 expected_pid 非正，跳过释放：expected_pid=%s", pid_expected, state_dir=state_dir)
-        return
+        return False
     if pid0 > 0 and pid0 != pid_expected:
-        return
+        return False
     try:
         remove_fixed_file(str(existing.get("path") or ""))
     except FileNotFoundError:
         pass
     except (OSError, TypeError, ValueError) as exc:
         launcher_log_warning(None, "释放运行时锁失败，已继续：path=%s error=%s", existing.get("path"), exc, state_dir=state_dir)
+        return False
+    return True
+
+
+def _release_lock_file(
+    lock_path: str,
+    expected_pid: Optional[int],
+    *,
+    state_dir: str,
+    expected_payload: Optional[Dict[str, Any]],
+) -> bool:
+    try:
+        with runtime_lock_mutation_guard(lock_path):
+            return _release_lock_from_result(
+                read_runtime_lock_result_from_path(lock_path, state_dir=state_dir),
+                expected_pid,
+                fallback_state_dir=state_dir,
+                expected_payload=expected_payload,
+            )
+    except RuntimeLockError as exc:
+        launcher_log_warning(None, "释放运行时锁失败：path=%s error=%s", lock_path, exc, state_dir=state_dir)
+        return False
 
 
 def release_runtime_lock(
     runtime_dir_or_state_dir: str,
     expected_pid: Optional[int] = None,
     db_path: Optional[str] = None,
-) -> None:
-    _release_lock_from_result(
-        read_runtime_lock_result(runtime_dir_or_state_dir),
+    *,
+    expected_payload: Optional[Dict[str, Any]] = None,
+) -> bool:
+    state_dir = resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
+    shell_released = _release_lock_file(
+        runtime_lock_path(state_dir),
         expected_pid,
-        fallback_state_dir=resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir),
+        state_dir=state_dir,
+        expected_payload=expected_payload,
     )
     db_path_s = str(db_path or "").strip()
     if not db_path_s:
-        return
+        return shell_released
     db_lock_path = db_scope_lock_path(db_path_s)
-    _release_lock_from_result(
-        read_runtime_lock_result_from_path(db_lock_path),
+    expected_database = expected_payload.get("db_lock") if expected_payload is not None else None
+    if expected_payload is not None and not isinstance(expected_database, dict):
+        launcher_log_warning(None, "缺少原数据库锁身份，已保留数据库运行锁：path=%s", db_lock_path, state_dir=state_dir)
+        return False
+    database_released = _release_lock_file(
+        db_lock_path,
         expected_pid,
-        fallback_state_dir=os.path.dirname(db_lock_path),
+        state_dir=os.path.dirname(db_lock_path),
+        expected_payload=expected_database,
     )
+    return shell_released and database_released

@@ -8,6 +8,7 @@ import pytest
 
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
+from core.services.workbench.run.decision_metrics import metric_definitions
 from tests.workbench.dashboard_support import api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
 from tests.workbench.node_runtime_support import node_runtime
@@ -73,6 +74,12 @@ def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_c
             assert value["balance_cv"] == pytest.approx(1)
         assert len(data["resources"]) == 4
         assert all(row["before"]["window_metrics"]["occupied_hours"] is None for row in data["resources"])
+        definitions = {row["key"]: row for row in metric_definitions()}
+        for entry in data["tradeoffs"]["all_differences"]:
+            assert entry["metric_version"] == definitions[entry["metric_key"]]["metric_version"]
+            if entry["source"] == "archived_resource_calendar":
+                assert entry["metric_version"] == common["metric_version"]
+        assert data["summary"]["before"]["changeovers"]["reason"] == "比较对象缺少保存安排，工种切换次数未知。"
         shipped(data, r"""
 const w = h.runtime, d = sourceData;
 const payload = {ok:true, schema_version:1, data:d, meta:{request_ref:'a'.repeat(32), source:'production',
@@ -81,6 +88,8 @@ w.DashboardCandidateComparisonAPI.validate(payload, {candidate:d.candidate, batc
   {baseline:d.baseline, generation:d.generation, time_scope:d.time_scope});
 const text = h.text(h.render(w.DashboardCandidatePanels.Metrics, {data:d}));
 assert(text.includes(w.WorkbenchTerms.resource_kinds.machine) && text.includes(w.WorkbenchTerms.resource_kinds.operator));
+assert(text.includes('比较对象缺少保存安排，工种切换次数未知。'));
+assert(!text.includes('arrangements_unavailable'));
 const tree = h.render(w.DashboardCandidatePanels.Tradeoffs, {data:d});
 const rows = h.walk(tree).filter(node => node.props['data-comparison-tradeoff']);
 assert.equal(rows.length, d.tradeoffs.all_differences.length);
@@ -92,6 +101,14 @@ assert(!text.includes('推荐方案'), 'The old dashboard compares the explicitl
 const missing = structuredClone(payload);
 delete missing.data.tradeoffs.all_differences[0].value;
 assert.throws(() => w.DashboardCandidateComparisonAPI.validate(missing,
+  {candidate:d.candidate, batch_ref:d.batch_ref}, {baseline:d.baseline, generation:d.generation, time_scope:d.time_scope}));
+const resources = d.tradeoffs.all_differences.filter(item => item.source === 'archived_resource_calendar');
+assert(resources.length && resources.every(item => item.metric_version === d.resource_common.metric_version));
+const wrongVersion = structuredClone(payload), key = resources[0].metric_key;
+for (const group of ['all_differences','benefits','costs']) {
+  for (const item of wrongVersion.data.tradeoffs[group]) if (item.metric_key === key) item.metric_version = 'decision-preparation-v4';
+}
+assert.throws(() => w.DashboardCandidateComparisonAPI.validate(wrongVersion,
   {candidate:d.candidate, batch_ref:d.batch_ref}, {baseline:d.baseline, generation:d.generation, time_scope:d.time_scope}));
 return {shipped_contract:true, fixed_cohort:true};
 """)

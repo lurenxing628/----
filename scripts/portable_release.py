@@ -36,7 +36,7 @@ def payload_files(dist_dir: Path) -> List[Path]:
         if path.is_symlink():
             raise ValueError("Portable payload contains a symlink: " + str(relative))
         if (relative.parts[0].lower() in RUNTIME_ROOTS
-                or name.endswith((".db", ".sqlite", ".sqlite3", ".log", ".lock"))
+                or name.endswith((".db", ".sqlite", ".sqlite3", ".log", ".lock", ".lock.guard"))
                 or ".db-" in name or name.startswith(("aps_runtime.", "aps_secret_key."))
                 or relative.as_posix().lower().startswith("tools/chrome109/user data/")
                 or relative.as_posix().lower().startswith("tools/chrome109/default/")):

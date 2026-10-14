@@ -108,7 +108,11 @@ def _projection(workspace, baseline, full_workspace, full_baseline, official, fa
                       "delivery": "complete_captured_batch_operations", "resources": "same_range_daily_peak_available_occupancy",
                       "changeovers": "same_range_scheduled_operation_type_changes", "current_entities_consulted": False},
             "capabilities": {"view": True, "adopt": False, "edit_draft": False, "report_actual": False}}
-    result["tradeoffs"] = candidate_tradeoffs(result, before_delivery, after_delivery, official["tasks"], full_workspace["tasks"])
+    selected_batches = set(refs)
+    subject_operation_refs = {ref for ref, key in facts.operations.items()
+        if facts.entity_refs.get(("batch", facts.tables["BatchOperations"][key]["batch_id"])) in selected_batches}
+    result["tradeoffs"] = candidate_tradeoffs(result, before_delivery, after_delivery, official["tasks"], full_workspace["tasks"],
+                                           subject_operation_refs=subject_operation_refs)
     return result
 
 

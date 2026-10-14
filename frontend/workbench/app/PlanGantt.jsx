@@ -68,8 +68,8 @@
         : <div>原安排：{baseline.reason}</div>}
     </div>;
   }
-  function PlanGantt({ data, asOf, selected, onSelect, query, onQuery, disabled = false, toolbarActions, initialMode }) {
-    const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'), [baseline, setBaseline] = React.useState(false), [zoom, setZoom] = React.useState(1);
+  function PlanGantt({ data, asOf, selected, onSelect, query, onQuery, disabled = false, toolbarActions, initialMode, initialBaseline = false }) {
+    const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'), [baseline, setBaseline] = React.useState(initialBaseline), [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false), { expanded, toggle } = window.GanttPresentationUI.useExpanded();
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
     const [chainEnabled, setChainEnabled] = React.useState(false);

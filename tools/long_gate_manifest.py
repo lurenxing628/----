@@ -425,8 +425,10 @@ def _scopes_for_entry(
                 "tools/test_debt_registry.py",
                 "tools/test_registry.py",
                 "scripts/run_quality_gate.py",
+                "开发文档/技术债务治理台账.md",
             ]
         )
+        tool_scopes.append("tools/quality_gate_ledger.py")
         dependency_scopes.extend(
             [
                 "requirements*.txt",
@@ -632,7 +634,9 @@ def _scopes_for_entry(
         input_scopes.extend(
             [
                 "tests/**/*.py",
-                "tests/migration_db/fixtures/schema-v9.sql",
+                "tests/**/*.cjs",
+                "tests/**/fixtures/*.sql",
+                "tests/**/fixtures/*.json",
                 "tests/**/conftest.py",
                 "conftest.py",
                 "core/**/*.py",
@@ -640,6 +644,7 @@ def _scopes_for_entry(
                 "data/**/*.py",
                 "plugins/**/*.py",
                 "scripts/**/*.py",
+                "scripts/workbench/*.cjs",
                 "desktop/**/*.py",
                 "audit/**/*.py",
                 "app.py",
@@ -653,6 +658,12 @@ def _scopes_for_entry(
                 "build_win7*.bat",
                 "templates/**/*.html",
                 "static/**/*",
+                "frontend/workbench/app/**/*.js",
+                "frontend/workbench/app/**/*.jsx",
+                "frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js",
+                "tests/portable_sample/*.ps1",
+                "packaging/win7/*.ps1",
+                "packaging/win7/*.cmd",
                 "audit/**/*.md",
                 ".codestable/architecture/**/*.md",
                 ".codestable/compound/**/*.md",
@@ -664,6 +675,9 @@ def _scopes_for_entry(
                 ".codestable/roadmap/**/*.yaml",
                 ".codestable/roadmap/**/*.yml",
                 "docs/**/*.md",
+                "docs/**/*.html",
+                "docs/**/*.css",
+                "docs/**/*.js",
                 "evidence/README.md",
                 "evidence/current/README.md",
                 ".github/workflows/*.yml",

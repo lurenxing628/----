@@ -11,39 +11,19 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.summary.due_risk_items import incomplete_batch_ids_from_failure_details
 from core.services.workbench.facts.candidate_projection import dispositions
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-
-
-def archived_deferred_operation_evidence(record):
-    """Read declared pending identities without consulting replacement entities."""
-    parsed = parse_result_summary_payload(record.get("summary"))
-    payload = parsed.payload if not parsed.parse_failed else None
-    return _archived_deferred(payload)
-
-
-def _archived_deferred(payload):
-    if not isinstance(payload, dict):
-        return set(), []
-    ids = payload.get("deferred_operation_ids")
-    if ids is not None:
-        if type(ids) is not list or any(type(value) is not int or value <= 0 for value in ids):
-            return set(), ["deferred_operation_evidence_invalid"]
-        return set(ids), []
-    policy = payload.get("material_policy", {})
-    if not isinstance(policy, dict) or policy.get("material_strategy") != "stage" or policy.get("ready_check") is not True:
-        return set(), []
-    return set(), ["deferred_operation_evidence_missing"]
 
 
 def deferred_operation_evidence(conn, record):
     """Saved adoption claims, or the immutable source of an older stage adoption."""
     parsed = parse_result_summary_payload(record.get("summary"))
     payload = parsed.payload if not parsed.parse_failed else None
-    ids, issues = _archived_deferred(payload)
+    ids, issues = archived_deferred_payload_evidence(payload)
     if issues != ["deferred_operation_evidence_missing"]:
         return ids, issues
-    # _archived_deferred 仅对已确认的 dict 和 stage 策略产生此缺项标记。
+    # archived_deferred_payload_evidence 仅对已确认的 dict 和 stage 策略产生此缺项标记。
     payload = cast(Dict[str, Any], payload)
     try:
         if payload.get("source") == "workbench_candidate_adoption":

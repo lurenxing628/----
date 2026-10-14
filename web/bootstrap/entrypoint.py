@@ -35,7 +35,6 @@ from .launcher import (
     stop_runtime_from_dir,
     write_launch_error,
     write_runtime_contract_file,
-    write_runtime_host_port_files,
 )
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import resolve_runtime_db_path
@@ -57,7 +56,6 @@ class EntryPointDeps:
     acquire_runtime_lock: Callable[..., Any]
     release_runtime_lock: Callable[..., Any]
     delete_runtime_contract_files: Callable[..., Any]
-    write_runtime_host_port_files: Callable[..., Any]
     write_runtime_contract_file: Callable[..., Any]
     default_chrome_profile_dir: Callable[[str], str]
     pick_bind_host: Callable[..., str]
@@ -106,7 +104,6 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
         acquire_runtime_lock=acquire_runtime_lock,
         release_runtime_lock=release_runtime_lock,
         delete_runtime_contract_files=delete_runtime_contract_files,
-        write_runtime_host_port_files=write_runtime_host_port_files,
         write_runtime_contract_file=write_runtime_contract_file,
         default_chrome_profile_dir=default_chrome_profile_dir,
         pick_bind_host=pick_bind_host,
@@ -169,22 +166,15 @@ def configure_runtime_contract(
     *,
     default_ui_mode: str,
     deps: EntryPointDeps,
-) -> None:
+    runtime_lock: Dict[str, Any],
+) -> Dict[str, Any]:
     shutdown_token = secrets.token_urlsafe(32)
     app.config["APS_RUNTIME_SHUTDOWN_TOKEN"] = shutdown_token
     app.config["APS_RUNTIME_DIR"] = runtime_dir
     app.config["APS_RUNTIME_OWNER"] = owner
     identity = runtime_identity(app)
 
-    deps.write_runtime_host_port_files(
-        runtime_dir=runtime_dir,
-        cfg_log_dir=app.config.get("LOG_DIR"),
-        host=host,
-        port=port,
-        db_path=app.config.get("DATABASE_PATH"),
-        logger=app.logger,
-    )
-    deps.write_runtime_contract_file(
+    return deps.write_runtime_contract_file(
         runtime_dir,
         host,
         port,
@@ -199,6 +189,7 @@ def configure_runtime_contract(
         chrome_profile_dir=deps.default_chrome_profile_dir(runtime_dir),
         owner=owner,
         logger=app.logger,
+        expected_lock=runtime_lock,
     )
 
 
@@ -398,9 +389,9 @@ def _acquire_runtime_lock_before_app(
     lock_scope_log_dir,
     runtime_owner,
     prelaunch_log_dir,
-    runtime_lock_state=None,
+    runtime_lock_state: Dict[str, Any],
 ) -> Optional[int]:
-    # 副作用时序红线：acquire_lock → atexit(release) → create_app（迁移/退出备份注册）→ configure_contract → atexit(delete)
+    # 副作用时序：acquire_lock → atexit(清理/释放) → create_app（迁移/退出备份注册）→ 发布并保存契约身份。
     # 精确保序，任何重排破坏启动语义与崩溃后清理；锁必须是第一个共享资源副作用（双开防线）。
     # 返回 None=成功继续；13=锁失败。此时 app 尚未创建，观测通道只有启动错误文件与 launcher.log（logger=None）。
     # B03：壳锁命名空间锚定日志目录（bat/stop 读取端合同），与 DB 的 env 锚点（APS_DB_PATH/shared-data root）
@@ -415,20 +406,16 @@ def _acquire_runtime_lock_before_app(
             exe_path=sys.executable,
             db_path=runtime_db_path,
         )
-        if deps.install_run_runtime is not None and not isinstance(acquired, dict):
+        if not isinstance(acquired, dict):
             raise RuntimeError("未取得可核对的数据库运行锁，不能启动排产后台。")
     except Exception as e:
         _write_launch_error_with_observability(
             deps, runtime_dir, str(e), prelaunch_log_dir, logger=None, context="获取运行时锁失败"
         )
         return 13
-    if runtime_lock_state is not None:
-        runtime_lock_state["payload"] = acquired
-    if deps.install_run_runtime is not None:
-        deps.atexit_register(release_runtime_after_jobs, deps, runtime_lock_state,
-                             lock_scope_target, os.getpid(), runtime_db_path)
-    else:
-        deps.atexit_register(deps.release_runtime_lock, lock_scope_target, os.getpid(), runtime_db_path)
+    runtime_lock_state["payload"] = acquired
+    deps.atexit_register(release_runtime_after_jobs, deps, runtime_lock_state,
+                         lock_scope_target, os.getpid(), runtime_db_path)
     return None
 
 
@@ -442,11 +429,11 @@ def _publish_runtime_contract(
     runtime_owner,
     ui_mode,
     debug,
-    lock_state=None,
+    lock_state: Dict[str, Any],
 ) -> Optional[int]:
     # 契约失败用 app.logger（区别于锁/create_app 失败用 None），文案不统一化。返回 None=成功继续；15=契约失败。
     try:
-        configure_runtime_contract(
+        publication = configure_runtime_contract(
             app,
             runtime_dir,
             host,
@@ -454,18 +441,15 @@ def _publish_runtime_contract(
             runtime_owner,
             default_ui_mode=ui_mode,
             deps=deps,
+            runtime_lock=lock_state["payload"],
         )
+        lock_state["contract"] = publication["payload"]
     except Exception as e:
         _write_launch_error_with_observability(
             deps, runtime_dir, str(e), app.config.get("LOG_DIR"), logger=app.logger, context="写入运行时契约失败"
         )
         return 15
     if deps.should_register_runtime_lifecycle_handlers(debug):
-        directory = app.config.get("LOG_DIR") or runtime_dir
-        if deps.install_run_runtime is not None and lock_state is not None:
-            # Cleanup also deletes the shell lock. The first-registered release
-            # callback runs LAST, after stop and the factory's exit backup.
-            lock_state["contract_cleanup_dir"] = directory
-        else:
-            deps.atexit_register(deps.delete_runtime_contract_files, directory)
+        # First registered, this callback runs after the factory's backup.
+        lock_state["contract_cleanup_dir"] = os.path.dirname(publication["path"])
     return None

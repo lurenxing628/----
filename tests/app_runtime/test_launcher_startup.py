@@ -52,6 +52,7 @@ def health_server(tmp_path):
 
     from web.bootstrap.entrypoint import _default_deps, configure_runtime_contract
     from web.bootstrap.launcher_contracts import read_runtime_contract_result
+    from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
     from web.bootstrap.launcher_shutdown import RuntimeHostStopTransport
     from web.routes.workbench.system_runtime import health
 
@@ -84,8 +85,12 @@ def health_server(tmp_path):
 
     def configure(database_path):
         app.config["DATABASE_PATH"] = str(database_path)
+        previous = state.get("lock")
+        if previous is not None:
+            assert release_runtime_lock(str(tmp_path), db_path=previous["db_path"], expected_payload=previous)
+        state["lock"] = acquire_runtime_lock(str(tmp_path), owner="LOCAL\\operator", db_path=str(database_path))
         configure_runtime_contract(app, str(tmp_path), "127.0.0.1", server.server_port, "LOCAL\\operator",
-                                   default_ui_mode="new_ui", deps=_default_deps("new_ui"))
+                                   default_ui_mode="new_ui", deps=_default_deps("new_ui"), runtime_lock=state["lock"])
         result = read_runtime_contract_result(str(tmp_path))
         assert result.ok
         state["contract"] = result.payload
@@ -98,6 +103,7 @@ def health_server(tmp_path):
     server.shutdown()
     thread.join(timeout=5)
     server.server_close()
+    assert release_runtime_lock(str(tmp_path), db_path=state["lock"]["db_path"], expected_payload=state["lock"])
 
 
 def _write_contract(tmp_path, contract):

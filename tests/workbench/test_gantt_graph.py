@@ -1,7 +1,11 @@
 """Frozen full-scope Gantt graph from real worker output and adopted plans."""
 
+import csv
+from io import StringIO
+
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
+from core.services.workbench.plan.export import HEADERS, write_plan_export
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
 from tests.workbench.ea_zero_duration_support import adopt as adopt_points
@@ -110,8 +114,26 @@ def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case)
     point_refs = {stored_refs[op_id] for (_, seq), op_id in ids.items() if seq in (20, 40)}
     assert {row["operation_ref"] for row in graph["nodes"] if row["start"] == row["end"]} == point_refs
     plan_ref = adopt_points(case, refs[0])["plan_ref"]
-    graph = assert_mixed_graph(case, ids, plan_workspace(case, plan_ref), candidate=False)
+    plan = plan_workspace(case, plan_ref)
+    graph = assert_mixed_graph(case, ids, plan, candidate=False)
     assert {row["operation_ref"] for row in graph["nodes"] if row["start"] == row["end"]} == point_refs
+    assert plan["plan_span"]["end_inclusive"] is True
+    terminal = [row for row in plan["tasks"] if row["start"] == row["end"] == plan["plan_span"]["end"]]
+    assert terminal
+    snapshot = {"snapshot_ref": "point-plan-export", "as_of": "2026-09-10T12:00:00"}
+    full = list(csv.DictReader(StringIO(write_plan_export(plan, snapshot, "csv").content.decode("utf-8-sig"))))
+    assert tuple(full[0]) == HEADERS
+    assert "范围终点（不含）" not in full[0] and "范围终点" in full[0]
+    assert len(full) == plan["task_count"]
+    assert all(row["时间计算方式"] == "'包含末端零工时工序" for row in full)
+    terminal_refs = {row["task_ref"] for row in terminal}
+    assert {"'" + ref for ref in terminal_refs} <= {row["任务编号"] for row in full}
+    explicit = plan_workspace(case, plan_ref, range_start=plan["plan_span"]["start"], range_end=plan["plan_span"]["end"])
+    assert not terminal_refs & {row["task_ref"] for row in explicit["tasks"]}
+    half_open = list(csv.DictReader(StringIO(write_plan_export(explicit, snapshot, "csv").content.decode("utf-8-sig"))))
+    assert len(half_open) == explicit["task_count"] == plan["task_count"] - len(terminal)
+    assert all(row["时间计算方式"] == "'含起点，不含结束时刻" for row in half_open)
+    assert all(row["范围终点"] == "'" + plan["plan_span"]["end"] for row in full + half_open)
 
 
 def test_candidate_resource_chain_uses_assignments_when_frozen_display_records_are_missing(trial_case):

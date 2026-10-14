@@ -13,6 +13,13 @@
   // Same three sentences as FieldContract.quantityReasons; this module loads before FieldContract, so the text is repeated here.
   const quantityReasons = { plan_target_not_recorded: '原计划未记录应做数量', plan_target_unavailable: '原计划应做数量读不到', plan_target_invalid: '原计划应做数量无效' };
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
+  function scopeCaption(data) {
+    if (!data) return '';
+    const includesPlanEnd = data.scope.range_start === null && data.plan_span.end_inclusive === true;
+    return includesPlanEnd && data.plan_span.start === data.plan_span.end
+      ? `计划时刻：${timeLabel(data.plan_span.start)}`
+      : `计划时间范围：${timeLabel(data.time_scope.range_start)} 至 ${timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
+  }
   function names(data) {
     const result = new Map();
     for (const row of data.resources || []) result.set(row.ref, row.label || row.business_code);
@@ -158,5 +165,5 @@
   function tone(task, risks) {
     return risks.get(task.batch_id) === 'overdue' ? 'critical' : 'primary';
   }
-  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, layout, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels };
+  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, layout, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels, scopeCaption };
 })();

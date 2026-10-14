@@ -3,7 +3,6 @@
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.changeovers import changeover_projection
 from core.services.workbench.facts.operation_effort_evidence import archived_standard_effort, saved_operation_efforts
-from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.preparation_projection import (
     PREPARATION_METRIC_VERSION,
     preparation_delta,
@@ -12,6 +11,7 @@ from core.services.workbench.facts.preparation_projection import (
     public_preparation_metrics,
     public_preparation_roles,
 )
+from core.services.workbench.facts.trial_origin import operation_contexts
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
@@ -30,29 +30,13 @@ def _allocation(runtime, *, arranged, deferred=False, source=None):
     return "new_schedule" if role == "new_schedule" else "unknown"
 
 
-def _contexts(rows, admission):
-    result = {row["operation_ref"]: {"operation": row["original"]["operation"],
-        "execution": row["original"].get("execution") or {}, "arranged": True,
-        "row": row} for row in rows}
-    source = admission["source"]
-    if "capture" in source:
-        facts = GenerationFacts(source["capture"])
-        execution = {item["operation_ref"]: item for item in source["capture"]["execution"]}
-        deferred = material_deferred_ids((source.get("dispositions") or {}).values(), source["capture"]["input"])
-        for ref in source.get("dispositions") or {}:
-            if ref not in result:
-                op = facts.tables["BatchOperations"][facts.operations[ref]]
-                result[ref] = {"operation": op, "execution": execution.get(ref, {}),
-                               "arranged": False, "deferred": op["id"] in deferred}
-    return result
-
-
-def preparation_projection(rows, admission, current_ledger, *, current_evidence=None):
+def preparation_projection(rows, admission, current_ledger, *, current_evidence=None, contexts=None):
     """The immutable source and the explicit current ledger remain distinct."""
     source = admission["source"]
     before = saved_operation_efforts(source.get("operation_effort"))
     after = saved_operation_efforts(current_ledger)
-    contexts, pairs, summary_rows = _contexts(rows, admission), {}, {"before": [], "after": []}
+    contexts = operation_contexts(rows, admission) if contexts is None else contexts
+    pairs, summary_rows = {}, {"before": [], "after": []}
     origin = source.get("identity")
     for ref, context in contexts.items():
         op, execution = context["operation"], context["execution"]

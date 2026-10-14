@@ -28,11 +28,11 @@
   }
   function Tradeoffs({ data }) {
     const value = data.tradeoffs;
-    return <section aria-label="方案收益与代价"><h3>方案收益与代价</h3>
-      <div className="dy-context">{[['benefits', '主要收益'], ['costs', '主要代价']].map(([key, label]) => <section key={key}><h4>{label}</h4>
+    return <section className="dy-tradeoffs" aria-label="方案收益与代价"><h3>方案收益与代价</h3>
+      {data.baseline.available ? <div className="dy-tradeoff-grid">{[['benefits', '主要收益', 'success', '收益'], ['costs', '主要代价', 'warning', '代价']].map(([key, label, tone, kind]) => <div key={key} className="dy-tradeoff" data-tone={value[key].length ? tone : 'neutral'}><h4>{label}</h4>
         {value[key].length ? <ul>{value[key].map(item => <li key={item.metric_key}><strong>{item.label}</strong><p>{item.text}</p>{item.reason && <small>{item.reason.message}</small>}</li>)}</ul>
-          : <p>本范围没有可确认的{label}项。</p>}</section>)}</div>
-      <details><summary>全部差值与比较依据 · {value.all_differences.length} 项</summary><div className="dy-scroll"><table className="dy-analysis-table" aria-label="所选候选全部取舍差值">
+          : <p>本范围暂无已确认的{kind}。</p>}</div>)}</div> : <p className="dy-tradeoff-unavailable">排产时没有正式计划，收益与代价暂无法比较。</p>}
+      <details className="dy-tradeoff-details"><summary>全部差值与比较依据 · {value.all_differences.length} 项</summary><div className="dy-scroll"><table className="dy-analysis-table" aria-label="所选候选全部取舍差值">
         <thead><tr><th scope="col">指标 / 范围</th><th scope="col">排产时的正式计划</th><th scope="col">所选候选方案</th><th scope="col">变化 / 说明</th></tr></thead>
         <tbody>{value.all_differences.map(item => <tr key={item.metric_key} data-comparison-tradeoff={item.metric_key}>
           <th scope="row">{item.label}<TradeoffEvidence item={item} /></th><td><TradeoffValue value={item.reference_value} item={item} /></td>
@@ -49,7 +49,7 @@
   function Peak({ value }) { return value.peak_utilization !== null ? <>{window.WorkbenchFormat.percent(value.peak_utilization)}</> : value.state === 'available' ? <>没有可排时间</> : <>可排时间未记录</>; }
   function Metrics({ data }) {
     const old = data.summary.before, selected = data.summary.after;
-    return <section aria-label="所选候选比较"><Tradeoffs data={data} /><h3>批次交付对比汇总</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">批次交付对比汇总</caption><thead><tr><th scope="col">指标</th><th scope="col">{window.WorkbenchTerms.baseline_plan}</th><th scope="col">所选候选方案</th></tr></thead><tbody>
+    return <section className="dy-comparison-metrics" aria-label="所选候选比较"><Tradeoffs data={data} /><h3>批次交付对比汇总</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">批次交付对比汇总</caption><thead><tr><th scope="col">指标</th><th scope="col">{window.WorkbenchTerms.baseline_plan}</th><th scope="col">所选候选方案</th></tr></thead><tbody>
       <tr><td>{T.overdue_count}</td><td><DeliveryValue summary={old} metric="overdue_count" /></td><td><DeliveryValue summary={selected} metric="overdue_count" /></td></tr>
       <tr><td>{T.total_tardiness_hours}（小时）</td><td><DeliveryValue summary={old} metric="total_tardiness_hours" /></td><td><DeliveryValue summary={selected} metric="total_tardiness_hours" /></td></tr>
       <tr><td>同范围{T.changeover_count}</td><td>{number(old.changeovers.value)}{old.changeovers.value === null && old.changeovers.reason && <small>{old.changeovers.reason}</small>}</td>

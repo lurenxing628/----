@@ -113,13 +113,14 @@
         <U.Button icon="plus" className="btn primary" disabled={commands.blocked} onClick={async () => { if (await guard()) setModal('create'); }}>新增试调</U.Button>
         {key && <U.Button icon="refresh-cw" aria-label="刷新当前试调" busy={read.busy} disabled={commands.busy || !!commands.key} onClick={reload}>刷新</U.Button>}
         {data && <><U.Download data={data} /><details className="tt-refs wb-ref"><summary title={window.WorkbenchFormat.dateTime(data.time_scope.start, { seconds: true, fractions: true }) + ' 至 ' + window.WorkbenchFormat.dateTime(data.time_scope.end, { seconds: true, fractions: true })}>{window.WorkbenchFormat.compactRange(data.time_scope.start, data.time_scope.end)}</summary>
-          <div>原安排：{U.sourceLabel(data.base_identity)} · 创建草稿时保存</div><div>试调安排：{data.scenario_ref ? '已保存的调整结果' : '当前调整结果'}</div>
-          {data.baseline.version !== null && <div>建草稿时的正式计划：第 {data.baseline.version} 版</div>}
-          <div>开始：{window.WorkbenchFormat.dateTime(data.time_scope.start, { seconds: true, fractions: true })}</div><div>结束：{window.WorkbenchFormat.dateTime(data.time_scope.end, { seconds: true, fractions: true })}</div>
-          {result && <div>本次刷新时间：{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</div>}
-          <div>草稿编号：<span className="tt-ref">{data.draft_ref}</span></div>{data.scenario_ref && <div>试调方案编号：<span className="tt-ref">{data.scenario_ref}</span></div>}
-          <div>来源编号：<span className="tt-ref">{Object.values(data.base)[0]}</span></div>
-          <div>交期数据：{window.WorkbenchTerms.delivery_coverage(data.comparison.delivery_summary)}</div>
+          <div className="tt-source-body"><dl className="tt-source-facts">
+            <div><dt>原安排</dt><dd>{U.sourceLabel(data.base_identity)} · 创建草稿时保存</dd></div><div><dt>试调安排</dt><dd>{data.scenario_ref ? '已保存的调整结果' : '当前调整结果'}</dd></div>
+            {data.baseline.version !== null && <div><dt>建草稿时的正式计划</dt><dd>第 {data.baseline.version} 版</dd></div>}
+            <div><dt>开始</dt><dd>{window.WorkbenchFormat.dateTime(data.time_scope.start, { seconds: true, fractions: true })}</dd></div><div><dt>结束</dt><dd>{window.WorkbenchFormat.dateTime(data.time_scope.end, { seconds: true, fractions: true })}</dd></div>
+            {result && <div><dt>本次刷新时间</dt><dd>{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</dd></div>}
+          </dl><div className="tt-source-wide">交期数据：{window.WorkbenchTerms.delivery_coverage(data.comparison.delivery_summary)}</div>
+            <window.WorkbenchReference entries={{ '草稿编号': data.draft_ref, ...(data.scenario_ref ? { '试调方案编号': data.scenario_ref } : {}), '来源编号': Object.values(data.base)[0] }} />
+          </div>
         </details></>}
       </header>
       <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} /><U.ErrorBox error={originalTask.error} />

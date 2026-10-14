@@ -12,7 +12,7 @@ from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference
 from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
-from core.services.workbench.facts.delivery_completeness import archived_deferred_operation_evidence
+from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
 
 from .candidate_baseline import AdmissionBaseline, ArchivedAdmissionPlan, invalid_baseline
 from .candidate_facts import _index

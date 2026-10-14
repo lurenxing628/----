@@ -6,6 +6,7 @@ from . import launcher_paths as _paths
 from . import launcher_processes as _processes
 from . import launcher_runtime_lock as _runtime_lock
 from . import launcher_stop as _stop
+from . import launcher_stop_cleanup as _stop_cleanup
 from .launcher_contracts import (
     RuntimeCleanupFailure,
     RuntimeCleanupResult,
@@ -27,7 +28,6 @@ from .launcher_contracts import (
     release_runtime_lock,
     write_launch_error,
     write_runtime_contract_file,
-    write_runtime_host_port_files,
 )
 from .launcher_endpoint_result import RuntimeEndpointReadResult, read_runtime_endpoint_files_result
 from .launcher_network import BindProbeResult, _can_bind, _can_bind_result, pick_bind_host, pick_port
@@ -148,6 +148,7 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _stop._list_aps_chrome_pids = _list_aps_chrome_pids
     _stop.delete_runtime_contract_files = delete_runtime_contract_files
     _stop.delete_runtime_contract_files_result = delete_runtime_contract_files_result
+    _stop_cleanup.release_runtime_lock = release_runtime_lock
     _stop.read_runtime_contract = read_runtime_contract
     _stop.read_runtime_contract_result = read_runtime_contract_result
     _stop.read_runtime_endpoint_files_result = read_runtime_endpoint_files_result

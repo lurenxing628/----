@@ -25,11 +25,12 @@
   }
   function Candidates({ catalog, initialContext = {}, onState, selectedBatch, onSelectBatch, issueBatchRef = null }) {
     const api = React.useMemo(() => A.create(), []), baselineApi = React.useMemo(() => B.create(), []), comparisonApi = React.useMemo(() => Q.create(), []);
-    const [choice, setChoice] = React.useState(() => Q.context(initialContext)), [revision, refresh] = React.useReducer(n => n + 1, 0);
+    const [choice, setChoice] = React.useState(() => { const value = Q.context(initialContext); delete value.batch_ref; return value; }), [revision, refresh] = React.useReducer(n => n + 1, 0);
+    const context = Q.context({ ...choice, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
     const [list, setList] = React.useState({ run: null, data: null, error: null, loading: false });
     const [read, setRead] = React.useState({ signature: null, data: null, error: null, loading: false });
     const [range, setRange] = React.useState({ start: choice.range_start || '', end: choice.range_end || '' }), [rangeError, setRangeError] = React.useState(null);
-    const [summary, setSummary] = React.useState(false), [rangeOpen, setRangeOpen] = React.useState(false), signature = JSON.stringify(choice);
+    const [summary, setSummary] = React.useState(false), [rangeOpen, setRangeOpen] = React.useState(false), signature = JSON.stringify(context);
     React.useEffect(() => { setRange({ start: choice.range_start || '', end: choice.range_end || '' }); }, [choice.range_start, choice.range_end]);
     React.useEffect(() => {
       const controller = new AbortController(), run = choice.run_ref;
@@ -40,18 +41,18 @@
     }, [api, choice.run_ref, revision]);
     React.useEffect(() => {
       const controller = new AbortController(); setSummary(false);
-      setRead({ signature, data: null, error: null, loading: !!choice.candidate_ref });
-      if (!choice.candidate_ref) return () => controller.abort();
+      setRead({ signature, data: null, error: null, loading: !!context.candidate_ref });
+      if (!context.candidate_ref) return () => controller.abort();
       const load = async () => {
-        if (!choice.range_start || !choice.range_end) {
-          const first = await api.workspace(choice.candidate_ref, {}, controller.signal);
-          C.check(first.data.candidate.run_ref === choice.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
-          if (!controller.signal.aborted) setChoice(previous => JSON.stringify(previous) === signature ? { ...previous, ...rangeFor(first.data.generation.input) } : previous);
+        if (!context.range_start || !context.range_end) {
+          const first = await api.workspace(context.candidate_ref, context.batch_ref ? { batch_ref: context.batch_ref } : {}, controller.signal);
+          C.check(first.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
+          if (!controller.signal.aborted) setChoice(previous => C.equal(previous, choice) ? { ...previous, ...rangeFor(first.data.generation.input) } : previous);
           return;
         }
-        const scope = { range_start: choice.range_start, range_end: choice.range_end, ...(choice.batch_ref ? { batch_ref: choice.batch_ref } : {}) };
-        const workspace = await api.workspace(choice.candidate_ref, scope, controller.signal);
-        C.check(workspace.data.candidate.run_ref === choice.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
+        const scope = { range_start: context.range_start, range_end: context.range_end, ...(context.batch_ref ? { batch_ref: context.batch_ref } : {}) };
+        const workspace = await api.workspace(context.candidate_ref, scope, controller.signal);
+        C.check(workspace.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
         const baseline = await baselineApi.read(workspace.data, controller.signal);
         const comparison = await comparisonApi.read(workspace.data, baseline.data, controller.signal);
         if (!controller.signal.aborted) setRead({ signature, data: { workspace, baseline, comparison }, error: null, loading: false });
@@ -64,7 +65,7 @@
     const caption = data ? { reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label || window.WorkbenchTerms.name_missing,
       status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划' } : null;
     const captionKey = JSON.stringify(caption);
-    React.useLayoutEffect(() => { if (onState) onState({ context: choice, caption }); }, [onState, signature, captionKey]);
+    React.useLayoutEffect(() => { if (onState) onState({ context, caption }); }, [onState, signature, captionKey]);
     function changeRun(ref) {
       setRangeError(null);
       if (!ref) { setChoice({}); return; }
@@ -73,7 +74,7 @@
       if (run && run.scope_summary && run.scope_summary.start_date && run.scope_summary.end_date) {
         try { bounds = rangeFor(run.scope_summary); } catch (error) { setRangeError(error); }
       }
-      setChoice({ run_ref: ref, ...bounds, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
+      setChoice({ run_ref: ref, ...bounds });
     }
     function applyRange(event) {
       event.preventDefault();
@@ -95,9 +96,9 @@
         {catalog.runs.map(run => <option key={run.run_ref} value={run.run_ref}>{window.WorkbenchFormat.compactDateTime(run.accepted_at)} · {run.candidate_count} 份候选</option>)}
       </select></label>
       <Issues issues={catalog.issues || []} /><ErrorBox error={list.error} /><ErrorBox error={rangeError || current && current.error} />
-      {issueBatchRef && <div className="dy-context">仅比较原问题批次。<window.WorkbenchReference entries={{ '原问题批次编号': issueBatchRef }} /></div>}
+      {context.batch_ref && <div className="dy-context">仅比较原问题批次。<window.WorkbenchReference entries={{ '原问题批次编号': context.batch_ref }} /></div>}
       {list.loading && <p role="status">正在读取这次排产已保存的候选方案列表。</p>}
-      {options && <fieldset className="dy-candidate-options"><legend>候选方案</legend>{options.candidates.map(row => <label key={row.candidate_ref} data-candidate-choice={row.candidate_ref}>
+      {options && <fieldset className="dy-candidate-options"><legend>候选方案</legend>{options.candidates.map(row => <label key={row.candidate_ref} data-candidate-choice={row.candidate_ref} data-selected={choice.candidate_ref === row.candidate_ref}>
         <input type="radio" name="dashboard-candidate" value={row.candidate_ref} checked={choice.candidate_ref === row.candidate_ref}
           onChange={() => setChoice({ ...choice, candidate_ref: row.candidate_ref })} />
         <span><b>{row.label || window.WorkbenchTerms.name_missing}</b><small>{window.WorkbenchTerms.candidate_statuses[row.status]} · {row.task_count} 道安排</small></span>
@@ -106,7 +107,6 @@
         <label>结束（不含）<input type="text" data-picker-type="factory-local" spellCheck={false} aria-label="候选比较共同结束" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label><Button reasonDisplay="inline" icon="check" type="submit">应用范围</Button></form>}
       {current && current.loading && <p role="status">正在核对所选候选方案、排产时的正式计划和共同范围。</p>}
       {data && <>
-        {!data.baseline.available && <p className="dy-note warning">缺少排产时的正式计划，无法比较变化量。</p>}
         <P.Metrics data={data} /><P.Batches data={data} selected={selectedBatch} onSelect={onSelectBatch} />
         <div className="dy-tools"><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
         <details className="dy-evidence"><summary>排产时的范围与规则</summary><dl className="dy-facts"><div><dt>比较批次</dt><dd>{data.batch_refs.length} 批；预计完工按全部工序安排计算</dd></div><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>

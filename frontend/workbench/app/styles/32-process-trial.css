@@ -101,6 +101,15 @@ body.aps-workbench .tt-directory>.wb-pager,body.aps-workbench .tt-gantt>.wb-page
 .tt-facts{display:grid;grid-template-columns:76px minmax(0,1fr);gap:var(--space-1) var(--space-2);margin:var(--space-3) 0}.tt-facts dt{color:var(--ui-info-muted)}.tt-facts dd{margin:0}
 .tt-editor{border-block:1px solid var(--ui-border);padding:var(--space-3) 0;margin:var(--space-2) 0}.tt-editor>label{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-2)}.tt-editor .tt-check{flex-direction:row}
 .tt-editor .tt-tools{margin-top:var(--space-2)}.tt-editor select,.tt-editor input{width:100%}.tt-refs{margin-top:var(--space-3);font-size:var(--font-size-1)}.tt-refs dl{margin:var(--space-2) 0}.tt-refs dd{margin:0 0 7px}
+.trial-workspace > header.tt-tools > .tt-refs{margin:0;min-width:0;max-width:100%}
+.trial-workspace > header.tt-tools > .tt-refs[open]{flex-basis:100%}
+.trial-workspace > header.tt-tools .tt-source-body{margin-top:var(--space-2);padding:var(--space-3);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control);background:var(--ui-surface-muted);font-size:var(--font-size-2);color:var(--ui-text)}
+.trial-workspace > header.tt-tools .tt-source-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--space-3);margin:0}
+.trial-workspace > header.tt-tools .tt-source-facts > div{display:block;min-width:0}
+.trial-workspace > header.tt-tools .tt-source-facts dt{font-size:var(--font-size-1);color:var(--ui-info-muted)}
+.trial-workspace > header.tt-tools .tt-source-facts dd{margin:var(--space-1) 0 0;max-width:none;font-family:var(--font-family);font-size:var(--font-size-2);overflow-wrap:anywhere}
+.trial-workspace > header.tt-tools .tt-source-wide{margin-top:var(--space-3)}
+@media(max-width:700px){.trial-workspace > header.tt-tools .tt-source-facts{grid-template-columns:minmax(0,1fr)}}
 .tt-ref,.tt-refs dd{overflow-wrap:anywhere;font-family:monospace;font-size:var(--font-size-1)}.tt-results{margin-top:var(--space-3);padding:0 var(--space-3) var(--space-2)}.tt-results>.tt-tabs{padding-top:var(--space-1)}.tt-results>[role=tabpanel]{padding-top:var(--space-1)}.tt-subtable{min-width:370px;margin-top:var(--space-2)}
 /* 前序工序按钮：高度 / 换行归 20-controls 按钮合同，这里只收宽度并把多行标签靠左。 */
 .tt-relation-button{min-width:0;max-width:100%;justify-content:flex-start;text-align:left}.tt-relation-label{min-width:0;overflow-wrap:anywhere;word-break:break-word}

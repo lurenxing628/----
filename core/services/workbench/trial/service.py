@@ -20,6 +20,7 @@ from core.models.workbench_trial import (
 )
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.facts.trial_origin import operation_contexts
 from core.services.workbench.facts.trial_policy import (
     load_draft,
     load_scenario,
@@ -32,7 +33,14 @@ from data.repositories.workbench_trial_repo import WorkbenchTrialRepository, new
 from .base import prepare_base
 from .facts import live_context
 from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
-from .projection import draft_projection, scenario_capacity, scenario_comparison, scenario_rows, write_snapshot
+from .projection import (
+    _unplanned,
+    draft_projection,
+    scenario_capacity,
+    scenario_comparison,
+    scenario_rows,
+    write_snapshot,
+)
 from .validation import TrialValidator
 
 
@@ -192,11 +200,13 @@ class WorkbenchTrialService:
             result["capacity"] = scenario_capacity(saved, head, rows)
             if head is not None:
                 projected = scenario_rows(saved, rows)
-                if "preparation_common" not in result["comparison"]:
-                    pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
-                        current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]})
-                    apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
-                    result["comparison"]["preparation_common"] = preparation
+                contexts = operation_contexts(projected, head["admission"])
+                pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
+                    current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
+                result["unplanned_operations"] = _unplanned(contexts)
+                result["scope_complete"] = not result["unplanned_operations"]
+                apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
+                result["comparison"]["preparation_common"] = preparation
                 if "changeover_common" not in result["comparison"]:
                     apply_changeovers(result["comparison"], trial_changeovers(projected, head["admission"]))
             return result

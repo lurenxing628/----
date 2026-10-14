@@ -1,5 +1,6 @@
 """Join managed computations before exit backups and release of launcher locks."""
 
+from .launcher_runtime_lock import RuntimeLockError
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
 from .workbench_system_restore_recovery import (
     RECOVERY,
@@ -57,6 +58,12 @@ def release_runtime_after_jobs(deps, lock_state, lock_scope, pid, db_path):
     stop_run_runtime(runtime)
     directory = lock_state.get("contract_cleanup_dir")
     if directory is not None:
-        runtime.proof.verify()
-        deps.delete_runtime_contract_files(directory)
-    deps.release_runtime_lock(lock_scope, pid, db_path)
+        if runtime is not None:
+            runtime.proof.verify()
+        result = deps.delete_runtime_contract_files(
+            directory, expected_lock=lock_state.get("payload"), expected_contract=lock_state.get("contract")
+        )
+        if not result.ok:
+            raise RuntimeLockError("原实例运行时文件清理失败：" + "; ".join(failure.error or failure.reason for failure in result.failures))
+    if not deps.release_runtime_lock(lock_scope, pid, db_path, expected_payload=lock_state.get("payload")):
+        raise RuntimeLockError("原实例运行锁释放失败，请查看运行时日志。")

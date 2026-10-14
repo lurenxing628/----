@@ -213,11 +213,10 @@
     {
       "name": "ungoogled-chromium",
       "version": "109.0.5414.120-1.1",
-      "path": "tools/ungoogled-chromium_109.0.5414.120-1.1_windows_x86.zip",
-      "url": "https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/download/109.0.5414.120-1.1/ungoogled-chromium_109.0.5414.120-1.1_windows_x86.zip",
-      "sha256": "d5bb0bd7f5ed4f72d37a9af250e18d0b9e474cc78559d111db3f0ed691b2725e",
-      "size": 108915868,
-      "source": "https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/config/platforms/windows/32bit/109.0.5414.120-1.ini"
+      "path": "tools/ungoogled-chromium_109.0.5414.120-1.1_windows_x64.zip",
+      "url": "https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/download/109.0.5414.120-1.1/ungoogled-chromium_109.0.5414.120-1.1_windows_x64.zip",
+      "size": 116550704,
+      "source": "https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/config/platforms/windows/64bit/109.0.5414.120-1.ini"
     }
   ]
 }

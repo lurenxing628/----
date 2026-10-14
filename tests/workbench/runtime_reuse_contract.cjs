@@ -118,6 +118,71 @@ async function main() {
   await window.TrialAdoptionHistoryState.openPlan(scenario, planB, find(appNode, 'remember').navigate); renderApp();
   assert.equal(history.state.workbench.context.plan_ref, planB); assert.equal(history.state.workbench.context.query, undefined);
 
+  // The current issue batch owns the comparison scope across analysis changes and page restoration.
+  let dashboardHooks = hooks(); const dashboardRequests = [], dashboardStates = [];
+  const dashboardRun = '1'.repeat(48), dashboardCandidate = '2'.repeat(48), batchOne = '3'.repeat(48), batchTwo = '4'.repeat(48);
+  const dashboardChoice = { run_ref: dashboardRun, candidate_ref: dashboardCandidate,
+    range_start: '2026-10-13T00:00:00', range_end: '2026-10-31T00:00:00' };
+  const dashboardApi = {
+    catalog: async () => ({ data: { candidates: [{ candidate_ref: dashboardCandidate, label: '原算法', status: 'completed', task_count: 2 }],
+      candidate_count: 1, page: { has_more: false } }, meta: { snapshot_ref: 'dashboard-directory' } }),
+    workspace: (candidateRef, scope, signal) => new Promise(resolve => dashboardRequests.push({ candidateRef, scope, signal, resolve }))
+  };
+  const dashboardWindow = { RunCandidateAPI: { create: () => dashboardApi, time: value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value) },
+    RunBaselineAPI: { create: () => ({ read: async data => ({ data: { batch_ref: data.batch_ref } }) }) },
+    DashboardCandidatePanels: { Metrics: 'dashboard-metrics', Batches: 'dashboard-batches', Summary: 'dashboard-summary' },
+    ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, WorkbenchReference: 'reference',
+    WorkbenchFormat: { dateTime: String, compactRange: (start, end) => start + ' / ' + end, compactDateTime: String },
+    WorkbenchTerms: { candidate_statuses: { completed: '计算完成' }, hold_window: () => '未设置', material_strategy: () => '全部齐套' } };
+  const dashboardContext = vm.createContext({ window: dashboardWindow, React: dashboardHooks.React, AbortController });
+  load(dashboardContext, 'DashboardContract.js'); load(dashboardContext, 'DashboardAnalysisAPI.js'); load(dashboardContext, 'DashboardCandidateComparisonAPI.js');
+  dashboardWindow.DashboardCandidateComparisonAPI.create = () => ({ read: async (data, baseline) => {
+    assert.equal(baseline.batch_ref, data.batch_ref);
+    const batchRefs = data.batch_ref ? [data.batch_ref] : [batchOne, batchTwo];
+    return { data: { candidate: data.candidate, generation: data.generation, baseline: { available: false }, batch_refs: batchRefs,
+      batches: batchRefs.map(batch_ref => ({ batch_ref, batch_id: batch_ref === batchOne ? 'DC-01' : 'DC-02' })) } };
+  } });
+  load(dashboardContext, 'DashboardCandidates.jsx');
+  let dashboardProps = { catalog: { runs: [{ run_ref: dashboardRun, candidate_count: 1, accepted_at: dashboardChoice.range_start }] },
+    initialContext: { run_ref: dashboardRun, candidate_ref: dashboardCandidate, batch_ref: batchTwo }, issueBatchRef: batchOne, selectedBatch: batchOne,
+    onSelectBatch() {}, onState: state => dashboardStates.push(JSON.parse(JSON.stringify(state))) };
+  const renderDashboard = () => { const tree = dashboardHooks.render(() => dashboardWindow.DashboardCandidates(dashboardProps)); dashboardHooks.flush(); return tree; };
+  const completeDashboard = async request => {
+    request.resolve({ data: { candidate: { candidate_ref: request.candidateRef, run_ref: dashboardRun, label: '原算法' }, batch_ref: request.scope.batch_ref || null,
+      generation: { run_ref: dashboardRun, input: { start_date: '2026-10-13', end_date: '2026-10-30', ready_check: true, missing_resource_policy: 'exclude', hold_window: null } } } }); await turns(); await turns();
+    return renderDashboard();
+  };
+  const assertDashboardBatch = (tree, request, batchRef) => {
+    assert.equal(request.scope.batch_ref, batchRef);
+    assert.equal(find(tree, 'reference', props => props.entries && '原问题批次编号' in props.entries).entries['原问题批次编号'], batchRef);
+    assert.deepEqual(Array.from(find(tree, 'dashboard-batches').data.batches, row => row.batch_ref), [batchRef]);
+    assert.deepEqual(dashboardStates.at(-1).context, { ...dashboardChoice, batch_ref: batchRef });
+  };
+  let dashboardTree = renderDashboard(); dashboardTree = await completeDashboard(dashboardRequests[0]);
+  assert.deepEqual({ ...dashboardRequests[0].scope }, { batch_ref: batchOne }, 'Admission-range discovery already follows the current issue batch');
+  const initialDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(initialDashboardRequest);
+  assertDashboardBatch(dashboardTree, initialDashboardRequest, batchOne); const savedDashboard = dashboardStates.at(-1);
+  find(dashboardTree, 'button', props => props['aria-label'] === '刷新候选方案比较').onClick(); renderDashboard();
+  const oldDashboardRequest = dashboardRequests.at(-1);
+  dashboardProps = { ...dashboardProps, issueBatchRef: batchTwo, selectedBatch: batchTwo }; dashboardTree = renderDashboard();
+  assert.equal(find(dashboardTree, 'dashboard-batches'), null, 'Changing the issue hides the previous batch result immediately');
+  assert.equal(oldDashboardRequest.signal.aborted, true);
+  const currentDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(currentDashboardRequest);
+  assertDashboardBatch(dashboardTree, currentDashboardRequest, batchTwo);
+  assert.equal(dashboardStates.at(-1).caption.name, '原算法');
+  dashboardTree = await completeDashboard(oldDashboardRequest); assertDashboardBatch(dashboardTree, currentDashboardRequest, batchTwo);
+  dashboardHooks.unmount(); dashboardHooks = hooks(); dashboardContext.React = dashboardHooks.React;
+  dashboardProps = { ...dashboardProps, initialContext: savedDashboard.context }; renderDashboard();
+  const restoredDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(restoredDashboardRequest);
+  assertDashboardBatch(dashboardTree, restoredDashboardRequest, batchTwo);
+  dashboardProps = { ...dashboardProps, issueBatchRef: null, selectedBatch: batchOne }; renderDashboard();
+  const wholeDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(wholeDashboardRequest);
+  assert.equal(Object.prototype.hasOwnProperty.call(wholeDashboardRequest.scope, 'batch_ref'), false);
+  assert.equal(find(dashboardTree, 'reference', props => props.entries && '原问题批次编号' in props.entries), null);
+  assert.deepEqual(Array.from(find(dashboardTree, 'dashboard-batches').data.batches, row => row.batch_id), ['DC-01', 'DC-02']);
+  assert.equal(find(dashboardTree, 'dashboard-batches').selected, batchOne, 'General catalog highlighting keeps its parent selection without narrowing the request');
+  assert.deepEqual(dashboardStates.at(-1).context, dashboardChoice); dashboardHooks.unmount();
+
   // A narrower plan scope starts on its first analysis page; stale remembered pages still show available rows.
   const planHooks = hooks(), timeScope = { range_start: '2026-10-12T08:00:00', range_end: '2026-10-14T18:00:00' };
   const planData = { plan: { plan_ref: planA, display_name: '正式计划', kind: 'official', version: 1, is_current_official: true },
@@ -126,12 +191,13 @@ async function main() {
   const planRead = { result: { data: planData, warnings: [], meta: { snapshot_ref: 'plan-snapshot' } }, loading: false, error: null, reload() {} };
   const planWindow = { APSResourceContract: { failure: text => new Error(text) }, APSPlanContract: { workspaceScope: (_, value) => value },
     APSResourceSession: { useQuery: () => planRead }, ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' },
-    PlanCatalogUI: { Catalog: 'catalog' }, PlanGanttModel: { names: () => new Map(), timeLabel: String, number: String },
+    PlanCatalogUI: { Catalog: 'catalog' },
     WorkbenchFormat: { compactRange: () => '时间范围', dateTime: String }, WorkbenchDatePickerModel: { factoryTime: value => value },
     WorkbenchTerms: { current_official: '当前正式计划', plan_version: String },
     PlanDetailsUI: { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' },
     WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} }, WorkbenchControls: { Pager: 'pager', EmptyState: 'empty' } };
   const planContext = vm.createContext({ window: planWindow, React: planHooks.React });
+  load(planContext, 'PlanGanttModel.js'); Object.assign(planWindow.PlanGanttModel, { names: () => new Map(), timeLabel: String, number: String });
   load(planContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
   const renderPlan = () => planHooks.render(() => planWindow.PlanWorkspaceSession({ adapter: {}, planRef: planA, initialContext: { projection_page: 3 } }));
   let planTree = renderPlan(); assert.equal(find(planTree, 'projection-tables').page, 3);
@@ -214,7 +280,8 @@ async function main() {
   console.log(JSON.stringify({ read_identity_and_cancellation: true, unmount_refresh_waiters_cancelled: outcomes.length, unstarted_refresh_loads: queuedLoads,
     scroll_scans: scans, unrelated_scroll_refreshes: 0, context_updates: 60,
     trailing_history_writes: 1, immediate_navigation_and_history_restore: true, restoring_pagehide_preserved: true,
-    forward_branch_plan_bound: true, history_help_chapters: true, plan_range_resets_analysis_page: true, stale_plan_page_clamped: true,
+    forward_branch_plan_bound: true, history_help_chapters: true, dashboard_issue_scope_and_return: true, dashboard_late_request_isolated: true,
+    dashboard_whole_run_preserves_highlight: true, plan_range_resets_analysis_page: true, stale_plan_page_clamped: true,
     same_plan_range_keeps_analysis_page: true, trial_task_opens_details: true, gantt_selection_keeps_details_closed: true,
     trial_edit_guard_preserved: true, metric_task_visits: reads }));
 }

@@ -17,7 +17,7 @@ from core.services.workbench.facts.table_cells import number_text
 
 HEADERS = (
     "计划编号", "来源版本", "计划类型", "计划名称", "是否当前正式", "计划资料状态", "数据版本", "读取时间",
-    "范围起点（含）", "范围终点（不含）", "时间计算方式", "任务编号", "工序编号", "批次编号", "工序号", "工序名称",
+    "范围起点（含）", "范围终点", "时间计算方式", "任务编号", "工序编号", "批次编号", "工序号", "工序名称",
     "设备编号", "设备名称", "人员编号", "人员名称", "外协商编号", "外协商名称", "安排开始", "安排结束",
     "交付风险", "预计完工", "已排部分预计结束", "交期", "交期截止（不含）", "超期小时", "超期天数", "工序安排",
 )
@@ -25,7 +25,7 @@ HEADERS = (
 # 导出单元格只写用户看得懂的中文，英文枚举值不外显。
 PLAN_KINDS = {"official": "正式计划", "candidate": "候选方案", "scenario": "试调方案"}
 PLAN_COMPLETENESS = {"complete": "记录完整", "partial": "部分记录", "invalid": "无效记录", "unknown": "暂无数据"}
-DELIVERY_RISKS = {"overdue": "预计超期", "on_time": "预计按期", "unknown": "暂无数据"}
+DELIVERY_RISKS = {"overdue": "预计超期", "on_time": "预计按期", "not_applicable": "未设置交期", "unknown": "暂无数据"}
 DELIVERY_COMPLETENESS = {"complete": "工序已排齐", "incomplete": "有工序未安排", "unknown": "暂无数据"}
 
 
@@ -33,11 +33,12 @@ def export_rows(data, snapshot):
     plan = data["plan"]
     resources = {item["ref"]: item for item in data["resources"]}
     delivery = {item["batch_id"]: item for item in data["projections"]["delivery_risks"]["items"]}
+    includes_plan_end = data["scope"]["range_start"] is None and data["plan_span"].get("end_inclusive") is True
     common = [plan["plan_ref"], str(plan["version"]), PLAN_KINDS[plan["kind"]],
               plan["display_name"], "是" if plan["is_current_official"] else "否",
               PLAN_COMPLETENESS[plan["completeness"]],
               snapshot["snapshot_ref"], snapshot["as_of"], data["time_scope"]["range_start"],
-              data["time_scope"]["range_end"], "含起日，不含止日"]
+              data["time_scope"]["range_end"], "包含末端零工时工序" if includes_plan_end else "含起点，不含结束时刻"]
     for task in data["tasks"]:
         values = common + [task["task_ref"], task["operation_ref"], task["batch_id"], str(task["sequence"]), task["process_label"]]
         for kind in ("machine", "operator", "supplier"):

@@ -81,12 +81,13 @@
       {typeof window.OutsourcingWorkspace === 'function' ? <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} /> : <div className="dy-note warning" role="status">{window.WorkbenchTerms.outcomes.unavailable}</div>}
     </div>;
     return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !analysisRead.loading && !analysisRead.error} aria-busy={list.loading}>
-      <h2 className="wb-page-title">值班台</h2><header className="dy-tools"><Button icon="refresh-cw" aria-label="刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload}>刷新</Button>
-        {command.saved && <Button icon="history" onClick={() => setDialog(true)}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'}</Button>}
-        {data && <details className="dy-evidence"><summary>页面详情</summary><p>本次刷新时间：{window.WorkbenchFormat.dateTime(data.as_of, { seconds: true, fractions: true })}</p>
-          <p>资料来源：正式计划、报工记录、资源班表、齐套记录、外协登记</p>{data.categories.delivery.due_evaluation_count !== undefined && <p>交期数据范围：{window.WorkbenchTerms.delivery_coverage({ ...data.categories.delivery, known_due_count: data.categories.delivery.assessed_count, unknown_due_count: data.categories.delivery.unknown_count })}</p>}
-          {data.plan && <window.WorkbenchReference entries={{ '正式计划编号': data.plan.plan_ref }} />}
-        </details>}</header>
+      <h2 className="wb-page-title">值班台</h2><header className="dy-page-toolbar"><div className="dy-tools"><Button icon="refresh-cw" aria-label="刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload}>刷新</Button>
+        {command.saved && <Button icon="history" onClick={() => setDialog(true)}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'}</Button>}</div>
+        {data && <span className="dy-page-updated">更新于 {window.WorkbenchFormat.dateTime(data.as_of, { seconds: true, fractions: true })}</span>}</header>
+      {data && <details className="dy-page-evidence"><summary>页面详情</summary><div className="dy-page-evidence-body"><dl className="dy-page-facts">
+        <div><dt>资料来源</dt><dd>正式计划、报工记录、资源班表、齐套记录、外协登记</dd></div>
+        {data.categories.delivery.due_evaluation_count !== undefined && <div><dt>交期统计</dt><dd>{window.WorkbenchTerms.delivery_coverage({ ...data.categories.delivery, known_due_count: data.categories.delivery.assessed_count, unknown_due_count: data.categories.delivery.unknown_count })}</dd></div>}
+        </dl>{data.plan && <window.WorkbenchReference entries={{ '正式计划编号': data.plan.plan_ref }} />}</div></details>}
 
       {!handlingOpen && <><ErrorBox error={command.storageError} />{command.storageError && <Button icon="refresh-cw" onClick={command.sync}>刷新上次操作记录</Button>}</>}
       {registrationChanged && <div className="dy-note warning" role="status">外协物流登记已更新。当前仍显示离开前的筛选和条目，请点「刷新值班台」更新风险与处置。</div>}

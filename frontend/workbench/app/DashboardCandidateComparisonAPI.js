@@ -30,7 +30,7 @@
       && ['benefits', 'costs', 'all_differences'].every(key => Array.isArray(value[key]))
       && value.benefits.length <= 3 && value.costs.length <= 3);
     value.all_differences.forEach(item => {
-      C.check(window.RecommendationContract.entry(item) && item.metric_version === 'decision-preparation-v4', '所选候选的取舍资料缺项，请刷新。');
+      C.check(window.RecommendationContract.entry(item) && item.metric_version === (item.source === 'archived_resource_calendar' ? data.resource_common.metric_version : 'decision-preparation-v4'), '所选候选的取舍资料缺项，请刷新。');
       item.supporting_refs.forEach(target => {
         const drill = target.drill;
         C.check(target.candidate_ref === data.candidate.candidate_ref && drill.candidate_ref === data.candidate.candidate_ref

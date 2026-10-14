@@ -338,11 +338,14 @@ def _daily_ref_contexts_cache_extra(ref_contexts: Optional[Sequence[Mapping[str,
         rows.append(
             {
                 "local_ref": str(context.get("local_ref") or ""),
+                "local_sha": str(context.get("local_sha") or ""),
                 "remote_ref": str(context.get("remote_ref") or ""),
                 "remote_sha": str(context.get("remote_sha") or ""),
             }
         )
-    return sorted(rows, key=lambda item: (item["remote_ref"], item["local_ref"], item["remote_sha"]))
+    return sorted(rows, key=lambda item: (
+        item["remote_ref"], item["local_ref"], item["local_sha"], item["remote_sha"],
+    ))
 
 
 def daily_gate_cache_key(

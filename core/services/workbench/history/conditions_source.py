@@ -4,6 +4,7 @@ from core.models.workbench_run_candidate import reference
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.candidate_facts import GenerationFacts, _index
 from core.services.workbench.facts.candidate_values import corrupt
+from core.services.workbench.facts.trial_origin import operation_contexts
 
 
 def _entity_refs(rows):
@@ -118,7 +119,6 @@ class ConditionSource:
     def _trial(self, packet):
         self.saved, self.trial_rows = packet["saved"], packet["rows"]
         admission = packet["head"]["admission"]
-        source = admission["source"]
         self.archive, self.execution, self.baseline = admission["facts"], admission["execution"], admission["baseline"]
         self.ledger = self.saved.get("operation_effort")
         self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref)
@@ -131,10 +131,11 @@ class ConditionSource:
             if batch_ref not in self.batches:
                 self.batches[batch_ref] = original["batch"]
                 self._batch_paths[batch_ref] = f"rows[{index}].original.batch"
-        self._trial_unplanned(source, self.saved)
+        self._trial_unplanned(admission)
         self._trial_input(admission, self.saved)
 
-    def _trial_unplanned(self, source, saved):
+    def _trial_unplanned(self, admission):
+        source = admission["source"]
         capture = source.get("capture")
         if capture is not None and type(capture) is not dict:
             corrupt()
@@ -154,12 +155,7 @@ class ConditionSource:
         self._origins["original"] = prefix
         op_paths = _table_paths(operations.values(), "id", prefix + ".tables.BatchOperations")
         batch_paths = _table_paths(batches.values(), "batch_id", prefix + ".tables.Batches")
-        dispositions = source.get("dispositions") or {}
-        selected = {row["operation_ref"] for row in saved.get("unplanned_operations", [])}
-        selected.update(dispositions)
-        deferred_ids = set(source.get("deferred_operation_ids", []))
-        selected.update(ref for ref, key in refs.items() if key in deferred_ids)
-        for ref in selected:
+        for ref in operation_contexts(self.trial_rows, admission):
             key = refs.get(ref)
             if key not in operations or ref in self.operations:
                 continue

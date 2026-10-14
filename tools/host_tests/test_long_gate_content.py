@@ -16,7 +16,7 @@ from tools import long_gate_fingerprint as fingerprint
 from tools.long_gate_collect import COLLECT_NODEIDS_REL, build_collect_nodeids_payload, write_collect_nodeids
 from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
 from tools.long_gate_schema import canonical_content, content_equal, read_file_content
-from tools.quality_gate_shared import normalize_quality_gate_command
+from tools.quality_gate_shared import build_quality_gate_command_plan, normalize_quality_gate_command
 from tools.verify_required_regressions_from_full_test_debt import (
     RequiredRegressionProofError,
     verify_required_regressions_from_payload,
@@ -168,6 +168,79 @@ class LongGateContentTests(unittest.TestCase):
         path.write_text(json.dumps(saved))
         (self.root / saved["stderr_log_path"]).write_bytes(b"other error!\n")
         self.assertIn("logs", cache.decide_failure_reuse(entry, current, repo_root=str(self.root))["reason"])
+
+    def test_real_gate_entries_track_execution_inputs_and_ignore_bytecode(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        execution_sources = {
+            relative: (repo_root / relative).read_bytes()
+            for relative in (
+                "tests/workbench/decision_comparison_contract.cjs",
+                "frontend/workbench/app/RunDecisionProcessChart.jsx",
+                "tests/workbench/fixtures/schema-v24.sql",
+                "tests/workbench/fixtures/decision_candidate_baseline.json",
+                "scripts/workbench/ds-projection.cjs",
+            )
+        }
+        collect_sources = {
+            relative: (repo_root / relative).read_bytes()
+            for relative in ("开发文档/技术债务治理台账.md", "tools/quality_gate_ledger.py")
+        }
+        for relative, original in {**execution_sources, **collect_sources}.items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(original)
+        manifest = build_manifest_from_quality_gate_plan(build_quality_gate_command_plan(), repo_root=str(self.root))
+        entries = {entry["entry_id"]: entry for entry in manifest["entries"]}
+        full, collect = entries["full_test_debt"], entries["pytest_collect_all"]
+        nodeid = "tests/workbench/test_ui_refinement_node_contracts.py::test_shared_ui_node_contract[workbench/decision_comparison_contract.cjs]"
+        payload = build_collect_nodeids_payload(nodeid + "\n\n1 test collected\n", pytest_version="8.3.5")
+        write_collect_nodeids(payload, repo_root=str(self.root))
+        full_payload = {
+            "exitstatus": 0,
+            "collection_error_count": 0,
+            "classifications": {
+                "required_or_quality_gate_self_failure": [],
+                "main_style_isolation_candidate": [],
+                "candidate_test_debt": [],
+            },
+            "collected_nodeids": [nodeid],
+            "reports": [{"nodeid": nodeid, "when": "call", "outcome": "passed"}],
+        }
+        for relative in full["output_result_files"]:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(full_payload), encoding="utf-8")
+        # Hold host probes fixed while exercising real file scopes and cache comparisons.
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            fingerprint, "fingerprint_environment", return_value={"values": {}, "non_reusable_env_keys": []}
+        ):
+            for entry in (full, collect):
+                result = {**self.result, "stdout": payload["collect_stdout_content"] if entry is collect else "1 passed\n"}
+                cache.write_success(entry, self.current(entry), result, entry["output_result_files"],
+                                    repo_root=str(self.root))
+                self.assertEqual(cache.decide_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"],
+                                 "reuse")
+            for entry, sources in ((full, execution_sources), (collect, collect_sources)):
+                for relative, original in sources.items():
+                    with self.subTest(path=relative):
+                        path = self.root / relative
+                        try:
+                            path.write_bytes(original + b"\nchanged\n")
+                            decision = cache.decide_reuse(entry, self.current(entry), repo_root=str(self.root))
+                            self.assertEqual(decision["decision"], "run")
+                            self.assertIn("fingerprint", decision["reason"])
+                        finally:
+                            path.write_bytes(original)
+                        self.assertEqual(
+                            cache.decide_reuse(entry, self.current(entry), repo_root=str(self.root))["decision"], "reuse"
+                        )
+            for relative in ("tests/workbench/__pycache__/contract.pyc", "scripts/workbench/__pycache__/compile.pyc"):
+                path = self.root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"new bytecode")
+                self.assertEqual(cache.decide_reuse(full, self.current(full), repo_root=str(self.root))["decision"], "reuse")
+                path.write_bytes(b"modified bytecode")
+                self.assertEqual(cache.decide_reuse(full, self.current(full), repo_root=str(self.root))["decision"], "reuse")
 
     def test_legacy_digest_only_records_remain_readable_and_miss(self):
         legacy = self.root / "evidence" / "QualityGate" / "long_gate" / "results" / "host_content.success.json"

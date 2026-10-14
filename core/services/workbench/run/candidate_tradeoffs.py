@@ -1,12 +1,14 @@
 """Dashboard's existing viewing scope consumes the same tradeoff projection."""
 
+from core.services.workbench.facts.changeovers import subject_arrangements
+
 from .decision_delivery import common_delivery
-from .decision_metrics import METRIC_VERSION, delivery_metric_values, metric_definitions, metric_delta, metric_value
+from .decision_metrics import delivery_metric_values, metric_definitions, metric_delta, metric_value
 from .decision_recommendation import RECOMMENDATION_VERSION
 from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 
 
-def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, after_tasks):
+def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, after_tasks, *, subject_operation_refs):
     candidate_ref, run_ref = data["candidate"]["candidate_ref"], data["generation"]["run_ref"]
     common = common_delivery(before_delivery, after_delivery)
     refs, pair = common["common_completed_batch_refs"], common["common_delivery"]
@@ -25,7 +27,7 @@ def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, aft
             kind, field = name.split("_", 1)
             values = [data["resource_common"][side][kind] for side in ("before", "after")]
             previous, selected = [metric_value(row[field], total=row["resource_count"], unknown=int(row[field] is None),
-                                                scope=scope) for row in values]
+                                                scope=scope, metric_version=definition["metric_version"]) for row in values]
             resources = [row for row in data["resources"] if row["kind"] == kind]
             support = [{"kind": "resource", "ref": row["resource_ref"], "query": {"resource_kind": kind, "resource_ref": row["resource_ref"]}, "tab": "resources"}
                        for row in resources if row["delta"] is not None and row["delta"] != 0][:3]
@@ -33,8 +35,7 @@ def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, aft
             previous, selected = [metric_value(data["summary"][side]["changeovers"]["value"], scope=scope,
                                                unknown=int(data["summary"][side]["changeovers"]["value"] is None)) for side in ("before", "after")]
             for value, tasks in ((previous, before_tasks), (selected, after_tasks)):
-                value["covered_operation_refs"] = sorted({row["operation_ref"] for row in tasks if row["source"] != "external"
-                    and not (row.get("event_kind") == "point" and row.get("occupies_resources") is False)})
+                value["covered_operation_refs"] = sorted({row["operation_ref"] for row in subject_arrangements(tasks, subject_operation_refs)})
         else:
             changes = data["machine_changes"]
             previous, selected = metric_value(0, scope=scope), metric_value(changes["count"], scope=scope, unknown=changes["unknown_count"])
@@ -54,6 +55,6 @@ def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, aft
                 "range_start": data["time_scope"]["range_start"], "range_end": data["time_scope"]["range_end"],
                 "resource_view": "selected_batches", "comparison_tab": row["tab"], "detail_query": row["query"]}}
             for row in support]
-        entries.append(tradeoff_entry(definition, delta, scope=scope, source=definition["source"], metric_version=METRIC_VERSION,
+        entries.append(tradeoff_entry(definition, delta, scope=scope, source=definition["source"], metric_version=definition["metric_version"],
                                       supporting_refs=supporting_refs, compared_batch_refs=refs if definition["group"] == "delivery" else ()))
     return {"recommendation_version": RECOMMENDATION_VERSION, "scope": "admission_selected_batches", **aggregate_tradeoffs(entries, definitions)}

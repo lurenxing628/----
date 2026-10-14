@@ -1248,10 +1248,10 @@ def delivery_fixtures(args):
 def serve(args):
     from web.bootstrap.entrypoint import _default_deps, configure_runtime_contract, create_app_with_mode
     from web.bootstrap.launcher_paths import current_runtime_owner
-    from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
+    from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock
     from web.bootstrap.runtime_server import create_runtime_server
     from web.bootstrap.sample_http import SampleClient
-    from web.bootstrap.workbench_run_lifecycle import stop_run_runtime
+    from web.bootstrap.workbench_run_lifecycle import release_runtime_after_jobs, stop_run_runtime
     from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime
     from web.bootstrap.workbench_system_restore import install_workbench_system_restore_host
 
@@ -1262,7 +1262,9 @@ def serve(args):
         raise RuntimeError("原实例数据库路径与隔离目录不同。")
     evidence = ROOT / "evidence" / "decision-comparison-loop" / root.name
     payload = acquire_runtime_lock(str(root), db_path=str(database))
-    atexit.register(release_runtime_lock, str(root), db_path=str(database))
+    deps = _default_deps("default")
+    lock_state = {"payload": payload}
+    atexit.register(release_runtime_after_jobs, deps, lock_state, str(root), os.getpid(), str(database))
     runtime = app = server = None
     thread = None
     try:
@@ -1272,13 +1274,15 @@ def serve(args):
         app.config["WORKBENCH_INSTANCE_LABEL"] = "决策验收 · 独立数据"
         settings = None if previous else _seed(database)
         runtime = install_workbench_run_runtime(app, runtime_lock=payload)
+        lock_state["runtime"] = runtime
         if not runtime.ready:
             raise RuntimeError("隔离排产宿主未就绪：" + str(runtime.status))
         install_workbench_system_restore_host(app, runtime=runtime)
         server = create_runtime_server(app, "127.0.0.1", 0)
-        deps = _default_deps("default")
-        configure_runtime_contract(app, str(root), "127.0.0.1", server.server_port, current_runtime_owner(),
-                                   default_ui_mode="default", deps=deps)
+        publication = configure_runtime_contract(app, str(root), "127.0.0.1", server.server_port, current_runtime_owner(),
+                                                 default_ui_mode="default", deps=deps, runtime_lock=payload)
+        lock_state["contract"] = publication["payload"]
+        lock_state["contract_cleanup_dir"] = str(Path(publication["path"]).parent)
         thread = threading.Thread(target=deps.serve_runtime_app, args=(app, "127.0.0.1", server.server_port),
                                   kwargs={"server": server}, name="decision-acceptance-http")
         thread.start()

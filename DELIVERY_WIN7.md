@@ -50,7 +50,7 @@ APS_Portable/
 
 先用 Python 3.8 或以上版本执行 `python scripts/prepare_win7_offline.py download`，再执行 `python scripts/prepare_win7_offline.py verify`。支持在 Windows / macOS / Linux 准备材料，下载不会安装或执行第三方程序。
 
-文件保存到 `offline/win7/`，包括 Python 3.8.10 x64 离线安装器、22 个运行及打包 wheel、ungoogled-chromium 109.0.5414.120-1.1 x64 ZIP。下载器通过 HTTPS 获取，逐文件核对大小及 SHA-256；缺失或损坏就停止，不静默覆盖已有错误文件。完整来源和哈希见 [`packaging/win7/offline-manifest.json`](packaging/win7/offline-manifest.json)。
+文件保存到 `offline/win7/`，包括 Python 3.8.10 x64 离线安装器、22 个运行及打包 wheel、ungoogled-chromium 109.0.5414.120-1.1 x64 ZIP。下载器通过 HTTPS 获取，校验清单相对路径和输出目录边界，逐文件检查普通文件、符号链接状态及清单记录的大小；已有文件通过检查后直接复用，检查失败时停止并保留原文件。完整版本、路径和来源见 [`packaging/win7/offline-manifest.json`](packaging/win7/offline-manifest.json)；其中保留的第三方发布摘要属于来源记录。
 
 来源：[Python 官方发行页](https://www.python.org/downloads/release/python-3810/)、[PyInstaller 4.10 / PyPI](https://pypi.org/project/pyinstaller/4.10/)、[Chromium 发布仓库](https://github.com/ungoogled-software/ungoogled-chromium-windows/releases/tag/109.0.5414.120-1.1)及其[校验清单](https://raw.githubusercontent.com/ungoogled-software/ungoogled-chromium-binaries/master/config/platforms/windows/64bit/109.0.5414.120-1.ini)。运行依赖沿用当前项目版本，完整构建依赖固定在 `requirements-win7-build.txt`，仍须经 Win7 冷启动验收。
 

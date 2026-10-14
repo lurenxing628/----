@@ -12,8 +12,10 @@ from core.algorithms.greedy.internal_operation import _build_internal_result
 from core.services.scheduler.run.freeze_window_seed_rows import build_seed_results
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
 from core.services.workbench.facts import changeovers
-from core.services.workbench.facts.changeovers import changeover_projection
+from core.services.workbench.facts.changeovers import changeover_projection, subject_arrangements
 from core.services.workbench.facts.resource_intervals import task_interval
+from core.services.workbench.run.decision_changeovers import DecisionChangeovers
+from core.services.workbench.run.decision_metrics import metric_definitions, metric_delta
 
 DAY = "2026-09-09"
 MACHINE = {"ref": "machine:one", "label": "归档设备"}
@@ -42,6 +44,7 @@ def test_actual_type_identity_drives_shared_events_and_runtime_result_seed_count
     with monkeypatch.context() as scoped:
         scoped.setattr(changeovers, "task_interval", unexpected_parse)
         projected = changeover_projection(rows, task_intervals=intervals)
+        assert subject_arrangements(rows, {row["operation_ref"] for row in rows}, task_intervals=intervals) == rows[:3]
     assert projected["state"] == "complete" and projected["count"] == projected["known_count"] == 1
     assert projected["changed_machine_count"] == projected["known_changed_machine_count"] == 1
     event = projected["events"][0]
@@ -99,6 +102,19 @@ def test_window_uses_next_start_and_retains_full_sequence_predecessor():
     assert event["next_start"] == at("08:00:00") and event["previous_start"] == at("07:00:00")
     assert event["previous_row_ref"] == "row:before" and event["next_row_ref"] == "row:inside"
     assert changeover_projection(rows, start=at("09:00:00"), end=at("10:00:00"))["count"] == 0
+    subjects = {"operation:inside", "operation:right"}
+    assert subject_arrangements(rows, subjects) == rows[1:]
+    missing = rows[2:]
+    source = SimpleNamespace(computation_key=lambda key: key, comparison_mode="admission_official",
+        official={"tasks": rows}, tasks=lambda _key: missing, operation_refs=subjects,
+        scope={"range_start": at("08:00:00"), "range_end": at("10:00:00")},
+        preparation=SimpleNamespace(available=lambda _key: True),
+        task_intervals=lambda key: {row["row_ref"]: task_interval(row) for row in (rows if key == "reference" else missing)})
+    engine = DecisionChangeovers(source)
+    before, after = (engine.metrics(key)["type_changeover_count"] for key in ("reference", "candidate"))
+    definition = next(row for row in metric_definitions() if row["key"] == "type_changeover_count")
+    difference = metric_delta(definition, after, before)
+    assert difference["state"] == "different_coverage" and difference["value"] is None
 
 
 def test_duplicate_operation_segments_keep_raw_rows_without_self_conflicts():

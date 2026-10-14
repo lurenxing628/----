@@ -36,7 +36,7 @@ def scoped_rows(rows, batch_refs, start, end):
 def changeovers(rows, facts, available=True, *, start=None, end=None, next_operation_refs=None):
     projected = changeover_projection(rows, start=start, end=end, work_available=available,
                                      next_operation_refs=next_operation_refs)
-    reason = projected["issues"][0]["code"] if projected["count"] is None and projected["issues"] else None
+    reason = "；".join(item["message"] for item in projected["issues"]) if projected["count"] is None and projected["issues"] else None
     return {"value": projected["count"], "reason": reason}
 
 

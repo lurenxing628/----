@@ -6,7 +6,6 @@ from collections import defaultdict
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import ACTIONS
 from core.services.workbench.facts.candidate_facts import GenerationFacts
-from core.services.workbench.facts.delivery_completeness import archived_deferred_operation_evidence
 from core.services.workbench.facts.delivery_projection import (
     delivery_batch_delta,
     delivery_summary,
@@ -14,8 +13,8 @@ from core.services.workbench.facts.delivery_projection import (
     task_intervals,
 )
 from core.services.workbench.facts.preflight_checks import stored_date
-from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
+from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
@@ -104,49 +103,6 @@ def resources_projection(live):
     return result
 
 
-def _delivery_origin(admission, rows, facts=None):
-    source = admission["source"]
-    if "capture" in source:
-        capture = source["capture"]
-        facts = facts if facts is not None else GenerationFacts(capture)
-        selected = set(capture["input"]["batch_refs"])
-        batches = {ref: facts.tables["Batches"][key] for (kind, key), ref in facts.entity_refs.items()
-                   if kind == "batch" and ref in selected}
-        operations = facts.tables["BatchOperations"].values()
-        deferred = material_deferred_ids((source.get("dispositions") or {}).values(), capture["input"])
-        deferred_issues = []
-    else:
-        batches = {row["original"]["batch_ref"]: row["original"]["batch"] for row in rows}
-        operations = admission["facts"]["tables"]["BatchOperations"]
-        if "deferred_operation_ids" in source:
-            deferred, deferred_issues = set(source["deferred_operation_ids"]), source["deferred_operation_issues"]
-        else:
-            from core.models.workbench_command import canonical_json
-
-            version = source.get("identity", {}).get("version")
-            history = [row for row in admission["facts"]["tables"].get("ScheduleHistory", []) if row["version"] == version]
-            summary = (history[0]["result_summary"] if len(history) == 1
-                       else canonical_json({"material_policy": source.get("material_policy", {})}))
-            deferred, deferred_issues = archived_deferred_operation_evidence({"summary": summary})
-        selected = {batch["batch_id"] for batch in batches.values()}
-        pending = {operation["batch_id"] for operation in operations if operation["id"] in deferred} - selected
-        if pending:
-            tables = admission["facts"]["tables"]
-            batch_rows = {batch["batch_id"]: batch for batch in tables["Batches"]}
-            refs = {item["entity_key"]: item["ref"] for item in tables["WorkbenchEntityRefs"]
-                    if item["kind"] == "batch" and item["active"] == 1}
-            for batch_id in sorted(pending):
-                if batch_id not in batch_rows or batch_id not in refs:
-                    from core.models.workbench_trial import reject
-
-                    reject("trial_snapshot_invalid", "保存来源中待料批次的资料或永久编号缺失，请核对保存记录。")
-                batches[refs[batch_id]] = batch_rows[batch_id]
-    by_batch = defaultdict(list)
-    for operation in operations:
-        by_batch[operation["batch_id"]].append(dict(operation, op_id=operation["id"]))
-    return batches, by_batch, deferred, deferred_issues
-
-
 def _delivery_arrangements(rows, field):
     by_batch = defaultdict(list)
     for row in rows:
@@ -209,7 +165,7 @@ def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None):
     groups = defaultdict(list)
     for task in tasks:
         groups[task["batch_ref"]].append(task)
-    batches, operations, deferred, deferred_issues = _delivery_origin(admission, rows, facts)
+    batches, operations, deferred, deferred_issues = delivery_origin(admission, rows, facts)
     origin_issues = list(origin_issues) + list(deferred_issues)
     before = _delivery_side(batches, operations, _delivery_arrangements(rows, "original"), deferred, origin_issues)
     blocked = _blocked_delivery_batches(checked, tasks, rows)
@@ -310,9 +266,11 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None):
         for task in tasks:
             task["edit_context"]["can_change"] = False
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
-    unplanned = _unplanned(admission, rows)
+    contexts = operation_contexts(rows, admission, facts)
+    unplanned = _unplanned(contexts)
     ledger = operation_effort_ledger(rows, admission)
-    pairs, preparation = preparation_projection(rows, admission, ledger, current_evidence={"kind": "trial", "draft_ref": ref})
+    pairs, preparation = preparation_projection(rows, admission, ledger,
+        current_evidence={"kind": "trial", "draft_ref": ref}, contexts=contexts)
     apply_preparation(tasks, unplanned, pairs)
     compared = comparison(tasks, checked, rows, admission, facts=facts)
     compared["preparation_common"] = preparation
@@ -331,15 +289,21 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None):
                            "time_basis": "factory_local", "selection": "complete_base"}}
 
 
-def _unplanned(admission, rows):
-    scope = admission["source"].get("dispositions")
-    if scope is None:
-        return []
-    scheduled = {row["operation_ref"] for row in rows}
+def _unplanned(contexts):
     fields = ("operation_ref", "batch_ref", "piece_id", "sequence", "status", "predecessor_refs")
-    return [{**{key: row[key] for key in fields}, "reason": {"code": "base_operation_unscheduled",
-             "message": "排产时选中的这道工序没有保存安排，这里仍然照样列出。"}}
-            for ref, row in scope.items() if ref not in scheduled]
+    result = []
+    for ref, context in contexts.items():
+        if context["arranged"]:
+            continue
+        op = context["operation"]
+        disposition = context.get("disposition")
+        item = ({key: disposition[key] for key in fields} if disposition is not None else
+                {"operation_ref": ref, "batch_ref": context["batch_ref"], "piece_id": op["piece_id"],
+                 "sequence": op["seq"], "status": op["status"]})
+        item["reason"] = {"code": "base_operation_unscheduled", "message":
+            "这道工序在基础方案中因待料暂缓安排。" if context["deferred"] else "这道工序在基础方案中没有安排。"}
+        result.append(item)
+    return result
 
 
 def write_snapshot(head, rows, live):

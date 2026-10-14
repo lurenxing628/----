@@ -23,7 +23,8 @@
     const [relatedRef, setRelatedRef] = React.useState(null);
     const [detailsOpen, setDetailsOpen] = React.useState(!!initialContext.selected_task_ref);
     const detailsToggle = React.useRef(null);
-    const initialTaskRef = React.useRef(typeof initialContext.selected_task_ref === 'string' ? initialContext.selected_task_ref : null);
+    const initialTask = React.useRef(typeof initialContext.selected_task_ref === 'string'
+      ? { ref: initialContext.selected_task_ref, side: initialContext.selected_task_side === 'before' ? 'before' : 'current' } : null);
     const read = S.useQuery(async signal => {
       if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
       P.workspaceScope(selection.plan_ref, scope);
@@ -33,32 +34,37 @@
     const chosen = selected && selected.result === result ? selected : null;
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
-      const target = relatedRef || initialTaskRef.current;
+      const target = relatedRef ? { ref: relatedRef, side: 'current' } : initialTask.current;
       // The saved task belongs to this session's first successful read only.
-      initialTaskRef.current = null;
+      initialTask.current = null;
       if (!target) return;
-      const task = data.tasks.find(row => row.task_ref === target);
-      if (task) setSelected({ task, before: false, result, ...(relatedRef || view === 'gantt' ? { locate: true } : {}) });
+      const before = target.side === 'before';
+      const original = before && data.projections.baseline.items.find(row => row.before && row.before.task_ref === target.ref);
+      const task = before ? original && original.before : data.tasks.find(row => row.task_ref === target.ref);
+      if (task) setSelected({ task, before, result, ...(relatedRef || view === 'gantt' && (!before || original.before_in_scope) ? { locate: true } : {}) });
       else setRangeError(C.failure(relatedRef ? '此计划中未找到相关工序。'
-        : '要恢复的工序不在当前范围内。'));
+        : before ? '要恢复的原安排已不存在。' : '要恢复的工序不在当前范围内。'));
       if (relatedRef) setRelatedRef(null);
     }, [relatedRef, result, read.loading, read.error]);
     const remembered = { ...initialContext, ...(selection ? { plan_ref: selection.plan_ref } : {}), query, projection_tab: projectionTab, projection_page: projectionPage };
-    for (const key of ['range_start', 'range_end', 'snapshot_ref', 'selected_task_ref']) delete remembered[key];
-    Object.assign(remembered, scope, chosen ? { selected_task_ref: chosen.task.task_ref } : {});
+    for (const key of ['range_start', 'range_end', 'snapshot_ref', 'selected_task_ref', 'selected_task_side']) delete remembered[key];
+    Object.assign(remembered, scope, chosen ? { selected_task_ref: chosen.task.task_ref, selected_task_side: chosen.before ? 'before' : 'current' } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
-      initialTaskRef.current = null;
+      initialTask.current = null;
       setSelection(plan); setScope({}); setRange({ start: '', end: '' }); setRangeOpen(false); setRangeError(null); setPaused(false); setQuery(''); setSelected(null); setRelatedRef(null); setProjectionPage(0); read.reload();
     }
     function refresh() {
+      initialTask.current = null;
       const next = { ...scope }; delete next.snapshot_ref; setScope(next); setPaused(false); setSelected(null); setProjectionPage(0); read.reload();
     }
-    function selectTask(task, before = false, locate = false) { initialTaskRef.current = null; setSelected(task ? { task, before, result, ...(locate ? { locate: true } : {}) } : null); }
+    function selectTask(task, before = false, locate = false) { initialTask.current = null; setSelected(task ? { task, before, result, ...(locate ? { locate: true } : {}) } : null); }
     function openResource(resource) {
       const task = data.tasks.find(row => row[resource.kind + '_ref'] === resource.resource_ref);
-      onNavigate('gantt', { ...remembered, query: '', resource_kind: resource.kind,
-        ...(task ? { selected_task_ref: task.task_ref } : {}) });
+      const target = { ...remembered, query: '', resource_kind: resource.kind };
+      delete target.selected_task_ref; delete target.selected_task_side;
+      if (task) Object.assign(target, { selected_task_ref: task.task_ref, selected_task_side: 'current' });
+      onNavigate('gantt', target);
     }
     function collapseDetails() { setDetailsOpen(false); detailsToggle.current.querySelector('button').focus(); }
     function toggleRange() {
@@ -67,13 +73,13 @@
     }
     function changeScope(next) {
       const changed = scope.range_start !== next.range_start || scope.range_end !== next.range_end;
-      initialTaskRef.current = null;
+      initialTask.current = null;
       setScope(next); setRange({ start: next.range_start || '', end: next.range_end || '' });
       if (changed) setProjectionPage(0);
       setRangeOpen(false); setRangeError(null); setPaused(false); setSelected(null); read.reload();
     }
     function selectRelated(ref) {
-      initialTaskRef.current = null;
+      initialTask.current = null;
       const task = data.tasks.find(row => row.task_ref === ref);
       setQuery(''); setRangeError(null);
       if (task) setSelected({ task, before: false, result, locate: true });
@@ -97,10 +103,7 @@
     }, [data, query]);
     const risks = data && data.projections.delivery_risks.items;
     const ready = !!data && !disabled;
-    const includesPlanEnd = data && data.scope.range_start === null && data.plan_span.end_inclusive === true;
-    const scopeCaption = !data ? '' : includesPlanEnd && data.plan_span.start === data.plan_span.end
-      ? `计划时刻：${M.timeLabel(data.plan_span.start)}`
-      : `计划时间范围：${M.timeLabel(data.time_scope.range_start)} 至 ${M.timeLabel(data.time_scope.range_end)}（${includesPlanEnd ? '包含末端零工时工序' : '不含结束时刻'}）`;
+    const scopeCaption = data ? M.scopeCaption(data) : '';
     window.WorkbenchCaption.useCaption(data && !read.loading && !read.error && !paused ? {
       reference: data.plan.plan_ref, label: '正式计划', name: data.plan.display_name,
       status: data.plan.is_current_official ? window.WorkbenchTerms.current_official : data.plan.kind === 'official' ? window.WorkbenchTerms.historical_official
@@ -145,7 +148,7 @@
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
         </div>}</section>
       {data && <div className={'plan-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : '')} data-details-open={(view === 'gantt' ? detailsOpen : !!chosen) || undefined}><div className={view === 'gantt' ? 'wb-gantt-main-column' : undefined}>
-          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={data} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} initialMode={initialContext.resource_kind}
+          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={data} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} initialMode={initialContext.resource_kind} initialBaseline={!!initialTask.current && initialTask.current.side === 'before'}
             toolbarActions={<span ref={detailsToggle}><Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="plan-gantt-detail" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? '收起详情' : '详情'}</Button></span>} />}
           {view !== 'gantt' && <ProjectionTables key={'risk:' + result.meta.snapshot_ref} data={data} tab={projectionTab} onTab={setProjectionTab} page={projectionPage} onPage={setProjectionPage} onResource={openResource} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} />}
           {view === 'delay' && <Conflicts key={'conflicts:' + result.meta.snapshot_ref} data={data} />}

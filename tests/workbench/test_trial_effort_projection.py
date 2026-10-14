@@ -1,11 +1,15 @@
 """Real trial slots save requirements independently of unchanged geometry."""
 
+from copy import deepcopy
+
 from core.models.workbench_trial_codec import load
 from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
 from core.services.workbench.trial.effort import operation_types
-from core.services.workbench.trial.preparation import trial_changeovers
+from core.services.workbench.trial.preparation import apply_preparation, preparation_projection, trial_changeovers
+from core.services.workbench.trial.projection import _unplanned
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.test_legacy_resource_projection import shipped
 from tests.workbench.trial_support import candidate, change, create, service
@@ -102,6 +106,23 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     item, = draft["operation_effort"]["items"]
     assert item["target_quantity"] == 10 and item["execution_target_quantity"] == 20
     assert item["required_standard_hours"] == 7
+    head, rows = load_draft(service(case.conn).repo, draft["draft_ref"])
+    outside = deepcopy(head["admission"])
+    outside["source"]["capture"]["input"]["batch_refs"] = []
+    assert delivery_origin(outside, rows)[0] == {}
+    contexts = operation_contexts(rows, outside)
+    context = contexts[task["operation_ref"]]
+    original = rows[0]["original"]
+    assert context["operation"] is original["operation"] and context["execution"] is original["execution"]
+    assert context["batch"] is original["batch"] and context["batch_ref"] == original["batch_ref"]
+    assert context["row"] is rows[0] and context["arranged"] is True
+    pairs, retained = preparation_projection(rows, outside, draft["operation_effort"], contexts=contexts)
+    assert set(pairs) == {row["operation_ref"] for row in rows}
+    assert pairs[task["operation_ref"]]["after"]["required_standard_hours"] == 7
+    assert retained["role_totals"]["after"]["retained"]["setup_standard_hours"]["value"] == 2
+    unplanned = _unplanned(contexts)
+    assert unplanned == []
+    apply_preparation(deepcopy(draft["tasks"]), unplanned, pairs)
     shipped(draft, r"""
 const w = h.runtime, data = w.TrialContract.workspace(sourceData);
 const tree = h.render(w.TrialResults.Preparation, {data, onSelect() {}}), text = h.text(tree);

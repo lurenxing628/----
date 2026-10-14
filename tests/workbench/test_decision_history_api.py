@@ -231,7 +231,8 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
 
 def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_unknown(history_case):
     from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-    from core.services.workbench.history.metrics import _trial
+    from core.services.workbench.history.conditions_source import ConditionSource
+    from core.services.workbench.history.metrics import _metric, _path, _trial, metric_definitions
     from core.services.workbench.trial.projection import comparison as trial_comparison
     from tests.workbench.trial_support import change, create
     from tests.workbench.trial_support import service as trial_service
@@ -332,8 +333,13 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
         for key in ("operation_ref", "batch_ref", "sequence", "piece_id", "predecessor_refs")}]
     partial["saved"]["unplanned_operations"][0]["status"] = "skipped"
     source = partial["head"]["admission"]["source"]
+    definitions = {row["key"]: row for row in metric_definitions()}
     for deferred_ids, deferred_count, ordinary_count, expected_count in (([second], 1, 0, 1), ([], 0, 1, 2)):
         source.update(deferred_operation_ids=deferred_ids, deferred_operation_issues=[])
+        if ordinary_count:
+            partial["saved"]["unplanned_operations"] = []
+            ledger = partial["saved"]["operation_effort"]
+            ledger["items"] = [row for row in ledger["items"] if row["operation_ref"] != missing_ref]
         partial["saved"]["comparison"] = trial_comparison(partial["saved"]["tasks"], partial["saved"]["validation"],
             partial["rows"], partial["head"]["admission"])
         metrics, _, _ = _trial(partial, {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "cohort": {}})
@@ -341,6 +347,22 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
         assert metrics["unplanned_operation_count"]["value"] == ordinary_count
         assert metrics["expected_operation_count"]["value"] == expected_count
         assert missing_ref in metrics["deferred_operation_count"]["covered_operation_refs"]
+        conditions = ConditionSource(partial)
+        assert conditions.operations[missing_ref]["id"] == second
+        index = next(index for index, row in enumerate(partial["head"]["admission"]["facts"]["tables"]["BatchOperations"])
+                     if row["id"] == second)
+        assert conditions.source("operations." + missing_ref, origin="original")["path"] == (
+            f"head.admission.facts.tables.BatchOperations[{index}]")
+        for key in ("expected_operation_count", "deferred_operation_count", "unplanned_operation_count"):
+            item = _metric(metrics[key], definitions[key], partial, _path(partial, definitions[key]))
+            assert item["source"]["path"] == "head.admission"
+        scheduled = _metric(metrics["scheduled_operation_count"], definitions["scheduled_operation_count"], partial,
+                            _path(partial, definitions["scheduled_operation_count"]))
+        assert scheduled["source"]["path"] == "saved.tasks"
+        if ordinary_count:
+            demand = metrics["unplanned_setup_hours"]
+            assert demand["value"] is None and demand["state"] == "unavailable"
+            assert demand["unknown_count"] == demand["total_count"] == 1
         no_head = deepcopy(partial)
         no_head.update(head=None, rows=[])
         no_head["saved"]["unplanned_operations"] = []

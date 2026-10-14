@@ -1,7 +1,7 @@
 """The shared actual-type events under the decision's fixed next-start window."""
 
 from core.models.workbench_run_candidate import local_time
-from core.services.workbench.facts.changeovers import changeover_projection
+from core.services.workbench.facts.changeovers import changeover_projection, subject_arrangements
 
 from .decision_impact import _drill
 from .decision_metrics import metric_definitions, metric_delta, metric_value
@@ -36,9 +36,8 @@ class DecisionChangeovers:
         if key not in self._metrics:
             projected = self.projection(key)
             reason = {"code": "changeover_sequence_incomplete", "message": "部分实际设备序列缺少工种身份、时间或存在重叠，切换统计保留已知小计。"} if projected["state"] != "complete" else None
-            intervals = self.source.task_intervals(key)
-            arrangements = [task for task in self.tasks(key) if task["source"] != "external"
-                            and not ((interval := intervals[task["row_ref"]]) is not None and interval[0] == interval[1])]
+            arrangements = subject_arrangements(self.tasks(key), self.source.operation_refs,
+                task_intervals=self.source.task_intervals(key))
             covered = sorted({task["operation_ref"] for task in arrangements})
             values = {}
             for name, value, subtotal in (("type_changeover_count", projected["count"], projected["known_count"]),

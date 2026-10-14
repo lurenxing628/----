@@ -175,6 +175,7 @@ def resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir: str) -> str:
         "aps_db_path.txt",
         "aps_runtime.json",
         RUNTIME_LOCK_FILE,
+        RUNTIME_LOCK_FILE + ".guard",
         RUNTIME_ERROR_FILE,
     ]
     if any(os.path.lexists(os.path.join(base, name)) for name in direct_files):

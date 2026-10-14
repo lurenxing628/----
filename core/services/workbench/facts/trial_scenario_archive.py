@@ -12,7 +12,7 @@ from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
-from .preflight_dependencies import material_deferred_ids
+from .trial_origin import operation_contexts
 from .trial_policy import load_draft, load_scenario_record
 
 
@@ -71,15 +71,12 @@ def _require_saved_scope(saved, originals, admission):
 
 
 def _material_stage_scope(saved, originals, admission):
-    source = admission["source"]
-    scope = source.get("dispositions") or {}
-    settings = source.get("capture", {}).get("input", {})
-    deferred = material_deferred_ids(scope.values(), settings)
-    pending = {ref for ref, row in scope.items() if row["op_id"] in deferred}
+    contexts = operation_contexts(originals, admission)
+    pending = {ref for ref, row in contexts.items() if not row["arranged"] and row["deferred"]}
     unplanned = saved["unplanned_operations"]
-    return bool(deferred) and (saved["scope_complete"] is False
+    return bool(pending) and (saved["scope_complete"] is False
         and len(unplanned) == len(pending) and {row["operation_ref"] for row in unplanned} == pending
-        and {row["operation_ref"] for row in originals} == set(scope) - pending)
+        and {row["operation_ref"] for row in originals} == set(contexts) - pending)
 
 
 def _require_receipts(conn, saved, header, head):

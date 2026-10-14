@@ -20,7 +20,7 @@
 ```powershell
 py -3.8 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt -r requirements-dev.txt -r requirements-optimizer-lite-win7.txt
-.venv\Scripts\python -m pre_commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
+.venv\Scripts\python tools/install_git_hooks.py
 ```
 
 说明：

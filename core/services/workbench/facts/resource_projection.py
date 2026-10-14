@@ -429,8 +429,8 @@ class ResourceTaskIndex:
                         groups[policy_date].append((first, last))
                 if not day.available or not intersection(day.windows, [(day.low, day.high)]):
                     bounds.append((day.low, day.high, day.date, "rest" if day.available else "unknown"))
-            bounds.extend((first, last, first.date().isoformat(), None)
-                          for values in groups.values() for first, last in union(values))
+            bounds.extend((first, last, policy_date, None)
+                          for policy_date, values in groups.items() for first, last in union(values))
             bounds.sort(key=lambda row: (row[0], row[1]))
         else:
             bounds = [(first, last, first.date().isoformat(), None) for first, last in resource_period_bounds(low, high, grain)]

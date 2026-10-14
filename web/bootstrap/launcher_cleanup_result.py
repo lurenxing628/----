@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.infrastructure.safe_files import remove_fixed_file
 
@@ -10,13 +10,15 @@ from .launcher_contract_result import (
     CONTRACT_STATUS_MISSING,
     read_runtime_contract_result,
 )
+from .launcher_lock_result import LOCK_STATUS_MISSING, read_runtime_lock_result_from_path
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
     RUNTIME_ERROR_FILE,
-    RUNTIME_LOCK_FILE,
     resolve_runtime_state_dir_for_read,
+    runtime_lock_path,
     runtime_log_dir,
 )
+from .launcher_runtime_lock import RuntimeLockError, _lock_identity_fields, runtime_lock_mutation_guard
 
 _MIRROR_CONTRACT_MATCH_KEYS = (
     "contract_version",
@@ -26,6 +28,10 @@ _MIRROR_CONTRACT_MATCH_KEYS = (
     "shutdown_token",
     "exe_path",
     "runtime_dir",
+    "owner",
+    "started_at",
+    "db_path",
+    "instance_id",
 )
 
 
@@ -50,35 +56,33 @@ class RuntimeCleanupResult:
         return not self.failures
 
 
-def delete_runtime_contract_files_result(runtime_dir: str) -> RuntimeCleanupResult:
+def delete_runtime_contract_files_result(
+    runtime_dir: str,
+    *,
+    expected_lock: Optional[Dict[str, Any]],
+    expected_contract: Optional[Dict[str, Any]],
+) -> RuntimeCleanupResult:
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir)
-    target_dirs, discovery_failures = _runtime_contract_log_dirs_result(state_dir)
+    target_dirs, discovery_failures = _runtime_contract_log_dirs_result(state_dir, expected_contract)
     attempted_paths: List[str] = []
     removed_paths: List[str] = []
     missing_paths: List[str] = []
     failures: List[RuntimeCleanupFailure] = list(discovery_failures)
 
-    for path in _cleanup_paths(target_dirs):
-        attempted_paths.append(path)
+    for log_dir in target_dirs:
         try:
-            removed = remove_fixed_file(path, allow_symlink=False)
-        except FileNotFoundError:
-            missing_paths.append(path)
-        except Exception as exc:
-            launcher_log_warning(
-                None,
-                "删除运行时契约相关文件失败：path=%s error=%s",
-                path,
-                exc,
-                state_dir=state_dir,
-                write_launch_error=True,
-            )
-            failures.append(RuntimeCleanupFailure(path=path, reason="remove_failed", error=str(exc)))
-        else:
-            if removed:
-                removed_paths.append(path)
-            else:
-                missing_paths.append(path)
+            with runtime_lock_mutation_guard(runtime_lock_path(log_dir)):
+                failure = _cleanup_ownership_failure(log_dir, expected_lock, expected_contract)
+                if failure is not None:
+                    failures.append(failure)
+                    if log_dir == target_dirs[0]:
+                        break
+                    continue
+                _remove_contract_artifacts(log_dir, attempted_paths, removed_paths, missing_paths, failures)
+        except RuntimeLockError as exc:
+            failures.append(RuntimeCleanupFailure(path=runtime_lock_path(log_dir), reason="mutation_guard_failed", error=str(exc)))
+            if log_dir == target_dirs[0]:
+                break
 
     return RuntimeCleanupResult(
         state_dir=state_dir,
@@ -90,6 +94,46 @@ def delete_runtime_contract_files_result(runtime_dir: str) -> RuntimeCleanupResu
     )
 
 
+def _cleanup_ownership_failure(
+    log_dir: str,
+    expected_lock: Optional[Dict[str, Any]],
+    expected_contract: Optional[Dict[str, Any]],
+) -> Optional[RuntimeCleanupFailure]:
+    lock_result = read_runtime_lock_result_from_path(runtime_lock_path(log_dir), state_dir=log_dir)
+    if lock_result.status != LOCK_STATUS_MISSING:
+        if not lock_result.ok:
+            return RuntimeCleanupFailure(lock_result.path, "ownership_unavailable", lock_result.reason or lock_result.error)
+        if expected_lock is None or _lock_identity_fields(lock_result.payload or {}) != _lock_identity_fields(expected_lock):
+            return RuntimeCleanupFailure(lock_result.path, "ownership_changed", "运行时锁归属已变化，已保留当前实例文件。")
+    contract_result = read_runtime_contract_result(log_dir)
+    if contract_result.status != CONTRACT_STATUS_MISSING:
+        if not contract_result.ok:
+            return RuntimeCleanupFailure(contract_result.path, "ownership_unavailable", contract_result.reason or contract_result.error)
+        if expected_contract is None or not _contracts_match(contract_result.payload or {}, expected_contract):
+            return RuntimeCleanupFailure(contract_result.path, "ownership_changed", "运行时契约归属已变化，已保留当前实例文件。")
+    if expected_lock is None and expected_contract is None and any(os.path.lexists(path) for path in _cleanup_paths((log_dir,))):
+        return RuntimeCleanupFailure(runtime_lock_path(log_dir), "ownership_unavailable", "缺少原实例身份，已保留运行时文件。")
+    return None
+
+
+def _remove_contract_artifacts(
+    log_dir: str,
+    attempted_paths: List[str],
+    removed_paths: List[str],
+    missing_paths: List[str],
+    failures: List[RuntimeCleanupFailure],
+) -> None:
+    for path in _cleanup_paths((log_dir,)):
+        attempted_paths.append(path)
+        try:
+            removed = remove_fixed_file(path, allow_symlink=False)
+        except Exception as exc:
+            launcher_log_warning(None, "删除运行时契约相关文件失败：path=%s error=%s", path, exc, state_dir=log_dir)
+            failures.append(RuntimeCleanupFailure(path=path, reason="remove_failed", error=str(exc)))
+        else:
+            (removed_paths if removed else missing_paths).append(path)
+
+
 def _cleanup_paths(target_dirs: Tuple[str, ...]) -> Tuple[str, ...]:
     paths: List[str] = []
     for log_dir in target_dirs:
@@ -99,7 +143,6 @@ def _cleanup_paths(target_dirs: Tuple[str, ...]) -> Tuple[str, ...]:
                 os.path.join(log_dir, "aps_port.txt"),
                 os.path.join(log_dir, "aps_host.txt"),
                 os.path.join(log_dir, "aps_db_path.txt"),
-                os.path.join(log_dir, RUNTIME_LOCK_FILE),
                 os.path.join(log_dir, RUNTIME_ERROR_FILE),
                 os.path.join(log_dir, "launcher.log"),
             ]
@@ -107,24 +150,14 @@ def _cleanup_paths(target_dirs: Tuple[str, ...]) -> Tuple[str, ...]:
     return tuple(paths)
 
 
-def _runtime_contract_log_dirs_result(state_dir: str) -> Tuple[Tuple[str, ...], Tuple[RuntimeCleanupFailure, ...]]:
+def _runtime_contract_log_dirs_result(
+    state_dir: str, payload: Optional[Dict[str, Any]]
+) -> Tuple[Tuple[str, ...], Tuple[RuntimeCleanupFailure, ...]]:
     log_dirs: List[str] = [os.path.abspath(state_dir)]
     failures: List[RuntimeCleanupFailure] = []
     contract_path = os.path.join(state_dir, "aps_runtime.json")
-    result = read_runtime_contract_result(state_dir)
-    if result.status == CONTRACT_STATUS_MISSING:
+    if payload is None:
         return tuple(log_dirs), tuple(failures)
-    if not result.ok or not isinstance(result.payload, dict):
-        failures.append(
-            RuntimeCleanupFailure(
-                path=result.path or contract_path,
-                reason="mirror_dirs_invalid",
-                error=result.error or result.reason or result.status,
-            )
-        )
-        return tuple(log_dirs), tuple(failures)
-
-    payload = result.payload
 
     _append_runtime_log_dir(log_dirs, state_dir, payload, failures, contract_path)
     data_dirs = payload.get("data_dirs") or {}
@@ -166,7 +199,7 @@ def _append_runtime_log_dir(
 
 def _normalize_contract_value(key: str, value: Any) -> str:
     text = str(value or "").strip()
-    if key in ("exe_path", "runtime_dir"):
+    if key in ("exe_path", "runtime_dir", "db_path"):
         return os.path.normcase(os.path.abspath(text)) if text else ""
     return text
 

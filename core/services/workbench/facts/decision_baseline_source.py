@@ -10,7 +10,7 @@ from .candidate_facts import _entity_refs, _table
 from .candidate_read_source import read_candidate_source
 from .candidate_store import CandidateStore
 from .candidate_values import stored_json
-from .delivery_completeness import archived_deferred_operation_evidence
+from .material_deferral_evidence import archived_deferred_operation_evidence
 from .preflight_dependencies import material_deferred_ids
 from .trial_scenario_archive import load_saved_scenario
 from .zero_duration import PointEventError

@@ -240,6 +240,33 @@ def test_partial_night_window_splits_days_and_preserves_overlap_identity(candida
         assert float(values[headers.index("所选时段占用比例（%）")]) == 43.75
         assert float(values[headers.index("所选日峰占用比例（%）")]) == 50
 
+    midnight_query = {**full_shift_query, "range_start": "2026-09-10T00:00:00"}
+    midnight = resource_document(client, run_ref, **midnight_query)["data"]
+    heatmap = next(row for row in midnight["heatmap"]["items"] if row["resource_ref"] == midnight_query["resource_ref"])
+    assert heatmap["cells"] == []
+    assert heatmap["continuations"] == [{
+        "group_key": "2026-09-10", "bucket_key": "shift:" + midnight_query["range_start"] + "/" + midnight_query["range_end"],
+        "date": DAY, "start": midnight_query["range_start"], "end": midnight_query["range_end"],
+        "continuation_start": midnight_query["range_start"], "continuation_end": midnight_query["range_end"],
+        "basis": "continuation_of_archived_work_period"}]
+    midnight_detail_query = dict(midnight_query, bucket_start=midnight_query["range_start"], bucket_end=midnight_query["range_end"])
+    midnight_detail = resource_document(client, run_ref, "resource-days", **midnight_detail_query)
+    assert len(midnight_detail["data"]["items"]) == 1
+    tail = midnight_detail["data"]["items"][0]
+    assert tail["date"] == tail["group_key"] == DAY
+    assert (tail["start"], tail["end"]) == (midnight_query["range_start"], midnight_query["range_end"])
+    assert tail["after"]["available_hours"] == 6
+    assert {task["operation_ref"] for task in tail["after"]["tasks"]} == {
+        operation_ref(case, case.op_id), operation_ref(case, second), operation_ref(case, boundary)}
+    response = client.get(export_path, query_string={**midnight_detail_query,
+        "snapshot_ref": midnight_detail["meta"]["snapshot_ref"], "section": "resource-days", "format": "csv"})
+    assert response.status_code == 200, response.get_json()
+    exported = list(csv.DictReader(io.StringIO(response.data.decode("utf-8-sig"))))
+    assert len(exported) == 1 and exported[0]["日期"] == DAY
+    assert (exported[0]["时段起点（含）"], exported[0]["时段终点（不含）"]) == (
+        midnight_query["range_start"], midnight_query["range_end"])
+    assert float(exported[0]["所选可排总时长（小时）"]) == 6
+
 
 def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candidate_case):
     case = candidate_case
