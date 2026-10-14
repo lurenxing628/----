@@ -12,7 +12,8 @@ from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 
-from .calendar import calendar_engine, estimate
+from .arrangements import same_arrangement
+from .calendar import calendar_engine, estimate, new_slot_effort
 from .constraints import interval, relation_issues, resource_issues
 from .execution_anchors import anchor_issue, execution_anchors
 from .facts import facts_unchanged
@@ -48,7 +49,7 @@ class TrialValidator:
         # 采用输入的起止日随试调行变化（不重排时段按它裁剪）：行改过就按当前各行重新找。
         # 直接比较各行当前安排的副本（都是文本和编号），不为判断“改没改”去算摘要。
         state = [dict(row["current"]) for row in self.rows]
-        if getattr(self, "_protected_state", None) == state:
+        if same(getattr(self, "_protected_state", None), state):
             return
         self._protected_state = state
         self.frozen, self.frozen_issue = {}, None
@@ -89,13 +90,13 @@ class TrialValidator:
         issues = []
         protected = self.protection.check(row)
         anchor = self.anchors.get(original["operation"]["id"])
-        if anchor is not None and current != anchor["arrangement"]:
+        if anchor is not None and not same_arrangement(current, anchor["arrangement"]):
             issues.append(issue("scenario_execution_anchor_outdated", "这份试调保留的时间或资源与实际报工不同，请从当前正式计划重新发起试调。", row["task_ref"]))
         if protected and protected["code"] == "task_frozen":
             return issues + self._frozen_row(row, self.frozen[original["operation"]["id"]])
         if protected:
             expected = anchor["arrangement"] if anchor is not None else original["arrangement"]
-            if protected["code"] != "execution_protected" or (anchor is None and current != expected):
+            if protected["code"] != "execution_protected" or (anchor is None and not same_arrangement(current, expected)):
                 issues.append(protected)
         issues.extend(self._resources(row))
         issues.extend(self._times(row, protected))
@@ -187,8 +188,12 @@ class TrialValidator:
         current = self._requested_arrangement(intent)
         if row["original"]["operation"]["source"] == "external" and any(intent[key] is not None for key in ("machine_ref", "operator_ref")):
             reject("external_internal_resource", "外协工序必须明确使用空内部资源。", 422)
-        end = self._adjusted_end(row, current)
+        effort = new_slot_effort(row["original"])
+        end = self._adjusted_end(row, current, effort)
         current["end"] = end.isoformat()
+        if same_arrangement(row["current"], current):
+            return dict(row["current"])
+        current["operation_effort"] = dict(effort.to_dict(), operation_ref=row["operation_ref"])
         return current
 
     def _requested_arrangement(self, intent):
@@ -203,9 +208,9 @@ class TrialValidator:
             current[kind + "_id"] = entity["entity_key"] if entity else None
         return current
 
-    def _adjusted_end(self, row, current):
+    def _adjusted_end(self, row, current, effort):
         try:
-            estimated_start, end = estimate(self.engine, row["original"], current)
+            estimated_start, end = estimate(self.engine, row["original"], current, effort=effort)
             if row["original"].get("point_basis") is not None and estimated_start != datetime.fromisoformat(current["start"]):
                 reject("point_calendar_conflict", "所选点时间不在允许班次内，未推迟完工或改成正时长，原草稿保留。", 422)
         except (AppError, ValueError, TypeError, OverflowError) as exc:

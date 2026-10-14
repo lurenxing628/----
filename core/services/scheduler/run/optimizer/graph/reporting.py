@@ -3,14 +3,23 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.algorithms import SortStrategy
-from core.services.scheduler.run.optimizer.attempt_records import append_rejected_reason_attempt
+from core.services.scheduler.run.optimizer.attempt_records import (
+    append_rejected_reason_attempt,
+    attempt_decision_evidence,
+)
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile
 
 if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 
 
-def append_graph_attempt(*, attempts: List[Dict[str, Any]], candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> None:
+def append_graph_attempt(
+    *, attempts: List[Dict[str, Any]], candidate: Dict[str, Any], profile: GraphReadyWeightProfile,
+    reference: Optional[Dict[str, Any]] = None, accepted: Optional[bool] = None,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
+    clock: Optional[Callable[[], float]] = None, t_begin: Optional[float] = None,
+    verified: bool = True, comparison_kind: str = "incumbent",
+) -> None:
     metrics = candidate["metrics"]
     attempts.append(
         {
@@ -25,6 +34,9 @@ def append_graph_attempt(*, attempts: List[Dict[str, Any]], candidate: Dict[str,
             "candidate_status": "evaluated",
             "candidate_origin": profile.candidate_origin,
             "weight_profile_slug": profile.slug,
+            **attempt_decision_evidence(candidate=candidate, reference=reference, accepted=accepted,
+                                        search_report_state=search_report_state, clock=clock, t_begin=t_begin,
+                                        verified=verified, comparison_kind=comparison_kind),
         }
     )
 
@@ -37,8 +49,6 @@ def append_graph_trace(
     clock: Callable[[], float],
     t_begin: float,
 ) -> None:
-    if len(improvement_trace) >= 200:
-        return
     metrics = candidate["metrics"]
     improvement_trace.append(
         {

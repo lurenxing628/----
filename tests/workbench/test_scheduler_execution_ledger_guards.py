@@ -69,9 +69,34 @@ def test_complete_report_is_fixed_seed_in_real_run(tmp_path):
         conn.close()
 
 
+def _saved_effort(case, run_ref):
+    record = json.loads(case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])
+    ledger = record["operation_effort"]
+    assert ledger["effort_basis"] == "runtime_requirement_v1"
+    ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+                            (str(case.op_id),)).fetchone()[0]
+    matching = [item for item in ledger["items"] if item["operation_ref"] == ref]
+    assert len(matching) == 1
+    return matching[0]
+
+
+def _assert_kept_worker_tasks(case, result, expected_times):
+    assert result["state"] == "complete" and result["candidates"]
+    for candidate in result["candidates"]:
+        tasks = [json.loads(row[0]) for row in case.conn.execute(
+            "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (candidate["candidate_ref"],))]
+        actual = next(row for row in tasks if row["op_id"] == case.op_id)
+        assert (actual["start_time"], actual["end_time"]) == expected_times
+        assert (actual["machine_id"], actual["operator_id"]) == ("M1", "O1")
+        artifact = json.loads(case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?",
+                                                (candidate["candidate_ref"],)).fetchone()[0])
+        assert next(row for row in artifact["results"] if row["op_id"] == case.op_id)["seed_source"] == "execution_fact"
+
+
 def test_normal_old_finish_can_be_supplemented_and_used_by_real_replan(candidate_case):
     case = candidate_case
-    _, refs = compute(case)
+    source_run, refs = compute(case)
+    original_effort = _saved_effort(case, source_run)
     adopted = service(case.conn).adopt(refs[0], preview(case, refs[0]), "legacy-first-adoption-001", INTENT)
     version = adopted["data"]["official_plan"]["version"]
     schedule = case.conn.execute("SELECT id FROM Schedule WHERE version=? AND op_id=?", (version, case.op_id)).fetchone()[0]
@@ -79,6 +104,16 @@ def test_normal_old_finish_can_be_supplemented_and_used_by_real_replan(candidate
     context = ExecutionFeedbackContext(version, schedule, case.op_id, "B1", f"{case.op_id}:0:0", "original-operator",
         "legacy-normal-start-001", "adopted", "schedule", "adopted")
     started = feedback.start_operation(context, event_time="2026-09-09 08:00", machine_id="M1", operator_id="O1")
+    case.batch("B2")
+    case.operation("B2")
+    case.conn.commit()
+    execution = next(row for row in case.projections("B1", "B2") if row.operation_ref == original_effort["operation_ref"])
+    assert execution.execution_state == "started" and execution.target_quantity == 3 and execution.target_basis == "batch"
+    assert execution.remaining_quantity is None
+    receipt_count = case.conn.execute("SELECT count(*) FROM WorkbenchRunReceipts").fetchone()[0]
+    blockers = PreflightService(case.conn).evaluate(case.settings("B1", "B2"))[0]["blockers"]
+    assert [row["code"] for row in blockers] == ["execution_review_required"]
+    assert case.conn.execute("SELECT count(*) FROM WorkbenchRunReceipts").fetchone()[0] == receipt_count
     feedback.finish_operation(replace(context, expected_state_revision=started.state_revision,
         idempotency_key="legacy-normal-finish-001"), event_time="2026-09-09 10:00", quantity_done=3)
     original = formal_rows(case.conn)["OperationExecutionEvents"]
@@ -92,18 +127,17 @@ def test_normal_old_finish_can_be_supplemented_and_used_by_real_replan(candidate
     assert api.task()["execution"]["data_quality"] == "complete"
     ensure_ledger_execution_schedulable(read_facts(case.conn, version))
     OperatorMachineService(case.conn).add_link("O1", "M1")
-    case.batch("B2")
-    case.operation("B2")
-    case.conn.commit()
     accepted = case.accept(key="legacy-supplement-replan-001", settings=case.settings("B1", "B2"))
     result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
-    assert result["state"] == "complete" and result["candidates"]
-    for candidate in result["candidates"]:
-        tasks = [json.loads(row[0]) for row in case.conn.execute(
-            "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (candidate["candidate_ref"],))]
-        actual = next(row for row in tasks if row["op_id"] == case.op_id)
-        assert (actual["start_time"], actual["end_time"]) == ("2026-09-09T08:00:00", "2026-09-09T10:00:00")
-        assert (actual["machine_id"], actual["operator_id"]) == ("M1", "O1")
+    _assert_kept_worker_tasks(case, result, ("2026-09-09T08:00:00", "2026-09-09T10:00:00"))
+    completed_effort = _saved_effort(case, result["run_ref"])
+    assert completed_effort["requirement_role"] == "completed" and completed_effort["setup_state"] == "already_completed"
+    assert completed_effort["target_quantity"] == completed_effort["execution_target_quantity"] == 3
+    assert completed_effort["quantity_basis"] == completed_effort["execution_quantity_basis"] == "batch"
+    assert completed_effort["remaining_quantity"] == 0
+    hours = ("setup_standard_hours", "processing_standard_hours", "required_standard_hours")
+    assert [completed_effort[key] for key in hours] == [original_effort[key] for key in hours] == [0, 0.75, 0.75]
+    assert _saved_effort(case, source_run) == original_effort
     assert formal_rows(case.conn)["OperationExecutionEvents"] == original
 
 

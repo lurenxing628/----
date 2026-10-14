@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import Any, Dict, Iterable
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.content import content_text, same, unpacked
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.workbench import messages
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
@@ -28,9 +29,9 @@ def issue_write_context(subject_ref: str, actions: Iterable[str], snapshot: Any)
     allowed = list(actions) if not isinstance(actions, str) else []
     if not allowed or any(not isinstance(action, str) or not action for action in allowed):
         raise ValueError("未提供允许执行的操作。")
-    binding = {"version": 1, "source": "production", "subject_ref": subject_ref,
-               "actions": sorted(set(allowed)), "snapshot_hash": input_fingerprint(snapshot) if snapshot is not None else None}
-    token, expiry = issue_public_token_with_expiry(_SCOPE, canonical_json(binding), ttl_seconds=_TTL_SECONDS)
+    binding = {"version": 2, "source": "production", "subject_ref": subject_ref,
+               "actions": sorted(set(allowed)), "snapshot": snapshot}
+    token, expiry = issue_public_token_with_expiry(_SCOPE, content_text(binding), ttl_seconds=_TTL_SECONDS)
     return {"write_token": token, "expires_at": datetime.fromtimestamp(expiry).isoformat(timespec="seconds"),
             "capabilities": {action: True for action in binding["actions"]}, "blocked_reasons": []}
 
@@ -46,16 +47,18 @@ def validate_write_context(token: str, subject_ref: str, action: str, current_sn
     except ValidationError as exc:
         raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
     try:
-        binding = json.loads(raw)
-        valid = (isinstance(binding, dict) and binding.get("version") == 1 and binding.get("source") == "production"
-                 and binding.get("subject_ref") == subject_ref and isinstance(binding.get("actions"), list)
-                 and action in binding["actions"])
+        binding = unpacked(json.loads(raw))
     except (ValueError, TypeError) as exc:
         raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
-    if not valid:
+    if not isinstance(binding, dict):
         raise WorkbenchCommandRejected("stale_write", "本页数据和这次操作对不上，还没有保存。请刷新页面后重新填写。")
-    expected = input_fingerprint(current_snapshot) if current_snapshot is not None else None
-    if binding.get("snapshot_hash") != expected:
+    actions = binding.get("actions")
+    if (type(binding.get("version")) is not int or binding["version"] != 2
+            or binding.get("source") != "production" or binding.get("subject_ref") != subject_ref
+            or not isinstance(actions, list) or action not in actions):
+        raise WorkbenchCommandRejected("stale_write", "本页数据和这次操作对不上，还没有保存。请刷新页面后重新填写。")
+    matches = "snapshot" in binding and same(binding["snapshot"], current_snapshot)
+    if not matches:
         raise WorkbenchCommandRejected("stale_write", messages.STALE)
 
 

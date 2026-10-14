@@ -27,10 +27,11 @@
   function Source({ workspace, comparison }) {
     const { algorithm, baseline } = workspace.generation;
     const algorithmLabel = [algorithm.mode_label, algorithm.strategy_label].filter(Boolean).join(' · ');
+    const source = comparison && comparison.baseline;
     return <div className="wb-gantt-comparison-source" data-candidate-comparison-source>
-      <span><strong>新安排</strong>：{workspace.candidate.label || '当前候选'} · {algorithmLabel ? algorithmLabel + '的排产结果' : '算法排产结果（算法名称未记录）'}</span>
-      <span><strong>原安排</strong>：{baseline.version === null ? '提交试排时没有正式版安排' : <>提交试排时自动冻结的正式 v{M.number(baseline.version)} · {M.timeLabel(baseline.captured_at)}</>}
-        {baseline.version !== null && comparison && !comparison.baseline.comparison_available && ' · 当前没有可对照工序'}</span>
+      <span title={algorithmLabel || '计算方式未记录'}><strong>新安排</strong>：{workspace.candidate.label || '当前候选'}</span>
+      <span title={M.timeLabel(baseline.captured_at)}><strong>原安排</strong>：{source && source.available === false ? source.reason.message : <>排产时的正式计划{baseline.version === null ? '（版本未记录）' : ' v' + M.number(baseline.version)} · {window.WorkbenchFormat.dateTime(baseline.captured_at)}</>}
+        {source && source.available && !source.comparison_available && ' · 当前没有可对照工序'}</span>
     </div>;
   }
   function Problems({ workspace, issues, onInspect }) {
@@ -110,7 +111,7 @@
             {inspecting && onShowAll && <Button className="mini" onClick={onShowAll}>查看全部对照</Button>}
             {inspecting && !rows.length && <div>这些工序位于当前读取范围外，请在“读取范围”选择“完整候选”。</div>}
             {d.baseline.reason && <div>{d.baseline.reason.message}</div>}
-            {d.data_gaps.concat(state.result.warnings).filter(g => !['not_an_optimization_score', 'input_digest_not_recorded'].includes(g.code)).map((g, i) => <div key={i}>{g.message}</div>)}
+            {d.data_gaps.concat(state.result.warnings).filter(g => g.code !== 'not_an_optimization_score').map((g, i) => <div key={i}>{g.message}</div>)}
             <ComparisonList rows={rows} chosen={chosen} onChoose={onChoose} />
             {chosen && <><div className="rc-tools"><Button icon="x" aria-label="关闭原安排工序对照" onClick={() => onChoose(null)} /></div>
               <Detail row={chosen.comparison} segment={chosen.segment} workspace={workspace} /></>}</>}

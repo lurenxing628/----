@@ -1,8 +1,14 @@
 """Real draft and scenario persistence, lossless restoration and exact refs."""
 
+from copy import deepcopy
+from types import SimpleNamespace
+
 import pytest
 
-from core.models.workbench_trial_codec import load
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_trial_codec import dump, load
+from core.services.workbench.facts.trial_policy import load_scenario_record
+from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.trial_support import (
     assert_legacy_retained,
     candidate,
@@ -45,6 +51,27 @@ def test_complete_create_change_save_and_reopen(trial_case, kind):
     finally:
         conn.close()
     assert_legacy_retained(before, snapshot(case.conn))
+    repo = WorkbenchTrialRepository(case.conn)
+    stored_header = repo.scenario_header(saved["scenario_ref"])
+    assert stored_header["snapshot_hash"] is None
+    assert repo.draft_header(draft["draft_ref"])["admission_hash"] is None
+    assert all(row["original_hash"] is None for row in repo.draft_rows(draft["draft_ref"]))
+    if kind == "official":
+        # The original full-snapshot format and its old metadata remain readable.
+        old_header = dict(stored_header, snapshot_json=dump(saved), snapshot_hash="legacy-saved-marker")
+        stored_rows = deepcopy(repo.scenario_rows(saved["scenario_ref"]))
+        old_repo = SimpleNamespace(schema_issues=lambda: [], scenario_header=lambda _ref: old_header,
+                                   scenario_rows=lambda _ref: stored_rows)
+        assert load_scenario_record(old_repo, saved["scenario_ref"])[1] == saved
+        assert old_header["snapshot_hash"] == "legacy-saved-marker"
+        # Python equality merges True and 1; permanent rows must keep the stored type.
+        altered = load(stored_rows[0]["payload_json"])
+        assert altered["sequence"] == 1
+        altered["sequence"] = True
+        stored_rows[0]["payload_json"] = dump(altered)
+        with pytest.raises(WorkbenchCommandRejected) as error:
+            load_scenario_record(old_repo, saved["scenario_ref"])
+        assert error.value.code == "trial_snapshot_invalid"
     if kind == "candidate":
         assert "candidate_ref" in draft["base"] and "plan_ref" not in draft["base"]
         assert task["source_task_ref"] is None

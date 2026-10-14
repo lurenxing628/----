@@ -126,7 +126,8 @@ for (const R of [P.risk, A.risk]) {
   assert.equal(R({ risk: 'overdue', delay_hours: 0.004 }), '超期不到 0.01 小时');
   assert.equal(R({ risk: 'overdue', delay_hours: 1.5 }), '超期 1.50 小时');
   assert.equal(R({ risk: 'on_time', delay_hours: 0 }), '预计按期');
-  assert.equal(R({ risk: 'unknown', delay_hours: null }), '暂无数据');
+  assert.equal(R({ risk: 'unknown', delay_hours: null }), '交付待确认');
+  assert.equal(R({ risk: 'not_applicable', delay_hours: null }), '未指定交期');
 }
 assert.equal(A.value(0.004), '不到 0.01');
 // 交付/停机共用真实时间轴：跨日仍连续，零工时独立点轨，停机只标登记范围。

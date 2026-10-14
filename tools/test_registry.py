@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import subprocess
 from typing import Any, Dict, List, Mapping, Optional, Sequence
@@ -172,13 +170,8 @@ def build_test_path_status(
     return rows
 
 
-def stable_registry_hash(payload: Any) -> str:
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def hash_required_tests_registry(required_tests: Sequence[str]) -> str:
-    return stable_registry_hash(iter_required_tests(required_tests))
+def required_tests_registry_content(required_tests: Sequence[str]) -> List[str]:
+    return iter_required_tests(required_tests)
 
 
 def iter_required_regression_groups(
@@ -225,10 +218,10 @@ def iter_required_regression_common_scope_policy(
     }
 
 
-def hash_required_regression_groups(
+def required_regression_groups_content(
     groups: Optional[Sequence[Mapping[str, Any]]] = None,
-) -> str:
-    return stable_registry_hash(iter_required_regression_groups(groups))
+) -> List[Dict[str, Any]]:
+    return iter_required_regression_groups(groups)
 
 
 def validate_required_regression_group_coverage(
@@ -266,17 +259,17 @@ def validate_required_regression_group_coverage(
         "required_target_count": len(required_paths),
         "group_target_count": len(flat_targets),
         "group_count": len(group_rows),
-        "required_registry_hash": hash_required_tests_registry(required_paths),
-        "group_registry_hash": hash_required_regression_groups(group_rows),
+        "required_target_paths": list(required_paths),
+        "group_definitions": list(group_rows),
     }
 
 
-def hash_test_registry(
+def test_registry_content(
     *,
     required_tests: Optional[Sequence[str]] = None,
     startup_regressions: Optional[Sequence[str]] = None,
     active_xfail_entries: Optional[Sequence[Dict[str, Any]]] = None,
-) -> str:
+) -> Dict[str, Any]:
     active_entries = []
     for entry in list(active_xfail_entries or []):
         active_entries.append(
@@ -289,13 +282,11 @@ def hash_test_registry(
     active_entries.sort(key=lambda item: (item["nodeid"], item["debt_id"]))
     required_source = QUALITY_GATE_REQUIRED_TESTS if required_tests is None else required_tests
     startup_source = QUALITY_GATE_STARTUP_REGRESSION_ARGS if startup_regressions is None else startup_regressions
-    return stable_registry_hash(
-        {
-            "required_tests": iter_required_tests(required_source),
-            "startup_regressions": iter_startup_regressions(startup_source),
-            "active_xfail_entries": active_entries,
-        }
-    )
+    return {
+        "required_tests": iter_required_tests(required_source),
+        "startup_regressions": iter_startup_regressions(startup_source),
+        "active_xfail_entries": active_entries,
+    }
 
 
 __all__ = [
@@ -308,9 +299,9 @@ __all__ = [
     "SUPPLEMENTAL_REGRESSION_GROUPS",
     "TEST_ONLY_HELPER_IMPACT",
     "build_test_path_status",
-    "hash_required_regression_groups",
-    "hash_required_tests_registry",
-    "hash_test_registry",
+    "required_regression_groups_content",
+    "required_tests_registry_content",
+    "test_registry_content",
     "iter_non_regression_guard_tests",
     "iter_required_regression_common_scope_policy",
     "iter_required_regression_groups",
@@ -319,7 +310,6 @@ __all__ = [
     "iter_test_only_helper_impacts",
     "normalize_test_paths",
     "required_test_nodeid_matches",
-    "stable_registry_hash",
     "test_only_helper_impacts_for_path",
     "validate_required_regression_group_coverage",
 ]

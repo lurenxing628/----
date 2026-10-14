@@ -69,6 +69,7 @@ class ScheduleDelayDiagnosisService:
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            effective_plan_role=resolution.selected_role,
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=batch_id,

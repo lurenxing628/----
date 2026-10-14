@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import hashlib
-import json
-from dataclasses import replace
 from typing import Any, Dict, Optional, Sequence, Tuple
 
 from core.errors import AppError, ErrorCode
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_execution import ExecutionProjection
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
-from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot, build_execution_snapshot
+from core.services.scheduler.execution.execution_snapshot import (
+    RESOURCE_SNAPSHOT_PREFIX as RESOURCE_SNAPSHOT_PREFIX,
+)
+from core.services.scheduler.execution.execution_snapshot import (
+    ExecutionSnapshot,
+    build_execution_snapshot,
+)
 from data.repositories.schedule_execution_facts_repo import ScheduleExecutionFactsRepository
-
-RESOURCE_SNAPSHOT_PREFIX = "execution-snapshot:resources-v1:"
 
 
 def _conflict(reason: str) -> AppError:
@@ -42,18 +43,7 @@ def _validate_event_plan_identities(svc: Any) -> None:
 def resource_execution_snapshot(
     facts: Dict[int, ExecutionFact], plan_rows: Dict[int, Dict[str, Any]],
 ) -> ExecutionSnapshot:
-    snapshot = build_execution_snapshot(facts, sorted(facts))
-    # Include the reservation inputs as well as append-only event revisions:
-    # a plan-duration or actual-resource edit must not pass the final recheck.
-    payload = [snapshot.revision, [
-        [plan_rows[op_id], fact.actual_status,
-         fact.actual_start_time.isoformat() if fact.actual_start_time else None,
-         fact.actual_end_time.isoformat() if fact.actual_end_time else None,
-         fact.actual_machine_id, fact.actual_operator_id]
-        for op_id, fact in sorted(facts.items())
-    ]]
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=True).encode("utf-8")).hexdigest()
-    return replace(snapshot, revision=RESOURCE_SNAPSHOT_PREFIX + digest)
+    return build_execution_snapshot(facts, sorted(facts), plan_rows=plan_rows)
 
 
 def collect_resource_execution_facts(

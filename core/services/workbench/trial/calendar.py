@@ -1,31 +1,28 @@
 """Real scheduler calendar and duration math over exact snapshot-local inputs."""
 
+from dataclasses import replace
 from datetime import datetime
 from types import SimpleNamespace
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
+from core.algorithm_runtime.operation_effort import external_operation_effort, internal_operation_effort
+from core.errors import ValidationError
 from core.models.workbench_trial import reject
-from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
+from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.preflight_checks import number
-from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event, internal_duration_hours
+from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 
 def calendar_engine(tables):
-    profiles = {row["profile_id"]: row for row in tables["WorkbenchShiftProfiles"]}
-    selected = []
-    for row in tables["WorkbenchOperatorProfiles"]:
-        if row["shift_profile_id"] is not None:
-            profile = profiles.get(row["shift_profile_id"])
-            selected.append({"operator_id": row["operator_id"], "shift_profile_id": row["shift_profile_id"],
-                             **(profile or {"profile_id": None, "status": None, "anchor_date": None, "cycle_days": None})})
-    periods = {(row["profile_id"], row["day_offset"]): row["periods_json"] for row in tables.get("WorkbenchShiftDayPeriods", [])}
-    patterns = [dict(row, periods_json=periods.get((row["profile_id"], row["day_offset"]))) for row in tables["WorkbenchShiftPatternDays"]]
-    return SnapshotCalendarEngine({"global": tables["WorkCalendar"], "personal": tables["OperatorCalendar"],
-                                   "profiles": selected, "patterns": patterns, "defaults": tables.get("WorkbenchCalendarDefaults", [])})
+    """Reuse the same snapshot policy rules for live edit estimation and capacity."""
+    factory = ArchivedCalendar({"tables": tables}, metadata_basis="current_transaction_snapshot")
+    if factory.engine is None:
+        raise ValidationError("班表数据无效，请核对日历资料。", field="calendar")
+    return factory.engine
 
 
-def original_duration(original, *, allow_point=False):
+def original_duration(original, *, allow_point=False, effort=None):
     """Saved points require a frozen witness; opt-in allows calendar math only."""
     op, batch, execution = original["operation"], original["batch"], original["execution"]
     if op["source"] == "external":
@@ -39,10 +36,10 @@ def original_duration(original, *, allow_point=False):
     if not number(op["setup_hours"]) or not number(op["unit_hours"]):
         reject("hours_missing", "原换型工时或单件工时缺失。", 422)
     quantity = _original_target(op, batch, execution)
-    try:
-        total = internal_duration_hours(op["setup_hours"], op["unit_hours"], quantity)
-    except PointEventError as exc:
-        reject(exc.code, str(exc), 422)
+    effort = effort if effort is not None else new_slot_effort(original)
+    if effort.target_quantity != quantity:
+        reject("quantity_unknown", "标准需求的目标量与保存执行事实不一致。", 422)
+    total = effort.required_standard_hours
     if total == 0 and allow_point is not True:
         try:
             trial_point_evidence(original)
@@ -51,6 +48,33 @@ def original_duration(original, *, allow_point=False):
     return {"basis": "effective_processing_hours", "setup_hours": op["setup_hours"],
             "unit_hours": op["unit_hours"], "quantity": quantity, "total_hours": total}
 
+
+
+def new_slot_effort(original):
+    """The same operation-local standard requirement the real trial slot consumes."""
+    op, batch, execution = original["operation"], original["batch"], original["execution"]
+    operation = SimpleNamespace(**op)
+    model = SimpleNamespace(**batch)
+    remaining = execution.get("remaining_quantity") if execution else None
+    if op["source"] == "external":
+        group = original.get("external_group")
+        if group is not None:
+            operation.ext_merge_mode = group["merge_mode"]
+            operation.ext_group_id = group["group_id"]
+            operation.ext_group_total_days = group["total_days"]
+        result = external_operation_effort(operation, model, remaining_quantity=remaining)
+        if not number(result.external_cycle_days, positive=True):
+            reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
+        return replace(result, execution_target_quantity=execution.get("target_quantity") if execution else None,
+                       execution_quantity_basis=execution.get("target_basis", "unknown") if execution else "unknown")
+    if op["source"] != "internal":
+        reject("duration_source_unknown", "这道工序的来源缺项，标准需求未知。", 422)
+    if not number(op["setup_hours"]) or not number(op["unit_hours"]):
+        reject("hours_missing", "原准备工时或单件工时缺失。", 422)
+    _original_target(op, batch, execution)
+    result = internal_operation_effort(operation, model, remaining_quantity=remaining)
+    return replace(result, execution_target_quantity=execution.get("target_quantity") if execution else None,
+                   execution_quantity_basis=execution.get("target_basis", "unknown") if execution else "unknown")
 
 def _original_target(op, batch, execution):
     quantity = execution.get("target_quantity") if execution else None
@@ -62,9 +86,9 @@ def _original_target(op, batch, execution):
     return quantity
 
 
-def estimate(engine, original, arrangement, *, allow_point=False):
+def estimate(engine, original, arrangement, *, allow_point=False, effort=None):
     """allow_point enables calendar math only, not production save or adoption."""
-    duration = original_duration(original, allow_point=allow_point)
+    duration = original_duration(original, allow_point=allow_point, effort=effort)
     start = datetime.fromisoformat(arrangement["start"])
     if duration["basis"] == "calendar_days":
         return start, engine.add_calendar_days(start, duration["days"])

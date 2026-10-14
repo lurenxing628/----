@@ -21,9 +21,12 @@ from .optimizer.outcome import (
     OptimizationOutcome,
     _baseline_candidate,
     _baseline_outcome,
+    _finish_process_evidence,
     _record_decoder_invocations,
+    _run_process_phase,
     _runtime_ms,
 )
+from .optimizer.process_evidence import OptimizationProcessEvidence
 from .optimizer.runtime import OptimizerRuntime
 from .optimizer.search_budget import (
     OptimizerPhaseBudget,
@@ -142,10 +145,11 @@ def _best_outcome(
         report_state=search_report_state, attempts=state.attempts, budget=search_budget,
         phases=phases, started_at=t_begin, finished_at=runtime.clock(),
     )
+    runtime_ms = _runtime_ms(runtime, t_begin=t_begin)
     compacted_attempts = state.compact_attempts(limit=12)
-    compacted_trace = state.compact_trace(limit=200)
+    compacted_trace = state.compact_trace(limit=200, elapsed_ms=runtime_ms)
     search_report = search_report_state.finalize(
-        runtime_ms=_runtime_ms(runtime, t_begin=t_begin),
+        runtime_ms=runtime_ms,
         attempts=compacted_attempts,
         improvement_trace=compacted_trace,
     )
@@ -168,6 +172,7 @@ def _best_outcome(
         search_report=search_report,
         dispatch_mode=adopted_mode,
         dispatch_rule=_adopted_dispatch_rule(best, adopted_mode=adopted_mode, configured_rule=optimizer_cfg.dispatch_rule),
+        process_evidence=_finish_process_evidence(search_report_state, best, search_report, runtime_ms),
     )
 
 
@@ -262,6 +267,8 @@ def optimize_schedule(
         started_at=float(t_begin),
         strict_mode=bool(strict_mode),
         candidate_profile=candidate_profile.to_report_dict(),
+        process_collector=OptimizationProcessEvidence(objective_name=str(optimizer_cfg.objective_name),
+                                                     clock=runtime.clock, started_at=t_begin),
     )
     publish_search_budget(
         report_state=search_report_state, attempts=state.attempts, budget=search_budget,
@@ -270,7 +277,7 @@ def optimize_schedule(
     if runtime.clock() >= deadline:
         raise SearchBudgetExhausted("candidate_time_budget_reached")
 
-    state.best = runtime.run_multi_start(
+    state.best = _run_process_phase(search_report_state, "multi_start", runtime.run_multi_start,
         keys=optimizer_cfg.strategy_keys(),
         dispatch_modes=dispatch_modes,
         dispatch_rule_cfg=optimizer_cfg.dispatch_rule,
@@ -300,7 +307,7 @@ def optimize_schedule(
         search_report_state=search_report_state,
     )
 
-    state.best = runtime.run_ortools_warmstart(
+    state.best = _run_process_phase(search_report_state, "ortools_warmstart", runtime.run_ortools_warmstart,
         algo_mode=optimizer_cfg.algo_mode, cfg=cfg, strategy_enum=optimizer_cfg.strategy_enum,
         objective_name=optimizer_cfg.objective_name, deadline=phases.warmstart_deadline,
         scheduler=scheduler, algo_ops_to_schedule=algo_ops_to_schedule, batches=batches,
@@ -315,7 +322,7 @@ def optimize_schedule(
         ),
     )
 
-    state.best = run_heuristic_candidate_phases(
+    state.best = _run_process_phase(search_report_state, "heuristic_candidate_search", run_heuristic_candidate_phases,
         runtime=runtime,
         optimizer_cfg=optimizer_cfg,
         candidate_profile=candidate_profile,
@@ -342,7 +349,7 @@ def optimize_schedule(
         schedule_fn=_schedule_with_optional_strict_mode,
     )
 
-    state.best = runtime.run_local_search(
+    state.best = _run_process_phase(search_report_state, "local_search", runtime.run_local_search,
         algo_mode=optimizer_cfg.algo_mode,
         best=state.best,
         version=version,

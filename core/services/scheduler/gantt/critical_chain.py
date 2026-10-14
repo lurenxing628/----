@@ -5,10 +5,10 @@ from heapq import heappop, heappush
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.degradation import DegradationCollector
+from core.services.common.plan_task_identity import public_task_id as _public_task_id
 from core.services.scheduler._sched_display_utils import fmt_dt as _fmt_dt
 from core.services.scheduler._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from core.services.scheduler._sched_utils import _safe_int
-from core.services.scheduler.dispatch_task_ids import public_task_id as _public_task_id
 from core.shared.local_datetime import parse_local_datetime
 
 from .task_labels import public_task_label as _public_task_label

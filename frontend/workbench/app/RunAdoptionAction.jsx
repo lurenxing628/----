@@ -3,7 +3,7 @@
   const A = window.RunAdoptionAPI, U = window.RunAdoptionControls;
   // A fresh draft starts with the last handler typed on this machine; it is a typing convenience, never an identity.
   const empty = () => ({ reason: '', declared_operator: window.WorkbenchHandlerMemory.read().value });
-  function Session({ candidateRef, onNavigate, onAdopted, adapter }) {
+  function Session({ candidateRef, candidateDisplay, candidateCatalog = [], onNavigate, onAdopted, adapter }) {
     const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const [initial] = React.useState(() => { try { return { intent: A.pending().read(), error: '' }; } catch (e) { return { intent: null, error: e.message }; } });
     const [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.error);
@@ -107,16 +107,19 @@
       catch (e) { setStorageError(e.message); }
     }
     const pending = intent && intent.phase === 'pending';
-    const label = result ? '查看采用结果' : pending ? '查询采用结果' : intent ? '重新核对采用' : '采用方案';
+    const label = result ? '查看采用结果' : pending ? '查询采用结果' : intent ? '重新核对采用' : '采用前核对';
     const display = preview && preview.validation.can_adopt ? preview : intent ? intent.preview : { candidate_ref: candidateRef || '未指定' };
+    const savedCandidate = candidateCatalog.find(candidate => candidate.candidate_ref === display.candidate_ref);
+    const targetDisplay = candidateDisplay && candidateDisplay.candidate_ref === display.candidate_ref ? candidateDisplay : savedCandidate ? { candidate_ref: savedCandidate.candidate_ref, label: savedCandidate.label || '候选名称未填写' } : undefined;
     return <span className="plana run-adoption-action" data-run-adoption-action="true">
       <U.Button icon={pending ? 'refresh-cw' : 'check'} className="btn primary" disabled={!intent && (!A.ref(candidateRef) || !!storageError)} onClick={() => {
         if (intent) { setOpen(true); if (pending && !result) refresh(); }
         else inspect();
-      }} aria-expanded={open} busy={busy && !intent}>{label.trim()}</U.Button>
+      }} aria-expanded={open} aria-label={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : label.trim()} title={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : undefined} busy={busy && !intent}>{label.trim()}</U.Button>
       {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={() => { readStorage(); refresh(); }}>刷新上次操作记录</U.Button></span>}
       {intent && !open && <span className="ra-inline">{result ? '采用结果已确认。' : pending ? '上次操作已保留，结果待确认。' : '上次没有采用，请重新预检。'}</span>}
       {open && <U.Dialog value={display} intent={intent} result={result} preview={preview} draft={draft} consent={consent} busy={busy || checking}
+        candidateDisplay={targetDisplay}
         error={storageError || error} storageError={storageError} onReadStorage={() => { readStorage(); refresh(); }}
         notice={intent && intent.candidate_ref !== candidateRef ? '另一个候选方案还有没确认的采用操作，请先确认那条记录。' : notice || (intent && intent.phase === 'rejected' && !preview ? '上次采用被拒绝了，填写内容已保留。请重新预检并再次确认。' : '')}
         onChange={setDraft} onConsent={setConsent} onClose={close} onPreview={inspect} onConfirm={submit} onLookup={refresh} onFinish={finish} onCancelRejected={cancelRejected} onNavigate={onNavigate} />}

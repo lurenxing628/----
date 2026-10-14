@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithms.objective_specs import objective_metric_keys
 from core.errors import ValidationError
 
-CANDIDATE_FINGERPRINT_SCHEMA_VERSION = 1
-DECISION_FINGERPRINT_SCOPE = "decision"
+CANDIDATE_FINGERPRINT_SCHEMA_VERSION = 2
 OUTPUT_FINGERPRINT_SCOPE = "decoded_output"
 DISTINCT_FINGERPRINT_SCOPE = OUTPUT_FINGERPRINT_SCOPE
 DISTINCT_FINGERPRINT_DESCRIPTION = "distinct_candidates 按正式解码结果去重"
@@ -22,37 +19,32 @@ class CandidateFingerprint:
     schema_version: int
     fingerprint_scope: str
     objective_name: str
-    decision_fingerprint: str
-    output_fingerprint: str
-    parent_fingerprint: Optional[str]
+    candidate_id: int
+    output_key: Tuple[Any, ...] = field(repr=False)
+    parent_candidate_id: Optional[int]
     same_as_parent: bool
     same_as_seen: bool
     fingerprint_changed: bool
 
-    def with_context(self, *, parent_fingerprint: Optional[str],
-                     seen_output_fingerprints: Iterable[str]) -> CandidateFingerprint:
-        same_as_parent = bool(parent_fingerprint and self.output_fingerprint == parent_fingerprint)
-        return replace(self, parent_fingerprint=parent_fingerprint, same_as_parent=same_as_parent,
-                       same_as_seen=self.output_fingerprint in (seen_output_fingerprints or ()),
+    def with_context(self, *, parent_fingerprint: Optional[CandidateFingerprint],
+                     seen_output_fingerprints: Iterable[Tuple[Any, ...]]) -> CandidateFingerprint:
+        same_as_parent = bool(parent_fingerprint is not None and self.output_key == parent_fingerprint.output_key)
+        return replace(self, parent_candidate_id=parent_fingerprint.candidate_id if parent_fingerprint is not None else None,
+                       same_as_parent=same_as_parent,
+                       same_as_seen=self.output_key in (seen_output_fingerprints or ()),
                        fingerprint_changed=not same_as_parent)
 
     def to_report_dict(self) -> Dict[str, Any]:
         return {
             "schema_version": int(self.schema_version),
-            "fingerprint_scope": str(self.fingerprint_scope),
+            "output_scope": str(self.fingerprint_scope),
             "objective_name": str(self.objective_name),
-            "decision_fingerprint": str(self.decision_fingerprint),
-            "output_fingerprint": str(self.output_fingerprint),
-            "parent_fingerprint": self.parent_fingerprint,
+            "candidate_id": int(self.candidate_id),
+            "parent_candidate_id": self.parent_candidate_id,
             "same_as_parent": bool(self.same_as_parent),
             "same_as_seen": bool(self.same_as_seen),
-            "fingerprint_changed": bool(self.fingerprint_changed),
+            "output_changed": bool(self.fingerprint_changed),
         }
-
-
-def stable_fingerprint(payload: Dict[str, Any]) -> str:
-    text = json.dumps(_jsonable(payload), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
 
 
 def jsonable_fingerprint_payload(value: Any) -> Any:
@@ -63,29 +55,26 @@ def build_candidate_fingerprint(
     candidate: Dict[str, Any],
     *,
     objective_name: str,
-    parent_fingerprint: Optional[str],
-    seen_output_fingerprints: Iterable[str],
+    parent_fingerprint: Optional[CandidateFingerprint],
+    seen_output_fingerprints: Iterable[Tuple[Any, ...]],
     identity: Optional[CandidateFingerprint] = None,
+    candidate_id: int = 0,
 ) -> CandidateFingerprint:
     _validate_candidate(candidate)
     if identity is not None:
         return identity.with_context(parent_fingerprint=parent_fingerprint,
                                      seen_output_fingerprints=seen_output_fingerprints)
-    decision_fingerprint = stable_fingerprint(_decision_payload(candidate, objective_name=objective_name))
-    output_fingerprint = stable_fingerprint(_output_payload(candidate, objective_name=objective_name))
-    same_as_parent = bool(parent_fingerprint and output_fingerprint == parent_fingerprint)
-    same_as_seen = output_fingerprint in (seen_output_fingerprints or ())
     return CandidateFingerprint(
         schema_version=CANDIDATE_FINGERPRINT_SCHEMA_VERSION,
         fingerprint_scope=DISTINCT_FINGERPRINT_SCOPE,
         objective_name=str(objective_name),
-        decision_fingerprint=decision_fingerprint,
-        output_fingerprint=output_fingerprint,
-        parent_fingerprint=parent_fingerprint,
-        same_as_parent=same_as_parent,
-        same_as_seen=same_as_seen,
-        fingerprint_changed=not same_as_parent,
-    )
+        candidate_id=int(candidate_id),
+        output_key=_output_payload(candidate, objective_name=objective_name),
+        parent_candidate_id=None,
+        same_as_parent=False,
+        same_as_seen=False,
+        fingerprint_changed=True,
+    ).with_context(parent_fingerprint=parent_fingerprint, seen_output_fingerprints=seen_output_fingerprints)
 
 
 def score_strictly_better(candidate_score: Any, parent_score: Any) -> bool:
@@ -98,71 +87,22 @@ def score_strictly_better(candidate_score: Any, parent_score: Any) -> bool:
 
 def _validate_candidate(candidate: Dict[str, Any]) -> None:
     if not isinstance(candidate, dict):
-        raise ValidationError("候选指纹只能从候选 dict 生成。", field="candidate_fingerprint")
+        raise ValidationError("候选内容只能从候选 dict 生成。", field="candidate_fingerprint")
     if not isinstance(candidate.get("results"), list):
-        raise ValidationError("候选指纹缺少正式解码结果。", field="candidate_fingerprint")
+        raise ValidationError("候选内容缺少正式解码结果。", field="candidate_fingerprint")
 
 
-def _decision_payload(candidate: Dict[str, Any], *, objective_name: str) -> Dict[str, Any]:
-    strategy = candidate.get("strategy")
-    order = list(candidate.get("decision_batch_order") or candidate.get("order") or [])
-    return {
-        "schema_version": CANDIDATE_FINGERPRINT_SCHEMA_VERSION,
-        "fingerprint_scope": DECISION_FINGERPRINT_SCOPE,
-        "objective_name": str(objective_name),
-        "strategy": getattr(strategy, "value", strategy),
-        "params": candidate.get("params") or {},
-        "dispatch_mode": candidate.get("dispatch_mode"),
-        "dispatch_rule": candidate.get("dispatch_rule"),
-        "batch_order": order,
-        "resource_override": _resource_override_payload(candidate),
-        "locked_seed_scope": _locked_seed_scope_payload(candidate),
-        "mutable_scope": _mutable_scope_payload(candidate, order),
-    }
-
-
-def _resource_override_payload(candidate: Dict[str, Any]) -> Any:
-    # 候选只会写入 resource_pool（baseline/ortools/multi_start/local_search 四条路径统一），
-    # 不臆造其它别名兜底；该值进的是 decision_fingerprint（仅 diagnostics）。
-    return candidate.get("resource_pool") or {}
-
-
-def _locked_seed_scope_payload(candidate: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "seed_result_count": _non_negative_int(candidate.get("seed_result_count")),
-        "locked_seed_range": candidate.get("locked_seed_range") or [],
-    }
-
-
-def _mutable_scope_payload(candidate: Dict[str, Any], order: List[Any]) -> Dict[str, Any]:
-    mutable_scope = candidate.get("mutable_scope")
-    if isinstance(mutable_scope, dict):
-        return dict(mutable_scope)
-    return {
-        "scope": "batch_order",
-        "batch_count": len(order),
-    }
-
-
-def _output_payload(candidate: Dict[str, Any], *, objective_name: str) -> Dict[str, Any]:
+def _output_payload(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[Any, ...]:
     results = list(candidate.get("results") or [])
     metrics = _objective_metric_signature(candidate.get("metrics"), objective_name=objective_name)
     summary = candidate.get("summary")
-    return {
-        "schema_version": CANDIDATE_FINGERPRINT_SCHEMA_VERSION,
-        "fingerprint_scope": OUTPUT_FINGERPRINT_SCOPE,
-        "objective_name": str(objective_name),
-        "scheduled_result_count": len(results),
-        "summary": {
-            "success": bool(getattr(summary, "success", False)),
-            "total_ops": _non_negative_int(getattr(summary, "total_ops", 0)),
-            "scheduled_ops": _non_negative_int(getattr(summary, "scheduled_ops", 0)),
-            "failed_ops": _non_negative_int(getattr(summary, "failed_ops", 0)),
-        },
-        "schedule_signature": _result_signature(results),
-        "objective_metrics": metrics,
-        "score": _score_tuple(candidate.get("score")),
-    }
+    return (str(objective_name), len(results),
+            (bool(getattr(summary, "success", False)),
+             _non_negative_int(getattr(summary, "total_ops", 0)),
+             _non_negative_int(getattr(summary, "scheduled_ops", 0)),
+             _non_negative_int(getattr(summary, "failed_ops", 0))),
+            tuple(tuple(row.values()) for row in _result_signature(results)),
+            tuple(metrics.items()), _score_tuple(candidate.get("score")))
 
 
 def _objective_metric_signature(metrics: Any, *, objective_name: str) -> Dict[str, Any]:
@@ -205,22 +145,26 @@ def _result_row(result: Any) -> Dict[str, Any]:
 
 
 def _non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValidationError("候选结果整数值须使用数字。", field="candidate_fingerprint")
     try:
         number = int(value or 0)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"候选指纹字段必须是非负整数：{value!r}", field="candidate_fingerprint") from exc
+        raise ValidationError(f"候选内容字段必须是非负整数：{value!r}", field="candidate_fingerprint") from exc
     if number < 0:
-        raise ValidationError(f"候选指纹字段必须是非负整数：{value!r}", field="candidate_fingerprint")
+        raise ValidationError(f"候选内容字段必须是非负整数：{value!r}", field="candidate_fingerprint")
     return number
 
 
 def _finite_float(value: Any, *, field_name: str) -> float:
+    if isinstance(value, bool):
+        raise ValidationError(f"候选结果指标 {field_name} 须使用数字。", field="candidate_fingerprint")
     try:
         number = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"候选指纹指标 {field_name} 必须是数字：{value!r}", field="candidate_fingerprint") from exc
+        raise ValidationError(f"候选内容指标 {field_name} 必须是数字：{value!r}", field="candidate_fingerprint") from exc
     if not math.isfinite(number):
-        raise ValidationError(f"候选指纹指标 {field_name} 必须是有限数字：{value!r}", field="candidate_fingerprint")
+        raise ValidationError(f"候选内容指标 {field_name} 必须是有限数字：{value!r}", field="candidate_fingerprint")
     return float(round(number, 6))
 
 
@@ -239,10 +183,7 @@ def _time_text(value: Any) -> str:
 
 
 def _jsonable(value: Any) -> Any:
-    # 仅服务 decision_fingerprint 与 skipped-phase 诊断 extra 的确定性序列化；output_fingerprint
-    # 的输入已是显式纯量（见 _output_payload），不经过下面的对象分支。未知对象按类名做「有损但
-    # 确定」降级：resource_pool 等业务输入可能含对象,此处不 fail-loud 以免误伤 diagnostics;由此
-    # 带来的同类不同实例 hash 碰撞只降低诊断区分度,不影响按 output_fingerprint 的去重/improved 判定。
+    # 只负责 skipped-phase 等诊断的 JSON 表示；候选判等使用明确字段的不可变 output_key。
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (date, datetime)):
@@ -261,7 +202,6 @@ def _jsonable(value: Any) -> Any:
 
 __all__ = [
     "CANDIDATE_FINGERPRINT_SCHEMA_VERSION",
-    "DECISION_FINGERPRINT_SCOPE",
     "DISTINCT_FINGERPRINT_DESCRIPTION",
     "DISTINCT_FINGERPRINT_SCOPE",
     "OUTPUT_FINGERPRINT_SCOPE",
@@ -269,5 +209,4 @@ __all__ = [
     "build_candidate_fingerprint",
     "jsonable_fingerprint_payload",
     "score_strictly_better",
-    "stable_fingerprint",
 ]

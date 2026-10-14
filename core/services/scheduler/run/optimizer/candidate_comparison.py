@@ -62,7 +62,7 @@ def candidate_fingerprint_for_comparison(
     candidate: Dict[str, Any],
     *,
     objective_name: str,
-    parent_fingerprint: Optional[str],
+    parent_fingerprint: Optional[CandidateFingerprint],
     seen_output_fingerprints: Any,
 ) -> CandidateFingerprint:
     return build_candidate_fingerprint(

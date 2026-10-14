@@ -62,12 +62,8 @@ def _store():
 
 
 def _context_key(namespace, document):
-    """本进程内去重用的短键：同一份文档得同一个键，从而复用同一个令牌。
-
-    留存表和令牌登记都只在本进程里，内置 hash 就够用，不必把整份文档再做一遍 JSON 转义后算 sha256；
-    万一两份不同文档撞了键，retain_context 会比对原文后报错，不会把两份预检混用。
-    """
-    return f"{namespace}:{len(document)}:{hash(document) & 0xFFFFFFFFFFFFFFFF:016x}"
+    """以私有完整原文复用上下文，公开入口仍由既有登记表生成随机令牌。"""
+    return canonical_json({"namespace": namespace, "document": document})
 
 
 def retain_context(namespace, document, content=None):
@@ -112,7 +108,7 @@ def issue_preview(kind, preview, content=None):
               "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
               "can_confirm": not rejected, "write_context": context, "columns": public_columns(kind), "scope": body["request"]["scope"]}
     if action.endswith(".import"):
-        result.update({key: body["request"][key] for key in ("file_sha256", "format", "mode")})
+        result.update({key: body["request"][key] for key in ("actual_source_ref", "format", "mode")})
         result.update(template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS[kind])
         if kind == "op_type":
             result["category"] = body["request"]["scope"]["category"]
@@ -133,7 +129,7 @@ def issue_file_preview(preview, content, *, columns, instructions, template_vers
     return {"preview_ref": ref, "expires_at": expires_at, "operation": action, "commit_policy": "atomic",
             "summary": body["summary"], "rows": [public_action_row(row) for row in body["rows"]],
             "can_confirm": not rejected, "write_context": context, "columns": columns,
-            "scope": body["request"]["scope"], "file_sha256": body["request"]["file_sha256"],
+            "scope": body["request"]["scope"], "actual_source_ref": body["request"]["actual_source_ref"],
             "format": body["request"]["format"], "mode": body["request"]["mode"],
             "template_version": template_version, "instructions": instructions, **(extra or {})}
 

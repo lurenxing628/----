@@ -48,6 +48,9 @@
         {!pending && !s.result && (s.disabled || s.sourceError) && <div className="ta-notice" role="status">{s.sourceError || '试调方案正在读取，或还有操作没确认结果，暂时不能开始采用。'}</div>}
         {s.result && <div className="ta-result" role="status">已确认：这次生成正式计划第 {s.result.data.official_plan.version} 版，共 {s.result.data.row_count} 道工序。
           <p>当前正式计划可在计划列表查看。</p>{s.result.replayed && <p>已查询到上次采用结果。</p>}</div>}
+        {!pending && !s.result && <p className="ta-note" role="status" aria-label="当前采用预检">{s.preview
+          ? valid ? '本次采用预检已通过，请核对采用原因和经办人后确认。' : '本次采用预检未通过，请按提示处理后重新预检。'
+          : s.busy ? '正在核对当前采用条件。' : '当前采用条件尚未完成预检。'}</p>}
         {value.baseline && <Scope value={value} name={name} label={valid ? '这次预检核对的正式计划' : s.saved ? '上次提交核对的正式计划' : '试调方案保存时的正式计划'} />}
         {s.preview && !valid && <div className="ta-notice" role="status">{s.preview.validation.issues.map((v, i) => <div key={i}>{v.message}</div>)}</div>}
         {rejected && !s.preview && <p className="ta-note">上次采用未通过，请重新检查并确认。</p>}

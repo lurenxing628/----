@@ -12,6 +12,7 @@ from core.infrastructure.schema_probe import SchemaObject, schema_objects, table
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 
 from .base_repo import BaseRepository
+from .sqlite_rows import raw_projection
 
 
 def _quote(name: str) -> str:
@@ -31,7 +32,8 @@ class WorkbenchRunFactsRepository(BaseRepository):
         for kind, name, _, _ in schema:
             if kind != "table" or name in excluded:
                 continue
-            sql = "SELECT * FROM " + _quote(name)
+            _, projection = raw_projection(self.conn, name)
+            sql = "SELECT " + projection + " FROM " + _quote(name)
             if name == "WorkbenchCommandReceipts":
                 sql += " WHERE action <> 'scheduling.run'"
             tables[name] = [tuple(row) for row in self.execute(sql + " ORDER BY rowid")]

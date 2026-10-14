@@ -36,6 +36,36 @@ async function contract(h, assert) {
   once(h.render(w.ResourceForms, { adapter: { command() {} }, kind: 'material', source: 'production', command: idle }), missingContext, 1);
   once(h.render(w.SystemMaintenanceControls.Confirm, { action: 'create', reason: '当前操作不可用，请先刷新。' }), '当前操作不可用，请先刷新。', 1);
 
+  const adoptionScope = { scenario_ref: h.reference(40), draft_ref: h.reference(41), task_count: 3,
+    baseline: { plan_ref: h.reference(42), version: 1 } }, adoptionCalls = { inspect: 0, submit: 0, lookup: 0 };
+  const adoptionSession = { saved: null, result: null, preview: null, consent: true, disabled: false,
+    sourceError: '', storageError: '', error: '', notice: '', busy: false, original: adoptionScope,
+    draft: { reason: '核对完整安排', declared_operator: '经办人' }, close() {}, setConsent() {}, change() {}, finish() {}, sync() {},
+    inspect() { adoptionCalls.inspect++; }, submit() { adoptionCalls.submit++; }, lookup() { adoptionCalls.lookup++; } };
+  const adoptionDialog = patch => h.render(w.TrialAdoptionControls.Dialog,
+    { session: { ...adoptionSession, ...patch }, scenarioRef: adoptionScope.scenario_ref, name: '已保存试调' });
+  const adoptionButton = (tree, label) => h.walk(tree).find(node => node.type === 'button' && visible(node) === label);
+  const uncheckedAdoption = adoptionDialog({});
+  once(uncheckedAdoption, '当前采用条件尚未完成预检。');
+  assert(adoptionButton(uncheckedAdoption, '确认正式采用').props.disabled, 'Saving a scenario alone must not authorize adoption');
+  const allowedAdoption = adoptionDialog({ preview: { ...adoptionScope, validation: { can_adopt: true, issues: [] } } });
+  once(allowedAdoption, '本次采用预检已通过，请核对采用原因和经办人后确认。');
+  const confirmAdoption = adoptionButton(allowedAdoption, '确认正式采用');
+  assert(!confirmAdoption.props.disabled && !confirmAdoption.props['aria-disabled']);
+  confirmAdoption.props.onClick({ currentTarget: {}, preventDefault() {} });
+  assert.strictEqual(adoptionCalls.submit, 1, 'The existing confirmation callback remains the sole submit action');
+  const rejectedAdoption = adoptionDialog({ preview: { scenario_ref: adoptionScope.scenario_ref,
+    validation: { can_adopt: false, issues: [{ code: 'source_changed', message: '现场资料已变化。' }] } } });
+  once(rejectedAdoption, '本次采用预检未通过，请按提示处理后重新预检。');
+  assert(adoptionButton(rejectedAdoption, '确认正式采用').props.disabled);
+  adoptionButton(rejectedAdoption, '重新预检').props.onClick({ currentTarget: {}, preventDefault() {} });
+  assert.strictEqual(adoptionCalls.inspect, 1);
+  const pendingAdoption = adoptionDialog({ saved: { scenario_ref: adoptionScope.scenario_ref, phase: 'pending',
+    preview: adoptionScope, input: adoptionSession.draft, request_key: 'trial-adoption-existing' } });
+  assert(!adoptionButton(pendingAdoption, '确认正式采用'), 'A pending submitted action stays in result lookup');
+  adoptionButton(pendingAdoption, '查询结果').props.onClick({ currentTarget: {}, preventDefault() {} });
+  assert.strictEqual(adoptionCalls.lookup, 1);
+
   const fields = w.FieldEditorFields;
   w.FieldEditorFields = () => null; // This regression concerns the form/footer ownership, not the field inputs.
   const task = { task_ref: h.reference(1), plan_ref: h.reference(2), operation_ref: h.reference(3), execution: { reports: [], write_context: null } };
@@ -208,7 +238,8 @@ async function contract(h, assert) {
   const calibrationRead = w.CalibrationControls.useRead, adoption = w.CalibrationAdoptionAction, stale = w.WorkbenchTerms.outcomes.stale;
   w.CalibrationControls.useRead = () => ({ result: null, busy: false, error: null });
   w.CalibrationAdoptionAction = () => null;
-  const staleTree = h.render(w.CalibrationWorkspace, {}, { Workspace: { 3: h.reference(1), 7: new Error(stale), 9: true } });
+  // Restored read state occupies slot 1; the selected record, error and stale flag follow it.
+  const staleTree = h.render(w.CalibrationWorkspace, {}, { Workspace: { 4: h.reference(1), 8: new Error(stale), 10: true } });
   once(staleTree, stale);
   assert(visible(staleTree).includes('刷新所选记录'), 'The detail must retain its recovery action');
   once(h.render(w.CalibrationDetail, { selected: h.reference(1), error: new Error('历史报工与归档不一致，请核对来源后刷新。'), stale: true }),
@@ -270,7 +301,7 @@ async function contract(h, assert) {
       data: { as_of: asOf, plan: null, items: [], categories, page: { number: 1, size: 20, total: 0, pages: 1 },
         resource_pressure: { state: 'unavailable', resources: null, issues: [] },
         candidate_catalog: { state: 'no_data', selection: null, run_count: 0, runs: [], issues: [], page: { has_more: false } }, analysis_error: null,
-        analysis: { plan: null, state: 'unavailable', time_scope: null, tasks: [], resources: [], downtimes: [], overlaps: [], deliveries: [], execution: [],
+        analysis: { plan: null, state: 'unavailable', time_scope: null, resource_common: null, tasks: [], resources: [], downtimes: [], overlaps: [], deliveries: [], execution: [],
           issues: [planIssue], as_of: asOf, capabilities: { view: true, adopt: false }, basis: 'current_official_plan_and_readiness_sources',
           pending: { state: 'unavailable', count: null, known_count: 0, items: [], issues: [materialIssue], basis: 'stored_pending_batch_pool' },
           pressure: { count: null, known_count: 0, resource_count: 0, threshold: 0.9, unknown_resources: 0, zero_capacity_resources: 0,
@@ -312,17 +343,72 @@ async function contract(h, assert) {
   const plan = { plan_ref: h.reference(20), kind: 'official', is_current_official: true, display_name: '正式采用方案', version: 1 };
   const timeScope = { range_start: '2026-10-09T08:00:00', range_end: '2026-10-09T10:00:00', time_basis: 'factory_local', boundary: 'half_open' };
   for (const key of ['delivery', 'actual', 'downtime', 'material']) d.categories[key] = summary('loaded');
+  Object.assign(d.categories.delivery, { due_eligible_count: 0, excluded_due_count: 0, invalid_due_count: 0,
+    due_evaluation_count: 0, assessed_count: 0 });
   const gap = { source_ref: h.reference(21), subject: 'DB1 · Turning', code: 'downtime_unknown', message: '停机记录或设备资料填得不对，还判断不了。' };
   Object.assign(d.categories.downtime, { risk_count: null, unknown_count: 1, evaluation_gaps: [gap] });
   d.plan = plan; Object.assign(a, { plan, state: 'available', time_scope: timeScope, issues: [pressureIssue, analysisIssue] });
   const analysisTask = { plan_ref: plan.plan_ref, task_ref: gap.source_ref, operation_ref: h.reference(22), batch_ref: h.reference(23),
-    batch_id: 'DB1', process_label: 'Turning', source: 'internal', machine_ref: h.reference(24),
+    batch_id: 'DB1', process_label: 'Turning', source: 'internal', machine_ref: h.reference(24), operator_ref: null,
     start: timeScope.range_start, end: timeScope.range_end, span_hours: 2 };
   a.tasks = [analysisTask];
-  a.resources = [{ resource_ref: analysisTask.machine_ref, label: 'Lathe', kind: 'machine', state: 'unavailable',
+  // These unknown-capacity facts come from ResourceTaskIndex/resource_summary for this exact task and invalid downtime.
+  const resourceWindow = {
+    "occupied_hours": null, "summed_load_hours": null, "outside_calendar_hours": null, "overlap_hours": null, "span_occupied_hours": 2.0,
+    "span_summed_hours": 2.0, "span_overlap_hours": 0.0, "overlap_span_hours": 0.0, "known_occupied_hours": null,
+    "known_summed_load_hours": null, "known_outside_calendar_hours": null, "known_overlap_hours": null, "known_span_occupied_hours": 2.0,
+    "known_span_summed_hours": 2.0, "known_span_overlap_hours": 0.0, "known_overlap_span_hours": 0.0,
+    "resource_ref": "000000000000000000000000000000000000000000000018", "resource_kind": "machine", "label": "Lathe", "state": "partial",
+    "available_hours": null, "known_available_hours": null, "utilization_ratio": null, "demand_ratio": null, "known_utilization_ratio": null,
+    "known_demand_ratio": null, "peak_utilization": null, "known_peak_utilization": null, "high_pressure": null, "zero_capacity_task": null,
+    "conflict": false, "unknown_days": 1, "zero_capacity_days": 0, "task_count": 1, "operation_count": 1, "known_task_count": 1,
+    "known_operation_count": 1, "work_available": true, "work_state": "complete", "unknown_workload_count": 0, "numerator_hours": null,
+    "denominator_hours": null, "issues": [{"code": "downtime_invalid", "message": "设备停机时间或状态有误，产能算不出来。请到资料总览核对设备停机。"}],
+    "metric_version": "available_occupancy_v1", "source": "current_transaction_snapshot"
+  };
+  const machineResourceSummary = {
+    "resource_count": 1, "known_capacity_count": 0, "unknown_capacity_count": 1, "unknown_workload_count": 0,
+    "unknown_workload_resource_count": 0, "available_hours": null, "known_available_hours": null, "occupied_hours": null,
+    "known_occupied_hours": null, "summed_load_hours": null, "known_summed_load_hours": null, "outside_calendar_hours": null,
+    "known_outside_calendar_hours": null, "overlap_hours": null, "known_overlap_hours": null, "span_occupied_hours": 2.0,
+    "known_span_occupied_hours": 2.0, "span_summed_hours": 2.0, "known_span_summed_hours": 2.0, "span_overlap_hours": 0.0,
+    "known_span_overlap_hours": 0.0, "overlap_span_hours": 0.0, "known_overlap_span_hours": 0.0, "task_count": 1, "known_task_count": 1,
+    "operation_count": 1, "known_operation_count": 1, "used_resource_count": 1, "known_used_resource_count": 1, "high_pressure_count": null,
+    "known_high_pressure_count": 0, "zero_capacity_task_count": null, "known_zero_capacity_task_count": 0, "conflict_resource_count": 0,
+    "known_conflict_resource_count": 0, "unknown_day_resource_count": 1, "known_unknown_day_resource_count": 1, "peak_utilization": null,
+    "known_peak_utilization": null, "numerator_hours": null, "denominator_hours": null, "known_numerator_hours": null,
+    "known_denominator_hours": null, "utilization_ratio": null, "demand_ratio": null, "known_utilization_ratio": null,
+    "known_demand_ratio": null, "balance_cv": null, "known_balance_cv": null, "balance_state": "unavailable",
+    "balance_reason": {"code": "resource_balance_incomplete", "message": "部分资源的完整容量或占用缺项，均衡度显示覆盖不足。"}, "state": "partial",
+    "issues": [{"code": "downtime_invalid", "message": "设备停机时间或状态有误，产能算不出来。请到资料总览核对设备停机。"}]
+  };
+  const operatorResourceSummary = {
+    "resource_count": 0, "known_capacity_count": 0, "unknown_capacity_count": 0, "unknown_workload_count": 1,
+    "unknown_workload_resource_count": 0, "available_hours": 0.0, "known_available_hours": 0.0, "occupied_hours": null,
+    "known_occupied_hours": null, "summed_load_hours": null, "known_summed_load_hours": null, "outside_calendar_hours": null,
+    "known_outside_calendar_hours": null, "overlap_hours": null, "known_overlap_hours": null, "span_occupied_hours": null,
+    "known_span_occupied_hours": null, "span_summed_hours": null, "known_span_summed_hours": null, "span_overlap_hours": null,
+    "known_span_overlap_hours": null, "overlap_span_hours": null, "known_overlap_span_hours": null, "task_count": null,
+    "known_task_count": null, "operation_count": null, "known_operation_count": null, "used_resource_count": null,
+    "known_used_resource_count": 0, "high_pressure_count": null, "known_high_pressure_count": 0, "zero_capacity_task_count": null,
+    "known_zero_capacity_task_count": 0, "conflict_resource_count": null, "known_conflict_resource_count": 0, "unknown_day_resource_count": 0,
+    "known_unknown_day_resource_count": 0, "peak_utilization": null, "known_peak_utilization": null, "numerator_hours": null,
+    "denominator_hours": 0.0, "known_numerator_hours": null, "known_denominator_hours": null, "utilization_ratio": null, "demand_ratio": null,
+    "known_utilization_ratio": null, "known_demand_ratio": null, "balance_cv": null, "known_balance_cv": null, "balance_state": "unavailable",
+    "balance_reason": {"code": "resource_balance_incomplete", "message": "部分资源的完整容量或占用缺项，均衡度显示覆盖不足。"}, "state": "unavailable",
+    "issues": [{"code": "resource_identity_unknown", "message": "保存任务缺少永久资源身份，资源汇总保留覆盖缺口。", "field": "operator"}]
+  };
+  a.resource_common = {
+    "metric_version": "decision-resource-v3", "source": "current_transaction_snapshot", "start": "2026-10-09T08:00:00",
+    "end": "2026-10-09T10:00:00", "time_basis": "factory_local", "cohort_basis": "current_official_plan",
+    "cohort": [{"ref": "000000000000000000000000000000000000000000000018", "kind": "machine", "label": "Lathe"}],
+    machine: machineResourceSummary, operator: operatorResourceSummary
+  };
+  a.resources = [{ resource_ref: analysisTask.machine_ref, label: 'Lathe', kind: 'machine', state: 'partial', window_metrics: resourceWindow, issues: [resourceIssue],
     peak_utilization: null, unknown_days: 1, zero_capacity_days: 0, task_refs: [analysisTask.task_ref],
     days: [{ date: '2026-10-09', start: timeScope.range_start, end: timeScope.range_end, occupied_hours: 2, overlap_hours: 0,
-      available_hours: null, inside_available_hours: null, outside_available_hours: null, utilization: null }] }];
+      available_hours: null, inside_available_hours: null, outside_available_hours: null, utilization: null,
+      window_metrics: { ...resourceWindow, date: '2026-10-09', start: timeScope.range_start, end: timeScope.range_end } }] }];
   a.downtimes = [{ downtime_ref: h.reference(25), machine_ref: analysisTask.machine_ref, start: '2026-10-09T09:00:00', end: '2026-10-09T09:00:00',
     recorded_at: '2026-10-09T07:00:00', recorded_at_basis: 'local_time', valid: false }];
   a.pressure.resource_count = 1; a.pressure.unknown_resources = 1;
@@ -332,7 +418,17 @@ async function contract(h, assert) {
     available_hours: null, available_occupied_hours: null, overlap_hours: 0, outside_available_hours: null, utilization: null,
     capacity_shortfall_hours: null, capacity_insufficient: null, has_overlap: false, segments: [], issues: [resourceIssue] }] };
   const independentTree = dashboardTree(await dashboardResult(independent, 'all'), 'all');
-  for (const issue of [pressureIssue, analysisIssue, resourceIssue]) once(independentTree, issue.message);
+  for (const issue of [pressureIssue, analysisIssue]) once(independentTree, issue.message);
+  // The resource-specific cause has one owner in its native, keyboard-expandable details.
+  const resourceRow = h.walk(independentTree).find(node => node.type === 'tr' && node.props['data-resource-ref'] === analysisTask.machine_ref);
+  const resourceDetails = resourceRow && h.walk(resourceRow).find(node => node.type === 'details');
+  const resourceSummary = resourceDetails && [resourceDetails.children].flat(Infinity).find(node => node && node.type === 'summary');
+  assert(resourceDetails && !resourceDetails.props.open && resourceSummary && visible(resourceSummary), 'The resource cause retains a visible native disclosure');
+  assert(!visible(independentTree).includes(resourceIssue.message), 'The initially collapsed resource cause is not duplicated in the page summary');
+  const resourceNotices = h.walk(independentTree).filter(node => /\bwb-issues\b/.test(node.props.className || '') && visible(node).includes(resourceIssue.message));
+  assert.strictEqual(resourceNotices.length, 1, 'The independent resource cause must have exactly one owner');
+  assert(h.walk(resourceDetails).includes(resourceNotices[0]) && resourceNotices[0].props.role === 'status', 'The resource disclosure retains its accessible concrete cause');
+  once({ ...resourceDetails, props: { ...resourceDetails.props, open: true } }, resourceIssue.message);
   const evidence = h.walk(independentTree).find(node => node.props['data-gap-source'] === gap.source_ref);
   assert(evidence && h.text(evidence).includes(gap.subject), 'Analysis ownership must retain category evaluation-gap evidence');
   once(h.render(w.DashboardPanels.Pressure, { data: d, canNavigate: true }), pressureIssue.message);

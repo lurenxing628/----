@@ -9,8 +9,8 @@ An unregistered operation is unknown, not a dispatched shipment or zero risk.
 
 from core.infrastructure.schema_probe import object_sql_map
 from core.infrastructure.workbench_outsourcing_schema import objects
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.models.workbench_dashboard import bounded, payload_size
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_dashboard import bounded
 from core.models.workbench_outsourcing import STATES
 from core.models.workbench_outsourcing import bounded as receipt_bounded
 from core.models.workbench_outsourcing_input import next_values
@@ -18,7 +18,7 @@ from core.services.workbench.outsourcing.projection import values
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 
 from .external_sources import gap, latest_fact, source_gaps, subject
-from .facts import source_issue, typed
+from .facts import source_issue
 from .projection import category
 
 COUNTS = ("receipt_count", "current_receipt_count", "awaiting_return_count", "overdue_count",
@@ -101,8 +101,8 @@ def _targets(reader, result):
 
 
 def external(conn, now):
-    result, fingerprint, receipts = load_external(conn, now)
-    return result, fingerprint
+    result, source_contents, receipts = load_external(conn, now)
+    return result, source_contents
 
 
 def load_external(conn, now):
@@ -120,7 +120,7 @@ def load_external(conn, now):
         recorded = reader.repo.has_confirm_receipts()
         state = "unavailable" if schema or recorded else "not_connected"
         result = summary(state, [source_issue(exc.code, str(exc))])
-        return result, input_fingerprint({"schema": schema, "recorded": recorded, "summary": result}), {}
+        return result, {"schema": schema, "recorded": recorded, "summary": result}, {}
     result = summary("loaded")
     receipts, captured = _receipts(reader, now, result)
     targets = _targets(reader, result)
@@ -131,6 +131,5 @@ def load_external(conn, now):
     result["risk_count"] = None if gaps else result["known_risk_count"]
     if not result["receipt_count"] and not gaps:
         result["state"] = "no_data"
-    fingerprint = input_fingerprint(payload_size(typed({"schema": schema, "receipts": receipts,
-                                                        "targets": targets, "summary": result})))
-    return result, fingerprint, captured
+    source_contents = {"schema": schema, "receipts": receipts, "targets": targets, "summary": result}
+    return result, source_contents, captured

@@ -119,8 +119,12 @@ def identity_triggers(kind: str, table: str, columns: Tuple[str, ...], alternate
     return result
 
 
-def metadata_objects() -> Dict[str, str]:
+def metadata_objects(*, legacy: bool = False) -> Dict[str, str]:
     objects = dict(_TABLES)
+    if not legacy:
+        objects["WorkbenchCommandReceipts"] = objects["WorkbenchCommandReceipts"].replace(
+            "input_hash TEXT NOT NULL CHECK", "input_hash TEXT CHECK").replace(
+            "outcome_json TEXT NOT NULL,", "outcome_json TEXT NOT NULL,\n        input_json TEXT,")
     objects.update(_INDEXES)
     for kind, (table, columns) in RESOURCE_TABLES.items():
         objects.update(identity_triggers(kind, table, columns))
@@ -234,12 +238,24 @@ def canonical_sql(sql: str) -> str:
 _canonical_sql = canonical_sql
 
 
-def workbench_metadata_contract_issues(conn, *, structure=None) -> List[str]:
+def schema_contract_matches(conn, actual_sql: str, current_sql: str, legacy_sql: str, *, allow_legacy=True) -> bool:
+    """A declared historical DDL is accepted only while its upgrade is pending."""
+    actual = canonical_sql(actual_sql)
+    if actual == canonical_sql(current_sql):
+        return True
+    if not allow_legacy or actual != canonical_sql(legacy_sql):
+        return False
+    row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
+    return row is not None and 0 <= int(row[0]) < 40
+
+
+def workbench_metadata_contract_issues(conn, *, structure=None, allow_legacy=True) -> List[str]:
     actual = schema_objects(conn, structure=structure)
+    legacy = metadata_objects(legacy=True)
     issues = []
     for name, sql in metadata_objects().items():
         if name not in actual:
             issues.append("missing_workbench_metadata: " + name)
-        elif _canonical_sql(actual[name] or "") != _canonical_sql(sql):
+        elif not schema_contract_matches(conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy):
             issues.append("bad_workbench_metadata: " + name)
     return issues

@@ -18,9 +18,10 @@ from collections import defaultdict
 from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.capacity.plan_calendar_intervals import hours, instant, segments, union, wire
+from core.services.capacity.plan_calendar_intervals import hours, instant, union, wire
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
+from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
 
 from .calendar_context import issue, public_resource, selected_context
 from .occupancy_constraints import TaskConstraints
@@ -47,19 +48,18 @@ def _occupancy_groups(rows, start, end, constraints):
     return groups, unknown
 
 
-def _resource_occupancy(kind, key, operations, calendar, resources, label, invalid_operations):
+def _resource_occupancy(kind, key, operations, calendar, resources, label):
     intervals = [interval for fragments in operations.values() for interval in union(fragments)]
-    swept = segments(intervals)
-    arranged_hours, occupied_hours, overlap_hours = _occupancy_hours(intervals, swept)
     row = public_resource(kind, key, resources, None)
     row["label"] = calendar["label"] if calendar is not None else label
     available = available_intervals(calendar) if calendar is not None else None
     metrics = _bounding_window_metrics(intervals, available)
+    arranged_hours, occupied_hours, overlap_hours = (metrics[field] for field in (
+        "span_summed_hours", "span_occupied_hours", "span_overlap_hours"))
     issues = list(calendar["issues"]) if calendar is not None else [issue("calendar_unavailable")]
     if metrics["reason"] == "zero_available_capacity":
         issues.append(issue("zero_available_capacity"))
-    invalid_outside = bool(set(operations) & invalid_operations) or bool(calendar and calendar.get("status") != "active")
-    capacity_measures, utilization, insufficient = _capacity_measures(metrics, invalid_outside)
+    capacity_measures, utilization, insufficient = _capacity_measures(metrics)
     measures = {"arranged_hours": arranged_hours, "occupied_hours": occupied_hours,
                 "overlap_hours": overlap_hours, "excess_arranged_hours": arranged_hours - occupied_hours,
                 **capacity_measures}
@@ -67,20 +67,15 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label, inval
     row.update(state="available" if available is not None else "unavailable", operation_count=len(operations),
                capacity_basis=calendar["basis"] if calendar is not None else "unknown",
                utilization=utilization,
-               has_overlap=overlap_hours > 1e-9,
+               available_overlap_hours=metrics["available_overlap_hours"],
+               has_overlap=metrics["available_overlap_hours"] > 1e-9 if metrics["available_overlap_hours"] is not None else None,
                capacity_insufficient=insufficient,
+               metric_version=RESOURCE_METRIC_VERSION,
+               outside_calendar_basis="reservation_span_outside_work_calendar",
+               conflict_basis="work_calendar_reservation_overlap",
                issues=issues,
-               segments=[{"start": wire(low), "end": wire(high), "concurrent_operations": count}
-                         for low, high, count in swept])
+               conflict_segments=metrics["conflict_segments"], segments=metrics["segments"])
     return row
-
-
-def _occupancy_hours(intervals, swept):
-    """Arranged hours, unioned occupied hours and hours where operations run concurrently."""
-    occupied = union(intervals)
-    arranged_hours, occupied_hours = hours(intervals), hours(occupied)
-    overlap_hours = hours([(low, high) for low, high, count in swept if count > 1])
-    return arranged_hours, occupied_hours, overlap_hours
 
 
 def _bounding_window_metrics(intervals, available):
@@ -88,10 +83,17 @@ def _bounding_window_metrics(intervals, available):
     bounds = intervals + (available or [])
     first = min((low for low, _ in bounds), default=datetime.min)
     last = max((high for _, high in bounds), default=first)
-    return ResourceUtilizationMetrics(intervals, available).window(first, last)
+    calculator = ResourceUtilizationMetrics(intervals, available)
+    conflicts = [(low, high, count) for low, high, count in calculator.calendar.load.rows if count > 1] if calculator.calendar is not None else None
+    return {**calculator.window(first, last),
+            "available_overlap_hours": hours([(low, high) for low, high, _count in conflicts]) if conflicts is not None else None,
+            "conflict_segments": [{"start": wire(low), "end": wire(high), "concurrent_operations": count}
+                                  for low, high, count in conflicts] if conflicts is not None else None,
+            "segments": [{"start": wire(low), "end": wire(high), "concurrent_operations": count}
+                         for low, high, count in calculator.segments]}
 
 
-def _capacity_measures(metrics, invalid_outside):
+def _capacity_measures(metrics):
     if metrics["available_hours"] is None:
         return {"available_hours": None, "available_occupied_hours": None,
                 "outside_available_hours": None, "capacity_shortfall_hours": None}, None, None
@@ -102,7 +104,7 @@ def _capacity_measures(metrics, invalid_outside):
     shortage = max(0.0, metrics["summed_load_hours"] - capacity)
     utilization = metrics["utilization_ratio"]
     return {"available_hours": capacity, "available_occupied_hours": in_calendar,
-            "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, (invalid_outside and outside > 1e-9) or shortage > 1e-9
+            "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, shortage > 1e-9
 
 
 def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, calendar_facts):
@@ -113,10 +115,9 @@ def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, ca
     constraints = TaskConstraints(calendar_facts)
     groups, unknown = _occupancy_groups(rows, start, end, constraints)
     calendars = calendar_facts["resources"]
-    invalid_operations = constraints.issues.get("assignment_outside_calendar", set()) | constraints.issues.get("assignment_machine_downtime", set())
     labels = {(kind, str(row[kind + "_id"])): row[kind + "_name"] for row in rows for kind in ("machine", "operator")}
     public = [_resource_occupancy(kind, key, operations, calendars[kind].get(key) if calendars is not None else None,
-                                  resources, labels[kind, key], invalid_operations)
+                                  resources, labels[kind, key])
               for (kind, key), operations in sorted(groups.items())]
     issues = constraints.public()
     if unknown:

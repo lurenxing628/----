@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import glob
-import hashlib
 import json
 import os
 import subprocess
@@ -16,6 +15,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared
+from tools.long_gate_collect import COLLECT_NODEIDS_REL
 from tools.long_gate_manifest_environment import full_debt_environment_keys, registry_test_environment_keys
 from tools.long_gate_schema import (
     LONG_GATE_CACHE_SCHEMA_VERSION,
@@ -77,11 +77,6 @@ _CACHE_ENABLED_ENTRY_TYPES = {
     ENTRY_IMPORT_CYCLES_PRODUCTION,
     ENTRY_IMPORT_CYCLES_WITH_TESTS,
 }
-
-
-def _stable_json_hash(payload: Any) -> str:
-    text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _normalize_args(args: Iterable[Any]) -> List[str]:
@@ -148,7 +143,9 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
     return ENTRY_UNKNOWN
 
 
-def _classify_quality_gate_plan_command(command: Mapping[str, Any], *, index: int, debt_sync_index: Optional[int]) -> str:
+def _classify_quality_gate_plan_command(
+    command: Mapping[str, Any], *, index: int, debt_sync_index: Optional[int]
+) -> str:
     del index, debt_sync_index
     return classify_quality_gate_command(command)
 
@@ -454,7 +451,7 @@ def _scopes_for_entry(
                 "PYTEST_PLUGINS",
             ]
         )
-        output_files = ["evidence/QualityGate/collect_nodeids.json"]
+        output_files = [COLLECT_NODEIDS_REL]
     elif entry_type == ENTRY_REQUIRED_REGRESSIONS:
         required_targets = _pytest_q_targets(_normalize_command(command or {}).get("args") or [])
         if required_targets is None:
@@ -674,7 +671,7 @@ def _scopes_for_entry(
                 ".limcode/skills/**/*",
                 ".limcode/plans/**/*",
                 "开发文档/**/*.md",
-                "evidence/QualityGate/collect_nodeids.json",
+                COLLECT_NODEIDS_REL,
             ]
         )
         config_scopes.extend(
@@ -760,7 +757,6 @@ def _build_entry(
         normalized,
         repo_root=repo_root,
     )
-    command_hash = _stable_json_hash(normalized)
     long_gate_candidate = resolved_entry_type in _LONG_ENTRY_TYPES
     reuse_allowed = resolved_entry_type in _CACHE_ENABLED_ENTRY_TYPES
     entry = {
@@ -776,7 +772,7 @@ def _build_entry(
         "output_policy": normalized["output_policy"],
         "env_overlay": dict(normalized.get("env_overlay") or {}),
         "env_overlay_keys": sorted((normalized.get("env_overlay") or {}).keys()),
-        "command_hash": command_hash,
+        "command": normalized,
         "input_file_scopes": input_scopes,
         "config_file_scopes": config_scopes,
         "tool_file_scopes": tool_scopes,
@@ -829,7 +825,7 @@ def build_manifest_from_quality_gate_plan(
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "repo_root": root,
         "head_sha": _git_head_sha(root),
-        "quality_gate_plan_hash": quality_gate_shared.hash_quality_gate_commands(commands),
+        "quality_gate_plan": commands,
         "entries": [
             _build_entry(
                 command,
@@ -944,11 +940,10 @@ def explain_long_gate_impact(
             }
         )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "mode": "long_gate_impact_explain",
         "repo_root": root,
         "changed_paths": normalized_paths,
-        "changed_paths_hash": _stable_json_hash(normalized_paths),
         "global_runner_tooling_affected": global_affected,
         "global_matches": global_matches,
         "entries": entries,
@@ -995,14 +990,18 @@ def load_local_quality_gate_receipts(repo_root: Optional[str] = None) -> List[Di
         warnings: List[str] = []
         row: Dict[str, Any] = {"path": rel_path}
         if error:
-            row.update({"load_error": error, "display": "", "command_index": 0, "duration_unknown": True, "warnings": warnings})
+            row.update(
+                {"load_error": error, "display": "", "command_index": 0, "duration_unknown": True, "warnings": warnings}
+            )
         else:
             payload = payload or {}
             duration_s = _coerce_float(payload.get("duration_s"), field="duration_s", warnings=warnings)
             row.update(
                 {
                     "display": str(payload.get("display") or "").strip(),
-                    "command_index": _coerce_int(payload.get("command_index"), field="command_index", warnings=warnings),
+                    "command_index": _coerce_int(
+                        payload.get("command_index"), field="command_index", warnings=warnings
+                    ),
                     "returncode": _coerce_int(payload.get("returncode"), field="returncode", warnings=warnings),
                     "duration_s": duration_s,
                     "duration_unknown": duration_s is None,
@@ -1095,7 +1094,9 @@ def print_long_gate_manifest(manifest: Mapping[str, Any], *, include_local_recei
 
 def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Print the long-gate manifest derived from the real QualityGate plan.")
-    parser.add_argument("--print", dest="print_manifest", action="store_true", help="print the current long-gate manifest")
+    parser.add_argument(
+        "--print", dest="print_manifest", action="store_true", help="print the current long-gate manifest"
+    )
     parser.add_argument(
         "--include-local-receipts",
         action="store_true",

@@ -1,0 +1,36 @@
+feature: decision-resource-impact
+steps:
+  - id: shared-resource-facts
+    description: 归档日历、永久资源区间、共同覆盖与汇总指标
+    status: done
+  - id: resource-services
+    description: 两视角、设备人员资源与逐日接口、snapshot和原始导出
+    status: done
+  - id: resource-ui-consumers
+    description: 资源表热力图压力、甘特往返与旧同义入口迁移
+    status: done
+  - id: verification-docs
+    description: 真实实例边界浏览器导出、日常检查性能及文档交接
+    status: done
+checks:
+  - id: C01
+    description: 固定资源集合共同窗口和空闲零参与加权CV
+    status: passed
+  - id: C02
+    description: 归档版本日历停机个人轮班夜班及零未知
+    status: passed
+  - id: C03
+    description: 独立需求占用重叠班外点事件日峰与压力
+    status: passed
+  - id: C04
+    description: 两视角正式覆盖缺对象未排暂缓及旧消费者
+    status: passed
+  - id: C05
+    description: 两资源界面热力图排行筛选分页与真实甘特往返
+    status: passed
+  - id: C06
+    description: 资源逐日双格式导出原始值及共同scope
+    status: passed
+  - id: C07
+    description: 相关测试日常检查构建真实验证性能文档和实例身份
+    status: passed

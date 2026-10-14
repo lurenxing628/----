@@ -2,24 +2,31 @@
 body.aps-workbench .plan-view-tabs {margin-bottom:0;padding:0 var(--wb-section-padding);border-bottom:1px solid var(--ui-border);border-radius:var(--wb-radius-control) var(--wb-radius-control) 0 0;}
 body.aps-workbench .plan-view-tabs + #wb-view-panel {border-top:0;border-radius:0 0 var(--wb-radius-control) var(--wb-radius-control);}
 .plan-workspace .plan-scope {margin-bottom:var(--wb-section-gap);}
-.plan-workspace .plan-scope-heading>div:first-child {display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;}
-.plan-workspace .plan-scope-heading h3 {margin:0;font-size:var(--font-size-3);}
-.plan-workspace .plan-scope-heading .scheduling-navigation {margin:0;}
-.plan-workspace .plan-scope>.plan-catalog {margin:0;border:0;border-top:1px solid var(--ui-border);border-radius:0;}
+.plan-workspace .plan-catalog .scheduling-navigation {margin:0;flex:0 0 auto;}
+.plan-workspace .plan-scope>.plan-catalog {margin:0;border:0;border-radius:0;}
 .plan-workspace .plan-scope .plan-catalog>.plan-toolbar {padding:var(--space-3) var(--wb-section-padding);}
-.plan-workspace .plan-scope>.plan-read-heading {margin:0;border-top:1px solid var(--ui-border);}
-.plan-workspace .plan-scope-meta {display:flex;flex-direction:column;gap:var(--space-1);flex:1 1 360px;min-width:0;color:var(--ui-info-muted);font-size:var(--font-size-1);line-height:20px;overflow-wrap:anywhere;}
 .plan-workspace .plan-scope>.plan-range {margin:0;border:0;border-top:1px solid var(--ui-border);border-radius:0;}
+.plan-workspace .plan-range-help {flex-basis:100%;}
+.plan-workspace .plan-record-details {padding:var(--space-2) var(--wb-section-padding);border-top:1px solid var(--ui-border);font-size:var(--font-size-1);color:var(--ui-info-muted);}
+.plan-workspace .plan-record-details summary {cursor:pointer;width:fit-content;}
+.plan-workspace .plan-record-body {padding-top:var(--space-2);display:grid;gap:var(--space-2);overflow-wrap:anywhere;}
+.plan-workspace .plan-main:not([data-details-open]) {grid-template-columns:minmax(0,1fr);}
+.plan-workspace .plan-table-help {padding:var(--space-1) var(--space-3);font-size:var(--font-size-1);color:var(--ui-info-muted);}
+.plan-workspace .plan-table-help summary,.plan-workspace .plan-row-details summary {cursor:pointer;}
+.plan-workspace .plan-table-help>div {padding-block:var(--space-2);}
+.plan-workspace .plan-row-details {font-size:var(--font-size-1);min-width:120px;}
+.plan-workspace .plan-row-details .plan-facts {margin-top:var(--space-2);}
 .plan-workspace .plan-read-state {border-top:1px solid var(--ui-border);}
 /* border overrides for .plan-scope>.wb-metrics live in 20-controls.css per the style contract. */
 body.aps-workbench .plan-scope>.wb-metrics {margin:0;}
 .plan-workspace .plan-heading { margin-bottom: var(--space-1); gap: var(--space-2) var(--space-2); }
 .plan-workspace .plan-catalog { margin-bottom: var(--space-3); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); }
 .plan-workspace .plan-catalog[data-collapsed=true] > .plan-toolbar { border-bottom: 0; }
-.plan-workspace .plan-catalog-picker { display: flex; align-items: center; gap: var(--space-2); min-width: 220px; max-width: 100%; }
-.plan-workspace .plan-catalog-picker select { width: 280px; max-width: 100%; min-width: 0; }
+.plan-workspace .plan-catalog-toolbar { justify-content: flex-start; }
+.plan-workspace .plan-catalog-picker { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 180px; max-width: 100%; }
+.plan-workspace .plan-catalog-picker select { width: 200px; max-width: 100%; min-width: 0; }
+.plan-workspace .plan-catalog-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-start; gap: var(--space-2); max-width: 100%; }
 .plan-workspace .plan-catalog-scroll.wb-table-frame { height: 180px; min-height: 0; }
-.plan-workspace .plan-read-heading { margin-bottom: 2px; }
 .plan-workspace .plan-main { grid-template-columns: minmax(0, 1fr) 260px; gap: var(--space-3); }
 .plan-workspace .plan-toolbar { gap: var(--space-2) var(--space-2); padding: var(--space-2) var(--space-3); background: var(--ui-card-bg); }
 .plan-workspace .plan-range { margin-bottom: var(--space-3); padding: var(--space-3); border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); }
@@ -36,10 +43,10 @@ body.aps-workbench .plan-workspace .plan-projections > .wb-pager { padding: var(
 .plan-workspace .plan-global canvas { height: 16px; }
 body.aps-workbench .plan-workspace .plan-global input[type="range"] { display: block; height: 20px; }
 .plan-workspace .plan-note { padding: var(--space-1) 10px; }
-.plan-workspace .plan-time-line { position: absolute; width: 0; border-left: 1px dashed var(--wb-sev-notice); pointer-events: none; }
+.plan-workspace .plan-time-line { position: absolute; width: 7px; border-left: 1px solid var(--wb-sev-warning); }
 .plan-workspace .plan-time-line.as-of { border-left-style: solid; border-left-color: var(--wb-sev-warning); }
 .plan-workspace .plan-swatch.point { width: 9px; height: 9px; transform: rotate(45deg); }
-.plan-workspace .plan-swatch.today { width: 0; height: 12px; background: transparent; border-left: 1px dashed var(--wb-sev-notice); }
+.plan-workspace .plan-swatch.as-of { width: 0; height: 12px; background: transparent; border-left: 1px solid var(--wb-sev-warning); }
 .plan-workspace .plan-footer { padding: 6px var(--space-2); gap: var(--space-2) var(--space-2); }
 .plan-workspace .plan-projection-table.wb-table-frame { height: auto; max-height: 360px; min-height: 0; }
 .aps-workbench .fg-live .fg-mark.fg-act,.aps-workbench .fg-live .fg-mark.fg-plan,.aps-workbench .fg-live .fg-mark.fg-remaining { background: transparent; border: 0; box-shadow: none; overflow: visible; }

@@ -3,7 +3,7 @@
 import sqlite3
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
 from core.services.workbench.facts.run_policy import public_run, require_admission, require_run_schema
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -79,7 +79,7 @@ def _admission(conn, row):
     repo = WorkbenchCommandRepository(conn)
     receipt = repo.get(row["request_key"])
     if (receipt is None or receipt["action"] != "scheduling.run" or receipt["context_ref"] != row["input_ref"]
-            or receipt["input_hash"] != input_fingerprint({"input_ref": row["input_ref"]})):
+            or repo.input_content(receipt) != canonical_json({"input_ref": row["input_ref"]})):
         raise RuntimeError("Run claim admission is inconsistent")
     outcome = repo.public_result(receipt, replayed=True)
     if outcome["result"] != "committed" or outcome["data"] != {"run_ref": row["run_ref"]}:

@@ -1,8 +1,9 @@
 """Public graph primitives; SQL keys stay inside the graph's private index."""
 
-import hashlib
 import json
 import math
+
+from core.models.workbench_command import canonical_json
 
 from .overview_facts import plain
 
@@ -60,17 +61,17 @@ class MasterOverviewGraph:
             context["template_operation_ref"] = operation_ref
         if group_ref:
             context["template_external_group_ref"] = group_ref
-        signature = "|".join((entity["key"], rule, operation_ref or "", group_ref or "", related_ref or ""))
-        ref = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:48]
-        existing = self._issue_index.get(ref)
+        signature = (entity["key"], rule, operation_ref, group_ref, related_ref)
+        existing = self._issue_index.get(signature)
         if existing is not None:
             return existing
+        ref = canonical_json(signature)
         item = {"key": "issue:" + ref, "issue_ref": ref, "entity_ref": entity["ref"], "domain": entity["domain"],
                 "business_code": entity["business_code"], "label": entity["label"], "rule": rule,
                 "title": title, "evidence": evidence, "action": action, "status": "attention",
                 "target": {"view": "process", "context": context}}
         entity["issues"].append(item)
-        self._issue_index[ref] = item
+        self._issue_index[signature] = item
         return item
 
     def unknown(self, entity, label, source, *, relation=False):

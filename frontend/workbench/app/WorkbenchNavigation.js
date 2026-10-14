@@ -81,9 +81,10 @@
   }
   function helpUrl(boot, page) {
     // The manual page renders its "返回" link from src; without it help exits the shell with no way back.
-    // A run-history list is hosted by analysis/gantt/delay for shell reuse, but its instructions live under 6.2 执行排产.
+    // The shared history entry has run lookup under 6.2 and decision history under 6.3.
     // Other alias views keep their own id and therefore continue to open their own manual chapter.
-    const history = historyView(page), manualPage = history ? 'run' : page.view;
+    const history = historyView(page), manualPage = history
+      ? page.context.history_topic === 'decision_history' ? 'analysis' : 'run' : page.view;
     const url = new URL(boot.help_url, location.origin); url.searchParams.set('src', href(boot, page.view)); url.searchParams.set('page', manualPage);
     if (history) url.hash = '排产记录';
     return url.pathname + url.search + url.hash;

@@ -5,6 +5,7 @@ import os
 import textwrap
 from typing import Any, Dict, List, Set, Tuple, cast
 
+from .long_gate_schema import canonical_content, content_equal
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     ENTRY_COMMON_FIELDS,
@@ -371,13 +372,22 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
         if not isinstance(entry, dict):
             raise QualityGateError(f"silent_fallback.entries[{index}] 必须是对象")
         _validate_common_entry(entry, f"silent_fallback.entries[{index}]")
-        _require_string(entry.get("handler_fingerprint"), f"silent_fallback.entries[{index}].handler_fingerprint")
-        handler_context_hash = _require_string(
-            entry.get("handler_context_hash"),
-            f"silent_fallback.entries[{index}].handler_context_hash",
-        )
-        if not handler_context_hash.startswith("sha1:"):
-            raise QualityGateError(f"silent_fallback.entries[{index}].handler_context_hash 必须以 sha1: 开头")
+        has_content_field = any(field_name in entry for field_name in ("handler_signature", "handler_context"))
+        if has_content_field:
+            if not silent_entry_has_content(entry):
+                raise QualityGateError(f"silent_fallback.entries[{index}] 必须同时保存完整 handler_signature 对象与 handler_context 原文")
+            try:
+                canonical_content(entry["handler_signature"])
+            except (TypeError, ValueError) as exc:
+                raise QualityGateError(f"silent_fallback.entries[{index}].handler_signature 必须是规范 JSON 对象") from exc
+        else:
+            _require_string(entry.get("handler_fingerprint"), f"silent_fallback.entries[{index}].handler_fingerprint")
+            _require_string(entry.get("handler_context_hash"), f"silent_fallback.entries[{index}].handler_context_hash")
+        for historical_field in ("handler_fingerprint", "handler_context_hash"):
+            if historical_field in entry:
+                _require_string(entry.get(historical_field), f"silent_fallback.entries[{index}].{historical_field}")
+        if "handler_context_hash" in entry and not str(entry["handler_context_hash"]).startswith("sha1:"):
+            raise QualityGateError(f"silent_fallback.entries[{index}].handler_context_hash 历史字段必须以 sha1: 开头")
         _require_int(entry.get("except_ordinal"), f"silent_fallback.entries[{index}].except_ordinal")
         _require_int(entry.get("line_start"), f"silent_fallback.entries[{index}].line_start")
         _require_int(entry.get("line_end"), f"silent_fallback.entries[{index}].line_end")
@@ -391,8 +401,8 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
         unique_key = (
             str(entry.get("path")),
             str(entry.get("symbol") or ""),
-            str(entry.get("handler_fingerprint")),
             except_ordinal,
+            "" if has_content_field else str(entry.get("handler_fingerprint")),
         )
         if unique_key in fallback_unique_keys:
             raise QualityGateError(f"silent_fallback.entries 存在重复登记：{unique_key}")
@@ -477,11 +487,32 @@ def validate_ledger(ledger: Dict[str, Any]) -> None:
     _validate_accepted_risks(accepted_risks, all_main_ids)
 
 
+def silent_entry_key(entry: Dict[str, Any]) -> Tuple[str, str, int]:
+    return str(entry.get("path") or ""), str(entry.get("symbol") or ""), int(entry.get("except_ordinal") or 0)
+
+
+def silent_entry_has_content(entry: Dict[str, Any]) -> bool:
+    return (
+        isinstance(entry.get("handler_signature"), dict)
+        and bool(entry.get("handler_signature"))
+        and isinstance(entry.get("handler_context"), str)
+        and bool(entry.get("handler_context"))
+    )
+
+
+def silent_entry_content_equal(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
+    return (
+        silent_entry_has_content(left)
+        and silent_entry_has_content(right)
+        and content_equal(left["handler_signature"], right["handler_signature"])
+        and left["handler_context"] == right["handler_context"]
+    )
+
+
 def entry_sort_key(entry: Dict[str, Any]) -> Tuple[Any, ...]:
     return (
         str(entry.get("path") or ""),
         str(entry.get("symbol") or ""),
-        str(entry.get("handler_fingerprint") or ""),
         int(entry.get("except_ordinal") or 0),
         str(entry.get("id") or ""),
     )
@@ -558,8 +589,9 @@ def _ordered_silent_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
         key=entry_sort_key,
     ):
         data = _ordered_common_fields(entry)
-        data["handler_fingerprint"] = entry.get("handler_fingerprint")
-        data["handler_context_hash"] = entry.get("handler_context_hash")
+        for field_name in ("handler_signature", "handler_context", "handler_fingerprint", "handler_context_hash"):
+            if field_name in entry:
+                data[field_name] = copy.deepcopy(entry.get(field_name))
         data["except_ordinal"] = int(entry.get("except_ordinal") or 0)
         data["line_start"] = int(entry.get("line_start") or 0)
         data["line_end"] = int(entry.get("line_end") or 0)
@@ -644,7 +676,7 @@ def _ledger_semantics_equal(left: Dict[str, Any], right: Dict[str, Any]) -> bool
     right_copy = copy.deepcopy(right)
     left_copy["updated_at"] = "_"
     right_copy["updated_at"] = "_"
-    return left_copy == right_copy
+    return content_equal(left_copy, right_copy)
 
 
 def finalize_ledger_update(ledger: Dict[str, Any]) -> Dict[str, Any]:
@@ -674,4 +706,7 @@ __all__ = [
     "sort_ledger",
     "validate_ledger",
     "entry_sort_key",
+    "silent_entry_key",
+    "silent_entry_has_content",
+    "silent_entry_content_equal",
 ]

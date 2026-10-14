@@ -4,6 +4,7 @@ from collections import Counter
 from decimal import Decimal
 from statistics import median
 
+from core.models.content import content_text
 from core.models.workbench_calibration import (
     MAX_SAMPLES,
     METHOD_VERSION,
@@ -13,7 +14,7 @@ from core.models.workbench_calibration import (
     issue,
     write_blockers,
 )
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 
 from .samples import number, quantize
 
@@ -83,7 +84,8 @@ def build_suggestion(template, summary, *, generated_at):
         reasons.append(issue("processing_basis_unconfirmed", "当前模板不是已确认的自制加工工序。"))
     return {"suggestion_ref": template.operation_ref, "operation_ref": template.operation_ref,
             "template_operation_ref": template.operation_ref, "template_revision": template.revision,
-            "template_snapshot": input_fingerprint(template.to_dict()), "part_ref": template.part_ref,
+            "template_snapshot": content_text({"source_ref": template.operation_ref, "revision": template.revision}),
+            "part_ref": template.part_ref,
             "part_no": template.part_no, "part_name": template.part_name, "sequence": template.sequence,
             "operation_label": template.operation_label, "source": template.source,
             "old_unit_hours": template.old_unit_hours, **public_summary,

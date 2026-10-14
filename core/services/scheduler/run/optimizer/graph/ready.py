@@ -330,7 +330,8 @@ def _run_weight_profiles(
                 stages.insert(0, stage)
             else:
                 stages.append(stage)
-    rotation = StageScheduler(stages, clock=clock, deadline=deadline)
+    rotation = StageScheduler(stages, clock=clock, deadline=deadline,
+                              process_evidence=getattr(search_report_state, "process_collector", None))
     profile_stage.extra_summary = rotation.summary
     rotation.run()
     return state.best

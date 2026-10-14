@@ -63,8 +63,9 @@
         </form></section>
         {op && <details className="sm-rules"><summary>维护阶段与核对信息</summary><p>维护记录编号：<code>{op.job_ref}</code> · 结果代码：<code>{op.code}</code></p>
           {op.history.map((step, index) => <p key={index}>{window.WorkbenchFormat.dateTime(step.time)} · {R.labels[step.state]}</p>)}
-          {[['所选备份 SHA-256', op.target_sha256], ['保护副本 SHA-256', op.protection_sha256], ['维护结束数据库 SHA-256', op.database_after_sha256]].map(([label, value]) => <p key={label}>{label}：<code>{value || '未确认'}</code></p>)}
-          <p>校验记录来自对应维护任务。</p></details>}
+          {R.sourceFacts(op).map(([label, value]) => <p key={label}>{label}：{value}</p>)}
+          {R.legacyDigests(op).map(([label, value]) => <p key={label}>{label}：<code>{value}</code>（原记录）</p>)}
+          <p>内容与完整性状态来自对应维护任务。</p></details>}
       </main>
     </div>, document.body);
   }

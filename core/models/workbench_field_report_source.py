@@ -2,19 +2,19 @@
 
 from copy import deepcopy
 from dataclasses import dataclass
-from hashlib import sha256
+from uuid import uuid4
 
 
 @dataclass(frozen=True)
 class PreparedFieldReportSource:
     content: bytes
-    file_digest: str
+    source_ref: str
     _rows: tuple
 
     @classmethod
     def build(cls, content, rows):
         original = bytes(content)
-        return cls(original, sha256(original).hexdigest(), tuple(deepcopy(rows)))
+        return cls(original, uuid4().hex, tuple(deepcopy(rows)))
 
     def parsed(self):
         # Business matching owns its mutable diagnostics; retained source rows stay untouched.

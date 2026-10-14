@@ -21,6 +21,7 @@ class CandidateAdoptionEvidence:
     snapshot: Dict[str, Any]
     prepared: Any
     payload: Any
+    proof: Dict[str, Any]
 
 
 def adoption_input(value):

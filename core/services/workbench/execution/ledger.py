@@ -3,13 +3,13 @@
 from datetime import datetime
 from typing import Callable, List, Optional
 
-from core.models.workbench_command import canonical_json, input_fingerprint
+from core.models.workbench_command import canonical_json
 from core.models.workbench_execution_input import MAX_REPORT_BYTES, public_ref, reject
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from core.services.workbench.facts.execution_projection import attach_context
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_HASH
+from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_CONTENT
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
@@ -57,7 +57,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
                 "voids": {ref: facts["voids"][ref] for ref in reports if ref in facts["voids"]},
                 "legacy": facts["legacy"].get(operation_ref, []),
                 "unresolved": operation_ref in facts["unresolved"],
-                "legacy_source_hash": facts["legacy_source"]["hashes"].get(operation_ref, EMPTY_SOURCE_HASH)})
+                "legacy_source_state": facts["legacy_source"]["states"].get(operation_ref, EMPTY_SOURCE_CONTENT)})
 
     def project_loaded(self, facts, *, contexts=True):
         projections = super().project_loaded(facts)
@@ -132,6 +132,6 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             return {"available": True, "time_basis": "factory_local", "projections": plain,
                     "resources": {"machines": [row for row in resources if row["kind"] == "machine"],
                                   "operators": [row for row in resources if row["kind"] == "operator"]},
-                    "snapshot_facts": {**facts["clock"], "projection_hash": input_fingerprint(_stable_projection_rows(plain)),
-                                       "resources_hash": input_fingerprint(resources),
-                                       "legacy_source_hash": facts["legacy_source"]["hash"]}}
+                    "snapshot_facts": {**facts["clock"], "projections": _stable_projection_rows(plain),
+                                       "resources": resources,
+                                       "legacy_source_states": facts["legacy_source"]["states"]}}

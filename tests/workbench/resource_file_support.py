@@ -96,8 +96,8 @@ def confirm(conn, kind, preview, content=None, fmt="csv", *, command=None, key=N
             return WorkbenchResourceBulkService(conn, kind).confirm_delete(preview, request["refs"], scope=request["scope"])
         return WorkbenchResourceFileService(conn, kind).confirm_import(preview, content, file_format=fmt, scope=request["scope"])
     return (command or WorkbenchCommandService(conn)).execute(
-        request_key=key or "resource-file-" + uuid4().hex, action=action, context_ref=preview.digest,
-        normalized_input={"preview_ref": preview.digest}, guard=guard or (lambda: None), mutate=mutate)
+        request_key=key or "resource-file-" + uuid4().hex, action=action, context_ref=request.get("actual_source_ref", action),
+        normalized_input=preview.intent(), guard=guard or (lambda: None), mutate=mutate)
 
 
 def exported(conn, kind, fmt, *, category=None, selected_refs=None, query=""):

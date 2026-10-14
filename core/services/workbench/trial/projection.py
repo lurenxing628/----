@@ -2,16 +2,28 @@
 
 import math
 from collections import defaultdict
-from datetime import date, datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial import ACTIONS
-from core.services.common.overdue_calculations import due_exclusive
+from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.delivery_completeness import archived_deferred_operation_evidence
+from core.services.workbench.facts.delivery_projection import (
+    delivery_batch_delta,
+    delivery_summary,
+    project_delivery_batch,
+    task_intervals,
+)
+from core.services.workbench.facts.preflight_checks import stored_date
+from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
+from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
 from core.services.workbench.facts.zero_duration import point_event_dto
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
+from .arrangements import same_arrangement
 from .calendar import original_duration
 from .capacity import trial_capacity
+from .effort import operation_effort_ledger
+from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
 from .protection import TrialProtection
 
 
@@ -49,7 +61,7 @@ def _task_projection(row, draft_ref, by_operation, protected_rows, by_task, live
         **{key: current[key] for key in ("machine_ref", "operator_ref", "start", "end")},
         "original": {key: original["arrangement"][key] for key in ("machine_ref", "operator_ref", "start", "end")},
         "hours": hours, "duration_reason": duration_reason,
-        "changed": current != original["arrangement"],
+        "changed": not same_arrangement(current, original["arrangement"]),
         "predecessor_refs": [by_operation[ref] for ref in original["predecessor_operation_refs"] if ref in by_operation],
         "predecessor_operation_refs": original["predecessor_operation_refs"],
         "execution_at_creation": original["execution"], "execution": live["execution"].get(row["operation_ref"]),
@@ -92,50 +104,177 @@ def resources_projection(live):
     return result
 
 
-def comparison(tasks, checked, incomplete_batches=()):
+def _delivery_origin(admission, rows, facts=None):
+    source = admission["source"]
+    if "capture" in source:
+        capture = source["capture"]
+        facts = facts if facts is not None else GenerationFacts(capture)
+        selected = set(capture["input"]["batch_refs"])
+        batches = {ref: facts.tables["Batches"][key] for (kind, key), ref in facts.entity_refs.items()
+                   if kind == "batch" and ref in selected}
+        operations = facts.tables["BatchOperations"].values()
+        deferred = material_deferred_ids((source.get("dispositions") or {}).values(), capture["input"])
+        deferred_issues = []
+    else:
+        batches = {row["original"]["batch_ref"]: row["original"]["batch"] for row in rows}
+        operations = admission["facts"]["tables"]["BatchOperations"]
+        if "deferred_operation_ids" in source:
+            deferred, deferred_issues = set(source["deferred_operation_ids"]), source["deferred_operation_issues"]
+        else:
+            from core.models.workbench_command import canonical_json
+
+            version = source.get("identity", {}).get("version")
+            history = [row for row in admission["facts"]["tables"].get("ScheduleHistory", []) if row["version"] == version]
+            summary = (history[0]["result_summary"] if len(history) == 1
+                       else canonical_json({"material_policy": source.get("material_policy", {})}))
+            deferred, deferred_issues = archived_deferred_operation_evidence({"summary": summary})
+        selected = {batch["batch_id"] for batch in batches.values()}
+        pending = {operation["batch_id"] for operation in operations if operation["id"] in deferred} - selected
+        if pending:
+            tables = admission["facts"]["tables"]
+            batch_rows = {batch["batch_id"]: batch for batch in tables["Batches"]}
+            refs = {item["entity_key"]: item["ref"] for item in tables["WorkbenchEntityRefs"]
+                    if item["kind"] == "batch" and item["active"] == 1}
+            for batch_id in sorted(pending):
+                if batch_id not in batch_rows or batch_id not in refs:
+                    from core.models.workbench_trial import reject
+
+                    reject("trial_snapshot_invalid", "保存来源中待料批次的资料或永久编号缺失，请核对保存记录。")
+                batches[refs[batch_id]] = batch_rows[batch_id]
+    by_batch = defaultdict(list)
+    for operation in operations:
+        by_batch[operation["batch_id"]].append(dict(operation, op_id=operation["id"]))
+    return batches, by_batch, deferred, deferred_issues
+
+
+def _delivery_arrangements(rows, field):
+    by_batch = defaultdict(list)
+    for row in rows:
+        original = row["original"]
+        arrangement = original["arrangement"] if field == "original" else row["current"]
+        projected = {"schedule_id": row["row_ref"], "op_id": original["operation"]["id"],
+                     "batch_id": original["batch"]["batch_id"], "start_time": arrangement["start"],
+                     "end_time": arrangement["end"]}
+        if arrangement["start"] == arrangement["end"]:
+            if row.get("_delivery_source_unknown"):
+                projected["point_evidence_issue"] = "trial_source_unavailable"
+            else:
+                trial_point_evidence(original, arrangement)
+                projected["_point_work"] = True
+        by_batch[projected["batch_id"]].append(projected)
+    return by_batch
+
+
+def _delivery_side(batches, operations, arrangements, deferred, uncertain, blocked_batches=()):
+    intervals = task_intervals([row for group in arrangements.values() for row in group])
+    return {ref: project_delivery_batch(batch, ref, arrangements[batch["batch_id"]],
+                                       operations[batch["batch_id"]], intervals, False,
+                                       uncertain + (["trial_constraints_blocked"] if None in blocked_batches
+                                                    or batch["batch_id"] in blocked_batches else []),
+                                       deferred_operation_ids=deferred)
+            for ref, batch in batches.items()}
+
+
+def _blocked_delivery_batches(checked, tasks, rows):
+    if checked["constraints_status"] != "blocked":
+        return set()
+    sources = {row["row_ref"]: row for row in rows}
+    originals = {row["task_ref"]: row["original"] for row in rows}
+    for task in tasks:
+        source = sources.get(task.get("source_row_ref")) or sources.get(task["row_ref"])
+        if source is not None:
+            originals[task["task_ref"]] = source["original"]
+    blocked = set()
+    issues = checked.get("issues", [])
+    if not issues:
+        return {None}
+    for item in issues:
+        if item.get("severity") != "blocker":
+            continue
+        if item["code"] == "trial_base_date_invalid":
+            if item.get("field") == "due_date":
+                continue
+            original = originals.get(item.get("task_ref"))
+            if "field" not in item and original is not None:
+                ready = original["batch"].get("ready_date")
+                if ready is None or isinstance(ready, str) and stored_date(ready) is not None:
+                    continue
+        related = [originals[key]["batch"]["batch_id"] for key in (item.get("task_ref"), item.get("related_task_ref"))
+                   if key in originals]
+        blocked.update(related or [None])
+    return blocked
+
+
+def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None):
     groups = defaultdict(list)
     for task in tasks:
         groups[task["batch_ref"]].append(task)
+    batches, operations, deferred, deferred_issues = _delivery_origin(admission, rows, facts)
+    origin_issues = list(origin_issues) + list(deferred_issues)
+    before = _delivery_side(batches, operations, _delivery_arrangements(rows, "original"), deferred, origin_issues)
+    blocked = _blocked_delivery_batches(checked, tasks, rows)
+    after = _delivery_side(batches, operations, _delivery_arrangements(rows, "current"), deferred, origin_issues, blocked)
     deliveries = []
-    for batch_ref, group in groups.items():
-        first = group[0]
-        finish = max(row["end"] for row in group)
-        original = max(row["original"]["end"] for row in group)
-        risk, late, due_exclusive = _delivery_risk(first["due_date"], finish, checked, first["batch_id"] in incomplete_batches)
-        deliveries.append({"batch_ref": batch_ref, "batch_id": first["batch_id"], "part_name": first["part_name"],
-            "quantity": first["batch_quantity"], "priority": first["priority"], "due_date": first["due_date"],
-            "due_exclusive": due_exclusive, "baseline_finish": original, "finish": finish,
-            "risk": risk, "late_hours": late,
-            "improvement_hours": (datetime.fromisoformat(original) - datetime.fromisoformat(finish)).total_seconds() / 3600,
+    for batch_ref, batch in batches.items():
+        group, previous, current = groups[batch_ref], before[batch_ref], after[batch_ref]
+        delta = delivery_batch_delta(previous, current)
+        deliveries.append({"batch_ref": batch_ref, "batch_id": batch["batch_id"], "part_name": current["part_label"],
+            "quantity": _public_value(batch["quantity"]), "priority": _public_value(batch["priority"]),
+            "due_date": current["due_date"], "due_state": current["due_state"], "due_issue": current["due_issue"],
+            "due_exclusive": current["delivery_deadline_exclusive"], "baseline_finish": previous["planned_finish"],
+            "finish": current["planned_finish"], "partial_baseline_finish": previous["partial_planned_finish"],
+            "partial_finish": current["partial_planned_finish"], "completion_state": current["completion_state"],
+            "risk": current["risk"], "late_hours": current["delay_hours"], "before": previous, "after": current, **delta,
+            "improvement_hours": None if delta["finish_delta_hours"] is None else -delta["finish_delta_hours"],
             "changed": any(row["changed"] for row in group),
             "moved": any(row["machine_ref"] != row["original"]["machine_ref"] for row in group)})
-    measurable = all(row["late_hours"] is not None for row in deliveries)
+    summary, original_summary = delivery_summary(list(after.values())), delivery_summary(list(before.values()))
     return {"basis": "draft_original", "batches": deliveries, "changed_operations": sum(row["changed"] for row in tasks),
             "moved_operations": sum(row["machine_ref"] != row["original"]["machine_ref"] for row in tasks),
-            "late_count": sum(row["risk"] == "overdue" for row in deliveries) if measurable else None,
-            "total_delay_hours": sum(row["late_hours"] for row in deliveries) if measurable else None,
-            "changeovers": None, "changeover_reason": "未计算换型次数。"}
+            "late_count": summary["overdue_count"], "total_delay_hours": summary["total_tardiness_hours"],
+            "delivery_summary": summary, "before_delivery_summary": original_summary,
+            "changeovers": None, "changeover_reason": "原试调来源的工种资料缺失。"}
 
 
-def _delivery_risk(value, finish, checked, incomplete):
-    try:
-        due = date.fromisoformat(value)
-        # 9999-12-31 是“未指定交期”的哨兵值，不是坏数据，也不会超期：和计划交付风险页的
-        # unknown / due_date_unspecified、值班台的“暂无数据”同一口径，试调单独记为 due_unspecified，
-        # 页面和导出显示“未指定交期”；不给截止时刻，超期记 0 小时（工序没排全、有冲突时也一样），
-        # 合计仍可计算；不算“预计按期”，也不算“交期数据无效”。
-        if due == date.max:
-            return "due_unspecified", 0.0, None
-        limit = due_exclusive(due)
-        late = max(0.0, (datetime.fromisoformat(finish) - limit).total_seconds() / 3600)
-        risk = "overdue" if datetime.fromisoformat(finish) >= limit else "on_time"
-        if checked["constraints_status"] == "blocked":
-            risk, late = "unavailable", None
-        deadline = limit.isoformat()
-    except (ValueError, TypeError, OverflowError):
-        risk, late, deadline = "invalid_data", None, None
-    # 工序没排全的批次算不出整批完工，交付记为不能评估。
-    return ("unavailable", None, deadline) if incomplete else (risk, late, deadline)
+def scenario_comparison(saved, head, rows):
+    """Reproject a historical saved view from its immutable source, without writing it."""
+    if head is None:
+        projected = []
+        for task in saved["tasks"]:
+            batch = {"batch_id": task["batch_id"], "part_no": task["part_no"], "part_name": task["part_name"],
+                     "quantity": task["batch_quantity"], "priority": task["priority"], "due_date": task["due_date"]}
+            projected.append({"row_ref": task["row_ref"], "task_ref": task["task_ref"], "current": task,
+                              "original": {"batch": batch, "batch_ref": task["batch_ref"],
+                                           "operation": {"id": task["operation_ref"]}, "arrangement": task["original"]},
+                              "_delivery_source_unknown": True})
+        admission = {"source": {}, "facts": {"tables": {"BatchOperations": []}}}
+        return comparison(saved["tasks"], saved["validation"], projected, admission, ["trial_source_unavailable"])
+    projected = scenario_rows(saved, rows)
+    return comparison(saved["tasks"], saved["validation"], projected, head["admission"])
+
+
+def scenario_rows(saved, rows):
+    originals = {row["row_ref"]: row for row in rows}
+    if {task["source_row_ref"] for task in saved["tasks"]} != set(originals):
+        from core.models.workbench_trial import reject
+
+        reject("trial_snapshot_invalid", "保存的试调工序与原草稿范围不一致，请核对保存记录。")
+    projected = [dict(originals[task["source_row_ref"]], row_ref=task["row_ref"], task_ref=task["task_ref"],
+                      current=dict(originals[task["source_row_ref"]]["current"],
+                                   **{key: task[key] for key in ("start", "end", "machine_ref", "operator_ref")}))
+                 for task in saved["tasks"]]
+    return projected
+
+
+def scenario_capacity(saved, head, rows):
+    if head is None:
+        return dict(saved["capacity"], state="unavailable", source="archived_resource_calendar",
+                    metric_version=RESOURCE_METRIC_VERSION, resource_common=None,
+                    reason="原草稿保存的日历来源缺失，资源容量未知。", resources=[])
+    admission = head["admission"]
+    facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
+    archive = facts.archive if facts is not None else admission["facts"]
+    return trial_capacity(scenario_rows(saved, rows), archive, source_ref=admission["source"]["identity"])
 
 
 def _public_value(value):
@@ -144,16 +283,6 @@ def _public_value(value):
     if type(value) is float and math.isfinite(value):
         return value
     return None
-
-
-def _incomplete_batches(rows, all_operations):
-    planned, expected = defaultdict(set), defaultdict(set)
-    for row in rows:
-        op = row["original"]["operation"]
-        planned[op["batch_id"]].add(op["id"])
-    for op in all_operations:
-        expected[op["batch_id"]].add(op["id"])
-    return {batch_id for batch_id, ids in planned.items() if ids != expected[batch_id]}
 
 
 def _display_fields(task):
@@ -175,11 +304,19 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None):
     else:
         context["blocked_reasons"] = [{"code": "draft_closed", "message": "该草稿已保存或明确放弃，只能读取原记录。"}]
     tasks = tasks_projection(rows, ref, checked, live, frozen)
+    facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
+    archive = facts.archive if facts is not None else admission["facts"]
     if head["status"] != "editing":
         for task in tasks:
             task["edit_context"]["can_change"] = False
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
     unplanned = _unplanned(admission, rows)
+    ledger = operation_effort_ledger(rows, admission)
+    pairs, preparation = preparation_projection(rows, admission, ledger, current_evidence={"kind": "trial", "draft_ref": ref})
+    apply_preparation(tasks, unplanned, pairs)
+    compared = comparison(tasks, checked, rows, admission, facts=facts)
+    compared["preparation_common"] = preparation
+    apply_changeovers(compared, trial_changeovers(rows, admission))
     return {"draft_ref": ref, "status": head["status"], "base": admission["input"]["base"],
             "base_identity": admission["source"]["identity"], "scope": admission["input"]["scope"],
             "baseline": {"plan_ref": admission["baseline"]["plan_ref"], "version": admission["baseline"]["version"]},
@@ -187,9 +324,9 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None):
             "task_count": len(tasks), "tasks_complete": True, "validation": checked,
             "unplanned_operations": unplanned, "scope_complete": not unplanned,
             "validation_at_last_write": head["validation"], "write_context": context,
-            "resources": resources_projection(live), "comparison": comparison(tasks, checked,
-                _incomplete_batches(rows, live["facts"]["tables"]["BatchOperations"])),
-            "capacity": trial_capacity(rows, live),
+            "resources": resources_projection(live), "operation_effort": ledger,
+            "comparison": compared,
+            "capacity": trial_capacity(rows, archive, source_ref=admission["source"]["identity"]),
             "time_scope": {"start": min(row["start"] for row in tasks), "end": max(row["end"] for row in tasks),
                            "time_basis": "factory_local", "selection": "complete_base"}}
 
@@ -206,8 +343,6 @@ def _unplanned(admission, rows):
 
 
 def write_snapshot(head, rows, live):
-    from core.models.workbench_trial_codec import fingerprint
-
     return {"draft_ref": head["draft_ref"], "revision": head["revision"], "status": head["status"],
-            "admission_hash": head["admission_hash"], "facts_hash": live["facts_hash"],
-            "rows_hash": fingerprint([(row["row_ref"], row["current"]) for row in rows])}
+            "facts": live["facts"], "execution": live["execution"], "baseline": live["baseline"],
+            "rows": [(row["row_ref"], row["current"]) for row in rows]}

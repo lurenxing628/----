@@ -43,7 +43,7 @@ class WorkbenchResourceFileService:
     def prepare_import(self, content, *, file_format, scope, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode, scope)
         source, notices = read_resource_file(self.kind, content, file_format)
-        return PreparedImportSource.build(self.kind + ".import", request, source, notices)
+        return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
@@ -55,7 +55,7 @@ class WorkbenchResourceFileService:
             self._duplicates(rows, "business_code")
             if self.kind == "op_type":
                 self._duplicates(rows, "label")
-            return ResourceActionPreview.build(self.kind + ".import", request, rows, notices)
+            return ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
 
     @staticmethod
     def _duplicates(rows, field):
@@ -125,7 +125,7 @@ class WorkbenchResourceFileService:
             raise RuntimeError("资源导入确认必须在外层工作台写事务中执行。")
         with self.tx.transaction():
             try:
-                current = self.preview_import(content, file_format=file_format, scope=scope, mode=mode)
+                current = self.preview_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, scope=scope, mode=mode)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)

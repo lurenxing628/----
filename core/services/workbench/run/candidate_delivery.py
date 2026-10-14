@@ -3,7 +3,8 @@
 from collections import defaultdict
 
 from core.services.workbench.facts.candidate_values import corrupt
-from core.services.workbench.plan.delivery_projection import project_delivery_batch, task_intervals
+from core.services.workbench.facts.delivery_projection import delivery_summary, project_delivery_batch, task_intervals
+from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 
 
 def _group_tasks(tasks, facts):
@@ -69,7 +70,7 @@ def _last_operations(item, tasks):
             if task["end"] == finish]
 
 
-def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain):
+def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred):
     operations, schedules = defaultdict(list), defaultdict(list)
     for operation in facts.tables["BatchOperations"].values():
         operations[operation["batch_id"]].append(dict(operation, op_id=operation["id"]))
@@ -82,9 +83,7 @@ def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain):
             missing.append(key)
             continue
         item = project_delivery_batch(batch, ref, schedules[key], operations[key], intervals,
-                                      key in incomplete, sorted(uncertain))
-        quantity = batch.get("quantity")
-        item["quantity"] = quantity if type(quantity) is int and quantity >= 0 else None
+                                      key in incomplete, sorted(uncertain), deferred_operation_ids=deferred)
         item["last_operations"] = _last_operations(item, tasks[key])
         result.append(item)
     return result, missing
@@ -96,19 +95,17 @@ def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settin
     keys = _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncertain)
     incomplete, negative = _negative_completion(candidate, disposition)
     uncertain.update(negative)
-    items, missing = _items(keys, facts, rows, by_batch, task_intervals(rows), incomplete, uncertain)
+    deferred = material_deferred_ids((disposition or {}).values(), settings)
+    items, missing = _items(keys, facts, rows, by_batch, task_intervals(rows), incomplete, uncertain, deferred)
     issues = [{"code": code, "message": "排产时记下的依据不完整，交付结论算不出来；系统没有拿当前资料凑。"}
               for code in sorted(uncertain)]
     if missing:
         issues.append({"code": "captured_batch_missing", "message": "排产存档中缺少批次资料：" + "、".join(missing)
                        + "。请在排产记录中核对这些批次。"})
-    unknown = sum(item["risk"] == "unknown" for item in items) + len(missing)
     return {"candidate_ref": candidate["candidate_ref"], "scope": scope.scope(),
             "state": "available" if not issues else "partial" if items else "unavailable",
             "items": items, "items_complete": not issues, "batch_count": len(keys), "issues": issues,
-            "summary": {"overdue_count": sum(item["risk"] == "overdue" for item in items),
-                        "unknown_count": unknown, "batch_count": len(keys),
-                        "total_tardiness_hours": None if unknown or issues else sum(item["delay_hours"] for item in items)},
+            "summary": delivery_summary(items, len(missing)),
             "basis": {"kind": "planned_delivery", "metadata_basis": "captured_at_run_admission",
                       "operation_scope": "captured_batch_operations", "completion_scope": "full_candidate",
                       "time_basis": "factory_local", "due_boundary": "next_day_exclusive",

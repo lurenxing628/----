@@ -4,11 +4,10 @@ import json
 import os
 from typing import Any, Dict, List, Mapping
 
-from tools.long_gate_fingerprint import stable_json_hash
-from tools.quality_gate_shared import REPO_ROOT, parse_pytest_collect_nodeids
+from tools.quality_gate_shared import REPO_ROOT, parse_pytest_collect_nodeids, sanitize_quality_gate_output
 
-COLLECT_NODEIDS_REL = os.path.join("evidence", "QualityGate", "collect_nodeids.json").replace("\\", "/")
-COLLECT_NODEIDS_SCHEMA_VERSION = 1
+COLLECT_NODEIDS_REL = os.path.join("evidence", "QualityGate", "collect_nodeids.v2.json").replace("\\", "/")
+COLLECT_NODEIDS_SCHEMA_VERSION = 2
 
 
 def _nodeids_by_file(nodeids: List[str]) -> Dict[str, List[str]]:
@@ -25,13 +24,14 @@ def build_collect_nodeids_payload(
     pytest_version: str = "",
     collect_stdout_log_path: str = "",
 ) -> Dict[str, Any]:
+    stdout = sanitize_quality_gate_output(stdout)
     nodeids = parse_pytest_collect_nodeids(stdout)
     return {
         "schema_version": COLLECT_NODEIDS_SCHEMA_VERSION,
         "status": "passed",
         "nodeids": nodeids,
         "nodeid_count": len(nodeids),
-        "nodeid_hash": stable_json_hash(nodeids),
+        "collect_stdout_content": str(stdout),
         "nodeids_by_file": _nodeids_by_file(nodeids),
         "pytest_version": str(pytest_version or ""),
         "collect_stdout_log_path": str(collect_stdout_log_path or "").replace("\\", "/"),

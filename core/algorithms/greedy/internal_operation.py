@@ -242,6 +242,7 @@ def _build_internal_result(*, op: Any, batch_id: str, machine_id: str, operator_
         end_time=estimate.end_time,
         source=INTERNAL,
         op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
+        op_type_id=str(getattr(op, "op_type_id", None) or "") or None,
     )
 
 

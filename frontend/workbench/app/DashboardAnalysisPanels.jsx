@@ -5,16 +5,18 @@
   // 不足 0.01 的非零值写“不到 0.01”，不能读成 0。
   const tiny = v => typeof v === 'number' && v !== 0 && Number(Math.abs(v).toFixed(2)) === 0;
   const value = v => v === null || v === undefined ? '未知' : tiny(v) ? '不到 0.01' : typeof v === 'number' ? M.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
-  const risks = window.WorkbenchTerms.delivery_risks;
+  const T = window.WorkbenchTerms, risks = T.delivery_risks;
   const risk = row => row.risk === 'overdue' ? (tiny(row.delay_hours) ? '超期不到 0.01 小时' : '超期 ' + value(row.delay_hours) + ' 小时') : risks[row.risk] || risks.unknown;
   function Batch({ row, selected, onSelect }) { return <Button data-wb-print-value reasonDisplay="inline" className="mini" icon="search" data-analysis-select-batch={row.batch_ref}
     aria-pressed={selected === row.batch_ref} onClick={() => onSelect(row.batch_ref)}>{row.batch_id}</Button>; }
   function Delivery({ data, selected, onSelect, onCompare }) { return <>
     <window.DashboardTimeline data={data} selectedBatch={selected} onSelect={onSelect} />
     <section aria-label="影响批次"><div className="dy-heading"><h3>影响批次</h3><Button reasonDisplay="inline" icon="git-compare-arrows" onClick={onCompare}>对比候选方案</Button></div>
-      <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">影响批次交付</caption><thead><tr><th scope="col">批次 / 零件</th><th scope="col">交期</th><th scope="col">计划完工</th><th scope="col">交付判断</th><th scope="col">优先级</th></tr></thead>
+      <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">影响批次交付</caption><thead><tr><th scope="col">批次 / 零件</th><th scope="col">交期</th><th scope="col">工序安排 / 预计完工</th><th scope="col">交付判断</th><th scope="col">优先级</th></tr></thead>
         <tbody>{data.deliveries.map(row => <tr key={row.batch_ref} data-analysis-delivery={row.batch_ref} data-selected={selected === row.batch_ref}>
-          <td><Batch row={row} selected={selected} onSelect={onSelect} /><small>{value(row.part_label)}</small></td><td>{value(row.due_date)}</td><td>{M.timeLabel(row.planned_finish)}</td>
+          <td><Batch row={row} selected={selected} onSelect={onSelect} /><small>{value(row.part_label)}</small></td><td>{T.due_date(row.due_date, row.due_state, row.due_issue)}</td>
+          <td>{T.delivery_completion_states[row.completion_state]}{row.planned_finish && <div>{M.timeLabel(row.planned_finish)}</div>}
+            {row.partial_planned_finish && <small>{T.arrangement_labels.partial_finish}：{M.timeLabel(row.partial_planned_finish)}</small>}{row.unscheduled_operation_count > 0 && <small>{T.missing_arrangements(row.ordinary_unscheduled_operation_count, row.deferred_operation_count)}</small>}</td>
           <td>{risk(row)}</td><td>{({ normal: '普通', urgent: '急件', critical: '特急' })[row.priority] || '未知'}</td></tr>)}</tbody></table></div>
       {!data.deliveries.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前正式计划没有批次交付记录。" />}
     </section>

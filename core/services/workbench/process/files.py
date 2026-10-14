@@ -37,7 +37,7 @@ class WorkbenchProcessFileService:
             raise WorkbenchCommandRejected("invalid_input", "工艺文件仅支持按图号增量导入。", 400)
         decoded, notices = decode_process_file(kind, content, file_format)
         request = {"kind": kind, "scope": {}, "target_ref": target_ref, "format": file_format, "mode": mode}
-        return PreparedImportSource.build(file_operation(kind), request, decoded, notices)
+        return PreparedImportSource.build(file_operation(kind), request, decoded, notices, content=content)
 
     def preview_import(self, kind, content, *, file_format, mode="upsert", target_ref=None):
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
@@ -55,7 +55,7 @@ class WorkbenchProcessFileService:
             request.update(state=state, acknowledgements={
                 "discard_group_refs": sorted(group["ref"] for group in extra["affected_groups"]),
                 "zero_review_required": extra["zero_review_required"]})
-            return ResourceActionPreview.build(file_operation(kind), request, rows, notices), extra
+            return ResourceActionPreview.build(file_operation(kind), request, rows, notices, source=prepared), extra
 
     def confirm_import(self, preview, content, *, discard_group_refs, confirm_zero_unit_hours):
         if not self.conn.in_transaction:
@@ -67,7 +67,7 @@ class WorkbenchProcessFileService:
             raise WorkbenchCommandRejected("invalid_input", "请明确是否已复核零工时。", 400)
         original = preview.as_dict()["request"]
         with TransactionManager(self.conn).transaction():
-            current, extra = self.preview_import(original["kind"], content, file_format=original["format"],
+            current, extra = self.preview_import(original["kind"], PreparedImportSource.confirmation(preview, content), file_format=original["format"],
                                                  mode=original["mode"], target_ref=original["target_ref"])
             check_resource_preview(preview, current)
             if set(refs) != {group["ref"] for group in extra["affected_groups"]}:

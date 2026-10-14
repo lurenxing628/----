@@ -29,7 +29,7 @@
     const [list, setList] = React.useState({ run: null, data: null, error: null, loading: false });
     const [read, setRead] = React.useState({ signature: null, data: null, error: null, loading: false });
     const [range, setRange] = React.useState({ start: choice.range_start || '', end: choice.range_end || '' }), [rangeError, setRangeError] = React.useState(null);
-    const [summary, setSummary] = React.useState(false), signature = JSON.stringify(choice);
+    const [summary, setSummary] = React.useState(false), [rangeOpen, setRangeOpen] = React.useState(false), signature = JSON.stringify(choice);
     React.useEffect(() => { setRange({ start: choice.range_start || '', end: choice.range_end || '' }); }, [choice.range_start, choice.range_end]);
     React.useEffect(() => {
       const controller = new AbortController(), run = choice.run_ref;
@@ -78,16 +78,21 @@
     function applyRange(event) {
       event.preventDefault();
       try {
-        const normalize = value => /^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(value) ? value + ':00' : value;
-        const next = Q.context({ ...choice, range_start: normalize(range.start), range_end: normalize(range.end) });
-        setRangeError(null); setChoice(next);
+        const normalize = window.WorkbenchDatePickerModel.factoryTime;
+        const next = Q.context({ ...choice, range_start: range.start === choice.range_start ? choice.range_start : normalize(range.start),
+          range_end: range.end === choice.range_end ? choice.range_end : normalize(range.end) });
+        setRangeError(null); setChoice(next); setRangeOpen(false);
       } catch (error) { setRangeError(error); }
     }
     return <section aria-label="已保存候选方案同范围比较" data-dashboard-candidates data-comparison-ready={!!data}>
-      <div className="dy-heading"><h3>同一排产范围下比较</h3><Button reasonDisplay="inline" icon="refresh-cw" aria-label="刷新候选方案比较" onClick={refresh} /></div>
+      <div className="dy-heading"><h3>与排产时的正式计划比较</h3><div className="dy-tools">
+        {choice.run_ref && <Button reasonDisplay="inline" icon="calendar-days" aria-expanded={rangeOpen} aria-controls="dashboard-comparison-range" title={choice.range_start && choice.range_end ? '开始（包含）' + window.WorkbenchFormat.dateTime(choice.range_start, { seconds: true, fractions: true }) + '；结束（不含）' + window.WorkbenchFormat.dateTime(choice.range_end, { seconds: true, fractions: true }) : '编辑比较时间范围'}
+          aria-label="编辑候选比较时间范围" onClick={() => { if (!rangeOpen) setRange({ start: choice.range_start || '', end: choice.range_end || '' }); setRangeOpen(!rangeOpen); }}>{choice.range_start && choice.range_end ? window.WorkbenchFormat.compactRange(choice.range_start, choice.range_end) : '时间范围'}</Button>}
+        <Button reasonDisplay="inline" icon="refresh-cw" aria-label="刷新候选方案比较" onClick={refresh} />
+      </div></div>
       <label className="dy-run-picker">排产记录<select aria-label="选择排产记录" value={choice.run_ref || ''} onChange={event => changeRun(event.target.value)}><option value="">请选择排产记录</option>
         {choice.run_ref && !catalog.runs.some(row => row.run_ref === choice.run_ref) && <option value={choice.run_ref}>原来选中的排产记录</option>}
-        {catalog.runs.map(run => <option key={run.run_ref} value={run.run_ref}>{window.WorkbenchFormat.dateTime(run.accepted_at)} · {run.candidate_count} 份候选</option>)}
+        {catalog.runs.map(run => <option key={run.run_ref} value={run.run_ref}>{window.WorkbenchFormat.compactDateTime(run.accepted_at)} · {run.candidate_count} 份候选</option>)}
       </select></label>
       <Issues issues={catalog.issues || []} /><ErrorBox error={list.error} /><ErrorBox error={rangeError || current && current.error} />
       {issueBatchRef && <div className="dy-context">仅比较原问题批次。<window.WorkbenchReference entries={{ '原问题批次编号': issueBatchRef }} /></div>}
@@ -97,15 +102,14 @@
           onChange={() => setChoice({ ...choice, candidate_ref: row.candidate_ref })} />
         <span><b>{row.label || window.WorkbenchTerms.name_missing}</b><small>{window.WorkbenchTerms.candidate_statuses[row.status]} · {row.task_count} 道安排</small></span>
       </label>)}{!options.candidates.length && <window.WorkbenchListControls.EmptyState kind="empty" title="这次排产还没有保存候选方案。" />}</fieldset>}
-      {choice.run_ref && <form className="dy-compare-range" onSubmit={applyRange}><label>共同开始<input type="datetime-local" step="1" aria-label="候选比较共同开始" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
-        <label>共同结束<input type="datetime-local" step="1" aria-label="候选比较共同结束" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label><Button reasonDisplay="inline" icon="check" type="submit">应用范围</Button></form>}
+      {choice.run_ref && rangeOpen && <form id="dashboard-comparison-range" className="dy-compare-range" onSubmit={applyRange}><label>开始（包含）<input type="text" data-picker-type="factory-local" spellCheck={false} aria-label="候选比较共同开始" value={range.start} onChange={event => setRange({ ...range, start: event.target.value })} /></label>
+        <label>结束（不含）<input type="text" data-picker-type="factory-local" spellCheck={false} aria-label="候选比较共同结束" value={range.end} onChange={event => setRange({ ...range, end: event.target.value })} /></label><Button reasonDisplay="inline" icon="check" type="submit">应用范围</Button></form>}
       {current && current.loading && <p role="status">正在核对所选候选方案、排产时的正式计划和共同范围。</p>}
-      {data && <><div className="dy-context"><span>{window.WorkbenchFormat.dateTime(data.time_scope.range_start)} 至 {window.WorkbenchFormat.dateTime(data.time_scope.range_end)} · 含起日，不含止日</span>
-        <span>{data.batch_refs.length} 个排产时的批次 · 完工按完整工序计算</span></div>
+      {data && <>
         {!data.baseline.available && <p className="dy-note warning">缺少排产时的正式计划，无法比较变化量。</p>}
         <P.Metrics data={data} /><P.Batches data={data} selected={selectedBatch} onSelect={onSelectBatch} />
-        <div className="dy-heading"><h3>{data.candidate.label || window.WorkbenchTerms.name_missing}</h3><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
-        <details className="dy-evidence"><summary>排产时的约束</summary><dl className="dy-facts"><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>
+        <div className="dy-tools"><Button reasonDisplay="inline" icon="chart-gantt" onClick={() => setSummary(true)}>查看方案摘要</Button></div>
+        <details className="dy-evidence"><summary>排产时的范围与规则</summary><dl className="dy-facts"><div><dt>比较批次</dt><dd>{data.batch_refs.length} 批；预计完工按全部工序安排计算</dd></div><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>
           <div><dt>物料齐套规则</dt><dd>{window.WorkbenchTerms.material_strategy(data.generation.input.material_strategy, data.generation.input.ready_check)}</dd></div>
           <div><dt>缺设备人员时的规则</dt><dd>{data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序'}</dd></div>
           <div><dt>不重排时段</dt><dd>{holdText(data.generation.input.hold_window)}</dd></div>

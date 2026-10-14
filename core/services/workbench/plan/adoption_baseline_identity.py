@@ -5,11 +5,18 @@ from types import SimpleNamespace
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
+from core.services.workbench.facts.adoption_baseline_values import (
+    fail,
+    indexed,
+    raw_table_rows,
+    require,
+    same,
+    schedule_rows,
+)
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .adoption_baseline_values import fail, indexed, raw_table_rows, require, same, schedule_rows
 from .projection import project_tasks, public_time
 
 
@@ -85,7 +92,8 @@ def _arrangement_matches(row, original):
 
 
 def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None):
-    from .adoption_baseline_sources import read_adoption_operation_facts
+    from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
+
     from .projection import _adopted_source_record
 
     ref, version = baseline["plan_ref"], baseline["version"]

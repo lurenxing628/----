@@ -2,6 +2,7 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.facts.zero_duration import PointEventError
@@ -10,7 +11,6 @@ from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaseline
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline import read_adoption_source
-from .adoption_baseline_values import AdoptionBaselineUnavailable
 
 
 def official_point_work(conn, version, *, evidence=None):

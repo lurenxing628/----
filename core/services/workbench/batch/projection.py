@@ -203,13 +203,13 @@ class BatchProjection:
                 "write_context": None, "protected": facts["protected"]}
 
     def materials(self, batch):
-        from core.models.workbench_batch_material import material_row_key
+        from core.models.workbench_batch_material import material_row_key, numbered_material_requirements
         availability = self.material_availability
         rows = []
-        for row in self.relations[batch["batch_id"]]["materials"]:
+        for ordinal, row in numbered_material_requirements(self.relations[batch["batch_id"]]["materials"]):
             material = self.catalogs["material"].get(row["material_id"])
             issues = []
-            rows.append({"row_key": material_row_key(self.ref("batch", batch["batch_id"]), row),
+            rows.append({"row_key": material_row_key(self.ref("batch", batch["batch_id"]), ordinal),
                          "material_ref": self.ref("material", row["material_id"]), "business_code": row["material_id"],
                          "label": material["name"] if material else None, "unit": material["unit"] if material else None,
                          "required_quantity": numeric(row["required_qty"], issues, "需求数量", positive=True),

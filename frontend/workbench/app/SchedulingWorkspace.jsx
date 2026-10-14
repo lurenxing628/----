@@ -5,7 +5,25 @@
     const navigate = React.useRef(onNavigate); navigate.current = onNavigate;
     return React.useMemo(() => ({ ...A.create(), openCandidate: value => navigate.current('analysis', value) }), []);
   }
-  function ReadRun({ runRef, api }) {
+  function runHistoryDestination(context = {}) {
+    const origin = context.return_decision_context || context;
+    const saved = context.return_history_context || origin.return_history_context || context.history_query || origin.history_query || {};
+    const returnPlan = context.return_plan_context || origin.return_plan_context || saved.return_plan_context;
+    const restored = window.RunHistoryAPI.context({ ...saved, ...(returnPlan ? { return_plan_context: returnPlan } : {}) });
+    return { view: 'analysis', context: { source: 'run_history', history_topic: 'run_catalog',
+      history_query: window.RunHistoryAPI.returnContext(restored.query, restored.returnPlan) } };
+  }
+  function trialAction(onNavigate, { planRef, candidateRef, scope, query, disabled, taskOrigin, historyOrigin, label = '试调' }) {
+    const display = { query };
+    if (scope.range_start && scope.range_end) { display.range_start = scope.range_start; display.range_end = scope.range_end; }
+    if (scope.batch_ref) display.batch_refs = [scope.batch_ref];
+    return <U.Button icon="square-pen" disabled={disabled} onClick={() => onNavigate('trial', {
+      base: candidateRef ? { candidate_ref: candidateRef } : { plan_ref: planRef }, scope: display,
+      ...(taskOrigin ? { task_origin: taskOrigin } : {}),
+      ...(historyOrigin ? { return_decision_history_context: historyOrigin } : {}),
+    })}>{label}</U.Button>;
+  }
+  function ReadRun({ runRef, api, onNavigate, initialContext, runHistoryReturn }) {
     const [record, setRecord] = React.useState(null), [error, setError] = React.useState('');
     const [checking, setChecking] = React.useState(false), [verified, setVerified] = React.useState(false), [retryPaused, setRetryPaused] = React.useState(false);
     const [paused, setPaused] = React.useState(document.hidden), [revision, refresh] = React.useReducer(v => v + 1, 0);
@@ -38,48 +56,49 @@
       document.addEventListener('visibilitychange', visibility); visibility();
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };
     }, [runRef, api, revision]);
-    return <section className="plana run-job-panel" aria-label="这次排产">
-      <div className="rj-heading"><h2>这次排产</h2><U.Button icon="refresh-cw" aria-label="刷新这次排产" busy={checking} disabled={!A.ref(runRef)} onClick={refresh} /></div>
-      {!A.ref(runRef) ? <p role="alert">这条排产记录已失效，页面没有切换。请点「排产记录」重新选择。</p> : <>
-        <window.WorkbenchReference entries={{ '排产编号': runRef }} />{error && <div className="rj-notice" role="alert">{error}</div>}
-        {record && <U.Record run={record} intent={null} paused={paused} checking={checking} verified={verified} retryPaused={retryPaused} retryHint="请点右上角的刷新按钮再次核对。" api={api} />}
-        {!record && <p role="status" className="rj-muted">{checking ? '正在读取这次排产。' : paused ? '返回本页后继续读取这次排产。' : retryPaused ? '已暂停自动查询。请点右上角的刷新按钮再次核对。' : '暂未查到这次排产记录。请点右上角的刷新按钮。'}</p>}
+    const historyReturn = <HistoryReturn context={initialContext || {}} onNavigate={onNavigate} />;
+    const newRun = <U.Button icon="plus" onClick={() => onNavigate('run', {})}>新排产</U.Button>;
+    const navigation = <Navigation>{historyReturn}<U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button>{newRun}</Navigation>;
+    if (record && verified && record.result_persisted && record.candidates.some(row => row.status === 'completed')) return <window.RunCandidateWorkspace view="analysis"
+      initialContext={{ ...initialContext, run_ref: runRef }} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} navigation={<Navigation>{historyReturn}{newRun}</Navigation>} headerTitle="本次排产结果" runStatus={record.state} runTiming={record}
+      renderAdoption={(candidateRef, metadata = {}) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />}
+      renderTrial={value => trialAction(onNavigate, value)} />;
+    return <section className="plana run-job-panel rj-status-workspace" aria-label="本次排产">
+      {!A.ref(runRef) ? <><div className="rj-heading rj-business-heading"><h2>本次排产</h2>{navigation}</div><p role="alert">这条排产记录已失效，请点「排产记录」重新选择。</p></> : <>
+        <U.Record run={record} paused={paused} checking={checking} verified={verified} retryPaused={retryPaused} retryHint="请点「刷新本次排产」再次核对。" api={api} onNavigate={onNavigate} navigation={navigation}
+          actions={<U.Button icon="refresh-cw" aria-label="刷新本次排产" busy={checking} onClick={refresh} />} />
+        {error && <div className="rj-notice" role="alert">{error}</div>}
       </>}
     </section>;
   }
   function Navigation({ children }) {
     return <div className="scheduling-navigation">{children}</div>;
   }
+  function HistoryReturn({ context, onNavigate }) {
+    if (!context.return_decision_history_context && !(context.return_decision_context && context.return_decision_context.return_decision_history_context)) return null;
+    return window.DecisionHistoryAPI.returnState(context) ? <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(context))}>返回历史走势</U.Button> : null;
+  }
   function RunWorkspace({ onNavigate, initialContext }) {
     const api = useRunAdapter(onNavigate), specified = initialContext && Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
-    const history = <U.Button icon="history" onClick={() => onNavigate('analysis', { source: 'run_history' })}>排产记录</U.Button>;
-    // The preflight page carries 排产记录 in its own heading; only the specified-run view keeps the navigation strip.
-    return specified ? <><Navigation>{history}<U.Button icon="plus" onClick={() => onNavigate('run', {})}>执行排产</U.Button></Navigation>
-      <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} /></> :
+    const runHistoryReturn = runHistoryDestination(initialContext);
+    const history = <><HistoryReturn context={initialContext || {}} onNavigate={onNavigate} /><U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button></>;
+    return specified ? <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} /> :
       <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate} actions={history}
-        renderRunPanel={data => <window.RunJobPanel preflight={data} adapter={api} />} />;
+        renderRunPanel={data => <window.RunJobPanel preflight={data} adapter={api} onNavigate={onNavigate} />} />;
   }
   function PlanCenterWorkspace({ view, onNavigate, initialContext }) {
     const context = initialContext || {}, candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');
     const history = !candidate && context.source === 'run_history';
-    const historyQuery = candidate ? context.return_history_context : history ? context.history_query : undefined;
-    function renderTrial({ planRef, candidateRef, scope, query, disabled, taskOrigin, label = '试调' }) {
-      const display = { query };
-      if (scope.range_start && scope.range_end) { display.range_start = scope.range_start; display.range_end = scope.range_end; }
-      if (scope.batch_ref) display.batch_refs = [scope.batch_ref];
-      return <U.Button icon="square-pen" disabled={disabled} onClick={() => onNavigate('trial', {
-        base: candidateRef ? { candidate_ref: candidateRef } : { plan_ref: planRef }, scope: display,
-        ...(taskOrigin ? { task_origin: taskOrigin } : {}),
-      })}>{label}</U.Button>;
-    }
+    const runHistoryReturn = runHistoryDestination(context);
+    function renderTrial(value) { return trialAction(onNavigate, { ...value, historyOrigin: window.DecisionHistoryAPI.returnState(context) }); }
     const navigation = <Navigation>
+      {!history && <HistoryReturn context={context} onNavigate={onNavigate} />}
       <U.Button icon="files" aria-pressed={!candidate && !history} onClick={() => onNavigate(view, {})}>计划版本</U.Button>
-      <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate('analysis', { source: 'run_history', ...(historyQuery ? { history_query: historyQuery } : {}) })}>排产记录</U.Button>
-      {candidate && <span className="btn scheduling-current" aria-current="page"><window.ResourceControls.Icon name="chart" />{window.WorkbenchTerms.candidate}</span>}
+      {!candidate && <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button>}
     </Navigation>;
-    return <>{(candidate || history) && navigation}{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate}
-      renderAdoption={candidateRef => <window.RunAdoptionAction candidateRef={candidateRef} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
-      <window.RunHistoryWorkspace initialContext={context.history_query} onNavigate={onNavigate} /> :
+    return <>{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} navigation={navigation}
+      renderAdoption={(candidateRef, metadata = {}) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
+      <window.RunHistoryWorkspace initialContext={context.history_query} pageContext={context} onNavigate={onNavigate} navigation={navigation} /> :
       <window.PlanWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} renderTrial={renderTrial} navigation={navigation} />}</>;
   }
   window.RunWorkspace = RunWorkspace;

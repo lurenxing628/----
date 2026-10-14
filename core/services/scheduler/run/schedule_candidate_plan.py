@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Tuple
 
+from .optimizer.process_evidence import non_search_evidence
 from .schedule_candidate_dedup import UNCERTIFIED_PREFIX
 from .schedule_candidate_health import CandidateHealth
 from .schedule_candidate_runtime_helpers import _candidate_score, _dict_list, _dict_or_none, _string_list
@@ -65,6 +66,7 @@ class CandidatePlan:
     # ``uncertified: <reason>`` when they could not be (the plan ran its own search), empty
     # for plans that never enter the ledger (the baseline).
     input_certification: str = ""
+    process_evidence: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +138,7 @@ def candidate_plan_from_artifacts(
         dispatch_rule=str(candidate_cfg.dispatch_rule),
         objective=str(candidate_cfg.objective),
         adopted_dispatch_rule=str(getattr(outcome, "dispatch_rule", None) or ""),
+        process_evidence=_dict_or_none(getattr(outcome, "process_evidence", None)),
     )
 
 
@@ -147,7 +150,8 @@ def with_input_certification(plan: CandidatePlan, certification: Optional[str], 
     return replace(plan, input_certification=certification)
 
 
-def skipped_plan(spec: CandidateRunSpec, *, failure_reason: str) -> CandidatePlan:
+def skipped_plan(spec: CandidateRunSpec, *, failure_reason: str, objective_name: str = "",
+                 known_not_started: bool = True) -> CandidatePlan:
     return CandidatePlan(
         sequence=int(spec.sequence),
         candidate_key=spec.candidate_key,
@@ -159,10 +163,13 @@ def skipped_plan(spec: CandidateRunSpec, *, failure_reason: str) -> CandidatePla
         graph_impact_weight=int(spec.graph_impact_weight),
         graph_downstream_weight=int(spec.graph_downstream_weight),
         failure_reason=failure_reason,
+        objective_name=objective_name,
+        process_evidence=non_search_evidence(objective_name, kind="not_started" if known_not_started else "budget_skipped",
+                                           reason=failure_reason, known_not_started=known_not_started) if objective_name else None,
     )
 
 
-def failed_plan(spec: CandidateRunSpec, exc: Exception, *, elapsed_seconds: float) -> CandidatePlan:
+def failed_plan(spec: CandidateRunSpec, exc: Exception, *, elapsed_seconds: float, objective_name: str = "") -> CandidatePlan:
     return CandidatePlan(
         sequence=int(spec.sequence),
         candidate_key=spec.candidate_key,
@@ -175,6 +182,9 @@ def failed_plan(spec: CandidateRunSpec, exc: Exception, *, elapsed_seconds: floa
         graph_downstream_weight=int(spec.graph_downstream_weight),
         failure_reason=str(exc),
         elapsed_seconds=float(elapsed_seconds),
+        objective_name=objective_name,
+        process_evidence=non_search_evidence(objective_name, kind="failed", reason=str(exc),
+                                           elapsed_ms=max(int(elapsed_seconds * 1000), 0)) if objective_name else None,
     )
 
 

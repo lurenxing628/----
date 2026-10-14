@@ -7,7 +7,7 @@ from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import ProcessTablePageRequest, unique_process_table_object
 from core.services.workbench.process.projection import capabilities
@@ -111,7 +111,7 @@ def process_route_preview(ref):
                 data["affected_groups"] = [row for row in reader.detail(ref)["external_groups"] if row["ref"] in affected]
                 data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": normalized["route"]})
             snapshot = bind_read_snapshot({"kind": "process_route_preview", "entity_ref": ref,
-                                           "input_hash": input_fingerprint(body)}, state)
+                                           "input_content": body}, state)
         return _response(data, snapshot)
     except (WorkbenchCommandRejected, AppError, HTTPException):
         raise

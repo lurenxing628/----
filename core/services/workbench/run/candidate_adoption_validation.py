@@ -4,7 +4,8 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from core.errors import AppError
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.content import same
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked, CandidateAdoptionEvidence
 from core.models.workbench_run_compute import CandidateRunInputError
@@ -15,6 +16,7 @@ from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate, require_adoption_schema
 from core.services.workbench.facts.candidate_projection import scheduled_ids, uses_task_rows
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .candidate_adoption_constraints import validate_adoption_constraints
@@ -42,7 +44,7 @@ def _row_from_task(task, refs, frozen_op_ids, expected_ids, legacy_rows, seen):
     locked = value.pop("locked", None)
     if (type(op_id) is not int or op_id in seen or task["operation_ref"] != refs.get(op_id)
             or type(locked) is not bool or locked != (op_id in frozen_op_ids)
-            or op_id not in expected_ids or (legacy_rows is not None and value != legacy_rows.get(op_id))):
+            or op_id not in expected_ids or (legacy_rows is not None and not same(value, legacy_rows.get(op_id)))):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选行、原始工序身份或锁定记录不一致。")
     seen.add(op_id)
     for field in ("start_time", "end_time"):
@@ -64,7 +66,7 @@ def validate_adoption(conn, candidate_ref):
             candidate, scope, tasks, capture = load_adoption_candidate(conn, candidate_ref)
             baseline, projections = check_admission_current(conn, capture)
             prepared = prepare_candidate_run_input(conn, capture["input"], projections, capture_fingerprint=False)
-            if {row["operation_ref"]: row for row in prepared.dispositions} != scope:
+            if not same({row["operation_ref"]: row for row in prepared.dispositions}, scope):
                 raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "排产时的工序范围或前后顺序和现在的记录对不上，不能采用。请重新做排产检查。")
             rows = _rows(tasks, candidate, prepared)
             payload = validate_candidate(prepared, rows, [])
@@ -74,12 +76,14 @@ def validate_adoption(conn, candidate_ref):
             svc = ScheduleService(conn)
             _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)
             validate_adoption_payload(conn, prepared, payload)
-            snapshot = {"candidate_ref": candidate_ref, "run_ref": candidate["run_ref"],
-                        "facts_hash": capture["facts_hash"], "baseline_ref": baseline["plan_ref"],
-                        "baseline_version": baseline["version"], "baseline_hash": input_fingerprint(baseline),
-                        "candidate_hash": input_fingerprint({"candidate": candidate, "tasks": tasks, "scope": scope}),
-                        "validated_hash": input_fingerprint(durable_value(payload))}
-            return CandidateAdoptionEvidence(candidate_ref, candidate["run_ref"], baseline, snapshot, prepared, payload)
+            proof = {"proof_version": "content_refs_v1", "candidate_ref": candidate_ref,
+                     "run_ref": candidate["run_ref"], "baseline_ref": baseline["plan_ref"],
+                     "baseline_version": baseline["version"]}
+            # The candidate and task ledger are permanent. Current production facts,
+            # actual rows and constraints are re-read by this same guarded transaction.
+            snapshot = proof
+            return CandidateAdoptionEvidence(candidate_ref, candidate["run_ref"], baseline, snapshot,
+                                             prepared, payload, proof)
     except CandidateAdoptionBlocked:
         raise
     except WorkbenchCommandRejected as exc:
@@ -94,7 +98,7 @@ def _require_official_scope(svc, version, scheduled_ids):
     from collections import defaultdict
 
     latest = _latest_plan_rows(svc, version)
-    if not set(latest) <= scheduled_ids:
+    if not official_scope_coverage(latest, scheduled_ids)["covers_official_scope"]:
         raise CandidateAdoptionBlocked("official_scope_not_covered", "候选未覆盖已有正式安排的完整工序范围，请选全相关批次后重新排产。")
     by_version = defaultdict(list)
     for row in latest.values():
@@ -124,15 +128,15 @@ def _check_artifact_payload(candidate, payload):
     expected = durable_value(payload)
     if uses_task_rows(artifact):
         expected = {key: value for key, value in expected.items() if key not in ("schedule_rows", "assigned_by_op_id")}
-        if artifact["validated_payload"] != expected:
+        if not same(artifact["validated_payload"], expected):
             raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选验证记录与明细不一致。")
         return
-    if artifact["validated_payload"] != expected:
+    if not same(artifact["validated_payload"], expected):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选验证记录与明细不一致。")
     results = artifact.get("results")
     if type(results) is not list or len(results) != len(payload.schedule_rows):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选原始引擎结果不完整。")
     fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
     original = [{key: row[key] for key in fields} for row in results]
-    if original != expected["schedule_rows"]:
+    if not same(original, expected["schedule_rows"]):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选原始引擎结果与保存安排不一致。")

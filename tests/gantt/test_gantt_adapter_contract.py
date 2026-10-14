@@ -1,5 +1,8 @@
 """当前甘特图点击详情与只读行为。"""
 
+import json
+from pathlib import Path
+
 from tests._support.gantt_current_js import run_current_js
 
 
@@ -11,8 +14,8 @@ bar.props.onClick(); assert.strictEqual(view.selections[0].task,task);
 assert.strictEqual(view.selections[0].before,false);
 const detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task,before:false},onSelect:()=>{}});
 const text=h.text(detail);
-for (const value of [task.batch_id,task.process_label,'Machine 1','Operator 1',task.start.replace('T',' '),task.end.replace('T',' ')]) assert(text.includes(value),value);
-assert(h.walk(detail).some(node=>node.type==='aside' && node.props['aria-label']==='任务详情'));
+for (const value of [task.batch_id,task.process_label,'Machine 1','Operator 1',h.runtime.WorkbenchFormat.compactDateTime(task.start),h.runtime.WorkbenchFormat.compactDateTime(task.end)]) assert(text.includes(value),value);
+assert(h.walk(detail).some(node=>node.type==='aside' && node.props['aria-label']==='工序详情'));
 const command=h.walk(detail).find(node=>node.type==='button' && h.text(node).includes('调整此工序'));
 assert(command.props.disabled);
 assert.strictEqual(JSON.stringify(data),before);
@@ -49,6 +52,7 @@ const generation=h.render(h.runtime.RunCandidateControls.Generation,{data:{
   candidate:{label:'候选A',status:'completed',completeness:'complete',candidate_ref:h.reference(301),data_gaps:[],blocked_reasons:[],
     metrics:Object.fromEntries(h.runtime.RunCandidateAPI.metricKeys.map(key=>[key,{value:0,reason:null}]))},
   generation:{run_ref:h.reference(302),accepted_at:'2026-05-11T07:00:00',finished_at:'2026-05-11T07:01:00',
+    algorithm:{mode_label:'候选计算',strategy_label:null},
     input:{start_date:'2026-05-11',end_date:'2026-05-12',material_strategy:'strict',ready_check:false,hold_window:null,missing_resource_policy:'exclude',completed_policy:'preserve_actuals'},
     baseline:{captured_task_count:0},data_gaps:[]},data_gaps:[],blocked_reasons:[]
 }});
@@ -63,6 +67,30 @@ for (const ref of [missingNames.machine.ref,missingNames.operator.ref])
   assert(h.walk(resourcePanel).some(node=>node.type==='code'&&h.text(node)===ref),'Known resource identity remains inspectable in the existing reference section');
 const resourceLayout=h.runtime.RunCandidateModel.layout({tasks:[missingNames],task_span:{start:missingNames.start,end:missingNames.end}},'machine','');
 assert(resourceLayout.rows[0].label.includes('设备名称未记录'));
+const untimed={...candidateTask,row_ref:h.reference(404),start:null,end:null,data_gaps:[{field:'start',code:'not_recorded',message:'正式归档未保存有效起止时间。'}]};
+const archived={tasks:[candidateTask,untimed],task_span:{start:candidateTask.start,end:candidateTask.end}}, archivedBefore=JSON.stringify(archived);
+const archivedLayout=h.runtime.RunCandidateModel.layout(archived,'machine','');
+assert.deepEqual(archivedLayout.tasks,[candidateTask]); assert.deepEqual(archivedLayout.unplottableTasks,[untimed]);
+assert(archivedLayout.rows.every(row=>row.items.every(item=>Number.isFinite(item.start)&&Number.isFinite(item.end))));
+assert.strictEqual(JSON.stringify(archived),archivedBefore,'Unknown-time saved arrangements remain in the source task table');
+const untimedPanel=h.render(h.runtime.RunCandidateControls.Detail,{data:{tasks:archived.tasks,gantt_graph:routeData.gantt_graph},task:untimed,onCollapse:()=>{},onRelated:()=>{}});
+assert(h.text(untimedPanel).includes('开始未记录') && h.text(untimedPanel).includes('结束未记录'));
+assert(h.walk(untimedPanel).some(node=>node.type==='div'&&h.text(node).includes(untimed.data_gaps[0].message)),'The archive time gap remains inspectable in operation details');
+const formalData={...archived,candidate:{candidate_ref:h.reference(405),label:'受理时正式计划 v1'},generation:{algorithm:null,baseline:{version:1}},
+  reference:{kind:'admission_official',label:'受理时正式计划 v1'},gantt_graph:routeData.gantt_graph,delivery_risks:{items:[]},task_count:2};
+const formalGantt=h.render(h.runtime.RunCandidateGantt,{data:formalData,query:'',selected:untimed,comparison:null,onQuery:()=>{},onSelect:()=>{}});
+assert(h.text(formalGantt).includes('正式归档') && h.text(formalGantt).includes('安排的时间缺项或无效'));
+assert(!h.text(formalGantt).includes('算法排产结果'),'The official archive does not claim a newly computed algorithm result');
+const focusedTask={...candidateTask,machine:{ref:h.reference(501),label:'Focus Machine'},operator:{ref:h.reference(502),label:'Focus Operator'}},
+  otherResource={...candidateTask,row_ref:h.reference(503),machine:{ref:h.reference(504),label:'Other Machine'},operator:{ref:h.reference(505),label:'Other Operator'}};
+const focusedData={...formalData,tasks:[focusedTask,otherResource],task_count:2}, sourceBefore=JSON.stringify(focusedData);
+for (const kind of ['machine','operator']) {
+  const focusedGantt=h.render(h.runtime.RunCandidateGantt,{data:focusedData,query:'',selected:null,comparison:null,onQuery:()=>{},onSelect:()=>{},resourceFocus:{kind,ref:focusedTask[kind].ref}});
+  const lanes=h.walk(focusedGantt).filter(node=>node.type==='canvas'&&node.props['data-candidate-lane']);
+  assert.equal(lanes.length,1,'A resource drill renders only the requested actual resource');
+  assert.equal(lanes[0].props['data-item-count'],1); assert(lanes[0].props['aria-label'].includes(focusedTask[kind].label));
+}
+assert.strictEqual(JSON.stringify(focusedData),sourceBefore,'A resource drill keeps the complete saved arrangements immutable');
 const external={...missingNames,source:'external',machine:null,operator:null,supplier:{ref:h.reference(403),label:'外协商A'},data_gaps:[]};
 assert.equal(h.runtime.RunCandidateModel.resourceLabel(external,'machine'),'不适用（外协工序）');
 assert.equal(h.runtime.RunCandidateModel.resourceLabel(external,'supplier'),'外协商A');
@@ -86,6 +114,95 @@ const comparisonNodes=h.walk(comparison);
 for (const value of ['延后 60 分钟','提前 60 分钟','Original machine → Machine 1'])
   assert(comparisonNodes.some(node=>node.type==='dd'&&h.text(node)===value),value);
 assert(!comparisonNodes.some(node=>node.type==='dt'&&h.text(node)==='人员变化'),'Unchanged resources add no redundant change row');
+// A real resource-table click opens the same formal plan/scope and leaves the source table restorable.
+const resourceData=h.fixture(), navigated=[], remembered=[], initial={plan_ref:resourceData.plan.plan_ref,
+  range_start:'2026-05-11T07:59:59.123400',range_end:'2026-05-11T12:00:00.654321',
+  query:'source-only search',projection_tab:'load',projection_page:1};
+Object.assign(resourceData.plan,{display_name:'Formal plan 5',is_current_official:true,completeness:'complete',capabilities:{view:true,export:true},blocked_reasons:[]});
+Object.assign(resourceData.scope,{range_start:initial.range_start,range_end:initial.range_end});
+Object.assign(resourceData.time_scope,{range_start:initial.range_start,range_end:initial.range_end});
+const selectedResource={kind:'operator',resource_ref:resourceData.tasks[0].operator_ref,label:'Operator 1',
+  available_hours:4,available_occupied_hours:2,utilization:.5,arranged_hours:2,occupied_hours:2,
+  overlap_hours:0,outside_available_hours:0,has_overlap:false,issues:[],
+  segments:resourceData.tasks.map(task=>({start:task.start,end:task.end,concurrent_operations:1}))};
+const conflictData=h.fixture(), conflictResource={...selectedResource,metric_version:'decision-resource-v4',
+  has_overlap:false,available_overlap_hours:0,overlap_hours:1,conflict_segments:[],
+  segments:[{start:conflictData.tasks[0].start,end:conflictData.tasks[0].end,concurrent_operations:2}]};
+conflictData.projections.occupancy={state:'available',plan_ref:conflictData.plan.plan_ref,basis:'selected_plan_only',
+  time_scope:conflictData.time_scope,resources:[conflictResource],issues:[]};
+assert.equal(h.runtime.PlanDetailsUI.conflictRows(conflictData).rows.length,0,'Natural reservation overlap outside the work calendar is not a calendar conflict');
+Object.assign(conflictResource,{has_overlap:true,available_overlap_hours:.25,conflict_segments:[{
+  start:'2026-05-11T08:15:00',end:'2026-05-11T08:30:00',concurrent_operations:2}]});
+const calendarConflicts=h.runtime.PlanDetailsUI.conflictRows(conflictData).rows;
+assert.equal(calendarConflicts.length,1); assert.equal(calendarConflicts[0].start,'2026-05-11T08:15:00');
+assert.equal(calendarConflicts[0].end,'2026-05-11T08:30:00','The UI consumes the authoritative calendar segment without rebuilding natural-span conflicts');
+resourceData.projections.occupancy.resources=Array.from({length:20},(_,index)=>({...selectedResource,
+  resource_ref:h.reference(600+index),label:'Other resource '+index})).concat(selectedResource);
+const resourceBefore=JSON.stringify(resourceData), oldQuery=h.runtime.APSResourceSession.useQuery,
+  oldSnapshot=h.runtime.WorkbenchPageContext.useSnapshot;
+const resourceResult={data:resourceData,meta:{as_of:'2026-05-11T12:00:00',snapshot_ref:'resource-read'},warnings:[]};
+try {
+  h.runtime.APSResourceSession.useQuery=(_read,dependencies)=>({loading:false,error:null,reload:()=>{},
+    result:dependencies.length===3?resourceResult:{data:{plans:[resourceData.plan],page:{has_more:false}},warnings:[]}});
+  h.runtime.WorkbenchPageContext.useSnapshot=value=>remembered.push(JSON.parse(JSON.stringify(value)));
+  const props={view:'analysis',adapter:{catalog:async()=>{},workspace:async()=>{},export:async()=>{}},
+    initialContext:initial,onNavigate:(target,context)=>navigated.push({target,context})};
+  const resourcePage=h.render(h.runtime.PlanWorkspace,props), resourceButton=h.walk(resourcePage)
+    .find(node=>node.type==='button'&&h.text(node)==='Operator 1');
+  assert(resourceButton,'The second resource page is restored before the resource is clicked');
+  resourceButton.props.onClick({currentTarget:{}});
+  assert.equal(navigated.length,1); assert.equal(navigated[0].target,'gantt');
+  const target=navigated[0].context;
+  for (const key of ['plan_ref','range_start','range_end','projection_tab','projection_page']) assert.equal(target[key],initial[key],key);
+  assert.equal(target.resource_kind,'operator'); assert.equal(target.selected_task_ref,resourceData.tasks[0].task_ref);
+  assert.equal(target.query,'','The resource opens by saved task identity rather than the source search text');
+  const targetGantt=h.render(h.runtime.PlanGantt,{data:resourceData,asOf:resourceResult.meta.as_of,
+    query:target.query,initialMode:target.resource_kind,selected:{task:resourceData.tasks[0],before:false,locate:true},onSelect:()=>{},onQuery:()=>{}});
+  assert(h.walk(targetGantt).some(node=>node.props['aria-label']==='人员甘特时间轴'));
+  assert(h.walk(targetGantt).some(node=>node.props['data-plan-task']===target.selected_task_ref&&node.props['aria-pressed']===true));
+  const sourceContext=remembered[0];
+  for (const key of Object.keys(initial)) assert.equal(sourceContext[key],initial[key],key);
+  const returned=h.render(h.runtime.PlanWorkspace,{...props,initialContext:sourceContext});
+  assert(h.walk(returned).some(node=>node.type==='table'&&node.props['aria-label']==='资源负荷列表'));
+  assert(h.walk(returned).some(node=>node.type==='button'&&h.text(node)==='Operator 1'),'Return keeps the source resource page');
+  assert.equal(JSON.stringify(resourceData),resourceBefore);
+} finally {
+  h.runtime.APSResourceSession.useQuery=oldQuery; h.runtime.WorkbenchPageContext.useSnapshot=oldSnapshot;
+}
 return true;
 """)
+    assert result["result"] is True
+
+
+def test_formal_archive_detail_renders_full_saved_execution() -> None:
+    """真实正式归档详情保留布尔完整性、空值、零计数和全部执行字段。"""
+    payload = json.loads((Path(__file__).parent / "fixtures/admission_official_detail.json").read_text(encoding="utf-8"))
+    result = run_current_js(r"""
+const data=sourceData.data, before=JSON.stringify(data);
+const task=data.tasks.find(row=>row.operation_ref==='33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7');
+assert(task && task.execution_at_generation.records_complete===false && task.execution_at_generation.quantity_complete===false);
+const detail=h.render(h.runtime.RunCandidateControls.Detail,{data,task,onRelated:()=>{},onCollapse:()=>{}});
+const nodes=h.walk(detail), facts=new Map(nodes.filter(node=>node.type==='div').map(node=>{
+  const children=Array.isArray(node.children)?node.children.flat(Infinity):[node.children];
+  return [children.find(child=>child&&child.type==='dt'),children.find(child=>child&&child.type==='dd')];
+}).filter(([label,value])=>label&&value).map(([label,value])=>[h.text(label),h.text(value)]));
+for (const [label,value] of Object.entries({
+  '报工记录资料':'不完整','完成数量资料':'不完整','执行状态':'待报工','数据质量':'不完整',
+  '目标数量':'7','已知完成数量':'0','剩余数量':'7','完成数量缺失记录数':'0','数量计算方式':'批',
+  '最早实际开工时间':'保存时未记录最早实际开工时间。','确认完工时间':'保存时未记录确认完工时间。','完成依据':'保存时未记录完成依据。'
+})) assert.equal(facts.get(label),value,label);
+assert(nodes.some(node=>node.type==='summary'&&h.text(node)==='排产时的开工和完工记录'));
+assert(nodes.every(node=>node.type!=='dt'||h.text(node)), 'Every saved execution field has a business label');
+assert.strictEqual(JSON.stringify(data),before,'Detail formatting preserves all saved business facts');
+for (const [workspace,label] of [[data,'正式归档'],[{...data,reference:undefined,generation:{...data.generation,algorithm:{mode_label:'候选计算',strategy_label:null}}},'新安排']]) {
+  const gantt=h.render(h.runtime.RunCandidateGantt,{data:workspace,query:'',selected:task,comparison:null,onQuery:()=>{},onSelect:()=>{}});
+  const rendered=h.walk(gantt), kind=rendered.find(node=>node.props.className==='rc-lane-kind');
+  const lane=rendered.find(node=>node.type==='canvas'&&node.props['data-candidate-lane']);
+  const heading=rendered.find(node=>node.props.className==='rc-lane-label');
+  assert(kind && lane && heading);
+  assert.equal(h.text(kind),label); assert(lane.props['aria-label'].includes('，'+label+'，'));
+  assert(heading.props.title.endsWith(' · '+label),'The visible lane and accessible name use the same saved identity');
+}
+return true;
+""", payload)
     assert result["result"] is True

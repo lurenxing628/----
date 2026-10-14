@@ -1,6 +1,6 @@
 """Explicit trial installation; no legacy table or schema-version changes."""
 
-from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
+from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
 from .schema_structure import schema_objects
@@ -10,7 +10,7 @@ TRIAL_TABLES = ("WorkbenchTrialDrafts", "WorkbenchTrialRows", "WorkbenchTrialCha
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
-def workbench_trial_objects():
+def workbench_trial_objects(*, legacy=False):
     objects = {
         "WorkbenchTrialDrafts": """CREATE TABLE WorkbenchTrialDrafts (
             draft_ref {} PRIMARY KEY, base_kind TEXT NOT NULL CHECK(base_kind IN ('plan_ref','candidate_ref')),
@@ -56,6 +56,10 @@ def workbench_trial_objects():
         )""".format(_REF.format("row_ref"), _REF.format("task_ref")),
         "idx_wb_trial_status": "CREATE INDEX idx_wb_trial_status ON WorkbenchTrialDrafts(status,updated_at,draft_ref)",
     }
+    if not legacy:
+        for table, column in ((TRIAL_TABLES[0], "admission_hash"), (TRIAL_TABLES[1], "original_hash"),
+                              (TRIAL_TABLES[3], "snapshot_hash")):
+            objects[table] = objects[table].replace(column + " TEXT NOT NULL", column + " TEXT")
     for table in TRIAL_TABLES:
         events = ("DELETE",) if table in TRIAL_TABLES[:2] else ("UPDATE", "DELETE")
         for event in events:
@@ -75,11 +79,13 @@ def workbench_trial_objects():
     return objects
 
 
-def workbench_trial_contract_issues(conn, *, structure=None):
+def workbench_trial_contract_issues(conn, *, structure=None, allow_legacy=True):
     actual = schema_objects(conn, structure=structure)
+    legacy = workbench_trial_objects(legacy=True)
     return [("missing_trial_schema:" if name not in actual else "invalid_trial_schema:") + name
             for name, sql in workbench_trial_objects().items()
-            if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]
+            if name not in actual or not schema_contract_matches(
+                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def install_workbench_trial_schema(conn):

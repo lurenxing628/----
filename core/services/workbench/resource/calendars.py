@@ -11,6 +11,7 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager, in_transaction_context
 from core.models.calendar import WorkCalendar
 from core.models.calendar_periods import decode_periods, encode_periods
+from core.models.content import content_text
 from core.models.workbench_calendar import (
     CALENDAR_PREVIEW_TTL_SECONDS,
     CalendarRangePreview,
@@ -19,7 +20,7 @@ from core.models.workbench_calendar import (
     calendar_range_dates,
     normalize_calendar_input,
 )
-from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
@@ -167,7 +168,7 @@ class WorkbenchCalendarService:
             row, history = rows.get(day), histories.get(day, [])
             active = [item for item in history if item["active"] == 1]
             if len(active) != (1 if row is not None else 0):
-                raise WorkbenchCommandRejected("constraint_conflict", "日历与永久引用不一致，请检查数据后重试。")
+                raise WorkbenchCommandRejected("constraint_conflict", "工作日历记录与编号不一致，请联系维护人员核对。")
             result[day] = {"row": row, "identity": active[0] if active else None, "history": history}
         return result
 
@@ -428,7 +429,7 @@ class WorkbenchCalendarService:
             facts = self._preview_days(request)
         facts.update(preview_ref=uuid.uuid4().hex, created_at=now.isoformat(timespec="seconds"),
                      expires_at=(now + timedelta(seconds=CALENDAR_PREVIEW_TTL_SECONDS)).isoformat(timespec="seconds"))
-        return CalendarRangePreview(**facts, fingerprint=input_fingerprint(facts))
+        return CalendarRangePreview(**facts, fingerprint=content_text(facts))
 
     def confirm(self, normalized_input: Dict[str, Any], preview: CalendarRangePreview) -> WorkbenchCommandOutcome:
         """Private confirm callback, inside the same outer write transaction and receipt.
@@ -442,7 +443,7 @@ class WorkbenchCalendarService:
         if not isinstance(preview, CalendarRangePreview) or preview.preview_ref != payload["preview_ref"]:
             raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已失效，请重新点「预览变更」。")
         now = self._now().isoformat(timespec="seconds")
-        if not preview.created_at <= now < preview.expires_at or input_fingerprint(preview.facts()) != preview.fingerprint:
+        if not preview.created_at <= now < preview.expires_at or content_text(preview.facts()) != preview.fingerprint:
             raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已过期或内容有变化，请重新点「预览变更」。")
         current = self._preview_days(self.normalize("preview", preview.request), expected=preview)
         if current != {"request": preview.request, "dates": preview.dates, "days": preview.days}:

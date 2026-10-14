@@ -417,6 +417,7 @@ class ResourceDispatchService:
             source_table=str(plan_role_fields.get("source_table") or ""),
             candidate_id=plan_role_fields.get("candidate_id"),
             scenario_id=plan_role_fields.get("scenario_id"),
+            effective_plan_role=effective_role,
             scope_type=normalized_scope_type,
             scope_id=selected_scope_id,
             batch_id=batch_id,

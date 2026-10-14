@@ -1,0 +1,41 @@
+feature: decision-history-trends
+steps:
+  - id: source-directory
+    description: 四来源事件目录、永久身份和时间线归组
+    status: done
+  - id: shared-projection
+    description: 保存指标、生产条件、实验配置和同条件判断
+    status: done
+  - id: query-export
+    description: 筛选分页快照与同源全集原生文件
+    status: done
+  - id: history-workspace
+    description: 共同历史入口、图表数值和完整来源返回
+    status: done
+  - id: verify-deliver
+    description: 必要API与浏览器原件验证、保全和说明交接
+    status: done
+checks:
+  - id: H01
+    description: 四来源双时间线与同run多采用身份计数
+    status: passed
+  - id: H02
+    description: 实际条件字段与永久成员比较、配置维度和未知
+    status: passed
+  - id: H03
+    description: 目标、口径、覆盖与共同窗口改善门槛
+    status: passed
+  - id: H04
+    description: 20/50筛选排序快照和全集原生文件同源
+    status: passed
+  - id: H05
+    description: 来源、甘特和正式计划完整返回及图表键盘
+    status: passed
+  - id: H06
+    description: 相关Python3.8验证组合构建实际界面和原数据保全
+    status: passed
+
+operator_ui_repair:
+  status: passed
+  scope: 2026-10-14用户追加操作者界面返修，当前Parent正常实例复验通过；证据：evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json；原已通过检查按未变职责复用
+  acceptance: passed

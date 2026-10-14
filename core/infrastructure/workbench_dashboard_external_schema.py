@@ -5,7 +5,7 @@ tables and v29/v30 contracts are untouched. Reads never install this extension.
 """
 
 from core.infrastructure.workbench_dashboard_schema import contract_issues as dashboard_issues
-from core.infrastructure.workbench_metadata_schema import _canonical_sql
+from core.infrastructure.workbench_metadata_schema import schema_contract_matches
 from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
 
 from .schema_structure import schema_objects
@@ -13,7 +13,7 @@ from .schema_structure import schema_objects
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
-def workbench_dashboard_external_objects():
+def workbench_dashboard_external_objects(*, legacy=False):
     result = {
         "WorkbenchDashboardExternalItems": """CREATE TABLE WorkbenchDashboardExternalItems (
             item_ref """ + _REF.format("item_ref") + """ PRIMARY KEY,
@@ -41,6 +41,9 @@ def workbench_dashboard_external_objects():
             WHEN NEW.item_ref IS NOT OLD.item_ref OR NEW.origin_json IS NOT OLD.origin_json OR NEW.revision<>OLD.revision+1
             BEGIN SELECT RAISE(ABORT,'dashboard origin is permanent'); END""",
     }
+    if not legacy:
+        result["WorkbenchDashboardExternalHistory"] = result["WorkbenchDashboardExternalHistory"].replace(
+            "source_hash TEXT NOT NULL", "source_hash TEXT")
     conflicts = {"Items": "item_ref=NEW.item_ref OR outsourcing_ref=NEW.outsourcing_ref",
                  "States": "item_ref=NEW.item_ref",
                  "History": "history_ref=NEW.history_ref OR request_key=NEW.request_key OR (item_ref=NEW.item_ref AND sequence=NEW.sequence)"}
@@ -55,11 +58,13 @@ def workbench_dashboard_external_objects():
     return result
 
 
-def workbench_dashboard_external_contract_issues(conn, *, structure=None):
+def workbench_dashboard_external_contract_issues(conn, *, structure=None, allow_legacy=True):
     actual = schema_objects(conn, structure=structure)
+    legacy = workbench_dashboard_external_objects(legacy=True)
     return [("missing_dashboard_external_schema:" if name not in actual else "invalid_dashboard_external_schema:") + name
             for name, sql in workbench_dashboard_external_objects().items()
-            if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]
+            if name not in actual or not schema_contract_matches(
+                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def orphaned_handling_receipts(conn):

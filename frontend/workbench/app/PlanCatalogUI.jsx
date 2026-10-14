@@ -8,7 +8,7 @@
     const text = plan.is_current_official ? T.current_official : plan.kind === 'official' ? T.historical_official : plan.kind === 'candidate' ? T.candidate : T.trial_scenario;
     return <span className={'plan-state ' + (unavailable ? 'unavailable' : plan.is_current_official ? 'official' : '')}>{text}{unavailable ? ' · 不可查看' : ''}</span>;
   }
-  function Catalog({ adapter, selectedRef, onSelect, autoSelect = false, disabled = false, actions }) {
+  function Catalog({ adapter, selectedRef, onSelect, autoSelect = false, disabled = false, actions, navigation }) {
     const [collection, setCollection] = React.useState('history'), [pages, setPages] = React.useState([{}]), [index, setIndex] = React.useState(0);
     const [paused, setPaused] = React.useState(false), [collapsed, setCollapsed] = React.useState(!!selectedRef);
     const attempted = React.useRef(false), section = React.useRef(null), restoreFocus = React.useRef(false);
@@ -39,13 +39,13 @@
       setPages(current => current.slice(0, index + 1).map(item => ({ ...item, snapshot_ref: result.meta.snapshot_ref })).concat(page)); setIndex(index + 1);
     }
     return <section ref={section} className="plan-catalog" aria-label="排产方案列表" data-collapsed={collapsed}>
-      <div className="plan-toolbar"><label className="plan-catalog-picker">所选计划 <select aria-label="切换所选计划" value={selectedRef || ''} disabled={disabled || read.loading || !!read.error} onChange={event => {
+      <div className="plan-toolbar plan-catalog-toolbar">{navigation}<label className="plan-catalog-picker">计划 <select aria-label="切换所选计划" value={selectedRef || ''} disabled={disabled || read.loading || !!read.error} onChange={event => {
         const plan = data && data.plans.find(item => item.plan_ref === event.target.value && item.capabilities.view);
         if (plan) choose(plan);
       }}><option value="" disabled>请选择计划</option>{selectedRef && (!data || !data.plans.some(plan => plan.plan_ref === selectedRef)) && <option value={selectedRef}>已选计划（在其他页）</option>}
         {data && data.plans.filter(plan => plan.plan_ref).map(plan => <option key={plan.plan_ref} value={plan.plan_ref} disabled={!plan.capabilities.view}>{plan.display_name}{plan.is_current_official ? ' · 当前正式' : ''}</option>)}</select></label>
         {!collapsed && <window.PlanSegmentUI value={collection} options={[["history", "历史版本"], ["scenario", "试调方案"]]} label="计划列表范围" onChange={refresh} disabled={disabled} />}
-        <div className="plan-actions">{actions}<Button className="btn plan-icon" icon="refresh-cw" aria-label="刷新计划列表" disabled={disabled} busy={read.loading} onClick={() => refresh()} />
+        <div className="plan-catalog-actions">{actions}{!collapsed && <Button className="btn plan-icon" icon="refresh-cw" aria-label="刷新计划列表" disabled={disabled} busy={read.loading} onClick={() => refresh()} />}
           {read.loading && <Button icon="x" className="btn plan-icon" aria-label="取消列表读取" onClick={() => setPaused(true)} />}
           <Button icon="chevron-down" className={'btn plan-icon' + (collapsed ? '' : ' plan-up')} aria-label={collapsed ? '展开计划列表' : '收起计划列表'} aria-expanded={!collapsed} onClick={() => setCollapsed(!collapsed)} /></div>
       </div>

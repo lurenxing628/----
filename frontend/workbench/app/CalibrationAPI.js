@@ -26,15 +26,18 @@
     if (result.page > 1 && !result.snapshot_ref) throw failure('翻页位置已失效，请回到第 1 页重新查询。', 'snapshot_required');
     return result;
   }
-  function initial(value = {}) {
+  function restoreInitial(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
     if (value.selected != null && !ref(value.selected) || value.sample_ref != null && !ref(value.sample_ref)) throw failure('已选记录编号无效。');
     if (value.table_widths !== undefined && (!object(value.table_widths) || Object.keys(value.table_widths).some(key => !(key in sorts)
       || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
     const saved = { ...value.scope, ...value.table };
     delete saved.snapshot_ref;
-    return readInput(saved);
+    const restored = readInput(saved), migration = window.ResourceTableFilterModel.restore(restored.column_filters);
+    restored.column_filters = migration.filters;
+    return { input: restored, notice: migration.notice };
   }
+  const initial = value => restoreInitial(value).input;
   async function readView(api, value, signal) {
     if (value.snapshot_ref) return validate(await api.read(value, signal), value);
     const wanted = readInput(value), firstQuery = { ...wanted, page: 1 };
@@ -162,5 +165,5 @@
       facets: (kind, request, signal) => facet(kind, request, signal, false),
       facetSelection: (kind, request, signal) => facet(kind, request, signal, true) };
   }
-  window.CalibrationAPI = { create, validate, input, initial, readView, sorts, exportReason, failure, facetScope };
+  window.CalibrationAPI = { create, validate, input, initial, restoreInitial, readView, sorts, exportReason, failure, facetScope };
 })();

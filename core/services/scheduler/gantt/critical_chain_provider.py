@@ -92,16 +92,16 @@ class GanttCriticalChainProvider:
             return row[index]
         return None
 
-    def _plan_rows_fingerprint(self, snapshot: CriticalChainSnapshot) -> Optional[str]:
+    def _plan_rows_content(self, snapshot: CriticalChainSnapshot) -> Optional[str]:
         try:
-            return snapshot.fingerprint()
+            return snapshot.content_key()
         except (TypeError, ValueError) as exc:
             if self.logger:
-                self.logger.warning("关键链明细无法生成内容指纹，本次请求绕过缓存：%s", exc)
+                self.logger.warning("关键链明细无法编码为规范内容，本次请求绕过缓存：%s", exc)
             return None
 
     def _critical_chain_cache_key(
-        self, version: int, *, plan_resolution: Dict[str, Any], fingerprint: str
+        self, version: int, *, plan_resolution: Dict[str, Any], content: str
     ) -> Tuple[Any, ...]:
         return (
             self._database_scope(),
@@ -110,7 +110,7 @@ class GanttCriticalChainProvider:
             str(plan_resolution.get("source_table") or "schedule"),
             int(plan_resolution.get("candidate_id") or 0),
             str(plan_resolution.get("scenario_id") or ""),
-            fingerprint,
+            content,
         )
 
     @staticmethod
@@ -147,12 +147,22 @@ class GanttCriticalChainProvider:
     ) -> CriticalChainSnapshot:
         if selected_plan_role(plan_resolution) == ROLE_ADOPTED and plan_resolution.get("source_table") == SOURCE_SCHEDULE:
             rows = self.schedule_repo.list_by_version_with_details(int(version))
+            # Assign on this same full-source snapshot. A fresh resolver keeps
+            # the provider's content refresh independent of request-local IDs.
+            rows = SchedulePlanQueryService(self.conn, logger=self.logger)._with_task_ids(
+                rows, version=int(version), source_table=SOURCE_SCHEDULE,
+                candidate_id=None, scenario_id=None, complete_rows=rows,
+                effective_plan_role=ROLE_ADOPTED,
+                plan_ref=plan_resolution.get("plan_ref"),
+            )
         else:
             plan_query = self._get_plan_query_service(plan_query_service)
             query_kwargs = {
                 "version": int(version),
                 "source_table": str(plan_resolution.get("source_table") or "schedule"),
                 "candidate_id": plan_resolution.get("candidate_id"),
+                "effective_plan_role": selected_plan_role(plan_resolution),
+                "plan_ref": plan_resolution.get("plan_ref"),
             }
             if plan_resolution.get("scenario_id"):
                 query_kwargs["scenario_id"] = plan_resolution.get("scenario_id")
@@ -207,10 +217,10 @@ class GanttCriticalChainProvider:
             unavailable = _normalize_critical_chain_result({"available": False, "reason": reason})
             unavailable["cache_hit"] = False
             return unavailable
-        fingerprint = self._plan_rows_fingerprint(snapshot)
+        content = self._plan_rows_content(snapshot)
         key: Optional[Tuple[Any, ...]] = None
-        if fingerprint is not None:
-            key = self._critical_chain_cache_key(version, plan_resolution=plan_resolution, fingerprint=fingerprint)
+        if content is not None:
+            key = self._critical_chain_cache_key(version, plan_resolution=plan_resolution, content=content)
             _, hit = self._lookup_cached_critical_chain(key)
             if hit is not None:
                 return hit

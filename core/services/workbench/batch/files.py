@@ -1,7 +1,5 @@
 """Preview-first batch file service, reusing existing batch validators and CRUD."""
 
-import hashlib
-
 from core.errors import ValidationError
 from core.models.workbench_batch_file import COLUMNS
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
@@ -34,7 +32,7 @@ class WorkbenchBatchFileService:
         rows = [preview.row(row) for row in parsed]
         deleted = preview.deleted()
         can_confirm = not any(row["errors"] for row in rows + deleted)
-        return {"operation": "batch.import_confirm", "mode": mode, "file_sha256": hashlib.sha256(content).hexdigest(),
+        return {"operation": "batch.import_confirm", "mode": mode,
                 "rows": rows, "deleted": deleted, "count": len(rows), "commit_policy": "atomic", "can_confirm": can_confirm,
                 "auto_generate_operations": False, "warnings": warnings}
 
@@ -57,7 +55,7 @@ class WorkbenchBatchFileService:
         changed = bool(document["deleted"]) or any(row["result"] == "committed" for row in outcomes)
         return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"items": outcomes, "count": len(outcomes),
             "deleted_count": len(document["deleted"]), "deleted_refs": [row["entity_ref"] for row in document["deleted"]],
-            "mode": document["mode"], "file_sha256": document["file_sha256"], "commit_policy": "atomic"}, document["warnings"])
+            "mode": document["mode"], "commit_policy": "atomic"}, document["warnings"])
 
     @staticmethod
     def export(entities):

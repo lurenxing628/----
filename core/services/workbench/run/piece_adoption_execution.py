@@ -6,6 +6,8 @@ all revisions, the whole official snapshot and unselected resource reservations.
 """
 
 from core.infrastructure.read_evidence import verified_read
+from core.models.content import same
+from core.services.scheduler.execution.execution_snapshot import execution_fact_values
 from core.services.scheduler.run.schedule_execution_guardrails import _collect_execution_guardrails
 from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_unselected_resource_overlap
 from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
@@ -42,9 +44,9 @@ def _execution_inputs(svc, prepared, scope, refs):
     ledger = ExecutionLedgerService(svc.conn)
     current = {item.operation_ref: item for item in ledger.project_operations(list(refs.values()))}
     supplied = restore_execution_projections([row["execution"] for row in prepared.dispositions])
-    if {item.operation_ref: _stable_projection(item) for item in supplied} != {
+    if not same({item.operation_ref: _stable_projection(item) for item in supplied}, {
         ref: _stable_projection(item) for ref, item in current.items()
-    }:
+    }):
         block("piece_execution_changed", "排产时读到的报工记录和现在的不一致，本次没有采用。请刷新现场记录后重新排产。")
     _quantities(scope, refs, current)
     return _current_protection(svc, prepared)
@@ -53,13 +55,15 @@ def _execution_inputs(svc, prepared, scope, refs):
 def _current_protection(svc, prepared):
     facts, fixed, completed, actual_seeds, revisions, snapshot = _collect_execution_guardrails(
         svc, prepared.operations, prev_version=prepared.prev_version)
-    if (prepared.execution_facts != facts or prepared.execution_fixed_op_ids != fixed
-            or prepared.execution_completed_op_ids != completed
-            or prepared.execution_guard_state_revisions != revisions
+    if (not same([[key, execution_fact_values(value)] for key, value in sorted(prepared.execution_facts.items())],
+                 [[key, execution_fact_values(value)] for key, value in sorted(facts.items())])
+            or not same(sorted(prepared.execution_fixed_op_ids), sorted(fixed))
+            or not same(sorted(prepared.execution_completed_op_ids), sorted(completed))
+            or not same(sorted(prepared.execution_guard_state_revisions.items()), sorted(revisions.items()))
             or prepared.execution_snapshot_revision != snapshot.revision
-            or list(prepared.execution_snapshot_op_ids) != list(snapshot.op_ids)
-            or prepared.execution_snapshot_op_count != snapshot.op_count
-            or prepared.execution_seed_results != actual_seeds):
+            or not same(list(prepared.execution_snapshot_op_ids), list(snapshot.op_ids))
+            or not same(prepared.execution_snapshot_op_count, snapshot.op_count)
+            or not same(prepared.execution_seed_results, actual_seeds)):
         block("piece_execution_protection_changed", "已开工工序的保护数据缺失或已过期，本次没有采用。请刷新后重新排产。")
     return facts, actual_seeds
 
@@ -73,7 +77,7 @@ def _protected_arrangements(svc, prepared, payload, actual_seeds):
     if len(seeds) != len(by_seed) or set(by_seed) != protected or not protected <= set(rows):
         block("piece_protected_seed_missing", "每道受保护工序都要保留原来的一条安排，现在对不上，本次没有采用。请回「执行排产」重新排一次。")
     for seed in seeds + actual_seeds:
-        if any(getattr(rows[seed["op_id"]], key) != seed[key] for key in _FIELDS):
+        if not same([getattr(rows[seed["op_id"]], key) for key in _FIELDS], [seed[key] for key in _FIELDS]):
             block("piece_protected_seed_changed", "已开工或沿用的工序时间、设备、人员被改动了，本次没有采用。请回「执行排产」重新排一次。")
     derived = {seed["op_id"] for seed in seeds if seed.get("seed_source") == MERGED_EXECUTION_GROUP_SOURCE}
     _original_arrangements(svc, prepared, rows, actual, protected, derived)
@@ -108,9 +112,9 @@ def _original_arrangements(svc, prepared, rows, actual, protected, derived):
             continue
         old = official.get_schedule_row(identity["schedule_id"])
         row = rows[op_id]
-        if old is None or (row.start_time, row.end_time, row.machine_id, row.operator_id) != (
+        if old is None or not same((row.start_time, row.end_time, row.machine_id, row.operator_id), (
                 svc._normalize_datetime(old["start_time"]), svc._normalize_datetime(old["end_time"]),
-                old["machine_id"], old["operator_id"]):
+                old["machine_id"], old["operator_id"])):
             block("piece_held_arrangement_changed", "保持原安排的工序的时间、设备或人员和原正式计划不一致，本次没有采用。请回「执行排产」重新排一次。")
     if protected - actual - derived - set(latest):
         block("piece_held_arrangement_missing", "有保持原安排的工序在原正式计划里找不到安排，本次没有采用。请刷新后重新排产。")

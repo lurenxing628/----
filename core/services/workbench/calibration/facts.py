@@ -7,7 +7,7 @@ and size limits are ruled on here before anything is projected.
 from contextlib import contextmanager
 
 from core.models.workbench_calibration import MAX_OPERATIONS, MAX_TEMPLATES, CalibrationTemplate
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import MAX_FACT_ROWS, public_ref
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
@@ -82,11 +82,11 @@ class CalibrationFacts:
         refs = [row["operation_ref"] for row in instances]
         facts = self.ledger.load(refs)
         lineage = self.lineage.read(refs)
-        fingerprint = input_fingerprint(plain_plan_facts({"templates": [row.to_dict() for row in templates],
+        content = plain_plan_facts({"templates": [row.to_dict() for row in templates],
             "instances": instances, "lineage": {key: value for key, value in lineage.items() if key != "lineages"},
-            "execution": {**facts, "unresolved": sorted(facts["unresolved"])}}))
-        snapshot = bind_snapshot(fingerprint) if bind_snapshot is not None else None
+            "execution": {**facts, "unresolved": sorted(facts["unresolved"])}})
+        snapshot = bind_snapshot(content) if bind_snapshot is not None else None
         validate_report_histories(facts, read_report_heads(self.repo, refs), self.as_of)
         projections = {row.operation_ref: row for row in self.ledger.project_loaded(facts, contexts=False)}
         result = project_lineage_calibration(templates, instances, projections, lineage, as_of=self.as_of)
-        return {**result, "fingerprint": fingerprint, "snapshot": snapshot}
+        return {**result, "content": content, "snapshot": snapshot}

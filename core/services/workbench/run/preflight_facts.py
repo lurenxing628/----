@@ -1,6 +1,5 @@
-"""Raw SQLite facts and a complete, streaming read-snapshot fingerprint."""
+"""Raw SQLite facts and complete content bound to an in-process read snapshot."""
 
-import hashlib
 import json
 from contextlib import contextmanager
 
@@ -8,6 +7,7 @@ from core.infrastructure.schema_probe import schema_objects, table_columns
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_ACTION, SCHEDULING_PREFERENCES_KEY
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES, WorkbenchPreflightFactsRepository
@@ -62,24 +62,16 @@ def _no_change_outcome(text):
     return type(outcome) is dict and outcome.get("result") == "unchanged"
 
 
-def full_facts_fingerprint(conn):
+def full_facts_content(conn):
     # Includes unselected execution/resources/calendars and all ledger revisions,
     # with the run worker's non-input exclusions except the run ledger itself.
-    digest = hashlib.sha256()
     schema = schema_objects(conn)
     repo = WorkbenchPreflightFactsRepository(conn)
     receipt_columns = table_columns(conn, "WorkbenchCommandReceipts")
-    digest.update(repr([tuple(row) for row in schema]).encode("utf-8"))
-    for row in schema:
-        if row[0] != "table" or row[1] in _PREFLIGHT_NON_INPUT_TABLES:
-            continue
-        digest.update(row[1].encode("utf-8"))
-        for fact in repo.read_whole_table(row[1]):
-            if non_input_row(row[1], fact, receipt_columns, skip_runs=False):
-                continue
-            encoded = repr(fact).encode("utf-8")
-            digest.update(str(len(encoded)).encode("ascii") + b":" + encoded)
-    return digest.hexdigest()
+    tables = {row[1]: [list(fact) for fact in repo.read_whole_table(row[1])
+                      if not non_input_row(row[1], fact, receipt_columns, skip_runs=False)]
+              for row in schema if row[0] == "table" and row[1] not in _PREFLIGHT_NON_INPUT_TABLES}
+    return content_text({"schema": [list(row) for row in schema], "tables": tables})
 
 
 class PreflightFacts:
@@ -97,7 +89,7 @@ class PreflightFacts:
             self.refs = {(row["kind"], row["entity_key"]): row["ref"] for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
             self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
                                    if row["kind"] == "operation" and row["active"]}
-            yield full_facts_fingerprint(self.conn) if fingerprint else ""
+            yield full_facts_content(self.conn) if fingerprint else ""
 
     def selected(self, refs):
         identities = {ref: key for (kind, key), ref in self.refs.items() if kind == "batch"}

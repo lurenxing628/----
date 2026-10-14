@@ -40,6 +40,21 @@ def test_baseline_candidate_starts_from_every_rule_and_the_rule_neighborhood_rea
     neighborhood = baseline.search_report["neighborhood_summary"]["sgs_dispatch_rule"]
     assert neighborhood["effective"] > 0
     assert neighborhood["noop"] < neighborhood["attempted"]
+    attempts = [row for row in baseline.attempts if "score" in row]
+    assert attempts and len(attempts) <= 12
+    assert any(row["accepted"] is False for row in attempts)
+    assert any(row["source"] == "multi_start" for row in attempts)
+    for row in attempts:
+        assert isinstance(row["elapsed_ms"], int) and row["elapsed_ms"] >= 0
+        assert isinstance(row["accepted"], bool) and row["verified"] is True
+        comparison = row["comparison"]
+        if comparison["state"] == "comparable":
+            assert row["strict_improved"] == (row["score"] < comparison["reference_score"])
+            delta = comparison["metric_deltas"]["total_tardiness_hours"]
+            assert abs(delta - (row["metrics"]["total_tardiness_hours"]
+                               - comparison["reference_metrics"]["total_tardiness_hours"])) < 0.0001
+        else:
+            assert row["strict_improved"] is None and comparison["metric_deltas"] is None
 
 
 def test_adopted_rule_is_reported_and_may_differ_from_the_configured_rule(shift_pool_outcome):

@@ -23,4 +23,6 @@ def prepare_trial_adoption_input(conn, settings, projections, live, hold=None):
     raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
     operations = [operation_model(row) for row in raw_ops]
     projected = _projection_map(projections, [facts.operation_ref(row) for row in raw_ops])
-    return _prepare(conn, settings, facts, live["facts_hash"], raw_batches, batches, operations, projected, hold=hold)
+    # Adoption validates in this caller-owned read transaction; it does not
+    # hand this prepared input to an independent calculation.
+    return _prepare(conn, settings, facts, "", raw_batches, batches, operations, projected, hold=hold)

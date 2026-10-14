@@ -23,7 +23,8 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from typing import OrderedDict as OrderedDictType
 
-from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpoint, decode_output_digest
+from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpoint, decode_output_contents
+from core.algorithms.greedy.dispatch.sgs_checkpoint_inputs import input_value
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
@@ -60,8 +61,8 @@ from .repair_decisions import RepairDecision
 from .reporting import append_graph_attempt, record_rejected_attempt
 from .v2_contract import is_graph_ready_v2_contract_error
 
-# Decoded candidates kept for feature extraction; older ones are dropped (memory bound).
-_CANDIDATE_CACHE_SIZE = 32
+# Pending output contents share one complete decode's row budget and a bounded LRU.
+_PENDING_OUTPUT_CACHE_SIZE = 32
 _STOP_BY_BUDGET = ("time_budget", "decode_budget", "decode_would_overrun")
 _FAILED = ((), False)
 # Helpers reachable through this module for existing callers and tests.
@@ -124,11 +125,10 @@ class _IteratedGreedySearch:
         self.scale = TemperatureScale()
         self.solution_pool = SolutionPool(limits.pool_size)
         self.scores: Dict[Tuple[int, ...], Tuple[Tuple[float, ...], bool]] = {}
-        # Output digests of resumed trial decodes, consumed by the full decode of the same order.
-        self.digests: Dict[Tuple[int, ...], Tuple[str, Tuple[float, ...]]] = {}
         self.scored_decodes = 0
         # Annotate with typing.OrderedDict: subscripting collections.OrderedDict needs Python 3.9 (PEP 585).
-        self.candidates: OrderedDictType[Tuple[int, ...], Dict[str, Any]] = OrderedDict()
+        self.pending_outputs: OrderedDictType[Tuple[int, ...], Tuple[Any, Any, int]] = OrderedDict()
+        self.pending_output_rows = 0
         self.decoded_entries: OrderedDictType[Tuple[int, ...], PoolEntry] = OrderedDict()
         self.decode_seconds: List[float] = []
         self.incumbent = IGIncumbentTracker(pool=pool, report_state=report_state, report=report, seed=seed,
@@ -193,8 +193,8 @@ class _IteratedGreedySearch:
         self.parent, self.profile = parent, effective
         if before != after:
             self.scores.clear()
-            self.digests.clear()
-            self.candidates.clear()
+            self.pending_outputs.clear()
+            self.pending_output_rows = 0
             self.decoded_entries.clear()
             if count_switch:
                 self.report["context_switches"] += 1
@@ -264,9 +264,8 @@ class _IteratedGreedySearch:
         scored = (tuple(candidate["score"]), _feasible(candidate))
         self.scores[order] = scored
         self.scored_decodes += 1
-        self._remember(order, candidate)
         if resume is not None:
-            self.digests[order] = (decode_output_digest(candidate["results"], candidate["summary"]), tuple(candidate["score"]))
+            self._remember_output(order, candidate)
             if _feasible(candidate) and (self.best is None or tuple(candidate["score"]) < tuple(self.best["score"])):
                 self.report["validation_decodes"] += 1
                 verified = self._decode_entry(order)
@@ -285,11 +284,11 @@ class _IteratedGreedySearch:
             self.decoded_entries.move_to_end(order)
             self.report["duplicate_decision_pruned"] += 1
             return known
-        recapture = order in self.scores and order not in self.digests
+        recapture = order in self.scores and order not in self.pending_outputs
         request, captured = self.checkpoints.request_for(len(order))
         candidate = self._decode(order, checkpoints=request)
         if candidate is None:
-            if order in self.digests:
+            if self._take_output(order) is not None:
                 self._equivalence_violation()
             self.scores[order] = _FAILED
             return None
@@ -299,7 +298,6 @@ class _IteratedGreedySearch:
         score = tuple(candidate["score"])
         self.scores[order] = (score, feasible)
         self.scored_decodes += 1
-        self._remember(order, candidate)
         if not feasible:
             return None
         # A capture refused mid-decode disables checkpoints; its partial snapshots are not a resumable set.
@@ -317,11 +315,26 @@ class _IteratedGreedySearch:
                               field="graph_ready_iterated_greedy",
                               details={"reason": "decode_checkpoint_equivalence_violation"})
 
-    def _remember(self, order: Tuple[int, ...], candidate: Dict[str, Any]) -> None:
-        self.candidates[order] = candidate
-        self.candidates.move_to_end(order)
-        while len(self.candidates) > _CANDIDATE_CACHE_SIZE:
-            self.candidates.popitem(last=False)
+    def _remember_output(self, order: Tuple[int, ...], candidate: Dict[str, Any]) -> None:
+        previous = self.pending_outputs.pop(order, None)
+        if previous is not None:
+            self.pending_output_rows -= previous[2]
+        row_count = len(candidate["results"])
+        # Release old contents before freezing a new complete output.
+        while len(self.pending_outputs) >= _PENDING_OUTPUT_CACHE_SIZE or self.pending_output_rows:
+            self._take_output(next(iter(self.pending_outputs)))
+        self.pending_outputs[order] = (
+            decode_output_contents(candidate["results"], candidate["summary"]),
+            input_value(tuple(candidate["score"]), field="decode_output.score"), row_count,
+        )
+        self.pending_output_rows += row_count
+
+    def _take_output(self, order: Tuple[int, ...]) -> Optional[Tuple[Any, Any, int]]:
+        expected = self.pending_outputs.pop(order, None)
+        if expected is not None:
+            self.pending_output_rows -= expected[2]
+            self.scores.pop(order, None)
+        return expected
 
     def _decode(self, order: Tuple[int, ...], *, resume: Optional[DecodeCheckpoint] = None,
                 checkpoints: Optional[Any] = None) -> Optional[Dict[str, Any]]:
@@ -355,15 +368,19 @@ class _IteratedGreedySearch:
         self.decode_seconds.append(max(self.clock() - decode_started, 0.0))
         self.report["mean_decode_ms"] = sum(self.decode_seconds) * 1000.0 / len(self.decode_seconds)
         self.checkpoints.note_decode(len(order), resumed_from=resume)
-        append_graph_attempt(attempts=self.attempts, candidate=candidate, profile=self.profile)
         if resume is not None:
+            reference = self.incumbent.best
             self.incumbent.observe_trial(candidate)
+            append_graph_attempt(attempts=self.attempts, candidate=candidate, profile=self.profile, reference=reference,
+                                 accepted=False, search_report_state=self.incumbent.report_state,
+                                 clock=self.clock, t_begin=self.t_begin, verified=False)
         else:
-            expected = self.digests.pop(order, None)
+            expected = self._take_output(order)
             if expected is not None:
                 self.checkpoints.equivalence_checks += 1
-                actual = (decode_output_digest(candidate["results"], candidate["summary"]), tuple(candidate["score"]))
-                if actual != expected:
+                actual = (decode_output_contents(candidate["results"], candidate["summary"]),
+                          input_value(tuple(candidate["score"]), field="decode_output.score"))
+                if actual != expected[:2]:
                     self._equivalence_violation()
             self._consider_for_incumbent(candidate)
         return candidate
@@ -377,7 +394,12 @@ class _IteratedGreedySearch:
         self.report["decodes"] += 1
 
     def _consider_for_incumbent(self, candidate: Dict[str, Any]) -> None:
-        improved = self.incumbent.consider(candidate, profile=self.profile, capture_of=self.capturing)
+        def record_decision(reference, accepted, comparison_kind):
+            append_graph_attempt(attempts=self.attempts, candidate=candidate, profile=self.profile, reference=reference,
+                                 accepted=accepted, search_report_state=self.incumbent.report_state,
+                                 clock=self.clock, t_begin=self.t_begin, comparison_kind=comparison_kind)
+        improved = self.incumbent.consider(candidate, profile=self.profile, capture_of=self.capturing,
+                                          on_decision=record_decision)
         self.improved_incumbent = improved or self.improved_incumbent
 
     def _reject(self, reason: str, *, record: bool = True) -> None:

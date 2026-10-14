@@ -71,7 +71,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     assert rows[3].start_time < next(row.start_time for row in same_resource["results"] if row.op_id == 3)
     assert (operations, context, pool, seed) == original
     first = build_candidate_fingerprint(same_resource, objective_name="min_overdue", parent_fingerprint=None, seen_output_fingerprints=[])
-    second = build_candidate_fingerprint(alternative, objective_name="min_overdue", parent_fingerprint=first.output_fingerprint,
-                                         seen_output_fingerprints=[first.output_fingerprint])
-    assert second.decision_fingerprint != first.decision_fingerprint
+    second = build_candidate_fingerprint(alternative, objective_name="min_overdue", parent_fingerprint=first,
+                                         seen_output_fingerprints=[first.output_key])
+    assert second.output_key != first.output_key
     assert second.fingerprint_changed and not second.same_as_seen

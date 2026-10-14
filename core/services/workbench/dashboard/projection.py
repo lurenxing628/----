@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+from core.models.enums import DueState
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
 from core.services.workbench.facts.preflight_checks import PreflightChecks, number, stored_date
@@ -37,7 +38,8 @@ def _delivery_sources(facts):
     return {key: {"batch": batches.get(key), "tasks": by_batch[key], "operations": operations[key],
                   "schedule_rows": schedule_rows[key], "batch_identity": batch_identities[key],
                   "plan_identity": facts.delivery_facts["identity"],
-                  "completion_record": facts.delivery_facts["completion_record"]} for key in by_batch}
+                  "completion_record": facts.delivery_facts["completion_record"]} for key in
+            (row["batch_id"] for row in facts.delivery["items"])}
 
 
 def delivery(facts):
@@ -46,14 +48,19 @@ def delivery(facts):
     items, sources = [], _delivery_sources(facts)
     for row in facts.delivery["items"]:
         active = row["is_overdue"]
+        unspecified = row["due_state"] == DueState.UNSPECIFIED.value
         source = {"kind": "planned_delivery", "batch_ref": row["batch_ref"], "plan_ref": facts.plan["plan_ref"],
                   "evaluation": row, "time_basis": "factory_local", "due_boundary": "next_day_exclusive"}
         items.append(observation("delivery", row["batch_ref"], row["batch_id"] + " · " + (row["part_label"] or "未填写名称"),
-                                 source, active, "planned_overdue" if active else "delivery_unknown" if active is None else "on_time",
-                                 "正式计划预计超期。" if active else "交期或排产数据不够，还判断不了。" if active is None else "正式计划预计按期完成。",
+                                 source, active, "due_not_applicable" if unspecified else "planned_overdue" if active else "delivery_unknown" if active is None else "on_time",
+                                 "未指定交期，交期评价不适用。" if unspecified else "正式计划预计超期。" if active else "交期或排产数据不够，还判断不了。" if active is None else "正式计划预计按期完成。",
                                  sources[row["batch_id"]]))
-    unknown = sum(row["risk"]["active"] is None for row in items)
-    return items, category("loaded" if items else "no_data", assessed=len(items) - unknown, unknown=unknown)
+    summary = facts.delivery["summary"]
+    state = "not_applicable" if items and summary["state"] == "not_applicable" else "loaded" if items else "no_data"
+    result = category(state, assessed=summary["known_due_count"], unknown=summary["unknown_due_count"])
+    for key in ("due_eligible_count", "excluded_due_count", "invalid_due_count", "due_evaluation_count"):
+        result[key] = summary[key]
+    return items, result
 
 
 class _MaterialChecks(PreflightChecks):

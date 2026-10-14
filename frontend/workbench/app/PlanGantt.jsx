@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const M = window.PlanGanttModel, V = window.GanttPresentation, { Button, Icon, TimelineZoom, timelineZoomKey } = window.ResourceControls;
+  const M = window.PlanGanttModel, F = window.WorkbenchFormat, V = window.GanttPresentation, { Button, Icon, TimelineZoom, timelineZoomKey } = window.ResourceControls;
   const ZOOM_MAX = 1024;
   const { DenseRow, Overview } = window.PlanGanttCanvas;
   function Segment({ value, options, onChange, label, disabled = false }) {
@@ -20,7 +20,7 @@
           <td>{chunk * 10 + index + 1}{baseline && <small>原</small>}</td>
           <td>{task.batch_id}<small>{M.pieceLabel(task)}</small></td>
           <td>{task.sequence} {task.process_label}{window.PointContract.isPoint(task) && <small>零工时工序</small>}</td>
-          <td>{M.timeLabel(task.start)}<small>{M.timeLabel(task.end)}</small></td>
+          <td>{F.compactDateTime(task.start)}<small>{F.compactDateTime(task.end)}</small></td>
           <td>{M.resourceLabel(task, 'machine', labels)}<small>{M.resourceLabel(task, 'operator', labels)}</small></td>
         </tr>)}</tbody></table>)}
     </section>;
@@ -68,8 +68,8 @@
         : <div>原安排：{baseline.reason}</div>}
     </div>;
   }
-  function PlanGantt({ data, asOf, selected, onSelect, query, onQuery, disabled = false }) {
-    const [mode, setMode] = React.useState('machine'), [baseline, setBaseline] = React.useState(false), [zoom, setZoom] = React.useState(1);
+  function PlanGantt({ data, asOf, selected, onSelect, query, onQuery, disabled = false, toolbarActions, initialMode }) {
+    const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'), [baseline, setBaseline] = React.useState(false), [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false), { expanded, toggle } = window.GanttPresentationUI.useExpanded();
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
     const [chainEnabled, setChainEnabled] = React.useState(false);
@@ -97,7 +97,7 @@
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const axis = V.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport }), ticks = axis.ticks;
-    const today = M.instant(asOf.slice(0, 10) + 'T00:00:00'), now = M.instant(asOf);
+    const refreshedAt = M.instant(asOf);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
     const axisLeft = at => printing ? timeX(at) / width * 100 + '%' : timeX(at);
     const visibleRows = printing ? model.rows : M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
@@ -178,10 +178,10 @@
           <Button icon="search" className="btn plan-icon" aria-label="定位选中任务" title="定位选中任务 (L)" disabled={!(selected && selected.before ? model.baselineLocations : model.locations).has(selectedRef)} onClick={() => locate()} />
           <Button icon={expanded ? 'x' : 'chart-gantt'} className="btn" aria-label={expanded ? '收起甘特' : '展开甘特'} title={expanded ? '返回完整工作区' : '展开甘特工作区'}
             aria-expanded={expanded} disabled={disabled} onClick={toggle}>{expanded ? '收起' : '展开'}</Button>
+          {toolbarActions}
         </div>
       </div>
       <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} onClear={() => { setHover(null); onSelect(null); }} disabled={disabled} />
-      <Source data={data} />
       <div className="plan-board-frame">
         {!printing && width > viewport && <Overview model={model} tasks={data.tasks} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />}
         <div ref={board} className="plan-board" data-plan-scroll data-wb-scroll-key="plan-board" tabIndex={0} aria-label={M.kindLabels[mode] + '甘特时间轴'} onScroll={() => {
@@ -193,8 +193,8 @@
             {visibleRows.map(row => {
               const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
               const meta = row.before ? '原安排' : [row.code, row.tasks.length + ' 道工序', row.point ? '零工时节点 · 不占资源' : row.trackCount > 1 ? '重叠子行 ' + row.subrow + '/' + row.trackCount : null].filter(Boolean).join(' · ');
-              const summary = row.occupancy ? '计划占用 ' + window.WorkbenchFormat.hours(row.occupancy.occupied_hours, { digits: 1, trim: true })
-                + (row.occupancy.utilization === null ? '' : ' · ' + window.WorkbenchFormat.percent(row.occupancy.utilization, { digits: 0 })) : '';
+              const summary = row.occupancy ? '全时段已占 ' + F.hours(row.occupancy.occupied_hours, { digits: 1, trim: true })
+                + (row.occupancy.utilization === null ? '' : ' · 班内占用 ' + F.percent(row.occupancy.utilization, { digits: 0 })) : '';
               return <div key={row.key} className={'plan-lane' + (row.before ? ' baseline' : '')} data-gantt-row-kind={row.before ? 'original' : row.point ? 'point' : row.trackCount > 1 ? 'overlap' : 'current'} data-gantt-subrow={row.subrow} style={{ top: row.top + 52, height: row.height, width: labelWidth + width }}>
                 <div className="plan-resource" title={[row.label, meta, summary, row.overlap ? '同一组存在同时进行的安排，已上下分行' : null].filter(Boolean).join(' · ')}>{row.before
                   ? <small className="plan-resource-meta">{row.tasks.length ? '原安排' : row.label + ' · 原安排'}</small>
@@ -207,19 +207,19 @@
               </div>;
             })}
             {!printing && <window.GanttGraphLayer.Lines geometry={geometry} width={width} height={model.height} labelWidth={labelWidth} top={52} />}
-            {[['today', today, '今日零点（按数据日期）'], ['as-of', now, '数据时点']].filter(([, at]) => at >= model.start && at <= model.end).map(([kind, at, label]) =>
-              <i key={kind} className={'plan-time-line ' + kind} data-plan-time-line={kind} data-time-value={M.wire(at)} aria-label={label + ' ' + M.timeLabel(M.wire(at))} title={label + ' ' + M.timeLabel(M.wire(at))}
-                style={{ left: printing ? 'calc(' + labelWidth * (1 - timeX(at) / width) + 'px + ' + axisLeft(at) + ')' : labelWidth + timeX(at), top: 52, height: model.height }} />)}
+            {refreshedAt >= model.start && refreshedAt <= model.end && <i className="plan-time-line as-of" data-plan-time-line="as-of" data-time-value={asOf} role="img" tabIndex={0}
+              aria-label={'本次刷新时间 ' + F.compactDateTime(asOf)} title={'本次刷新时间 ' + F.compactDateTime(asOf)}
+              style={{ left: printing ? 'calc(' + labelWidth * (1 - timeX(refreshedAt) / width) + 'px + ' + axisLeft(refreshedAt) + ')' : labelWidth + timeX(refreshedAt), top: 52, height: model.height }} />}
             {!model.rows.length && <div style={{ position: 'sticky', left: 0, width: position.width }}><window.WorkbenchControls.EmptyState kind={query || displayChangedOnly ? 'filtered' : 'empty'} title={displayChangedOnly ? '当前范围没有匹配的变更安排。' : query ? '没有匹配安排，完整计划的时间范围保持不变。' : '该读取范围没有安排。'}
               action={query || displayChangedOnly ? <Button onClick={() => { onQuery(''); setChangedOnly(false); }}>清除筛选</Button> : undefined} /></div>}
           </div>
         </div>
-        <div className="plan-footer"><span data-plan-search-count>{model.tasks.length} / {data.task_count} 道安排</span>
+        <div className="plan-footer">{(query.trim() || displayChangedOnly) && <span data-plan-search-count>匹配 {model.tasks.length} / {data.task_count} 道安排</span>}
           <span className="plan-legend"><i className="plan-swatch" />计划安排</span>
           <span className="plan-legend"><i className="wb-gantt-status-dot" />预计按期</span>
           <span className="plan-legend"><i className="plan-swatch critical" />预计超期</span><span className="plan-legend"><i className="plan-swatch conflict" />资源冲突</span>
-          <span className="plan-legend"><i className="plan-swatch before" />原安排</span><span className="plan-legend"><i className="plan-swatch point" />零工时工序</span>
-          <span className="plan-legend"><i className="plan-swatch today" />今日 / 数据时点</span>
+          {displayBaseline && <span className="plan-legend"><i className="plan-swatch before" />原安排</span>}<span className="plan-legend"><i className="plan-swatch point" />零工时工序</span>
+          <span className="plan-legend" title={'本次刷新时间 ' + F.compactDateTime(asOf)}><i className="plan-swatch as-of" />本次刷新时间</span>
           <span className="plan-actions"><Button className="btn plan-icon" icon="chevron-left" aria-label="上一匹配任务" disabled={currentIndex <= 0} onClick={() => move(-1)} />
             <span>{currentIndex < 0 ? '未选任务' : '第 ' + (currentIndex + 1) + ' 道匹配'}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="下一匹配任务" disabled={!model.tasks.length || currentIndex >= model.tasks.length - 1} onClick={() => move(1)} /></span>
         </div>
@@ -230,5 +230,6 @@
     </div>;
   }
   window.PlanGantt = PlanGantt;
+  window.PlanGanttSource = Source;
   window.PlanSegmentUI = Segment;
 })();

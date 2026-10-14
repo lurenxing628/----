@@ -12,7 +12,6 @@ from core.infrastructure.backup import MaintenanceWindowError
 from core.models.workbench_command import (
     WorkbenchCommandRejected,
     canonical_json,
-    input_fingerprint,
     validate_request_key,
 )
 from core.models.workbench_system import object_fields
@@ -50,7 +49,9 @@ def system_endpoint(function):
 
 
 def database_scope():
-    return input_fingerprint(os.path.normcase(os.path.realpath(current_app.config["DATABASE_PATH"])))
+    if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"):
+        return journal().database_scope
+    return os.path.normcase(os.path.realpath(current_app.config["DATABASE_PATH"]))
 
 
 def issue_context(kind, value):

@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
@@ -65,7 +65,7 @@ class WorkbenchMaterialQueryService:
                 self._table_indexes = previous
 
     def state_fingerprint(self):
-        return input_fingerprint({"state": self.repo.snapshot_state(), "rows": self.repo.table_rows()})
+        return {"state": self.repo.snapshot_state(), "rows": self.repo.table_rows()}
 
     def metrics(self, query: MaterialPageRequest):
         if query.column_filters:
@@ -115,7 +115,7 @@ class WorkbenchMaterialQueryService:
         return records, page
 
     def table_index(self, query):
-        key = input_fingerprint(toolbar_scope(query))
+        key = tuple(toolbar_scope(query).items())
         cache = self._table_indexes if self._table_indexes is not None else {}
         if key not in cache:
             cache[key] = material_table_index(self.repo.table_rows(query.query, query.status), _project)

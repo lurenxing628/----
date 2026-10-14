@@ -8,7 +8,7 @@ from core.models.workbench_run_candidate import reject
 
 
 def corrupt() -> NoReturn:
-    reject("candidate_artifact_invalid", "这次排产存下来的结果缺失或对不上，页面没有显示替代内容。请到「排产记录」核对。", 500)
+    reject("candidate_artifact_invalid", "这次排产保存的结果缺失或不一致，请到「排产记录」核对；仍有问题请联系维护人员。", 500)
 
 
 def _pairs(pairs):
@@ -38,7 +38,7 @@ def stored_json(value, expected: Type[Any] = dict) -> Any:
 
 def gap(field, code="not_recorded"):
     texts = {"not_recorded": "排产时没有记下这一项。", "invalid_stored_value": "排产时记下的这一项格式不对。",
-             "blob_metadata": "排产时这一项存的是二进制内容，系统不猜着解读。",
+             "blob_metadata": "排产时这一项的记录格式无法显示，请联系维护人员核对。",
              "source_missing": "排产时的原始记录已不存在。",
              "undefined_metric": "排产时未计算此指标。"}
     return {"field": field, "code": code, "message": texts[code]}
@@ -69,4 +69,4 @@ def bounded_size(size, limit):
     if type(size) is not int or size < 0:
         corrupt()
     if size > limit:
-        reject("candidate_capacity_exceeded", "这次排产的记录太多，一次读不完，页面没有显示，也没有换成当前数据。请缩小查询范围后重试。", 413)
+        reject("candidate_capacity_exceeded", "这次排产的记录超过单次读取上限，请缩小查询范围后重试。", 413)

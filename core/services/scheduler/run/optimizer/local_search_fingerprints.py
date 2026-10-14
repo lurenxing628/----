@@ -13,30 +13,34 @@ class LocalSearchFingerprintTracker:
     def __init__(self, *, objective_name: str, initial_best: Dict[str, Any],
                  initial_fingerprint: Optional[CandidateFingerprint] = None) -> None:
         self.objective_name = str(objective_name)
-        self.best_output_fingerprint: Optional[str] = None
-        self.seen_output_fingerprints: Set[str] = set()
+        self.best_identity: Optional[CandidateFingerprint] = None
+        self._candidate_sequence = 1
+        self.seen_output_fingerprints: Set[Tuple[Any, ...]] = set()
         initial = build_candidate_fingerprint(
             initial_best,
             objective_name=self.objective_name,
             parent_fingerprint=None,
             seen_output_fingerprints=set(),
             identity=initial_fingerprint,
+            candidate_id=self._candidate_sequence,
         )
-        self.best_output_fingerprint = initial.output_fingerprint
-        self.seen_output_fingerprints.add(initial.output_fingerprint)
+        self.best_identity = initial
+        self.seen_output_fingerprints.add(initial.output_key)
 
     def mark_evaluated(self, candidate: Dict[str, Any]) -> CandidateFingerprint:
+        self._candidate_sequence += 1
         fingerprint = build_candidate_fingerprint(
             candidate,
             objective_name=self.objective_name,
-            parent_fingerprint=self.best_output_fingerprint,
+            parent_fingerprint=self.best_identity,
             seen_output_fingerprints=self.seen_output_fingerprints,
+            candidate_id=self._candidate_sequence,
         )
-        self.seen_output_fingerprints.add(fingerprint.output_fingerprint)
+        self.seen_output_fingerprints.add(fingerprint.output_key)
         return fingerprint
 
     def mark_best(self, fingerprint: CandidateFingerprint) -> None:
-        self.best_output_fingerprint = fingerprint.output_fingerprint
+        self.best_identity = fingerprint
 
 
 def local_candidate_fingerprint(

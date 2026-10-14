@@ -2,11 +2,10 @@
 
 from collections import defaultdict
 
-from core.models.workbench_command import input_fingerprint
-from core.models.workbench_run_history import local_datetime
+from core.models.workbench_run_history import TERMINAL_STATES, local_datetime
+from core.services.workbench.facts.run_history_projection import public_run
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 
-from .history_projection import public_run
 from .history_storage import RunHistoryStore
 
 
@@ -21,7 +20,11 @@ class WorkbenchRunHistoryQueryService:
             for row in candidates:
                 by_run[row["run_ref"]].append(row)
             rows = [public_run(job, by_run[job["run_ref"]]) for job in jobs]
-            fingerprint = input_fingerprint({"jobs": jobs, "candidates": candidates})
+            # Jobs are permanent, and every terminal job is immutable.
+            state = {"read_contract_version": 1, "run_count": len(jobs),
+                     "active_runs": [{key: row[key] for key in ("run_ref", "state", "stage")}
+                                     for row in sorted(jobs, key=lambda item: item["run_ref"])
+                                     if row["state"] not in TERMINAL_STATES]}
             filtered = [row for row in rows if _matches(row, scope)]
             dated = [row for row in filtered if row[scope.sort] is not None]
             undated = [row for row in filtered if row[scope.sort] is None]
@@ -35,7 +38,7 @@ class WorkbenchRunHistoryQueryService:
                     "run_count": len(rows), "state": scope.state, "sort": scope.sort, "order": scope.order,
                     "nulls": "last", "tie_breaker": "run_ref_same_order",
                     "time_scope": {"accepted_from": scope.accepted_from, "accepted_to": scope.accepted_to,
-                                   "field": "accepted_at", "boundary": "inclusive_dates", "time_basis": "factory_local"}}, fingerprint
+                                   "field": "accepted_at", "boundary": "inclusive_dates", "time_basis": "factory_local"}}, state
 
 
 def _matches(row, scope):

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.operation_effort import OperationEffort
 from core.errors import ValidationError
 from core.models import Batch, BatchOperation
 from core.models.enums import BatchStatus, ReadyStatus, SourceType, YesNo
@@ -13,6 +14,7 @@ from core.services.scheduler.execution.execution_fact_provider import ExecutionF
 from core.shared.boolean_normalize import normalize_yes_no_wide, to_yes_no
 from core.shared.number_utils import parse_finite_float
 
+from .operation_effort import build_operation_efforts
 from .schedule_execution_feedback_guard import ensure_execution_feedback_publishable
 from .schedule_execution_guardrails import (
     _collect_execution_guardrails,
@@ -67,6 +69,7 @@ class ScheduleRunInput:
     resource_pool: Any
     optimizer_seed_version: int
     run_time_budget_seconds: Optional[float] = None
+    operation_efforts: List[OperationEffort] = field(default_factory=list)
 
 
 def _normalized_status_text(value: Any) -> str:
@@ -381,6 +384,10 @@ def collect_schedule_run_input(
     ensure_execution_feedback_publishable(
         execution_facts, selected_op_ids={_op_id(op) for op in operations}, simulate=bool(simulate),
     )
+    operation_efforts = build_operation_efforts(
+        operations=operations, batches=batches, algo_operations=algo_ops, operations_to_schedule=algo_ops_to_schedule,
+        seed_results=seed_results, execution_facts=execution_facts,
+    )
 
     return ScheduleRunInput(
         normalized_batch_ids=normalized,
@@ -392,6 +399,7 @@ def collect_schedule_run_input(
         cal_svc=cal_svc,
         cfg_svc=cfg_svc,
         cfg=cfg,
+        operation_efforts=operation_efforts,
         readiness_gate_enabled=bool(enforce_ready_effective),
         batches=batches,
         operations=operations,

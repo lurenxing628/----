@@ -22,7 +22,7 @@ from core.services.workbench.calibration.template_lineage import TemplateLineage
 from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
-from tests.workbench.execution_ledger_support import NOW, LedgerCase
+from tests.workbench.execution_ledger_support import NOW, LedgerCase, install_current_content_storage
 
 
 class TemplateLineageCase(LedgerCase):
@@ -34,6 +34,7 @@ def ledger_fixture(tmp_path):
     conn = sqlite3.connect(str(tmp_path / "template-lineage.sqlite"))
     conn.row_factory = sqlite3.Row
     conn.executescript((Path(__file__).resolve().parent / "fixtures" / "schema-v26.sql").read_text(encoding="utf-8"))
+    install_current_content_storage(conn)
     # Main owns this frozen v26 fixture; unrelated current DDL cannot change the oracle.
     for name in reversed({**execution_ledger_objects(), **objects()}):
         row = conn.execute("SELECT type FROM sqlite_master WHERE name=?", (name,)).fetchone()

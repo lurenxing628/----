@@ -16,17 +16,17 @@ from core.services.workbench.facts.process_file_xml import preserve_carriage_ret
 from core.services.workbench.facts.table_cells import number_text
 
 HEADERS = (
-    "计划编号", "来源版本", "计划类型", "计划名称", "是否当前正式", "计划完整性", "数据版本", "读取时间",
+    "计划编号", "来源版本", "计划类型", "计划名称", "是否当前正式", "计划资料状态", "数据版本", "读取时间",
     "范围起点（含）", "范围终点（不含）", "时间计算方式", "任务编号", "工序编号", "批次编号", "工序号", "工序名称",
     "设备编号", "设备名称", "人员编号", "人员名称", "外协商编号", "外协商名称", "安排开始", "安排结束",
-    "交付风险", "计划完成", "部分计划完成", "交期", "交期截止（不含）", "超期小时", "超期天数", "交付完整性",
+    "交付风险", "预计完工", "已排部分预计结束", "交期", "交期截止（不含）", "超期小时", "超期天数", "工序安排",
 )
 
 # 导出单元格只写用户看得懂的中文，英文枚举值不外显。
 PLAN_KINDS = {"official": "正式计划", "candidate": "候选方案", "scenario": "试调方案"}
 PLAN_COMPLETENESS = {"complete": "记录完整", "partial": "部分记录", "invalid": "无效记录", "unknown": "暂无数据"}
 DELIVERY_RISKS = {"overdue": "预计超期", "on_time": "预计按期", "unknown": "暂无数据"}
-DELIVERY_COMPLETENESS = {"complete": "完整", "incomplete": "尚不完整", "unknown": "暂无数据"}
+DELIVERY_COMPLETENESS = {"complete": "工序已排齐", "incomplete": "有工序未安排", "unknown": "暂无数据"}
 
 
 def export_rows(data, snapshot):

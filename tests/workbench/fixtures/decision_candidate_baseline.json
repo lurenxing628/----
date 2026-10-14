@@ -1,0 +1,540 @@
+{
+  "source_note": "Read-only HTTP200 baseline and paired candidate workspace captured during stage-06-repair-01. Workspace retains only existing RunBaselineAPI.validate inputs; their saved values are unchanged.",
+  "baseline": {
+    "data": {
+      "baseline": {
+        "available": true,
+        "baseline_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+        "captured_at": "2026-10-13T16:29:28",
+        "captured_task_count": 15,
+        "comparison_available": false,
+        "kind": "admission_official",
+        "reason": {
+          "code": "no_comparable_operations",
+          "message": "这次范围里没有能核对并一一对应的安排。"
+        },
+        "version": 1
+      },
+      "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
+      "candidate": {
+        "blocked_reasons": [
+          {
+            "capability": "adopt",
+            "code": "candidate_adoption_preview_required",
+            "message": "正式采用前，请先检查完整候选方案。"
+          },
+          {
+            "capability": "edit_draft",
+            "code": "candidate_draft_not_connected",
+            "message": "调整候选方案需先新增试调草稿。"
+          },
+          {
+            "capability": "report_actual",
+            "code": "candidate_execution_write_not_connected",
+            "message": "正式采用方案后，才能按计划报工。"
+          }
+        ],
+        "candidate_ref": "5c49d2b6a3c6e1803490eb74657bc9c2be8e645044c98348",
+        "capabilities": {
+          "adopt": false,
+          "edit_draft": false,
+          "export": true,
+          "report_actual": false,
+          "view": true
+        },
+        "completeness": "partial",
+        "data_gaps": [],
+        "label": "重点工序优先方案 3/3",
+        "metric_scopes": {
+          "delivery": "completed_batches_only",
+          "resources": "scheduled_results_only"
+        },
+        "metrics": {
+          "changeover_count": {
+            "reason": null,
+            "value": 3
+          },
+          "elapsed_seconds": {
+            "reason": null,
+            "value": 3.793436374999999
+          },
+          "machine_busy_hours_total": {
+            "reason": null,
+            "value": 194.55
+          },
+          "machine_used_count": {
+            "reason": null,
+            "value": 6
+          },
+          "machine_util_avg": {
+            "reason": null,
+            "value": 0.222378437692888
+          },
+          "makespan_hours": {
+            "reason": null,
+            "value": 145.81
+          },
+          "operator_busy_hours_total": {
+            "reason": null,
+            "value": 194.55
+          },
+          "operator_used_count": {
+            "reason": null,
+            "value": 6
+          },
+          "operator_util_avg": {
+            "reason": null,
+            "value": 0.222378437692888
+          },
+          "overdue_count": {
+            "reason": null,
+            "value": 2
+          },
+          "total_tardiness_hours": {
+            "reason": null,
+            "value": 283.16
+          },
+          "weighted_tardiness_hours": {
+            "reason": null,
+            "value": 283.16
+          }
+        },
+        "persisted_status": "completed",
+        "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca",
+        "status": "partial",
+        "task_count": 31
+      },
+      "capabilities": {
+        "adopt": false,
+        "edit_draft": false,
+        "export": false,
+        "report_actual": false,
+        "view": true
+      },
+      "comparisons": [
+        {
+          "baseline_segments": [],
+          "batch_label": "DP-STAGE",
+          "batch_quantity": 1,
+          "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
+          "candidate": {
+            "data_gaps": [],
+            "effective_processing_hours": null,
+            "elapsed_hours": 0.5,
+            "end": "2026-10-13T13:45:00",
+            "locked": false,
+            "machine": {
+              "label": "准备验收分件设备",
+              "ref": "9b88e5dc2af0c4aaf4b13b4c3a9dc7dc8b31a419c65b6458"
+            },
+            "operator": {
+              "label": "准备验收人员 2",
+              "ref": "ddbae7d0ff5dd18ad1d7b095fb153df0bea5963689fe945e"
+            },
+            "row_ref": "d59f08ac2ea6b538fd39d5f4a587d1394fe66c1ad2920166",
+            "source": "internal",
+            "start": "2026-10-13T13:15:00",
+            "supplier": null
+          },
+          "candidate_operation_status": "scheduled",
+          "comparison_available": false,
+          "data_gaps": [],
+          "delta": {
+            "effective_processing_hours": null,
+            "elapsed_hours": null,
+            "end_hours": null,
+            "machine_changed": null,
+            "operator_changed": null,
+            "start_hours": null,
+            "supplier_changed": null
+          },
+          "due_date": "2026-10-16",
+          "execution_affected": false,
+          "execution_at_generation": {
+            "completion_basis": null,
+            "confirmed_finish": null,
+            "data_quality": "incomplete",
+            "execution_state": "unreported",
+            "first_actual_start": null,
+            "known_completed_quantity": 0,
+            "legacy_fact_count": 0,
+            "legacy_unavailable_field_count": 0,
+            "quantity_complete": false,
+            "records_complete": false,
+            "remaining_quantity": 1,
+            "report_count": 0,
+            "target_basis": "batch",
+            "target_quantity": 1,
+            "unknown_record_count": 0
+          },
+          "improvement_assessment": null,
+          "operation_ref": "b65b7b8646097ede4bcb639cf3cbfee9e1bce23277e0c488",
+          "part_label": "准备需求验收零件",
+          "piece_id": null,
+          "process_label": "准备验收车削",
+          "process_type_label": "准备验收车削",
+          "process_type_ref": "74cebfdd4680b2c37a72d5521967e160a42d0092f7524542",
+          "quantity": 1,
+          "reasons": [
+            {
+              "code": "no_baseline_operation",
+              "message": "此工序在初始计划中未安排。"
+            }
+          ],
+          "row_ref": "d59f08ac2ea6b538fd39d5f4a587d1394fe66c1ad2920166",
+          "selected_at_admission": true,
+          "sequence": 1,
+          "status": "newly_scheduled"
+        },
+        {
+          "baseline_segments": [],
+          "batch_label": "DP-STAGE",
+          "batch_quantity": 1,
+          "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
+          "candidate": null,
+          "candidate_operation_status": "skipped",
+          "comparison_available": false,
+          "data_gaps": [],
+          "delta": {
+            "effective_processing_hours": null,
+            "elapsed_hours": null,
+            "end_hours": null,
+            "machine_changed": null,
+            "operator_changed": null,
+            "start_hours": null,
+            "supplier_changed": null
+          },
+          "due_date": "2026-10-16",
+          "execution_affected": false,
+          "execution_at_generation": {
+            "completion_basis": null,
+            "confirmed_finish": null,
+            "data_quality": "incomplete",
+            "execution_state": "unreported",
+            "first_actual_start": null,
+            "known_completed_quantity": 0,
+            "legacy_fact_count": 0,
+            "legacy_unavailable_field_count": 0,
+            "quantity_complete": false,
+            "records_complete": false,
+            "remaining_quantity": 1,
+            "report_count": 0,
+            "target_basis": "batch",
+            "target_quantity": 1,
+            "unknown_record_count": 0
+          },
+          "improvement_assessment": null,
+          "operation_ref": "014e048135e9789ab34aff4390e58a32685f672c9f312059",
+          "part_label": "准备需求验收零件",
+          "piece_id": null,
+          "process_label": "准备验收车削",
+          "process_type_label": "准备验收车削",
+          "process_type_ref": "74cebfdd4680b2c37a72d5521967e160a42d0092f7524542",
+          "quantity": 1,
+          "reasons": [
+            {
+              "code": "candidate_operation_unscheduled",
+              "message": "此候选方案未安排该工序。"
+            }
+          ],
+          "row_ref": null,
+          "selected_at_admission": true,
+          "sequence": 2,
+          "status": "unscheduled"
+        }
+      ],
+      "counts": {
+        "newly_scheduled": 1,
+        "unscheduled": 1
+      },
+      "data_gaps": [
+        {
+          "code": "effective_hours_not_recorded",
+          "message": "初始计划未记录有效加工工时。"
+        },
+        {
+          "code": "not_an_optimization_score",
+          "message": "安排变动对比。"
+        }
+      ],
+      "delta_basis": "candidate_minus_admission_baseline",
+      "duration_basis": "elapsed_wall_clock_hours_not_effective_processing",
+      "execution_affected_count": 0,
+      "full_operation_count": 32,
+      "generation": {
+        "accepted_at": "2026-10-13T16:29:28",
+        "current_entities_consulted": false,
+        "execution_basis": "captured_at_run_admission",
+        "finished_at": "2026-10-13T16:29:43",
+        "formal_version_allocated": false,
+        "input": {
+          "batch_refs": [
+            "0985d4b9feff43ddcbcb260fe72d41f47763b9fa19cfd4b7",
+            "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
+            "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
+            "7e385eb26326b6a05604b24e6b46b52264b87cd37f099559",
+            "853c7dfcd0cc62657fbf94daad80af32116d55d8e401f58d",
+            "9f1c7e9e060ee33df2a8752fed1a48acadeadbb81189398b",
+            "b03e6f6f4981819c20264f69bf05ba853039594d85746af3",
+            "b11ffc315fb627a971f756bc9bdbd8a9674a2fa31e11ccce",
+            "b581c59bbc02c5437029ebb72eee3ed90e32e295a9f98e50",
+            "c8b7d741a487834d1495acf655a10de4cce73e77a199d702",
+            "cea311fb3d2249bb650d7bd17c8200c90e5fe8905f935ce7"
+          ],
+          "completed_policy": "preserve_actuals",
+          "end_date": "2026-10-30",
+          "hold_window": {
+            "end": "2026-10-13T09:01",
+            "start": "2026-10-13T09:00"
+          },
+          "material_strategy": "stage",
+          "missing_resource_policy": "auto_assign",
+          "ready_check": true,
+          "start_date": "2026-10-13"
+        },
+        "metadata_basis": "captured_at_run_admission",
+        "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca",
+        "source_verification": {
+          "baseline_matches_archived_schedule": true,
+          "execution_matches_archived_evidence": true,
+          "facts_content_verified": true,
+          "input_source_verified": true,
+          "candidate_content_verified": true
+        }
+      },
+      "improvement_assessment": null,
+      "operation_count": 2,
+      "rows_complete": true,
+      "time_scope": {
+        "counterpart_policy": "retain_complete_counterpart",
+        "interval": "half_open_overlap",
+        "membership": "either_side_overlap",
+        "range_end": "2026-10-17T00:00:00",
+        "range_start": "2026-10-13T00:00:00",
+        "time_basis": "factory_local",
+        "unknown_or_zero_interval_policy": "included_without_time_interval",
+        "unplanned_policy": "included_without_time_interval"
+      }
+    },
+    "meta": {
+      "as_of": "2026-10-13T19:30:23",
+      "request_ref": "274af83340d94d06b98cfd35532f4d53",
+      "snapshot_ref": "BfABUxPphDyA3WzQ9OiZEMTXeY1E4-3P",
+      "source": "production",
+      "time_basis": "factory_local"
+    },
+    "ok": true,
+    "schema_version": 1,
+    "warnings": []
+  },
+  "workspace": {
+    "candidate": {
+      "blocked_reasons": [
+        {
+          "capability": "adopt",
+          "code": "candidate_adoption_preview_required",
+          "message": "正式采用前，请先检查完整候选方案。"
+        },
+        {
+          "capability": "edit_draft",
+          "code": "candidate_draft_not_connected",
+          "message": "调整候选方案需先新增试调草稿。"
+        },
+        {
+          "capability": "report_actual",
+          "code": "candidate_execution_write_not_connected",
+          "message": "正式采用方案后，才能按计划报工。"
+        }
+      ],
+      "candidate_ref": "5c49d2b6a3c6e1803490eb74657bc9c2be8e645044c98348",
+      "capabilities": {
+        "adopt": false,
+        "edit_draft": false,
+        "export": true,
+        "report_actual": false,
+        "view": true
+      },
+      "completeness": "partial",
+      "data_gaps": [],
+      "label": "重点工序优先方案 3/3",
+      "metric_scopes": {
+        "delivery": "completed_batches_only",
+        "resources": "scheduled_results_only"
+      },
+      "metrics": {
+        "changeover_count": {
+          "reason": null,
+          "value": 3
+        },
+        "elapsed_seconds": {
+          "reason": null,
+          "value": 3.793436374999999
+        },
+        "machine_busy_hours_total": {
+          "reason": null,
+          "value": 194.55
+        },
+        "machine_used_count": {
+          "reason": null,
+          "value": 6
+        },
+        "machine_util_avg": {
+          "reason": null,
+          "value": 0.222378437692888
+        },
+        "makespan_hours": {
+          "reason": null,
+          "value": 145.81
+        },
+        "operator_busy_hours_total": {
+          "reason": null,
+          "value": 194.55
+        },
+        "operator_used_count": {
+          "reason": null,
+          "value": 6
+        },
+        "operator_util_avg": {
+          "reason": null,
+          "value": 0.222378437692888
+        },
+        "overdue_count": {
+          "reason": null,
+          "value": 2
+        },
+        "total_tardiness_hours": {
+          "reason": null,
+          "value": 283.16
+        },
+        "weighted_tardiness_hours": {
+          "reason": null,
+          "value": 283.16
+        }
+      },
+      "persisted_status": "completed",
+      "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca",
+      "status": "partial",
+      "task_count": 31
+    },
+    "generation": {
+      "accepted_at": "2026-10-13T16:29:28",
+      "algorithm": {
+        "mode": "improve",
+        "mode_label": "精细计算（较慢，结果通常更好）",
+        "strategy": "priority_first",
+        "strategy_label": "优先级优先"
+      },
+      "baseline": {
+        "baseline_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+        "captured_at": "2026-10-13T16:29:28",
+        "captured_task_count": 15,
+        "kind": "admission_official",
+        "version": 1
+      },
+      "current_entities_consulted": false,
+      "data_gaps": [],
+      "execution_basis": "captured_at_run_admission",
+      "finished_at": "2026-10-13T16:29:43",
+      "formal_version_allocated": false,
+      "input": {
+        "completed_policy": "preserve_actuals",
+        "end_date": "2026-10-30",
+        "hold_window": {
+          "end": "2026-10-13T09:01",
+          "start": "2026-10-13T09:00"
+        },
+        "material_strategy": "stage",
+        "missing_resource_policy": "auto_assign",
+        "ready_check": true,
+        "start_date": "2026-10-13"
+      },
+      "metadata_basis": "captured_at_run_admission",
+      "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca"
+    },
+    "time_scope": {
+      "interval": "half_open_overlap",
+      "range_end": "2026-10-17T00:00:00",
+      "range_start": "2026-10-13T00:00:00",
+      "time_basis": "factory_local",
+      "unplanned_policy": "included_without_time_interval"
+    },
+    "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
+    "tasks": [
+      {
+        "batch_label": "DP-STAGE",
+        "batch_quantity": 1,
+        "batch_ref": "4c0a10c4918965272b7248fb43c1b1f9d14fa2e3e988ccd1",
+        "data_gaps": [],
+        "due_date": "2026-10-16",
+        "end": "2026-10-13T13:45:00",
+        "execution_at_generation": {
+          "data_quality": "incomplete",
+          "execution_state": "unreported",
+          "known_completed_quantity": 0,
+          "remaining_quantity": 1,
+          "target_basis": "batch",
+          "target_quantity": 1
+        },
+        "locked": false,
+        "machine": {
+          "label": "准备验收分件设备",
+          "ref": "9b88e5dc2af0c4aaf4b13b4c3a9dc7dc8b31a419c65b6458"
+        },
+        "operation_effort": {
+          "allocation_state": "new_schedule",
+          "data_gaps": [],
+          "effort_basis": "runtime_requirement_v1",
+          "evidence_source": {
+            "kind": "run",
+            "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca"
+          },
+          "execution_quantity_basis": "batch",
+          "execution_target_quantity": 1,
+          "external_cycle_days": null,
+          "external_group_id": null,
+          "external_merge_mode": null,
+          "processing_standard_hours": 0.0,
+          "quantity_basis": "batch",
+          "remaining_quantity": 1,
+          "required_standard_hours": 0.5,
+          "requirement_role": "new_schedule",
+          "setup_standard_hours": 0.5,
+          "setup_state": "pending",
+          "source": "internal",
+          "standard": {
+            "basis": "archived_operation_standard",
+            "evidence_source": {
+              "kind": "admission",
+              "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca"
+            },
+            "reason": null,
+            "remaining_quantity": 1,
+            "setup_standard_hours": 0.5,
+            "standard_total_hours": 0.5,
+            "state": "complete",
+            "target_quantity": 1,
+            "unit_standard_hours": 0.0
+          },
+          "state": "complete",
+          "target_quantity": 1
+        },
+        "operation_ref": "b65b7b8646097ede4bcb639cf3cbfee9e1bce23277e0c488",
+        "operator": {
+          "label": "准备验收人员 2",
+          "ref": "ddbae7d0ff5dd18ad1d7b095fb153df0bea5963689fe945e"
+        },
+        "part_label": "准备需求验收零件",
+        "piece_id": null,
+        "process_label": "准备验收车削",
+        "process_type_label": "准备验收车削",
+        "process_type_ref": "74cebfdd4680b2c37a72d5521967e160a42d0092f7524542",
+        "quantity": 1,
+        "row_ref": "d59f08ac2ea6b538fd39d5f4a587d1394fe66c1ad2920166",
+        "sequence": 1,
+        "source": "internal",
+        "start": "2026-10-13T13:15:00",
+        "supplier": null
+      }
+    ]
+  }
+}

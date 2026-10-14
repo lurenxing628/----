@@ -26,11 +26,12 @@
     const scope = C.scope(view.scope);
     if (!Number.isSafeInteger(view.page) || view.page < 1 || !Number.isSafeInteger(view.detail_page) || view.detail_page < 1
         || !['issues', 'relations', 'fields'].includes(view.section)) C.fail('上次操作记录里的页码或页签不正确，页面没有恢复。请刷新后重试。');
-    const selected = view.selected;
+    const selected = view.selected, legacyIssue = selected && typeof selected.issue_ref === 'string' && /^[0-9a-f]{48}$/.test(selected.issue_ref);
     if (selected !== null && (!selected || typeof selected !== 'object' || Array.isArray(selected)
         || Object.keys(selected).some(key => !['domain', 'entity_ref', 'issue_ref'].includes(key)) || !C.ref(selected.entity_ref)
-        || !C.domains.some(row => row[0] === selected.domain) || selected.issue_ref !== undefined && !C.ref(selected.issue_ref))) C.fail('上次操作记录里的资料编号不正确，页面没有恢复。请刷新后重试。');
-    return { scope, page: view.page, selected, section: view.section, detailPage: view.detail_page };
+        || !C.domains.some(row => row[0] === selected.domain) || selected.issue_ref !== undefined && !C.issueKey(selected.issue_ref))) C.fail('上次操作记录里的资料编号不正确，页面没有恢复。请刷新后重试。');
+    return { scope, page: view.page, selected: legacyIssue ? null : selected, section: view.section, detailPage: view.detail_page,
+      restoreSelection: !!legacyIssue, notice: legacyIssue ? '旧版待维护项选择已清除，筛选范围和页码已保留。请重新选择条目。' : '' };
   }
   function Statistics({ overview, pending, error, scope, domainsId, onDomain }) {
     const metrics = overview && overview.stats, loading = !overview && pending, failure = !overview && error;
@@ -55,7 +56,7 @@
     const [selected, setSelected] = useState(null), [section, setSection] = useState('issues'), [detailPage, setDetailPage] = useState(1);
     const [detail, setDetail] = useState(null), [detailLoading, setDetailLoading] = useState(false), [detailError, setDetailError] = useState(null);
     const [search, setSearch] = useState(initial.scope.query), [column, setColumn] = useState(null), [columnText, setColumnText] = useState('');
-    const [message, setMessage] = useState(''), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
+    const [message, setMessage] = useState(initial.notice || ''), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
     const opener = useRef(null), listRef = useRef(null), listHeight = useRef(0), exportController = useRef(null), alive = useRef(true);
     const domainsId = React.useId();
     const detailFocus = useRef(!!(initial.initial || initial.selected));
@@ -81,11 +82,12 @@
       contextSeen.current = contextKey;
       detailFocus.current = !!(initial.initial || initial.selected); opener.current = null;
       setRequest({ scope: initial.scope, page: initial.page, initial: initial.initial, restore: initial }); setSearch(initial.scope.query); setColumn(null);
+      setMessage(initial.notice || '');
     }, [contextKey, initial]);
     useEffect(() => {
       const controller = new AbortController(); let active = true;
       const kept = request.keep ? selected : null;
-      setLoading(true); setError(null); setStale(false); setActionError(null); setMessage('');
+      setLoading(true); setError(null); setStale(false); setActionError(null); setMessage(request.restore && request.restore.notice || '');
       if (!request.keep) { setResult(null); setSelected(null); setDetail(null); }
       if (exportController.current) exportController.current.abort();
       async function read() {
@@ -101,7 +103,7 @@
           const focus = next.data.selected, restored = request.restore && request.restore.selected;
           const same = (item, target) => (item.entity_ref || item.ref) === target.entity_ref && item.domain === target.domain && (!target.issue_ref || item.issue_ref === target.issue_ref);
           const row = kept ? next.data.rows.find(item => same(item, kept)) : restored ? next.data.rows.find(item => same(item, restored))
-            : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : next.data.rows[0];
+            : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : request.restore && request.restore.restoreSelection && request.restore.selected === null ? null : next.data.rows[0];
           if (restored && !row) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
           setResult(next); setSummary({ overview: next.data.overview, asOf: next.meta.as_of }); setSelected(row ? selection(row) : null);
           if (!request.keep) { setSection(request.restore ? request.restore.section : 'issues'); setDetailPage(request.restore ? request.restore.detailPage : 1); }

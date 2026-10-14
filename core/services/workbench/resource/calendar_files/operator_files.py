@@ -31,7 +31,6 @@ from core.models.workbench_calendar_file import (
 from core.models.workbench_command import (
     WorkbenchCommandOutcome,
     WorkbenchCommandRejected,
-    input_fingerprint,
 )
 from core.models.workbench_operator_calendar import operator_clock
 from core.models.workbench_resource_action import (
@@ -96,7 +95,7 @@ class WorkbenchOperatorCalendarFileService:
     def prepare_import(self, content, *, file_format, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode)
         source, notices = read_calendar_file(self.kind, content, file_format)
-        return PreparedImportSource.build(self.kind + ".import", request, source, notices)
+        return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
 
     def preview_import(self, content, *, file_format, mode="upsert"):
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
@@ -104,7 +103,7 @@ class WorkbenchOperatorCalendarFileService:
         request = prepared.request_for(self.kind + ".import", file_format, mode)
         source, notices = prepared.parsed()
         with self.tx.transaction():
-            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices)
+            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices, source=prepared)
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -323,7 +322,7 @@ class WorkbenchOperatorCalendarFileService:
             raise RuntimeError("个人日历文件导入确认必须在外层工作台写事务中执行。")
         with self.tx.transaction():
             try:
-                current = self.preview_import(content, file_format=file_format, mode=mode)
+                current = self.preview_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, mode=mode)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected(
                     "stale_write", "文件或个人日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
@@ -373,11 +372,11 @@ class WorkbenchOperatorCalendarFileService:
         rows.sort(key=lambda item: (item["operator_code"], item["date"]))
         return rows
 
-    def range_snapshot(self, start_date: str, end_date: str, selected_refs=None) -> str:
+    def range_snapshot(self, start_date: str, end_date: str, selected_refs=None) -> List[Dict[str, Any]]:
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历范围读取必须在快照事务中执行。")
         check_range(start_date, end_date)
-        return input_fingerprint(self._rows_for(start_date, end_date, self._codes_for(selected_refs)))
+        return self._rows_for(start_date, end_date, self._codes_for(selected_refs))
 
     def preview_export(self, *, start_date: str, end_date: str, selected_refs=None):
         if not self.conn.in_transaction:

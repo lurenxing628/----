@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from core.services.scheduler.contracts.optimizer_public_safety import (
-    project_attempt_score,
     project_degradation_event_list,
     project_public_metrics,
     safe_attempt_text,
@@ -11,6 +10,8 @@ from core.services.scheduler.contracts.optimizer_public_safety import (
     safe_non_negative_int,
     safe_public_text_list,
 )
+
+from .optimizer_public_attempts import project_attempt_evaluation
 
 _PUBLIC_CONFIG_SNAPSHOT_TEXT_KEYS = (
     "sort_strategy",
@@ -196,10 +197,10 @@ def _project_improvement_trace_item(item: Any) -> Dict[str, Any]:
     elapsed_ms = safe_non_negative_int(item.get("elapsed_ms"))
     if elapsed_ms is not None:
         row["elapsed_ms"] = elapsed_ms
-    score = project_attempt_score(item.get("score"))
+    metrics = project_public_metrics(item.get("metrics"))
+    score, _primary = project_attempt_evaluation(item.get("score"), None, metrics.get("completion") or {})
     if score:
         row["score"] = score
-    metrics = project_public_metrics(item.get("metrics"))
     if metrics:
         row["metrics"] = metrics
     return row

@@ -1,5 +1,7 @@
 """Saved scenario metadata keeps task order; permanent rows own the task bodies."""
 
+from typing import Any, Dict
+
 from core.models.workbench_trial import reject
 
 SCENARIO_ROW_FORMAT = "permanent_rows_v1"
@@ -11,7 +13,7 @@ def scenario_archive(snapshot):
             "task_row_refs": [row["row_ref"] for row in snapshot["tasks"]]}
 
 
-def scenario_snapshot(archive, stored):
+def scenario_snapshot(archive, stored) -> Dict[str, Any]:
     """Reconstruct new archives and preserve the original full-snapshot format."""
     if "tasks" in archive:
         return archive

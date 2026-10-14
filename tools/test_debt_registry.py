@@ -13,13 +13,13 @@ from .quality_gate_shared import (
     now_shanghai_iso,
 )
 from .test_registry import (
-    hash_test_registry as _hash_test_registry,
-)
-from .test_registry import (
     iter_required_tests as _iter_required_tests,
 )
 from .test_registry import (
     iter_startup_regressions as _iter_startup_regressions,
+)
+from .test_registry import (
+    test_registry_content as _test_registry_content,
 )
 
 BASELINE_BEGIN = "<!-- APS-FULL-PYTEST-BASELINE:BEGIN -->"
@@ -666,9 +666,9 @@ def load_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> Dict[str
     }
 
 
-def hash_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> str:
+def test_debt_registry_content(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     registry = load_test_debt_registry(ledger)
-    return _hash_test_registry(
+    return _test_registry_content(
         required_tests=cast(List[str], registry["required_tests"]),
         startup_regressions=cast(List[str], registry["startup_regressions"]),
         active_xfail_entries=cast(List[Dict[str, Any]], registry["active_xfail_entries"]),
@@ -683,7 +683,7 @@ __all__ = [
     "baseline_candidate_nodeids",
     "build_test_debt_entries",
     "build_test_debt_ledger_from_baseline",
-    "hash_test_debt_registry",
+    "test_debt_registry_content",
     "iter_required_tests",
     "iter_startup_regressions",
     "load_full_test_debt_baseline",

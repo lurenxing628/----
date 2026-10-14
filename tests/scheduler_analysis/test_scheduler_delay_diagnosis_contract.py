@@ -9,7 +9,11 @@ import pytest
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
 from core.services.scheduler.schedule_delay_diagnosis_service import ScheduleDelayDiagnosisService
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED, ROLE_BASELINE_BEST
+from core.services.scheduler.schedule_plan_query_service import (
+    ROLE_ADOPTED,
+    ROLE_BASELINE_BEST,
+    SchedulePlanQueryService,
+)
 from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from tests._support.paths import REPO_ROOT
@@ -188,6 +192,7 @@ def _seed_candidates(conn) -> int:
 
 def _seed_scenario(conn) -> str:
     scenario_id = "delay-preview"
+    base = SchedulePlanQueryService(conn).resolve_existing_plan(VERSION, ROLE_ADOPTED)
     conn.execute(
         """
         INSERT INTO ScheduleAdjustmentScenario(
@@ -202,9 +207,9 @@ def _seed_scenario(conn) -> str:
             "draft-delay-preview",
             VERSION,
             ROLE_ADOPTED,
-            SOURCE_SCHEDULE,
-            None,
-            "adopted",
+            base.source_table,
+            base.candidate_id,
+            base.candidate_key,
             "延期诊断预览",
             "active",
             "valid",

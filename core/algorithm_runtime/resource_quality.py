@@ -6,6 +6,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Dict, List, Mapping, MutableSequence, Optional, Tuple
 
+from core.algorithm_contracts.changeover_events import type_transition
+
 from .owned_timeline import OwnedTypeEntries, owned_type_certificate
 from .resource_demand import ResourceDemand
 from .static_attribute import static_attribute, static_class_attribute
@@ -48,7 +50,8 @@ class MachineTypeState(Dict[str, str]):
                 raise ValueError("unknown demand event: " + str(kind))
 
     def record(self, machine_id: str, start: Optional[datetime], end: datetime, op_id: Optional[int], op_type: str) -> None:
-        if type(start) is datetime and type(end) is datetime and type(op_id) is int and op_id > 0 and op_type and end >= start:
+        """Record a positive resource interval with its actual type identity."""
+        if type(start) is datetime and type(end) is datetime and type(op_id) is int and op_id > 0 and end > start:
             insort(self._entries.setdefault(machine_id, OwnedTypeEntries()), (start, end, op_id, op_type))
 
     def neighbor_witness(self, machine_id: str) -> Tuple[int, Optional[str]]:
@@ -66,14 +69,16 @@ class MachineTypeState(Dict[str, str]):
         return () if entries is None else owned_type_certificate(entries)
 
     def insertion_penalty(self, machine_id: str, start: datetime, end: datetime, op_id: int, op_type: str) -> int:
-        if not op_type:
+        if not op_type or start == end:
             return 0
         entries = self._entries.get(machine_id, [])
         index = bisect_left(entries, (start, end, op_id, op_type))
-        before = entries[index - 1][3] if index else ""
-        after = entries[index][3] if index < len(entries) else ""
-        old = int(bool(before and after and before != after))
-        return int(bool(before and before != op_type)) + int(bool(after and after != op_type)) - old
+        before = entries[index - 1] if index else None
+        after = entries[index] if index < len(entries) else None
+        old = (type_transition(before[3], after[3], before[2], after[2]) or 0) if before and after else 0
+        left = (type_transition(before[3], op_type, before[2], op_id) or 0) if before else 0
+        right = (type_transition(op_type, after[3], op_id, after[2]) or 0) if after else 0
+        return left + right - old
 
     def complete(self, op_id: int) -> None:
         if self.demand is not None:
@@ -92,16 +97,16 @@ def _plain_operation_type(op: Any) -> Optional[Tuple[int, str]]:
         # The exact builtin has an immutable class and a native instance dict.
         # Read both current values each time; identity/length is not a certificate.
         fields = op.__dict__
-        op_id, op_type = fields.get("id"), fields.get("op_type_name")
+        op_id, op_type = fields.get("id"), fields.get("op_type_id")
     else:
         accessor = static_class_attribute(type(op), "__getattribute__")
         if accessor is not object.__getattribute__ and accessor is not SimpleNamespace.__getattribute__:
             return None
         op_id = static_attribute(op, "id")
-        op_type = static_attribute(op, "op_type_name")
+        op_type = static_attribute(op, "op_type_id")
     if type(op_id) is not int or op_id <= 0 or type(op_type) is not str:
         return None
-    return op_id, op_type.strip()
+    return op_id, op_type
 
 
 def slot_changeover_penalty(
@@ -112,15 +117,11 @@ def slot_changeover_penalty(
         return legacy_penalty
     if type(start) is not datetime or type(end) is not datetime:
         return legacy_penalty
-    entries = state._entries.get(machine_id)
-    if not entries or (start > entries[-1][0] and entries[-1][3] == state.get(machine_id)):
-        # Appending has the same predecessor as the established tail-map rule.
-        # Equal-time/overlapping seeds can have a different chronological tail.
-        # Only an insertion or such a mismatch needs native identity checks.
-        return legacy_penalty
+    if start == end or not state._entries.get(machine_id):
+        return 0
     identity = _plain_operation_type(op)
     if identity is None:
-        return legacy_penalty
+        return 0
     return state.insertion_penalty(machine_id, start, end, identity[0], identity[1])
 
 

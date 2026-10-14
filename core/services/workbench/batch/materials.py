@@ -5,7 +5,11 @@ from typing import cast
 
 from core.models.enums import ReadyStatus
 from core.models.workbench_batch import number
-from core.models.workbench_batch_material import material_row_key, normalize_material_changes
+from core.models.workbench_batch_material import (
+    material_row_key,
+    normalize_material_changes,
+    numbered_material_requirements,
+)
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.material.stage_availability import covers_quantity, quantity
 from data.repositories.batch_material_repo import BatchMaterialRepository
@@ -32,8 +36,8 @@ class WorkbenchBatchMaterialService:
         # Match SQLite's TEXT-before-BLOB order without comparing unrelated storage types.
         for row in sorted(rows, key=lambda row: (isinstance(row["arrival_date"], bytes), row["arrival_date"], row["id"])):
             arrivals[row["requirement_id"]].append({key: row[key] for key in ("arrival_date", "quantity")})
-        old = {material_row_key(ref, row): dict(row, operation_id=bindings.get(row["id"]), arrivals=arrivals[row["id"]])
-               for row in requirements}
+        old = {material_row_key(ref, ordinal): dict(row, operation_id=bindings.get(row["id"]), arrivals=arrivals[row["id"]])
+               for ordinal, row in numbered_material_requirements(requirements)}
         if set(payload["removed_keys"]) - set(old):
             raise WorkbenchCommandRejected("stale_write", "要移除的物料需求已变化，请刷新后重新核对。")
         final = {key: dict(row) for key, row in old.items() if key not in payload["removed_keys"]}

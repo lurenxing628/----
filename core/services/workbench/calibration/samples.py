@@ -4,8 +4,9 @@ import math
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 
+from core.models.content import content_text
 from core.models.workbench_calibration import issue
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 
 # 除法结果（单件工时、建议定额、偏差百分比）统一整形到 3 位小数，四舍五入；
 # 求和不整形，因为报工里填的小时数在 Decimal 里相加本来就是精确的。
@@ -114,26 +115,33 @@ def _processing_values(projection):
             "unit_hours": float(ratio) if ratio is not None else None}, reasons
 
 
-def _sample_origin(candidate):
+def _sample_origin(candidate, *, lineage_origin=None, lineage_events=()):
     projection, lineage = candidate.execution, candidate.lineage
     reports = [report.to_dict() for report in projection.reports]
     for report in reports:
         report.pop("write_context")
-    state = {"reports": reports, "legacy_facts": projection.legacy_facts, "data_gaps": projection.data_gaps,
+    state = {"source_ref": projection.operation_ref,
+             "report_revision_refs": [report.revision_ref for report in projection.reports],
+             "legacy_fact_refs": [row["legacy_fact_ref"] for row in projection.legacy_facts],
+             "data_gaps": projection.data_gaps,
              "quantity": projection.known_completed_quantity, "finish": projection.confirmed_finish,
              "lineage": vars(lineage) if lineage else None, "operation_source": candidate.operation_source}
+    if lineage_origin is not None:
+        state["lineage"] = {**state["lineage"], "birth_event_id": lineage_origin["birth_event_id"],
+                            "event_ids": [event["event_id"] for event in lineage_events]}
     return {"sample_ref": projection.operation_ref, "execution_operation_ref": projection.operation_ref,
             "batch_code": candidate.batch_code, "operation_code": candidate.operation_code,
             "template_operation_ref": lineage.template_operation_ref if lineage else None,
             "template_revision": lineage.template_revision if lineage else None,
             "lineage_evidence_ref": lineage.evidence_ref if lineage else None,
-            "sample_revision": input_fingerprint(state), "report_refs": [row.report_ref for row in projection.reports],
+            "sample_revision": content_text(state), "report_refs": [row.report_ref for row in projection.reports],
             "report_revision_refs": [row.revision_ref for row in projection.reports],
             "confirmed_finish": projection.confirmed_finish,
             "reports": reports, "legacy_facts": projection.legacy_facts, "data_gaps": projection.data_gaps}
 
 
-def review_sample(candidate, *, template, as_of):
+def review_sample(candidate, *, template, as_of, lineage_origin=None, lineage_events=()):
     values, reasons = _processing_values(candidate.execution)
     reasons += _lineage_reasons(candidate.lineage, template) + _execution_reasons(candidate, as_of)
-    return {**_sample_origin(candidate), **values, "eligible": not reasons, "selected": False, "exclusion_reasons": reasons}
+    return {**_sample_origin(candidate, lineage_origin=lineage_origin, lineage_events=lineage_events),
+            **values, "eligible": not reasons, "selected": False, "exclusion_reasons": reasons}

@@ -44,7 +44,8 @@ class IGIncumbentTracker:
         self.report["unverified_trial_decodes"] += 1
 
     def consider(self, candidate: Dict[str, Any], *, profile: GraphReadyWeightProfile,
-                 capture_of: Optional[Dict[str, Any]] = None) -> bool:
+                 capture_of: Optional[Dict[str, Any]] = None,
+                 on_decision: Optional[Callable[[Optional[Dict[str, Any]], bool, str], None]] = None) -> bool:
         """Publish a strictly better, unseen, feasible full decode.
 
         ``capture_of`` marks a reference capture: re-decoding a known solution under the IG context. A capture
@@ -53,21 +54,27 @@ class IGIncumbentTracker:
         """
         incumbent = self.best
         parent = self.best_identity or self.pool.fingerprint(incumbent)
-        fingerprint = self.pool.fingerprint(candidate, parent.output_fingerprint)
-        self.pool.seen_outputs.add(fingerprint.output_fingerprint)
+        fingerprint = self.pool.fingerprint(candidate, parent)
+        self.pool.seen_outputs.add(fingerprint.output_key)
         state_fingerprint = None
         if self.report_state is not None:
             state_fingerprint = self.report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
                                                                           fingerprint=fingerprint)
         if capture_of is not None and self._capture_reproduced(fingerprint, capture_of):
+            if on_decision is not None:
+                on_decision(capture_of, False, "reference_capture")
             return False
         event = self._acceptance_event(candidate, incumbent=incumbent, fingerprint=fingerprint,
                                        state_fingerprint=state_fingerprint)
         if event is None:
+            if on_decision is not None:
+                on_decision(incumbent, False, "incumbent")
             return False
         if self.report_state is not None:
             self.report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
                                                        acceptance_event=event, fingerprint=fingerprint)
+        if on_decision is not None:
+            on_decision(incumbent, True, "incumbent")
         append_graph_trace(improvement_trace=self.improvement_trace, candidate=candidate, profile=profile,
                            clock=self.clock, t_begin=self.t_begin)
         self.report["accepted"] = True
@@ -78,7 +85,7 @@ class IGIncumbentTracker:
     def _capture_reproduced(self, fingerprint: Any, capture_of: Dict[str, Any]) -> bool:
         """A reference capture that reproduces its source is accounted as a capture; a divergent one goes on."""
         source = self.best_identity if capture_of is self.best else self.pool.fingerprint(capture_of)
-        if fingerprint.output_fingerprint == source.output_fingerprint:
+        if fingerprint.output_key == source.output_key:
             self.report["reference_captures"] += 1
             return True
         self.report["reference_capture_divergences"] += 1

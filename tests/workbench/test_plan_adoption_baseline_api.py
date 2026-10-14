@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from core.services.workbench.plan import adoption_baseline_values as values
+from core.services.workbench.facts import adoption_baseline_values as values
 from tests.workbench.plan_adoption_baseline_support import trial_case as trial_case  # noqa: F401
 from tests.workbench.plan_adoption_baseline_support import two_versions
 from tests.workbench.plan_read_support import make_api

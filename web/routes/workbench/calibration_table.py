@@ -40,7 +40,7 @@ def calibration_facets(column, selection=False):
     service = WorkbenchCalibrationService(g.db, as_of=as_of)
     bound = {"kind": "calibration_table_facets", "scope": query.scope(), "column": column, "query": search, "size": size}
     with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:
-        facts = service.read(query, bind_snapshot=lambda fingerprint: _bind(query, fingerprint, token, as_of, snapshot_scope=bound))
+        facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of, snapshot_scope=bound))
         data = facet_data(filtered_suggestions(facts["rows"], query), column, search, number, size, selection=selection)
     response = query_success(data, facts["snapshot"])
     response.headers["Cache-Control"] = "no-store"

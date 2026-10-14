@@ -27,7 +27,7 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
     try:
         with TransactionManager(conn).transaction(begin_immediate=True):
             recovered, pending = [], []
-            now = (clock or datetime.now)().isoformat(timespec="seconds")
+            now = (clock or datetime.now)().isoformat(timespec="microseconds")
             for row in repo.unfinished():
                 require_admission(repo, row)
                 reconciled = _reconcile_result(conn, repo, row)

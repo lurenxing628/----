@@ -6,7 +6,7 @@ from datetime import datetime
 from core.infrastructure.safe_files import stat_regular_file
 from core.models.operation_log_labels import operation_log_summary
 from core.models.operation_log_public_projection import public_operation_log_detail_text
-from core.models.workbench_command import input_fingerprint
+from core.models.workbench_command import canonical_json
 from core.models.workbench_system import normalize_log_level
 from core.services.system.operation_log_service import OperationLogService
 from core.services.system.runtime_log_reader import LOG_FILE_CHOICES, NO_ANCHOR_HEAD, read_log_entries_tail
@@ -34,7 +34,7 @@ def backup_records(directory):
             issues.append({"code": "file_unreadable", "message": "有备份文件读不到（可能不是真正的备份文件），没有列进可以操作的备份。请让维护人员检查备份目录。"})
             continue
         kind = next((suffix for suffix in ("before_restore", "manual", "auto") if "_" + suffix in name), "unknown")
-        rows.append({"key": input_fingerprint({"name": name, **signature}), "filename": name,
+        rows.append({"key": canonical_json(["backup_file", name, signature]), "filename": name,
                      "time": datetime.fromtimestamp(signature["mtime_ns"] / 1e9).strftime("%Y-%m-%dT%H:%M:%S"),
                      "size_bytes": signature["size"], "type": kind, "status": "unverified",
                      "file_exists": True, "verification_state": "not_checked", "last_run_result": None,
@@ -48,15 +48,15 @@ def _runtime_rows(log_dir, name):
         stat_regular_file(path)
     except FileNotFoundError:
         return [], {"source": name, "state": "missing", "window": 200, "count": None, "truncated": False}
-    entries = read_log_entries_tail(path, max_entries=201)
+    entries = read_log_entries_tail(path, max_entries=201, include_origin=True)
     rows = []
-    for index, item in enumerate(entries[:200]):
+    for item in entries[:200]:
         time = item["head"][:19]
         try:
             time = datetime.strptime(time, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%dT%H:%M:%S")
         except ValueError:
             time = None
-        rows.append({"key": input_fingerprint({"file": name, "index": index, "entry": item}),
+        rows.append({"key": canonical_json(["runtime", name, item["_origin"]]),
                      "time": time, "type": "runtime", "status": "recorded", "level": item["level"],
                      "file": name, "summary": public_system_text(item["head"], 1000),
                      "body": public_system_text(item["body"]),
@@ -83,7 +83,7 @@ def log_records(conn, log_dir, logger):
         for item in operations[:500]:
             summary = public_system_text(operation_log_summary(item.module, item.action), 1000)
             body = public_system_text(public_operation_log_detail_text(item.detail) + "\n" + str(item.error_message or ""))
-            rows.append({"key": input_fingerprint({"operation": item.id, "time": item.log_time, "body": body}),
+            rows.append({"key": canonical_json(["OperationLogs", str(item.id)]),
                          "time": str(item.log_time or "").replace(" ", "T") or None,
                          "type": "operation", "status": "recorded", "level": normalize_log_level(item.log_level),
                          "file": "OperationLogs", "summary": summary, "body": body,

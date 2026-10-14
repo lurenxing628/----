@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from flask import Flask
 
 from core.infrastructure.logging import safe_log
+from web.runtime_host import runtime_identity
 
 from .factory import (
     create_app_core,
@@ -173,6 +174,7 @@ def configure_runtime_contract(
     app.config["APS_RUNTIME_SHUTDOWN_TOKEN"] = shutdown_token
     app.config["APS_RUNTIME_DIR"] = runtime_dir
     app.config["APS_RUNTIME_OWNER"] = owner
+    identity = runtime_identity(app)
 
     deps.write_runtime_host_port_files(
         runtime_dir=runtime_dir,
@@ -188,6 +190,7 @@ def configure_runtime_contract(
         port,
         db_path=app.config.get("DATABASE_PATH"),
         shutdown_token=shutdown_token,
+        instance_id=identity["instance_id"],
         ui_mode=str(app.config.get("APP_UI_MODE") or default_ui_mode),
         log_dir=app.config.get("LOG_DIR"),
         backup_dir=app.config.get("BACKUP_DIR"),

@@ -5,6 +5,7 @@ from io import BytesIO
 
 from flask import g, jsonify, request, send_file
 
+from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_field_report_source import PreparedFieldReportSource
 from core.services.workbench import messages
@@ -74,12 +75,12 @@ def field_file_confirm():
         document, source = resolve_context(PREVIEW_NAMESPACE, ref, 'stale_write')
         stored = json.loads(document)
         preview = stored['preview']
-        if not preview['can_confirm'] or source.file_digest != preview['file_sha256']:
+        if not preview['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检结果已过期，报工还没有写入，也没有替换任何内容。请点「重新预检」。')
         cohort, read_state = FieldWorkspaceService(g.db).cohort(preview['scope'])
         bind_read_snapshot({'kind': 'field', **cohort['scope']}, read_state, stored['read_snapshot'])
         checked, prepared = FieldReportFileService(g.db).prepare_source(source, cohort)
-        if checked['items'] != preview['items'] or checked['snapshot'] != preview['snapshot'] or not checked['can_confirm']:
+        if not same(checked['items'], preview['items']) or not same(checked['snapshot'], preview['snapshot']) or not checked['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
         return prepared
 

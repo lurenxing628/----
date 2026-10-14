@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.resource_capabilities import OP_TYPE_CATEGORIES, supports_source
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
@@ -73,8 +73,7 @@ class WorkbenchResourceRelationService:
             facts = self.repo.facts(query.relation, sorted(records))
             self._validate_facts(query.relation, rows, facts)
             qualifications = self._qualifications(query.relation, sorted(records))
-            fingerprint = input_fingerprint({"parent_identity": asdict(identity), "parent": parent,
-                                             "rows": rows, "facts": facts})
+            fingerprint = {"parent_identity": asdict(identity), "parent": parent, "rows": rows, "facts": facts}
             yield fingerprint, self._page(identity, query, records, qualifications, facts)
 
     def _records(self, rows):

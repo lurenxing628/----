@@ -1,28 +1,43 @@
 """Server-owned source file facts; database-dependent proposals are rebuilt separately."""
 
 import json
+import uuid
 from copy import deepcopy
 from dataclasses import dataclass
 
 from core.errors import ValidationError
-from core.models.workbench_command import canonical_json
+from core.models.content import same
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
 
 @dataclass(frozen=True)
 class PreparedImportSource:
     operation: str
     request_document: str
+    content: bytes
+    source_ref: str
     _rows: tuple
     _notices: tuple
 
     @classmethod
-    def build(cls, operation, request, rows, notices):
-        return cls(operation, canonical_json(request), tuple(deepcopy(rows)), tuple(deepcopy(notices)))
+    def build(cls, operation, request, rows, notices, *, content):
+        source_ref = uuid.uuid4().hex
+        document = canonical_json({**request, "actual_source_ref": source_ref})
+        return cls(operation, document, bytes(content), source_ref, tuple(deepcopy(rows)), tuple(deepcopy(notices)))
+
+    @classmethod
+    def confirmation(cls, preview, content):
+        if isinstance(content, cls):
+            return content
+        source = getattr(preview, "source", None)
+        if not isinstance(source, cls) or type(content) is not bytes or source.content != content:
+            raise WorkbenchCommandRejected("stale_write", "原文件内容已变化，请重新预检。")
+        return source
 
     def request_for(self, operation, file_format, mode, scope=None):
         request = json.loads(self.request_document)
         if (self.operation != operation or request["format"] != file_format or request["mode"] != mode
-                or scope is not None and request["scope"] != scope):
+                or scope is not None and not same(request["scope"], scope)):
             raise ValidationError("原文件的格式、方式或范围已变化，请重新预检。", field="file")
         return request
 

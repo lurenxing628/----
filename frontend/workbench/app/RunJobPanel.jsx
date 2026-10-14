@@ -70,7 +70,10 @@
           // 活跃任务保持正常读取频率；待恢复记录、未决结果和读取失败沿用退避。
           if (!result.recovery_required) attempt = 0;
           setRun(result); setVerified(true); unsettledSince = null; done = A.terminal(result);
-          if (done && pendingActive) { A.pending().finish(activeIntent.current, 'found'); setPendingActive(false); }
+          if (done && pendingActive) {
+            A.pending().finish(activeIntent.current, 'found'); setPendingActive(false);
+            if (typeof onNavigate === 'function') onNavigate('run', { run_ref: result.run_ref });
+          }
         } catch (e) { if (current() && !controller.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
         finally {
           querying = false;
@@ -138,6 +141,8 @@
     }
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     const effective = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.effective_config : null;
+    const batches = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.included_batches.concat(preflight.excluded_batches) : [];
+    const operationCount = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.counts.selected_tasks : undefined;
     const reason = storageError || (!inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable);
     return <section className="plana run-job-panel" data-run-job-panel="true" aria-label="候选排产">
       <div className="rj-heading"><div><h3>候选排产</h3><p className="rj-muted">选择范围并完成检查后，计算本次候选方案。</p></div></div>
@@ -145,13 +150,12 @@
         <U.Button icon="play" className={inputRef && selected && selected.length ? 'btn primary' : 'btn'} reason={reason} reasonDisplay="tooltip" busy={busy} onClick={inspect}>核对并开始排产</U.Button>
         {unavailable && <U.Button icon="refresh-cw" busy={busy} onClick={inspect}>重新核对排产条件</U.Button>}
         {intent && resolution !== 'context_replaced' && <U.Button icon="refresh-cw" busy={checking || busy} onClick={() => { setNotice(''); refresh(); }}>查询结果</U.Button>}
-        {typeof onNavigate === 'function' && <U.Button icon="arrow-left" onClick={() => onNavigate('run')}>返回排产检查</U.Button>}
       </div>{reason && <p className="rj-muted rj-action-reason">{reason}</p>}</div>
       {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>刷新上次操作记录</U.Button></div></div>}
       {error && <div className="rj-notice" role="alert">{error}{errorDetails && <window.WorkbenchReference entries={errorDetails} />}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
       {preview && !confirming && <><U.Scope preview={preview} effective={effective} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}
-      {intent && <U.Record run={run} intent={intent} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} api={api} />}
-      {confirming && preview && <U.Confirmation preview={preview} effective={effective} busy={busy} onConfirm={submit} onClose={() => { if (!locked.current) { setConfirming(false); setPreview(null); } }} />}
+      {intent && <U.Record run={run} intent={intent} title={pendingActive ? '本次排产' : '上次排产'} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} api={api} onNavigate={onNavigate} />}
+      {confirming && preview && <U.Confirmation preview={preview} effective={effective} batches={batches} operationCount={operationCount} busy={busy} onConfirm={submit} onClose={() => { if (!locked.current) { setConfirming(false); setPreview(null); } }} />}
     </section>;
   }
   window.RunJobPanel = RunJobPanel;

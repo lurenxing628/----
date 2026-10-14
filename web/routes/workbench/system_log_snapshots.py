@@ -7,7 +7,7 @@ from threading import RLock
 
 from flask import current_app
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.workbench import messages
 from core.services.workbench.facts.run_data_context import restored_context_ref
 
@@ -49,7 +49,7 @@ def retain_log_snapshot(scope, rows, sources):
     size = len(document.encode("utf-8"))
     if size > _MAX_BYTES:
         raise WorkbenchCommandRejected("snapshot_capacity_exceeded", "这段日志超过暂存容量，请缩小筛选范围后重新查询。", 503)
-    snapshot = bind_read_snapshot(_bound_scope(scope), input_fingerprint(data))
+    snapshot = bind_read_snapshot(_bound_scope(scope), document)
     with _LOCK:
         windows = _windows()
         if snapshot["snapshot_ref"] not in windows:
@@ -65,5 +65,5 @@ def resolve_log_snapshot(scope, token):
         if window is None:
             raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
         data = json.loads(window.document)
-    snapshot = bind_read_snapshot(_bound_scope(scope), input_fingerprint(data), token)
+    snapshot = bind_read_snapshot(_bound_scope(scope), window.document, token)
     return data["rows"], data["sources"], snapshot

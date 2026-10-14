@@ -9,7 +9,7 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES, install_workbench_trial_schema
-from core.models.workbench_trial_codec import fingerprint
+from core.models.content import same
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.service import WorkbenchTrialService
@@ -99,7 +99,7 @@ def snapshot(conn):
 def assert_legacy_retained(before, after):
     for name in before:
         if name not in set(TRIAL_TABLES) | {"WorkbenchCommandReceipts"}:
-            assert fingerprint(before[name]) == fingerprint(after[name]), name
+            assert same(before[name], after[name]), name
 
 
 def api(case, factory=sqlite3.Connection):

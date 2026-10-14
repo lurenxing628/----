@@ -1,6 +1,7 @@
 """Run identity and strict durable artifact serialization, separate from plan identity."""
 
 import base64
+import json
 import math
 import re
 import secrets
@@ -23,6 +24,24 @@ def validate_run_ref(value):
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{48}", value) is None:
         raise WorkbenchCommandRejected("invalid_input", "这次排产的编号无效，请回到排产记录重新选择。", 400)
     return value
+
+
+def valid_data_context_ref(value):
+    """Read old generation IDs and the current recorded restore-source content."""
+    if type(value) is not str:
+        return False
+    if re.fullmatch(r"[0-9a-f]{64}", value):
+        return True
+    try:
+        data = json.loads(value)
+    except ValueError:
+        return False
+    return (type(data) is dict and set(data) == {"database_scope", "successful_restores"}
+            and type(data["database_scope"]) is str and bool(data["database_scope"])
+            and type(data["successful_restores"]) is list
+            and all(type(ref) is str and re.fullmatch(r"[0-9a-f]{32}", ref)
+                    for ref in data["successful_restores"])
+            and data["successful_restores"] == sorted(set(data["successful_restores"])))
 
 
 def _durable_mapping(value):

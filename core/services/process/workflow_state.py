@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
@@ -14,6 +13,7 @@ from core.infrastructure.workbench_metadata_schema import workbench_metadata_con
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.infrastructure.workbench_resource_schema import workbench_resource_contract_issues
+from core.models.content import content_text, same, unpacked
 from core.models.resource_capabilities import supports_source
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 
@@ -52,15 +52,6 @@ def _part(conn, part_no, contracts=None):
     return part, stored[0] if stored else None
 
 
-def _digest(value):
-    # Bad legacy numbers are not normalized into a confirmable business fact.
-    try:
-        text = json.dumps(value, ensure_ascii=True, allow_nan=False, separators=(",", ":"), sort_keys=True)
-    except (TypeError, ValueError):
-        return None
-    return hashlib.sha256(text.encode("ascii")).hexdigest()
-
-
 def _number(value, *, positive=False):
     return type(value) in (int, float) and math.isfinite(value) and (value > 0 if positive else value >= 0)
 
@@ -82,12 +73,12 @@ def _groups(groups, operations):
     for group in groups:
         _ref(group["ref"])
         current = members.get((group["part_no"], group["group_id"]), [])
-        # Keep the persisted confirmation signature shape. Each operation's source
-        # signature already owns its supplier; validation also needs the full set.
+        # Store membership once in the part's source document. Each operation
+        # owns its supplier facts and refers to this shared group evidence.
         group["members"] = [[op["ref"], op["seq"], op["source"]] for op in current]
         fact, valid = _group_facts(group, group["part_no"],
             [(op["seq"], op["source"], op["supplier_id"]) for op in current])
-        group["source_signature"], group["valid"] = _digest(fact), valid
+        group["source_facts"], group["valid"] = fact, valid
         result[group["group_id"]] = group
     return result
 
@@ -107,7 +98,7 @@ def _group_source(group, part_no, op_type_id, suppliers):
     if group["merge_mode"] == "merged" and group["supplier_id"] is not None:
         supplier, supplier_valid = _supplier(suppliers, group["supplier_id"], op_type_id)
         valid = valid and supplier_valid
-    return group["source_signature"], supplier, valid
+    return {key: value for key, value in group["source_facts"].items() if key != "members"}, supplier, valid
 
 
 def _source_facts(part, op, group, suppliers):
@@ -134,54 +125,24 @@ def _valid_hours(op, group):
     return _number(op["ext_days"], positive=True)
 
 
-def _legacy_separate_supplier(group, suppliers):
-    """Old confirmations only admitted an active, capable group supplier."""
-    if group is None or group["merge_mode"] != "separate" or group["supplier_id"] is None:
-        return None
-    supplier = suppliers.get(group["supplier_id"])
-    if supplier is None:
-        return None
-    # Retain the former signature encoding, without consulting this unused
-    # supplier's present qualification. The declared group identity still matches.
-    return {"ref": _ref(supplier["ref"]), "status": "active", "inactive_reason": None, "capable": True}
+def _source_content(route, values, source_valid):
+    return content_text(["source-v2", route, values]) if source_valid else None
 
 
-def _source_signature(route, values, source_valid, old, legacy_group_supplier=None):
-    """Verify actual source facts and recognize equivalent prior encodings."""
-    source = _digest(["source-v1", route, values]) if source_valid else None
-    if source and old is not None and old["signature"] != source:
-        variants = [values]
-        if legacy_group_supplier is not None:
-            variants.append(values[:-1] + [legacy_group_supplier])
-        # Actual member suppliers and the declared group facts must still match.
-        # Only retired default/unused qualification slots may use the old encoding.
-        for candidate in variants:
-            for mode in (None, "separate", "merged"):
-                legacy = _digest(["source-v1", route, candidate[:5] + [mode] + candidate[6:]])
-                if old["signature"] == legacy:
-                    return legacy
-    return source
-
-
-def _hours_signature(source, op, group, old_hours):
-    """Use effective hours while recognizing equivalent historical signatures."""
+def _hours_content(source, op, group):
+    """Only effective hours and cycles belong to the current confirmation."""
     merged = group is not None and group["merge_mode"] == "merged"
-    hours = _digest(["hours-v1", source, op["setup_hours"], op["unit_hours"], None if merged else op["ext_days"],
-                     group["total_days"] if group else None]) if source and _valid_hours(op, group) else None
-    if hours and group is not None and group["merge_mode"] == "merged" and old_hours is not None and old_hours["signature"] != hours:
-        legacy = _digest(["hours-v1", source, op["setup_hours"], op["unit_hours"], op["ext_days"], group["total_days"]])
-        if old_hours["signature"] == legacy:
-            hours = legacy
-    return hours
+    return content_text(["hours-v2", source, op["setup_hours"], op["unit_hours"], None if merged else op["ext_days"],
+                         group["total_days"] if group else None]) if source and _valid_hours(op, group) else None
 
 
-def _operation_facts(part, op, group, suppliers, records):
+def _operation_facts(part, op, group, suppliers):
     route = [part["ref"], _ref(op["ref"]), op["seq"], op["op_type_name"]]
     values, source_valid = _source_facts(part, op, group, suppliers)
-    source = _source_signature(route, values, source_valid, records.get((op["ref"], "source")),
-                               _legacy_separate_supplier(group, suppliers))
-    hours = _hours_signature(source, op, group, records.get((op["ref"], "hours")))
-    return route, {"source": source, "hours": hours}
+    source = _source_content(route, values, source_valid)
+    hours = _hours_content(source, op, group)
+    return route, {"source": source, "hours": hours,
+                   "group": group["source_facts"] if group else None}
 
 
 def _load_facts(conn, part_no=None):
@@ -216,36 +177,68 @@ def _facts(part, loaded):
     by_part, groups, suppliers, by_ref = loaded
     operations = by_part.get(part["part_no"], [])
     records = by_ref.get(part["ref"], {})
-    routes, per_op = [], {}
+    routes, per_op, group_facts = [], {}, {}
     for op in operations:
-        route, signatures = _operation_facts(part, op, groups.get(op["ext_group_id"]), suppliers, records)
+        route, contents = _operation_facts(part, op, groups.get(op["ext_group_id"]), suppliers)
         routes.append(route)
-        per_op[op["ref"]] = signatures
+        per_op[op["ref"]] = contents
+        if contents["group"] is not None:
+            group_facts[contents["group"]["ref"]] = contents["group"]
     valid_route = bool(operations) and all(type(op["seq"]) is int and op["seq"] > 0
         and isinstance(op["op_type_name"], str) and op["op_type_name"].strip() for op in operations)
-    route = _digest(["route-v1", part["ref"], part["route_raw"], routes]) if valid_route else None
-    signatures = {"route": route}
+    route = content_text(["route-v2", part["ref"], part["route_raw"], routes]) if valid_route else None
+    contents = {"route": route}
     previous = route
     for stage in ("source", "hours"):
-        values = [[ref, signatures[stage]] for ref, signatures in per_op.items()]
-        previous = _digest([stage + "-v1", previous, values]) if previous and all(value for _, value in values) else None
-        signatures[stage] = previous
-    return operations, signatures, per_op, records
+        values = [[ref, item[stage]] for ref, item in per_op.items()]
+        document = [stage + "-v2", previous, values]
+        if stage == "source":
+            document.append(group_facts)
+        previous = content_text(document) if previous and all(value is not None for _, value in values) else None
+        contents[stage] = previous
+    return operations, contents, per_op, records
 
 
-def _confirmation(row, signature, prefix=""):
-    valid = bool(row and signature and row[prefix + "signature"] == signature
-                 and isinstance(row[prefix + "confirmed_at"], str) and row[prefix + "confirmed_at"].strip()
-                 and (row[prefix + "confirmed_by"] is None or isinstance(row[prefix + "confirmed_by"], str)
-                      and row[prefix + "confirmed_by"].strip()))
-    return {"state": "confirmed" if valid else "unconfirmed",
+def _confirmation(row, content, prefix="", *, missing_original=False):
+    recorded = bool(row and isinstance(row.get(prefix + "confirmed_at"), str) and row[prefix + "confirmed_at"].strip()
+                    and (row.get(prefix + "confirmed_by") is None or isinstance(row[prefix + "confirmed_by"], str)
+                         and row[prefix + "confirmed_by"].strip()))
+    saved = row.get(prefix + "content_json") if row else None
+    valid = bool(recorded and content is not None and saved == content)
+    result = {"state": "confirmed" if valid else "unconfirmed",
             "confirmed_at": row[prefix + "confirmed_at"] if valid else None,
             "confirmed_by": row[prefix + "confirmed_by"] if valid else None}
+    if recorded and (saved is None or missing_original):
+        result.update(history={"confirmed_at": row[prefix + "confirmed_at"], "confirmed_by": row[prefix + "confirmed_by"]},
+                      content_state="missing_original", reason="历史确认缺少当时的工艺资料，请重新确认当前资料。")
+    return result
 
 
-def _operation_states(per_op, records):
-    return {ref: {stage: _confirmation(records.get((ref, stage)), values[stage]) for stage in ("source", "hours")}
-            for ref, values in per_op.items()}
+def _saved_groups(stored):
+    saved = stored.get("source_content_json") if stored else None
+    if saved is None:
+        return None
+    try:
+        document = unpacked(json.loads(saved))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Invalid saved process source content.") from exc
+    if type(document) is not list or len(document) != 4 or document[0] != "source-v2" or type(document[3]) is not dict:
+        raise RuntimeError("Invalid saved process source content.")
+    return document[3]
+
+
+def _operation_states(per_op, records, stored=None):
+    saved_groups, group_matches, result = _saved_groups(stored), {}, {}
+    for ref, values in per_op.items():
+        group = values["group"]
+        if group is not None and group["ref"] not in group_matches:
+            original = saved_groups.get(group["ref"]) if saved_groups is not None else None
+            group_matches[group["ref"]] = (original is not None and same(original, group), original is None)
+        matching, missing = (True, False) if group is None else group_matches[group["ref"]]
+        result[ref] = {stage: _confirmation(records.get((ref, stage)), values[stage] if matching else None,
+                                          missing_original=missing)
+                       for stage in ("source", "hours")}
+    return result
 
 
 def _legacy_view(operations):
@@ -256,21 +249,21 @@ def _legacy_view(operations):
 
 
 def _view(stored, facts):
-    operations, signatures, per_op, records = facts
+    operations, contents, per_op, records = facts
     if stored is None:
         return _legacy_view(operations)
     result = {"origin": "managed", "stage": "route", "ready": False}
-    op_states = _operation_states(per_op, records)
+    op_states = _operation_states(per_op, records, stored)
     unlocked = True
     for stage in _STAGES:
-        current = _confirmation(stored, signatures[stage], stage + "_")
+        current = _confirmation(stored, contents[stage], stage + "_")
         complete = stage == "route" or all(row[stage]["state"] == "confirmed" for row in op_states.values())
         if not unlocked:
-            current = {"state": "locked", "confirmed_at": None, "confirmed_by": None}
+            current = dict(current, state="locked", confirmed_at=None, confirmed_by=None)
         elif current["state"] != "confirmed" or not complete:
             result["stage"] = stage
-            current = {"state": "missing" if stage == "route" and not operations else "unconfirmed",
-                       "confirmed_at": None, "confirmed_by": None}
+            current = dict(current, state="missing" if stage == "route" and not operations else "unconfirmed",
+                           confirmed_at=None, confirmed_by=None)
             unlocked = False
         result[stage] = current
     if unlocked:
@@ -286,9 +279,9 @@ def read_workflow(conn, part_no, *, contracts=None) -> dict:
 
 def operation_confirmations(conn, part_no) -> dict:
     with TransactionManager(conn).transaction():
-        part, _ = _part(conn, part_no)
+        part, stored = _part(conn, part_no)
         _, _, per_op, records = _facts(part, _load_facts(conn, part_no))
-        return _operation_states(per_op, records)
+        return _operation_states(per_op, records, stored)
 
 
 def workflow_snapshot(conn, *, tables=None) -> dict:
@@ -354,8 +347,9 @@ def project_workflow_snapshot(raw) -> dict:
         if not isinstance(part["part_no"], str):
             raise RuntimeError("Invalid process part number; expected text.")
         facts = _facts(part, loaded)
-        result[part["part_no"]] = {"workflow": _view(stored.get(_ref(part["ref"])), facts),
-                                   "operations": _operation_states(facts[2], facts[3])}
+        original = stored.get(_ref(part["ref"]))
+        result[part["part_no"]] = {"workflow": _view(original, facts),
+                                   "operations": _operation_states(facts[2], facts[3], original)}
     return result
 
 
@@ -371,23 +365,25 @@ def start_workflow(conn, part_no, *, contracts=None) -> dict:
         part, stored = _part(conn, part_no, contracts)
         if stored is None:
             WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
-            stored = {stage + "_" + key: None for stage in _STAGES for key in ("signature", "confirmed_at", "confirmed_by")}
+            stored = {stage + "_" + key: None for stage in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
         return _view(stored, _facts(part, _load_facts(conn, part_no)))
 
 
-def _save_operations(conn, part_ref, stage, per_op, records, stamp, person):
+def _save_operations(conn, part_ref, stage, per_op, records, stored, stamp, person):
     repo = WorkbenchProcessWorkflowRepository(conn)
+    states = _operation_states(per_op, records, stored)
     for ref, values in per_op.items():
         old = records.get((ref, stage))
-        if _confirmation(old, values[stage])["state"] == "confirmed":
+        if states[ref][stage]["state"] == "confirmed":
             continue
         if old is None:
-            repo.insert_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, signature=values[stage],
+            repo.insert_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, content_json=values[stage],
                                      confirmed_at=stamp, confirmed_by=person)
         else:
-            repo.update_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, signature=values[stage],
+            repo.update_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, content_json=values[stage],
                                      confirmed_at=stamp, confirmed_by=person)
-        records[(ref, stage)] = {"signature": values[stage], "confirmed_at": stamp, "confirmed_by": person}
+        records[(ref, stage)] = {"signature": old.get("signature") if old else None, "content_json": values[stage],
+                                "confirmed_at": stamp, "confirmed_by": person}
 
 
 def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=None) -> dict:
@@ -400,27 +396,27 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=No
     with TransactionManager(conn).transaction():
         part, stored = _part(conn, part_no, contracts)
         facts = _facts(part, _load_facts(conn, part_no))
-        _, signatures, per_op, records = facts
+        _, contents, per_op, records = facts
         view = _view(stored, facts)
         previous = {"source": "route", "hours": "source"}.get(stage)
         if previous and view[previous]["state"] != "confirmed":
             raise ValidationError("请先确认上一工艺阶段的当前资料。", field="stage", details={"reason": "process_stage_locked"})
-        signature = signatures[stage]
-        if signature is None:
+        content = contents[stage]
+        if content is None:
             raise ValidationError("当前工艺资料不完整或不合法，不能确认。", field=stage, details={"reason": "process_facts_invalid"})
         repo = WorkbenchProcessWorkflowRepository(conn)
         if stored is None:
             repo.insert_workflow(part["ref"])
-            stored = {name + "_" + key: None for name in _STAGES for key in ("signature", "confirmed_at", "confirmed_by")}
+            stored = {name + "_" + key: None for name in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
         stamp = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
         if stage == "route":
             repo.delete_confirmations_outside_active_route(part["ref"], part_no)
         else:
-            _save_operations(conn, part["ref"], stage, per_op, records, stamp, confirmed_by)
-        if _confirmation(stored, signature, stage + "_")["state"] != "confirmed":
-            repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, signature=signature,
+            _save_operations(conn, part["ref"], stage, per_op, records, stored, stamp, confirmed_by)
+        if _confirmation(stored, content, stage + "_")["state"] != "confirmed":
+            repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, content_json=content,
                                         confirmed_at=stamp, confirmed_by=confirmed_by)
-            stored = dict(stored, **{stage + "_signature": signature, stage + "_confirmed_at": stamp,
+            stored = dict(stored, **{stage + "_content_json": content, stage + "_confirmed_at": stamp,
                                      stage + "_confirmed_by": confirmed_by})
         return _view(stored, facts)
 

@@ -9,6 +9,7 @@ from .candidate_fingerprint import (
     jsonable_fingerprint_payload,
     score_strictly_better,
 )
+from .process_evidence import OptimizationProcessEvidence
 from .search_report_helpers import (
     append_fingerprint_event,
     candidate_summary,
@@ -26,7 +27,7 @@ from .search_report_helpers import (
 from .search_report_helpers import fingerprint_changed as has_fingerprint_changed
 from .search_report_helpers import safe_reason as normalize_reason
 
-SEARCH_REPORT_SCHEMA_VERSION = 1
+SEARCH_REPORT_SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -44,15 +45,15 @@ class OptimizationSearchReportState:
     best_improved_candidates: int = 0
     rejected_candidates: int = 0
     iterations: int = 0
-    initial_fingerprint: Optional[str] = None
-    best_fingerprint: Optional[str] = None
+    initial_fingerprint: Optional[tuple] = None
+    best_fingerprint: Optional[tuple] = None
     initial_candidate_fingerprint: Optional[Dict[str, Any]] = None
     best_candidate_fingerprint: Optional[Dict[str, Any]] = None
     best_origin: Optional[str] = None
     initial_score: List[Any] = field(default_factory=list)
     best_score: List[Any] = field(default_factory=list)
-    candidate_fingerprints: Set[str] = field(default_factory=set)
-    accepted_fingerprints: Set[str] = field(default_factory=set)
+    candidate_fingerprints: Set[tuple] = field(default_factory=set)
+    accepted_fingerprints: Set[tuple] = field(default_factory=set)
     fingerprint_events: List[Dict[str, Any]] = field(default_factory=list)
     skipped_phases: List[Dict[str, Any]] = field(default_factory=list)
     rejection_summary: Dict[str, int] = field(default_factory=dict)
@@ -71,14 +72,22 @@ class OptimizationSearchReportState:
     local_search_entered: bool = False
     local_search_improved: bool = False
     optional_warmstart_failed: bool = False
+    _candidate_sequence: int = field(default=0, init=False, repr=False)
     _best_candidate: Optional[Dict[str, Any]] = field(default=None, init=False, repr=False, compare=False)
     _best_identity: Optional[CandidateFingerprint] = field(default=None, init=False, repr=False, compare=False)
+    process_collector: Optional[OptimizationProcessEvidence] = field(default=None, repr=False, compare=False)
+
+    def next_candidate_id(self) -> int:
+        self._candidate_sequence += 1
+        return self._candidate_sequence
 
     def fingerprint_identity(self, candidate: Dict[str, Any]) -> Optional[CandidateFingerprint]:
         """The retained best's stable identity; its comparison context is recomputed by the caller."""
         return self._best_identity if candidate is self._best_candidate else None
 
     def mark_phase_skipped(self, phase: str, reason: str, **extra: Any) -> None:
+        if self.process_collector is not None:
+            self.process_collector.skipped_phase(phase, reason)
         row: Dict[str, Any] = {"phase": safe_text(phase), "reason": safe_text(reason)}
         for key, value in extra.items():
             if value is not None:
@@ -102,9 +111,11 @@ class OptimizationSearchReportState:
                                  fingerprint: Optional[CandidateFingerprint] = None) -> CandidateFingerprint:
         """Count real work; an unverified checkpoint trial must not occupy the validated duplicate set."""
         self.evaluated_candidates += 1
+        if self.process_collector is not None:
+            self.process_collector.evaluated(candidate, origin=origin, verified=remember_fingerprint)
         fingerprint = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints, identity=fingerprint)
         if remember_fingerprint:
-            self.candidate_fingerprints.add(fingerprint.output_fingerprint)
+            self.candidate_fingerprints.add(fingerprint.output_key)
         append_fingerprint_event(self.fingerprint_events, origin=origin, status="evaluated", fingerprint=fingerprint)
         if fingerprint.same_as_parent or fingerprint.same_as_seen:
             self._record_rejection_reason("same_fingerprint")
@@ -119,21 +130,25 @@ class OptimizationSearchReportState:
         fingerprint: Optional[CandidateFingerprint] = None,
     ) -> None:
         fingerprint = self._candidate_fingerprint(candidate, seen=self.accepted_fingerprints, identity=fingerprint)
-        if fingerprint.output_fingerprint not in self.candidate_fingerprints:
+        if fingerprint.output_key not in self.candidate_fingerprints:
             self.evaluated_candidates += 1
-            self.candidate_fingerprints.add(fingerprint.output_fingerprint)
+            self.candidate_fingerprints.add(fingerprint.output_key)
+            if self.process_collector is not None:
+                self.process_collector.evaluated(candidate, origin=origin)
         was_initial = self.initial_fingerprint is None
         if self.initial_fingerprint is None:
-            self.initial_fingerprint = fingerprint.output_fingerprint
+            self.initial_fingerprint = fingerprint.output_key
             self.initial_candidate_fingerprint = fingerprint.to_report_dict()
             self.initial_score = list(candidate.get("score") or [])
-        self.best_fingerprint = fingerprint.output_fingerprint
+        self.best_fingerprint = fingerprint.output_key
         self._best_candidate, self._best_identity = candidate, fingerprint
         self.best_candidate_fingerprint = fingerprint.to_report_dict()
         self.best_origin = str(origin)
         self.best_score = list(candidate.get("score") or [])
         self.accepted_candidates += 1
-        self.accepted_fingerprints.add(fingerprint.output_fingerprint)
+        if self.process_collector is not None:
+            self.process_collector.accepted(candidate, origin=origin)
+        self.accepted_fingerprints.add(fingerprint.output_key)
         if not was_initial:
             self.best_improved_candidates += 1
         append_fingerprint_event(self.fingerprint_events, origin=origin, status="accepted", fingerprint=fingerprint)
@@ -150,12 +165,16 @@ class OptimizationSearchReportState:
         fingerprint: Optional[CandidateFingerprint] = None,
     ) -> None:
         fingerprint = self._candidate_fingerprint(candidate, seen=self.accepted_fingerprints, identity=fingerprint)
-        if fingerprint.output_fingerprint not in self.candidate_fingerprints:
+        if fingerprint.output_key not in self.candidate_fingerprints:
             self.evaluated_candidates += 1
-            self.candidate_fingerprints.add(fingerprint.output_fingerprint)
+            self.candidate_fingerprints.add(fingerprint.output_key)
+            if self.process_collector is not None:
+                self.process_collector.evaluated(candidate, origin=origin)
         self.accepted_candidates += 1
         self.current_accepted_candidates += 1
-        self.accepted_fingerprints.add(fingerprint.output_fingerprint)
+        if self.process_collector is not None:
+            self.process_collector.accepted(candidate, origin=origin, current_only=True)
+        self.accepted_fingerprints.add(fingerprint.output_key)
         append_fingerprint_event(self.fingerprint_events, origin=origin, status="current_accepted", fingerprint=fingerprint)
         self._append_attempt_summary(candidate_summary(candidate, origin=origin, status="current_accepted"))
         if acceptance_event is not None:
@@ -267,17 +286,20 @@ class OptimizationSearchReportState:
 
     def _record_rejection_reason(self, reason: str) -> None:
         safe_reason = normalize_reason(reason)
+        if self.process_collector is not None:
+            self.process_collector.rejected(reason=safe_reason)
         self.rejected_candidates += 1
         self.rejection_summary[safe_reason] = int(self.rejection_summary.get(safe_reason, 0)) + 1
 
-    def _candidate_fingerprint(self, candidate: Dict[str, Any], *, seen: Set[str],
+    def _candidate_fingerprint(self, candidate: Dict[str, Any], *, seen: Set[tuple],
                                identity: Optional[CandidateFingerprint] = None) -> CandidateFingerprint:
         return build_candidate_fingerprint(
             candidate,
             objective_name=self.objective_name,
-            parent_fingerprint=self.best_fingerprint,
+            parent_fingerprint=self._best_identity,
             seen_output_fingerprints=seen,
             identity=identity,
+            candidate_id=self.next_candidate_id() if identity is None else identity.candidate_id,
         )
 
     def _improvement_conditions(self, fingerprint_changed: bool) -> Dict[str, Any]:
@@ -289,7 +311,7 @@ class OptimizationSearchReportState:
             and self.best_candidate_fingerprint
         )
         return {
-            "fingerprint_changed": bool(fingerprint_changed),
+            "output_changed": bool(fingerprint_changed),
             "score_strictly_better": bool(score_improved),
             "acceptance": acceptance,
             "acceptance_passed": bool(acceptance_passed),

@@ -99,13 +99,13 @@ assert.equal(text(find(cells[5], node => hasClass(node, 'rail-day-value'))), '�
 assert.equal(text(find(cells[6], node => hasClass(node, 'rail-day-value'))), '休息');
 assert(!text(find(calendar, node => hasClass(node, 'hb-cal-strip'))).includes('默认'));
 assert(!text(find(calendar, node => hasClass(node, 'hb-cal-strip'))).includes('小时'));
-assert(text(calendar).includes('每日有效工时（小时）'));
+assert(text(calendar).includes('每日折算标准工时（小时）'));
 assert(text(calendar).includes('自制 · 全局'));
 assert(text(calendar).includes('本周全部按默认规则'));
 assert(!text(calendar).includes('普通件'));
 props.counts.summary.data.calendar.stats.urgent_effective_hours = 0;
 tree = remount(props); calendar = find(tree, node => hasClass(node, 'hb-cal-block'));
-assert(text(calendar).includes('普通件 36.5 小时 · 急件 0.0 小时'));
+assert(text(calendar).includes('普通件折算 36.5 小时 · 急件折算 0.0 小时'));
 
 // Business failures remain visible above both expanded and collapsed navigation, including the actual error.
 const failed = fixture();
@@ -117,7 +117,7 @@ Object.assign(failed.counts.summary.data.calendar.stats, { work_days: null, rest
   urgent_effective_hours: null, unavailable_days: 1 });
 tree = remount(failed);
 assert.equal(text(find(tree, node => node.props['data-calendar-date'] === '2026-10-05')).includes('未知'), true);
-assert.equal(text(find(tree, node => node.props['data-calendar-week-hours'])), '本周有效 暂无数据');
+assert.equal(text(find(tree, node => node.props['data-calendar-week-hours'])), '本周折算标准工时 暂无数据');
 find(tree, node => hasClass(node, 'rail-toggle')).props.onClick(); tree = remount(failed);
 const notices = find(tree, node => hasClass(node, 'rail-notices'));
 assert(text(notices).includes('工艺确认记录读取失败'));

@@ -27,7 +27,6 @@ def baseline_reason(code):
         "not_an_optimization_score": "安排变动对比。",
         "no_comparable_operations": "这次范围里没有能核对并一一对应的安排。",
         "resource_identity_unavailable": "有一边没有可核对的设备人员编号，资源有没有变不清楚。",
-        "input_digest_not_recorded": "排产输入摘要未记录。",
     }
     return {"code": code, "message": messages[code]}
 

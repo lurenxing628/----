@@ -121,11 +121,6 @@ from .quality_gate_shared import (
     ensure_single_marker,
     extract_json_code_block,
     extract_marked_block,
-    hash_quality_gate_collection_proof,
-    hash_quality_gate_command_receipts,
-    hash_quality_gate_commands,
-    hash_quality_gate_source_proof,
-    hash_required_tests_registry,
     is_startup_scope_path,
     iter_quality_gate_required_tests,
     now_shanghai_iso,
@@ -141,10 +136,10 @@ from .quality_gate_shared import (
     write_text_file,
 )
 from .test_debt_registry import (
-    hash_test_debt_registry,
     iter_required_tests,
     iter_startup_regressions,
     load_test_debt_registry,
+    test_debt_registry_content,
 )
 from .test_registry import (
     iter_required_regression_groups,

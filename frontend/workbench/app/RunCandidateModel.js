@@ -11,18 +11,25 @@
   const tiny = value => typeof value === 'number' && Number(Math.abs(value).toFixed(3)) === 0;
   const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加' : '减少') + (tiny(value) ? '不到 0.001' : ' ' + number(Math.abs(value)));
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
-  const metricLabels = { overdue_count: window.WorkbenchTerms.overdue_count, total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + '（小时）', makespan_hours: '安排时长（小时）', changeover_count: '换型次数',
+  const metricLabels = { overdue_count: window.WorkbenchTerms.overdue_count, total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + '（小时）', makespan_hours: '安排时长（小时）', changeover_count: window.WorkbenchTerms.algorithm_changeover_count,
     weighted_tardiness_hours: '加权拖期（小时）', machine_used_count: '已用设备', operator_used_count: '已用人员', machine_busy_hours_total: '设备占用（小时）',
     operator_busy_hours_total: '人员占用（小时）', machine_util_avg: '设备利用率', operator_util_avg: '人员利用率', elapsed_seconds: '计算用时（秒）' };
-  const executionLabels = { target_quantity: '目标数量', known_completed_quantity: '已知完成数量', remaining_quantity: '剩余数量', execution_state: '执行状态', data_quality: '数据质量', target_basis: '数量计算方式' };
+  const executionLabels = { target_quantity: '目标数量', known_completed_quantity: '已知完成数量', remaining_quantity: '剩余数量', execution_state: '执行状态', data_quality: '数据质量', target_basis: '数量计算方式',
+    first_actual_start: '最早实际开工时间', confirmed_finish: '确认完工时间', unknown_record_count: '完成数量缺失记录数', records_complete: '报工记录资料', quantity_complete: '完成数量资料', completion_basis: '完成依据' };
   // 生成时的执行记录按项取词：执行状态与现场记录同一套叫法；数据质量的 complete 是“完整”，不能和执行状态的“已完工”混成一个词。
-  const executionTexts = { execution_state: window.WorkbenchTerms.execution_states, data_quality: window.WorkbenchTerms.data_quality, target_basis: { piece: '件', batch: '批' } };
-  const executionValue = (v, key = 'execution_state') => Object.prototype.hasOwnProperty.call(executionTexts[key] || {}, v) ? executionTexts[key][v] : typeof v === 'string' ? v : number(v);
+  const executionTexts = { execution_state: window.WorkbenchTerms.execution_states, data_quality: window.WorkbenchTerms.data_quality, target_basis: { piece: '件', batch: '批' },
+    completion_basis: { complete_reports: '逐次报工记录', legacy_finish_event: '历史完工记录' } };
+  function executionValue(value, key = 'execution_state') {
+    if (Object.prototype.hasOwnProperty.call(executionTexts[key] || {}, value)) return executionTexts[key][value];
+    if (['first_actual_start', 'confirmed_finish'].includes(key)) return timeLabel(value);
+    if (typeof value === 'boolean') return ['records_complete', 'quantity_complete'].includes(key) ? value ? '完整' : '不完整' : value ? '是' : '否';
+    return typeof value === 'string' ? value : number(value);
+  }
   function executionField(task, key) {
     const value = task.execution_at_generation[key];
-    if (value !== null) return executionValue(value, key);
+    if (value !== null && value !== undefined) return executionValue(value, key);
     const problem = task.data_gaps.find(row => row.field === 'execution_at_generation.' + key || row.field === 'execution_at_generation');
-    return problem ? problem.message : '提交试排时未保存' + executionLabels[key] + '。';
+    return problem ? problem.message : '保存时未记录' + executionLabels[key] + '。';
   }
   function quantityLabel(task, key = 'quantity') {
     if (task[key] !== null) return number(task[key]);
@@ -37,6 +44,7 @@
     t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
   const matching = (tasks, query) => { const needle = query.trim().toLocaleLowerCase(); return needle ? tasks.filter(t => searchText(t).includes(needle)) : tasks; };
   const resource = (t, mode) => mode === 'batch' ? { ref: t.batch_ref, label: t.batch_label } : t[mode];
+  const resourceMatches = (task, focus) => !focus || !!task[focus.kind] && task[focus.kind].ref === focus.ref;
   function resourceLabel(side, kind) {
     const value = side[kind], label = kind === 'supplier' ? '供应商' : kindLabels[kind];
     if (value && value.label && value.ref !== null) return value.label;
@@ -55,18 +63,18 @@
     if (kind !== 'supplier' && window.PointContract.isPoint(side)) return '不占用（零工时工序）';
     return '未指定';
   }
-  function laneLabel(row) {
+  function laneLabel(row, reference) {
     const count = row.baseline || row.point ? row.laneCount : row.normalLaneCount;
     const suffix = count > 1 ? ' ' + (row.lane + 1) + '/' + count : '';
     if (row.baseline) return '原安排' + (row.baselinePoint ? ' · 零工时点' : '') + suffix;
-    if (row.point) return '零工时点' + suffix;
-    return count > 1 ? '重叠子行' + suffix : '新安排';
+    if (row.point) return (reference ? '正式归档 · ' : '') + '零工时点' + suffix;
+    return count > 1 ? (reference ? '正式归档 · ' : '') + '重叠子行' + suffix : reference ? '正式归档' : '新安排';
   }
   function title(t) {
     return [t.batch_label || '批次未记录', number(t.sequence) + ' · ' + (t.process_label || '工序未记录'), pieceLabel(t),
       '本工序目标量：' + quantityLabel(t) + ' · 生成时整批量：' + quantityLabel(t, 'batch_quantity'), timeLabel(t.start) + ' 至 ' + timeLabel(t.end),
       window.PointContract.isPoint(t) ? '零工时工序 · 不占设备人员' : null,
-      t.locked ? '固定工序' : null,
+      t.locked ? '保存时锁定标记' : null,
       '设备：' + resourceLabel(t, 'machine'), '人员：' + resourceLabel(t, 'operator'),
       t.source === 'external' ? '供应商：' + resourceLabel(t, 'supplier') : null].filter(Boolean).join('\n');
   }
@@ -99,14 +107,17 @@
   }
   function layout(data, mode, query, width = 1000, operationRefs = null) {
     const groups = new Map(), rows = [], locations = new Map();
-    const tasks = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref));
+    const matched = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref)), tasks = [], unplottableTasks = [];
     const P = window.PointContract, G = window.PointGanttModel;
     const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, data.tasks.some(P.isPoint));
     // Missing references never merge unrelated named resources into an invented identity.
-    for (const task of tasks) {
+    for (const task of matched) {
+      const start = instant(task.start), end = instant(task.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) { unplottableTasks.push(task); continue; }
+      tasks.push(task);
       const r = resource(task, mode), id = r && r.ref || 'missing:' + task.row_ref;
       if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? r.label || '批次未记录' : resourceLabel(task, mode), items: [] });
-      groups.get(id).items.push({ task, start: instant(task.start), end: instant(task.end) });
+      groups.get(id).items.push({ task, start, end });
     }
     let top = 0;
     for (const group of groups.values()) {
@@ -118,8 +129,8 @@
         items.forEach(item => locations.set(item.task.row_ref, { row: rows.length, top, item })); rows.push(row); top += row.height;
       });
     }
-    return { rows, height: top, locations, tasks, groupCount: groups.size,
+    return { rows, height: top, locations, tasks, unplottableTasks, groupCount: groups.size,
       start: bounds.start, end: bounds.end };
   }
-  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, kindLabels, metricLabels, executionLabels, executionValue, executionField };
+  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, metricLabels, executionLabels, executionValue, executionField };
 })();

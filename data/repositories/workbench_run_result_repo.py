@@ -3,6 +3,8 @@
 import json
 from dataclasses import fields
 
+from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
+from core.models.objective import best_score_schema
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.models.workbench_run_job import durable_value, new_run_ref
@@ -22,6 +24,8 @@ def _candidate_tasks(payload, identities, computation):
 
 def _prepare_candidate(candidate, computation, identities):
     artifact = {item.name: durable_value(getattr(candidate, item.name)) for item in fields(candidate)}
+    if getattr(computation.schedule_input, "operation_efforts", None) is not None:
+        artifact["analysis_contract_version"] = "decision-preparation-v4"
     tasks = []
     if candidate.status == "completed":
         payload = computation.candidate_payloads[candidate.candidate_key]
@@ -56,18 +60,67 @@ def prepare_run_result(computation, identities):
         candidates.append(_prepare_candidate(candidate, computation, identities))
     if len({row["key"] for row in candidates}) != len(candidates):
         raise ValueError("Duplicate candidate identity")
+    candidate_refs = {row["key"]: row["candidate_ref"] for row in candidates}
+    for row in candidates:
+        process = row["artifact"].get("process_evidence")
+        if process is not None:
+            row["artifact"]["process_evidence"] = _evidence_references(process, candidate_refs)
     selected = comparison.selection.selected_candidate_key
     if not any(row["key"] == selected and row["status"] == "completed" for row in candidates):
         raise ValueError("Selected candidate is missing")
     result = {"result_persisted": True, "state": computation.state, "error": None,
               "candidates": [{"candidate_ref": row["candidate_ref"], "label": row["label"], "status": row["status"],
                               "task_count": len(row["tasks"]), "selected": row["key"] == selected} for row in candidates],
-              "selection": durable_value(comparison.selection.to_dict()), "dispositions": durable_value(computation.dispositions),
+              "selection": _selection_references(comparison.selection, candidates), "dispositions": durable_value(computation.dispositions),
               "summary": durable_value(computation.orchestration.result_summary_obj)}
+    efforts = getattr(computation.schedule_input, "operation_efforts", None)
+    if efforts is not None:
+        items, seen = [], set()
+        for effort in efforts:
+            if effort.op_id not in identities or effort.op_id in seen:
+                raise ValueError("Runtime effort operation identity is missing or duplicated")
+            seen.add(effort.op_id)
+            items.append({**durable_value(effort.to_dict()), "operation_ref": identities[effort.op_id]})
+        result["operation_effort"] = {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": items}
     canonical_json(result)
     for row in candidates:
         canonical_json(row)
     return candidates, result
+
+
+def _selection_references(selection, candidates):
+    """Map engine keys once, beside the candidate identities allocated in this transaction."""
+    refs = {row["key"]: row["candidate_ref"] for row in candidates}
+    value = durable_value(selection.to_dict())
+    keys = {"selected_candidate_key": "selected_candidate_ref", "raw_score_best_key": "raw_score_best_candidate_ref",
+            "baseline_best_key": "health_reference_candidate_ref", "critical_best_key": "critical_best_candidate_ref",
+            "critical_health_best_key": "critical_health_best_candidate_ref"}
+    for source, target in keys.items():
+        key = value.pop(source)
+        value[target] = refs[key] if key is not None else None
+    selected = next(row for row in candidates if row["candidate_ref"] == value["selected_candidate_ref"])
+    objective = selected["artifact"].get("objective_name") or selected["artifact"].get("objective")
+    value.update(objective_name=objective, objective_field_order=[field["key"] for field in best_score_schema(objective)])
+    if "decision_evidence" in value:
+        value["decision_evidence"] = _evidence_references(value["decision_evidence"], refs)
+    return value
+
+
+def _evidence_references(value, refs):
+    """Freeze nested candidate identities alongside the existing receipt anchors."""
+    if isinstance(value, list):
+        return [_evidence_references(item, refs) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result = {}
+    for key, item in value.items():
+        if key == "candidate_key" or key.endswith("_candidate_key"):
+            result[key[:-3] + "ref"] = refs[item] if item is not None else None
+        elif key == "candidate_keys" or key.endswith("_candidate_keys"):
+            result[key[:-4] + "refs"] = [refs[candidate] for candidate in item]
+        else:
+            result[key] = _evidence_references(item, refs)
+    return result
 
 
 class WorkbenchRunResultRepository:

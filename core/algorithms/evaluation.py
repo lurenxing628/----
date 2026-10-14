@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from core.algorithm_contracts.changeover_events import ChangeoverArrangement, project_changeover_events
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE, BatchCompletion, collect_batch_completion
@@ -293,24 +294,17 @@ def _record_tardiness_if_overdue(
 
 
 def _count_changeovers(by_machine: Dict[str, List[ScheduleResult]]) -> int:
-    changeovers = 0
-    for machine_results in by_machine.values():
-        machine_results.sort(key=lambda item: (item.start_time or datetime.min, item.end_time or datetime.min, item.op_id))
-        changeovers += _count_machine_changeovers(machine_results)
-    return int(changeovers)
-
-
-def _count_machine_changeovers(machine_results: List[ScheduleResult]) -> int:
-    changeovers = 0
-    previous_type: Optional[str] = None
-    for result in machine_results:
-        current_type = (result.op_type_name or "").strip()
-        if not current_type:
-            continue
-        if previous_type is not None and current_type != previous_type:
-            changeovers += 1
-        previous_type = current_type
-    return int(changeovers)
+    arrangements = [ChangeoverArrangement(
+        machine_ref=machine, operation_ref=str(result.op_id) if result.op_id > 0 else None,
+        row_ref=str(result.op_id) if result.op_id > 0 else None,
+        type_ref=result.op_type_id, type_label=result.op_type_name,
+        start=result.start_time, end=result.end_time, source=(result.source or "").strip().lower(),
+        point_event=result.start_time is not None and result.start_time == result.end_time,
+        sort_key=(result.op_id,))
+        for machine, machine_results in by_machine.items() for result in machine_results]
+    # The public algorithm metric is an integer. Saved-event consumers retain the
+    # shared projection's separate completeness and known subtotal.
+    return int(project_changeover_events(arrangements)["known_count"])
 
 
 def _build_utilization_metrics(state: _ResultMetricState) -> _UtilizationMetrics:

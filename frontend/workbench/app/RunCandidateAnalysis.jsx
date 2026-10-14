@@ -1,34 +1,36 @@
 (function () {
   'use strict';
-  const C = window.RunCandidateControls, M = window.RunCandidateModel;
+  const C = window.RunCandidateControls, M = window.RunCandidateModel, T = window.WorkbenchTerms;
   const labels = { overdue_count: window.WorkbenchTerms.overdue_count, total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + '（小时）', changed_operation_count: '调整工序', machine_change_count: '换设备数' };
   function Value({ metric }) {
-    return <>{metric.value === null ? '未知' : M.number(metric.value)}{metric.value === null && <small>已知小计 {M.number(metric.known_subtotal)} · 待确认 {metric.unknown_count} / {metric.total_count}</small>}
+    return <>{metric.state === 'not_applicable' ? '不适用' : metric.value === null ? '未知' : M.number(metric.value)}{metric.value === null && metric.state !== 'not_applicable' && <small>已知小计 {M.number(metric.known_subtotal)} · 待确认 {metric.unknown_count} / {metric.total_count}</small>}
       {metric.reason && <details><summary>依据不足</summary><small>{metric.reason.message}</small></details>}</>;
   }
   function Overview({ data }) {
-    return <section aria-label="完整候选比较摘要" data-candidate-analysis={data.candidate_ref}>
-      <div className="rc-heading"><h3>整份候选与排产时的正式计划</h3><span className="rc-muted">{data.batch_refs.length} 批 · {data.operations.operation_refs.length} 道工序</span></div>
+    return <section aria-label="全方案交付与变化" data-candidate-analysis={data.candidate_ref}>
+      <div className="rc-heading"><h3>全方案交付与变化</h3><span className="rc-muted">{data.batch_refs.length} 批 · {data.operations.operation_refs.length} 道工序</span></div>
       <dl className="rc-meta" data-analysis-metrics>{Object.keys(labels).map(key => <div key={key} data-analysis-metric={key}><dt>{labels[key]}</dt><dd><Value metric={data.metrics[key]} /></dd></div>)}</dl>
       <div className="rc-scope" aria-label="候选变化与取舍">{Object.keys(data.delivery_deltas).map(key => <span key={key}>
-        {labels[key]}：{!data.baseline.available ? '无原安排，不作对比' : data.delivery_deltas[key] === null ? '原安排或候选的交付依据不完整，暂不能比较' : M.signedChange(data.delivery_deltas[key])}</span>)}
-        <span>调整工序：{data.metrics.changed_operation_count.value === null ? '完整数量待确认' : data.metrics.changed_operation_count.value + ' 道'}</span>
-        <span>换设备：{data.metrics.machine_change_count.value === null ? '完整数量待确认' : data.metrics.machine_change_count.value + ' 道'}</span></div>
+        {labels[key]}变化：{!data.baseline.available ? '无原安排' : data.metrics[key].state === 'not_applicable' ? '不适用' : data.delivery_deltas[key] === null ? '交付待确认' : M.signedChange(data.delivery_deltas[key])}</span>)}</div>
       {!data.baseline.comparison_available && <p className="rc-notice">{data.baseline.reason.message}</p>}
       <C.Reasons rows={data.operations.issues.flatMap(row => row.reasons)} />
+      <details className="rc-reasons"><summary>交期数据范围</summary><div>全方案候选：{T.delivery_coverage(data.metrics.overdue_count)}</div>
+        <div>排产时的正式计划：{T.delivery_coverage(data.before_metrics.overdue_count)}</div><div>变化为候选方案减排产时的正式计划。</div></details>
     </section>;
   }
   function Finish({ row }) {
-    return <>{row.planned_finish ? M.timeLabel(row.planned_finish) : '暂无数据'}{!row.planned_finish && row.partial_planned_finish
-      && <small>已排工序结束时间：{M.timeLabel(row.partial_planned_finish)}</small>}</>;
+    const missing = T.missing_arrangements(row.ordinary_unscheduled_operation_count, row.deferred_operation_count);
+    return <>{row.planned_finish ? <time title={M.timeLabel(row.planned_finish)}>{window.WorkbenchFormat.dateTime(row.planned_finish)}</time> : T.delivery_completion_states[row.completion_state]}
+      {row.planned_finish && <small>{T.delivery_completion_states[row.completion_state]}</small>}{missing && <small>{missing}</small>}
+      {!row.planned_finish && row.partial_planned_finish && <small title={M.timeLabel(row.partial_planned_finish)}>{T.arrangement_labels.partial_finish}：{window.WorkbenchFormat.dateTime(row.partial_planned_finish)}</small>}</>;
   }
   function Batches({ data, onBatch, onLast }) {
     const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(data.batches.length / 20)), current = Math.min(page, pages);
-    return <section aria-label="候选批次交付对照"><div className="rc-heading"><h3>批次交付对照</h3><span className="rc-muted">完整排产批次 · 变化 = 候选方案 − 排产时的正式计划</span></div>
-      <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选批次交付对照"><caption className="wb-visually-hidden">候选批次交付对照</caption><thead><tr>{['批次 / 零件', '交期', '对比基准完工', '候选完工', '超期变化（小时）', '甘特定位'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
+    return <section aria-label="候选批次交付对照"><div className="rc-heading"><h3>批次交付对照</h3><span className="rc-muted">全方案排产批次</span></div>
+      <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选批次交付对照"><caption className="wb-visually-hidden">候选批次交付对照</caption><thead><tr>{['批次 / 零件', '交期', '原正式计划' + T.arrangement_labels.planned_finish, '候选' + T.arrangement_labels.planned_finish, '超期变化（小时）', '甘特定位'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.batches.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref} data-analysis-batch={row.batch_ref}>
-          <td>{row.batch_id}<small>{row.part_label || '名称未填写'}</small></td><td>{row.after.due_date || '未记录'}</td>
-          <td>{data.baseline.available ? <Finish row={row.before} /> : '无原安排'}</td><td><Finish row={row.after} /></td><td>{!data.baseline.available ? '不适用' : row.delay_delta_hours === null ? '交付依据不完整，暂不能比较' : M.signedChange(row.delay_delta_hours)}</td>
+          <td>{row.batch_id}<small>{row.part_label || '名称未填写'}</small></td><td>{T.due_date(row.after.due_date, row.after.due_state, row.after.due_issue)}</td>
+          <td>{data.baseline.available ? <Finish row={row.before} /> : '无原安排'}</td><td><Finish row={row.after} /></td><td>{!data.baseline.available || row.after.due_state === 'unspecified' ? '不适用' : row.delay_delta_hours === null ? '交付待确认' : M.signedChange(row.delay_delta_hours)}</td>
           <td><C.Button icon="chart-gantt" disabled={!onBatch} aria-label={'查看批次甘特 ' + row.batch_id} onClick={() => onBatch(row)}>批次甘特</C.Button>
             {(row.after.last_operations || []).map(task => <C.Button key={task.row_ref} icon="search" className="mini" aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}
               onClick={() => onLast(task)}>{M.number(task.sequence)} {task.process_label || '工序未记录'}{task.piece_id && ' · ' + task.piece_id}</C.Button>)}</td>
@@ -39,7 +41,7 @@
     return <section aria-label="候选采用记录"><h3>采用记录 · {data.total}</h3>
       {!data.total ? <p className="rc-muted" role="status">这个候选方案还没有采用记录。</p> : <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选采用记录"><caption className="wb-visually-hidden">候选采用记录</caption><thead><tr>{['原正式计划', '采用时间', '经办人 / 记录人', '原因', '结果编号', '操作'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{data.items.slice((current - 1) * 20, current * 20).map(row => <tr key={row.receipt_ref} data-adoption-receipt={row.receipt_ref}>
-          <td>{row.official_plan.label}<small>{row.row_count} 道安排</small></td><td>{row.adoption ? M.timeLabel(row.adoption.adopted_at) : '暂无数据'}<small>结果保存时间：{window.WorkbenchFormat.instant(row.committed_at_utc)}</small></td>
+          <td>{row.official_plan.label}<small>{row.row_count} 道安排</small></td><td title={row.adoption ? M.timeLabel(row.adoption.adopted_at) : undefined}>{row.adoption ? window.WorkbenchFormat.dateTime(row.adoption.adopted_at) : '暂无数据'}<small title={window.WorkbenchFormat.instant(row.committed_at_utc, { seconds: true })}>结果保存时间：{window.WorkbenchFormat.instant(row.committed_at_utc)}</small></td>
           <td>{row.adoption ? <>{row.adoption.declared_operator}<small>{row.adoption.application_operator}</small></> : '暂无数据'}</td><td>{row.adoption ? row.adoption.reason : '暂无数据'}</td>
           <td><window.WorkbenchReference value={row.receipt_ref} label="结果编号" /><C.Reasons rows={row.evidence_gaps} /></td>
           <td><C.Button icon="chart-gantt" disabled={!row.can_open || !onPlan} title={row.evidence_gaps.map(gap => gap.message).join(' ')}

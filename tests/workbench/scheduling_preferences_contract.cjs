@@ -9,6 +9,17 @@ async function contract(h, assert) {
     ready_check: true, material_strategy: 'stage', missing_resource_policy: 'exclude', completed_policy: 'preserve_actuals', hold_window: null });
   const envelope = data => ({ ok: true, schema_version: 1, data, warnings: [], meta: { source: 'production',
     time_basis: 'factory_local', request_ref: 'a'.repeat(32), snapshot_ref: 's'.repeat(32), as_of: '2026-10-11T08:00:00' } });
+  const jobScope = { start_date: input.start_date, end_date: input.end_date, ready_check: input.ready_check,
+    material_strategy: input.material_strategy, missing_resource_policy: input.missing_resource_policy,
+    completed_policy: input.completed_policy, hold_window: input.hold_window, batch_count: input.batch_refs.length,
+    operation_count: 0, batches: input.batch_refs.map((batch_ref, index) => ({batch_ref,batch_id:'B'+(index+1),part_no:null,part_label:null})),
+    objective:'min_overdue',objective_label:'减少超期批次',selection:'explicit_batches',basis:'captured_at_run_admission',data_gaps:[] };
+  const timed = { accepted_at:'2026-10-11T08:00:00.000000',started_at:'2026-10-11T08:00:00.100000',finished_at:'2026-10-11T08:00:00.189123' };
+  assert.equal(w.RunPresentation.elapsed(timed),'0.089123 秒','Real saved microseconds survive the elapsed display');
+  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00',finished_at:'2026-10-11T08:00:01'}),'1 秒','Second-precision history does not invent fractions');
+  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00',finished_at:'2026-10-11T08:00:00'}),'起止记录在同一秒（记录精确到秒）','A same-second old record states its saved precision');
+  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-10-11T08:00:00.100',finished_at:'2026-10-11T08:00:00.189123'}),'0.089 秒','Elapsed precision uses the coarser saved endpoint');
+  assert.equal(w.RunPresentation.elapsed({...timed,started_at:'2026-03-08T01:30:00',finished_at:'2026-03-08T02:30:00'}),'1 小时 0 分钟 0 秒','Factory duration uses the saved fields even across browser DST');
   const preferences = (value, token = writeToken) => envelope({ input: value, write_context: { write_token: token,
     expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.preferences.save': true }, blocked_reasons: [] } });
   const receipt = value => ({ ok: true, result: 'committed', receipt_ref: 'receipt', replayed: false, data: { input: value }, warnings: [] });
@@ -117,13 +128,15 @@ async function contract(h, assert) {
     setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
   w.navigator = { locks: { request: async (_key, _options, fn) => fn({}) } };
   w.document.hidden = false;
-  const runRef = h.reference(3), dataContext = 'd'.repeat(64), admitted = { run_ref: runRef, job_ref: runRef, state: 'queued', stage: 'queued', progress: null,
+  const runRef = h.reference(3), dataContext = JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[]}), admitted = { run_ref: runRef, job_ref: runRef, state: 'queued', stage: 'queued', progress: null,
     plans: [], plan_catalog_connected: false, candidates: [], result_persisted: false, accepted_at: '2026-10-11T08:00:00',
-    started_at: null, finished_at: null, receipt_ref: null, error: null, recovery_required: false };
+    started_at: null, finished_at: null, receipt_ref: null, error: null, recovery_required: false, scope_summary: jobScope };
   route = request => request.path.endsWith('/runs/preview') ? envelope({ input_ref: inputRef, normalized_input: input, data_context_ref: dataContext,
     calendar_check: 'not_evaluated', warnings: [], write_context: { write_token: writeToken, expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.run': true }, blocked_reasons: [] } }) :
     { ok: true, result: 'accepted', job_ref: runRef, run_ref: runRef, status_target: '/api/workbench/v1/scheduling/runs/' + runRef,
       receipt_ref: 'a'.repeat(32), replayed: false, data: admitted, data_context_ref: dataContext };
+  assert(w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:'d'.repeat(64)}), 'Legacy stored generation IDs remain readable');
+  assert(!w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[true]})}), 'Restore identities keep their actual type');
   const panel = hooks(), props = { preflight: checked(input).data };
   requests.length = 0;
   panel.render(w.RunJobPanel, props); panel.flush(); await turns();
@@ -132,6 +145,8 @@ async function contract(h, assert) {
   assert(confirmation, 'A valid preflight automatically opens the existing confirmation');
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview']);
   assert.strictEqual(store.size, 0, 'Preview must not create a durable run intent');
+  assert.equal(confirmation.props.batches.length, input.batch_refs.length);
+  assert(confirmation.props.batches.every(row=>row.batch_id==='B1'),'Confirmation receives this preflight business batch names');
   await confirmation.props.onConfirm();
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview', '/api/workbench/v1/scheduling/runs']);
   assert.strictEqual(requests[1].body.input_ref, inputRef); assert.strictEqual(requests[1].body.write_token, writeToken);

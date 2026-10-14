@@ -1,0 +1,39 @@
+feature: decision-recommendation
+steps:
+  - id: source-completion-facts
+    description: 实际选择健康证据及共同完成集合剩余需求
+    status: done
+  - id: recommendation-export
+    description: 固定推荐解释当前取舍及同事实分行导出
+    status: done
+  - id: compact-ui-consumers
+    description: 紧凑推荐区支撑定位返回与实际旧消费者迁移
+    status: done
+  - id: verification-docs
+    description: 真实案例浏览器原始导出回归日常构建文档交接
+    status: done
+checks:
+  - id: C01
+    description: 固定三身份实际规则与第三候选正式基准当前取舍
+    status: passed
+  - id: C02
+    description: 完成主因3加3业务排序全部差值及真实交期压力切换
+    status: passed
+  - id: C03
+    description: 三类三轴共同完成集合缺排暂缓未知及剩余需求
+    status: passed
+  - id: C04
+    description: 实际并列复用来源balanced健康代价容差
+    status: passed
+  - id: C05
+    description: 新旧证据缺项零不适用旧实际消费者及采用预检
+    status: passed
+  - id: C06
+    description: 紧凑页面全部展开各类支撑钻取键盘完整返回
+    status: passed
+  - id: C07
+    description: 推荐三表CSVXLSX原始值文本引用scope快照一致
+    status: passed
+  - id: C08
+    description: 相关日常离线构建真实双主题窗口浏览器文档及资料保留
+    status: passed

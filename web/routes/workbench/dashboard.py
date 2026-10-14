@@ -6,13 +6,13 @@ from datetime import datetime
 from flask import current_app, g, jsonify, request
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import DashboardQuery, payload_size
 from core.services.workbench import messages
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from web.api_responses import query_success
-from web.public_token_registry import issue_public_token, resolve_public_token
+from web.public_token_registry import resolve_public_token
 
 from .api_responses import api_endpoint
 from .dashboard_analysis import dashboard_analysis, dashboard_candidate_comparison
@@ -56,11 +56,7 @@ def _time(token):
 
 
 def _bind(query, data, token):
-    if token is not None:
-        return bind_read_snapshot(query.scope(), data["fingerprint"], token)
-    payload = {"version": 2, "source": "production", "scope_hash": input_fingerprint(query.scope()),
-               "fingerprint": data["fingerprint"], "as_of": data["as_of"]}
-    return {"snapshot_ref": issue_public_token(_SCOPE, canonical_json(payload), ttl_seconds=900), "as_of": data["as_of"]}
+    return bind_read_snapshot(query.scope(), data["snapshot_contents"], token, as_of=data["as_of"])
 
 
 def _history(reader, item_ref, number, size):

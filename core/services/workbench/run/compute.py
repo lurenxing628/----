@@ -19,7 +19,7 @@ from .compute_graph import piece_graph_preparer
 from .compute_validation import validate_candidate
 from .input import CandidateRunInput, prepare_candidate_run_input
 from .piece_adoption import validate_piece_adoption
-from .preflight_facts import full_facts_fingerprint
+from .preflight_facts import full_facts_content
 
 
 def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None,
@@ -87,7 +87,7 @@ def compute_prepared_candidate_run(conn, schedule_input: CandidateRunInput, *, v
     """
     version = _prepared_version(conn, schedule_input, version_override)
     with candidate_read_snapshot(conn):
-        if full_facts_fingerprint(conn) != schedule_input.facts_fingerprint:
+        if full_facts_content(conn) != schedule_input.facts_fingerprint:
             fail("candidate_input_stale", "排产资料在这中间变了，这次排产没有开始。请重新做一次排产检查。")
         return _compute_in_read_snapshot(conn, schedule_input, version)
 

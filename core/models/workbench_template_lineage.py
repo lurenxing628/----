@@ -1,6 +1,5 @@
 """Typed, lossless template-copy evidence. Business codes are never identities."""
 
-import hashlib
 import json
 
 OPERATION_COLUMNS = (
@@ -46,10 +45,6 @@ def restore_snapshot(text):
     if snapshot(result) != text:
         raise ValueError("Noncanonical lineage snapshot.")
     return result
-
-
-def fingerprint(text):
-    return hashlib.sha256(text.encode("ascii")).hexdigest()
 
 
 def state_snapshot(row):

@@ -40,7 +40,7 @@ def _error_message(exc):
     if isinstance(exc, AppError):
         # Strings only cross (details may not pickle): the user-visible text, plus the
         # original type and text that the parent records as diagnostic, as in thread mode.
-        from core.services.workbench.run.history_projection import hold_failure_message
+        from core.services.workbench.facts.run_history_projection import hold_failure_message
 
         message = hold_failure_message(exc) or user_visible_app_error_message(exc)
         return ("app", exc.code.value, message, type(exc).__name__, str(exc))

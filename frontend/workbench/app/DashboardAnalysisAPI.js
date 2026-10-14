@@ -27,21 +27,18 @@
     } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
   }
   function pressure(value) {
-    C.check(C.object(value) && ['available', 'unavailable'].includes(value.state) && Array.isArray(value.days)
-      && nullable(number)(value.peak_utilization) && count(value.zero_capacity_days) && count(value.unknown_days));
-    value.days.forEach(day => {
-      C.check(C.object(day) && time(day.start) && time(day.end) && day.start <= day.end && day.date === day.start.slice(0, 10)
-        && ['available_hours', 'inside_available_hours', 'outside_available_hours', 'utilization'].every(k => nullable(number)(day[k]))
-        && number(day.occupied_hours) && day.occupied_hours >= 0 && number(day.overlap_hours) && day.overlap_hours >= 0
-        && (day.utilization === null ? day.available_hours === null || day.available_hours === 0 : day.available_hours > 0 && day.utilization >= 0 && day.utilization <= 1));
-    });
-    const known = value.days.map(day => day.utilization).filter(v => v !== null);
-    C.check(value.peak_utilization === (value.state === 'unavailable' || !known.length ? null : Math.max(...known))
-      && (value.state !== 'available' || value.unknown_days === 0 && value.zero_capacity_days === value.days.filter(day => day.available_hours === 0).length));
+    const R = window.ResourceProjectionContract;
+    C.check(C.object(value) && ['available', 'partial', 'unavailable'].includes(value.state) && Array.isArray(value.days)
+      && nullable(number)(value.peak_utilization) && count(value.zero_capacity_days) && count(value.unknown_days)
+      && R.window(value.window_metrics));
+    value.days.forEach(day => C.check(C.object(day) && time(day.start) && time(day.end) && day.start <= day.end
+      && day.date === day.start.slice(0, 10) && R.day(day.window_metrics)
+      && ['available_hours', 'occupied_hours', 'inside_available_hours', 'outside_available_hours', 'overlap_hours', 'utilization']
+        .every(key => nullable(number)(day[key]))));
   }
   function validate(payload, planRef) {
     const d = envelope(payload);
-    C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis'])
+    C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis', 'resource_common'])
       && d.basis === 'current_official_plan_and_readiness_sources' && C.equal(d.capabilities, { view: true, adopt: false })
       && time(d.as_of) && ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'issues'].every(k => Array.isArray(d[k])) && d.issues.every(issue));
     if (d.plan === null) C.check(!planRef && d.state !== 'available' && d.time_scope === null && !d.tasks.length && !d.resources.length && d.pressure.count === null);
@@ -55,8 +52,8 @@
       && (task.start !== task.end || task.event_kind === 'point' && task.duration_seconds === 0 && task.occupies_resources === false)));
     C.check(new Set(d.tasks.map(task => task.task_ref)).size === d.tasks.length);
     const tasks = new Map(d.tasks.map(task => [task.task_ref, task]));
-    d.resources.forEach(resource => { pressure(resource); C.check(C.ref(resource.resource_ref) && resource.kind === 'machine'
-      && Array.isArray(resource.task_refs) && resource.task_refs.every(ref => tasks.has(ref) && tasks.get(ref).machine_ref === resource.resource_ref)); });
+    d.resources.forEach(resource => { pressure(resource); C.check(C.ref(resource.resource_ref) && ['machine', 'operator'].includes(resource.kind)
+      && Array.isArray(resource.task_refs) && resource.task_refs.every(ref => tasks.has(ref) && tasks.get(ref)[resource.kind + '_ref'] === resource.resource_ref)); });
     C.check(new Set(d.resources.map(row => row.resource_ref)).size === d.resources.length);
     d.downtimes.forEach(row => C.check(C.ref(row.downtime_ref) && C.ref(row.machine_ref) && typeof row.valid === 'boolean'
       && nullable(time)(row.start) && nullable(time)(row.end) && (!row.valid || row.start !== null && row.end !== null && row.start < row.end)
@@ -70,10 +67,10 @@
       && pending.basis === 'stored_pending_batch_pool');
     pending.items.forEach(row => C.check(C.ref(row.batch_ref) && C.text(row.batch_id) && row.stored_status === 'pending'
       && nullable(number)(row.quantity) && Array.isArray(row.readiness_issues)));
-    const p = d.pressure, known = d.resources.filter(row => row.peak_utilization !== null && row.peak_utilization >= 0.9).length;
-    C.check(C.object(p) && p.threshold === 0.9 && p.known_count === known && nullable(count)(p.count)
-      && p.resource_count === d.resources.length && (p.count === null || p.count === known)
-      && p.basis === 'same_range_daily_peak_available_occupancy');
+    const p = d.pressure;
+    C.check(C.object(p) && p.threshold === 0.9 && count(p.known_count) && nullable(count)(p.count)
+      && p.resource_count === d.resources.length && p.basis === 'same_range_daily_peak_available_occupancy');
+    C.check(d.plan === null ? d.resource_common === null : window.ResourceProjectionContract.common(d.resource_common, 'current_transaction_snapshot'));
     return d;
   }
   function create(fetcher = window.fetch.bind(window)) {

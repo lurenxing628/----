@@ -87,7 +87,7 @@
       ctx.strokeRect(left / width * w + 1, 1, Math.max(1, Math.min(w - 2, viewport / width * w - 2)), h - 2);
     }, [model.start, model.end, tasks, width, left, viewport]);
     return <div className="plan-global">
-      <div className="plan-global-labels"><span>全局时间轴 · {M.timeLabel(M.wire(model.start))}</span><span>{M.timeLabel(M.wire(model.end))}</span></div>
+      <div className="plan-global-labels"><span>全局时间轴</span></div>
       <canvas ref={ref} role="img" aria-label="真实安排时间分布" onClick={event => {
         const r = ref.current.getBoundingClientRect(); onPan((event.clientX - r.left) / r.width * width - viewport / 2);
       }} />

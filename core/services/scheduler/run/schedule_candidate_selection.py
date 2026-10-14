@@ -12,6 +12,7 @@ SELECTION_POLICY_SCORE_ONLY = "score_only"
 SELECTION_POLICY_BALANCED = "balanced"
 
 _SUPPORTED_POLICIES = (SELECTION_POLICY_SCORE_ONLY, SELECTION_POLICY_BALANCED)
+SELECTION_EVIDENCE_VERSION = "candidate-selection-evidence-v1"
 
 
 @dataclass(frozen=True)
@@ -26,9 +27,13 @@ class CandidateSelectionResult:
     critical_health_best_key: Optional[str]
     selected_score: Tuple[float, ...]
     selected_plan: Any
+    selection_policy_version: str = "candidate-selection-v1"
+    overdue_tolerance_count: Optional[int] = None
+    tardiness_tolerance_ratio: Optional[float] = None
+    decision_evidence: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        value = {
             "selected_candidate_key": self.selected_candidate_key,
             "selected_kind": self.selected_kind,
             "selection_policy": self.selection_policy,
@@ -38,7 +43,13 @@ class CandidateSelectionResult:
             "critical_best_key": self.critical_best_key,
             "critical_health_best_key": self.critical_health_best_key,
             "selected_score": list(self.selected_score),
+            "selection_policy_version": self.selection_policy_version,
+            "overdue_tolerance_count": self.overdue_tolerance_count,
+            "tardiness_tolerance_ratio": self.tardiness_tolerance_ratio,
         }
+        if self.decision_evidence is not None:
+            value["decision_evidence"] = self.decision_evidence
+        return value
 
 
 def select_candidate_plan(
@@ -57,46 +68,31 @@ def select_candidate_plan(
     baseline_best = _best_of_kind(completed, CANDIDATE_KIND_BASELINE)
     critical_best = _best_of_kind(completed, CANDIDATE_KIND_CRITICAL_CHAIN)
     critical_health_best = _health_eligible_critical_best(critical_best)
-
+    balanced = _balanced_assessment(selection_policy, baseline_best, critical_best, raw_score_best,
+                                    graph_overdue_tolerance_count, graph_tardiness_tolerance_ratio)
+    selected: Any
     if selection_policy == SELECTION_POLICY_SCORE_ONLY:
-        return _build_selection(
-            selected=raw_score_best,
-            policy=selection_policy,
-            reason_code="score_only_raw_score_best",
-            raw_score_best=raw_score_best,
-            baseline_best=baseline_best,
-            critical_best=critical_best,
-            critical_health_best=critical_health_best,
-        )
-
-    if (
-        baseline_best is not None
-        and critical_health_best is not None
-        and _critical_candidate_can_override_raw_score(
-            critical_health_best,
-            raw_score_best,
-            graph_overdue_tolerance_count=graph_overdue_tolerance_count,
-            graph_tardiness_tolerance_ratio=graph_tardiness_tolerance_ratio,
-        )
-    ):
-        return _build_selection(
-            selected=critical_health_best,
-            policy=selection_policy,
-            reason_code="balanced_critical_health_better",
-            raw_score_best=raw_score_best,
-            baseline_best=baseline_best,
-            critical_best=critical_best,
-            critical_health_best=critical_health_best,
-        )
-
+        selected, reason = raw_score_best, "score_only_raw_score_best"
+    elif balanced["accepted"]:
+        selected, reason = critical_health_best, "balanced_critical_health_better"
+    else:
+        selected, reason = raw_score_best, "balanced_raw_score_best"
+    balanced["override_applied"] = selected.candidate_key != raw_score_best.candidate_key
     return _build_selection(
-        selected=raw_score_best,
+        selected=selected,
         policy=selection_policy,
-        reason_code="balanced_raw_score_best",
+        reason_code=reason,
         raw_score_best=raw_score_best,
         baseline_best=baseline_best,
         critical_best=critical_best,
         critical_health_best=critical_health_best,
+        overdue_tolerance_count=graph_overdue_tolerance_count if selection_policy == SELECTION_POLICY_BALANCED else None,
+        tardiness_tolerance_ratio=graph_tardiness_tolerance_ratio if selection_policy == SELECTION_POLICY_BALANCED else None,
+        decision_evidence={"version": SELECTION_EVIDENCE_VERSION, "state": "complete",
+                           "anchors": {"raw_score_best": _candidate_snapshot(raw_score_best),
+                                       "health_reference": _candidate_snapshot(baseline_best)},
+                           "selected": _candidate_snapshot(selected),
+                           "tiebreak": _tiebreak_evidence(completed, raw_score_best), "balanced_checks": balanced},
     )
 
 
@@ -155,21 +151,78 @@ def _health_state(health: Any) -> str:
     return str(getattr(health, "state", "") or "")
 
 
-def _critical_candidate_can_override_raw_score(
+def _critical_candidate_checks(
     critical: Any,
     raw_score_best: Any,
     *,
     graph_overdue_tolerance_count: int,
     graph_tardiness_tolerance_ratio: float,
-) -> bool:
-    return (
-        _failed_ops(critical) <= _failed_ops(raw_score_best)
-        and _objective_primary_score(critical) <= _objective_primary_score(raw_score_best)
-        and _metric(critical, "overdue_count")
-        <= _metric(raw_score_best, "overdue_count") + int(graph_overdue_tolerance_count)
-        and _metric(critical, "total_tardiness_hours")
-        <= _metric(raw_score_best, "total_tardiness_hours") * (1.0 + float(graph_tardiness_tolerance_ratio))
+) -> List[Dict[str, Any]]:
+    values = (
+        ("failed_ops", _failed_ops(critical), _failed_ops(raw_score_best), None),
+        ("objective_primary_score", _objective_primary_score(critical), _objective_primary_score(raw_score_best), None),
+        ("overdue_count", _metric(critical, "overdue_count"), _metric(raw_score_best, "overdue_count"), int(graph_overdue_tolerance_count)),
+        ("total_tardiness_hours", _metric(critical, "total_tardiness_hours"), _metric(raw_score_best, "total_tardiness_hours"), float(graph_tardiness_tolerance_ratio)),
     )
+    result = []
+    for key, value, reference, tolerance in values:
+        limit = (reference if tolerance is None else reference + tolerance if key == "overdue_count"
+                 else reference * (1.0 + tolerance))
+        result.append({"key": key, "candidate_value": value, "reference_value": reference,
+                       "limit": limit, "passed": value <= limit, "tolerance": tolerance})
+    return result
+
+
+def _balanced_assessment(policy, baseline, critical, raw, count_tolerance, ratio_tolerance):
+    reason = ("score_only" if policy == SELECTION_POLICY_SCORE_ONLY else "baseline_unavailable" if baseline is None else
+              "critical_candidate_unavailable" if critical is None else
+              "critical_health_not_better" if _health_state(getattr(critical, "health", None)) != HEALTH_BETTER else None)
+    result = {"eligible": reason is None, "checked": reason is None, "reason_code": reason,
+              "candidate_key": _candidate_key_or_none(critical), "reference_candidate_key": _candidate_key_or_none(raw),
+              "health_reference_candidate_key": _candidate_key_or_none(baseline),
+              "health_state": _health_state(getattr(critical, "health", None)) or None,
+              "checks": [], "accepted": False, "override_applied": False}
+    if reason is None:
+        result["checks"] = _critical_candidate_checks(critical, raw, graph_overdue_tolerance_count=count_tolerance,
+                                                      graph_tardiness_tolerance_ratio=ratio_tolerance)
+        result["accepted"] = all(item["passed"] for item in result["checks"])
+    return result
+
+
+def _candidate_snapshot(candidate):
+    if candidate is None:
+        return None
+    metrics = getattr(candidate, "metrics", None)
+    return {"candidate_key": str(candidate.candidate_key), "score": list(_score(candidate)),
+            "failed_ops": _failed_ops(candidate), "primary_score": _objective_primary_score(candidate),
+            **{key: float(getattr(metrics, key)) if metrics is not None and hasattr(metrics, key) else None
+               for key in ("overdue_count", "total_tardiness_hours")}}
+
+
+def _tiebreak_evidence(candidates, raw):
+    ordered = sorted(candidates, key=_candidate_sort_key)
+    runner_up = ordered[1] if len(ordered) > 1 else None
+    step, index = _decisive_score_step(raw, runner_up)
+    return {"rule": "full_score_baseline_sequence_v1", "raw_score_best_candidate_key": str(raw.candidate_key),
+            "runner_up_candidate_key": _candidate_key_or_none(runner_up), "decisive_step": step,
+            "decisive_score_index": index,
+            "primary_tied_candidate_keys": [str(row.candidate_key) for row in ordered if _objective_primary_score(row) == _objective_primary_score(raw)],
+            "full_score_tied_candidate_keys": [str(row.candidate_key) for row in ordered if _score(row) == _score(raw)]}
+
+
+def _decisive_score_step(winner, runner_up):
+    if runner_up is None:
+        return "only_completed_candidate", None
+    before, after = _score(winner), _score(runner_up)
+    for index, (first, second) in enumerate(zip(before, after)):
+        if first != second:
+            return ("failed_ops" if index == 0 else "primary_score" if index == 1 else "secondary_score"), index
+    if len(before) != len(after):
+        return "score_length", None
+    first, second = _candidate_sort_key(winner), _candidate_sort_key(runner_up)
+    if first[1] != second[1]:
+        return "baseline_preference", None
+    return ("candidate_sequence" if first[2] != second[2] else "input_order"), None
 
 
 def _failed_ops(candidate: Any) -> float:
@@ -199,6 +252,9 @@ def _build_selection(
     baseline_best: Optional[Any],
     critical_best: Optional[Any],
     critical_health_best: Optional[Any],
+    overdue_tolerance_count: Optional[int],
+    tardiness_tolerance_ratio: Optional[float],
+    decision_evidence: Dict[str, Any],
 ) -> CandidateSelectionResult:
     return CandidateSelectionResult(
         selected_candidate_key=str(selected.candidate_key),
@@ -211,6 +267,9 @@ def _build_selection(
         critical_health_best_key=_candidate_key_or_none(critical_health_best),
         selected_score=_score(selected),
         selected_plan=selected,
+        overdue_tolerance_count=int(overdue_tolerance_count) if overdue_tolerance_count is not None else None,
+        tardiness_tolerance_ratio=float(tardiness_tolerance_ratio) if tardiness_tolerance_ratio is not None else None,
+        decision_evidence=decision_evidence,
     )
 
 

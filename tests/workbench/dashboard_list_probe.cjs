@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const payloads = JSON.parse(fs.readFileSync(0, 'utf8'));
 const window = {};
 const context = vm.createContext({ window, AbortController, URLSearchParams, setTimeout, clearTimeout });
-for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'DashboardAnalysisAPI.js']) {
+for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', name), 'utf8'), context);
 }
 const read = payload => window.DashboardContract.create(async () => ({
@@ -21,7 +21,7 @@ async function slowRead() {
   const timer = (fn, delay) => { const id = ++next; timers.set(id, { fn, at: now + delay }); return id; };
   const delayedContext = vm.createContext({ window: delayedWindow, AbortController, URLSearchParams,
     setTimeout: timer, clearTimeout: id => timers.delete(id) });
-  for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'DashboardAnalysisAPI.js']) {
+  for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', name), 'utf8'), delayedContext);
   }
   const reading = delayedWindow.DashboardContract.create((url, options) => new Promise((resolve, reject) => {

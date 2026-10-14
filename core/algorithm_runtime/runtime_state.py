@@ -35,6 +35,7 @@ def update_machine_last_state(
     seed_mode: bool,
     start_time: Optional[datetime] = None,
     op_id: Optional[int] = None,
+    op_type_id: Optional[str] = None,
 ) -> None:
     if not machine_id:
         return
@@ -43,7 +44,7 @@ def update_machine_last_state(
 
     op_type = str(op_type_name or "").strip()
     if isinstance(last_op_type_by_machine, MachineTypeState):
-        last_op_type_by_machine.record(machine_id, start_time, end_time, op_id, op_type)
+        last_op_type_by_machine.record(machine_id, start_time, end_time, op_id, str(op_type_id or ""))
     prev_end = last_end_by_machine.get(machine_id)
 
     if seed_mode:

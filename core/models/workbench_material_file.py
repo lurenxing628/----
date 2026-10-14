@@ -1,8 +1,8 @@
 """Private material batch contracts; no HTTP tokens or database connections.
 
-MaterialPreview.document is canonical JSON, held only in the caller's temporary
-preview context. as_dict() returns a detached copy. Its digest is NOT permission
-to write: the API must bind the original digest to its short-lived write context.
+MaterialPreview.document is canonical JSON retained with the original file source.
+as_dict() returns a detached copy. The API binds its opaque preview reference to
+that source and the short-lived write context.
 Use intent() as CommandService.normalized_input and replay that original intent
 before resolving an expired preview. Never rebuild a preview to replay a receipt.
 
@@ -14,7 +14,6 @@ material column, and full BatchMaterials rows, or None for a new material.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any, Dict
 
@@ -128,8 +127,7 @@ def file_request(content: Any, file_format: str, mode: str, scope: Any):
     normalized = normalize_scope(scope)
     if normalized["query"] or normalized["status"] is not None or normalized.get("column_filters"):
         raise ValidationError("物料导入按文件编号操作，不支持筛选范围导入。", field="scope")
-    return {"file_sha256": hashlib.sha256(content).hexdigest(), "format": file_format,
-            "mode": mode, "scope": normalized}
+    return {"format": file_format, "mode": mode, "scope": normalized}
 
 
 @dataclass(frozen=True)

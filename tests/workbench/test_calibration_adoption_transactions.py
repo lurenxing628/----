@@ -1,14 +1,18 @@
 """Actual SQLite rollback and competing adoption transactions."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
 
+from core.models.workbench_calibration import MAX_SAMPLES
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
-from tests.workbench.calibration_adoption_support import INTENT, KEY, connect, service, snapshot, token
+from core.services.workbench.execution.production_report_void_dependencies import adopted_quota_impacts
+from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, connect, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
+from tests.workbench.template_lineage_support import completed
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
 from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
 
@@ -67,3 +71,49 @@ def test_two_connections_recheck_the_same_preview_before_adoption(ready_adoption
         assert [row for row in results if not row.get("ok")] == [{"code": "stale_write"}]
     assert case.conn.execute("SELECT count(*) FROM WorkbenchCalibrationAdoptions").fetchone()[0] == 1
     assert case.conn.execute("SELECT count(*) FROM WorkbenchCommandReceipts WHERE action='calibration.adopt'").fetchone()[0] == 1
+
+
+def test_report_revision_change_rejects_preview_with_the_same_recommendation(ready_adoption_case):
+    case = ready_adoption_case
+    _, extra_reports = completed(case, [3] * (MAX_SAMPLES + 1), prefix="OLDER-SAMPLE", version=3)
+    before = service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
+    selected_reports = {ref for sample in before["samples"] for ref in sample["report_refs"]}
+    unselected = next(row for row in extra_reports if row["report_ref"] not in selected_reports)
+    original = case.ledger.get_report(unselected["report_ref"])
+    case.command("correct", original.report_ref,
+                 {"remark": "Checked the original record", "original_revision_ref": original.revision_ref,
+                  "reason": "Corrected the record note", "declared_operator": "Reviewer"})
+    after = service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
+    assert after["validation"]["can_adopt"]
+    assert after["suggestion"] == before["suggestion"]
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
+        service(case.conn).confirm(case.template_ref, before["write_context"]["write_token"], KEY, INTENT)
+    assert rejected.value.code == "stale_write"
+    assert case.conn.execute("SELECT count(*) FROM WorkbenchCalibrationAdoptions").fetchone()[0] == 0
+
+
+def test_adoption_keeps_raw_reports_once_and_binds_source_versions(ready_adoption_case):
+    case = ready_adoption_case
+    result = service(case.conn).confirm(case.template_ref, token(case), KEY, INTENT)
+    archived = case.conn.execute("SELECT evidence_json FROM WorkbenchCalibrationAdoptions").fetchone()[0]
+    evidence = json.loads(archived)
+    binding = evidence["snapshot"]
+    assert binding["schema_version"] == 2 and "facts_fingerprint" not in binding
+    assert binding["lineage_available"] and isinstance(binding["source_constraints"], list)
+    assert json.loads(binding["suggestion"]["template_snapshot"]) == {
+        "source_ref": case.template_ref, "revision": result["data"]["template_revision_before"]}
+    assert len(binding["source_revisions"]) >= len(evidence["samples"])
+    for sample in evidence["samples"]:
+        revision = json.loads(sample["sample_revision"])
+        assert revision["source_ref"] == sample["sample_ref"]
+        assert revision["report_revision_refs"] == sample["report_revision_refs"]
+        assert revision["lineage"]["evidence_ref"] == sample["lineage_evidence_ref"]
+        assert revision["lineage"]["birth_event_id"] in revision["lineage"]["event_ids"]
+        assert not {"reports", "execution", "instance_snapshot", "instance_fingerprint"}.intersection(revision)
+        assert "reports" not in revision["lineage"]
+        assert len(sample["reports"]) == 1
+    assert all(set(row) == {"sample_ref", "sample_revision", "eligible", "exclusion_reasons"}
+               for row in binding["source_revisions"])
+    sample = evidence["samples"][0]
+    impacts = adopted_quota_impacts(case.conn, sample["report_refs"][0], sample["sample_ref"])
+    assert [row["adoption_ref"] for row in impacts] == [result["data"]["adoption_ref"]]

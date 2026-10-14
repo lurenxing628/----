@@ -28,7 +28,7 @@ def positive_op_ids(values: Sequence[int]) -> List[int]:
             continue
         seen.add(op_id)
         out.append(op_id)
-    # 快照 revision 按 op_id 顺序拼 hash；排序可避免同组工序因输入顺序不同产生不同指纹。
+    # 固定工序集合顺序，使相同来源的快照内容不受调用方排列顺序影响。
     return sorted(out)
 
 
@@ -53,8 +53,11 @@ class ExecutionFact:
     ledger_operation_ref: Optional[str] = None
     ledger_execution_state: Optional[str] = None
     remaining_quantity: Optional[int] = None
+    target_quantity: Optional[int] = None
+    quantity_basis: Optional[str] = None
     execution_effective_intervals: Tuple[Tuple[datetime, datetime], ...] = ()
     execution_protection_reasons: Tuple[str, ...] = ()
+    execution_protection_content: Optional[Dict[str, Any]] = None
 
 
 def _state_value(state, attr: str):

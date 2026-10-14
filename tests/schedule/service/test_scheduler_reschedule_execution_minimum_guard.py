@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -133,6 +134,10 @@ def test_processing_operation_is_fixed_and_downstream_starts_after_estimated_end
         assert rows[10]["operator_id"] == "O1"
         assert rows[10]["lock_status"] == "locked"
         assert rows[20]["start_time"] >= rows[10]["end_time"]
+        summary = json.loads(conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?",
+                                          (result["version"],)).fetchone()[0])
+        assert summary["execution_snapshot"]["revision_kind"] == "content_v2"
+        assert "execution_snapshot_revision" not in summary["execution_snapshot"]
     finally:
         conn.close()
 

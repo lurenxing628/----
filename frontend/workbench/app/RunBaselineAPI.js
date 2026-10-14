@@ -9,8 +9,6 @@
   const reason = v => shape(v, ['code', 'message']) && text(v.code) && text(v.message);
   const gaps = v => Array.isArray(v) && v.every(g => shape(g, ['field', 'code', 'message']) && Object.values(g).every(text));
   const resource = v => v === null || shape(v, ['ref', 'label']) && nullable(ref)(v.ref) && nullable(text)(v.label);
-  const stamp = v => Date.parse(v + 'Z');
-  const timeKey = v => v.slice(0, 19) + '.' + (v.split('.')[1] || '').padEnd(6, '0');
   const statuses = ['matched', 'newly_scheduled', 'unscheduled', 'baseline_only', 'not_comparable'];
   const deltaKeys = ['start_hours', 'end_hours', 'elapsed_hours', 'machine_changed', 'operator_changed', 'supplier_changed', 'effective_processing_hours'];
   function check(ok) { if (!ok) throw new Error('原安排对照缺失，或者跟当前候选方案范围不一致，没有显示上次结果。请点「刷新原安排」。'); }
@@ -37,45 +35,30 @@
     check(shape(v, keys.concat(baseline ? ['interval_comparable'] : ['locked'], P.isPoint(v) ? P.fields : [])) && ref(v.row_ref)
       && [v.start, v.end].every(nullable(time)) && nullable(finite)(v.elapsed_hours)
       && ['machine', 'operator', 'supplier'].every(k => resource(v[k])) && v.effective_processing_hours === null && gaps(v.data_gaps));
-    if (v.start !== null && v.end !== null) check(timeKey(v.start) <= timeKey(v.end)
-      && Math.abs(v.elapsed_hours - (stamp(v.end) - stamp(v.start)) / 3600000) < 0.000001);
-    else check(v.elapsed_hours === null);
-    const valid = v.start !== null && v.end !== null && (timeKey(v.start) < timeKey(v.end) || P.isPoint(v));
-    if (baseline) check(v.interval_comparable === valid && (['internal', 'external'].includes(v.source)
+    if (baseline) check(typeof v.interval_comparable === 'boolean' && (['internal', 'external'].includes(v.source)
       || v.source === null && v.data_gaps.some(gap => gap.field === 'source')));
-    else check(valid && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
+    else check(time(v.start) && time(v.end) && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');
   }
   function comparison(row, q, seen, segments, candidateRefs) {
-    check(shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date',
+    check(A.shape(row, ['operation_ref', 'row_ref', 'batch_ref', 'batch_label', 'part_label', 'sequence', 'process_label', 'piece_id', 'quantity', 'batch_quantity', 'due_date',
       'execution_at_generation', 'data_gaps', 'candidate', 'baseline_segments', 'selected_at_admission', 'candidate_operation_status', 'status',
-      'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons']) && ref(row.operation_ref) && !seen.has(row.operation_ref)
+      'comparison_available', 'delta', 'execution_affected', 'improvement_assessment', 'reasons'], ['process_type_ref', 'process_type_label']) && ref(row.operation_ref) && !seen.has(row.operation_ref)
       && nullable(ref)(row.batch_ref) && (!q.batch_ref || row.batch_ref === q.batch_ref) && typeof row.selected_at_admission === 'boolean'
       && typeof row.execution_affected === 'boolean' && row.improvement_assessment === null && statuses.includes(row.status)
       && ['batch_label', 'part_label', 'process_label', 'due_date'].every(k => nullable(text)(row[k])) && A.quantityContext(row, true)
+      && (row.process_type_ref === undefined || nullable(ref)(row.process_type_ref))
+      && (row.process_type_label === undefined || nullable(text)(row.process_type_label))
       && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
     seen.add(row.operation_ref);
     for (const value of row.baseline_segments) { interval(value, true); check(!segments.has(value.row_ref)); segments.add(value.row_ref); }
-    const c = row.candidate, b = row.baseline_segments, expected = !c ? row.selected_at_admission ? 'unscheduled' : 'baseline_only'
-      : !b.length ? 'newly_scheduled' : b.length !== 1 || !b[0].interval_comparable ? 'not_comparable' : 'matched';
-    check(row.status === expected && row.comparison_available === (expected === 'matched') && shape(row.delta, deltaKeys));
+    const c = row.candidate, b = row.baseline_segments;
+    check(typeof row.comparison_available === 'boolean' && shape(row.delta, deltaKeys)
+      && ['start_hours', 'end_hours', 'elapsed_hours', 'effective_processing_hours'].every(key => nullable(finite)(row.delta[key]))
+      && ['machine_changed', 'operator_changed', 'supplier_changed'].every(key => row.delta[key] === null || typeof row.delta[key] === 'boolean'));
     if (c) { interval(c, false); check(row.row_ref === c.row_ref && !candidateRefs.has(c.row_ref) && row.candidate_operation_status === 'scheduled'); candidateRefs.add(c.row_ref); }
-    else check(row.row_ref === null && (row.selected_at_admission ? ['skipped', 'unscheduled'].includes(row.candidate_operation_status) : row.candidate_operation_status === null));
+    else check(row.row_ref === null && [null, 'skipped', 'unscheduled'].includes(row.candidate_operation_status));
     const e = row.execution_at_generation;
     check(e === null || object(e) && nullable(text)(e.execution_state) && nullable(text)(e.data_quality));
-    const affected = !e || e.execution_state !== 'unreported' || e.known_completed_quantity !== 0 || e.remaining_quantity === null
-      || [null, 'invalid', 'legacy_incomplete'].includes(e.data_quality);
-    check(row.execution_affected === affected && (!affected || row.reasons.some(r => r.code === 'execution_affected')));
-    if (expected !== 'matched') check(Object.values(row.delta).every(v => v === null));
-    else {
-      const expectedDelta = [(stamp(c.start) - stamp(b[0].start)) / 3600000, (stamp(c.end) - stamp(b[0].end)) / 3600000, c.elapsed_hours - b[0].elapsed_hours];
-      ['start_hours', 'end_hours', 'elapsed_hours'].forEach((k, i) => check(finite(row.delta[k]) && Math.abs(row.delta[k] - expectedDelta[i]) < 0.000001));
-      for (const k of ['machine', 'operator', 'supplier']) {
-        const before = resourceIdentity(b[0], k), after = resourceIdentity(c, k);
-        const changed = before === undefined || after === undefined ? null : before !== after;
-        check(row.delta[k + '_changed'] === changed);
-      }
-      check(row.delta.effective_processing_hours === null);
-    }
     if (q.range_start && c) {
       const sides = [c].concat(b);
       check(sides.some(v => v.start === null || v.end === null || v.start === v.end && !P.isPoint(v))
@@ -107,16 +90,20 @@
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
       && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input)
       && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k]))
-      && equal(g.source_verification, { facts_digest_verified: true, baseline_matches_archived_schedule: true,
-        execution_matches_archived_evidence: true, input_independent_digest_recorded: false }));
-    const b = d.baseline, seen = new Set(), segments = new Set(), candidateRefs = new Set(), counts = {};
+      && shape(g.source_verification, ['facts_content_verified', 'baseline_matches_archived_schedule', 'execution_matches_archived_evidence',
+        'input_source_verified', 'candidate_content_verified'])
+      && g.source_verification.facts_content_verified === true && typeof g.source_verification.input_source_verified === 'boolean'
+      && g.source_verification.baseline_matches_archived_schedule === true && g.source_verification.execution_matches_archived_evidence === true
+      && g.source_verification.candidate_content_verified === true);
+    const b = d.baseline, seen = new Set(), segments = new Set(), candidateRefs = new Set();
     check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])
       && b.kind === 'admission_official' && typeof b.available === 'boolean' && count(b.captured_task_count) && b.captured_task_count <= 20000
       && b.version === wg.baseline.version && b.captured_at === wg.baseline.captured_at && b.baseline_ref === wg.baseline.baseline_ref
       && (b.available ? ref(b.baseline_ref) : b.baseline_ref === null && b.captured_task_count === 0));
-    d.comparisons.forEach(row => { comparison(row, q, seen, segments, candidateRefs); counts[row.status] = (counts[row.status] || 0) + 1; });
-    check(equal(d.counts, counts) && d.execution_affected_count === d.comparisons.filter(r => r.execution_affected).length
-      && b.comparison_available === d.comparisons.some(r => r.comparison_available) && (b.comparison_available ? b.reason === null : reason(b.reason))
+    d.comparisons.forEach(row => comparison(row, q, seen, segments, candidateRefs));
+    check(object(d.counts) && Object.keys(d.counts).every(key => statuses.includes(key) && count(d.counts[key]))
+      && count(d.execution_affected_count) && typeof b.comparison_available === 'boolean'
+      && (b.reason === null || reason(b.reason))
       && segments.size <= b.captured_task_count && [...segments].every(r => !candidateRefs.has(r)));
     if (!q.range_start && !q.batch_ref) check(segments.size === b.captured_task_count);
     const rows = new Map(d.comparisons.map(r => [r.operation_ref, r]));

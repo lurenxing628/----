@@ -152,8 +152,8 @@ def candidate_summary(row, disposition):
 def algorithm_facts(artifact):
     mode = text(artifact.get("algo_mode"), "algo_mode", [])
     strategy = text(artifact.get("used_strategy"), "used_strategy", [])
-    return {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode),
-            "strategy": strategy, "strategy_label": choice_label_map_for("sort_strategy").get(strategy)}
+    return {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode) if mode is not None else None,
+            "strategy": strategy, "strategy_label": choice_label_map_for("sort_strategy").get(strategy) if strategy is not None else None}
 
 
 def baseline_capture(baseline, captured_at, *, kind="admission_official"):

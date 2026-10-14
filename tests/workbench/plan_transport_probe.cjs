@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
-const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'PointContract.js', 'PlanProcessOrder.js', 'GanttGraph.js', 'PlanContract.js', 'PlanAPI.js'];
+const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'PointContract.js', 'PlanProcessOrder.js', 'GanttGraph.js', 'DeliveryProjectionContract.js', 'PlanContract.js', 'PlanAPI.js'];
 const scripts = files.map(name => ({name, source: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 const P = 'a'.repeat(48), OTHER = 'b'.repeat(48), TASK = 'c'.repeat(48), OP = 'd'.repeat(48);
@@ -38,12 +38,18 @@ function align(payload) {
     urgent_available_hours: 0, urgent_effective_hours: 0}, resources: [], issues: []};
   d.projections.occupancy = {state: 'available', plan_ref: P, time_scope: clone(time), basis: 'selected_plan_only', resources: [], issues: []};
   d.projections.delivery_risks = {state: 'available', plan_ref: P, scope: clone(d.scope), items: d.tasks.length ? [{batch_ref: OP, batch_id: 'B-1',
-    part_no: 'P1', part_label: 'Part', planned_finish: END, partial_planned_finish: null, due_date: '2026-09-10', delivery_deadline_exclusive: '2026-09-11T00:00:00',
+    part_no: 'P1', part_label: 'Part', priority: 'normal', quantity: 3, planned_finish: END, partial_planned_finish: null, due_date: '2026-09-10', delivery_deadline_exclusive: '2026-09-11T00:00:00',
     risk: 'on_time', is_overdue: false, delay_hours: 0, delay_days: 0, completeness: 'complete', schedule_complete: true,
+    due_state: 'specified', due_issue: null, completion_state: 'complete', deferred_operation_count: 0, ordinary_unscheduled_operation_count: 0,
     operation_count: 1, scheduled_operation_count: 1, unscheduled_operation_count: 0, task_count: 1, invalid_task_count: 0, issues: []}] : [],
     batch_count: d.tasks.length ? 1 : 0, items_complete: true, completeness: d.tasks.length ? 'complete' : 'unknown',
-    basis: {kind: 'planned_delivery', time_basis: 'factory_local', batch_selection: d.scope.range_start === null ? 'plan_task_batches' : 'overlap_or_bad_time_batches',
-      completion_scope: 'full_selected_plan', operation_scope: 'current_batch_operations', due_boundary: 'next_day_exclusive', actual_completion: 'not_evaluated', actual_delivery: 'not_evaluated'}};
+    basis: {kind: 'planned_delivery', time_basis: 'factory_local', batch_selection: d.scope.range_start === null ? 'plan_task_and_deferred_batches' : 'overlap_or_bad_time_batches',
+      completion_scope: 'full_selected_plan', operation_scope: 'current_batch_operations', due_boundary: 'next_day_exclusive', actual_completion: 'not_evaluated', actual_delivery: 'not_evaluated'},
+    summary: {state: d.tasks.length ? 'complete' : 'not_applicable', batch_count: d.tasks.length ? 1 : 0,
+      due_eligible_count: d.tasks.length ? 1 : 0, excluded_due_count: 0, invalid_due_count: 0, due_evaluation_count: d.tasks.length ? 1 : 0,
+      known_due_count: d.tasks.length ? 1 : 0, unknown_due_count: 0, unknown_count: 0, known_overdue_count: 0,
+      overdue_count: d.tasks.length ? 0 : null, total_tardiness_hours: d.tasks.length ? 0 : null,
+      known_tardiness_hours: d.tasks.length ? 0 : null, known_batch_refs: d.tasks.length ? [OP] : []}};
   if (!d.tasks.length) d.resources = [];
   return payload;
 }
@@ -64,7 +70,7 @@ function runtime(fetcher, timeout = 20000) {
     clearTimeout: timer => { timers--; clearTimeout(timer); }});
   context.window = context;
   for (const script of scripts) vm.runInContext(script.source, context, {filename: script.name});
-  return {api: context.APSPlanAPI.create(), C: context.APSPlanContract, idle: () => assert.equal(timers, 0),
+  return {api: context.APSPlanAPI.create(), C: context.APSPlanContract, D: context.DeliveryProjectionContract, idle: () => assert.equal(timers, 0),
     signal(controller) {
       return {get aborted() { return controller.signal.aborted; },
         addEventListener(...args) { listeners++; controller.signal.addEventListener(...args); },
@@ -132,6 +138,18 @@ async function requests() {
 }
 async function contracts() {
   const {C} = runtime(() => assert.fail('Contract checks do not fetch'));
+  await check('shared delivery keeps source precision and missing admission counts', () => {
+    const context = runtime(() => assert.fail('Delivery projections do not fetch'));
+    const p = workspace(), projection = p.data.projections.delivery_risks, item = projection.items[0];
+    item.delay_hours = 0.00000009; item.delay_days = 0.00000000375;
+    const before = JSON.stringify(p); assert.strictEqual(context.C.workspace(p, P), p); assert.equal(JSON.stringify(p), before);
+    item.batch_id = 'another-batch'; assert.throws(() => context.C.workspace(p, P), rejected);
+    item.batch_id = 'B-1'; item.delay_hours = '0'; assert.throws(() => context.C.workspace(p, P), rejected);
+    const missing = { ...item, completion_state: 'unknown', schedule_complete: false, risk: 'unknown', planned_finish: null,
+      is_overdue: null, delay_hours: null, issues: ['no_admission_baseline'] };
+    context.D.operationCounts.filter(key => key !== 'operation_count').forEach(key => { missing[key] = null; });
+    assert(context.D.row(missing, true)); assert(!context.D.row(missing));
+  });
   const quantityFields = ['piece_id', 'quantity', 'batch_quantity', 'quantity_basis', 'quantity_reason'];
   await check('legacy quantities stay explicitly unknown without mutation', () => {
     const p = workspace(), before = JSON.stringify(p);
@@ -230,6 +248,33 @@ async function contracts() {
     await check('foreign or invalid task ' + cases.length, () => { const p = workspace(); mutate(p.data.tasks[0]); assert.throws(() => C.workspace(p, P), rejected); });
   }
   await check('real projections remain unchanged', () => { const p = workspace(), before = JSON.stringify(p); assert.strictEqual(C.workspace(p, P), p); assert.equal(JSON.stringify(p), before); });
+  await check('calendar-bound overlap retains night spans and unknown or legacy evidence', () => {
+    const p = workspace(), d = p.data, calendar = d.projections.calendar;
+    d.tasks.push({...d.tasks[0],task_ref:'e'.repeat(48),operation_ref:'f'.repeat(48),sequence:2,start:'2026-09-10T00:00:00',end:'2026-09-10T00:30:00'});
+    d.task_count=2; Object.assign(d.projections.delivery_risks.items[0],{operation_count:2,scheduled_operation_count:2,task_count:2});
+    const window={start:'2026-09-09T23:00:00',end:'2026-09-09T23:30:00',policy_date:'2026-09-09',allow_normal:true,allow_urgent:true,efficiency:1,provenance:'work_calendar'};
+    const capacity={available_hours:.5,effective_hours:.5,normal_available_hours:.5,normal_effective_hours:.5,urgent_available_hours:.5,urgent_effective_hours:.5};
+    Object.assign(calendar.global,capacity,{windows:[clone(window)]});
+    calendar.resources=[{...capacity,kind:'machine',resource_ref:OTHER,label:'Machine',state:'available',basis:'global_calendar_machine_availability',
+      windows:[clone(window)],issues:[],status:'active',downtime_scope_hours:0,downtime_available_hours:0,downtime_windows:[]}];
+    const row={kind:'machine',resource_ref:OTHER,label:'Machine',state:'available',operation_count:2,capacity_basis:'global_calendar_machine_availability',
+      arranged_hours:8.5,occupied_hours:8,overlap_hours:.5,excess_arranged_hours:.5,available_hours:.5,available_occupied_hours:.5,
+      outside_available_hours:7.5,capacity_shortfall_hours:0,utilization:1,has_overlap:false,capacity_insufficient:false,issues:[],
+      segments:[{start:START,end:'2026-09-10T00:00:00',concurrent_operations:1},{start:'2026-09-10T00:00:00',end:'2026-09-10T00:30:00',concurrent_operations:2},{start:'2026-09-10T00:30:00',end:END,concurrent_operations:1}],
+      metric_version:'decision-resource-v4',available_overlap_hours:0,conflict_segments:[],outside_calendar_basis:'reservation_span_outside_work_calendar',conflict_basis:'work_calendar_reservation_overlap'};
+    d.projections.occupancy.resources=[row];
+    const before=JSON.stringify(p); assert.strictEqual(C.workspace(p,P),p); assert.equal(JSON.stringify(p),before);
+    row.has_overlap=true; assert.throws(()=>C.workspace(p,P),rejected); row.has_overlap=false;
+    const legacy=clone(p), old=legacy.data.projections.occupancy.resources[0];
+    for(const key of ['metric_version','available_overlap_hours','conflict_segments','outside_calendar_basis','conflict_basis']) delete old[key];
+    old.has_overlap=true; assert.strictEqual(C.workspace(legacy,P),legacy,'Legacy span evidence remains explicitly readable');
+    calendar.state='partial'; Object.assign(calendar.resources[0],{state:'unavailable',windows:null,issues:[{code:'calendar_unavailable',message:'Calendar unavailable'}]});
+    for(const key of Object.keys(capacity)) calendar.resources[0][key]=null;
+    for(const key of ['downtime_scope_hours','downtime_available_hours','downtime_windows']) delete calendar.resources[0][key];
+    d.projections.occupancy.state='unavailable'; row.state='unavailable'; row.issues=[{code:'calendar_unavailable',message:'Calendar unavailable'}];
+    for(const key of ['available_hours','available_occupied_hours','outside_available_hours','capacity_shortfall_hours','utilization','has_overlap','capacity_insufficient','available_overlap_hours','conflict_segments']) row[key]=null;
+    assert.strictEqual(C.workspace(p,P),p,'Unknown calendars retain null conflict evidence');
+  });
   await check('legacy not_loaded is rejected', () => { const p = workspace(); p.data.projections.calendar = {state: 'not_loaded', reason: 'Legacy'}; assert.throws(() => C.workspace(p, P), rejected); });
   await check('explicit range covering whole plan cannot hide empty or clipped results', () => {
     const p = workspace(), scope = {range_start: START, range_end: END};

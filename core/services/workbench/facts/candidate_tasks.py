@@ -53,6 +53,16 @@ def _execution(facts, ref, gaps):
 def operation_labels(facts, ref, payload=None):
     gaps = []
     op = facts.operation(ref, payload, gaps)
+    if ref not in facts._operation_labels:
+        facts._operation_labels[ref] = _base_operation_labels(facts, ref, op, gaps)
+    base = facts._operation_labels[ref]
+    result = {**base, "data_gaps": [dict(item) for item in base["data_gaps"]]}
+    if base["execution_at_generation"] is not None:
+        result["execution_at_generation"] = dict(base["execution_at_generation"])
+    return result, op
+
+
+def _base_operation_labels(facts, ref, op, gaps):
     batch = facts.related("Batches", op.get("batch_id"), "batch", gaps)
     part = facts.related("Parts", batch.get("part_no"), "part", gaps)
     batch_key = op.get("batch_id")
@@ -77,7 +87,14 @@ def operation_labels(facts, ref, payload=None):
               "batch_quantity": number(batch.get("quantity"), "batch_quantity", gaps, integer=True),
               "due_date": _date(batch.get("due_date"), "due_date", gaps),
               "execution_at_generation": execution, "data_gaps": gaps}
-    return result, op
+    result.update(operation_type_labels(facts, op.get("op_type_id")))
+    return result
+
+
+def operation_type_labels(facts, type_id):
+    ref = facts.entity_refs.get(("op_type", type_id)) if type(type_id) is str else None
+    label = facts.tables.get("OpTypes", {}).get(type_id, {}).get("name") if type(type_id) is str else None
+    return {"process_type_ref": ref, "process_type_label": label if type(label) is str else None}
 
 
 def _expected_task_rows(rows, candidate):
@@ -126,11 +143,21 @@ def _task_dto(row, facts, start, end):
 
 
 def tasks_projection(rows, candidate, facts):
+    return tasks_projection_with_intervals(rows, candidate, facts)[0]
+
+
+def tasks_projection_with_intervals(rows, candidate, facts):
+    rows, intervals = validate_saved_tasks(rows, candidate, facts)
+    return project_validated_tasks(rows, candidate, facts, intervals), intervals
+
+
+def validate_saved_tasks(rows, candidate, facts):
     expected = _expected_task_rows(rows, candidate)
-    result, seen, point_reader = [], set(), None
+    intervals, seen, point_reader = {}, set(), None
     for row in rows:
         ref, payload = row["operation_ref"], row["payload"]
         _check_task_payload(payload, expected, seen)
+        facts.operation(ref, payload, [])
         try:
             start, end = local_time(payload.get("start_time")), local_time(payload.get("end_time"))
             if start > end or payload.get("source") not in ("internal", "external") or type(payload.get("locked")) is not bool:
@@ -141,7 +168,20 @@ def tasks_projection(rows, candidate, facts):
                 point_reader.work(ref, payload)
         except (ValueError, TypeError):
             corrupt()
-        result.append(_task_dto(row, facts, start, end))
+        intervals[row["row_ref"]] = (start, end)
+    return rows, intervals
+
+
+def project_validated_tasks(rows, candidate, facts, intervals):
+    traces = {row["op_id"]: row for row in candidate["artifact"].get("results", [])}
+    result = []
+    for row in rows:
+        start, end = intervals[row["row_ref"]]
+        task = _task_dto(row, facts, start, end)
+        trace = traces.get(row["payload"]["op_id"], {})
+        if "op_type_id" in trace:
+            task.update(operation_type_labels(facts, trace["op_type_id"]))
+        result.append(task)
     return result
 
 
@@ -155,9 +195,16 @@ def unplanned_projection(disposition, tasks, facts):
             continue
         item, _ = operation_labels(facts, ref)
         skipped = row["status"] == "skipped"
+        message = "这个候选方案没有给这道工序排时间。"
+        if skipped:
+            issues = row.get("issues") or []
+            material_wait = any(issue.get("code") in ("material_not_ready", "material_after_window") for issue in issues)
+            explanations = [issue["message"] for issue in issues if type(issue.get("message")) is str and issue["message"].strip()]
+            message = ("缺料未安排：" if material_wait else "排产时未安排：") + (
+                "；".join(explanations) if explanations else "具体原因未记录。")
         item.update(row_ref=None, status="skipped" if skipped else "unscheduled",
                     reason={"code": "input_operation_skipped" if skipped else "candidate_operation_unscheduled",
-                            "message": "排产时这道工序被排除在外，这里照样列出来。" if skipped else "这个候选方案没有给这道工序排时间。"})
+                            "message": message})
         result.append(item)
     return result
 

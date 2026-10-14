@@ -17,22 +17,16 @@
   const views = { machine: '设备', operator: '人员', batch: '批次' };
   const lateLabels = { all: '全部工序', finishLate: '已晚完成', unclosed: '到期未确认完成', forecastLate: '剩余安排预计晚完成' };
   const names = data => new Map(data.resources.map(row => [row.ref, row.label || row.business_code]));
-  // 与报表相同：整道确认完工减去所选计划完工；逐次报工结束不能代替整道完工。
-  const finishMinutes = item => item.execution.confirmed_finish === null ? null :
-    (instant(item.execution.confirmed_finish) - instant(item.task.end)) / 60000;
   function finishDeviation(item) {
-    if (!item.execution || item.execution.execution_state !== 'complete') return null;
-    const minutes = finishMinutes(item);
+    const value = item.deviation;
+    if (!value || !value.complete) return null;
+    const minutes = value.finish_deviation_minutes;
     if (minutes === null) return '缺少确认完工时间，请核对现场完工记录';
-    const rounded = Math.round(Math.abs(minutes) * 100) / 100;
-    return rounded === 0 ? '按计划完成' : (minutes < 0 ? '提前 ' : '延后 ') + window.WorkbenchFormat.number(rounded, { digits: 2, trim: true }) + ' 分钟';
+    return minutes === 0 ? '按计划完成' : (minutes < 0 ? '提前 ' : '延后 ') + window.WorkbenchFormat.number(Math.abs(minutes), { digits: 2, trim: true }) + ' 分钟';
   }
-  function deadlines(item, asOf) {
-    const e = item.execution, end = instant(item.task.end);
-    if (!e) return { finishLate: false, unclosed: false, forecastLate: false };
-    return { finishLate: e.execution_state === 'complete' && finishMinutes(item) > 10,
-      unclosed: e.execution_state !== 'complete' && end <= instant(asOf),
-      forecastLate: e.execution_state !== 'complete' && !!e.remaining_plan && instant(e.remaining_plan.end) - end > 600000 };
+  function deadlines(item) {
+    const value = item.deviation;
+    return { finishLate: value.finish_late, unclosed: value.unclosed, forecastLate: value.forecast_late };
   }
   function searchText(item, labels) {
     const t = item.task, e = item.execution;
@@ -197,19 +191,8 @@
     return [heading].concat(describe(item, labels, mark.report)).join('\n');
   }
   function metrics(data) {
-    const available = data.availability.state === 'available';
-    if (!available) return { complete: null, reported: null, pending: null, average: null };
-    let complete = 0, reported = 0, pending = 0, deltaCount = 0, deltaTotal = 0;
-    data.items.forEach(item => {
-      const state = item.execution.execution_state;
-      if (state === 'complete') {
-        complete++;
-        const delta = finishMinutes(item);
-        if (delta !== null) { deltaCount++; deltaTotal += delta; }
-      } else if (state === 'unreported') pending++;
-      else reported++;
-    });
-    return { complete, reported, pending, average: deltaCount ? deltaTotal / deltaCount : null };
+    const value = data.execution_summary;
+    return { complete: value.complete, reported: value.reported, pending: value.pending, average: value.average_finish_deviation_minutes };
   }
   window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, searchText, filter, tracks, layout, visibleRows, marks, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

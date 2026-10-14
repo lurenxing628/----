@@ -10,9 +10,9 @@ from werkzeug.exceptions import HTTPException
 from core.models.workbench_command import (
     WorkbenchCommandRejected,
     WorkbenchCommandUncertain,
-    input_fingerprint,
     validate_request_key,
 )
+from core.models.workbench_run_job import valid_data_context_ref
 from core.services.workbench.facts.run_data_context import RunDataContext
 from web.api_responses import failure, query_success
 
@@ -67,7 +67,7 @@ def _input(keys):
 
 
 def _query(data, scope):
-    return query_success(data, bind_read_snapshot({"source": "production", **scope}, input_fingerprint(data)))
+    return query_success(data, bind_read_snapshot({"source": "production", **scope}, data))
 
 
 @_boundary
@@ -103,7 +103,7 @@ def get_scheduling_run(run_ref):
 def get_scheduling_request(request_key):
     previous = request.args.get("data_context_ref")
     if (set(request.args) - {"data_context_ref"} or len(request.args.getlist("data_context_ref")) > 1
-            or previous is not None and not re.fullmatch(r"[a-f0-9]{64}", previous)):
+            or previous is not None and not valid_data_context_ref(previous)):
         raise WorkbenchCommandRejected("invalid_input", "查询这次排产不需要其他条件。请直接点「刷新」。", 400)
     service = _service()
     data = service.lookup(request_key)

@@ -1,15 +1,15 @@
 """Dashboard analysis projected from an already captured source snapshot."""
 
-from collections import defaultdict
-
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant, wire
 from core.services.workbench import messages
-from core.services.workbench.facts.resource_pressure import (
-    MAX_RESOURCE_DAYS,
-    daily_resource_pressure,
-    pressure_summary,
-    range_days,
+from core.services.workbench.facts.current_resource_calendar import current_resource_calendar
+from core.services.workbench.facts.resource_pressure import pressure_from_index, pressure_summary
+from core.services.workbench.facts.resource_projection import (
+    RESOURCE_METRIC_VERSION,
+    ResourceTaskIndex,
+    resource_cohort,
+    resource_summary,
 )
 
 from .downtime import downtime
@@ -57,28 +57,28 @@ def _tasks(facts):
 
 
 def _resources(facts, tasks, scope):
-    grouped, keys = defaultdict(list), {}
-    for task, raw in zip(tasks, facts.task_rows):
-        if raw["source"] == "internal" and task["machine_ref"] is not None:
-            grouped[task["machine_ref"]].append(task)
-            keys[task["machine_ref"]] = str(raw["machine_id"])
-    private = facts.raw["resource_pressure"]["calendar"].get("resources")
-    calendars = private["machine"] if private is not None else {}
+    normalized = [dict(task, **{kind: {"ref": task[kind + "_ref"], "label": task[kind + "_label"]}
+                                if task[kind + "_ref"] is not None else None for kind in ("machine", "operator")})
+                  for task in tasks]
+    cohort = resource_cohort([normalized])
     start, end = scope["range_start"], scope["range_end"]
-    _, _, day_count = range_days(start, end)
+    factory = current_resource_calendar(facts, scope)
+    specs = [dict(row, saved_id=factory.bindings.get((row["kind"], row["ref"]))) for row in cohort] if factory else []
+    calendars = factory.iter_resources(specs, start, end) if factory else ((row["ref"], None) for row in cohort)
+    index = ResourceTaskIndex(normalized, start, end, source="current_transaction_snapshot")
     result = []
-    for resource in facts.pressure["resources"] or []:
-        if resource["kind"] != "machine":
-            continue
-        ref = resource["resource_ref"]
-        if day_count * len(grouped) > MAX_RESOURCE_DAYS:
-            values = {"state": "unavailable", "days": [], "peak_utilization": None,
-                      "reason": "calendar_cell_limit", "zero_capacity_days": 0, "unknown_days": day_count}
-        else:
-            values = daily_resource_pressure(grouped[ref], calendars.get(keys.get(ref)), start, end)
-        result.append({"resource_ref": ref, "label": resource["label"], "kind": "machine", **values,
-                       "task_refs": [row["task_ref"] for row in grouped[ref]], "issues": resource["issues"]})
-    return result
+    for resource, (_, calendar) in zip(cohort, calendars):
+        values = pressure_from_index(index, resource, calendar)
+        selected = [task["task_ref"] for task in tasks if task["source"] != "external"
+                    and task[resource["kind"] + "_ref"] == resource["ref"]]
+        result.append({"resource_ref": resource["ref"], "label": resource["label"], "kind": resource["kind"],
+                       **values, "task_refs": selected, "issues": values["window_metrics"]["issues"]})
+    common = {"metric_version": RESOURCE_METRIC_VERSION, "source": "current_transaction_snapshot",
+              "start": start, "end": end, "time_basis": "factory_local", "cohort_basis": "current_official_plan",
+              "cohort": cohort,
+              **{kind: resource_summary([row["window_metrics"] for row in result], kind=kind,
+                                        identity_issues=index.identity_issues) for kind in ("machine", "operator")}}
+    return result, common
 
 
 def _downtime_record(raw, ref, machine_ref):
@@ -124,13 +124,12 @@ def _projection(facts, material):
     if facts.plan_state != "loaded":
         return {"plan": None, "state": facts.plan_state, "time_scope": None, "tasks": [], "resources": [],
                 "downtimes": [], "overlaps": [], "deliveries": [], "execution": [], "pending": pending,
-                "pressure": {**pressure_summary([]), "count": None}, "issues": facts.plan_issues}
+                "pressure": {**pressure_summary([]), "count": None}, "resource_common": None, "issues": facts.plan_issues}
     tasks = _tasks(facts)
     scope = facts.pressure["time_scope"]
-    resources = _resources(facts, tasks, scope)
+    resources, resource_common = _resources(facts, tasks, scope)
     records, overlaps, issues = _downtimes(facts, tasks)
-    batches = {row["batch_id"]: row for row in facts.raw["Batches"] or []}
-    deliveries = [{**row, "priority": batches.get(row["batch_id"], {}).get("priority")} for row in facts.delivery["items"]]
+    deliveries = facts.delivery["items"]
     execution, execution_state = actual(facts)
     by_ref = {row["task_ref"]: row for row in tasks}
     # The task already carries identity, label and planned times. Analysis links
@@ -140,7 +139,7 @@ def _projection(facts, material):
                   "batch_ref": by_ref[row["source"]["task_ref"]]["batch_ref"]} for row in execution]
     return {"plan": facts.plan, "state": "available", "time_scope": scope, "tasks": tasks, "resources": resources,
             "downtimes": records, "overlaps": overlaps, "deliveries": deliveries, "execution": execution, "pending": pending,
-            "pressure": pressure_summary(resources), "issues": facts.pressure["issues"] + issues + execution_state["issues"]}
+            "pressure": pressure_summary(resources), "resource_common": resource_common, "issues": facts.pressure["issues"] + issues + execution_state["issues"]}
 
 
 def project_dashboard_analysis(facts, material):

@@ -33,7 +33,7 @@ _SEGMENT_MUTATORS = {name: getattr(OwnedSegments, name) for name in (
 )}
 _RECORD_TYPES = (Batch, BatchOperation, SimpleNamespace)
 _OP_FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id",
-              "op_type_name", "setup_hours", "unit_hours")
+              "op_type_id", "op_type_name", "setup_hours", "unit_hours")
 _BATCH_FIELDS = ("batch_id", "quantity", "priority", "due_date", "ready_date")
 
 

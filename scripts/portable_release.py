@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 import tempfile
 import zipfile
@@ -59,7 +58,7 @@ def prepare_portable_directory(dist_dir: Path) -> None:
     (dist_dir / MARKER).write_text("APS portable directory, format 1. Do not remove this file.\n", encoding="ascii")
 
 
-def write_portable_archive(dist_dir: Path, output: Path) -> str:
+def write_portable_archive(dist_dir: Path, output: Path) -> None:
     dist_dir = dist_dir.resolve()
     output = output.resolve()
     if dist_dir == output or dist_dir in output.parents:
@@ -80,15 +79,7 @@ def write_portable_archive(dist_dir: Path, output: Path) -> str:
             failed = archive.testzip()
             if failed:
                 raise ValueError("Portable ZIP integrity check failed: " + failed)
-        digest = hashlib.sha256()
-        with temp_path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        checksum = digest.hexdigest()
         os.replace(str(temp_path), str(output))
-        output.with_suffix(output.suffix + ".sha256").write_text(
-            checksum + "  " + output.name + "\n", encoding="ascii")
-        return checksum
     finally:
         if temp_path.exists():
             temp_path.unlink()
@@ -105,9 +96,8 @@ def main() -> int:
     else:
         if args.output is None:
             parser.error("archive requires an output ZIP path")
-        checksum = write_portable_archive(args.dist_dir, args.output)
+        write_portable_archive(args.dist_dir, args.output)
         print("[portable] ZIP verified: " + str(args.output))
-        print("[portable] SHA-256: " + checksum)
     return 0
 
 

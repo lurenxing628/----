@@ -26,6 +26,8 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
     assert row['execution']['execution_state'] == 'partial'
     assert row['execution']['remaining_quantity'] is None
     assert row['execution']['unknown_record_count'] == 1
+    assert row['deviation']['finish_deviation_minutes'] is None and row['deviation']['finish_late'] is False
+    assert row['deviation']['unclosed'] is True
     by_ref = {r['report_ref']: r for r in row['execution']['reports']}
     assert by_ref[known['report_ref']]['effective_processing_hours'] == 1.25
     assert by_ref[known['report_ref']]['actual_start'] < by_ref[known['report_ref']]['actual_end']

@@ -3,15 +3,18 @@
 import os
 
 from core.infrastructure.backup import BackupManager
-from core.services.workbench.facts.system_journal import file_fingerprint
+from core.models.content import same
+from core.services.workbench.facts.system_journal import file_content
+from core.services.workbench.facts.system_reads import backup_signature
 
 
 class SystemRestoreManager(BackupManager):
-    def __init__(self, *, journal, record, **kwargs):
+    def __init__(self, *, journal, record, source_content=None, **kwargs):
         super().__init__(**kwargs)
         self.journal = journal
         self.record = record
         self.rolling_back = False
+        self._source_content = {"target": source_content}
 
     def backup(self, suffix=None):
         if suffix == "before_restore":
@@ -20,25 +23,35 @@ class SystemRestoreManager(BackupManager):
         actual_suffix = self.record["job_ref"] + "_before_restore" if suffix == "before_restore" else suffix
         path = super().backup(suffix=actual_suffix)
         if suffix == "before_restore":
+            signature = backup_signature(path)
+            self._source_content["protection"] = file_content(path)
+            if not same(signature, backup_signature(path)):
+                raise RuntimeError("恢复前保护副本在读取时发生了变化。")
+            verification = {**self.record["source_verification"], "protection": "captured"}
             self.journal.record(self.record, "protecting", protection={
-                "filename": os.path.basename(path), "sha256": file_fingerprint(path)})
+                "filename": os.path.basename(path), "signature": signature}, source_verification=verification)
         return path
 
     def _copy_db_file(self, source_path, *, locked_warning_message):
-        source = self.record["protection" if self.rolling_back else "target"]
-        self._require_source(source_path, source)
+        role = "protection" if self.rolling_back else "target"
+        source = self.record[role]
+        self._require_source(source_path, source, self._source_content.get(role))
         self.journal.record(self.record, "rolling_back" if self.rolling_back else "restoring")
         super()._copy_db_file(source_path, locked_warning_message=locked_warning_message)
         # A source changed during copying cannot authorize success, even if SQLite opened it.
-        self._require_source(source_path, source)
+        self._require_source(source_path, source, self._source_content.get(role))
+        verification = {**self.record["source_verification"], role: "verified"}
         if not self.rolling_back:
-            self.journal.record(self.record, "verifying")
+            self.journal.record(self.record, "verifying", source_verification=verification)
+        else:
+            self.journal.record(self.record, "rolling_back", source_verification=verification)
 
     @staticmethod
-    def _require_source(path, source):
+    def _require_source(path, source, original):
         if (not source or os.path.basename(path) != source["filename"]
-                or file_fingerprint(path) != source["sha256"]):
-            raise RuntimeError("Restore source no longer matches its durable fingerprint")
+                or type(original) is not bytes or not same(backup_signature(path), source.get("signature"))
+                or file_content(path) != original):
+            raise RuntimeError("恢复来源已不符合本次预检的原始文件内容。")
 
     def _auto_rollback(self, before_restore_path, **kwargs):
         self.rolling_back = True

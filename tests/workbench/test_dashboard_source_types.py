@@ -19,7 +19,7 @@ FRONTEND_LIST = r"""
 const fs = require('node:fs'), vm = require('node:vm');
 const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 const window = {}, context = vm.createContext({window, AbortController, URLSearchParams, setTimeout, clearTimeout});
-for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'DashboardAnalysisAPI.js']) {
+for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
   vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
 }
 window.DashboardContract.create(async () => ({

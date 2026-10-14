@@ -12,14 +12,13 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Sequence, TextIO, Tuple
 
-try:
-    from tools import git_hook_cache
-    from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS
-except ImportError:  # pragma: no cover - direct script execution path
-    import git_hook_cache  # type: ignore[no-redef]
-    from git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS  # type: ignore[no-redef]
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from tools import git_hook_cache  # noqa: E402
+from tools.git_hook_blocked_paths import BLOCKED_PATH_RULES, GENERIC_COMMIT_SUBJECTS  # noqa: E402
+
 ZERO_SHA = "0" * 40
 _GIT_REPOSITORY_LOCAL_ENV_KEYS: Tuple[str, ...] = (
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -232,9 +231,6 @@ def _pre_push_contexts_payload(refs: Sequence[PrePushRef]) -> List[Dict[str, str
 
 
 def _daily_gate_module():
-    repo_root = str(REPO_ROOT)
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
     from scripts import run_daily_quality_gate
 
     return run_daily_quality_gate

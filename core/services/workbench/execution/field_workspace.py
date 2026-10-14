@@ -2,13 +2,13 @@
 
 from contextlib import contextmanager
 
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.execution.processing_hours import hour_totals
 from core.services.workbench.facts.execution_projection import attach_context
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.process.queries import plain_fingerprint
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
@@ -58,7 +58,7 @@ class FieldWorkspaceService:
     def _cohort(self, scope):
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
-            return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, plain_fingerprint(self.ledger.revision_clock())
+            return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, content_text(self.ledger.revision_clock())
         plan, plan_state = self.plans.execution_workspace(
             PlanReadScope(plan_ref, scope.get('range_start'), scope.get('range_end')),
         )
@@ -89,7 +89,7 @@ class FieldWorkspaceService:
         summary = self._summary(tasks, scope_tasks)
         # 整份范围一次写成文本取摘要，不再逐层复制。这里的任务都没签令牌（contexts=False），write_context
         # 只有固定的“未绑定”或旧计划“不能新增报工”两种，随数据而定；令牌只在 page/detail 给副本另签。
-        state = plain_fingerprint({'scope': effective, 'plan': plan_state, 'execution': state_facts,
+        state = content_text({'scope': effective, 'plan': plan_state, 'execution': state_facts,
                                    'data': tasks, 'summary': summary})
         return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state
 

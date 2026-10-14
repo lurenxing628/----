@@ -7,7 +7,6 @@ uncommitted contents are never reused or put into the reusable cache.
 """
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 
 from core.algorithm_runtime.native_snapshot import make_class_guard
@@ -37,13 +36,13 @@ def calendar_checkpoint_snapshot(service):
         cached = fields.get("_decode_checkpoint_calendar_cache")
         if reusable and cached is not None and cached[0] is connection and cached[1] == metadata:
             return cached[2]
-        # The repository issues only the fixed business SELECTs; the certificate hashes their raw row tuples.
+        # The fixed business SELECTs already return immutable row tuples in a stable order.
         rows = CalendarCheckpointRepository(connection).calendar_signature_rows()
         after = _metadata(connection)
         if metadata != after:
             raise ValidationError("读取断点日历证书时日历输入发生变化，请重新排产。", field="decode_checkpoint",
                                   details={"reason": "decode_checkpoint_calendar_changed_during_read"})
-        signature = "calendar-business-v1", hashlib.sha256(repr(rows).encode("utf-8")).hexdigest()
+        signature = "calendar-business-v1", rows
         if reusable:
             fields["_decode_checkpoint_calendar_cache"] = connection, metadata, signature
         else:

@@ -122,7 +122,7 @@ def _normalize_runtime_contract_payload(payload: Any) -> Tuple[Optional[Dict[str
             return None, f"invalid_{key}", str(exc)
         if int(normalized[key] or 0) <= 0:
             return None, f"invalid_{key}", "must_be_positive"
-    for key in ("host", "shutdown_token", "exe_path", "runtime_dir", "chrome_profile_dir"):
+    for key in ("host", "instance_id", "shutdown_token", "exe_path", "runtime_dir", "chrome_profile_dir"):
         value = str(normalized.get(key) or "").strip()
         if not value:
             return None, f"missing_{key}", ""

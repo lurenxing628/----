@@ -11,6 +11,7 @@ from core.infrastructure.schema_probe import table_names
 
 from .base_repo import BaseRepository
 from .batch_external_context_repo import BatchExternalContextRepository
+from .sqlite_rows import raw_projection
 
 PREFLIGHT_TABLES = ("Batches", "BatchOperations", "BatchExternalContexts", "Parts", "PartOperations", "ExternalGroups", "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits",
                     "Machines", "MachineOpTypes", "Operators", "OperatorMachine", "OperatorSkill", "OpTypes", "Suppliers",
@@ -54,5 +55,6 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
         if name not in self._present_tables():
             raise ValueError("unknown table: " + repr(name))
         quoted = _quote(name)
-        cursor = self.execute("SELECT * FROM " + quoted + " ORDER BY rowid")
+        _, projection = raw_projection(self.conn, name)
+        cursor = self.execute("SELECT " + projection + " FROM " + quoted + " ORDER BY rowid")
         return (tuple(row) for row in cursor)

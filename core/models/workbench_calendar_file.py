@@ -1,6 +1,5 @@
 """全局工作日历文件的列目录。文件只改列出的日期，不删除整行；清除某一天请用日历页的范围清除。"""
 
-import hashlib
 from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
@@ -197,8 +196,7 @@ def import_request(kind: str, content: bytes, file_format: str, mode: str) -> Di
         raise ValidationError("只能导入 CSV 或 XLSX 文件，没有导入。请重新选择文件。", field="file")
     if mode != "upsert":
         raise WorkbenchCommandRejected("invalid_input", "日历文件只支持按日期增量导入，没有导入。请重新选择导入方式。", 400)
-    return {"kind": kind, "mode": mode, "format": file_format, "scope": {},
-            "file_sha256": hashlib.sha256(content).hexdigest()}
+    return {"kind": kind, "mode": mode, "format": file_format, "scope": {}}
 
 
 def table_descriptor(kind: str) -> Dict[str, Any]:

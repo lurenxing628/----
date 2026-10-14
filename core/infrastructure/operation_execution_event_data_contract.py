@@ -115,7 +115,9 @@ def _validate_event_contract_row(row: Any) -> None:
         raise ValueError("suggest_reschedule must be 0 or 1")
     _required_text(_row_value(row, "created_by", 18), "created_by")
     _required_text(_row_value(row, "idempotency_key", 19), "idempotency_key")
-    _required_text(_row_value(row, "request_fingerprint", 20), "request_fingerprint")
+    fingerprint = _row_value(row, "request_fingerprint", 20)
+    if fingerprint is not None:
+        _required_text(fingerprint, "request_fingerprint")
     _required_text(_row_value(row, "previous_state_revision", 21), "previous_state_revision")
     normalize_operation_event_time(_row_value(row, "created_at", 22))
 

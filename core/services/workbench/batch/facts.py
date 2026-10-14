@@ -6,10 +6,10 @@ from typing import Any, Dict
 
 from core.infrastructure.connection_guards import data_version
 from core.infrastructure.transaction import TransactionManager
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.process.workflow_state import load_workflow_snapshot, project_workflow_snapshot
-from core.services.workbench.process.queries import plain_fingerprint
 from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
@@ -88,7 +88,7 @@ class BatchFacts:
 
     def fingerprint(self):
         # One pass over the facts; the execution projections inside carry no hash of their own.
-        return plain_fingerprint(self.load())
+        return content_text(self.load())
 
     @contextmanager
     def _pin(self, facts):

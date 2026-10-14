@@ -6,9 +6,9 @@ from datetime import datetime
 from flask import request
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from web.public_token_registry import issue_public_token, resolve_public_token
+from web.public_token_registry import resolve_public_token
 
 from .read_context import _SCOPE, bind_read_snapshot
 
@@ -33,12 +33,6 @@ def as_of(token):
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
 
 
-def bind(query, fingerprint, token, clock, *, snapshot_scope=None):
+def bind(query, content, token, clock, *, snapshot_scope=None):
     scope = query.scope() if snapshot_scope is None else snapshot_scope
-    if token is not None:
-        return bind_read_snapshot(scope, fingerprint, token)
-    stamp = clock.isoformat(timespec="seconds")
-    payload = {"version": 2, "source": "production", "scope_hash": input_fingerprint(scope),
-               "fingerprint": fingerprint, "as_of": stamp}
-    token = issue_public_token(_SCOPE, canonical_json(payload), ttl_seconds=900)
-    return {"snapshot_ref": token, "as_of": stamp}
+    return bind_read_snapshot(scope, content, token, as_of=clock)

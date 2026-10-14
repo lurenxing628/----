@@ -6,25 +6,37 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
+import uuid
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional
 
 RUNTIME_HOST_EXTENSION = "aps.runtime_host"
 RESTORE_HOST_EXTENSION = "workbench_system_restore_host"
 RESTORE_HOST_GUARD = "workbench_system_restore_guard"
+RUNTIME_IDENTITY_EXTENSION = "aps.runtime_identity"
+
+
+def normalize_runtime_db_path(db_path: Optional[str]) -> str:
+    raw = str(db_path or "").strip()
+    return os.path.normcase(os.path.abspath(raw)) if raw else ""
 
 
 def runtime_identity(app) -> Dict[str, Any]:
-    raw_path = str(app.config.get("DATABASE_PATH") or "").strip()
-    db_path = os.path.normcase(os.path.abspath(raw_path)) if raw_path else ""
-    token = str(app.config.get("APS_RUNTIME_SHUTDOWN_TOKEN") or "")
+    db_path = normalize_runtime_db_path(app.config.get("DATABASE_PATH"))
+    identity = app.extensions.get(RUNTIME_IDENTITY_EXTENSION)
+    if identity is None:
+        identity = app.extensions.setdefault(RUNTIME_IDENTITY_EXTENSION, {
+            "instance_id": uuid.uuid4().hex,
+            "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        })
     return {
         "pid": os.getpid(),
         "owner": str(app.config.get("APS_RUNTIME_OWNER") or ""),
-        "db_path_hash": hashlib.sha256(db_path.encode("utf-8")).hexdigest() if db_path else "",
-        "instance_id": hashlib.sha256(token.encode("utf-8")).hexdigest() if token else "",
+        "db_path": db_path,
+        "instance_id": identity["instance_id"],
+        "started_at": identity["started_at"],
     }
 
 

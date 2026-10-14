@@ -17,6 +17,9 @@ from .quality_gate_ledger import (
     finalize_ledger_update,
     load_ledger,
     load_sp02_facts_snapshot,
+    silent_entry_content_equal,
+    silent_entry_has_content,
+    silent_entry_key,
     validate_ledger,
 )
 from .quality_gate_scan import (
@@ -34,7 +37,6 @@ from .quality_gate_shared import (
     collect_quality_rule_files,
     collect_startup_scope_files,
     is_startup_scope_path,
-    now_shanghai_iso,
     slugify,
 )
 
@@ -114,7 +116,7 @@ def refresh_migrate_inline_facts(ledger: Optional[Dict[str, Any]] = None) -> Dic
                 f"静默回退迁移数量不一致：{key} 期望 {expected_count}，实测 {len(matched)}"
             )
         for matched_entry in matched:
-            existing = find_existing_by_id(silent_existing, str(matched_entry.get("id")))
+            existing = _find_existing_silent_entry(silent_existing, matched_entry)
             new_silent_entries.append(
                 build_silent_entry(matched_entry, source="migrated_from_architecture_fitness_counter", existing=existing)
             )
@@ -176,7 +178,7 @@ def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Di
     _reject_fixed_silent_entries_still_in_scan(silent_existing, startup_silent_scan_entries)
     startup_silent = []
     for item in startup_silent_scan_entries:
-        existing = find_existing_by_id(silent_existing, str(item.get("id")))
+        existing = _find_existing_silent_entry(silent_existing, item)
         entry = build_silent_entry(item, source="baseline_scan", existing=existing)
         startup_silent.append(entry)
 
@@ -186,45 +188,32 @@ def refresh_scan_startup_baseline(ledger: Optional[Dict[str, Any]] = None) -> Di
         "scope": list(STARTUP_SCOPE_PATTERNS),
         "entries": remove_entries_by_predicate(silent_existing, lambda entry: is_startup_scope_path(str(entry.get("path")))) + startup_silent,
     }
-    replacements = _silent_group_alignment(
-        [dict(entry) for entry in silent_existing if is_startup_scope_path(str(entry.get("path")))],
-        startup_silent,
-    )
-    id_replacements = {
-        old_id: str(new_entry.get("id") or "")
-        for old_id, new_entry in replacements.items()
-        if old_id and str(new_entry.get("id") or "")
-    }
     main_ids = collect_main_entry_ids(ledger)
-    refreshed_risks = []
     for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []):
-        next_entry_ids = []
         for entry_id in list(risk.get("entry_ids") or []):
-            next_id = id_replacements.get(str(entry_id), str(entry_id))
-            if next_id not in main_ids:
-                continue
-            if next_id not in next_entry_ids:
-                next_entry_ids.append(next_id)
-        if not next_entry_ids:
-            raise QualityGateError(
-                "accepted_risks 将被自动清空，请先显式 delete-risk：{}".format(risk.get("id"))
-            )
-        risk["entry_ids"] = next_entry_ids
-        refreshed_risks.append(risk)
-    ledger["accepted_risks"] = refreshed_risks
+            if str(entry_id) not in main_ids:
+                raise QualityGateError("accepted_risks 引用的条目已退出扫描，请先显式复核风险：{} {}".format(risk.get("id"), entry_id))
     return finalize_ledger_update(ledger)
 
 
-def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str, str, int], Dict[str, Any]]:
+def _find_existing_silent_entry(entries: Sequence[Dict[str, Any]], current: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    matches = [entry for entry in entries if silent_entry_key(entry) == silent_entry_key(current)]
+    if len(matches) > 1:
+        raise QualityGateError(f"静默回退业务位置存在多条旧登记，请先复核：{silent_entry_key(current)}")
+    return dict(matches[0]) if matches else None
+
+
+def _require_silent_content(entry: Dict[str, Any]) -> None:
+    if not silent_entry_has_content(entry):
+        raise QualityGateError(
+            "静默回退条目缺少 handler_signature / handler_context 原文：{}；请显式复核并重取内容基线，保留旧 id 与 accepted_risks 引用".format(entry.get("id"))
+        )
+
+
+def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str, int], Dict[str, Any]]:
     index = {}
     for entry in entries:
-        key = (
-            str(entry.get("path") or ""),
-            str(entry.get("symbol") or ""),
-            str(entry.get("handler_fingerprint") or ""),
-            int(entry.get("except_ordinal") or 0),
-        )
-        index[key] = dict(entry)
+        index[silent_entry_key(entry)] = dict(entry)
     return index
 
 
@@ -239,31 +228,17 @@ def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, A
     if _silent_refresh_group_key(old_entry) != _silent_refresh_group_key(new_entry):
         return False, "path/symbol alias group changed"
 
-    new_hash = str(new_entry.get("handler_context_hash") or "")
-    if not new_hash.startswith("sha1:"):
-        return False, "new handler_context_hash missing"
-
-    old_hash = str(old_entry.get("handler_context_hash") or "")
-    old_fingerprint = str(old_entry.get("handler_fingerprint") or "")
-    new_fingerprint = str(new_entry.get("handler_fingerprint") or "")
-    if int(old_entry.get("except_ordinal") or 0) != int(new_entry.get("except_ordinal") or 0) and old_hash:
+    if not silent_entry_has_content(old_entry):
+        return False, "old handler_signature / handler_context missing; explicit content baseline review required"
+    if not silent_entry_has_content(new_entry):
+        return False, "new handler_signature / handler_context missing"
+    if int(old_entry.get("except_ordinal") or 0) != int(new_entry.get("except_ordinal") or 0):
         return False, "except ordinal changed"
-    if not old_hash:
-        hash_reason = "handler_context_hash initialized"
-        hash_matched = True
-    else:
-        if not old_hash.startswith("sha1:"):
-            return False, "old handler_context_hash invalid"
-        if old_hash != new_hash:
-            return False, "handler_context_hash changed"
-        hash_reason = "handler_context_hash matched"
-        hash_matched = True
+    if not silent_entry_content_equal(old_entry, new_entry):
+        return False, "handler_signature / handler_context changed"
 
-    if str(old_entry.get("id") or "") and str(old_entry.get("id") or "") == str(new_entry.get("id") or "") and old_kind == new_kind:
-        return True, f"same id; kind {old_kind}->{new_kind}; scope_tag unchanged; {hash_reason}"
-
-    if old_kind == new_kind and old_fingerprint == new_fingerprint:
-        return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; {hash_reason}"
+    if old_kind == new_kind:
+        return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; handler content matched"
     # 旧 architecture_fitness 计数器曾把非启动链清理动作记成 silent_swallow。
     # 这里仅允许这批历史非启动链条目回到 cleanup_best_effort，不用于启动链或 accepted risk 换绑放宽。
     if (
@@ -272,30 +247,17 @@ def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, A
         and old_kind == "silent_swallow"
         and new_kind == "cleanup_best_effort"
     ):
-        return True, f"legacy architecture silent entry reclassified as cleanup_best_effort; scope_tag unchanged; {hash_reason}"
+        return True, "legacy architecture silent entry reclassified as cleanup_best_effort; scope_tag unchanged; handler content matched"
     if (old_kind, new_kind) not in ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS:
         return False, f"fallback kind transition {old_kind}->{new_kind} is not allowed"
-    if not hash_matched:
-        return False, "handler_context_hash changed"
-    return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; handler_context_hash matched"
-
-
-def _apply_silent_realign_metadata(old_entry: Dict[str, Any], new_entry: Dict[str, Any], reason: str) -> None:
-    new_entry["realigned_from"] = str(old_entry.get("id") or "")
-    new_entry["realigned_at"] = now_shanghai_iso().split("T", 1)[0]
-    new_entry["realignment_reason"] = reason
+    return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; handler content matched"
 
 
 def _resolve_silent_refresh_entry(
     entry: Dict[str, Any],
-    silent_scan: Dict[Tuple[str, str, str, int], Dict[str, Any]],
+    silent_scan: Dict[Tuple[str, str, int], Dict[str, Any]],
 ) -> Dict[str, Any]:
-    key = (
-        str(entry.get("path") or ""),
-        str(entry.get("symbol") or ""),
-        str(entry.get("handler_fingerprint") or ""),
-        int(entry.get("except_ordinal") or 0),
-    )
+    key = silent_entry_key(entry)
     matched = silent_scan.get(key)
     if matched is not None:
         allowed, reason = _is_allowed_silent_realign(entry, matched)
@@ -303,21 +265,11 @@ def _resolve_silent_refresh_entry(
             raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), reason))
         return matched
 
-    fallback_candidates = [
-        dict(candidate)
-        for scan_key, candidate in silent_scan.items()
-        if scan_key[:3] == key[:3]
-    ]
-    if len(fallback_candidates) == 1:
-        allowed, reason = _is_allowed_silent_realign(entry, fallback_candidates[0])
-        if not allowed:
-            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), reason))
-        return fallback_candidates[0]
-
     same_handler_candidates = [
         dict(candidate)
-        for scan_key, candidate in silent_scan.items()
-        if scan_key[0] == key[0] and scan_key[1] == key[1] and scan_key[3] == key[3]
+        for candidate in silent_scan.values()
+        if _silent_refresh_group_key(candidate) == _silent_refresh_group_key(entry)
+        and int(candidate.get("except_ordinal") or 0) == key[2]
     ]
     if len(same_handler_candidates) == 1:
         allowed, reason = _is_allowed_silent_realign(entry, same_handler_candidates[0])
@@ -368,59 +320,6 @@ def _silent_refresh_group_key(entry: Dict[str, Any]) -> Tuple[str, str]:
 def _silent_scan_has_group(entry: Dict[str, Any], scan_entries: Sequence[Dict[str, Any]]) -> bool:
     key = _silent_refresh_group_key(entry)
     return any(_silent_refresh_group_key(scan_entry) == key for scan_entry in scan_entries)
-
-
-def _silent_entry_key(entry: Dict[str, Any]) -> Tuple[str, str, str, int]:
-    return (
-        str(entry.get("path") or ""),
-        str(entry.get("symbol") or ""),
-        str(entry.get("handler_fingerprint") or ""),
-        int(entry.get("except_ordinal") or 0),
-    )
-
-
-def _silent_scan_group_has_exact_ledger_peer(
-    entry: Dict[str, Any],
-    *,
-    silent_entries: Sequence[Dict[str, Any]],
-    scan_entries: Sequence[Dict[str, Any]],
-) -> bool:
-    group_key = _silent_refresh_group_key(entry)
-    entry_id = str(entry.get("id") or "")
-    ledger_keys = {
-        _silent_entry_key(current)
-        for current in silent_entries
-        if str(current.get("id") or "") != entry_id
-    }
-    return any(
-        _silent_refresh_group_key(scan_entry) == group_key
-        and _silent_entry_key(scan_entry) in ledger_keys
-        for scan_entry in scan_entries
-    )
-
-
-def _legacy_nonstartup_silent_entry_can_be_removed(
-    entry: Dict[str, Any],
-    scan_entries: Sequence[Dict[str, Any]],
-) -> bool:
-    if str(entry.get("source") or "") != "migrated_from_architecture_fitness_counter":
-        return False
-    if is_startup_scope_path(str(entry.get("path") or "")):
-        return False
-    group_key = _silent_refresh_group_key(entry)
-    old_context_hash = str(entry.get("handler_context_hash") or "")
-    if any(
-        _silent_refresh_group_key(scan_entry) == group_key
-        and str(scan_entry.get("handler_context_hash") or "") == old_context_hash
-        for scan_entry in scan_entries
-    ):
-        return False
-    return not any(
-        _silent_refresh_group_key(scan_entry) == group_key
-        and str(scan_entry.get("fallback_kind") or "") == "silent_swallow"
-        and bool(scan_entry.get("legacy_swallow_hit"))
-        for scan_entry in scan_entries
-    )
 
 
 def _reject_fixed_silent_entries_still_in_scan(
@@ -485,6 +384,8 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     oversize_entries = cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])
     complexity_entries = cast(List[Dict[str, Any]], ledger.get("complexity_allowlist") or [])
     silent_entries = cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []
+    for entry in silent_entries:
+        _require_silent_content(entry)
     accepted_entry_ids = {
         str(entry_id)
         for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or [])
@@ -529,33 +430,9 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     silent_group_alignment = _silent_group_alignment(silent_entries, silent_scan_entries)
     _reject_fixed_silent_entries_still_in_scan(silent_entries, silent_scan_entries)
     refreshed_silent = []
-    silent_id_replacements: Dict[str, str] = {}
     removed_silent_ids: Set[str] = set()
     for entry in silent_entries:
         if str(entry.get("status") or "open") == "fixed" and not is_startup_scope_path(str(entry.get("path") or "")):
-            removed_silent_ids.add(str(entry.get("id") or ""))
-            continue
-        key = (
-            str(entry.get("path") or ""),
-            str(entry.get("symbol") or ""),
-            str(entry.get("handler_fingerprint") or ""),
-            int(entry.get("except_ordinal") or 0),
-        )
-        if (
-            str(entry.get("source") or "") == "migrated_from_architecture_fitness_counter"
-            and not is_startup_scope_path(str(entry.get("path") or ""))
-            and key not in silent_scan
-            and (
-                _legacy_nonstartup_silent_entry_can_be_removed(entry, silent_scan_entries)
-                or
-                not _silent_scan_has_group(entry, silent_scan_entries)
-                or _silent_scan_group_has_exact_ledger_peer(
-                    entry,
-                    silent_entries=silent_entries,
-                    scan_entries=silent_scan_entries,
-                )
-            )
-        ):
             removed_silent_ids.add(str(entry.get("id") or ""))
             continue
         matched_entry = silent_group_alignment.get(str(entry.get("id") or ""))
@@ -568,37 +445,11 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
                 removed_silent_ids.add(str(entry.get("id") or ""))
                 continue
         refreshed_entry = build_silent_entry(matched_entry, source=str(entry.get("source") or "baseline_scan"), existing=entry)
-        allowed, realign_reason = _is_allowed_silent_realign(entry, matched_entry)
-        if not allowed:
-            raise QualityGateError("静默回退条目自动对齐被拒绝：{} {}".format(entry.get("id"), realign_reason))
-        old_id = str(entry.get("id") or "")
-        new_id = str(refreshed_entry.get("id") or "")
-        if old_id and new_id and old_id != new_id:
-            if old_id in accepted_entry_ids and not str(entry.get("handler_context_hash") or "").startswith("sha1:"):
-                refreshed_entry["id"] = old_id
-                new_id = old_id
-            else:
-                _apply_silent_realign_metadata(entry, refreshed_entry, realign_reason)
-                silent_id_replacements[old_id] = new_id
         refreshed_silent.append(refreshed_entry)
 
-    if silent_id_replacements or removed_silent_ids:
-        refreshed_risks = []
-        for risk in cast(List[Dict[str, Any]], ledger.get("accepted_risks") or []):
-            next_entry_ids = []
-            for entry_id in list(risk.get("entry_ids") or []):
-                if str(entry_id) in removed_silent_ids:
-                    continue
-                next_id = silent_id_replacements.get(str(entry_id), str(entry_id))
-                if next_id not in next_entry_ids:
-                    next_entry_ids.append(next_id)
-            if not next_entry_ids:
-                raise QualityGateError(
-                    "accepted_risks 将被自动清空，请先显式 delete-risk：{}".format(risk.get("id"))
-                )
-            risk["entry_ids"] = next_entry_ids
-            refreshed_risks.append(risk)
-        ledger["accepted_risks"] = refreshed_risks
+    removed_accepted_ids = removed_silent_ids & accepted_entry_ids
+    if removed_accepted_ids:
+        raise QualityGateError(f"静默回退条目已达成退出条件但仍被 accepted_risks 引用，请先显式复核风险：{sorted(removed_accepted_ids)}")
 
     ledger["oversize_allowlist"] = refreshed_oversize
     ledger["complexity_allowlist"] = refreshed_complexity
@@ -682,6 +533,8 @@ def delete_risk(ledger: Dict[str, Any], risk_id: str) -> Dict[str, Any]:
 
 def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, Any]:
     validate_ledger(ledger)
+    for entry in cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []:
+        _require_silent_content(entry)
     sample_summary = architecture_validate_startup_samples()
 
     oversize_paths = [str(entry.get("path")) for entry in cast(List[Dict[str, Any]], ledger.get("oversize_allowlist") or [])]
@@ -712,15 +565,12 @@ def validate_ledger_against_current_scan(ledger: Dict[str, Any]) -> Dict[str, An
         )
         silent_scan = _silent_scan_index(silent_scan_entries)
         for entry in cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or []:
-            key = (
-                str(entry.get("path") or ""),
-                str(entry.get("symbol") or ""),
-                str(entry.get("handler_fingerprint") or ""),
-                int(entry.get("except_ordinal") or 0),
-            )
+            key = silent_entry_key(entry)
             if key not in silent_scan:
                 raise QualityGateError("静默回退条目无法通过当前扫描定位：{}".format(entry.get("id")))
             current_entry = silent_scan[key]
+            if not silent_entry_content_equal(entry, current_entry):
+                raise QualityGateError("静默回退条目 handler_signature / handler_context 与当前扫描不一致：{}".format(entry.get("id")))
             for field_name in ("line_start", "line_end"):
                 if int(current_entry.get(field_name) or 0) != int(entry.get(field_name) or 0):
                     raise QualityGateError(

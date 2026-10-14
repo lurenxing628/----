@@ -1,8 +1,8 @@
 """Calendar business contents read for SGS decode checkpoint certificates.
 
-Rows come back as nested tuples in a fixed query order. The caller hashes their
-repr, so query order, column order and raw storage values are all part of the
-certificate; rows are never mapped to dicts or models here.
+Rows come back as nested tuples in a fixed query order. Query order, column order
+and raw storage values are all part of the certificate; rows are never mapped to
+dicts or models here.
 """
 
 from __future__ import annotations

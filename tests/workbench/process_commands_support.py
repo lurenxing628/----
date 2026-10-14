@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import cProfile
-import hashlib
 import io
 import json
 import pstats
@@ -16,6 +15,7 @@ import pytest
 
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_process_workflow_schema import install_process_workflow
+from core.models.content import content_text
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -294,7 +294,7 @@ def profile_stage_scale(count, output):
         measure("fixture_base", lambda: stage_database.__wrapped__(conn))
         assert workbench_process_contract_issues(conn) == []
         assert workbench_plan_identity_contract_issues(conn) == []
-        triggers = {row[0]: {"sql": row[1], "sha256": hashlib.sha256(row[1].encode("utf-8")).hexdigest()}
+        triggers = {row[0]: {"sql": row[1]}
                     for row in conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name GLOB 'wb_ref_template_*' ORDER BY name")}
         manifest = Path(output) / "installed_process_triggers.json"
         manifest.write_text(json.dumps(triggers, indent=2), encoding="utf-8")
@@ -317,7 +317,7 @@ def profile_stage_scale(count, output):
         conn.close()
 
 
-def profile_source_hashes():
+def profile_source_contents():
     root = Path(__file__).resolve().parents[2]
     files = [Path(__file__), root / "schema.sql", root / "core/infrastructure/workbench_metadata_schema.py",
              root / "core/infrastructure/workbench_process_schema.py", root / "core/services/process/workflow_state.py",
@@ -326,7 +326,7 @@ def profile_source_hashes():
              root / "core/infrastructure/workbench_plan_identity_schema.py"]
     files.extend(sorted((root / "core/services/workbench/process").rglob("*.py")))
     files.append(root / "core/services/workbench/facts/process_file_xml.py")
-    return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
+    return {str(path.relative_to(root)): path.read_bytes() for path in files}
 
 
 def profile_noop_confirmations(count, output):
@@ -349,7 +349,7 @@ def profile_noop_confirmations(count, output):
     def state():
         _, tables = all_table_snapshot(conn)
         tables.pop("WorkbenchCommandReceipts")
-        return hashlib.sha256(json.dumps(tables, sort_keys=True).encode("utf-8")).hexdigest()
+        return content_text(tables)
 
     before, phases = state(), []
     for action, payload in (("source_confirm", source), ("hours_confirm", hours)):
@@ -375,7 +375,7 @@ def profile_noop_confirmations(count, output):
             assert state() == before
             phases.append(record)
     conn.close()
-    return {"count": count, "all_nonreceipt_rows_unchanged": True, "state_sha256": before, "phases": phases}
+    return {"count": count, "all_nonreceipt_rows_unchanged": True, "phases": phases}
 
 
 def profile_identity_predicates(count, output):
@@ -446,13 +446,16 @@ def _profile_main():
         parser.error("profile counts must be between 1 and 10000")
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
-    hashes = profile_source_hashes()
+    before = profile_source_contents()
     profile = profile_identity_predicates if args.identity_predicates else profile_input_helpers if args.input_helpers else profile_stage_scale
     if args.noop_confirmations:
         profile = profile_noop_confirmations
     runs = [profile(count, output / str(count)) for count in args.counts]
-    report = {"python_sqlite_version": sqlite3.sqlite_version, "source_hashes_before": hashes,
-              "source_hashes_after": profile_source_hashes(), "runs": runs}
+    after = profile_source_contents()
+    files = sorted(set(before) | set(after))
+    changed = [path for path in files if before.get(path) != after.get(path)]
+    report = {"python_sqlite_version": sqlite3.sqlite_version, "source_files": files,
+              "source_contents_unchanged": not changed, "changed_source_files": changed, "runs": runs}
     (output / "report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
 

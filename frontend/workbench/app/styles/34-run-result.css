@@ -1,0 +1,85 @@
+/* The run entry owns scope and execution state; saved business results use the decision workspace. */
+.run-job-panel.rj-status-workspace > .rj-record { margin-top: 0; }
+.run-job-panel .rj-business-heading { justify-content: flex-start; gap: var(--space-3); }
+.run-job-panel .rj-business-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.run-job-panel .rj-business-actions .scheduling-navigation { margin: 0; }
+.run-job-panel .rj-business-scope { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); margin: 0; padding: var(--space-3) 0; border-bottom: 1px solid var(--ui-border); }
+.run-job-panel .rj-record-details { margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--ui-border); }
+.run-job-panel .rj-record-details > .rj-scope { border: 0; }
+.run-job-panel .rj-batch-names ol,.run-job-panel .rj-confirm-batches { margin: var(--space-2) 0; padding-left: 24px; line-height: var(--wb-line-relaxed); }
+.run-job-panel .rj-batch-names li { padding-block: var(--space-1); }
+.run-job-panel .rj-batch-names li > span { display: block; color: var(--ui-info-muted); font-size: var(--font-size-1); }
+
+/* Business results use one candidate set and one shared current-scheme toolbar. */
+.rd-workspace { container-type: inline-size; container-name: decision-results; }
+.rd-workspace .rd-page-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); margin: 0; }
+.rd-workspace .rd-page-title { display: block; font-size: var(--font-size-3); font-weight: 500; line-height: 1.6; margin: 0; }
+.rd-workspace .rd-heading { align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
+.rd-workspace .rd-candidate-strip-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; color: var(--ui-info-muted); font-size: var(--font-size-1); line-height: 1.5; }
+.rd-workspace .rd-candidate-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
+.rd-workspace .rd-candidate-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--wb-radius-control); background: var(--ui-card-bg); }
+.rd-workspace .rd-candidate-card > .wb-button-host { display: flex; flex: 1; min-width: 0; }
+.rd-workspace .rd-candidate-card[data-selected=true] { background: var(--ui-primary-soft); border-color: var(--ui-primary); box-shadow: inset 0 0 0 1px var(--ui-primary); }
+.rd-workspace .rd-candidate-choice { display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; flex: 1; width: 100%; min-height: 140px; height: auto; text-align: left; white-space: normal; border: 0; border-radius: var(--wb-radius-control); padding: var(--space-3); gap: var(--space-2); background: transparent; color: var(--ui-text); font: inherit; cursor: pointer; }
+.rd-workspace .rd-candidate-choice:hover { background: var(--ui-surface-muted); }
+.rd-workspace .rd-candidate-choice:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: -3px; }
+.rd-workspace .rd-candidate-choice:disabled { cursor: default; }
+.rd-workspace .rd-candidate-choice-heading { display: flex; align-items: flex-start; gap: var(--space-2); min-width: 0; }
+.rd-workspace .rd-candidate-choice-heading > strong { flex: 1; min-width: 0; font-size: var(--font-size-2); font-weight: 500; line-height: 1.6; overflow-wrap: anywhere; }
+.rd-workspace .rd-candidate-identities { display: flex; align-items: start; min-height: 0; margin: 0; flex: 0 0 auto; flex-wrap: nowrap; gap: 3px; }
+.rd-workspace .rd-candidate-identities .rd-badge { font-size: var(--font-size-1); padding: 1px 4px; line-height: 1.6; white-space: nowrap; }
+.rd-workspace .rd-badge.rd-reference { color: var(--ui-info-text); background: var(--ui-info-bg); }
+.rd-workspace .rd-badge.rd-recommended { color: var(--ui-success-text); background: var(--ui-success-bg); }
+.rd-workspace .rd-candidate-identities .pill { font-size: var(--font-size-1); padding: 0 4px; }
+.rd-workspace .rd-candidate-card-metrics { display: flex; flex-wrap: wrap; padding: 0; gap: var(--space-3); margin: 0; }
+.rd-workspace .rd-candidate-card-metrics > span { flex: 1 1 auto; min-width: min-content; }
+.rd-workspace .rd-candidate-metric-label { display: block; color: var(--ui-info-muted); font-size: var(--font-size-1); margin-bottom: 0; line-height: 1.4; }
+.rd-workspace .rd-card-metric-value strong { font-size: 23px; font-weight: 500; line-height: 1.25; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rd-workspace .rd-card-unit { margin-left: 4px; font-size: var(--font-size-1); font-weight: 400; }
+.rd-workspace .rd-card-completion { color: var(--ui-info-muted); font-size: var(--font-size-1); line-height: 1.6; }
+.rd-workspace .rd-card-completion small { display: block; margin-top: var(--space-1); font-size: inherit; }
+.rd-workspace .rd-choice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; border: 1px solid var(--ui-border); margin: var(--space-3) 0; padding: var(--space-2) var(--space-3); gap: var(--space-2); background: var(--ui-card-bg); }
+.rd-workspace .rd-current-context { display: flex; align-items: center; gap: var(--space-2) var(--space-3); flex: 1 1 auto; flex-wrap: wrap; min-width: 0; }
+.rd-workspace .rd-selected-name { display: flex; align-items: baseline; gap: var(--space-1); min-width: 0; }
+.rd-workspace .rd-selected-name > strong { max-width: 250px; font-size: var(--font-size-2); font-weight: 500; overflow-wrap: anywhere; }
+.rd-workspace .rd-selected-name > .rc-muted { font-size: var(--font-size-1); white-space: nowrap; }
+.rd-workspace .rd-reference-choice { display: flex; align-items: center; gap: var(--space-2); color: var(--ui-info-muted); font-size: var(--font-size-1); white-space: nowrap; }
+.rd-workspace .rd-reference-choice select { min-width: 140px; max-width: 220px; }
+.rd-workspace .rd-current-actions { gap: var(--space-2); }
+.rd-workspace .rd-recommendation-compact { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; border: 1px solid var(--ui-border); background: var(--ui-surface-muted); padding: var(--space-3); margin: var(--space-3) 0; gap: var(--space-1) var(--space-3); }
+.rd-workspace .rd-recommendation-compact .rd-recommend-main { grid-column: 1; grid-row: 1; }
+.rd-workspace .rd-recommendation-compact .rd-recommend-heading { justify-content: flex-start; gap: var(--space-1); flex-wrap: wrap; }
+.rd-workspace .rd-recommendation-compact .rd-recommend-heading h3 { font-size: var(--font-size-2); }
+.rd-workspace .rd-recommendation-compact .rd-recommend-heading .btn { padding: 0; font-size: var(--font-size-1); }
+.rd-workspace .rd-recommendation-compact .rd-recommend-cause { grid-column: 1 / -1; grid-row: 2; margin: 0; font-size: var(--font-size-2); line-height: 1.6; }
+.rd-workspace .rd-recommendation-compact .rd-recommend-tradeoff { grid-column: 1 / -1; grid-row: 3; color: var(--ui-info-muted); font-size: var(--font-size-1); line-height: 1.6; }
+.rd-workspace .rd-recommendation-compact .rd-recommend-evidence { grid-column: 2; grid-row: 1; margin: 0; font-size: var(--font-size-1); }
+.rd-workspace .rd-recommendation-compact .rd-recommend-evidence > summary { white-space: nowrap; }
+.rd-workspace .rd-recommendation-compact .rd-recommend-evidence[open] { grid-column: 1 / -1; grid-row: 4; }
+.rd-workspace .rd-result-tabs { gap: var(--space-1); flex-wrap: wrap; }
+.rd-workspace .rd-result-tabs .btn { padding-inline: var(--space-2); }
+.rd-workspace .rd-result-nav { margin: var(--space-3) 0; gap: var(--space-2); }
+.rd-workspace .rd-preparation-tabs { margin: var(--space-3) 0; }
+.rd-workspace .rd-data-source { margin-top: var(--space-4); }
+.rd-workspace .rd-master-table { --wb-table-min: 700px; min-width: 700px; table-layout: fixed; font-size: var(--font-size-2); }
+.rd-workspace .rd-master-table th:first-child { width: 35%; }
+.rd-workspace .rd-master-table th:nth-child(2) { width: 18%; }
+.rd-workspace .rd-master-table th:nth-child(3) { width: 24%; }
+.rd-workspace .rd-master-table th:last-child { width: 23%; }
+.rd-workspace .rd-master-differences { --wb-table-min: 880px; min-width: 880px; }
+.rd-workspace .rd-master-differences th:first-child { width: 28%; }
+.rd-workspace .rd-master-differences th:nth-child(2) { width: 15%; }
+.rd-workspace .rd-master-differences th:nth-child(3), .rd-workspace .rd-master-differences th:nth-child(4) { width: 20%; }
+.rd-workspace .rd-master-differences th:last-child { width: 17%; }
+.rd-workspace .rd-master-table tbody tr[aria-selected=true] { background: var(--ui-primary-soft); }
+.rd-workspace .rd-master-table td { vertical-align: middle; padding: var(--space-2) var(--space-3); line-height: 1.6; }
+.rd-workspace .rd-master-table small { font-size: var(--font-size-1); margin-top: var(--space-1); }
+.rd-workspace .rd-detail-more { color: var(--ui-info-muted); font-size: var(--font-size-1); }
+.rd-workspace .rd-detail-more[open] > .rd-detail-filters { margin: var(--space-2) 0; }
+.rd-workspace .rd-retained-batch { margin: var(--space-3) 0; }
+@container decision-results (max-width: 888px) { .rd-workspace .rd-candidate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container decision-results (max-width: 432px) { .rd-workspace .rd-candidate-grid { grid-template-columns: minmax(0, 1fr); } }
+@supports not (container-type: inline-size) {
+  @media (max-width: 1100px) { .rd-workspace .rd-candidate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 500px) { .rd-workspace .rd-candidate-grid { grid-template-columns: minmax(0, 1fr); } }
+}

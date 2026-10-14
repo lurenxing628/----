@@ -5,7 +5,6 @@ a development-only pwsh executable; that does not prove Win7 compatibility.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -47,17 +46,30 @@ def run_ps(tmp_path):
 
 @pytest.fixture
 def health_server(tmp_path):
+    from flask import Flask
+    from werkzeug.test import Client
+    from werkzeug.wrappers import Response
+
+    from web.bootstrap.entrypoint import _default_deps, configure_runtime_contract
+    from web.bootstrap.launcher_contracts import read_runtime_contract_result
+    from web.bootstrap.launcher_shutdown import RuntimeHostStopTransport
+    from web.routes.workbench.system_runtime import health
+
+    app = Flask("launcher-runtime-contract")
+    app.config.update(LOG_DIR=str(tmp_path / "logs"), BACKUP_DIR=str(tmp_path / "backups"),
+                      EXCEL_TEMPLATE_DIR=str(tmp_path / "templates"), APP_UI_MODE="new_ui")
+    app.add_url_rule("/system/health", view_func=health)
+    client = Client(RuntimeHostStopTransport(app), Response)
     state = {"status": 200, "patch": {}}
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            contract = json.loads((tmp_path / "contract.json").read_text(encoding="utf-8-sig"))
-            body = dict(app="aps", status="ok", contract_version=1, owner=contract["owner"], pid=contract["pid"],
-                        db_path_hash=hashlib.sha256(contract["db_path"].encode()).hexdigest(),
-                        instance_id=hashlib.sha256(contract["shutdown_token"].encode()).hexdigest())
+            app.extensions["workbench_system_restore_recovery"] = state["status"] == 503
+            response = client.get("/system/health")
+            body = response.get_json()
             body.update(state["patch"])
             payload = json.dumps(body).encode()
-            self.send_response(state["status"])
+            self.send_response(response.status_code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
@@ -69,9 +81,19 @@ def health_server(tmp_path):
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    state["contract"] = dict(contract_version=1, owner="LOCAL\\operator", pid=12345,
-                             db_path=str(tmp_path / "aps.db").lower(), host="127.0.0.1", port=server.server_port,
-                             shutdown_token="test-instance-only")
+
+    def configure(database_path):
+        app.config["DATABASE_PATH"] = str(database_path)
+        configure_runtime_contract(app, str(tmp_path), "127.0.0.1", server.server_port, "LOCAL\\operator",
+                                   default_ui_mode="new_ui", deps=_default_deps("new_ui"))
+        result = read_runtime_contract_result(str(tmp_path))
+        assert result.ok
+        state["contract"] = result.payload
+        state["contract_path"] = Path(result.path)
+        return result.payload
+
+    state.update(app=app, client=client, configure=configure)
+    configure(tmp_path / "aps.db")
     yield state
     server.shutdown()
     thread.join(timeout=5)
@@ -80,6 +102,32 @@ def health_server(tmp_path):
 
 def _write_contract(tmp_path, contract):
     (tmp_path / "contract.json").write_text(json.dumps(contract), encoding="utf-8")
+
+
+def test_runtime_contract_producer_and_health_share_instance_identity(health_server):
+    from web.bootstrap.launcher_contracts import read_runtime_contract_result
+    from web.bootstrap.launcher_paths import _normalize_db_path_for_runtime
+    from web.runtime_host import runtime_identity
+
+    app, client, contract = health_server["app"], health_server["client"], health_server["contract"]
+    response = client.get("/system/health")
+    assert response.status_code == 200
+    body = response.get_json()
+    for key in ("owner", "pid", "db_path", "instance_id"):
+        assert body[key] == contract[key]
+    assert body["db_path"] == _normalize_db_path_for_runtime(app.config["DATABASE_PATH"])
+    assert not {"db_path_hash", "shutdown_token"}.intersection(body)
+    assert contract["shutdown_token"] not in response.get_data(as_text=True)
+    app.extensions["workbench_system_restore_recovery"] = True
+    recovery = client.get("/system/health")
+    assert recovery.status_code == 503 and recovery.get_json()["operations_available"] is False
+    assert recovery.get_json()["instance_id"] == contract["instance_id"] == runtime_identity(app)["instance_id"]
+    assert not {"db_path_hash", "shutdown_token"}.intersection(recovery.get_json())
+    legacy = dict(contract)
+    del legacy["instance_id"]
+    health_server["contract_path"].write_text(json.dumps(legacy), encoding="utf-8")
+    result = read_runtime_contract_result(app.config["APS_RUNTIME_DIR"])
+    assert result.status == "invalid" and result.reason == "missing_instance_id" and result.payload is None
 
 
 def test_unicode_log_and_pid_queries_stay_in_one_process(run_ps, tmp_path):
@@ -106,10 +154,12 @@ if ((Get-ApsLockProcessState 'not-a-pid' 'aps.exe') -ne 'unknown') { throw 'Unkn
     (503, {"status": "recovery_required", "operations_available": True}, "LOCAL\\operator", 2),
     (200, {"pid": 98765}, "LOCAL\\operator", 2),
     (200, {"instance_id": "another-instance"}, "LOCAL\\operator", 2),
-    (200, {"db_path_hash": "another-database"}, "LOCAL\\operator", 2),
+    (200, {"db_path": "another-database"}, "LOCAL\\operator", 2),
     (200, {}, "OTHER\\operator", 4),
 ])
 def test_health_identity_and_readonly_recovery(run_ps, tmp_path, health_server, status, patch, owner, expected):
+    if "pid" in patch:
+        patch = dict(patch, pid=os.getpid() + 1)
     health_server.update(status=status, patch=patch)
     _write_contract(tmp_path, health_server["contract"])
     rows = run_ps(r'''
@@ -117,7 +167,11 @@ $contract = Read-ApsJson ([IO.File]::ReadAllText((Join-Path $env:APS_TEST_ROOT '
 $context = @{ db = $contract.db_path; owner = $env:APS_TEST_OWNER }
 $runtime = @{ contract = $contract; hostName = $contract.host; port = $contract.port }
 'CODE=' + (Test-ApsHealth $context $runtime $null)
-''', APS_TEST_OWNER=owner)
+if ($env:APS_TEST_EXPECTED -eq '0') {
+    $contract.instance_id = ''
+    if ((Test-ApsHealth $context $runtime $null) -ne 2) { throw 'Missing instance identity accepted' }
+}
+''', APS_TEST_OWNER=owner, APS_TEST_EXPECTED=str(expected))
     assert "CODE=" + str(expected) in rows
 
 
@@ -188,7 +242,7 @@ def test_first_launch_and_reopen_preserve_portable_paths_and_owner_files(run_ps,
     chrome.write_bytes(b"test browser")
     logs = app / "user-data" / "logs"
     logs.mkdir(parents=True)
-    contract = dict(health_server["contract"], db_path=str(app / "user-data" / "db" / "aps.db").lower())
+    contract = health_server["configure"](app / "user-data" / "db" / "aps.db")
     _write_contract(tmp_path, contract)
     if reuse:
         _write_contract(tmp_path, contract)

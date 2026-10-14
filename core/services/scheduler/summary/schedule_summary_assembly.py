@@ -482,7 +482,7 @@ def _build_result_summary_obj(
     if ctx.execution_snapshot_revision:
         op_ids = list(ctx.execution_snapshot_op_ids or [])
         result_summary["execution_snapshot"] = {
-            "execution_snapshot_revision": str(ctx.execution_snapshot_revision),
+            "revision_kind": "content_v2",
             "execution_snapshot_op_ids": op_ids,
             "execution_snapshot_op_count": int(ctx.execution_snapshot_op_count or len(op_ids)),
             "execution_snapshot_op_ids_sample": op_ids[:50],

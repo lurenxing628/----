@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-import hashlib
-from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Sequence
+from dataclasses import dataclass, fields
+from typing import Any, Dict, List, Mapping, Optional, Sequence
+
+from core.models.content import content_text
 
 from .execution_fact_provider import ExecutionFact, ExecutionFactProvider, positive_op_ids
+
+EXECUTION_SNAPSHOT_PREFIX = "execution-snapshot:content-v2:"
+RESOURCE_SNAPSHOT_PREFIX = "execution-snapshot:resources-v2:"
 
 
 @dataclass(frozen=True)
@@ -50,7 +54,15 @@ def _identity_revision(fact: ExecutionFact) -> str:
     )
 
 
-def build_execution_snapshot(facts_by_op_id: Dict[int, ExecutionFact], op_ids: Sequence[int]) -> ExecutionSnapshot:
+def execution_fact_values(fact: ExecutionFact) -> Dict[str, Any]:
+    """Retain every projection field, including exact actual protection inputs."""
+    return {field.name: getattr(fact, field.name) for field in fields(fact)}
+
+
+def build_execution_snapshot(
+    facts_by_op_id: Dict[int, ExecutionFact], op_ids: Sequence[int], *,
+    plan_rows: Optional[Dict[int, Dict[str, Any]]] = None,
+) -> ExecutionSnapshot:
     ids = positive_op_ids(op_ids)
     state_revisions: Dict[int, str] = {}
     identity_revisions: Dict[int, str] = {}
@@ -60,13 +72,17 @@ def build_execution_snapshot(facts_by_op_id: Dict[int, ExecutionFact], op_ids: S
             raise ValueError(f"缺少工序 {op_id} 的现场状态快照。")
         identity_revisions[int(op_id)] = _identity_revision(fact)
         state_revisions[int(op_id)] = str(fact.state_revision or "")
-    payload = "\n".join(
-        f"{op_id}|{identity_revisions[int(op_id)]}|state={state_revisions[int(op_id)]}"
-        for op_id in ids
-    )
-    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    names = [field.name for field in fields(ExecutionFact)]
+    payload = {"op_ids": ids, "fact_fields": names,
+               "facts": [[getattr(facts_by_op_id[op_id], name) for name in names] for op_id in ids]}
+    prefix = EXECUTION_SNAPSHOT_PREFIX
+    if plan_rows is not None:
+        # The complete original arrangement owns reservation durations and resources.
+        # Encode it with the facts once, rather than embedding another snapshot text.
+        payload["plan_rows"] = [[op_id, plan_rows[op_id]] for op_id in ids]
+        prefix = RESOURCE_SNAPSHOT_PREFIX
     return ExecutionSnapshot(
-        revision=f"execution-snapshot:{digest}",
+        revision=prefix + content_text(payload),
         op_ids=ids,
         op_count=len(ids),
         state_revisions=state_revisions,
@@ -93,6 +109,7 @@ def collect_execution_snapshot_for_plan_rows(
 
 __all__ = [
     "ExecutionSnapshot",
+    "execution_fact_values",
     "build_execution_snapshot",
     "collect_execution_snapshot_for_plan_rows",
     "positive_op_ids",

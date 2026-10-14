@@ -89,7 +89,8 @@ class ProfileStage(SearchStage):
         fingerprint = self.pool.observe(candidate, profile)
         self._note_output(fingerprint.same_as_seen)
         if not _candidate_should_replace_best(candidate, profile=profile, best=self.state.best, attempts=self.attempts,
-                                              search_report_state=self.search_report_state, fingerprint=fingerprint):
+                                              search_report_state=self.search_report_state, fingerprint=fingerprint,
+                                              clock=self.clock, t_begin=self.t_begin):
             return 0
         improved = score_strictly_better(candidate.get("score"), (self.state.best or {}).get("score"))
         _accept_candidate(candidate, profile=profile, incumbent=self.state.best, version=self.version,
@@ -175,7 +176,7 @@ def iterated_greedy_parent_profile(best: Optional[Dict[str, Any]], *, pool: Elit
     """The incumbent's own v2 profile when it is a graph elite, else the first v2 profile."""
     if best is None:
         return None
-    elite = pool.parents_by_fingerprint.get(pool.fingerprint(best).output_fingerprint)
+    elite = pool.parents_by_fingerprint.get(pool.fingerprint(best).output_key)
     if elite is not None:
         return elite["profile"]
     return next((profile for profile in profiles if str(profile.formula_version or "").startswith("graph_ready_v2")), None)
@@ -226,16 +227,16 @@ def _candidate_should_replace_best(
     attempts: List[Dict[str, Any]],
     search_report_state: Any,
     fingerprint: Any = None,
+    clock: Optional[Callable[[], float]] = None,
+    t_begin: Optional[float] = None,
 ) -> bool:
     if search_report_state is not None:
         fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=profile.candidate_origin,
                                                                    fingerprint=fingerprint)
     else:
         fingerprint = None
-    append_graph_attempt(attempts=attempts, candidate=candidate, profile=profile)
-    if fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen):
-        return False
-    return candidate_is_preferred(
+    duplicate = fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen)
+    accepted = not duplicate and candidate_is_preferred(
         candidate=candidate,
         incumbent=best,
         candidate_origin=profile.candidate_origin,
@@ -243,6 +244,9 @@ def _candidate_should_replace_best(
         candidate_fingerprint=fingerprint,
         incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
     )
+    append_graph_attempt(attempts=attempts, candidate=candidate, profile=profile, reference=best, accepted=accepted,
+                         search_report_state=search_report_state, clock=clock, t_begin=t_begin)
+    return accepted
 
 
 def _incumbent_origin(best: Optional[Dict[str, Any]], search_report_state: Any) -> str:

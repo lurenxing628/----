@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_query import RESOURCE_KINDS
 from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
@@ -65,9 +65,9 @@ class WorkbenchResourceQueryService:
         return self._snapshot_metrics or WorkbenchResourceMetricsService(self.conn, self.logger)
 
     def state_fingerprint(self):
-        return input_fingerprint({"scope": self.repo.scope_state(self.kind),
-                                  "metric_facts": self._metrics_reader().fingerprint_facts(self.kind),
-                                  "table_refs": self._table_identities if self._table_identities is not None else self._read_identities()})
+        return {"scope": self.repo.scope_state(self.kind),
+                "metric_facts": self._metrics_reader().fingerprint_facts(self.kind),
+                "table_refs": self._table_identities if self._table_identities is not None else self._read_identities()}
 
     def _read_identities(self):
         return WorkbenchResourceTableRepository(self.conn, self.logger).identities(self._metrics_reader().identity_kinds(self.kind))
@@ -159,7 +159,7 @@ class WorkbenchResourceQueryService:
     def table_index(self, query):
         if query.kind != self.kind:
             raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
-        key = input_fingerprint(toolbar_scope(query))
+        key = tuple(toolbar_scope(query).items())
         cache = self._table_indexes if self._table_indexes is not None else {}
         if key not in cache:
             cache[key] = self._table_reader().index(query, self.repo.toolbar_keys(query))

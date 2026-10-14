@@ -171,6 +171,7 @@ def _runtime_contract_payload(
     *,
     db_path: Optional[str],
     shutdown_token: str,
+    instance_id: str,
     ui_mode: str,
     log_dir: Optional[str],
     backup_dir: Optional[str],
@@ -179,6 +180,9 @@ def _runtime_contract_payload(
     chrome_profile_dir: Optional[str] = None,
     owner: Optional[str] = None,
 ) -> Dict[str, Any]:
+    instance_id = str(instance_id or "").strip()
+    if not instance_id:
+        raise ValueError("runtime instance_id is required")
     host_for_client = (str(host or "").strip() or "127.0.0.1")
     if host_for_client == "0.0.0.0":
         host_for_client = "127.0.0.1"
@@ -192,6 +196,7 @@ def _runtime_contract_payload(
         "runtime_dir": runtime_dir_abs,
         "exe_path": os.path.abspath(str(exe_path or sys.executable or "")).strip(),
         "owner": str(owner or current_runtime_owner()).strip() or "unknown",
+        "instance_id": instance_id,
         "shutdown_path": "/system/runtime/shutdown",
         "shutdown_token": str(shutdown_token or "").strip(),
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -214,6 +219,7 @@ def write_runtime_contract_file(
     *,
     db_path: Optional[str],
     shutdown_token: str,
+    instance_id: str,
     ui_mode: str,
     log_dir: Optional[str],
     backup_dir: Optional[str],
@@ -229,6 +235,7 @@ def write_runtime_contract_file(
         port,
         db_path=db_path,
         shutdown_token=shutdown_token,
+        instance_id=instance_id,
         ui_mode=ui_mode,
         log_dir=log_dir,
         backup_dir=backup_dir,

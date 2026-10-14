@@ -1,8 +1,10 @@
 """HTTP method/input boundaries, original-key recovery and unknown ACK response."""
 
+import json
 
 from flask import g, request
 
+from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 from tests.workbench.trial_adoption_support import BASE, INTENT, KEY, api, saved_scenario
 from tests.workbench.trial_adoption_support import trial_case as trial_case
 from tests.workbench.trial_support import CommitFailureConnection, snapshot
@@ -25,6 +27,15 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     result = response.get_json()
     receipt = client.get(path + "/adoption-commands/" + KEY).get_json()["data"]
     assert receipt["state"] == "committed" and receipt["receipt"]["receipt_ref"] == result["receipt_ref"]
+    history, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    entry = history["items"][0]
+    assert entry["adoption"]["reason"] == INTENT["reason"]
+    assert entry["adoption"]["declared_operator"] == INTENT["declared_operator"]
+    assert not any(gap["code"].startswith("audit_") for gap in entry["evidence_gaps"])
+    summary = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?",
+                        (result["data"]["official_plan"]["version"],)).fetchone()[0])
+    assert set(summary["proof"]) == {"proof_version", "scenario_ref", "draft_ref", "scenario_revision", "baseline_ref", "baseline_version"}
+    assert summary["proof"]["proof_version"] == "content_refs_v1"
     assert client.get(path + "/adopt").status_code == 405
     unknown = client.get(path + "/adoption-commands/not-yet-seen-request").get_json()["data"]
     assert unknown == {"state": "not_observed", "receipt": None, "may_be_in_flight": True, "can_retry_automatically": False}

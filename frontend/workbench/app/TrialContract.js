@@ -23,7 +23,8 @@
   }
   // A navigation target is an identity, never an instruction to pick the latest record.
   function target(v = {}) {
-    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin'].includes(k)), '试调入口参数无效。');
+    check(object(v) && Object.keys(v).every(k => ['kind', 'draft_ref', 'scenario_ref', 'base', 'scope', 'task_origin', 'return_decision_history_context'].includes(k)), '试调入口参数无效。');
+    if (v.return_decision_history_context !== undefined) window.DecisionHistoryAPI.context(v.return_decision_history_context);
     const keys = ['draft_ref', 'scenario_ref', 'base'].filter(k => v[k] !== undefined);
     check(keys.length <= 1, '只能指定一份试调草稿、试调方案或原来源。');
     if (v.kind !== undefined) check(v.kind === (v.draft_ref ? 'draft' : v.scenario_ref ? 'scenario' : 'base'));
@@ -62,6 +63,45 @@
   }
   function arrangement(v, owner) { check(fields(v, ['machine_ref', 'operator_ref', 'start', 'end']) && time(v.start) && time(v.end) && window.PointContract.arrangement(v, owner)
     && ['machine_ref', 'operator_ref'].every(k => v[k] === null || ref(v[k]))); }
+  function deliverySummary(value, batchCount) {
+    check(window.DeliveryProjectionContract.summary(value) && value.batch_count === batchCount);
+  }
+  function deliveryRow(row, batchRef) {
+    check(window.DeliveryProjectionContract.row(row) && row.batch_ref === batchRef);
+  }
+  function effortPair(value) {
+    check(fields(value, ['before', 'after']) && ['before', 'after'].every(side => window.EffortProjectionContract.compact(value[side])),
+      '试调准备需求保存资料不完整，请刷新。');
+  }
+  function preparation(value) {
+    const E = window.EffortProjectionContract, keys = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours',
+      'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
+    check(fields(value, ['metric_version', 'scope', 'before', 'after', 'deltas', 'role_totals', 'coverage'])
+      && value.metric_version === 'decision-preparation-v4' && value.scope === 'full_admission'
+      && keys.every(key => E.metric(value.before[key]) && E.metric(value.after[key]) && E.delta(value.deltas[key])));
+    ['before', 'after'].forEach(side => {
+      check(object(value.role_totals[side]) && object(value.coverage[side]));
+      ['retained', 'execution', 'completed'].forEach(role => {
+        const item = value.role_totals[side][role];
+        check(object(item) && count(item.count) && ['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].every(key => E.metric(item[key])));
+      });
+      Object.values(value.coverage[side]).forEach(refs => check(Array.isArray(refs) && refs.every(ref)));
+    });
+  }
+  function changeovers(value) {
+    check(fields(value, ['scope', 'metric_version', 'before', 'after']) && value.scope === 'complete_trial' && value.metric_version === 'type_changeover_v1');
+    ['before', 'after'].forEach(side => {
+      const item = value[side];
+      check(object(item) && item.metric_version === 'type_changeover_v1' && item.source === 'saved_arrangement_sequence'
+        && ['complete', 'partial', 'unavailable'].includes(item.state)
+        && ['count', 'known_count', 'changed_machine_count', 'known_changed_machine_count', 'conflict_count'].every(key => item[key] === null || count(item[key]))
+        && count(item.unknown_count) && [true, false, null].includes(item.conflict) && Array.isArray(item.events));
+      issues(item.issues);
+      item.events.forEach(event => check(['machine_ref', 'previous_operation_ref', 'next_operation_ref', 'previous_row_ref', 'next_row_ref',
+        'previous_type_ref', 'next_type_ref'].every(key => ref(event[key])) && ['previous_start', 'previous_end', 'next_start', 'next_end'].every(key => time(event[key]))
+        && typeof event.overlap === 'boolean' && typeof event.conflict === 'boolean' && ['complete', 'partial'].includes(event.state)));
+    });
+  }
   function workspace(d, expected = {}) {
     check(fields(d, ['draft_ref', 'status', 'base', 'base_identity', 'scope', 'baseline', 'tasks', 'task_count', 'tasks_complete',
       'unplanned_operations', 'scope_complete', 'validation', 'resources', 'comparison', 'capacity', 'change_history', 'time_scope']));
@@ -72,7 +112,8 @@
     check(object(d.base_identity) && (d.base.plan_ref ? d.base_identity.plan_ref === d.base.plan_ref : d.base_identity.candidate_ref === d.base.candidate_ref));
     check(d.tasks_complete === true && count(d.task_count) && d.task_count > 0 && d.task_count <= 10000 && Array.isArray(d.tasks) && d.tasks.length === d.task_count);
     check(Array.isArray(d.unplanned_operations) && typeof d.scope_complete === 'boolean' && d.scope_complete === (d.unplanned_operations.length === 0));
-    d.unplanned_operations.forEach(r => { check(ref(r.operation_ref) && fields(r, ['reason', 'status', 'sequence', 'piece_id'])); issues([r.reason]); });
+    d.unplanned_operations.forEach(r => { check(ref(r.operation_ref) && fields(r, ['reason', 'status', 'sequence', 'piece_id'])); issues([r.reason]);
+      if (r.operation_effort !== undefined) effortPair(r.operation_effort); });
     const seen = new Set(), rows = new Set(), historyOwners = new Map();
     d.tasks.forEach(t => {
       check(fields(t, ['task_ref', 'row_ref', 'operation_ref', 'source_row_ref', 'source_task_ref', 'batch_ref', 'batch_id', 'part_no', 'part_name',
@@ -95,6 +136,7 @@
         && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');
       if (d.status !== 'editing') check(t.edit_context.can_change === false);
       issues(t.issues); issues(t.data_gaps); issues(t.edit_context.blocked_reasons);
+      if (t.operation_effort !== undefined) effortPair(t.operation_effort);
       [t.task_ref, ...(d.scenario_ref && t.source_task_ref ? [t.source_task_ref] : [])].forEach(key => {
         if (!historyOwners.has(key)) historyOwners.set(key, t);
       });
@@ -106,14 +148,31 @@
       && Array.isArray(d.capacity.resources) && Array.isArray(d.change_history) && d.time_scope.time_basis === 'factory_local');
     check(['late_count', 'total_delay_hours', 'changeovers'].every(k => measure(d.comparison[k]))
       && ['changed_operations', 'moved_operations'].every(k => count(d.comparison[k]) && d.comparison[k] <= d.task_count));
-    d.comparison.batches.forEach(r => check(ref(r.batch_ref) && time(r.baseline_finish) && time(r.finish)
-      && ['on_time', 'overdue', 'due_unspecified', 'unavailable', 'invalid_data'].includes(r.risk) && measure(r.late_hours) && measure(r.improvement_hours)
-      // 未指定交期（9999-12-31）不会超期：超期按 0 小时计，合计仍可计算。
-      && (r.risk !== 'due_unspecified' || r.late_hours === 0)));
-    check(['available', 'partial', 'unavailable'].includes(d.capacity.state));
+    if (d.comparison.preparation_common !== undefined) preparation(d.comparison.preparation_common);
+    if (d.comparison.changeover_common !== undefined) changeovers(d.comparison.changeover_common);
+    const batches = d.comparison.batches, batchRefs = new Set(batches.map(r => r.batch_ref));
+    deliverySummary(d.comparison.delivery_summary, batches.length);
+    deliverySummary(d.comparison.before_delivery_summary, batches.length);
+    check(batchRefs.size === batches.length && d.tasks.every(t => batchRefs.has(t.batch_ref)));
+    batches.forEach(r => {
+      check(ref(r.batch_ref) && [r.baseline_finish, r.finish, r.partial_baseline_finish, r.partial_finish].every(v => v === null || time(v))
+        && ['on_time', 'overdue', 'unknown', 'not_applicable'].includes(r.risk)
+        && ['specified', 'unspecified', 'invalid'].includes(r.due_state)
+        && (r.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(r.due_issue))
+        && ['complete', 'deferred', 'incomplete', 'unknown'].includes(r.completion_state)
+        && [r.late_hours, r.improvement_hours, r.finish_delta_hours, r.delay_delta_hours].every(measure)
+        && typeof r.changed === 'boolean' && typeof r.moved === 'boolean' && Array.isArray(r.change_kinds)
+        && r.change_kinds.every(v => typeof v === 'string'));
+      deliveryRow(r.before, r.batch_ref); deliveryRow(r.after, r.batch_ref);
+    });
+    check(['available', 'partial', 'unavailable'].includes(d.capacity.state)
+      && d.capacity.source === 'archived_resource_calendar' && (d.capacity.resource_common === null
+        ? d.capacity.state === 'unavailable' && !d.capacity.resources.length
+        : window.ResourceProjectionContract.common(d.capacity.resource_common, 'archived_resource_calendar')));
     d.capacity.resources.forEach(r => {
       check(ref(r.resource_ref) && ['machine', 'operator'].includes(r.resource_type) && Array.isArray(r.segments)
-        && ['arranged_hours', 'occupied_hours', 'overlap_hours', 'available_hours', 'available_occupied_hours', 'outside_available_hours', 'utilization'].every(k => measure(r[k])));
+        && ['arranged_hours', 'occupied_hours', 'overlap_hours', 'available_hours', 'available_occupied_hours', 'outside_available_hours', 'utilization'].every(k => measure(r[k]))
+        && window.ResourceProjectionContract.window(r.window_metrics));
       r.segments.forEach(s => check(time(s.start) && time(s.end) && s.start < s.end && count(s.concurrent_operations) && s.concurrent_operations > 0));
       check(object(r.calendar) && (r.calendar.windows === null || Array.isArray(r.calendar.windows))); issues(r.calendar.issues);
     });

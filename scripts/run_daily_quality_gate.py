@@ -8,7 +8,6 @@ push-time smoke gate for obvious mistakes, not the final clean proof.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -132,11 +131,6 @@ def _git_stdout(args: Sequence[str]) -> Optional[str]:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
-
-
-def _stable_hash(payload: Any) -> str:
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def _git_success(args: Sequence[str]) -> bool:
@@ -471,17 +465,14 @@ def daily_gate_scope_payload(scope: DailyGateScope) -> Dict[str, object]:
         "scope_known": bool(changed.scope_known),
         "reason": str(changed.reason or ""),
         "changed_paths": changed_paths,
-        "changed_paths_hash": _stable_hash(changed_paths),
         "impact_pytest": {
             "target_paths": impact_targets,
-            "target_hash": _stable_hash(impact_targets),
             "selected_group_ids": list(impact_plan.selected_group_ids),
             "all_required_groups": bool(impact_plan.all_required_groups),
             "reason": str(impact_plan.reason or ""),
         },
         "ruff": {
             "target_paths": ruff_targets,
-            "target_hash": _stable_hash(ruff_targets),
             "all_files": bool(ruff_plan.all_files),
             "reason": str(ruff_plan.reason or ""),
         },

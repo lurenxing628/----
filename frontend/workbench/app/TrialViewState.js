@@ -2,7 +2,7 @@
   'use strict';
   const C = window.TrialContract, PREFIX = 'aps_workbench_trial_view_v1:', EVENT = 'aps-workbench-trial-view-changed';
   const fields = ['mode', 'baseline', 'only_changed', 'query', 'result_tab'];
-  const tabs = ['delivery', 'capacity', 'history', 'adoptions', 'issues', 'tasks', 'unplanned'];
+  const tabs = ['delivery', 'capacity', 'preparation', 'history', 'adoptions', 'issues', 'tasks', 'unplanned'];
   const exact = (value, keys) => C.object(value) && Object.keys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
   function problem(code, message) { const error = new Error(message); error.code = code; return error; }
   function identity(data) {

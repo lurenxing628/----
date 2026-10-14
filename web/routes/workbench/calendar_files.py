@@ -80,9 +80,9 @@ def calendar_import_preview(kind):
     preview = service.preview_import(source, file_format=fmt, mode=mode)
     data = issue_file_preview(preview, source, columns=public_columns(kind),
                               instructions=INSTRUCTIONS[kind], template_version=TEMPLATE_VERSION)
-    # 预检文档本身就是这次读到的全部日历事实，拿它的摘要当读快照指纹。
+    # 预检文档本身就是这次读到的全部日历事实，直接绑定原文。
     snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import",
-                                   "preview_ref": data["preview_ref"]}, preview.digest)
+                                   "preview_ref": data["preview_ref"]}, preview.document)
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 

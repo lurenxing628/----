@@ -10,14 +10,20 @@ def metric(value, known, unknown, total, reason=None):
 
 
 def delivery_metrics(rows, summary):
-    unknown, total = summary["unknown_count"], summary["batch_count"]
+    unknown, total = summary["unknown_due_count"], summary["due_evaluation_count"]
     reason = (baseline_reason("no_admission_baseline") if rows and all("no_admission_baseline" in row["issues"] for row in rows)
               else {"code": "delivery_evidence_incomplete", "message": "排产时有部分批次的安排或交期资料不全，这里的小计不包含它们。"})
-    return {
+    result = {
         "overdue_count": metric(summary["overdue_count"], summary["known_overdue_count"], unknown, total, reason),
         "total_tardiness_hours": metric(summary["total_tardiness_hours"],
-            round(sum(row["delay_hours"] for row in rows if row["delay_hours"] is not None), 6), unknown, total, reason),
+            summary["known_tardiness_hours"], unknown, total, reason),
     }
+    fields = ("state", "due_eligible_count", "excluded_due_count", "invalid_due_count", "due_evaluation_count",
+              "known_due_count", "unknown_due_count")
+    for item in result.values():
+        item.update({key: summary[key] for key in fields})
+        item["known_count"] = summary["known_due_count"]
+    return result
 
 
 def operation_change(row):

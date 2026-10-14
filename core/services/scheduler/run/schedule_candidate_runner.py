@@ -153,7 +153,8 @@ def _run_candidate_plans(
         if candidate_started >= deadline:
             time_budget_reached = True
             if twin is None:
-                candidates.append(skipped_plan(spec, failure_reason="candidate_time_budget_reached"))
+                candidates.append(skipped_plan(spec, failure_reason="candidate_time_budget_reached",
+                                               objective_name=str(base_cfg.objective)))
                 report(len(candidates), len(specs))
                 continue
         if spec.graph_enabled and twin is None:
@@ -227,10 +228,11 @@ def _run_candidate_with_failure_capture(
     # 这是 b81f8b3f 收窄后的护栏:绝不能以"统一/简化"名义改回 except Exception,
     # 否则复活被治理掉的"未知异常静默转 failed candidate"静默吞错(踩灵魂线)。
     except CandidateTrialFailure as exc:
-        return failed_plan(spec, exc, elapsed_seconds=now() - candidate_started)
+        return failed_plan(spec, exc, elapsed_seconds=now() - candidate_started, objective_name=str(base_cfg.objective))
     except SearchBudgetExhausted:
         return replace(
-            skipped_plan(spec, failure_reason="candidate_time_budget_reached"),
+            skipped_plan(spec, failure_reason="candidate_time_budget_reached", objective_name=str(base_cfg.objective),
+                         known_not_started=False),
             elapsed_seconds=max(now() - candidate_started, 0.0),
         )
     return replace(plan, elapsed_seconds=now() - candidate_started)

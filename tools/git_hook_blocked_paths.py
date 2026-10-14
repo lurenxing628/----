@@ -36,6 +36,8 @@ BLOCKED_PATH_RULES: Tuple[Tuple[str, str], ...] = (
     ("evidence/QualityGate/logs/", "质量门禁日志是运行产物，不应该混进普通提交"),
     ("evidence/QualityGate/long_gate/", "长耗时门禁缓存是本地运行产物，不应该混进普通提交"),
     ("evidence/QualityGate/collect_nodeids.json", "pytest collect nodeid 快照是运行产物，应由当前门禁重新生成"),
+    ("evidence/QualityGate/v4/", "质量门禁 v4 proof、receipts 和日志是运行产物，应由当前门禁重新生成"),
+    ("evidence/QualityGate/collect_nodeids.v2.json", "pytest collect v2 nodeid 快照是运行产物，应由当前门禁重新生成"),
     ("evidence/FullSelfTest/pytest_tests_output.txt", "FullSelfTest 原始输出很重，应保留格式化报告而不是原始控制台输出"),
     ("docs/_panorama_data/", "CodeStable 全景图数据是本地生成物，不属于项目源码"),
     ("docs/panorama.css", "CodeStable 全景图样式是本地生成物，不属于项目源码"),

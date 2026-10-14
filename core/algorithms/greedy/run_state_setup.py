@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import normalize_text_id, parse_ready_date_for_sort
 from core.algorithm_contracts.types import ScheduleResult
@@ -101,7 +101,7 @@ def _freeze_seed_resources(state: ScheduleRunState, result: ScheduleResult) -> N
         occupy_resource(state.operator_timeline, operator_id, result.start_time, result.end_time)
 
 
-def resume_run_state(checkpoint: DecodeCheckpoint, *, signature: str, warnings: List[str],
+def resume_run_state(checkpoint: DecodeCheckpoint, *, signature: Tuple[Any, ...], warnings: List[str],
                      dispatch_mode_key: str, graph_ready_context: Any) -> ScheduleRunState:
     """Clone the checkpoint state for this decode; the caller then rebuilds resource quality and replays it.
 

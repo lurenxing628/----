@@ -33,7 +33,7 @@
   }
   function backupFile(row) {
     return object(row) && row.record_kind === 'backup_file' && !['event_ref', 'event_source', 'file_capabilities'].some(key => Object.prototype.hasOwnProperty.call(row, key))
-      && /^[a-f0-9]{64}$/.test(row.key) && nonempty(row.filename) && count(row.size_bytes) && nonempty(row.backup_ref) && context(row.write_context)
+      && nonempty(row.key) && nonempty(row.filename) && count(row.size_bytes) && nonempty(row.backup_ref) && context(row.write_context)
       && ['manual', 'auto', 'before_restore', 'unknown'].includes(row.type) && row.status === 'unverified'
       && row.file_exists === true && row.verification_state === 'not_checked' && row.last_run_result === null;
   }
@@ -158,13 +158,16 @@
     return { ...(selection.key !== undefined ? { key: selection.key } : {}), ...(recordKind ? { record_kind: recordKind } : {}) };
   }
   function recordContext(value = {}, kind) {
-    check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'snapshot_ref', 'selection'].includes(key)), '上次的筛选和翻页状态无法恢复。请刷新后重新筛选。');
+    const migrationNotice = '原记录编号已更新，已清除上次的记录选择，请重新选择。';
+    check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'snapshot_ref', 'selection', 'migration_notice'].includes(key))
+      && (value.migration_notice === undefined || value.migration_notice === migrationNotice), '上次的筛选和翻页状态无法恢复。请刷新后重新筛选。');
     const filters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '', ...(value.filters || {}) };
     check((value.filters === undefined || object(value.filters)) && Object.keys(filters).every(key => ['query', 'type', 'status', 'level', 'file', 'start', 'end'].includes(key)
       && text(filters[key]) && filters[key].length <= 200), '上次的筛选条件无法恢复。请刷新后重新筛选。');
     const page = value.page === undefined ? 1 : value.page, snapshot = value.snapshot_ref === undefined ? '' : value.snapshot_ref;
     check(count(page) && page >= 1 && page <= 100000 && text(snapshot), '上次的页码或数据版本无法恢复。请刷新后重新翻页。');
-    return { filters, page, selection: recordSelection(value.selection, kind) };
+    const selection = recordSelection(value.selection, kind), legacy = selection && /^[a-f0-9]{64}$/.test(selection.key);
+    return { filters, page, selection: legacy ? null : selection, ...((legacy || value.migration_notice) ? { migration_notice: migrationNotice } : {}) };
   }
   function pageContext(value = {}) {
     check(object(value) && Object.keys(value).every(key => ['source', 'tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');

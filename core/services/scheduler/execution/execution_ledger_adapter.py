@@ -7,8 +7,9 @@ from core.errors import AppError, ErrorCode
 from core.infrastructure.schema_probe import object_names
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
+from core.models.content import same
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
@@ -84,7 +85,7 @@ def _supplied_projection_map(execution_projections, refs, plan):
     for row in execution_projections:
         if not isinstance(row, ExecutionProjection) or row.operation_ref in result:
             raise _unavailable("execution_ledger_projection_invalid_or_duplicate")
-        if row.plan_identity != plan:
+        if not same(row.plan_identity, plan):
             raise _unavailable("execution_ledger_projection_plan_changed")
         result[row.operation_ref] = row
     if set(result) != set(refs):
@@ -112,14 +113,17 @@ def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, 
             projection.current_task_ref != task["task_ref"]
         ):
             raise _unavailable("execution_ledger_current_task_mismatch", op_id=scope.op_id)
-        fact = legacy_facts[scope]
+        fact = replace(legacy_facts[scope], target_quantity=projection.target_quantity, quantity_basis=projection.target_basis)
+        result[scope] = fact
         changes = ledger_fact_changes(fact, projection, resources, source=task["source"])
         if changes is None:
             continue
         projection_resources = {ref: resources.get(ref) for ref in _projection_resource_refs(projection)}
-        digest = input_fingerprint({"scope_task": task, "ledger_revision": ledger_revision,
-                                    "projection": _snapshot_projection(projection), "resources": projection_resources})
-        result[scope] = replace(fact, state_revision=fact.state_revision + ":ledger-v1:" + digest, **changes)
+        protection = {"scope_task": task, "ledger_revision": ledger_revision,
+                      "projection": _snapshot_projection(projection), "resources": projection_resources}
+        revision = fact.state_revision + ":ledger-v2:" + str(ledger_revision)
+        result[scope] = replace(fact, state_revision=revision,
+                               execution_protection_content=protection, **changes)
     return result
 
 

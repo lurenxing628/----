@@ -10,7 +10,6 @@ description: 按明确的 APS Win7 打包或交付验收请求，构建含主程
 - 一键打包：`build_win7_portable.bat`，或 `powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1`
 - 默认产物：
   - `dist/APS_Portable_Win7_x64.zip`
-  - `dist/APS_Portable_Win7_x64.zip.sha256`
 - 维护原双安装包时显式传 `-Installer`；`-MainOnly` / `-ChromeOnly` 继续可用。
 - 内部 legacy 回退：`powershell -ExecutionPolicy Bypass -File .limcode/skills/aps-package-win7/scripts/package_win7.ps1 -Legacy`
   - 产物：`installer/output/APS_Legacy_Full_Setup.exe`
@@ -41,7 +40,7 @@ description: 按明确的 APS Win7 打包或交付验收请求，构建含主程
 - 在 `dist` 中加入启动器、裁剪后的 Chrome109、`aps-portable.txt` 和带 BOM 的中文使用说明、`WIN7_ACCEPTANCE.txt` 实机验收表。
 - 运行 `validate_dist_exe.py`，确认数据库和日志都在当前便携目录的 `user-data/`。
 - 在含中文、空格路径的临时目录执行浏览器最小冒烟。
-- 仅清理本次新构建的测试数据，调用 `scripts/portable_release.py archive` 生成 ZIP，检查完整性并计算 SHA-256；拒绝夹带业务库、日志、备份或浏览器配置。
+- 仅清理本次新构建的测试数据，调用 `scripts/portable_release.py archive` 生成 ZIP 并检查完整性；拒绝夹带业务库、日志、备份或浏览器配置。
 - 没有 Windows 真机证据时，只能报告实际完成的静态或局部验证，不能写 EXE / PowerShell 5.1 已通过。
 
 ### 2) 维护历史安装包（显式模式）
@@ -53,7 +52,7 @@ description: 按明确的 APS Win7 打包或交付验收请求，构建含主程
 
 ### 3) 交付口径
 
-- 对外正式交付：`APS_Portable_Win7_x64.zip` + `.sha256`；解压到可写本机目录后双击启动，无需管理员安装或账户/域配置。
+- 对外正式交付：`APS_Portable_Win7_x64.zip`；解压到可写本机目录后双击启动，无需管理员安装或账户/域配置。
 - 便携标记必须保留；全部持久数据位于 `user-data/`，旧安装注册表及环境变量不得改写便携数据位置。旧数据通过备份/恢复导入，不自动迁移或清理。
 - 最小直拷交付：仅 `build_win7_onedir.bat` 产物，不承诺内置浏览器运行时
 - legacy 全量安装包：仅历史内部应急使用，依赖 `stage_chrome109_to_dist.bat`

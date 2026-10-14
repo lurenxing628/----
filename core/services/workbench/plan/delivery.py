@@ -15,10 +15,15 @@ from typing import Any, Dict, Tuple
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
+from core.services.workbench.facts.delivery_completeness import completion_evidence, deferred_operation_evidence
+from core.services.workbench.facts.delivery_projection import (
+    delivery_summary,
+    project_delivery_batch,
+    selected_batch_keys,
+    task_intervals,
+)
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
-from .delivery_completeness import completion_evidence
-from .delivery_projection import project_delivery_batch, selected_batch_keys, task_intervals
 from .delivery_repository import PlanDeliveryRepository
 from .point_evidence import annotate_plan_points
 
@@ -41,16 +46,22 @@ def read_plan_delivery(
     rows = _delivery_rows(conn, repo.task_rows(identity), identity.source_table)
     intervals = task_intervals(rows)
     keys = selected_batch_keys(rows, intervals, scope)
+    record = repo.completion_record(identity, scenario)
+    deferred, deferred_issues = deferred_operation_evidence(conn, record)
+    if scope.range_start is None and deferred:
+        pending_keys, pending_issues = repo.deferred_batch_keys(deferred)
+        keys = sorted(set(keys) | pending_keys)
+        deferred_issues.extend(pending_issues)
     batches, operations = repo.batch_facts(keys)
     references = WorkbenchIdentityRepository(conn, logger=logger).active_map("batch", keys)
     if set(references) != set(keys):
         raise WorkbenchCommandRejected("identity_missing", "批次编号缺失，无法评估交付风险。请到批次管理核对。")
-    record = repo.completion_record(identity, scenario)
-    items = _delivery_items(rows, operations, batches, intervals, references, record)
+    items = _delivery_items(rows, operations, batches, intervals, references, record, deferred, deferred_issues)
     public = {"state": "loaded", "plan_ref": scope.plan_ref, "scope": scope.scope(), "items": items,
               "batch_count": len(items), "items_complete": True, "completeness": _completeness(items),
+              "summary": delivery_summary(items),
               "basis": {"kind": "planned_delivery", "time_basis": "factory_local",
-                        "batch_selection": "plan_task_batches" if scope.range_start is None else "overlap_or_bad_time_batches",
+                        "batch_selection": "plan_task_and_deferred_batches" if scope.range_start is None else "overlap_or_bad_time_batches",
                         "completion_scope": "full_selected_plan", "operation_scope": "current_batch_operations",
                         "due_boundary": "next_day_exclusive", "actual_completion": "not_evaluated",
                         "actual_delivery": "not_evaluated"}}
@@ -76,7 +87,7 @@ def _delivery_rows(conn, rows, source_table):
         return [dict(row, point_evidence_issue=exc.code) if row["start_time"] == row["end_time"] else row for row in rows]
 
 
-def _delivery_items(rows, operations, batches, intervals, references, record):
+def _delivery_items(rows, operations, batches, intervals, references, record, deferred, deferred_issues):
     tasks_by_batch, operations_by_batch = defaultdict(list), defaultdict(list)
     finish_by_batch = {}
     for row in rows:
@@ -85,11 +96,13 @@ def _delivery_items(rows, operations, batches, intervals, references, record):
         if interval is not None:
             finish_by_batch[row["batch_id"]] = max(interval[1], finish_by_batch.get(row["batch_id"], interval[1]))
     incomplete, uncertain = completion_evidence(record, len(rows), finish_by_batch)
+    uncertain.extend(deferred_issues)
     for operation in operations:
         operations_by_batch[operation["batch_id"]].append(operation)
     return [project_delivery_batch(batch, references[batch["batch_id"]].ref, tasks_by_batch[batch["batch_id"]],
                                     operations_by_batch[batch["batch_id"]], intervals,
-                                    batch["batch_id"] in incomplete, uncertain) for batch in batches]
+                                    batch["batch_id"] in incomplete, uncertain,
+                                    deferred_operation_ids=deferred) for batch in batches]
 
 
 def _completeness(items):

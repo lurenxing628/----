@@ -1,6 +1,7 @@
 """Readonly scenario adoption directory; every page binds live identity state."""
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_trial import reference, reject
 from core.services.common.bounded_plan_query import _PagePlanQueryService
@@ -63,7 +64,7 @@ class WorkbenchTrialAdoptionHistoryService:
                 "committed_at_utc": row["committed_at_utc"], "committed_plan": plan,
                 "official_plan": identity, "current_state": state, "adoption": audit,
                 "evidence_gaps": issues + audit_gaps,
-                "field_sources": {"commit": "WorkbenchCommandReceipts", "intent": "receipt_input_hash+ScheduleHistory",
+                "field_sources": {"commit": "WorkbenchCommandReceipts", "intent": "receipt_input_content+ScheduleHistory",
                                   "actor_and_local_time": "ScheduleHistory", "current_state": "live_plan_identity"}})
         items = [item for item in all_items if scope["status"] == "all" or item["current_state"] == scope["status"]]
         pages = (len(items) + scope["size"] - 1) // scope["size"]
@@ -73,12 +74,12 @@ class WorkbenchTrialAdoptionHistoryService:
                   "name": saved["name"], "saved_at": header["saved_at"], "saved_by": header["local_operator"],
                   "save_request_key": header["request_key"], "draft_ref": saved["draft_ref"], "scenario_ref": saved["scenario_ref"]}
         bound(len(canonical_json({"source": source, "items": all_items}).encode("utf-8")), MAX_DIRECTORY_BYTES)
-        digest = input_fingerprint({"scope": scope, "source": source, "items": all_items,
-                                    "identity_revision": revision, "current_version": current_version})
+        content = content_text({"scope": scope, "source": source, "items": all_items,
+                                "identity_revision": revision, "current_version": current_version})
         offset = (page - 1) * scope["size"]
         return {"scope": scope, "source": source, "items": items[offset:offset + scope["size"]],
                 "page": {"number": page, "size": scope["size"], "total": len(items), "pages": pages},
-                "total_adoptions": len(all_items), "state": "available" if items else "empty"}, digest
+                "total_adoptions": len(all_items), "state": "available" if items else "empty"}, content
 
     @staticmethod
     def _identity(refs, reader, query, plan):

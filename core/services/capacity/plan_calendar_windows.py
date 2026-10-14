@@ -128,6 +128,13 @@ def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -
         if low < end and high > start:
             downtime.append((max(start, low), min(end, high)))
     downtime = union(downtime)
+    if not downtime:
+        # A checked resource without intersecting downtime shares the policy's
+        # read-only windows and capacity. State never mutates that base.
+        result.update(downtime_windows=[], downtime_scope_hours=0.0, downtime_available_hours=0.0)
+        if raw["status"] != "active":
+            result.update(windows=[], **dict.fromkeys(_MEASURES, 0.0))
+        return result
     result["downtime_windows"] = public_intervals(downtime)
     remaining = _subtract_windows(base["windows"], downtime)
     remaining_measures = measures(remaining)

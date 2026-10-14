@@ -20,6 +20,8 @@ _PUBLIC_TEXT_KEYS = (
     "objective_name",
     "distinct_fingerprint_scope",
     "distinct_fingerprint_description",
+    "distinct_output_scope",
+    "distinct_output_description",
     "message",
 )
 _PUBLIC_INT_KEYS = (
@@ -36,13 +38,18 @@ _PUBLIC_INT_KEYS = (
     "best_improved_candidates",
     "rejected_candidates",
 )
-_PUBLIC_BOOL_KEYS = ("best_fingerprint_changed", "improved")
+_PUBLIC_BOOL_KEYS = ("best_fingerprint_changed", "best_output_changed", "improved")
 _DIAGNOSTIC_KEYS = (
     "initial_fingerprint",
     "best_fingerprint",
     "initial_candidate_fingerprint",
     "best_candidate_fingerprint",
     "fingerprint_events",
+    "initial_candidate_id",
+    "best_candidate_id",
+    "initial_candidate_identity",
+    "best_candidate_identity",
+    "candidate_events",
     "improvement_conditions",
     "neighborhood_moves",
     "acceptance_events",

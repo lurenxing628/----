@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import hashlib
 import importlib
 import importlib.util
 import json
@@ -13,7 +12,14 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
-from .quality_gate_ledger import entry_sort_key, load_ledger, validate_ledger
+from .quality_gate_ledger import (
+    entry_sort_key,
+    load_ledger,
+    silent_entry_content_equal,
+    silent_entry_has_content,
+    silent_entry_key,
+    validate_ledger,
+)
 from .quality_gate_shared import (
     _CLEANUP_KEYWORDS,
     _LOG_METHODS,
@@ -249,7 +255,7 @@ def _collect_fallback_actions(body: Sequence[ast.stmt]) -> List[str]:
     actions = []
     for stmt in body:
         if isinstance(stmt, ast.Return):
-            # 这里保留所有 return 的字面量类别，现有处理器指纹与治理台账已按该口径冻结。
+            # 这里保留所有 return 的字面量类别，现有分类规范与治理台账已按该口径冻结。
             # 若要改成仅统计默认值回退，必须配套刷新台账与样本基线，不能单点热改。
             actions.append(f"return:{_literal_kind(stmt.value)}")
         elif isinstance(stmt, ast.Assign):
@@ -387,16 +393,6 @@ def classify_silent_fallback(try_node: ast.Try, handler: ast.ExceptHandler) -> T
     return fallback_kind, signature
 
 
-def _fingerprint_for_signature(signature: Dict[str, Any]) -> str:
-    raw = json.dumps(signature, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
-
-
-def _handler_context_hash(handler: ast.ExceptHandler) -> str:
-    raw = ast.dump(handler, include_attributes=False)
-    return "sha1:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
-
-
 def ui_mode_scope_tag(symbol: str, path: str = "web/manual_src_security.py") -> str:
     # 双轨退役（2026-06）后启动链 UI 范围只剩 manual_src_security，统一 render_bridge 标签
     del symbol, path
@@ -427,12 +423,11 @@ def scan_silent_fallback_fact_entries(paths: Sequence[str], context: Optional[Sc
             legacy_swallow_hit = _is_legacy_silent_swallow(handler.body)
             if fallback_kind == "silent_swallow" and not legacy_swallow_hit:
                 continue
-            fingerprint = _fingerprint_for_signature(signature)
             entry = {
                 "path": rel_path,
                 "symbol": symbol,
-                "handler_fingerprint": fingerprint,
-                "handler_context_hash": _handler_context_hash(handler),
+                "handler_signature": signature,
+                "handler_context": ast.dump(handler, include_attributes=False),
                 "except_ordinal": int(ordinal_map[symbol]),
                 "line_start": int(getattr(handler, "lineno", 0) or 0),
                 "line_end": int(getattr(handler, "end_lineno", getattr(handler, "lineno", 0) or 0) or 0),
@@ -453,20 +448,12 @@ def scan_silent_fallback_entries(paths: Sequence[str], context: Optional[ScanCon
 
 
 def _assign_silent_entry_ids(entries: List[Dict[str, Any]]) -> None:
-    base_counts = defaultdict(int)
     for entry in entries:
-        fingerprint = str(entry.get("handler_fingerprint") or "")
-        short_hash = fingerprint.split(":", 1)[-1][:12]
-        base_id = "fallback:{}-{}-{}".format(
-            slugify(entry.get("path")),
-            slugify(entry.get("symbol") or "module"),
-            short_hash,
+        entry["id"] = "fallback:{}:{}:except:{}".format(
+            entry.get("path"),
+            entry.get("symbol") or "<module>",
+            int(entry.get("except_ordinal") or 0),
         )
-        base_counts[base_id] += 1
-        if base_counts[base_id] == 1:
-            entry["id"] = base_id
-        else:
-            entry["id"] = "{}-x{}".format(base_id, int(entry.get("except_ordinal") or base_counts[base_id]))
 
 
 def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None) -> Dict[str, Any]:
@@ -942,20 +929,23 @@ def run_strict_silent_fallback_gate(*, emit_json: bool = False, quiet: bool = Tr
     validate_startup_samples()
     ledger_entries = list(cast(Dict[str, Any], ledger.get("silent_fallback") or {}).get("entries") or [])
 
-    scan_ids = {str(entry.get("id") or "") for entry in scan_entries}
-    active_ledger_ids = {
-        str(entry.get("id") or "")
-        for entry in ledger_entries
-        if str(entry.get("status") or "open") != "fixed"
-    }
-    missing_in_ledger = sorted(scan_ids - active_ledger_ids)
-    missing_in_scan = sorted(active_ledger_ids - scan_ids)
+    scan_by_key = {silent_entry_key(entry): entry for entry in scan_entries}
+    active_ledger_entries = [entry for entry in ledger_entries if str(entry.get("status") or "open") != "fixed"]
+    for entry in active_ledger_entries:
+        if not silent_entry_has_content(entry):
+            raise QualityGateError("静默回退条目缺少 handler_signature / handler_context 原文，请显式复核并重取内容基线：{}".format(entry.get("id")))
+    ledger_by_key = {silent_entry_key(entry): entry for entry in active_ledger_entries}
+    missing_in_ledger = sorted(set(scan_by_key) - set(ledger_by_key))
+    missing_in_scan = sorted(set(ledger_by_key) - set(scan_by_key))
     if missing_in_ledger or missing_in_scan:
         raise QualityGateError(
             "strict silent-fallback gate drift: "
             f"missing_in_ledger={missing_in_ledger[:10]} "
             f"missing_in_scan={missing_in_scan[:10]}"
         )
+    for key, current in scan_by_key.items():
+        if not silent_entry_content_equal(current, ledger_by_key[key]):
+            raise QualityGateError("strict silent-fallback gate handler content drift: {}".format(ledger_by_key[key].get("id")))
 
     if emit_json:
         print(json.dumps(_strict_silent_fallback_summary(scan_entries, ledger_entries), ensure_ascii=False, indent=2, sort_keys=True))

@@ -5,7 +5,7 @@ import os
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
@@ -18,14 +18,34 @@ from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_history_support import BASE, dump, read, seed
 from tests.workbench.run_history_support import history_case as _history_case  # noqa: F401
+from tests.workbench.run_jobs_support import service
 from web.routes.workbench.run_candidates import register_run_candidate_routes
 from web.routes.workbench.run_history import register_run_history_routes
 
 
 def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case, tmp_path, monkeypatch):
     case = history_case
-    accepted = case.accept()
-    worker_result = WorkbenchRunWorker(case.conn, clock=lambda: datetime(2026, 9, 10, 12, 1)).execute(accepted["run_ref"])
+    ref, token = case.intent()
+    runner = service(case.conn)
+    runner.clock = lambda: datetime(2026, 9, 10, 12, 0, 0, 50000)
+    accepted = runner.accept(ref, token, "run-request-00000001")
+    assert accepted["data"]["accepted_at"] == "2026-09-10T12:00:00.050000"
+    captured_scope = accepted["data"]["scope_summary"]
+    assert (captured_scope["batch_count"], captured_scope["operation_count"]) == (1, 1)
+    assert captured_scope["batches"] == [{"batch_ref": case.ref("batch", "B1"), "batch_id": "B1",
+                                         "part_no": "P1", "part_label": "Part"}]
+    assert (captured_scope["objective"], captured_scope["objective_label"]) == ("min_overdue", "最少超期")
+    times = iter((datetime(2026, 9, 10, 12, 1, 0, 125000),))
+    worker_result = WorkbenchRunWorker(case.conn,
+        clock=lambda: next(times, datetime(2026, 9, 10, 12, 1, 0, 875000))).execute(accepted["run_ref"])
+    assert worker_result["started_at"] == "2026-09-10T12:01:00.125000"
+    assert worker_result["finished_at"] == "2026-09-10T12:01:00.875000"
+    assert datetime.fromisoformat(worker_result["finished_at"]) - datetime.fromisoformat(worker_result["started_at"]) == timedelta(seconds=0.75)
+    assert case.conn.execute("SELECT recorded_at FROM WorkbenchRunReceipts WHERE run_ref=?", (accepted["run_ref"],)).fetchone()[0] == worker_result["finished_at"]
+    case.conn.execute("UPDATE Parts SET part_name='Current part' WHERE part_no='P1'")
+    case.operation(seq=2)
+    case.config(objective="min_changeover")
+    assert service(case.conn).get(accepted["run_ref"])["scope_summary"] == captured_scope
     assert len(worker_result["candidates"]) == 4
     for key, path in (("APS_DB_PATH", case.path), ("APS_LOG_DIR", tmp_path / "logs"), ("APS_BACKUP_DIR", tmp_path / "backups")):
         monkeypatch.setenv(key, str(path))

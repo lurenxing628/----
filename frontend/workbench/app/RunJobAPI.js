@@ -5,7 +5,16 @@
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^run-[a-f0-9]{48}$/.test(v);
-  const contextRef = v => text(v) && /^[a-f0-9]{64}$/.test(v);
+  function contextRef(v) {
+    if (!text(v)) return false;
+    if (/^[a-f0-9]{64}$/.test(v)) return true;
+    try {
+      const data = JSON.parse(v), refs = data && data.successful_restores;
+      return shape(data, ['database_scope', 'successful_restores']) && text(data.database_scope) && data.database_scope.length > 0
+        && Array.isArray(refs) && refs.every(item => text(item) && /^[a-f0-9]{32}$/.test(item))
+        && refs.every((item, index) => index === 0 || refs[index - 1] < item);
+    } catch (_) { return false; }
+  }
   const rejections = new WeakSet();
   const terminal = run => !!run && ['complete', 'partial', 'failed', 'interrupted'].includes(run.state);
   function check(valid, message = '读到的排产数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }
@@ -17,7 +26,7 @@
     const [y, m, d] = v.split('-').map(Number), value = new Date(y, m - 1, d);
     return value.getFullYear() === y && value.getMonth() === m - 1 && value.getDate() === d;
   }
-  const time = v => text(v) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(v) && date(v.slice(0, 10));
+  const time = v => text(v) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?$/.test(v) && date(v.slice(0, 10));
   const issue = v => shape(v, ['code', 'message'], ['operation_ref', 'batch_ref', 'batch_id']) && text(v.code) && v.code.length > 0 && text(v.message)
     && ['operation_ref', 'batch_ref'].every(k => v[k] === undefined || ref(v[k])) && (v.batch_id === undefined || text(v.batch_id));
   const issues = v => Array.isArray(v) && v.every(issue);
@@ -53,12 +62,13 @@
   }
   function run(v, expectedRef) {
     check(shape(v, ['run_ref', 'job_ref', 'state', 'stage', 'progress', 'plans', 'plan_catalog_connected', 'candidates', 'result_persisted',
-      'accepted_at', 'started_at', 'finished_at', 'receipt_ref', 'error', 'recovery_required']) && ref(v.run_ref) && v.job_ref === v.run_ref
+      'accepted_at', 'started_at', 'finished_at', 'receipt_ref', 'error', 'recovery_required', 'scope_summary']) && ref(v.run_ref) && v.job_ref === v.run_ref
       && (!expectedRef || v.run_ref === expectedRef) && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(v.state)
       && (v.progress === null || v.state === 'running' && v.stage === 'computing' && progress(v.progress))
       && Array.isArray(v.plans) && v.plans.length === 0 && v.plan_catalog_connected === false
       && Array.isArray(v.candidates) && time(v.accepted_at) && (v.started_at === null || time(v.started_at))
       && (v.finished_at === null || time(v.finished_at)) && (v.error === null || shape(v.error, ['code', 'message']) && issue(v.error)));
+    runScope(v.scope_summary);
     const done = terminal(v), saved = ['complete', 'partial'].includes(v.state);
     check(v.result_persisted === saved && v.recovery_required === (v.stage === 'awaiting_reconciliation')
       && (done ? v.stage === 'finished' && ref(v.receipt_ref) && time(v.finished_at)
@@ -71,6 +81,23 @@
       && new Set(v.candidates.map(c => c.candidate_ref)).size === v.candidates.length
       && (saved ? v.candidates.length > 0 && v.candidates.filter(c => c.selected).length === 1 : v.candidates.length === 0));
     return v;
+  }
+  function runScope(value) {
+    const nullableText = item => item === null || text(item), nullableCount = item => item === null || count(item);
+    check(shape(value, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count',
+      'selection', 'basis', 'data_gaps', 'operation_count', 'batches', 'objective', 'objective_label'], ['material_strategy', 'hold_window'])
+      && value.selection === 'explicit_batches' && value.basis === 'captured_at_run_admission'
+      && ['start_date', 'end_date'].every(field => value[field] === null || date(value[field]))
+      && (value.start_date === null || value.end_date === null || value.start_date <= value.end_date)
+      && (value.ready_check === null || typeof value.ready_check === 'boolean')
+      && [null, 'auto_assign', 'exclude'].includes(value.missing_resource_policy)
+      && [null, 'preserve_actuals'].includes(value.completed_policy)
+      && (value.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(value.material_strategy))
+      && holdWindow(value.hold_window) && nullableCount(value.batch_count) && nullableCount(value.operation_count)
+      && nullableText(value.objective) && nullableText(value.objective_label) && gaps(value.data_gaps)
+      && Array.isArray(value.batches) && value.batches.every(row => shape(row, ['batch_ref', 'batch_id', 'part_no', 'part_label'])
+        && ref(row.batch_ref) && ['batch_id', 'part_no', 'part_label'].every(field => nullableText(row[field]))));
+    return value;
   }
   function accepted(v) {
     check(shape(v, ['ok', 'result', 'job_ref', 'run_ref', 'status_target', 'receipt_ref', 'replayed', 'data', 'data_context_ref'], ['dispatch_pending']) && contextRef(v.data_context_ref)
@@ -149,7 +176,7 @@
   function message(error) { return messages[error && error.code] || OUTCOMES.unknown('排产'); }
   // 已结束的排产失败是确定结果：不认识的失败原因照后端原话显示，不能说成“可能已经生效”。
   function failure(error) {
-    return messages[error && error.code] || (error && text(error.message) && error.message) || messages.candidate_computation_failed;
+    return (error && text(error.message) && error.message) || messages[error && error.code] || messages.candidate_computation_failed;
   }
   function previewMessage(error) {
     return error && messages[error.code] && !['storage_failure', 'entity_not_found', 'run_result_inconsistent'].includes(error.code)

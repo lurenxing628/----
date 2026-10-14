@@ -88,7 +88,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 
 流程会核对工具链和浏览器源，重新生成 `build/`、`dist/` 中的构建产物，复制裁剪后的 Chrome109、启动器、使用说明和便携标记，执行主程序冷启动及浏览器最小冒烟，然后清理**本次新构建的测试数据**，最后生成 ZIP 并检查完整性。不要把生产数据保存在仓库的构建目录里。
 
-输出：`dist/APS_Portable_Win7_x64.zip` 和 `dist/APS_Portable_Win7_x64.zip.sha256`。压缩包必须包含一个完整的 `APS_Portable/` 目录。打包器发现数据库、日志、备份或浏览器用户数据混入时会拒绝出包，不会静默删掉这些数据。
+输出：`dist/APS_Portable_Win7_x64.zip`。压缩包必须包含一个完整的 `APS_Portable/` 目录。打包器发现数据库、日志、备份或浏览器用户数据混入时会拒绝出包，不会静默删掉这些数据。
 
 单独执行 `build_win7_onedir.bat` 只生成开发用主程序目录，尚未组成便携交付包。
 
@@ -123,7 +123,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .limcode/skills/aps-package-
 
 若同一台 Win7 先安装 Python 用于打包，再运行成品，只能据此记录该环境的功能结果；“目标机无需安装 Python”须另在未安装 Python 的 Win7 环境验收，并在记录表中注明。
 
-打包人员提供源码提交号、ZIP SHA-256 和打包日志。在 PowerShell 5.1 中运行 `Get-FileHash -Algorithm SHA256 .\APS_Portable_Win7_x64.zip`，与同名 `.sha256` 比较，不一致就停止。源码版本用 `git rev-parse HEAD` 记录；源码归档使用提供方附带的提交号。
+打包人员提供源码提交号和打包日志。交付前解压 ZIP，核对 `APS_Portable/` 目录及必需文件，确认包内包含完整程序和 Chrome109，且业务数据库、日志、备份及浏览器用户数据留在包外。源码版本用 `git rev-parse HEAD` 记录；源码归档使用提供方附带的提交号。
 
 失败时保留时间、截图、复现步骤、脱敏输入及错误日志片段。不要将整个 `user-data`、业务备份或含密钥的日志目录提交到公开 GitHub。
 

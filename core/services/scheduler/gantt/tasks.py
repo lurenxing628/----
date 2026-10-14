@@ -12,6 +12,7 @@ from core.models.operation_execution_event import (
 )
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
+from core.services.common.plan_task_identity import public_task_id as _public_task_id
 from core.services.scheduler._sched_display_utils import BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON
 from core.services.scheduler._sched_display_utils import display_machine as _display_machine
 from core.services.scheduler._sched_display_utils import display_operator as _display_operator
@@ -22,7 +23,6 @@ from core.services.scheduler._sched_display_utils import priority_class as _prio
 from core.services.scheduler._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from core.services.scheduler._sched_utils import _safe_int
 from core.services.scheduler.calendar.service import CalendarService
-from core.services.scheduler.dispatch_task_ids import public_task_id as _public_task_id
 from core.services.scheduler.execution_fact_presentation import execution_detail_meta
 from core.services.scheduler.task_chain import attach_process_dependencies, sort_tasks
 from core.services.scheduler.week_range import WeekRange

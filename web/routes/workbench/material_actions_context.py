@@ -18,7 +18,7 @@ from core.services.workbench.material.files import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
-from .material_actions_previews import retain_preview, stored_preview
+from .material_actions_previews import preview_key, retain_preview, stored_preview
 from .read_context import bind_read_snapshot
 from .write_context import preview_write_context, validate_preview_confirmation
 
@@ -90,9 +90,10 @@ def resolve_binding(namespace, token, *, field, code):
 
 
 def issue_preview(preview, content=None):
-    binding = {"version": 1, "source": "production", "preview_key": preview.digest}
+    key = preview_key(preview.document)
+    binding = {"version": 1, "source": "production", "preview_key": key}
     ref, expiry = issue_public_token_with_expiry(PREVIEW_SCOPE, canonical_json(binding), ttl_seconds=TTL_SECONDS)
-    retain_preview(preview, content, expiry)
+    retain_preview(key, preview, content, expiry)
     expires_at = datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
     document = preview.as_dict()
     action = document["operation"]
@@ -105,7 +106,7 @@ def issue_preview(preview, content=None):
               "summary": document["summary"], "rows": [public_row(row) for row in document["rows"]],
               "can_confirm": not rejected, "write_context": context}
     if action == "material.import":
-        result.update({key: document["request"][key] for key in ("file_sha256", "format", "mode")})
+        result.update({key: document["request"][key] for key in ("actual_source_ref", "format", "mode")})
         result["template_version"] = 1
     return result
 

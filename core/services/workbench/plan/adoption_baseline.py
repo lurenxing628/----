@@ -3,13 +3,25 @@
 from typing import cast
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
+from core.services.workbench.facts.adoption_baseline_sources import (
+    candidate_source_evidence,
+    decoded_baseline,
+    trial_source_evidence,
+)
+from core.services.workbench.facts.adoption_baseline_values import (
+    AdoptionBaselineUnavailable,
+    fail,
+    has_table,
+    require,
+    same,
+    stored,
+)
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 
 from .adoption_baseline_identity import baseline_tasks, verify_arranged, verify_capture
-from .adoption_baseline_sources import candidate_source_evidence, decoded_baseline, trial_source_evidence
-from .adoption_baseline_values import AdoptionBaselineUnavailable, fail, has_table, require, same, stored
 
 _SOURCES = {"workbench_candidate_adoption": ("candidate_adoption", "scheduling.candidate.adopt", "candidate_ref", "run_ref"),
             "workbench_trial_adoption": ("trial_adoption", "trial.scenario.adopt", "scenario_ref", "draft_ref")}
@@ -41,9 +53,17 @@ def _audit(conn, plan_ref, version, history):
 
 def _proof_fields(audit, basis):
     require(type(audit["proof"]) is dict, "adoption.proof_shape")
-    names = ({"candidate_ref", "run_ref", "facts_hash", "baseline_ref", "baseline_version", "baseline_hash", "candidate_hash"}
+    version = audit["proof"].get("proof_version")
+    if version == "content_refs_v1":
+        names = ({"proof_version", "candidate_ref", "run_ref", "baseline_ref", "baseline_version"}
+                 if basis == "candidate_adoption" else
+                 {"proof_version", "scenario_ref", "draft_ref", "scenario_revision", "baseline_ref", "baseline_version"})
+    elif version is None:
+        names = ({"candidate_ref", "run_ref", "facts_hash", "baseline_ref", "baseline_version", "baseline_hash", "candidate_hash"}
              if basis == "candidate_adoption" else
              {"scenario_ref", "draft_ref", "scenario_hash", "admission_hash", "execution_hash", "baseline_hash", "rows_hash"})
+    else:
+        fail("adoption_snapshot_invalid", "adoption.proof_version")
     missing = names - set(audit["proof"])
     if missing:
         fail("adoption_evidence_missing", "adoption.proof." + ",".join(sorted(missing)))
@@ -64,7 +84,9 @@ def _receipt(conn, plan_ref, version, audit):
     require(same({key: official[key] for key in expected}, expected), "adoption.receipt_official_identity")
     require((receipt["action"], receipt["context_ref"]) == (action, audit[context]), "adoption.receipt_source")
     intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
-    require(receipt["input_hash"] == input_fingerprint(intent), "adoption.receipt_intent")
+    original = WorkbenchCommandRepository(conn).input_content(receipt)
+    require(original is None or original == content_text(intent), "adoption.receipt_intent")
+    receipt["input_source_verified"] = original is not None
     require(data[context] == audit[context] and data[parent] == audit[parent]
             and same(data["row_count"], audit["row_count"]), "adoption.receipt_scope")
     fields = ("source_run_ref",) if context == "candidate_ref" else ("source_scenario_ref", "source_draft_ref")
@@ -81,7 +103,7 @@ def read_adoption_source(conn, *, plan_ref, version, history, recorded=None):
     recorded = _audit(conn, plan_ref, version, history) if recorded is None else recorded
     if recorded is None:
         return None
-    key = ("adoption_source", plan_ref, version, input_fingerprint(recorded[1]))
+    key = ("adoption_source", plan_ref, version, canonical_json(recorded[1]))
     return verified_read(conn, key, lambda: _read_adoption_source(
         conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded,
     ))

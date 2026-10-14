@@ -4,7 +4,7 @@
   const READ_TIMEOUT_MS = 60000;
   const categories = { all: '全部风险', delivery: '交期风险', actual: '执行偏差', external: '外协回厂', downtime: '停机影响', material: '齐套缺口', candidate: '候选方案待确认' };
   const statuses = { new: '待分析', following: '跟进中', awaiting_verification: '待验证', closed: '已关闭' };
-  const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_connected: '尚未开通' };
+  const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_connected: '尚未开通', not_applicable: '未指定交期' };
   const fields = ['owner', 'deadline', 'action', 'remark', 'completed_at', 'completion_evidence', 'evidence_reference_text', 'evidence_ref'];
   const labels = { status: '处置状态', owner: '责任人', deadline: '责任期限', action: '处置行动', remark: '原因说明', completed_at: '完成时间', completion_evidence: '具体完成结果', evidence_reference_text: '凭据说明', evidence_ref: '已核验附件编号' };
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -84,7 +84,10 @@
       const s = d.categories[k]; check(object(s) && Object.keys(states).includes(s.state) && (s.risk_count === null || count(s.risk_count))
         && count(s.known_risk_count) && count(s.unknown_count) && Array.isArray(s.issues) && Array.isArray(s.evaluation_gaps)
         && (s.risk_count === null || s.risk_count === s.known_risk_count && s.unknown_count === 0));
-      if (['not_connected', 'unavailable', 'no_official_plan'].includes(s.state) || k === 'candidate') check(s.risk_count === null);
+      if (['not_connected', 'unavailable', 'no_official_plan', 'not_applicable'].includes(s.state) || k === 'candidate') check(s.risk_count === null);
+      if (k === 'delivery' && ['loaded', 'not_applicable'].includes(s.state)) check(['due_eligible_count', 'excluded_due_count',
+        'invalid_due_count', 'due_evaluation_count', 'assessed_count'].every(key => count(s[key])));
+      else check(s.state !== 'not_applicable');
       s.evaluation_gaps.forEach(gap => {
         if (Object.prototype.hasOwnProperty.call(gap, 'operation')) check(object(gap.operation)
           && ['code', 'name'].every(field => gap.operation[field] === null || text(gap.operation[field])),

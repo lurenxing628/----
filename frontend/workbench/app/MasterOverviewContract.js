@@ -12,6 +12,7 @@
   };
   const object = value => !!value && typeof value === 'object' && !Array.isArray(value);
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
+  const issueKey = value => typeof value === 'string' && value.length > 0;
   const count = value => Number.isSafeInteger(value) && value >= 0;
   function fail(message) { throw new Error(message || '读到的基础资料不完整，请刷新后重试。'); }
   function canonical(value) {
@@ -52,7 +53,7 @@
       || !(value.relation_count === null || count(value.relation_count))) fail();
     target(value.target);
     if (view === 'issues') {
-      if (!ref(value.issue_ref) || ['rule', 'title', 'evidence', 'action'].some(key => typeof value[key] !== 'string')) fail();
+      if (!issueKey(value.issue_ref) || ['rule', 'title', 'evidence', 'action'].some(key => typeof value[key] !== 'string')) fail();
     } else if (!count(value.filled_fields) || !count(value.checked_fields) || value.filled_fields > value.checked_fields
       || !count(value.known_relation_count) || typeof value.checks_complete !== 'boolean' || typeof value.relations_complete !== 'boolean'
       || typeof value.summary !== 'string' || value.relations_complete && value.relation_count !== value.known_relation_count) fail();
@@ -107,7 +108,7 @@
       } else if (section === 'fields') {
         if (!object(item) || typeof item.label !== 'string' || typeof item.source !== 'string' || !['known', 'missing', 'unknown', 'invalid'].includes(item.state)) fail();
       } else {
-        if (!ref(item.issue_ref) || !ref(item.entity_ref) || ['title', 'evidence', 'action', 'rule'].some(key => typeof item[key] !== 'string')) fail();
+        if (!issueKey(item.issue_ref) || !ref(item.entity_ref) || ['title', 'evidence', 'action', 'rule'].some(key => typeof item[key] !== 'string')) fail();
         target(item.target);
       }
     });
@@ -128,5 +129,5 @@
     if (column === 'status') return statuses[item.status];
     return value(item[column]);
   }
-  window.APSMasterOverviewContract = { domains, statuses, defaults, columns, scope, target, list, detail, value, cell, ref, fail, canonical };
+  window.APSMasterOverviewContract = { domains, statuses, defaults, columns, scope, target, list, detail, value, cell, ref, issueKey, fail, canonical };
 })();

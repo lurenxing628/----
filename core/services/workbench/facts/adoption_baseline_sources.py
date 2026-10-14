@@ -1,8 +1,7 @@
 """Reuse RunBaseline verification and CQ's immutable saved-scenario contract."""
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
-from core.models.workbench_trial_codec import fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, _blob
 from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
@@ -43,7 +42,7 @@ def candidate_source(conn, audit):
 
 def candidate_source_evidence(conn, audit):
     """Private complete proof and its parsed facts, including without reuse."""
-    key = ("candidate_adoption_source", input_fingerprint(audit))
+    key = ("candidate_adoption_source", canonical_json(audit))
     return verified_read(conn, key, lambda: _candidate_source(conn, audit))
 
 
@@ -55,7 +54,7 @@ def _candidate_source(conn, audit):
     store = CandidateStore(conn)
     run = store.run(audit["run_ref"])
     facts = GenerationFacts(capture)
-    # GenerationFacts already checks the hash and strictly parses this object.
+    # GenerationFacts parses the original immutable source and validates its shape.
     # Keep the adoption reader's original byte limit without parsing it again.
     if len(capture["facts_text"].encode("utf-8")) > 64 * 1024 * 1024:
         raise WorkbenchCommandRejected("query_too_large", "完整采用凭据超过 64 MB 上限。请缩小查询范围后重试。", 413)
@@ -64,11 +63,14 @@ def _candidate_source(conn, audit):
     AdmissionBaseline(capture, facts, scope, run["accepted_at"])
     require(candidate["run_ref"] == audit["run_ref"], "candidate.run_ref")
     proof = audit["proof"]
-    for key, value in (("run_ref", audit["run_ref"]), ("candidate_ref", audit["candidate_ref"]),
-                       ("facts_hash", capture["facts_hash"]), ("baseline_ref", capture["baseline"]["plan_ref"]),
-                       ("baseline_version", capture["baseline"]["version"]),
-                       ("baseline_hash", input_fingerprint(capture["baseline"])),
-                       ("candidate_hash", input_fingerprint({"candidate": candidate, "tasks": tasks, "scope": scope}))):
+    values = [("run_ref", audit["run_ref"]), ("candidate_ref", audit["candidate_ref"]),
+              ("baseline_ref", capture["baseline"]["plan_ref"]),
+              ("baseline_version", capture["baseline"]["version"])]
+    if proof.get("proof_version") is None:
+        values.append(("facts_hash", capture["facts_hash"]))
+    else:
+        require(proof.get("proof_version") == "content_refs_v1", "candidate.proof_version")
+    for key, value in values:
         require(same(proof[key], value), "candidate.proof." + key)
     return capture["baseline"], tables, [row["payload"] for row in tasks], facts, candidate_origin(candidate, run, capture)
 
@@ -88,7 +90,7 @@ def trial_source(conn, audit):
 
 
 def trial_source_evidence(conn, audit):
-    key = ("trial_adoption_source", input_fingerprint(audit))
+    key = ("trial_adoption_source", canonical_json(audit))
     return verified_read(conn, key, lambda: _trial_source(conn, audit))
 
 
@@ -99,15 +101,17 @@ def _trial_source(conn, audit):
     saved, head, rows = load_saved_scenario(conn, audit["scenario_ref"])
     admission, proof = head["admission"], audit["proof"]
     require(head["draft_ref"] == audit["draft_ref"], "trial.draft_ref")
-    for key, value in (("scenario_ref", audit["scenario_ref"]), ("draft_ref", audit["draft_ref"]),
-                       ("scenario_hash", fingerprint(saved)), ("admission_hash", head["admission_hash"]),
-                       ("execution_hash", fingerprint(admission["execution"])),
-                       ("baseline_hash", fingerprint(admission["baseline"])), ("rows_hash", fingerprint(rows))):
+    values = [("scenario_ref", audit["scenario_ref"]), ("draft_ref", audit["draft_ref"])]
+    if proof.get("proof_version") is None:
+        values.append(("admission_hash", head["admission_hash"]))
+    else:
+        require(proof.get("proof_version") == "content_refs_v1", "trial.proof_version")
+        values.extend((("scenario_revision", head["scenario_revision"]),
+                       ("baseline_ref", admission["baseline"]["plan_ref"]),
+                       ("baseline_version", admission["baseline"]["version"])))
+    for key, value in values:
         require(same(proof[key], value), "trial.proof." + key)
     archive = admission["facts"]
-    require(fingerprint(archive) == admission["facts_hash"], "trial.facts_hash")
-    # The adopt-time facts_hash includes identities created when saving the draft;
-    # it is not the earlier admission hash. Baseline/execution have explicit hashes.
     tables = {}
     for name in _TABLES:
         if name not in archive["tables"] or name not in archive["columns"]:

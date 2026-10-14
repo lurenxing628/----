@@ -68,7 +68,7 @@ class WorkbenchRelationFileService:
     def prepare_import(self, content, *, file_format, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode)
         source, notices = read_relation_file(self.kind, content, file_format)
-        return PreparedImportSource.build(self.kind + ".import", request, source, notices)
+        return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
 
     def preview_import(self, content, *, file_format, mode="upsert"):
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
@@ -76,7 +76,7 @@ class WorkbenchRelationFileService:
         request = prepared.request_for(self.kind + ".import", file_format, mode)
         source, notices = prepared.parsed()
         with self.tx.transaction():
-            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices)
+            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices, source=prepared)
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -283,7 +283,7 @@ class WorkbenchRelationFileService:
             raise RuntimeError("关系导入确认必须在外层工作台写事务中执行。")
         with self.tx.transaction():
             try:
-                current = self.preview_import(content, file_format=file_format, mode=mode)
+                current = self.preview_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, mode=mode)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected(
                     "stale_write", "文件或相关资料已经变了，没有导入。请点「重新预检」后再确认。") from exc

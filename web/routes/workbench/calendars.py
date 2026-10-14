@@ -17,7 +17,7 @@ import re
 from flask import current_app, g, jsonify, request
 
 from core.errors import AppError
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from web.api_responses import failure, query_success
@@ -62,7 +62,7 @@ def calendar_month():
     values = _month_input()
     month = _service().month(**values)
     states = [calendar_snapshot(day) for day in month["days"]]
-    snapshot = bind_read_snapshot({"kind": "calendar", **values}, input_fingerprint(states), request.args.get("snapshot_ref"))
+    snapshot = bind_read_snapshot({"kind": "calendar", **values}, states, request.args.get("snapshot_ref"))
     days = []
     for day, state in zip(month["days"], states):
         public = {**calendar_day(state), **{key: day[key] for key in ("day", "weekday", "is_weekend", "is_today")}}

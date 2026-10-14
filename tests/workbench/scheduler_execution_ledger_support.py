@@ -13,7 +13,7 @@ from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
 from core.services.scheduler.execution_snapshot import build_execution_snapshot
-from tests.workbench.execution_ledger_support import LedgerCase
+from tests.workbench.execution_ledger_support import LedgerCase, install_current_content_storage
 from tests.workbench.plan_identity_support import load_v24_schema
 
 PLAN_FIELDS = {"source_table": "schedule", "effective_plan_role": "adopted", "scenario_id": None}
@@ -23,6 +23,7 @@ def raw_connection(tmp_path):
     conn = sqlite3.connect(str(tmp_path / "scheduler-ledger.sqlite"))
     conn.row_factory = sqlite3.Row
     load_v24_schema(conn)
+    install_current_content_storage(conn)
     set_schema_version(conn, 24)
     conn.commit()
     return conn

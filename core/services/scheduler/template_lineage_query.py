@@ -9,7 +9,6 @@ from core.models.workbench_template_lineage import (
     OWNER_COLUMNS,
     SEMANTIC_COLUMNS,
     STATE_COLUMNS,
-    fingerprint,
     restore_snapshot,
     snapshot,
     state_snapshot,
@@ -61,10 +60,7 @@ def validate_origin(origin, events):
         instance = restore_snapshot(origin["instance_snapshot"])
     except (KeyError, TypeError, ValueError, OverflowError):
         _invalid()
-    if (origin["evidence_version"] != EVIDENCE_VERSION or
-            fingerprint(origin["template_snapshot"]) != origin["template_fingerprint"] or
-            fingerprint(origin["instance_snapshot"]) != origin["instance_fingerprint"] or
-            set(instance) != set(STATE_COLUMNS)):
+    if origin["evidence_version"] != EVIDENCE_VERSION or set(instance) != set(STATE_COLUMNS):
         _invalid()
     if (template.get("template_operation_ref") != origin["template_operation_ref"] or
             template.get("template_revision") != origin["template_revision"]):

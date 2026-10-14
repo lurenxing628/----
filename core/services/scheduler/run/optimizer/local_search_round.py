@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 from core.algorithms import ScheduleResult
 
 from .acceptance import AcceptanceDecision, decide_acceptance
-from .attempt_records import append_rejected_reason_attempt
+from .attempt_records import append_rejected_reason_attempt, attempt_decision_evidence
 from .deadline_guard import evaluate_optional_local_or_exhausted
 from .local_search_candidate_eval import evaluate_local_search_candidate
 from .local_search_fingerprints import LocalSearchFingerprintTracker, local_candidate_fingerprint, should_skip_seen
@@ -54,6 +54,9 @@ def _record_improvement(
     improvement_trace: List[Dict[str, Any]],
     clock: Callable[[], float],
     t_begin: float,
+    reference: Optional[Dict[str, Any]] = None,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
+    accepted: bool = True,
 ) -> None:
     metrics = candidate["metrics"]
     score = candidate["score"]
@@ -62,33 +65,36 @@ def _record_improvement(
     dispatch_mode = str(candidate.get("dispatch_mode") or "")
     dispatch_rule = str(candidate.get("dispatch_rule") or "")
     move_tag = f"local:{move.neighborhood_name}"
-    if len(improvement_trace) < 200:
-        improvement_trace.append(
-            {
-                "elapsed_ms": int((clock() - t_begin) * 1000),
-                "tag": move_tag,
-                "strategy": used_strat.value,
-                "dispatch_mode": dispatch_mode,
-                "dispatch_rule": dispatch_rule,
-                "score": list(score),
-                "metrics": metrics.to_dict(),
-            }
-        )
-    # Every best improvement is recorded; the final compaction keeps the best per dispatch mode,
-    # so a cap here could drop the adopted plan's own attempt from the report.
-    attempts.append(
+    improvement_trace.append(
         {
+            "elapsed_ms": int((clock() - t_begin) * 1000),
             "tag": move_tag,
             "strategy": used_strat.value,
             "dispatch_mode": dispatch_mode,
             "dispatch_rule": dispatch_rule,
-            "used_params": dict(used_params or {}),
             "score": list(score),
-            "failed_ops": int(candidate["summary"].failed_ops),
-            "algo_stats": candidate["algo_stats"],
             "metrics": metrics.to_dict(),
         }
     )
+    # Every best improvement is recorded; the final compaction keeps the best per dispatch mode,
+    # so a cap here could drop the adopted plan's own attempt from the report.
+    attempt = {
+        "tag": move_tag,
+        "source": "local_search",
+        "strategy": used_strat.value,
+        "dispatch_mode": dispatch_mode,
+        "dispatch_rule": dispatch_rule,
+        "used_params": dict(used_params or {}),
+        "score": list(score),
+        "failed_ops": int(candidate["summary"].failed_ops),
+        "algo_stats": candidate["algo_stats"],
+        "metrics": metrics.to_dict(),
+    }
+    attempt.update(attempt_decision_evidence(
+        candidate=candidate, reference=reference, accepted=accepted,
+        search_report_state=search_report_state, clock=clock, t_begin=t_begin,
+    ))
+    attempts.append(attempt)
 
 
 def _record_noop_neighbor(
@@ -151,6 +157,7 @@ def _apply_accepted_candidate(
     t_begin: float,
     incumbent_origin: str,
     incumbent_fingerprint_changed: bool,
+    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Tuple[bool, bool, int]:
     if candidate is None:
         return False, False, no_improve + 1
@@ -169,6 +176,9 @@ def _apply_accepted_candidate(
             improvement_trace=improvement_trace,
             clock=clock,
             t_begin=t_begin,
+            reference=local_state.best,
+            search_report_state=search_report_state,
+            accepted=acceptance_decision.accepted,
         )
         local_state.improve_best(candidate)
         return True, True, 0
@@ -327,6 +337,7 @@ def run_local_search_candidate_round(
         t_begin=t_begin,
         incumbent_origin=_incumbent_origin(local_state.best, search_report_state),
         incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
+        search_report_state=search_report_state,
     )
     _record_acceptance_result(
         best_improved=best_improved,

@@ -1,0 +1,204 @@
+feature: decision-integration-acceptance
+steps:
+- id: shared-content-and-compatibility
+  description: 共同原内容语义、实际Schema升级与旧来源路径
+  status: done
+- id: operator-ui-experience
+  description: 用户追加整轮结果、资源、过程、历史和关联入口的信息顺序与交互返修
+  status: done
+- id: hash-and-rule-convergence
+  description: 实际摘要计算及重复业务职责清理
+  status: done
+- id: cross-entry-and-performance
+  description: 跨入口A场景、典型与边界实际性能
+  status: done
+  notes: 功能/布局/取消与典型读取按实际证据通过；2秒边界目标deferred_to_C，完整候选和资源窗口保持。
+- id: full-gate-and-handoff
+  description: 完整dirty门禁、归属清单与必要文档交接
+  status: done
+  notes: A非延期范围通过，原Gate09第17步failed保持，逐文件清单交主对话Git；Windows与性能独立移交。
+checks:
+- id: A01
+  description: 同次 4/6/8 候选：全部候选可访问，基准选择与排序稳定，推荐源与保存结果一致。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-comparison-loop/decision-comparison-loop-acceptance.md
+  - .codestable/features/2026-10-13-decision-recommendation/decision-recommendation-acceptance.md
+- id: A02
+  description: 候选 A 保交期但资源压力和切换增加：首屏明确收益与代价，资源/事件明细与文字对应。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-resource-impact/decision-resource-impact-acceptance.md
+  - .codestable/features/2026-10-13-decision-recommendation/decision-recommendation-acceptance.md
+- id: A03
+  description: 候选未排最晚批次，已完成子集拖期下降：未排集合优先显示；成对收益以共同完成集合计算。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-delivery-impact/decision-delivery-impact-acceptance.md
+  - .codestable/features/2026-10-13-decision-recommendation/decision-recommendation-acceptance.md
+- id: A04
+  description: 全部部分结果、单候选、失败/预算跳过、等价复用、按工序待料暂缓、未指定交期：三轴完成性、原因、候选来源、推荐类别和采用预检符合保存事实；交期适用集合独立计算。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-delivery-impact/decision-delivery-impact-acceptance.md
+  - .codestable/features/2026-10-13-decision-recommendation/decision-recommendation-acceptance.md
+- id: A05
+  description: 设备/人员班次不同、停机、零容量、容量缺失：分母来自共同归档日历，覆盖和容量状态正确。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-resource-impact/decision-resource-impact-acceptance.md
+- id: A06
+  description: 多工序重叠、跨天、窗口前驱切换、零工时工序：占用/需求负荷/重叠分别正确，窗口事件计数稳定。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-resource-impact/decision-resource-impact-acceptance.md
+  - .codestable/features/2026-10-13-decision-preparation-events/decision-preparation-events-acceptance.md
+- id: A07
+  description: 选批范围小于已有正式安排：本次贡献、候选完整安排和正式覆盖缺口清楚显示；采用按现行覆盖规则处理。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-delivery-impact/decision-delivery-impact-acceptance.md
+  - .codestable/features/2026-10-13-decision-resource-impact/decision-resource-impact-acceptance.md
+- id: A08
+  description: 准备 2h + 单件 0.5h × 10件，另含已执行/冻结/分件：需求账与实际排槽一致；时间显示能追到准备/加工分解及执行规则。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-preparation-events/decision-preparation-events-acceptance.md
+- id: A09
+  description: 切换候选、基准、资源窗口并钻取/返回：身份、范围、选择和差值始终一致。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-comparison-loop/decision-comparison-loop-acceptance.md
+  - .codestable/features/2026-10-13-decision-resource-impact/decision-resource-impact-acceptance.md
+- id: A10
+  description: 计算后修改资料/报工/正式计划，再回看和采用：历史比较保持原依据；采用预检报告当前变化。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-comparison-loop/decision-comparison-loop-acceptance.md
+  - .codestable/features/2026-10-13-decision-delivery-impact/decision-delivery-impact-acceptance.md
+- id: A11
+  description: 目标并列、balanced 容差选择、部分完成集合不同、切到第三候选查看基准：两条算法基准和当时的选择依据固定，查看差值随用户基准变化；文字与各自证据一致。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-recommendation/decision-recommendation-acceptance.md
+- id: A12
+  description: 过程事件超过显示预算、最终结果在后半段改善：首尾、完成性变化、最终最佳值和显示覆盖准确。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-optimization-process/decision-optimization-process-acceptance.md
+- id: A13
+  description: 新候选采用、试调采用、旧版本和范围变化的历史：来源正确、采用与运行不重复计数、同条件结论有字段依据。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-14-decision-history-trends/decision-history-trends-acceptance.md
+- id: A14
+  description: 页面、XLSX、CSV、试调对照，混合有交期/未指定/非法交期：同范围数值、单位、差值、交期适用范围、未知项和身份一致。
+  status: passed
+  notes: 复用对应阶段已通过的数学、数据、事务与原始导出证据；本轮受影响接线、UI及完整非Windows检查已验，主对话最终核定passed。
+  evidence:
+  - .codestable/features/2026-10-13-decision-delivery-impact/decision-delivery-impact-acceptance.md
+  - .codestable/features/2026-10-13-decision-resource-impact/decision-resource-impact-acceptance.md
+  - .codestable/features/2026-10-13-decision-preparation-events/decision-preparation-events-acceptance.md
+  - .codestable/features/2026-10-14-decision-history-trends/decision-history-trends-acceptance.md
+- id: A15
+  description: 典型与边界数据、Win7 离线环境：性能、取消、交互、布局和本地资产符合第 9 节。
+  status: partial
+  completed_scope: 功能、布局、取消、典型数据及本地资产已通过；边界实际耗时与内存已记录
+  deferred:
+    performance_2_seconds: deferred_to_C
+    windows_offline: deferred_by_user
+  evidence:
+  - evidence/decision-stage-acceptance/stage-08/performance-c-handoff.json
+  - evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json
+- id: UX01
+  description: 紧凑4/6/8方案和统一当前方案；过程与采用同对象，固定对照和推荐来源稳定
+  status: passed
+  scope: 主对话核定的非延期范围；UX05完整门禁保留Windows核销原失败
+  evidence:
+  - evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json
+  - evidence/decision-integration-acceptance/2026-10-14/operator-ui/OPERATOR-QA.md
+- id: UX02
+  description: 资源四种状态颜色、单时间入口和同一紧邻明细；准备切换业务量前置
+  status: passed
+  scope: 主对话核定的非延期范围；UX05完整门禁保留Windows核销原失败
+  evidence:
+  - evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json
+  - evidence/decision-integration-acceptance/2026-10-14/operator-ui/OPERATOR-QA.md
+- id: UX03
+  description: 历史结果前置、对照从记录发起；差异缺项先看，相同条件来源收起
+  status: passed
+  scope: 主对话核定的非延期范围；UX05完整门禁保留Windows核销原失败
+  evidence:
+  - evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json
+  - evidence/decision-integration-acceptance/2026-10-14/operator-ui/OPERATOR-QA.md
+- id: UX04
+  description: 返回记录列表、正式范围重置页码、试调点工序打开可见详情和正确班内指标
+  status: passed
+  scope: 主对话核定的非延期范围；UX05完整门禁保留Windows核销原失败
+  evidence:
+  - evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json
+  - evidence/decision-integration-acceptance/2026-10-14/operator-ui/OPERATOR-QA.md
+- id: UX05
+  description: 实际操作者路径、双主题桌面与窄屏；受影响用例和最终完整门禁
+  status: passed
+  scope: 主对话核定的非延期范围；UX05完整门禁保留Windows核销原失败
+  evidence:
+  - evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json
+  - evidence/decision-integration-acceptance/2026-10-14/operator-ui/OPERATOR-QA.md
+- id: P1-WINDOWS
+  description: 启动合同与health共享独立实例身份及路径口径；Python生产消费链、PowerShell宿主与Win7执行状态分别记录
+  status: partial
+  product_contract: passed
+  powershell_and_target_windows: deferred_by_user
+  notes: Python生产接线、公开health与private合同的PID/owner/规范路径/instance_id一致已验；Windows启动器、原生CMD/进程及Win7实机在大改后用户统一测。
+- id: CONTENT-REMAINING
+  description: 两个宿主脚本、CI及测试helper去掉主动密码哈希；保留原冻结资料并完成本地入口验证
+  status: passed
+  notes: 两个脚本、CI、测试helper、Jev及单列归档宿主主动摘要清理完成，原内容、语法和既有行为已验。
+- id: PERF-REPAIR-01
+  description: 共同日历、候选别名和工序统计复用；同一既有数据库仅复测4候选完整HTTP并逐字段核对
+  status: passed
+  notes: 已实施范围及实际行为验证passed，原件保持；PERF修复完成与2秒目标分开记录。
+status: completed
+implementation_acceptance: passed
+parent_acceptance: passed
+acceptance_scope: A第0—8的功能、数据、界面和非Windows检查；性能2秒目标交C，Windows大改后用户统一测试
+parent_evidence: .codestable/roadmap/scheduling-decision-workbench/stage-acceptance.md
+final_runtime_evidence: evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json
+full_gate_actual:
+  manifest: failed
+  attempt: attempt09-v4
+  passed_steps: 16
+  collected: 758
+  passed: 722
+  skipped: 36
+  failed: 0
+  required_step_17: 15条Windows启动器setup skip未核销，原失败保留
+  worktree_scope: dirty
+deferred_validation:
+- id: PERF-2S-C
+  status: deferred_to_C
+  target: 2秒概览
+  observed_seconds_4_6_8:
+  - 3.6246
+  - 4.6823
+  - 5.2835
+  scope: 每候选20,000安排，4/6/8候选，100天及完整成员/资源窗口保持
+  evidence: evidence/decision-stage-acceptance/stage-08/performance-c-handoff.json
+- id: WINDOWS-FINAL
+  status: deferred_by_user
+  scope: 15条required启动器检查、PowerShell、原生CMD/进程与Win7实机
+  evidence: evidence/decision-integration-acceptance/2026-10-14/full-gate/type-repair/required-attempt09-runtime-diagnosis.json

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import math
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -12,11 +11,13 @@ from core.shared.field_labels import display_field_label
 
 from .busy_block_skip import advance_busy_block
 from .downtime import SegmentOverlapIndex
+from .operation_effort import _MISSING as _MISSING
+from .operation_effort import _coerce_legacy_hours_value as _coerce_legacy_hours_value
+from .operation_effort import _read_legacy_field as _read_legacy_field
+from .operation_effort import internal_requirement_parts
 from .resource_quality import slot_changeover_penalty
 from .sgs_estimate_reuse import current_sgs_handoff
 from .slot_overlap_reuse import SlotOverlapReuse
-
-_MISSING = object()
 
 
 @dataclass(frozen=True)
@@ -40,48 +41,8 @@ class _SlotAttempt:
     efficiency_fallback_used: bool
 
 
-def _read_legacy_field(obj: Any, field: str) -> Any:
-    try:
-        inspect.getattr_static(obj, field)
-    except AttributeError:
-        return _MISSING
-    return getattr(obj, field)
-
-
-def _coerce_legacy_hours_value(raw_value: Any, *, field: str) -> float:
-    if raw_value is _MISSING:
-        return 0.0
-    if raw_value is True:
-        return 1.0
-    if raw_value is False:
-        return 0.0
-    try:
-        if not raw_value:
-            return 0.0
-    except Exception:
-        raise
-    try:
-        return float(raw_value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"工时字段不合法：{field}={raw_value!r}") from exc
-
-
 def validate_internal_hours(op: Any, batch: Any) -> float:
-    setup_raw = _read_legacy_field(op, "setup_hours")
-    unit_raw = _read_legacy_field(op, "unit_hours")
-    quantity_raw = _read_legacy_field(batch, "quantity")
-
-    setup_hours = _coerce_legacy_hours_value(setup_raw, field="setup_hours")
-    unit_hours = _coerce_legacy_hours_value(unit_raw, field="unit_hours")
-    quantity = _coerce_legacy_hours_value(quantity_raw, field="quantity")
-
-    total_hours_base = float(setup_hours) + float(unit_hours) * float(quantity)
-    if not math.isfinite(float(total_hours_base)) or float(total_hours_base) < 0:
-        raise ValueError(
-            "工时总量不合法："
-            f"setup_hours={setup_raw!r} unit_hours={unit_raw!r} quantity={quantity_raw!r} total_hours_base={total_hours_base!r}"
-        )
-    return float(total_hours_base)
+    return internal_requirement_parts(op, batch)[2]
 
 
 def validate_internal_hours_for_mode(op: Any, batch: Any, *, strict_mode: bool) -> float:

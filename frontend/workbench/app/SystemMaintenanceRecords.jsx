@@ -61,10 +61,10 @@
     const [draft, setDraft] = React.useState(start.filters), [filters, setFilters] = React.useState(start.filters);
     const [page, setPage] = React.useState(start.page), [snapshot, setSnapshot] = React.useState(''), [refresh, reload] = React.useReducer(value => value + 1, 0);
     const [selection, setSelection] = React.useState(start.selection), [confirm, setConfirm] = React.useState(null), [downloadBusy, setDownloadBusy] = React.useState(false);
-    const [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
+    const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(start.migration_notice || '');
     const request = C.useRead(api, kind, { ...filters, page, page_size: pageSize, snapshot_ref: snapshot }, revision + ':' + refresh, active);
     const payload = request.data, data = payload && payload.data;
-    const stableSelection = selection && (kind !== 'backups' || /^[a-f0-9]{64}$/.test(selection.key)
+    const stableSelection = selection && (kind !== 'backups' || typeof selection.key === 'string' && selection.key.length > 0
       && ['backup_file', 'restore_event', 'cleanup_event'].includes(selection.record_kind));
     const matches = stableSelection && data ? data.rows.filter(row => row.key === selection.key && (kind !== 'backups'
       || row.record_kind === selection.record_kind && (row.record_kind !== 'backup_file' || !selection.backup_ref || row.backup_ref === selection.backup_ref))) : [];

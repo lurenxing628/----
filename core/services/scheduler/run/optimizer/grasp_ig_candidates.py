@@ -8,9 +8,8 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy.algo_stats import capture_algo_stats
 from core.errors import ValidationError
 
-from .attempt_records import validation_error_origin
+from .attempt_records import attempt_decision_evidence, validation_error_origin
 from .candidate_comparison import candidate_is_preferred
-from .candidate_fingerprint import stable_fingerprint
 from .deadline_guard import can_afford_decode, guard_decoder, observed_decode_seconds
 from .grasp_ig_specs import GRASP_ORIGIN, IG_ORIGIN, build_grasp_ig_candidate_specs
 from .search_budget import SearchBudgetExhausted
@@ -110,23 +109,28 @@ def _evaluate_candidate(
     }
 
 
-def _append_attempt(*, attempts: List[Dict[str, Any]], candidate: Dict[str, Any], origin: str, index: int) -> None:
+def _append_attempt(
+    *, attempts: List[Dict[str, Any]], candidate: Dict[str, Any], origin: str, index: int,
+    decision_evidence: Optional[Dict[str, Any]] = None,
+) -> None:
     metrics = candidate["metrics"]
     dispatch_mode = str(candidate.get("dispatch_mode") or "")
     dispatch_rule = str(candidate.get("dispatch_rule") or "")
-    attempts.append(
-        {
-            "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
-            "strategy": _safe_strategy_value(candidate.get("strategy")),
-            "dispatch_mode": dispatch_mode,
-            "dispatch_rule": dispatch_rule,
-            "used_params": dict(candidate.get("params") or {}),
-            "score": list(candidate.get("score") or []),
-            "failed_ops": int(getattr(candidate.get("summary"), "failed_ops", 0) or 0),
-            "metrics": metrics.to_dict(),
-            "algo_stats": candidate.get("algo_stats") or {},
-        }
-    )
+    attempt = {
+        "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
+        "source": origin,
+        "strategy": _safe_strategy_value(candidate.get("strategy")),
+        "dispatch_mode": dispatch_mode,
+        "dispatch_rule": dispatch_rule,
+        "used_params": dict(candidate.get("params") or {}),
+        "score": list(candidate.get("score") or []),
+        "failed_ops": int(getattr(candidate.get("summary"), "failed_ops", 0) or 0),
+        "metrics": metrics.to_dict(),
+        "algo_stats": candidate.get("algo_stats") or {},
+    }
+    if decision_evidence is not None:
+        attempt.update(decision_evidence)
+    attempts.append(attempt)
 
 
 def _append_trace(
@@ -138,8 +142,6 @@ def _append_trace(
     now: Callable[[], float],
     t_begin: float,
 ) -> None:
-    if len(improvement_trace) >= 200:
-        return
     metrics = candidate["metrics"]
     dispatch_mode = str(candidate.get("dispatch_mode") or "")
     dispatch_rule = str(candidate.get("dispatch_rule") or "")
@@ -194,17 +196,23 @@ def _record_candidate(
     fingerprint = None
     if search_report_state is not None:
         fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=origin)
-    _append_attempt(attempts=attempts, candidate=candidate, origin=origin, index=index)
-    if fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen):
-        return best
-    if not candidate_is_preferred(
+    duplicate = bool(fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen))
+    accepted = not duplicate and candidate_is_preferred(
         candidate=candidate,
         incumbent=best,
         candidate_origin=origin,
         incumbent_origin=_incumbent_origin(best, search_report_state),
         candidate_fingerprint=fingerprint,
         incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
-    ):
+    )
+    _append_attempt(
+        attempts=attempts, candidate=candidate, origin=origin, index=index,
+        decision_evidence=attempt_decision_evidence(
+            candidate=candidate, reference=best, accepted=accepted,
+            search_report_state=search_report_state, clock=now, t_begin=t_begin,
+        ),
+    )
+    if not accepted:
         return best
     if search_report_state is not None:
         search_report_state.mark_candidate_accepted(candidate, origin=origin, fingerprint=fingerprint)
@@ -293,7 +301,7 @@ def _dedupe_candidate_specs(specs: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     seen = set()
     out: List[Dict[str, Any]] = []
     for spec in list(specs or []):
-        fingerprint = _spec_decision_fingerprint(spec)
+        fingerprint = _spec_decision_key(spec)
         if fingerprint in seen:
             continue
         seen.add(fingerprint)
@@ -301,16 +309,9 @@ def _dedupe_candidate_specs(specs: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return out
 
 
-def _spec_decision_fingerprint(spec: Dict[str, Any]) -> str:
-    return stable_fingerprint(
-        {
-            "schema_version": 1,
-            "fingerprint_scope": "candidate_spec_decision",
-            "dispatch_mode": str(spec.get("dispatch_mode") or "batch_order"),
-            "dispatch_rule": str(spec.get("dispatch_rule") or ""),
-            "batch_order": list(spec.get("order") or []),
-        }
-    )
+def _spec_decision_key(spec: Dict[str, Any]) -> Tuple[str, str, Tuple[Any, ...]]:
+    return (str(spec.get("dispatch_mode") or "batch_order"),
+            str(spec.get("dispatch_rule") or ""), tuple(spec.get("order") or []))
 
 
 def _run_candidate_spec(

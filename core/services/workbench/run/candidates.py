@@ -1,67 +1,35 @@
 """Self-contained permanent candidate catalog and full-scope workspace service."""
 
-from dataclasses import dataclass
 from datetime import date
-from functools import cached_property
-from typing import Optional
 
-from core.models.workbench_command import input_fingerprint
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import (
     algorithm_facts,
     baseline_capture,
     candidate_summary,
-    dispositions,
-    validate_manifest,
 )
+from core.services.workbench.facts.candidate_read_source import candidate_manifest, read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import (
     filter_workspace,
     task_span,
-    tasks_projection,
-    unplanned_projection,
 )
-from core.services.workbench.facts.candidate_values import corrupt, gap
-from core.services.workbench.facts.gantt_graph import candidate_gantt_graph
+from core.services.workbench.facts.candidate_values import gap
 
 from .candidate_delivery import candidate_delivery_risks
-
-
-@dataclass(frozen=True)
-class CandidateReadSource:
-    run: dict
-    candidate: dict
-    disposition: Optional[dict]
-    capture: dict
-    facts: GenerationFacts
-    raw_tasks: list
-    tasks: list
-    unplanned: Optional[list]
-
-    @cached_property
-    def gantt_graph(self):
-        return candidate_gantt_graph(self.tasks, self.facts, self.raw_tasks)
 
 
 class WorkbenchRunCandidateQueryService:
     def __init__(self, conn):
         self.store = CandidateStore(conn)
 
-    def _load(self, run_ref):
-        run = self.store.run(run_ref)
-        receipt = self.store.receipt(run)
-        rows = self.store.candidates(run_ref)
-        validate_manifest(run, rows, receipt)
-        return run, rows, dispositions(receipt)
-
     def catalog(self, scope):
-        """Return (public DTO, full-catalog fingerprint), independent of page number."""
+        """Return the public DTO and source identity, independent of page number."""
         with self.store.snapshot():
-            run, rows, disposition = self._load(scope.run_ref)
+            run, rows, disposition, _receipt = candidate_manifest(self.store, scope.run_ref)
             summaries = [(row["sequence"], candidate_summary(row, disposition)) for row in rows]
-            state = input_fingerprint({"run": run, "candidates": summaries})
+            state = {"read_contract_version": 1, "run_ref": run["run_ref"], "run_state": run["state"]}
             filtered = [(seq, item) for seq, item in summaries if scope.status in ("all", item["status"])]
 
             def sort(item):
@@ -82,25 +50,15 @@ class WorkbenchRunCandidateQueryService:
     def workspace(self, scope):
         """No UI paging: every persisted task in the exact requested scope is returned."""
         with self.store.snapshot():
-            return self._workspace(self._source(scope.candidate_ref), scope)
-
-    def _source(self, candidate_ref):
-        """Load and verify once for projections owned by this read snapshot."""
-        run_ref = self.store.candidate_run(candidate_ref)
-        run, rows, disposition = self._load(run_ref)
-        candidate = next(row for row in rows if row["candidate_ref"] == candidate_ref)
-        capture = self.store.capture(run_ref)
-        facts = GenerationFacts(capture)
-        raw_tasks = self.store.tasks(candidate_ref)
-        if len(raw_tasks) != candidate["task_count"]:
-            corrupt()
-        tasks = tasks_projection(raw_tasks, candidate, facts)
-        return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks,
-                                   tasks, unplanned_projection(disposition, tasks, facts))
+            return self._workspace(read_candidate_source(self.store, scope.candidate_ref), scope)
 
     @staticmethod
     def _workspace(source, scope):
         tasks, unplanned = filter_workspace(source.tasks, source.unplanned, scope)
+        effort = source.operation_effort_projection
+        tasks = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in tasks]
+        if unplanned is not None:
+            unplanned = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in unplanned]
         delivery = candidate_delivery_risks(source.candidate, source.facts, source.tasks, source.disposition, scope,
                                             source.capture["input"], tasks, unplanned)
         data = {"candidate": candidate_summary(source.candidate, source.disposition),
@@ -116,7 +74,7 @@ class WorkbenchRunCandidateQueryService:
                 "batch_ref": scope.batch_ref, "capabilities": read_capabilities(),
                 "blocked_reasons": blocked_reasons(),
                 "data_gaps": [] if unplanned is not None else [gap("unplanned_operations")], "delivery_risks": delivery}
-        return data, input_fingerprint(data)
+        return data, source.snapshot_identity
 
 
 def _generation(run, capture, candidate):

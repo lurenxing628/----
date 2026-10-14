@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, datetime
 
+from core.models.content import content_text
 from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
@@ -14,7 +15,6 @@ from core.services.report.plan_labels import planned_review_labels
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from core.services.workbench.process.queries import plain_fingerprint
 from data.repositories.workbench_report_facts_repo import WorkbenchReportFactsRepository
 
 from .review_records import choice_directory
@@ -105,7 +105,7 @@ class WorkbenchReportFacts:
                  "ledger": ledger, "labels": [planned_review_labels(row) for row in rows], "resources": resources,
                  "operation_refs": operation_refs, "task_refs": task_refs, "choices": choices}
         # 只判断数据变没变：一次写成文本取摘要，不先 plain_plan_facts() 复制整份计划行和台账。
-        facts["fingerprint"] = plain_fingerprint({
+        facts["fingerprint"] = content_text({
             "revision": self.plans.references.read_revision(), "plan": plan, "rows": rows,
             "ledger": ledger["snapshot_facts"], "resources": resources,
             "operation_refs": facts["operation_refs"], "task_refs": facts["task_refs"], "choices": choices,

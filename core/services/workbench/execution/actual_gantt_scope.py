@@ -2,7 +2,6 @@
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
 from typing import NoReturn, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -133,16 +132,9 @@ def _unresolved_resource_facts(gaps, field):
 
 
 def deadlines(item, as_of):
-    task, execution = item["task"], item["execution"]
-    if execution is None:
-        return dict(finishLate=False, unclosed=False, forecastLate=False)
-    end = datetime.fromisoformat(task["end"])
-    complete = execution["execution_state"] == "complete"
-    actual = execution["confirmed_finish"]
-    remaining = execution["remaining_plan"]
-    return dict(finishLate=bool(complete and actual and (datetime.fromisoformat(actual) - end).total_seconds() > 600),
-                unclosed=bool(not complete and task["end"] <= as_of),
-                forecastLate=bool(not complete and remaining and (datetime.fromisoformat(remaining["end"]) - end).total_seconds() > 600))
+    deviation = item["deviation"]
+    return dict(finishLate=deviation["finish_late"], unclosed=deviation["unclosed"],
+                forecastLate=deviation["forecast_late"])
 
 
 def search_text(item, names):

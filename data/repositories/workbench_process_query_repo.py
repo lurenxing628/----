@@ -50,7 +50,7 @@ class WorkbenchProcessQueryRepository(BaseRepository):
 
     def template_operations_with_refs(self, part_no):
         """零件的全部工序（含停用）连有效模板工序编号，按 seq 排序。"""
-        return self.fetchall("""SELECT o.*,r.ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
+        return self.fetchall("""SELECT o.*,r.ref,r.revision FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
             ON r.kind='template_operation' AND r.entity_key=CAST(o.id AS TEXT) AND r.active=1
             WHERE o.part_no=? ORDER BY o.seq""", (part_no,))
 

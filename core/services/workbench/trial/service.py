@@ -18,7 +18,6 @@ from core.models.workbench_trial import (
     reject,
     save_input,
 )
-from core.models.workbench_trial_codec import fingerprint
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_policy import (
@@ -32,7 +31,8 @@ from data.repositories.workbench_trial_repo import WorkbenchTrialRepository, new
 
 from .base import prepare_base
 from .facts import live_context
-from .projection import draft_projection, write_snapshot
+from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
+from .projection import draft_projection, scenario_capacity, scenario_comparison, scenario_rows, write_snapshot
 from .validation import TrialValidator
 
 
@@ -48,9 +48,10 @@ class WorkbenchTrialService:
 
     @staticmethod
     def _create_snapshot(admission, rows):
-        return {"input": admission["input"], "facts_hash": admission["facts_hash"],
-                "source_hash": fingerprint(admission["source"]),
-                "rows_hash": fingerprint([(row["source_row_ref"], row["original"]) for row in rows])}
+        return {"input": admission["input"], "facts": admission["facts"],
+                "execution": admission["execution"], "baseline": admission["baseline"],
+                "source": admission["source"],
+                "rows": [(row["source_row_ref"], row["original"]) for row in rows]}
 
     def preview_create(self, value):
         intent = create_input(value)
@@ -147,6 +148,9 @@ class WorkbenchTrialService:
             snapshot = deepcopy(self._projection(head, rows, live))
             snapshot.update(scenario_ref=new_ref(), name=intent["name"], status="saved", saved_at=self._now())
             snapshot.pop("write_context")
+            for item in snapshot["tasks"] + snapshot["unplanned_operations"]:
+                if "operation_effort" in item:
+                    item["operation_effort"]["after"]["evidence_source"] = {"kind": "scenario", "scenario_ref": snapshot["scenario_ref"]}
             for row in snapshot["tasks"]:
                 row.update(source_row_ref=row["row_ref"], source_task_ref=row["task_ref"],
                            row_ref=new_ref(), task_ref=new_ref())
@@ -156,6 +160,7 @@ class WorkbenchTrialService:
                 row["predecessor_refs"] = [old_to_new[ref] for ref in row["predecessor_refs"]]
                 _scenario_issue_refs(row["issues"], old_to_new)
             _scenario_issue_refs(snapshot["validation"]["issues"], old_to_new)
+            apply_changeovers(snapshot["comparison"], trial_changeovers(scenario_rows(snapshot, rows), head["admission"]))
             snapshot["preview_target"] = "/api/workbench/v1/trial/scenarios/" + snapshot["scenario_ref"]
             require_advanced(self.repo.save(head, snapshot, request_key, self.actor_provider(), snapshot["saved_at"]))
             return WorkbenchCommandOutcome("committed", snapshot)
@@ -176,7 +181,25 @@ class WorkbenchTrialService:
 
     def scenario(self, scenario_ref):
         with candidate_read_snapshot(self.conn):
-            return load_scenario(self.repo, reference(scenario_ref))
+            saved = load_scenario(self.repo, reference(scenario_ref))
+            if self.repo.draft_header(saved["draft_ref"]) is None:
+                head, rows = None, []
+            else:
+                head, rows = load_draft(self.repo, saved["draft_ref"])
+            result = deepcopy(saved)
+            result["comparison"] = (result["comparison"] if "delivery_summary" in result["comparison"]
+                                    else scenario_comparison(saved, head, rows))
+            result["capacity"] = scenario_capacity(saved, head, rows)
+            if head is not None:
+                projected = scenario_rows(saved, rows)
+                if "preparation_common" not in result["comparison"]:
+                    pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
+                        current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]})
+                    apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
+                    result["comparison"]["preparation_common"] = preparation
+                if "changeover_common" not in result["comparison"]:
+                    apply_changeovers(result["comparison"], trial_changeovers(projected, head["admission"]))
+            return result
 
     def lookup(self, request_key):
         validate_request_key(request_key)

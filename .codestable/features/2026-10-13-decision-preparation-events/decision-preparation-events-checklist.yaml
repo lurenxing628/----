@@ -1,0 +1,39 @@
+feature: decision-preparation-events
+steps:
+  - id: shared-effort-events
+    description: 实际需求账与切换事件共同源头，执行冻结分件外协规则
+    status: done
+  - id: archive-decision-export
+    description: 新证据保存旧档投影，同scope准备加工切换比较及导出
+    status: done
+  - id: ui-consumers
+    description: 紧凑准备切换分区及旧同义入口，甘特定位与返回
+    status: done
+  - id: verification-docs
+    description: 实际隔离场景浏览器原始导出、回归日常构建和文档交接
+    status: done
+checks:
+  - id: C01
+    description: 准备加工分解等于真实排槽需求，目标剩余零工时与缺项
+    status: passed
+  - id: C02
+    description: 执行完成冻结种子保留实际安排与准备状态来源
+    status: passed
+  - id: C03
+    description: 分件自身共同工序唯一计量，外协周期及合并组单列
+    status: passed
+  - id: C04
+    description: 新运行试调保存永久身份，正式来源及旧档标准runtime缺项
+    status: passed
+  - id: C05
+    description: 完整相同准备量，普通漏排合法暂缓及加工剩余可追溯
+    status: passed
+  - id: C06
+    description: 统一切换事件计数，非零内制首道同工种冲突窗口前驱
+    status: passed
+  - id: C07
+    description: 双侧准备切换表稳定分页筛选甘特往返及双格式导出
+    status: passed
+  - id: C08
+    description: 回归日常离线构建真实实例浏览器导出文档及原资料保全
+    status: passed

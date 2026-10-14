@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import glob
-import hashlib
 import json
 import os
 import re
@@ -11,14 +10,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union, cast
 
+from tools.long_gate_schema import canonical_content, content_equal, read_file_content
 from tools.test_registry import (
     QUALITY_GATE_GUARD_TESTS,
     QUALITY_GATE_REQUIRED_TESTS,
     QUALITY_GATE_SELFTEST_PATH,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
-)
-from tools.test_registry import (
-    hash_required_tests_registry as _registry_required_tests_hash,
 )
 from tools.test_registry import (
     iter_required_tests as _registry_required_tests,
@@ -35,63 +32,76 @@ LEDGER_PATH = os.path.join(REPO_ROOT, "开发文档", "技术债务治理台账.
 STAGE_RECORD_PATH = os.path.join(REPO_ROOT, "开发文档", "阶段留痕与验收记录.md")
 # Compatibility export for callers of the retired gate meta selftests.
 TEST_ARCH_FITNESS_PATH = ""
-QUALITY_GATE_MANIFEST_REL = os.path.join("evidence", "QualityGate", "quality_gate_manifest.json")
-QUALITY_GATE_RECEIPTS_DIR_REL = os.path.join("evidence", "QualityGate", "receipts")
-QUALITY_GATE_LOGS_DIR_REL = os.path.join("evidence", "QualityGate", "logs")
+QUALITY_GATE_LEGACY_ROOT_REL = os.path.join("evidence", "QualityGate")
+QUALITY_GATE_ROOT_REL = os.path.join(QUALITY_GATE_LEGACY_ROOT_REL, "v4")
+QUALITY_GATE_MANIFEST_REL = os.path.join(QUALITY_GATE_ROOT_REL, "quality_gate_manifest.json")
+QUALITY_GATE_RECEIPTS_DIR_REL = os.path.join(QUALITY_GATE_ROOT_REL, "receipts")
+QUALITY_GATE_LOGS_DIR_REL = os.path.join(QUALITY_GATE_ROOT_REL, "logs")
 QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "current_full_test_debt.json",
 )
 # 失败后把 current 明细改名留存到此处供事后排错（单文件覆盖、不堆积、随 .gitignore 隐身）。
 QUALITY_GATE_FAILED_FULL_TEST_DEBT_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "current_full_test_debt.failed.json",
 )
 QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "full_test_debt_summary.json",
 )
 QUALITY_GATE_FULL_TEST_DEBT_NODE_CACHE_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "full_test_debt_node_cache.json",
 )
 QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "startup_runtime_regressions.json",
 )
 QUALITY_GATE_REQUIRED_REGRESSIONS_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "required_regressions.json",
 )
 QUALITY_GATE_DEBT_LEDGER_SYNC_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "debt_ledger_sync.json",
 )
 QUALITY_GATE_RUFF_CHECK_FULL_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "ruff_check_full.json",
 )
 QUALITY_GATE_PYRIGHT_GATE_FULL_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "pyright_gate_full.json",
 )
 QUALITY_GATE_PYRIGHT_TOOLS_FULL_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "pyright_tools_full.json",
 )
 QUALITY_GATE_QUICKREF_VS_ROUTES_REL = os.path.join(
     "evidence",
     "QualityGate",
+    "v4",
     "quickref_vs_routes.md",
 )
 # The retained suite is the complete suite: no marker-based exclusions or browser lane.
@@ -107,8 +117,8 @@ QUALITY_GATE_PROOF_SCOPE = {
     "claim": "required_registry_bound_to_clean_worktree",
     "does_not_claim": "risk_coverage_complete",
 }
-# New proofs bind the complete normalized records; schema 2 remains readable.
-QUALITY_GATE_PROOF_SCHEMA_VERSION = 3
+# Schema 2/3 records remain historical; new verification binds complete original content.
+QUALITY_GATE_PROOF_SCHEMA_VERSION = 4
 IMPORT_CYCLE_PRODUCTION_DISPLAY = (
     "python -m tools.scan_import_cycles --fail-on-new-cycle --quiet-when-clean"
 )
@@ -266,8 +276,8 @@ ENTRY_MANUAL_FIELDS = ["status", "owner", "batch", "notes", "exit_condition"]
 ENTRY_COMMON_FIELDS = ["id", "path", "symbol", "status", "owner", "batch", "exit_condition", "last_verified_at"]
 
 LEDGER_IDENTITY_STRATEGY = (
-    "silent_fallback.id 使用 path + symbol + handler_fingerprint 稳定键；"
-    "except_ordinal 仅用于同函数内同构处理器次级消歧；"
+    "silent_fallback.id 保留已有永久编号，新编号使用 path + symbol + except_ordinal；"
+    "handler_signature / handler_context 保存完整原文用于当前内容比较；"
     "line_start/line_end 仅作证据坐标"
 )
 
@@ -368,7 +378,7 @@ def repo_abs(rel_path: str) -> str:
 
 
 def read_text_file(rel_path: str) -> str:
-    with open(repo_abs(rel_path), encoding="utf-8", errors="strict") as f:
+    with open(repo_abs(rel_path), encoding="utf-8", errors="strict", newline="") as f:
         return f.read()
 
 
@@ -423,17 +433,8 @@ def collect_startup_scope_files() -> List[str]:
     return collect_globbed_files(STARTUP_SCOPE_PATTERNS)
 
 
-def _stable_json_hash(payload: Any) -> str:
-    rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(rendered.encode("utf-8")).hexdigest()
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(str(text or "").encode("utf-8")).hexdigest()
-
-
 def normalize_quality_gate_command(command: Mapping[str, Any]) -> Dict[str, Any]:
-    """One command identity for execution, receipts, resume and cache fingerprints."""
+    """One complete command identity for execution, receipts, resume and cache comparison."""
     return {
         "display": str(command.get("display") or "").strip(),
         "args": [str(arg) for arg in list(command.get("args") or [])],
@@ -455,20 +456,35 @@ def _normalize_env_overlay(value: Any) -> Dict[str, str]:
         key_text = str(key or "").strip()
         if not key_text:
             continue
-        normalized[key_text] = str(value.get(key) or "")
+        text = str(value.get(key) or "")
+        if text and _sensitive_env_key(key_text):
+            raise QualityGateError(f"Sensitive environment overlay key is not allowed: {key_text}")
+        normalized[key_text] = text
     return normalized
+
+
+def _sensitive_env_key(key: str) -> bool:
+    return bool(re.search(r"SECRET|TOKEN|PASSWORD|BEARER|AUTHORIZATION", key, re.IGNORECASE))
+
+
+def sanitize_quality_gate_output(text: str) -> str:
+    """Remove current-process credential values before logs or receipts are persisted."""
+    output = str(text or "")
+    values = {str(value) for key, value in os.environ.items() if value and _sensitive_env_key(key)}
+    for value in sorted(values, key=len, reverse=True):
+        output = output.replace(value, "[REDACTED]")
+    return output
 
 
 def _normalize_source_rows(gate_sources: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for row in list(gate_sources or []):
-        rows.append(
-            {
-                "path": str(row.get("path") or "").replace("\\", "/"),
-                "exists": bool(row.get("exists")),
-                "sha256": str(row.get("sha256") or ""),
-            }
-        )
+        normalized = {"path": str(row.get("path") or "").replace("\\", "/"), "exists": row.get("exists")}
+        if "content_base64" in row:
+            normalized["content_base64"] = row["content_base64"]
+        elif "sha256" in row:
+            normalized["sha256"] = str(row.get("sha256") or "")
+        rows.append(normalized)
     rows.sort(key=lambda item: item["path"])
     return rows
 
@@ -516,8 +532,6 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
         "output_policy": str(payload.get("output_policy") or "").strip().lower(),
         "env_overlay": _normalize_env_overlay(payload.get("env_overlay")),
         "returncode": int(payload.get("returncode") or 0),
-        "stdout_sha256": str(payload.get("stdout_sha256") or "").strip(),
-        "stderr_sha256": str(payload.get("stderr_sha256") or "").strip(),
         "stdout_log_path": str(payload.get("stdout_log_path") or "").replace("\\", "/"),
         "stderr_log_path": str(payload.get("stderr_log_path") or "").replace("\\", "/"),
         "execution_mode": str(payload.get("execution_mode") or "").strip(),
@@ -526,6 +540,12 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
         "interrupted": payload.get("interrupted"),
         "partial_write": payload.get("partial_write"),
     }
+    if receipt["schema_version"] in (2, 3):
+        receipt["stdout_sha256"] = str(payload.get("stdout_sha256") or "").strip()
+        receipt["stderr_sha256"] = str(payload.get("stderr_sha256") or "").strip()
+    else:
+        receipt["stdout_content"] = payload.get("stdout_content")
+        receipt["stderr_content"] = payload.get("stderr_content")
     if receipt["schema_version"] == 2:
         receipt["command_hash"] = str(payload.get("command_hash") or "").strip()
     return receipt
@@ -534,12 +554,12 @@ def _normalize_command_receipt_payload(payload: Dict[str, Any]) -> Dict[str, Any
 def _normalize_command_receipt_index(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for row in list(rows or []):
-        out.append(
-            {
-                "path": str(row.get("path") or "").replace("\\", "/"),
-                "sha256": str(row.get("sha256") or "").strip(),
-            }
-        )
+        normalized = {"path": str(row.get("path") or "").replace("\\", "/")}
+        if "content" in row:
+            normalized["content"] = json.loads(canonical_content(row["content"]))
+        elif "sha256" in row:
+            normalized["sha256"] = str(row.get("sha256") or "").strip()
+        out.append(normalized)
     return out
 
 
@@ -588,7 +608,7 @@ def _command_output_policy(command: Mapping[str, Any]) -> str:
 
 
 def _normalize_command_output_for_policy(text: str, *, policy: str) -> str:
-    output = str(text or "")
+    output = sanitize_quality_gate_output(text)
     if policy != "normalized":
         return output
     output = output.replace("\r\n", "\n").replace("\r", "\n")
@@ -607,10 +627,6 @@ def _normalize_command_output_for_policy(text: str, *, policy: str) -> str:
     return "\n".join(line.rstrip() for line in output.splitlines()).strip() + ("\n" if output.strip() else "")
 
 
-def _hash_command_output(text: str, *, policy: str) -> str:
-    return _sha256_text(_normalize_command_output_for_policy(text, policy=policy))
-
-
 def replay_quality_gate_command_plan(
     repo_root: Union[os.PathLike, str],
     commands: Sequence[Dict[str, Any]],
@@ -619,11 +635,48 @@ def replay_quality_gate_command_plan(
     compare_receipts: bool = True,
     reusable_results: Optional[Mapping[int, Mapping[str, Any]]] = None,
     validated_receipts: Optional[Mapping[int, Dict[str, Any]]] = None,
+    receipt_entries: Optional[Sequence[Dict[str, Any]]] = None,
+    run_id: Optional[str] = None,
     resolve_reusable_result: Optional[Callable[[int], Optional[Mapping[str, Any]]]] = None,
     on_command_executed: Optional[Callable[[], None]] = None,
 ) -> Optional[str]:
-    for index, command in enumerate(_normalize_command_rows(commands), start=1):
+    normalized_commands = _normalize_command_rows(commands)
+    indexed_receipts = _normalize_command_receipt_index(receipt_entries or [])
+    if receipt_entries is not None and len(indexed_receipts) != len(normalized_commands):
+        return "UNBOUND: quality gate command receipts mismatch during replay"
+    expected_run_id = str(run_id or "").strip()
+    for index, command in enumerate(normalized_commands, start=1):
         display = str(command.get("display") or "").strip()
+        receipt = None
+        if compare_receipts:
+            receipt_rel = build_quality_gate_receipt_rel_path(index, display)
+            if receipt_entries is not None:
+                receipt_entry = indexed_receipts[index - 1]
+            else:
+                receipt_payload = (validated_receipts or {}).get(index)
+                if receipt_payload is None:
+                    receipt_abs = os.path.join(os.fspath(repo_root), receipt_rel.replace("/", os.sep))
+                    if not os.path.isfile(receipt_abs):
+                        return "UNBOUND: quality gate command receipt missing during replay"
+                    try:
+                        receipt_payload = json.loads(read_text_file(receipt_abs))
+                    except Exception:
+                        return "UNBOUND: quality gate command receipt unreadable during replay"
+                receipt_entry = {"path": receipt_rel, "content": receipt_payload}
+            receipt_payload, load_error = _load_verified_quality_gate_receipt(
+                repo_root, receipt_entry, command, index=index,
+            )
+            if load_error:
+                return load_error + " during replay"
+            receipt = _normalize_command_receipt_payload(receipt_payload or {})
+            expected_run_id = expected_run_id or receipt["run_id"]
+            for error in (
+                _verify_receipt_header(receipt, command, index=index, run_id=expected_run_id),
+                _verify_receipt_command_fields(receipt, command, command),
+                _verify_receipt_execution_fields(receipt),
+            ):
+                if error:
+                    return error + " during replay"
         env = os.environ.copy()
         env.update(_normalize_env_overlay(command.get("env_overlay")))
         cached = resolve_reusable_result(index) if resolve_reusable_result else (reusable_results or {}).get(index)
@@ -639,41 +692,34 @@ def replay_quality_gate_command_plan(
             returncode, stdout, stderr = int(cached["returncode"]), str(cached["stdout"]), str(cached["stderr"])
         if returncode != 0:
             return f"UNBOUND: quality gate command replay failed: {display}"
-        if compare_receipts:
-            receipt_rel = build_quality_gate_receipt_rel_path(index, display)
-            receipt_abs = os.path.join(os.fspath(repo_root), receipt_rel.replace("/", os.sep))
-            if not os.path.isfile(receipt_abs):
-                return "UNBOUND: quality gate command receipt missing during replay"
-            receipt_payload = (validated_receipts or {}).get(index)
-            if receipt_payload is None:
-                try:
-                    receipt_payload = json.loads(read_text_file(receipt_abs))
-                except Exception:
-                    return "UNBOUND: quality gate command receipt unreadable during replay"
-            receipt = _normalize_command_receipt_payload(receipt_payload if isinstance(receipt_payload, dict) else {})
-            if receipt["schema_version"] == 2 and receipt.get("command_hash") != _stable_json_hash(command):
-                return f"UNBOUND: quality gate command receipt command_hash mismatch during replay: {display}"
-            command_field_error = _verify_receipt_command_fields(receipt, command, command)
-            if command_field_error:
-                return command_field_error + " during replay"
+        if receipt is not None:
+            output_error = _verify_receipt_output_content(
+                receipt, command, index=index, current_collect_stdout=stdout, current_collect_stderr=stderr,
+            )
+            if output_error:
+                return output_error + " during replay"
             stdout_log_rel = str(receipt.get("stdout_log_path") or "").replace("\\", "/")
             stderr_log_rel = str(receipt.get("stderr_log_path") or "").replace("\\", "/")
+            log_directory = os.path.realpath(os.path.join(os.fspath(repo_root), QUALITY_GATE_LOGS_DIR_REL))
             for log_rel in (stdout_log_rel, stderr_log_rel):
-                if not log_rel or not os.path.isfile(os.path.join(os.fspath(repo_root), log_rel.replace("/", os.sep))):
+                log_abs = os.path.realpath(os.path.join(os.fspath(repo_root), log_rel.replace("/", os.sep)))
+                if not log_abs.startswith(log_directory + os.sep):
+                    return f"UNBOUND: quality gate command receipt log path mismatch during replay: {display}"
+                if not os.path.isfile(log_abs):
                     return f"UNBOUND: quality gate command receipt log missing during replay: {display}"
             policy = _command_output_policy(command)
-            if receipt.get("stdout_sha256") != _hash_command_output(stdout, policy=policy):
+            if receipt.get("stdout_content") != _normalize_command_output_for_policy(stdout, policy=policy):
                 return f"UNBOUND: quality gate command receipt stdout replay mismatch: {display}"
-            if receipt.get("stderr_sha256") != _hash_command_output(stderr, policy=policy):
+            if receipt.get("stderr_content") != _normalize_command_output_for_policy(stderr, policy=policy):
                 return f"UNBOUND: quality gate command receipt stderr replay mismatch: {display}"
             try:
                 stdout_log_text = read_text_file(os.path.join(os.fspath(repo_root), stdout_log_rel.replace("/", os.sep)))
                 stderr_log_text = read_text_file(os.path.join(os.fspath(repo_root), stderr_log_rel.replace("/", os.sep)))
             except Exception:
                 return f"UNBOUND: quality gate command receipt log unreadable during replay: {display}"
-            if receipt.get("stdout_sha256") != _hash_command_output(stdout_log_text, policy=policy):
+            if receipt.get("stdout_content") != _normalize_command_output_for_policy(stdout_log_text, policy=policy):
                 return f"UNBOUND: quality gate command receipt stdout log mismatch during replay: {display}"
-            if receipt.get("stderr_sha256") != _hash_command_output(stderr_log_text, policy=policy):
+            if receipt.get("stderr_content") != _normalize_command_output_for_policy(stderr_log_text, policy=policy):
                 return f"UNBOUND: quality gate command receipt stderr log mismatch during replay: {display}"
     return None
 
@@ -829,8 +875,7 @@ def build_quality_gate_command_plan() -> List[Dict[str, Any]]:
 def build_quality_gate_receipt_rel_path(index: int, display: str) -> str:
     slug = slugify(display) or f"command-{int(index)}"
     short_slug = slug[:48].rstrip("-") or f"command-{int(index)}"
-    digest = hashlib.sha256(str(display or "").encode("utf-8")).hexdigest()[:10]
-    return os.path.join(QUALITY_GATE_RECEIPTS_DIR_REL, f"{int(index):02d}_{short_slug}_{digest}.json").replace("\\", "/")
+    return os.path.join(QUALITY_GATE_RECEIPTS_DIR_REL, f"{int(index):02d}_{short_slug}.json").replace("\\", "/")
 
 
 def build_quality_gate_command_receipt(
@@ -857,8 +902,8 @@ def build_quality_gate_command_receipt(
             "output_policy": output_policy,
             "env_overlay": dict(normalized_command.get("env_overlay") or {}),
             "returncode": int(returncode),
-            "stdout_sha256": _hash_command_output(str(stdout or ""), policy=output_policy),
-            "stderr_sha256": _hash_command_output(str(stderr or ""), policy=output_policy),
+            "stdout_content": _normalize_command_output_for_policy(str(stdout or ""), policy=output_policy),
+            "stderr_content": _normalize_command_output_for_policy(str(stderr or ""), policy=output_policy),
             "stdout_log_path": str(stdout_log_path or "").replace("\\", "/"),
             "stderr_log_path": str(stderr_log_path or "").replace("\\", "/"),
             "execution_mode": "executed",
@@ -893,17 +938,6 @@ def build_quality_gate_collection_proof(
     )
 
 
-def _sha256_file(abs_path: str) -> str:
-    hasher = hashlib.sha256()
-    with open(abs_path, "rb") as handle:
-        while True:
-            chunk = handle.read(65536)
-            if not chunk:
-                break
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def build_quality_gate_source_proof(repo_root: Optional[Union[os.PathLike, str]] = None) -> List[Dict[str, Any]]:
     root = os.path.abspath(os.fspath(repo_root) if repo_root is not None else REPO_ROOT)
     rows: List[Dict[str, Any]] = []
@@ -914,30 +948,10 @@ def build_quality_gate_source_proof(repo_root: Optional[Union[os.PathLike, str]]
             {
                 "path": str(rel_path).replace("\\", "/"),
                 "exists": bool(exists),
-                "sha256": _sha256_file(abs_path) if exists else "",
+                "content_base64": read_file_content(abs_path) if exists else "",
             }
         )
     return _normalize_source_rows(rows)
-
-
-def hash_required_tests_registry(required_tests: Sequence[str]) -> str:
-    return _registry_required_tests_hash(required_tests)
-
-
-def hash_quality_gate_commands(commands: Sequence[Dict[str, Any]]) -> str:
-    return _stable_json_hash(_normalize_command_rows(commands))
-
-
-def hash_quality_gate_collection_proof(collection_proof: Dict[str, Any]) -> str:
-    return _stable_json_hash(_normalize_collection_proof(collection_proof))
-
-
-def hash_quality_gate_source_proof(gate_sources: Sequence[Dict[str, Any]]) -> str:
-    return _stable_json_hash(_normalize_source_rows(gate_sources))
-
-
-def hash_quality_gate_command_receipts(command_receipts: Sequence[Dict[str, Any]]) -> str:
-    return _stable_json_hash(_normalize_command_receipt_index(command_receipts))
 
 
 def apply_quality_gate_manifest_proof_fields(
@@ -945,7 +959,6 @@ def apply_quality_gate_manifest_proof_fields(
     *,
     repo_root: Optional[Union[os.PathLike, str]] = None,
 ) -> Dict[str, Any]:
-    manifest["schema_version"] = QUALITY_GATE_PROOF_SCHEMA_VERSION
     manifest["proof_scope"] = dict(QUALITY_GATE_PROOF_SCOPE)
     required_tests = _normalize_required_tests(manifest.get("required_tests") or iter_quality_gate_required_tests())
     manifest["required_tests"] = required_tests
@@ -957,10 +970,15 @@ def apply_quality_gate_manifest_proof_fields(
     manifest["collection_proof"] = collection_proof
 
     command_receipts = _normalize_command_receipt_index(manifest.get("command_receipts") or [])
+    if any(not isinstance(row.get("content"), dict) for row in command_receipts):
+        raise QualityGateError("Legacy quality gate receipt content is unavailable; execute a new run.")
     manifest["command_receipts"] = command_receipts
 
     gate_sources = _normalize_source_rows(manifest.get("gate_sources") or build_quality_gate_source_proof(repo_root))
+    if any(not isinstance(row.get("content_base64"), str) for row in gate_sources):
+        raise QualityGateError("Legacy quality gate source content is unavailable; execute a new run.")
     manifest["gate_sources"] = gate_sources
+    manifest["schema_version"] = QUALITY_GATE_PROOF_SCHEMA_VERSION
     for field in ("required_tests_hash", "commands_hash", "collection_proof_hash",
                   "command_receipts_hash", "gate_sources_hash", "planned_commands_hash"):
         manifest.pop(field, None)
@@ -1004,10 +1022,8 @@ def _verify_quality_gate_collection_proof(
         current_collect_nodeids,
         required_tests=expected_required_tests,
     )
-    if collection_proof != expected_collection_proof:
+    if not content_equal(collection_proof, expected_collection_proof):
         return "UNBOUND: quality gate collection proof mismatch"
-    if manifest.get("schema_version") == 2 and str(manifest.get("collection_proof_hash") or "") != hash_quality_gate_collection_proof(collection_proof):
-        return "UNBOUND: quality gate collection_proof_hash mismatch"
     return None
 
 
@@ -1018,22 +1034,30 @@ def _load_verified_quality_gate_receipt(
     *,
     index: int,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    receipt_path = str(receipt_entry.get("path") or "").replace("\\", "/")
+    has_content = isinstance(receipt_entry.get("content"), dict)
     expected_path = build_quality_gate_receipt_rel_path(index, str(command.get("display") or ""))
-    if receipt_entry.get("path") != expected_path:
+    if has_content and receipt_path != expected_path:
         return None, "UNBOUND: quality gate command receipt path mismatch"
-    abs_path = os.path.join(os.fspath(repo_root), expected_path.replace("/", os.sep))
+    directory = QUALITY_GATE_RECEIPTS_DIR_REL if has_content else os.path.join(QUALITY_GATE_LEGACY_ROOT_REL, "receipts")
+    allowed_directory = os.path.realpath(os.path.join(os.fspath(repo_root), directory))
+    abs_path = os.path.realpath(os.path.join(os.fspath(repo_root), receipt_path.replace("/", os.sep)))
+    if not receipt_path or not abs_path.startswith(allowed_directory + os.sep):
+        return None, "UNBOUND: quality gate command receipt path mismatch"
     if not os.path.isfile(abs_path):
         return None, "UNBOUND: quality gate command receipt missing"
     try:
         with open(abs_path, "rb") as handle:
             receipt_bytes = handle.read()
-        if str(receipt_entry.get("sha256") or "") != hashlib.sha256(receipt_bytes).hexdigest():
-            return None, "UNBOUND: quality gate command receipt hash mismatch"
         payload = json.loads(receipt_bytes)
     except Exception:
         return None, "UNBOUND: quality gate command receipt unreadable"
     if not isinstance(payload, dict) or not payload:
         return None, "UNBOUND: quality gate command receipt unreadable"
+    if not has_content:
+        return payload, "UNBOUND: legacy quality gate command receipt content unavailable; execute a new run"
+    if not content_equal(payload, receipt_entry["content"]):
+        return None, "UNBOUND: quality gate command receipt content mismatch"
     return payload, None
 
 
@@ -1045,14 +1069,14 @@ def _verify_receipt_header(
     run_id: str,
 ) -> Optional[str]:
     schema_version = int(receipt.get("schema_version") or 0)
-    if schema_version not in (2, QUALITY_GATE_PROOF_SCHEMA_VERSION):
+    if schema_version in (2, 3):
+        return "UNBOUND: legacy quality gate command receipt content unavailable; execute a new run"
+    if schema_version != QUALITY_GATE_PROOF_SCHEMA_VERSION:
         return "UNBOUND: quality gate command receipt schema_version mismatch"
     if str(receipt.get("run_id") or "").strip() != str(run_id or "").strip() or not str(run_id or "").strip():
         return "UNBOUND: quality gate command receipt run_id mismatch"
     if int(receipt.get("command_index") or 0) != int(index):
         return "UNBOUND: quality gate command receipt command_index mismatch"
-    if schema_version == 2 and receipt.get("command_hash") != _stable_json_hash(normalized_command):
-        return "UNBOUND: quality gate command receipt command_hash mismatch"
     return None
 
 
@@ -1065,12 +1089,12 @@ def _verify_receipt_command_fields(receipt: Dict[str, Any], command: Dict[str, A
         ("env_overlay", _normalize_env_overlay(command.get("env_overlay"))),
     )
     for key, expected_value in expected_values:
-        if receipt[key] != expected_value:
+        if not content_equal(receipt[key], expected_value):
             return f"UNBOUND: quality gate command receipt {key} mismatch"
     return None
 
 
-def _verify_receipt_output_hashes(
+def _verify_receipt_output_content(
     receipt: Dict[str, Any],
     normalized_command: Dict[str, Any],
     *,
@@ -1080,9 +1104,9 @@ def _verify_receipt_output_hashes(
 ) -> Optional[str]:
     if int(receipt["returncode"]) != 0:
         return "UNBOUND: quality gate command receipt returncode mismatch"
-    for key in ("stdout_sha256", "stderr_sha256"):
-        if len(str(receipt.get(key) or "")) != 64:
-            return f"UNBOUND: quality gate command receipt {key.replace('_sha256', '')} hash mismatch"
+    for key in ("stdout_content", "stderr_content"):
+        if not isinstance(receipt.get(key), str):
+            return f"UNBOUND: quality gate command receipt {key.replace('_content', '')} content missing"
     for key in ("stdout_log_path", "stderr_log_path"):
         path = str(receipt.get(key) or "").replace("\\", "/")
         if not path:
@@ -1090,10 +1114,10 @@ def _verify_receipt_output_hashes(
         if not path.startswith(QUALITY_GATE_LOGS_DIR_REL.replace("\\", "/") + "/"):
             return f"UNBOUND: quality gate command receipt {key} mismatch"
     collect_policy = _command_output_policy(normalized_command)
-    if _is_default_collect_command(normalized_command) and receipt.get("stdout_sha256") != _hash_command_output(current_collect_stdout, policy=collect_policy):
-        return "UNBOUND: quality gate collect receipt stdout hash mismatch"
-    if _is_default_collect_command(normalized_command) and receipt.get("stderr_sha256") != _hash_command_output(current_collect_stderr, policy=collect_policy):
-        return "UNBOUND: quality gate collect receipt stderr hash mismatch"
+    if _is_default_collect_command(normalized_command) and receipt.get("stdout_content") != _normalize_command_output_for_policy(current_collect_stdout, policy=collect_policy):
+        return "UNBOUND: quality gate collect receipt stdout content mismatch"
+    if _is_default_collect_command(normalized_command) and receipt.get("stderr_content") != _normalize_command_output_for_policy(current_collect_stderr, policy=collect_policy):
+        return "UNBOUND: quality gate collect receipt stderr content mismatch"
     return None
 
 
@@ -1119,8 +1143,8 @@ def _verify_receipt_execution_fields(receipt: Dict[str, Any]) -> Optional[str]:
     if execution_mode == "reused_success_cache":
         if not str(reused_from.get("result_path") or "").strip():
             return "UNBOUND: quality gate command receipt reused_from result_path missing"
-        if not str(reused_from.get("fingerprint_hash") or "").strip():
-            return "UNBOUND: quality gate command receipt reused_from fingerprint_hash missing"
+        if not isinstance(reused_from.get("fingerprint"), dict) or not reused_from["fingerprint"]:
+            return "UNBOUND: quality gate command receipt reused_from fingerprint content missing"
     if execution_mode == "resumed_success_prefix":
         if not str(reused_from.get("receipt_path") or "").strip():
             return "UNBOUND: quality gate command receipt reused_from receipt_path missing"
@@ -1143,7 +1167,7 @@ def _verify_quality_gate_receipt_payload(
     for error in (
         _verify_receipt_header(receipt, normalized_command, index=index, run_id=run_id),
         _verify_receipt_command_fields(receipt, command, normalized_command),
-        _verify_receipt_output_hashes(
+        _verify_receipt_output_content(
             receipt,
             normalized_command,
             index=index,
@@ -1170,8 +1194,6 @@ def _verify_quality_gate_command_receipts(
     command_receipts = _normalize_command_receipt_index(manifest.get("command_receipts") or [])
     if len(command_receipts) != len(expected_commands):
         return "UNBOUND: quality gate command receipts mismatch"
-    if manifest.get("schema_version") == 2 and str(manifest.get("command_receipts_hash") or "") != hash_quality_gate_command_receipts(command_receipts):
-        return "UNBOUND: quality gate command_receipts_hash mismatch"
 
     for index, (receipt_entry, command) in enumerate(zip(command_receipts, expected_commands), start=1):
         receipt_payload, load_error = _load_verified_quality_gate_receipt(
@@ -1211,7 +1233,9 @@ def _verify_manifest_header(
         return "UNBOUND: quality gate git common dir mismatch", ""
     if str(manifest.get("status") or "").strip().lower() != "passed":
         return f"UNBOUND: quality gate status={manifest.get('status') or 'unknown'}", ""
-    if manifest.get("schema_version") not in (2, QUALITY_GATE_PROOF_SCHEMA_VERSION):
+    if manifest.get("schema_version") in (2, 3):
+        return "UNBOUND: legacy quality gate proof content unavailable; execute a new run", ""
+    if manifest.get("schema_version") != QUALITY_GATE_PROOF_SCHEMA_VERSION:
         return "UNBOUND: quality gate schema_version mismatch", ""
     run_id = str(manifest.get("run_id") or "").strip()
     if not run_id:
@@ -1249,22 +1273,18 @@ def _verify_manifest_clean_finish(
 
 
 def _verify_manifest_static_proof(manifest: Dict[str, Any]) -> Tuple[Optional[str], List[str], List[Dict[str, Any]]]:
-    if dict(manifest.get("proof_scope") or {}) != dict(QUALITY_GATE_PROOF_SCOPE):
+    if not content_equal(dict(manifest.get("proof_scope") or {}), dict(QUALITY_GATE_PROOF_SCOPE)):
         return "UNBOUND: quality gate proof_scope mismatch", [], []
 
     required_tests = _normalize_required_tests(manifest.get("required_tests") or [])
     expected_required_tests = iter_quality_gate_required_tests()
-    if required_tests != expected_required_tests:
+    if not content_equal(required_tests, expected_required_tests):
         return "UNBOUND: quality gate required tests mismatch", [], []
-    if manifest.get("schema_version") == 2 and str(manifest.get("required_tests_hash") or "") != hash_required_tests_registry(required_tests):
-        return "UNBOUND: quality gate required_tests_hash mismatch", [], []
 
     commands = _normalize_command_rows(manifest.get("commands") or [])
     expected_commands = _normalize_command_rows(build_quality_gate_command_plan())
-    if commands != expected_commands:
+    if not content_equal(commands, expected_commands):
         return "UNBOUND: quality gate commands mismatch", [], []
-    if manifest.get("schema_version") == 2 and str(manifest.get("commands_hash") or "") != hash_quality_gate_commands(commands):
-        return "UNBOUND: quality gate commands_hash mismatch", [], []
     return None, expected_required_tests, expected_commands
 
 
@@ -1308,12 +1328,12 @@ def _verify_manifest_collection_and_receipts(
 def _verify_manifest_gate_sources(repo_root: Union[os.PathLike, str], manifest: Dict[str, Any]) -> Optional[str]:
     gate_sources = _normalize_source_rows(manifest.get("gate_sources") or [])
     expected_gate_sources = build_quality_gate_source_proof(repo_root)
-    if gate_sources != expected_gate_sources:
+    if any(not isinstance(row.get("content_base64"), str) for row in gate_sources):
+        return "UNBOUND: legacy quality gate source content unavailable; execute a new run"
+    if not content_equal(gate_sources, expected_gate_sources):
         return "UNBOUND: quality gate gate sources mismatch"
     if not all(bool(row.get("exists")) for row in gate_sources):
         return "UNBOUND: quality gate gate sources missing"
-    if manifest.get("schema_version") == 2 and str(manifest.get("gate_sources_hash") or "") != hash_quality_gate_source_proof(gate_sources):
-        return "UNBOUND: quality gate gate_sources_hash mismatch"
     return None
 
 
@@ -1355,7 +1375,9 @@ def _reusable_quality_gate_results(repo_root, manifest, commands, receipts, *, c
             continue
         receipt = receipts[index]
         policy = _command_output_policy(commands[index - 1])
-        if any(receipt.get(stream + "_sha256") != _hash_command_output(evaluation[stream], policy=policy)
+        if receipt.get("schema_version") != QUALITY_GATE_PROOF_SCHEMA_VERSION:
+            continue
+        if any(receipt.get(stream + "_content") != _normalize_command_output_for_policy(evaluation[stream], policy=policy)
                for stream in ("stdout", "stderr")):
             continue
         results[index] = {"returncode": 0, "stdout": evaluation["stdout"], "stderr": evaluation["stderr"]}
@@ -1384,6 +1406,8 @@ def _verify_manifest_replay(
 
     replay_error = replay_quality_gate_command_plan(repo_root, expected_commands, compare_receipts=True,
                                                    validated_receipts=validated_receipts,
+                                                   receipt_entries=(manifest or {}).get("command_receipts"),
+                                                   run_id=str((manifest or {}).get("run_id") or ""),
                                                    resolve_reusable_result=resolve_reusable_result,
                                                    on_command_executed=phase.clear)
     if replay_error:

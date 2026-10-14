@@ -267,6 +267,7 @@ class ScheduleRunState:
             seed_mode=bool(seed_mode),
             start_time=result.start_time,
             op_id=result.op_id,
+            op_type_id=result.op_type_id,
         )
 
     def _record_missing_seed_resources(self, result: ScheduleResult) -> None:

@@ -3,17 +3,18 @@
 from collections import Counter
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason, elapsed_hours
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reject
+from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
+from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, invalid_baseline
 from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_summary
+from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_tasks import operation_labels
 from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.plan.adoption_baseline import read_adoption_source
-from core.services.workbench.plan.adoption_baseline_sources import read_adoption_operation_facts
-from core.services.workbench.plan.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 from .candidates import WorkbenchRunCandidateQueryService
@@ -38,7 +39,9 @@ def _check_task_window(tasks, admission, disposition):
 
 def _comparison_labels(facts, ref):
     labels, _ = operation_labels(facts, ref)
-    execution = facts.execution[ref]
+    execution = facts.execution.get(ref)
+    if execution is None:
+        return labels
     labels["execution_at_generation"].update({key: execution[key] for key in (
         "first_actual_start", "confirmed_finish", "unknown_record_count", "records_complete", "quantity_complete", "completion_basis")})
     labels["execution_at_generation"].update(
@@ -123,7 +126,7 @@ class WorkbenchRunCandidateBaselineQueryService:
     def baseline(self, scope):
         store = self.reader.store
         with store.snapshot():
-            source = self.reader._source(scope.candidate_ref)
+            source = read_candidate_source(store, scope.candidate_ref)
             admission, rows = self._source(source)
             return self._baseline(source, admission, rows, scope)
 
@@ -136,6 +139,9 @@ class WorkbenchRunCandidateBaselineQueryService:
             admission = AdmissionBaseline(source.capture, source.facts, source.disposition, source.run["accepted_at"],
                 point_work=lambda: official_point_work(conn, baseline["version"], evidence=evidence) if evidence is not None else {},
                 origins=origins, origin_issue=origin_issue)
+            admission.source_state = {"plan_ref": baseline["plan_ref"], "version": baseline["version"],
+                                      "available": evidence is not None,
+                                      "issue_code": origin_issue["code"] if origin_issue is not None else None}
             # Workspace allows missing display metadata; comparison requires exact captured identity.
             for row in source.raw_tasks:
                 if source.facts.operations.get(row["operation_ref"]) != row["payload"].get("op_id"):
@@ -147,7 +153,7 @@ class WorkbenchRunCandidateBaselineQueryService:
         data = self._dto(source.run, candidate_summary(source.candidate, source.disposition),
                          admission, rows, len(all_rows), scope)
         bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
-        return data, input_fingerprint(data)
+        return data, {**source.snapshot_identity, "baseline_source": admission.source_state}
 
     @staticmethod
     def _dto(run, candidate, admission, rows, count, scope):
@@ -158,8 +164,8 @@ class WorkbenchRunCandidateBaselineQueryService:
                     "run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
                     "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
                     "current_entities_consulted": False, "formal_version_allocated": False, "input": admission.settings,
-                    "source_verification": {"facts_digest_verified": True, "baseline_matches_archived_schedule": True,
-                                            "execution_matches_archived_evidence": True, "input_independent_digest_recorded": False}},
+                    "source_verification": {"facts_content_verified": True, "baseline_matches_archived_schedule": True,
+                                            "execution_matches_archived_evidence": True, "input_source_verified": True, "candidate_content_verified": True}},
                 "baseline": {**baseline_capture(admission.baseline, run["accepted_at"]), "available": captured,
                              "comparison_available": available, "reason": reason},
                 "comparisons": rows, "operation_count": len(rows), "full_operation_count": count, "rows_complete": True,
@@ -175,4 +181,4 @@ class WorkbenchRunCandidateBaselineQueryService:
                 "improvement_assessment": None, "capabilities": {"view": True, "adopt": False, "edit_draft": False,
                                                                        "report_actual": False, "export": False},
                 "data_gaps": [baseline_reason(code) for code in ("effective_hours_not_recorded",
-                              "not_an_optimization_score", "input_digest_not_recorded")]}
+                              "not_an_optimization_score")]}

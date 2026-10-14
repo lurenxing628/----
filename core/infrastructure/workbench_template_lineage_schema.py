@@ -1,6 +1,6 @@
 """Caller-owned installation, immutable origins and lossless instance transitions."""
 
-from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
+from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.models.workbench_template_lineage import OPERATION_COLUMNS, SEMANTIC_COLUMNS, STATE_COLUMNS
@@ -53,7 +53,7 @@ def _source_triggers():
     }
 
 
-def template_lineage_objects():
+def template_lineage_objects(*, legacy=False):
     objects = {
         "WorkbenchTemplateLineageOrigins": """CREATE TABLE WorkbenchTemplateLineageOrigins (
             lineage_ref """ + _REF.format("lineage_ref") + """ PRIMARY KEY,
@@ -85,6 +85,10 @@ def template_lineage_objects():
         "idx_wb_lineage_birth": "CREATE UNIQUE INDEX idx_wb_lineage_birth ON WorkbenchTemplateLineageEvents(operation_ref) WHERE event_type='created'",
         "idx_wb_lineage_template_revision": "CREATE INDEX idx_wb_lineage_template_revision ON WorkbenchTemplateLineageOrigins(template_operation_ref,template_revision)",
     }
+    if not legacy:
+        for column in ("template_fingerprint", "instance_fingerprint"):
+            objects["WorkbenchTemplateLineageOrigins"] = objects["WorkbenchTemplateLineageOrigins"].replace(
+                column + " TEXT NOT NULL", column + " TEXT")
     objects.update(_source_triggers())
     for table, stem in (("WorkbenchTemplateLineageOrigins", "origin"), ("WorkbenchTemplateLineageEvents", "event")):
         for event in ("update", "delete"):
@@ -105,11 +109,13 @@ def template_lineage_objects():
     return objects
 
 
-def template_lineage_contract_issues(conn, *, structure=None):
+def template_lineage_contract_issues(conn, *, structure=None, allow_legacy=True):
     actual = schema_objects(conn, structure=structure)
+    legacy = template_lineage_objects(legacy=True)
     return [("missing_template_lineage:" if name not in actual else "invalid_template_lineage:") + name
             for name, sql in template_lineage_objects().items()
-            if name not in actual or _canonical_sql(actual[name] or "") != _canonical_sql(sql)]
+            if name not in actual or not schema_contract_matches(
+                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def _source_contract_issues(conn):

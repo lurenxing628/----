@@ -37,8 +37,8 @@ def safe_reason(reason: str) -> str:
     return text or "candidate_rejected"
 
 
-def fingerprint_changed(initial_fingerprint: Optional[str], best_fingerprint: Optional[str]) -> bool:
-    return bool(initial_fingerprint and best_fingerprint and initial_fingerprint != best_fingerprint)
+def fingerprint_changed(initial_fingerprint: Optional[tuple], best_fingerprint: Optional[tuple]) -> bool:
+    return bool(initial_fingerprint is not None and best_fingerprint is not None and initial_fingerprint != best_fingerprint)
 
 
 def append_fingerprint_event(rows: List[Dict[str, Any]], *, origin: str, status: str, fingerprint: CandidateFingerprint) -> None:
@@ -127,19 +127,19 @@ def final_report_payload(state: Any, **payload: Any) -> Dict[str, Any]:
         "current_accepted_candidates": int(state.current_accepted_candidates),
         "best_improved_candidates": int(state.best_improved_candidates),
         "rejected_candidates": int(state.rejected_candidates),
-        "initial_fingerprint": state.initial_fingerprint,
-        "best_fingerprint": state.best_fingerprint,
-        "initial_candidate_fingerprint": dict_copy(state.initial_candidate_fingerprint),
-        "best_candidate_fingerprint": dict_copy(state.best_candidate_fingerprint),
-        "distinct_fingerprint_scope": DISTINCT_FINGERPRINT_SCOPE,
-        "distinct_fingerprint_description": DISTINCT_FINGERPRINT_DESCRIPTION,
-        "best_fingerprint_changed": bool(payload["fingerprint_changed"]),
+        "initial_candidate_id": (state.initial_candidate_fingerprint or {}).get("candidate_id"),
+        "best_candidate_id": (state.best_candidate_fingerprint or {}).get("candidate_id"),
+        "initial_candidate_identity": dict_copy(state.initial_candidate_fingerprint),
+        "best_candidate_identity": dict_copy(state.best_candidate_fingerprint),
+        "distinct_output_scope": DISTINCT_FINGERPRINT_SCOPE,
+        "distinct_output_description": DISTINCT_FINGERPRINT_DESCRIPTION,
+        "best_output_changed": bool(payload["fingerprint_changed"]),
         "best_score": list_copy(state.best_score),
         "objective_name": str(state.objective_name),
         "attempts": list_copy(payload["attempts"]),
         "public_attempt_summary": list_copy(state.attempt_summary),
         "improvement_trace": list_copy(payload["improvement_trace"]),
-        "fingerprint_events": list_copy(state.fingerprint_events),
+        "candidate_events": list_copy(state.fingerprint_events),
         "neighborhood_moves": list_copy(state.neighborhood_moves),
         "neighborhood_summary": dict_copy(state.neighborhood_summary),
         "acceptance_events": list_copy(state.acceptance_events),
@@ -183,7 +183,7 @@ def dict_copy(value: Any) -> Dict[str, Any]:
 
 
 def improved_from_conditions(conditions: Dict[str, Any]) -> bool:
-    return all(bool(conditions.get(key)) for key in ("fingerprint_changed", "score_strictly_better", "acceptance_passed"))
+    return all(bool(conditions.get(key)) for key in ("output_changed", "score_strictly_better", "acceptance_passed"))
 
 
 def _base_move_row(move: Dict[str, Any], *, name: str, move_kind: str, input_scope: str) -> Dict[str, Any]:

@@ -9,6 +9,11 @@ from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCom
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, validate_run_ref
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
+from core.services.workbench.facts.run_history_projection import (
+    COMPUTATION_FAILED,
+    failure_message,
+    hold_failure_message,
+)
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.run_policy import public_run
@@ -17,7 +22,6 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository, prepare_run_result
 
 from .compute import compute_candidate_run
-from .history_projection import COMPUTATION_FAILED, failure_message, hold_failure_message
 from .jobs_facts import run_facts_unchanged
 from .progress import clear_progress, report_progress
 from .worker_claim import claim_run
@@ -48,7 +52,7 @@ class WorkbenchRunWorker:
         self.app_error_message = app_error_message
 
     def _now(self):
-        return self.clock().isoformat(timespec="seconds")
+        return self.clock().isoformat(timespec="microseconds")
 
     def _check_facts(self, row, conn=None):
         if not run_facts_unchanged(self.conn if conn is None else conn, row["facts_json"], row["facts_hash"]):

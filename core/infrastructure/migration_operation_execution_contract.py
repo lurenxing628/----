@@ -188,7 +188,6 @@ _OPERATION_EXECUTION_REQUIRED_NOT_NULL_COLUMNS = [
     "event_time",
     "created_by",
     "idempotency_key",
-    "request_fingerprint",
     "previous_state_revision",
     "suggest_reschedule",
     "created_at",
@@ -270,6 +269,12 @@ def _operation_execution_column_contract_issues(conn: sqlite3.Connection, normal
             issues.append(f"missing_column: OperationExecutionEvents.{column}")
         elif int(item.get("notnull") or 0) != 1:
             issues.append(f"nullable_column: OperationExecutionEvents.{column}")
+    fingerprint = info.get("request_fingerprint")
+    version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
+    if fingerprint is None:
+        issues.append("missing_column: OperationExecutionEvents.request_fingerprint")
+    elif (version is None or not 20 <= int(version[0]) < 40) and fingerprint["notnull"]:
+        issues.append("bad_column: OperationExecutionEvents.request_fingerprint must allow historical NULL")
     id_info = info.get("id") or {}
     if int(id_info.get("pk") or 0) != 1 or "autoincrement" not in normalized_sql:
         issues.append("bad_column: OperationExecutionEvents.id must be autoincrement primary key")
@@ -353,6 +358,12 @@ def _operation_execution_probe_issues(conn: sqlite3.Connection) -> List[str]:
         for overrides in probes:
             if _operation_execution_bad_probe_is_accepted(conn, overrides):
                 issues.append(f"bad_probe: accepted {overrides['idempotency_key']}")
+        version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
+        if version is None or not 20 <= int(version[0]) < 40:
+            nullable = {"request_fingerprint": None, "idempotency_key": "__probe_nullable_fingerprint__",
+                        "previous_state_revision": "2147483001:0:nullable_fingerprint"}
+            if not _operation_execution_bad_probe_is_accepted(conn, nullable):
+                issues.append("bad_probe: rejected nullable request_fingerprint")
         return issues
     except sqlite3.Error as exc:
         return [f"bad_probe_error: {exc}"]

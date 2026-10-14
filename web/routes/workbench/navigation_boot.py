@@ -11,8 +11,10 @@ from core.errors import AppError
 from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_calendar import calendar_date
 from core.models.workbench_command import canonical_json
+from core.models.workbench_decision_history import normalize_history_query, validate_history_entry_ref
 from core.models.workbench_plan_scope import PlanReadScope, local_time, plan_reference
 from core.models.workbench_report import TOPICS, ReportScope
+from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.models.workbench_run_job import validate_run_ref
 from core.models.workbench_trial import create_input, reference
 
@@ -73,6 +75,40 @@ def _query_value(view, args):
 
 
 def _plan_context(context):
+    if "run_ref" in context or "candidate_ref" in context:
+        _object(context, ("run_ref", "candidate_ref", "reference_candidate_ref", "comparison_mode",
+                          "range_start", "range_end", "batch_ref", "operation_ref", "selected_row_ref", "candidate_tab",
+                          "comparison_tab", "metric_view", "reference_view", "plan_ref",
+                          "resource_view", "resource_kind", "resource_ref", "selected_batch_ref"))
+        for key in ("run_ref", "candidate_ref", "reference_candidate_ref", "batch_ref", "operation_ref", "selected_row_ref", "plan_ref", "resource_ref", "selected_batch_ref"):
+            if key in context:
+                reference(context[key])
+        if context.get("comparison_mode", "candidates") not in ("candidates", "admission_official"):
+            _invalid("方案比较方式无效，请从本次排产重新选择。")
+        if context.get("comparison_mode") == "admission_official" and "reference_candidate_ref" in context:
+            _invalid("正式基准使用受理时保存的计划身份，请从方案对比重新选择。")
+        if "comparison_tab" in context and context["comparison_tab"] not in (
+                "overview", "batches", "operations", "delivery", "differences", "resources", "process",
+                "preparation", "changeovers", "metrics", "completion"):
+            _invalid("方案影响页签无效，请从本次排产重新选择。")
+        if "resource_view" in context and context["resource_view"] not in ("selected_batches", "full_candidate"):
+            _invalid("资源安排视角无效，请从方案对比重新选择。")
+        if "resource_kind" in context and context["resource_kind"] not in ("machine", "operator"):
+            _invalid("资源类别无效，请从方案对比重新选择。")
+        if "metric_view" in context and context["metric_view"] not in ("common", "all"):
+            _invalid("方案指标视图无效，请从本次排产重新选择。")
+        if "reference_view" in context and (type(context["reference_view"]) is not bool or
+                                          context.get("reference_view") and context.get("comparison_mode") != "admission_official"):
+            _invalid("受理时正式基准定位无效，请从方案对比重新打开。")
+        if context.get("reference_view") and not {"run_ref", "candidate_ref", "plan_ref"} <= set(context):
+            _invalid("受理时正式基准定位缺少具体来源，请从方案对比重新打开。")
+        if "plan_ref" in context and not context.get("reference_view"):
+            _invalid("正式计划身份需要对应受理时基准，请从方案对比重新打开。")
+        if "candidate_tab" in context and context["candidate_tab"] not in ("tasks", "unplanned", "delivery", "history"):
+            _invalid("候选明细页签无效，请从本次排产重新选择。")
+        RunCandidateReadScope(context.get("candidate_ref", context.get("run_ref")),
+                              context.get("range_start"), context.get("range_end"), context.get("batch_ref"))
+        return
     _object(context, ("plan_ref", "range_start", "range_end"), ("plan_ref",))
     PlanReadScope(**context)
     _explicit_times(context)
@@ -178,10 +214,42 @@ def _trial_context(context):
         _explicit_times(context.get("scope", {}))
 
 
+def _decision_history_state(state):
+    _object(state, ("query", "selected_entry_ref", "reference_entry_ref", "metric_key", "detail_queries"), ("query",))
+    query = normalize_history_query(state["query"])
+    for key in ("selected_entry_ref", "reference_entry_ref"):
+        if state.get(key) is not None:
+            validate_history_entry_ref(state[key])
+    expected_reference = "run:" + query["reference_run_ref"] if query["reference_run_ref"] is not None else None
+    if ("selected_entry_ref" in state and state["selected_entry_ref"] != query["selected_entry_ref"] or
+            "reference_entry_ref" in state and state["reference_entry_ref"] != expected_reference):
+        _invalid("历史选择与查询条件不一致，请从历史走势重新选择。")
+    if state.get("metric_key") is not None and state["metric_key"] not in query["metric_keys"]:
+        _invalid("历史图指标不属于当前指标选择，请从历史走势重新选择。")
+    if "detail_queries" in state and type(state["detail_queries"]) is not dict:
+        _invalid("历史明细条件无效，请从历史走势重新打开。")
+
+
+def _history_context(context):
+    _object(context, ("source", "history_topic", "decision_history_context", "history_query"),
+            ("source", "history_topic", "decision_history_context"))
+    if context["source"] != "run_history" or context["history_topic"] != "decision_history":
+        _invalid("历史入口类型无效，请从排产记录重新打开。")
+    _decision_history_state(context["decision_history_context"])
+    if "history_query" in context and type(context["history_query"]) is not dict:
+        _invalid("运行记录条件无效，请从排产记录重新打开。")
+
+
 def _context(view, context):
     if type(context) is not dict:
         _invalid("页面地址里的定位内容格式不对，页面没有打开。请从侧栏重新进入。")
     if not context:
+        return
+    if "return_decision_history_context" in context:
+        _decision_history_state(context["return_decision_history_context"])
+        context = {key: value for key, value in context.items() if key != "return_decision_history_context"}
+    if view in ("analysis", "gantt", "delay") and context.get("source") == "run_history" and context.get("history_topic") == "decision_history":
+        _history_context(context)
         return
     if view in EMPTY_CONTEXT_VIEWS:
         _invalid("这个页面还不支持用网址定位，页面没有打开，也没有丢掉传入的条件。请从侧栏重新进入。")

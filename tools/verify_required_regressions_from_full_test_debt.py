@@ -24,7 +24,6 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 from tools import quality_gate_shared, quality_gate_support  # noqa: E402
-from tools.long_gate_schema import stable_json_hash  # noqa: E402
 
 CURRENT_FULL_TEST_DEBT_REL = quality_gate_shared.QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
 BLOCKING_CLASSIFICATION_KEYS = (
@@ -157,7 +156,9 @@ def _group_rows_for_required_paths(
     if coverage.get("unknown"):
         problems.append("unknown=" + ", ".join(str(path) for path in list(coverage.get("unknown") or [])))
     if coverage.get("duplicates"):
-        duplicate_paths = [str(row.get("path") or "") for row in list(coverage.get("duplicates") or []) if isinstance(row, dict)]
+        duplicate_paths = [
+            str(row.get("path") or "") for row in list(coverage.get("duplicates") or []) if isinstance(row, dict)
+        ]
         problems.append("duplicates=" + ", ".join(duplicate_paths))
     if problems:
         raise RequiredRegressionProofError("required regression group 覆盖不完整：" + "; ".join(problems))
@@ -174,7 +175,9 @@ def verify_required_regressions_from_payload(
     required_tests_were_explicit = required_tests is not None
     required_paths = [
         str(path).replace("\\", "/")
-        for path in list(required_tests if required_tests is not None else quality_gate_shared.iter_quality_gate_required_tests())
+        for path in list(
+            required_tests if required_tests is not None else quality_gate_shared.iter_quality_gate_required_tests()
+        )
     ]
     if not required_paths:
         raise RequiredRegressionProofError("required tests 列表为空")
@@ -188,9 +191,7 @@ def verify_required_regressions_from_payload(
         raise RequiredRegressionProofError("full-test-debt payload 没有 collected_nodeids")
 
     reports = [
-        dict(report)
-        for report in _as_list(payload.get("reports"), field_name="reports")
-        if isinstance(report, dict)
+        dict(report) for report in _as_list(payload.get("reports"), field_name="reports") if isinstance(report, dict)
     ]
     if len(reports) != len(_as_list(payload.get("reports"), field_name="reports")):
         raise RequiredRegressionProofError("reports 每一项都必须是对象")
@@ -210,7 +211,9 @@ def verify_required_regressions_from_payload(
 
     missing_report_nodeids = [nodeid for nodeid in required_nodeids if not reports_by_nodeid.get(nodeid)]
     if missing_report_nodeids:
-        raise RequiredRegressionProofError("required nodeid 缺少 reports 明细：" + ", ".join(missing_report_nodeids[:20]))
+        raise RequiredRegressionProofError(
+            "required nodeid 缺少 reports 明细：" + ", ".join(missing_report_nodeids[:20])
+        )
 
     allowed_skipped_platforms = quality_gate_shared.REQUIRED_REGRESSION_ALLOWED_SKIPPED_PLATFORMS
     payload_os_name = str(payload.get("os_name") or payload.get("platform_os_name") or os.name)
@@ -243,8 +246,8 @@ def verify_required_regressions_from_payload(
 
     return {
         "required_target_paths": required_paths,
-        "required_target_hash": stable_json_hash(required_paths),
         "required_nodeids": required_nodeids,
+        "required_reports": {nodeid: reports_by_nodeid[nodeid] for nodeid in required_nodeids},
         "required_nodeid_count_by_path": {path: len(nodeids_by_path[path]) for path in required_paths},
         "group_coverage": group_coverage,
         "collected_count": len(collected_nodeids),

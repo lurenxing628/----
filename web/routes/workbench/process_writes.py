@@ -4,7 +4,7 @@ from flask import current_app, g, jsonify
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import failure, query_success
@@ -53,7 +53,7 @@ def process_stage_preview(ref):
             if action == "groups_confirm":
                 data["changes"] = domain.preview_groups(normalized, reader.resolve(ref))
             snapshot = bind_read_snapshot({"kind": "process_stage_preview", "entity_ref": ref,
-                                           "input_hash": input_fingerprint(normalized)}, state)
+                                           "input_content": normalized}, state)
         response = query_success(data, snapshot)
         response.headers["Cache-Control"] = "no-store"
         return response

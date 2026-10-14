@@ -1,11 +1,12 @@
 """Original-byte import planning and full-cohort exports; AJ validates all facts."""
 
-import hashlib
 import uuid
 from typing import List, Optional, Union
 
+from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_execution_input import REQUIRED_FIELDS
+from core.models.workbench_execution_input import REPORT_FIELDS, REQUIRED_FIELDS
+from core.models.workbench_field_report_source import PreparedFieldReportSource
 from core.services.workbench.facts.execution_projection import (
     COMPLETION_BASIS_TEXT,
     DATA_QUALITY_TEXT,
@@ -43,11 +44,10 @@ class FieldReportFileService:
             raise WorkbenchCommandRejected('invalid_input', '填的设备或人员在系统里找不到，或者有重名分不清，请核对。', 422)
         return next(iter(options))
 
-    def _items(self, content, tasks, decoded=None, *, file_digest=None):
+    def _items(self, content, tasks, decoded, *, source_ref):
         rows = decode_reports(content) if decoded is None else decoded
         by_scope, by_ref = task_indexes(tasks)
         resources, items, positions = self._resource_index(), [], []
-        digest = hashlib.sha256(content).hexdigest() if file_digest is None else file_digest
         for row in rows:
             value = row['values']
             if row['errors']:
@@ -58,7 +58,7 @@ class FieldReportFileService:
                 continue
             try:
                 task = matched_task(row, by_scope, by_ref)
-                items.append(self._row_item(row, task, resources, digest))
+                items.append(self._row_item(row, task, resources, source_ref))
                 positions.append(row['row'])
                 row['result'] = 'pending'
             except WorkbenchCommandRejected as exc:
@@ -66,18 +66,34 @@ class FieldReportFileService:
                 row['errors'].append({'row': row['row'], 'message': str(exc), 'code': exc.code})
         return rows, items, positions
 
-    def _row_item(self, row, task, resources, digest):
+    def _row_item(self, row, task, resources, source_ref):
         value = row['values']
         payload = {key: value[key] for key in ('actual_start', 'actual_end', 'completed_quantity', 'effective_processing_hours', 'remark') if value[key] not in (None, '')}
         for kind in ('machine', 'operator'):
             selected = self._resource(resources, kind, value[kind + '_label'])
             if selected is not None:
                 payload['actual_' + kind + '_ref'] = selected
-        payload.update(source='excel', report_no=value['report_no'] or 'BG-X-' + digest[:32] + '-' + str(row['row']))
+        payload.update(source='excel')
+        payload['report_no'] = value['report_no'] or self._source_report_number(row, task, payload, source_ref)
         existing = next((report for report in task['execution']['reports'] if report['report_no'] == payload['report_no']), None)
         if existing and existing.get('legacy_fact_ref'):
             payload.update(legacy_fact_ref=existing['legacy_fact_ref'], reason='Excel 核对已关联的历史完工记录')
         return {'action': 'create', 'ref': task['task_ref'], 'payload': payload}
+
+    @staticmethod
+    def _source_report_number(row, task, payload, source_ref):
+        number = 'BG-X-' + source_ref + '-' + str(row['row'])
+        reports = task['execution']['reports']
+        if any(report['report_no'] == number for report in reports):
+            return number
+        # Older blank-number imports saved their generated number, not the original file.
+        # Recover an existing number only from one complete matching report in this operation.
+        values = {key: payload.get(key, '' if key == 'remark' else None) for key in REPORT_FIELDS}
+        matches = [report for report in reports if report.get('source') == 'excel' and report['report_no'].startswith('BG-X-')
+                   and same(values, {key: report.get(key, '' if key == 'remark' else None) for key in REPORT_FIELDS})]
+        if len(matches) > 1:
+            raise WorkbenchCommandRejected('invalid_input', '已有多条内容相同的导入报工，请填写要核对的原报工编号。', 422)
+        return matches[0]['report_no'] if matches else number
 
     def preview(self, content, cohort, decoded=None):
         """decoded: rows the caller already parsed from these bytes before its read snapshot (used once)."""
@@ -85,12 +101,14 @@ class FieldReportFileService:
 
     def prepare_source(self, source, cohort):
         """Rebuild current business checks from the retained original file facts."""
-        return self.prepare_preview(source.content, cohort, source.parsed(), file_digest=source.file_digest)
+        return self.prepare_preview(source.content, cohort, source.parsed(), source_ref=source.source_ref)
 
-    def prepare_preview(self, content, cohort, decoded=None, *, file_digest=None):
+    def prepare_preview(self, content, cohort, decoded=None, *, source_ref=None):
         """Return the public preview and its private, already checked batch facts."""
-        digest = hashlib.sha256(content).hexdigest() if file_digest is None else file_digest
-        rows, items, positions = self._items(content, cohort['tasks'], decoded, file_digest=digest)
+        if source_ref is None:
+            source = PreparedFieldReportSource.build(content, decode_reports(content) if decoded is None else decoded)
+            source_ref, decoded = source.source_ref, source.parsed()
+        rows, items, positions = self._items(content, cohort['tasks'], decoded, source_ref=source_ref)
         check, preparation = None, None
         if not any(row['errors'] for row in rows):
             try:
@@ -102,7 +120,7 @@ class FieldReportFileService:
                    'changed': check['summary']['changed'] if check else 0, 'unchanged': check['summary']['unchanged'] if check else 0}
         public = [{'row': row['row'], 'result': row['result'], 'errors': row['errors']} for row in rows]
         return {'rows': public, 'summary': summary, 'can_confirm': not rejected and bool(items), 'commit_policy': 'atomic',
-                'file_sha256': digest, 'items': items,
+                'actual_source_ref': source_ref, 'items': items,
                 'snapshot': check['snapshot'] if check else None, 'scope': cohort['scope']}, preparation
 
     def _checked_rows(self, items, rows, positions):

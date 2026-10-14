@@ -3,7 +3,7 @@
   const C = window.APSResourceContract, P = window.APSProcessContract, filters = window.ResourceTableFilterModel;
   const scopeKeys = ['query', 'page', 'size', 'sort', 'stage', 'column_filters'];
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
-  function read(view) {
+  function restore(view) {
     if (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'entity_ref'].includes(key))) throw C.failure('上次的查看状态无法恢复，已按默认范围显示工艺列表。');
     const scope = view.scope;
     if (!C.object(scope) || Object.keys(scope).some(key => !scopeKeys.includes(key)) || typeof scope.query !== 'string'
@@ -12,10 +12,12 @@
         || !C.object(scope.column_filters) || Object.keys(scope.column_filters).some(key => !P.columns.some(column => column.key === key)))
       throw C.failure('上次的查看范围或页码不正确，已按默认范围显示工艺列表。');
     P.ordering(scope);
-    Object.values(scope.column_filters).forEach(value => filters.rule(value));
     if (!Array.isArray(view.selected_refs) || !view.selected_refs.every(ref) || new Set(view.selected_refs).size !== view.selected_refs.length
         || view.entity_ref !== null && !ref(view.entity_ref)) throw C.failure('上次打开或勾选的零件已失效，已按默认范围显示工艺列表。');
-    return JSON.parse(JSON.stringify(view));
+    const migration = filters.restore(scope.column_filters), restored = JSON.parse(JSON.stringify(view));
+    restored.scope.column_filters = migration.filters;
+    return { view: restored, notice: migration.notice };
   }
-  window.APSProcessReadView = { read, scopeKeys };
+  const read = view => restore(view).view;
+  window.APSProcessReadView = { read, restore, scopeKeys };
 })();

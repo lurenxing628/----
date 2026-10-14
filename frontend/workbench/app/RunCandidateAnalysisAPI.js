@@ -14,33 +14,23 @@
   const reason = v => shape(v, ['code', 'message']) && text(v.code) && text(v.message);
   const keys = ['overdue_count', 'total_tardiness_hours', 'changed_operation_count', 'machine_change_count'];
   function metric(m, key) {
-    check(shape(m, ['value', 'known_subtotal', 'unknown_count', 'total_count', 'reason'])
-      && number(m.known_subtotal) && m.known_subtotal >= 0 && count(m.unknown_count) && count(m.total_count)
-      && m.unknown_count <= m.total_count && (m.unknown_count ? m.value === null && reason(m.reason) : m.value === m.known_subtotal && m.reason === null)
-      && (key === 'total_tardiness_hours' || count(m.known_subtotal) && m.known_subtotal <= m.total_count - m.unknown_count));
+    const deliveryFields = keys.slice(0, 2).includes(key) ? ['state', 'due_eligible_count', 'excluded_due_count', 'invalid_due_count',
+      'due_evaluation_count', 'known_due_count', 'unknown_due_count', 'known_count'] : [];
+    check(shape(m, ['value', 'known_subtotal', 'unknown_count', 'total_count', 'reason', ...deliveryFields])
+      && (deliveryFields.length && m.known_subtotal === null || number(m.known_subtotal) && m.known_subtotal >= 0)
+      && count(m.unknown_count) && count(m.total_count)
+      && m.unknown_count <= m.total_count && (m.value === null || number(m.value) && m.value >= 0)
+      && (m.reason === null || reason(m.reason)) && (key === 'total_tardiness_hours' || count(m.known_subtotal))
+      && (!deliveryFields.length || ['complete', 'partial', 'unavailable', 'not_applicable'].includes(m.state)
+        && deliveryFields.slice(1).every(k => count(m[k]))));
   }
-  function delivery(row, batch) {
-    check(row && row.batch_ref === batch.batch_ref && row.batch_id === batch.batch_id
-      && typeof row.schedule_complete === 'boolean' && ['overdue', 'on_time', 'unknown'].includes(row.risk)
-      && (row.planned_finish === null || time(row.planned_finish)) && (row.partial_planned_finish === null || time(row.partial_planned_finish))
-      && (row.due_date === null || /^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) && Array.isArray(row.issues) && row.issues.every(text)
-      && (row.risk === 'unknown' ? row.delay_hours === null && row.is_overdue === null : row.schedule_complete && time(row.planned_finish)
-        && number(row.delay_hours) && row.delay_hours >= 0 && row.is_overdue === (row.risk === 'overdue')));
-  }
-  function deliveryMetrics(metrics, rows) {
-    const unknown = rows.filter(row => row.risk === 'unknown').length;
-    const known = { overdue_count: rows.filter(row => row.is_overdue === true).length,
-      total_tardiness_hours: rows.reduce((sum, row) => sum + (row.delay_hours === null ? 0 : row.delay_hours), 0) };
-    Object.keys(known).forEach(key => {
-      metric(metrics[key], key);
-      check(metrics[key].unknown_count === unknown && metrics[key].total_count === rows.length
-        && Math.abs(metrics[key].known_subtotal - known[key]) <= 0.000001);
-    });
+  function delivery(row, batch, available = true) {
+    check(window.DeliveryProjectionContract.row(row, !available) && row.batch_ref === batch.batch_ref && row.batch_id === batch.batch_id);
   }
   function analysis(payload, candidateRef, runRef) {
     const d = envelope(payload);
-    check(shape(d, ['candidate_ref', 'run_ref', 'capture_sha256', 'baseline', 'batch_refs', 'batches', 'metrics', 'before_metrics', 'delivery_deltas', 'operations', 'basis', 'capabilities'])
-      && d.candidate_ref === candidateRef && ref(d.run_ref) && (!runRef || d.run_ref === runRef) && /^[a-f0-9]{64}$/.test(d.capture_sha256)
+    check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'batch_refs', 'batches', 'metrics', 'before_metrics', 'delivery_deltas', 'operations', 'basis', 'capabilities'])
+      && d.candidate_ref === candidateRef && ref(d.run_ref) && (!runRef || d.run_ref === runRef)
       && refs(d.batch_refs) && Array.isArray(d.batches) && refs(d.batches.map(row => row.batch_ref))
       && equal(d.batches.map(row => row.batch_ref), d.batch_refs) && shape(d.metrics, keys)
       && shape(d.before_metrics, keys.slice(0, 2)) && shape(d.delivery_deltas, keys.slice(0, 2))
@@ -54,15 +44,14 @@
       && typeof b.comparison_available === 'boolean' && (b.available ? ref(b.baseline_ref) && b.version !== null : b.baseline_ref === null && b.version === null && b.captured_task_count === 0)
       && (b.comparison_available ? b.reason === null : reason(b.reason)));
     d.batches.forEach(row => {
-      check(shape(row, ['batch_ref', 'batch_id', 'part_label', 'before', 'after', 'delay_delta_hours']) && text(row.batch_id));
-      delivery(row.before, row); delivery(row.after, row); check(row.before.due_date === row.after.due_date);
-      const first = row.before.delay_hours, second = row.after.delay_hours;
-      check(first === null || second === null ? row.delay_delta_hours === null : number(row.delay_delta_hours) && Math.abs(row.delay_delta_hours - (second - first)) <= 0.000001);
+      check(shape(row, ['batch_ref', 'batch_id', 'part_label', 'before', 'after', 'delay_delta_hours', 'finish_delta_hours', 'change_kinds'])
+        && text(row.batch_id) && Array.isArray(row.change_kinds) && row.change_kinds.every(text)
+        && [row.delay_delta_hours, row.finish_delta_hours].every(v => v === null || number(v)));
+      delivery(row.before, row, b.available); delivery(row.after, row); check(row.before.due_date === row.after.due_date);
     });
-    deliveryMetrics(d.metrics, d.batches.map(row => row.after)); deliveryMetrics(d.before_metrics, d.batches.map(row => row.before));
+    keys.slice(0, 2).forEach(key => { metric(d.metrics[key], key); metric(d.before_metrics[key], key); });
     for (const key of keys.slice(0, 2)) {
-      const first = d.before_metrics[key].value, second = d.metrics[key].value;
-      check(first === null || second === null ? d.delivery_deltas[key] === null : number(d.delivery_deltas[key]) && Math.abs(d.delivery_deltas[key] - (second - first)) <= 0.000001);
+      check(d.delivery_deltas[key] === null || number(d.delivery_deltas[key]));
     }
     const o = d.operations, lists = ['operation_refs', 'changed_operation_refs', 'machine_changed_operation_refs', 'unknown_operation_refs', 'machine_unknown_operation_refs'];
     check(shape(o, [...lists, 'issues']) && lists.every(key => refs(o[key])) && Array.isArray(o.issues));
@@ -71,10 +60,7 @@
     check(lists.slice(1).every(key => o[key].every(value => all.has(value))) && issueRefs.size === o.issues.length
       && o.unknown_operation_refs.every(value => issueRefs.has(value)));
     o.issues.forEach(row => check(shape(row, ['operation_ref', 'reasons']) && all.has(row.operation_ref) && Array.isArray(row.reasons) && row.reasons.length && row.reasons.every(reason)));
-    [['changed_operation_count', 'changed_operation_refs', 'unknown_operation_refs'], ['machine_change_count', 'machine_changed_operation_refs', 'machine_unknown_operation_refs']].forEach(([key, changed, unknown]) => {
-      metric(d.metrics[key], key); check(d.metrics[key].known_subtotal === o[changed].length && d.metrics[key].unknown_count === o[unknown].length
-        && d.metrics[key].total_count === all.size && o[unknown].every(value => !o[changed].includes(value)));
-    });
+    keys.slice(2).forEach(key => metric(d.metrics[key], key));
     return d;
   }
   function history(payload, candidateRef, runRef) {

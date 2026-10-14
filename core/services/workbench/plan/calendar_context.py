@@ -1,6 +1,6 @@
 """Shared selected-plan admission and public issue vocabulary."""
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.capacity.plan_calendar_issues import issue  # noqa: F401  公开词汇表已下沉到共享内核，这里保留原入口
@@ -27,7 +27,7 @@ def selected_context(conn, entry, scope, rows, resources, plan_span):
         raise WorkbenchCommandRejected("plan_unavailable", "查询的时间范围无效。请重新选择起止日期。")
     selected = _selected_rows(conn, entry, scope, rows, start, end)
     binding = _context_binding(entry, scope, selected, resources, time_scope)
-    return selected, start, end, time_scope, input_fingerprint(plain_plan_facts(binding))
+    return selected, start, end, time_scope, plain_plan_facts(binding)
 
 
 def _selected_rows(conn, entry, scope, rows, start, end):

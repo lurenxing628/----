@@ -2,12 +2,13 @@
 
 import json
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.content import same
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import HANDLING_FIELDS, MAX_BYTES, MAX_ROWS, STATUSES, bounded, reference
 
 
 def corrupt():
-    raise WorkbenchCommandRejected("dashboard_storage_invalid", "处置台账或来源身份不完整，请核对存储；本次未自动修补。", 409)
+    raise WorkbenchCommandRejected("dashboard_storage_invalid", "处置记录或关联记录不完整，请联系维护人员核对。", 409)
 
 
 def load_handling(raw):
@@ -24,12 +25,12 @@ def load_handling(raw):
 
 def require_dashboard_schema(repo):
     if not repo.schema_installed():
-        raise WorkbenchCommandRejected("dashboard_unavailable", "值班台台账未安装或结构不完整，需由主线完成明确迁移；本次没有补表。", 503)
+        raise WorkbenchCommandRejected("dashboard_unavailable", "值班台所需数据未准备完整，请联系维护人员处理。", 503)
 
 
 def require_external_schema(repo):
     if not repo.schema_installed():
-        raise WorkbenchCommandRejected("dashboard_external_unavailable", "外协处置台账未安装或结构不完整，需由主线明确迁移；未补表。", 503)
+        raise WorkbenchCommandRejected("dashboard_external_unavailable", "外协处置所需数据未准备完整，请联系维护人员处理。", 503)
 
 
 def mapped_anchors(loaded, refs):
@@ -81,7 +82,7 @@ def require_identity(repo, item_ref):
 
 def found_identity(row):
     if row is None:
-        raise WorkbenchCommandRejected("entity_not_found", "条目不存在，未改指其他来源。", 404)
+        raise WorkbenchCommandRejected("entity_not_found", "这条处置记录已失效，请刷新后重新选择。", 404)
     return row
 
 
@@ -92,16 +93,43 @@ def read_history(repo, item_ref, number, size):
         raise WorkbenchCommandRejected("invalid_input", "历史页码超过范围。", 400)
     public = []
     for row in repo.history_rows(item_ref, size, (number - 1) * size):
-        if row["receipt_ref"] is None or input_fingerprint(json.loads(row["source_facts_json"])) != row["source_hash"]:
-            corrupt()
+        source, before, after = history_contents(row)
         public.append({"history_ref": row["history_ref"], "sequence": row["sequence"], "action": row["action"],
-                       "before": load_handling(row["before_json"]), "after": load_handling(row["after_json"]),
+                       "before": before, "after": after,
                        "reason": row["reason"], "local_operator": row["local_operator"], "recorded_at": row["recorded_at"],
                        "receipt_ref": row["receipt_ref"], "source_snapshot": {
                            "snapshot_ref": row["history_ref"], "as_of": row["recorded_at"],
-                           "time_basis": "factory_local", "source": json.loads(row["source_json"])}})
+                           "time_basis": "factory_local", "source": source}})
     return {"items": public, "page": {"number": number, "size": size, "total": total, "pages": pages,
                                        "sort": [{"field": "sequence", "direction": "desc"}]}}
+
+
+def history_contents(row):
+    """Bind archived source/guard contents to the original command outcome and history identity."""
+    before, after = load_handling(row["before_json"]), load_handling(row["after_json"])
+    try:
+        source = json.loads(row["source_json"])
+        facts = json.loads(row["source_facts_json"])
+        outcome = json.loads(row["receipt_outcome_json"])
+    except (TypeError, ValueError):
+        corrupt()
+    if (type(source) is not dict or type(facts) is not dict or set(facts) != {"facts", "guard"}
+            or type(facts["facts"]) is not dict or type(facts["guard"]) is not dict
+            or type(outcome) is not dict or type(outcome.get("data")) is not dict):
+        corrupt()
+    guard, data = facts["guard"], outcome["data"]
+    identity = guard.get("identity")
+    if (row["receipt_ref"] is None or row["receipt_action"] != "dashboard." + row["action"]
+            or row["receipt_context_ref"] != row["item_ref"] or outcome.get("result") != "committed"
+            or data.get("history_ref") != row["history_ref"] or data.get("item_ref") != row["item_ref"]
+            or source.get("item_ref") != row["item_ref"] or type(identity) is not dict
+            or identity.get("item_ref") != row["item_ref"] or identity.get("category") != source.get("category")
+            or not same(guard.get("revision"), row["sequence"] - 1)
+            or not same(data.get("handling"), after) or not same(guard.get("handling"), before)
+            or not same(data.get("source"), source.get("source")) or not same(guard.get("source"), source.get("source"))
+            or not same(data.get("risk"), source.get("risk")) or not same(guard.get("risk"), source.get("risk"))):
+        corrupt()
+    return source, before, after
 
 
 def read_entity_refs(repo, kind, keys):

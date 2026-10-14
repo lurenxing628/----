@@ -6,9 +6,9 @@ from types import SimpleNamespace
 from typing import NoReturn
 
 from core.infrastructure.read_evidence import verified_read
+from core.models.content import same
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
-from core.models.workbench_trial_codec import same
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
@@ -42,14 +42,15 @@ def _load_saved_scenario(conn, scenario_ref):
     if seen != set(sources):
         _invalid("试调方案的范围和草稿不一致。请刷新后重试。")
     _require_links(saved["tasks"], rows)
-    return saved, head, rows
+    return saved, dict(head, scenario_revision=header["revision"]), rows
 
 
 def _require_head(saved, header, head, originals):
     admission = head["admission"]
-    if (saved["scenario_ref"] != header["scenario_ref"] or saved["draft_ref"] != head["draft_ref"]
-            or saved["status"] != "saved" or head["status"] != "saved"
-            or saved["name"] != header["name"] or saved["saved_at"] != header["saved_at"]
+    expected = {"scenario_ref": header["scenario_ref"], "draft_ref": head["draft_ref"],
+                "status": "saved", "name": header["name"], "saved_at": header["saved_at"]}
+    if (not same({key: saved[key] for key in expected}, expected) or head["status"] != "saved"
+            or type(head["revision"]) is not int or type(header["revision"]) is not int
             or head["revision"] != header["revision"] + 1):
         _invalid("试调方案和它的草稿编号或版本对不上。请刷新后重试。")
     _require_saved_scope(saved, originals, admission)
@@ -109,6 +110,8 @@ def _saved_row(task, source):
     current = {key: task[key] for key in ("machine_ref", "operator_ref", "start", "end")}
     for kind in ("machine", "operator"):
         current[kind + "_id"] = source["current"][kind + "_id"]
+    if "operation_effort" in source["current"]:
+        current["operation_effort"] = source["current"]["operation_effort"]
     if not same(current, source["current"]):
         _invalid("试调方案与草稿安排不一致，请刷新后重试。")
     for name in ("start", "end"):
@@ -136,4 +139,5 @@ def schedule_rows(rows):
                 source=row["original"]["operation"]["source"],
                 machine_id=row["current"]["machine_id"], operator_id=row["current"]["operator_id"],
                 start_time=datetime.fromisoformat(row["current"]["start"]),
-                end_time=datetime.fromisoformat(row["current"]["end"])) for row in rows]
+                end_time=datetime.fromisoformat(row["current"]["end"]),
+                operation_effort=row["current"].get("operation_effort")) for row in rows]

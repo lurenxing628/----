@@ -1,16 +1,27 @@
 (function () {
   'use strict';
   const C = window.APSResourceContract;
-  const keyPattern = /^[0-9a-f]{64}$/;
+  const key = value => typeof value === 'string' && value.length > 0;
+  const legacyKey = value => /^[0-9a-f]{64}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
   function rule(value) {
     if (value === null || value === undefined) return { mode: 'exclude', values: [] };
     if (!C.object(value) || !['include', 'exclude'].includes(value.mode) || !Array.isArray(value.values)
-        || Object.keys(value).some(key => !['mode', 'values'].includes(key)) || value.values.some(key => typeof key !== 'string' || !keyPattern.test(key)))
+        || Object.keys(value).some(key => !['mode', 'values'].includes(key)) || !value.values.every(key))
       throw C.failure('本列筛选规则不完整，请清除本列后重新选择。');
     const values = Array.from(new Set(value.values)).sort();
     if (values.length > 50000) throw C.failure('本列筛选超过 50000 个值，请先清除或减少原条件。');
     return { mode: value.mode, values };
+  }
+  function restore(value) {
+    if (!C.object(value)) throw C.failure('上次的列筛选格式不正确，请重新选择。');
+    const filters = {}; let removed = 0;
+    Object.keys(value).sort().forEach(column => {
+      const selected = rule(value[column]);
+      if (selected.values.some(legacyKey)) removed++;
+      else filters[column] = selected;
+    });
+    return { filters, notice: removed ? '已清除 ' + removed + ' 项旧版列筛选，其余筛选和已选记录已保留。请重新选择这些列的筛选值。' : '' };
   }
   function checked(value, key) {
     const selected = rule(value);
@@ -20,7 +31,7 @@
     return toggleKeys(value, [key], enabled);
   }
   function toggleKeys(value, changed, enabled) {
-    if (!Array.isArray(changed) || changed.some(key => typeof key !== 'string' || !keyPattern.test(key)))
+    if (!Array.isArray(changed) || !changed.every(key))
       throw C.failure('列值编号无效，筛选没有改动。');
     const selected = rule(value), keys = new Set(selected.values);
     changed.forEach(key => { if ((selected.mode === 'include') === enabled) keys.add(key); else keys.delete(key); });
@@ -67,7 +78,7 @@
     if (invalid) throw C.failure('读到的列值不完整，没有当成空列表。请回到第 1 页重新查询。');
     const keys = new Set();
     for (const option of data.options) {
-      if (!C.object(option) || typeof option.key !== 'string' || !keyPattern.test(option.key) || keys.has(option.key)
+      if (!C.object(option) || !key(option.key) || keys.has(option.key)
           || typeof option.label !== 'string' || !count(option.count))
         throw C.failure('列值编号、文字或数量不正确，请回到第 1 页重新查询。');
       keys.add(option.key);
@@ -78,9 +89,9 @@
     const data = envelope(raw, request);
     if (!count(data.total) || !Array.isArray(data.keys) || data.total !== data.keys.length || data.total > 50000
         || request.expected_total !== undefined && data.total !== request.expected_total
-        || data.keys.some(key => typeof key !== 'string' || !keyPattern.test(key)) || new Set(data.keys).size !== data.total)
+        || !data.keys.every(key) || new Set(data.keys).size !== data.total)
       throw C.failure('全部匹配值不完整或超过 50000 个，筛选没有改动。请回到第 1 页重新查询。');
     return raw;
   }
-  window.ResourceTableFilterModel = { rule, checked, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };
+  window.ResourceTableFilterModel = { rule, restore, checked, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };
 })();

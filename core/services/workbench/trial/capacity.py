@@ -1,78 +1,53 @@
-"""Real calendar windows and selected-trial occupancy, never fixed sample loads."""
+"""Trial occupancy from its saved origin's calendar and permanent resource IDs."""
 
-from collections import defaultdict
-from datetime import datetime, timedelta
-
-from core.errors import AppError
-from core.services.capacity.plan_calendar_windows import apply_resource, available_intervals, policy_projection
-from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
-
-from .calendar import calendar_engine
-
-
-def trial_capacity(rows, live):
-    start = min(datetime.fromisoformat(row["current"]["start"]) for row in rows)
-    end = max(datetime.fromisoformat(row["current"]["end"]) for row in rows)
-    groups = _groups(rows)
-    scope = {"start": start.isoformat(), "end": end.isoformat(), "basis": "selected_trial_only"}
-    days = (end.date() - start.date()).days + 2
-    if days < 1 or days * max(len(groups), 1) > 50000:
-        return {**scope, "state": "unavailable", "resources": [],
-                "reason": "日历计算范围超过 50000 个资源日，暂无法计算资源占用率。"}
-    try:
-        engine = calendar_engine(live["facts"]["tables"])
-        first = start.date() - timedelta(days=1)
-    except (AppError, ValueError, TypeError, OverflowError):
-        return {**scope, "state": "unavailable", "resources": [], "reason": "日历数据无效，暂无法计算资源占用率。"}
-    output = _projections(engine, groups, live["facts"]["tables"], first, start, end)
-    return {**scope, "state": "available" if all(row["state"] == "available" for row in output) else "partial",
-            "resources": output, "reason": None}
+from core.services.workbench.facts.archived_calendar import ArchivedCalendar
+from core.services.workbench.facts.resource_projection import (
+    RESOURCE_METRIC_VERSION,
+    ResourceTaskIndex,
+    resource_cohort,
+    resource_summary,
+)
+from core.services.workbench.facts.zero_duration import point_event_dto
+from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 
-def _groups(rows):
-    groups = defaultdict(list)
+def _tasks(rows, field):
+    result = []
     for row in rows:
-        if row["original"]["operation"]["source"] != "internal":
-            continue
-        value = row["current"]
-        for kind in ("machine", "operator"):
-            if value[kind + "_ref"] is not None:
-                groups[kind, value[kind + "_id"], value[kind + "_ref"]].append(
-                    (datetime.fromisoformat(value["start"]), datetime.fromisoformat(value["end"])))
-    return groups
+        original = row["original"]
+        current = row["current"] if field == "current" else original["arrangement"]
+        task = {"task_ref": row["task_ref"], "operation_ref": row["operation_ref"],
+                "source": original["operation"]["source"], "start": current["start"], "end": current["end"],
+                **{kind: {"ref": current[kind + "_ref"], "label": None} if current[kind + "_ref"] is not None else None
+                   for kind in ("machine", "operator")}}
+        if task["start"] == task["end"]:
+            witness = trial_point_evidence(original, current)
+            task.update(point_event_dto(witness.at, witness.at))
+        result.append(task)
+    return result
 
 
-def _projections(engine, groups, sources, first, start, end):
-    records = {kind: {row[kind + "_id"]: row for row in sources[table]}
-               for kind, table in (("machine", "Machines"), ("operator", "Operators"))}
-    downtimes = defaultdict(list)
-    for row in sources["MachineDowntimes"]:
-        if row["status"] != "cancelled":
-            downtimes[row["machine_id"]].append(row)
-    output, global_calendar = [], None
-    for (kind, key, ref), intervals in groups.items():
-        if kind == "machine":
-            if global_calendar is None:
-                global_calendar = policy_projection(engine, first, end.date(), start, end)
-            base = global_calendar
-        else:
-            base = policy_projection(engine, first, end.date(), start, end, operator_id=key)
-        calendar = apply_resource(base, records[kind].get(key), kind, downtimes[key] if kind == "machine" else [], start, end)
-        output.append(_resource(kind, ref, intervals, calendar, start, end))
-    return output
-
-
-def _resource(kind, ref, intervals, calendar, start, end):
-    valid = [(start, end) for start, end in intervals if start < end]
-    metrics = ResourceUtilizationMetrics(valid, available_intervals(calendar))
-    # Trial keeps full precision and reports the wall-clock overlap span. The
-    # shared overlap_hours instead measures the excess load inside the calendar.
-    values = metrics.window(start, end, precision=None)
-    return {"resource_type": kind, "resource_ref": ref, "state": calendar["state"], "calendar": calendar,
-            "arranged_hours": values["span_summed_hours"], "occupied_hours": values["span_occupied_hours"],
-            "overlap_hours": values["span_overlap_hours"],
-            "available_hours": values["available_hours"], "available_occupied_hours": values["occupied_hours"],
-            "outside_available_hours": values["outside_calendar_hours"],
-            "utilization": values["utilization_ratio"],
-            "segments": [{"start": start.isoformat(), "end": end.isoformat(), "concurrent_operations": count}
-                         for start, end, count in metrics.segments]}
+def trial_capacity(rows, archive, *, source_ref=None):
+    tasks, original = _tasks(rows, "current"), _tasks(rows, "original")
+    start, end = min(row["start"] for row in tasks), max(row["end"] for row in tasks)
+    scope = {"start": start, "end": end, "basis": "selected_trial_only", "source": "archived_resource_calendar",
+             "metric_version": RESOURCE_METRIC_VERSION, "time_basis": "factory_local"}
+    factory = ArchivedCalendar(archive, source_ref=source_ref)
+    cohort = resource_cohort([original, tasks])
+    specs = [dict(row, saved_id=factory.bindings.get((row["kind"], row["ref"]))) for row in cohort]
+    index = ResourceTaskIndex(tasks, start, end)
+    output = []
+    for resource, (_, calendar) in zip(cohort, factory.iter_resources(specs, start, end)):
+        value = index.window(resource, calendar)
+        # Established aliases keep wall-clock span and concurrent-span meanings.
+        output.append({"resource_type": resource["kind"], "resource_ref": resource["ref"], "label": resource["label"],
+                       "state": calendar["state"], "calendar": calendar, "window_metrics": value,
+                       "arranged_hours": value["span_summed_hours"], "occupied_hours": value["span_occupied_hours"],
+                       "overlap_hours": value["overlap_span_hours"], "available_hours": value["available_hours"],
+                       "available_occupied_hours": value["occupied_hours"], "outside_available_hours": value["outside_calendar_hours"],
+                       "utilization": value["utilization_ratio"], "segments": index.segments(resource)})
+    common = {**scope, "cohort_basis": "trial_original_and_current", "cohort": cohort,
+              **{kind: resource_summary([row["window_metrics"] for row in output], kind=kind,
+                                        identity_issues=index.identity_issues) for kind in ("machine", "operator")}}
+    state = "available" if all(row["window_metrics"]["state"] == "complete" for row in output) else "partial"
+    return {**scope, "state": state, "resources": output, "resource_common": common, "reason": None}

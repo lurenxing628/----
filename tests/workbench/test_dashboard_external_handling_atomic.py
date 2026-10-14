@@ -1,5 +1,6 @@
 """Real SQLite connections: state, immutable history and receipt commit together."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
@@ -49,6 +50,16 @@ def test_concurrent_writes_have_one_history(external_handling_case, same_key):
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(write, range(2)))
+    assert len(case.history(item["item_ref"])) == 1
+    saved = case.conn.execute("SELECT source_hash,source_facts_json FROM WorkbenchDashboardExternalHistory WHERE item_ref=?",
+                              (item["item_ref"],)).fetchone()
+    assert saved["source_hash"] is None
+    archived = json.loads(saved["source_facts_json"])
+    assert archived["facts"]["receipt"]["outsourcing_ref"] == item["source"]["outsourcing_ref"]
+    winner = next(row for row in results if isinstance(row, dict))
+    key = "external-handling-race-0" + ("0" if same_key or results[0] == winner else "1")
+    replay = case.command(item, follow(), key=key)
+    assert replay["replayed"] and replay["receipt_ref"] == winner["receipt_ref"]
     assert len(case.history(item["item_ref"])) == 1
     if same_key:
         assert {row["replayed"] for row in results} == {False, True}

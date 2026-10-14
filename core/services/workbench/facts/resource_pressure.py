@@ -1,13 +1,11 @@
 """Daily pressure over an explicit local range, reusing calendar interval algebra."""
 
-from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import timedelta
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import local_time
-from core.services.capacity.plan_calendar_intervals import union
-from core.services.capacity.plan_calendar_windows import available_intervals
-from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
+
+from .resource_projection import ResourceTaskIndex, resource_summary
 
 MAX_DAYS = 3660
 MAX_RESOURCE_DAYS = 40000
@@ -21,64 +19,34 @@ def range_days(start, end):
     return low, high, (last - low.date()).days + 1
 
 
-def _days(low, high):
-    if low == high:
-        yield low, high
-    while low < high:
-        boundary = high if low.date() == date.max else datetime.combine(low.date() + timedelta(days=1), time.min)
-        end = min(high, boundary)
-        yield low, end
-        low = end
-
-
-def _occupied(tasks, low, high):
-    operations = defaultdict(list)
-    for task in tasks:
-        start, end = local_time(task["start"]), local_time(task["end"])
-        if start > end:
-            raise WorkbenchCommandRejected("invalid_task_interval", "任务起止时间无效，请核对计划安排。", 422)
-        if start == end:
-            continue
-        if start < high and end > low:
-            operations[task["operation_ref"]].append((max(start, low), min(end, high)))
-    intervals = [value for values in operations.values() for value in union(values)]
-    return intervals
-
-
-def _day_pressure(first, last, metrics):
-    row = metrics.window(first, last)
-    # Preserve the established daily DTO aliases; canonical metrics are explicit.
-    return {"date": first.date().isoformat(), "start": first.isoformat(), "end": last.isoformat(),
+def _legacy_day(row):
+    """Keep wall-clock aliases; the namespace exposes the canonical capacity fields."""
+    return {"date": row["date"], "start": row["start"], "end": row["end"],
             "available_hours": row["available_hours"], "occupied_hours": row["span_occupied_hours"],
             "inside_available_hours": row["occupied_hours"], "outside_available_hours": row["outside_calendar_hours"],
-            "overlap_hours": row["span_overlap_hours"],
-            "utilization": row["utilization_ratio"], "reason": row["reason"]}
+            "overlap_hours": row["overlap_span_hours"], "utilization": row["utilization_ratio"],
+            "reason": row["issues"][0]["code"] if row["issues"] else None, "window_metrics": row}
 
 
-def _pressure_totals(days):
-    known = [row["utilization"] for row in days if row["utilization"] is not None]
-    unknown = sum(row["available_hours"] is None for row in days)
-    return {"state": "unavailable" if unknown else "available", "days": days,
-            "peak_utilization": None if unknown or not known else max(known),
-            "reason": "calendar_unavailable" if unknown else "zero_available_capacity" if not known else None,
-            "zero_capacity_days": sum(row["available_hours"] == 0 for row in days), "unknown_days": unknown}
+def pressure_from_index(index, resource, calendar):
+    """Adapt the common result to the established daily-pressure read protocol."""
+    window = index.window(resource, calendar)
+    state = {"complete": "available", "not_applicable": "available", "partial": "partial", "unavailable": "unavailable"}[window["state"]]
+    return {"state": state, "days": [_legacy_day(row) for row in index.days(resource, calendar)],
+            "peak_utilization": window["peak_utilization"],
+            "reason": window["issues"][0]["code"] if window["issues"] else None,
+            "zero_capacity_days": window["zero_capacity_days"], "unknown_days": window["unknown_days"],
+            "window_metrics": window}
 
 
-def daily_resource_pressure(tasks, calendar, start, end):
-    low, high, day_count = range_days(start, end)
-    if day_count > MAX_DAYS:
-        return {"state": "unavailable", "days": [], "peak_utilization": None,
-                "reason": "calendar_range_limit", "zero_capacity_days": 0, "unknown_days": day_count}
-    available = available_intervals(calendar) if calendar is not None else None
-    metrics = ResourceUtilizationMetrics(_occupied(tasks, low, high), available)
-    days = [_day_pressure(first, last, metrics) for first, last in _days(low, high)]
-    return {**_pressure_totals(days), "window_metrics": metrics.window(low, high)}
+def daily_resource_pressure(tasks, calendar, start, end, *, resource, source="current_transaction_snapshot", work_available=True):
+    return pressure_from_index(ResourceTaskIndex(tasks, start, end, source=source, work_available=work_available), resource, calendar)
 
 
 def pressure_summary(resources):
-    known = sum(row["peak_utilization"] is not None and row["peak_utilization"] >= 0.9 for row in resources)
-    unknown = sum(row["state"] != "available" for row in resources)
-    return {"threshold": 0.9, "count": None if unknown else known, "known_count": known,
-            "unknown_resources": unknown, "zero_capacity_resources": sum(
-                row["state"] == "available" and row["peak_utilization"] is None for row in resources),
+    windows = [row["window_metrics"] for row in resources]
+    summary = resource_summary(windows)
+    return {"threshold": 0.9, "count": summary["high_pressure_count"], "known_count": summary["known_high_pressure_count"],
+            "unknown_resources": summary["unknown_day_resource_count"], "zero_capacity_resources": sum(
+                row["available_hours"] == 0 for row in windows),
             "resource_count": len(resources), "basis": "same_range_daily_peak_available_occupancy"}

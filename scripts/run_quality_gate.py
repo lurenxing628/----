@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
-import hashlib
+import base64
 import json
 import os
 import re
@@ -50,7 +50,7 @@ from tools.long_gate_manifest import (  # noqa: E402
     build_manifest_from_quality_gate_plan,
     explain_long_gate_impact,
 )
-from tools.long_gate_schema import long_gate_cache_metadata, stable_json_hash  # noqa: E402
+from tools.long_gate_schema import content_equal, long_gate_cache_metadata, read_file_content  # noqa: E402
 from tools.long_gate_summary import (  # noqa: E402
     build_long_gate_summary,
     build_summary_entry,
@@ -84,7 +84,6 @@ from tools.quality_gate_support import (  # noqa: E402
     build_quality_gate_command_plan,
     build_quality_gate_command_receipt,
     build_quality_gate_receipt_rel_path,
-    hash_quality_gate_commands,
     iter_quality_gate_required_tests,
     parse_pytest_collect_nodeids,
 )
@@ -101,10 +100,10 @@ QUALITY_GATE_SELFTEST = QUALITY_GATE_SELFTEST_PATH
 PYTEST_COLLECT_ALL_DISPLAY = "python -m pytest --collect-only -q tests"
 IMPORT_CYCLE_PRODUCTION_DISPLAY = quality_gate_shared.IMPORT_CYCLE_PRODUCTION_DISPLAY
 IMPORT_CYCLE_WITH_TESTS_DISPLAY = quality_gate_shared.IMPORT_CYCLE_WITH_TESTS_DISPLAY
-STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 1
-REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 4
-STATIC_CHECK_PROOF_SCHEMA_VERSION = 1
-DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 1
+STARTUP_RUNTIME_REGRESSIONS_PROOF_SCHEMA_VERSION = 2
+REQUIRED_REGRESSIONS_PROOF_SCHEMA_VERSION = 5
+STATIC_CHECK_PROOF_SCHEMA_VERSION = 2
+DEBT_LEDGER_SYNC_PROOF_SCHEMA_VERSION = 2
 GENERATED_CLEAN_WORKTREE_EXCLUDED_PATHS = [
     QUALITY_GATE_MANIFEST_REL.replace("\\", "/"),
     QUALITY_GATE_RECEIPTS_DIR_REL.replace("\\", "/") + "/",
@@ -141,9 +140,9 @@ class ResumeDecision:
     skip_count: int = 0
     start_command_index: int = 0
     start_command_display: str = ""
-    reusable_receipts: Tuple[Dict[str, str], ...] = ()
+    reusable_receipts: Tuple[Dict[str, Any], ...] = ()
     reusable_receipt_payloads: Tuple[Dict[str, Any], ...] = ()
-    validated_dirty_fingerprint: Optional[Dict[str, Any]] = None
+    validated_dirty_content: Optional[Dict[str, Any]] = None
 
 
 
@@ -189,13 +188,13 @@ def _run_command(
             for chunk in iter(stream.readline, ""):
                 chunks.append(str(chunk))
                 if sink is not None:
-                    print(str(chunk), end="", file=sink, flush=True)
+                    print(quality_gate_shared.sanitize_quality_gate_output(str(chunk)), end="", file=sink, flush=True)
         finally:
             stream.close()
 
     env = os.environ.copy()
     if env_overlay:
-        env.update({str(key): str(value) for key, value in dict(env_overlay).items()})
+        env.update(quality_gate_shared._normalize_env_overlay(dict(env_overlay)))
 
     process = subprocess.Popen(
         list(args),
@@ -237,7 +236,7 @@ def _run_command(
             if returncode == 0:
                 print(_format_collect_only_success(stdout), flush=True)
         elif stdout:
-            print(stdout.rstrip(), flush=True)
+            print(quality_gate_shared.sanitize_quality_gate_output(stdout).rstrip(), flush=True)
     elif returncode != 0:
         if stdout and not stdout.endswith("\n"):
             print(flush=True)
@@ -320,9 +319,9 @@ def _print_command_log_tail(result: Dict[str, Any], *, limit: int = 80) -> None:
     stdout_log_rel = str(result.get("stdout_log_path") or "")
     stderr_log_rel = str(result.get("stderr_log_path") or "")
     print(f"--- stdout 最后 {limit} 行：{stdout_log_rel or '<未落盘>'} ---", flush=True)
-    print(_tail_lines(str(result.get("stdout") or ""), limit=limit), flush=True)
+    print(_tail_lines(quality_gate_shared.sanitize_quality_gate_output(str(result.get("stdout") or "")), limit=limit), flush=True)
     print(f"--- stderr 最后 {limit} 行：{stderr_log_rel or '<未落盘>'} ---", file=sys.stderr, flush=True)
-    print(_tail_lines(str(result.get("stderr") or ""), limit=limit), file=sys.stderr, flush=True)
+    print(_tail_lines(quality_gate_shared.sanitize_quality_gate_output(str(result.get("stderr") or "")), limit=limit), file=sys.stderr, flush=True)
 
 
 def _raise_command_failure(
@@ -349,15 +348,6 @@ def _raise_command_failure(
     raise QualityGateError(message)
 
 
-def _sha256_file(abs_path: str) -> str:
-    hasher = hashlib.sha256()
-    with open(abs_path, "rb") as handle:
-        while True:
-            chunk = handle.read(65536)
-            if not chunk:
-                break
-            hasher.update(chunk)
-    return hasher.hexdigest()
 
 
 def _quality_gate_manifest_abs_path() -> str:
@@ -383,12 +373,12 @@ _command_identity = quality_gate_shared.normalize_quality_gate_command
 
 
 def _commands_match(left: Dict[str, Any], right: Dict[str, Any]) -> bool:
-    return _command_identity(left) == _command_identity(right)
+    return content_equal(_command_identity(left), _command_identity(right))
 
 
 def _read_repo_text(rel_path: str) -> str:
     abs_path = os.path.join(REPO_ROOT, str(rel_path or "").replace("/", os.sep))
-    with open(abs_path, encoding="utf-8") as handle:
+    with open(abs_path, encoding="utf-8", newline="") as handle:
         return handle.read()
 
 
@@ -436,58 +426,44 @@ def _status_line_path(line: str) -> str:
     return _decode_status_path(path_text)
 
 
-def _dirty_worktree_fingerprint(status_lines: Sequence[str]) -> Dict[str, Any]:
+def _dirty_worktree_content(status_lines: Sequence[str]) -> Dict[str, Any]:
     normalized_lines = _worktree_status_lines(status_lines)
-    hasher = hashlib.sha256()
-    for line in normalized_lines:
-        hasher.update(line.encode("utf-8", errors="replace"))
-        hasher.update(b"\0")
-    if not normalized_lines:
-        return {
-            "status_lines": normalized_lines,
-            "content_sha256": hasher.hexdigest(),
-        }
-    for diff_kind, diff_args in (
-        ("unstaged", ["diff", "--no-ext-diff", "--binary"]),
-        ("staged", ["diff", "--cached", "--no-ext-diff", "--binary"]),
-    ):
-        hasher.update(diff_kind.encode("ascii"))
-        hasher.update(b"\0")
-        hasher.update(_run_git_bytes(diff_args))
-        hasher.update(b"\0")
+    diffs: Dict[str, str] = {}
+    if normalized_lines:
+        for kind, args in (
+            ("unstaged", ["diff", "--no-ext-diff", "--binary"]),
+            ("staged", ["diff", "--cached", "--no-ext-diff", "--binary"]),
+        ):
+            raw = _run_git_bytes(args)
+            text = raw.decode("utf-8", errors="replace")
+            if quality_gate_shared.sanitize_quality_gate_output(text) != text:
+                raise QualityGateError("脏工作区差异包含敏感环境值，未保存来源内容。")
+            diffs[kind] = base64.b64encode(raw).decode("ascii")
+    rows: List[Dict[str, Any]] = []
     for line in normalized_lines:
         rel_path = _status_line_path(line)
         if not rel_path:
             continue
         abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
-        hasher.update(rel_path.encode("utf-8", errors="replace"))
-        hasher.update(b"\0")
+        row: Dict[str, Any] = {"path": rel_path}
         if os.path.islink(abs_path):
-            hasher.update(b"symlink\0")
-            try:
-                hasher.update(os.readlink(abs_path).encode("utf-8", errors="replace"))
-            except OSError as exc:
-                raise QualityGateError(f"无法读取符号链接目标：{rel_path}: {exc}") from exc
+            row.update(kind="symlink", target=os.readlink(abs_path))
         elif os.path.isfile(abs_path):
-            hasher.update(_sha256_file(abs_path).encode("ascii"))
+            row.update(kind="file", content_base64=read_file_content(abs_path))
         elif os.path.isdir(abs_path):
+            files: List[Dict[str, str]] = []
             for dirpath, dirnames, filenames in os.walk(abs_path):
                 dirnames.sort()
                 filenames.sort()
                 for filename in filenames:
                     file_path = os.path.join(dirpath, filename)
-                    rel_file = _safe_relpath(file_path, REPO_ROOT)
-                    hasher.update(rel_file.encode("utf-8", errors="replace"))
-                    hasher.update(b"\0")
-                    hasher.update(_sha256_file(file_path).encode("ascii"))
-                    hasher.update(b"\0")
+                    files.append({"path": _safe_relpath(file_path, REPO_ROOT),
+                                  "content_base64": read_file_content(file_path)})
+            row.update(kind="directory", files=files)
         else:
-            hasher.update(b"<not-a-file>")
-        hasher.update(b"\0")
-    return {
-        "status_lines": normalized_lines,
-        "content_sha256": hasher.hexdigest(),
-    }
+            row.update(kind="missing")
+        rows.append(row)
+    return {"status_lines": normalized_lines, "diffs_base64": diffs, "paths": rows}
 
 
 def _expected_command_log_rel_paths(index: int, display: str) -> Dict[str, str]:
@@ -507,94 +483,48 @@ def _write_command_output_logs(*, index: int, display: str, result: Dict[str, An
         abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
         with open(abs_path, "w", encoding="utf-8", newline="") as handle:
-            handle.write(str(result.get(result_key) or ""))
+            handle.write(quality_gate_shared.sanitize_quality_gate_output(str(result.get(result_key) or "")))
     return log_paths
 
 
 def _load_resume_receipt_payload(
-    receipt_entry: Dict[str, Any],
-    command: Dict[str, Any],
-    *,
-    index: int,
-    previous_run_id: str,
+    receipt_entry: Dict[str, Any], command: Dict[str, Any], *,
+    index: int, previous_run_id: str,
 ) -> Tuple[Optional[Dict[str, Any]], str]:
-    display = str(command.get("display") or "")
-    expected_path = build_quality_gate_receipt_rel_path(index, display)
-    rel_path = str(receipt_entry.get("path") or "").strip().replace("\\", "/")
-    if not rel_path:
-        return None, f"旧 receipt 缺失：第 {index} 步"
-    if rel_path != expected_path:
-        return None, f"旧 receipt 命令身份不一致：第 {index} 步"
-    abs_path = os.path.join(REPO_ROOT, rel_path.replace("/", os.sep))
-    if not os.path.isfile(abs_path):
-        return None, f"旧 receipt 缺失：{rel_path}"
-    try:
-        with open(abs_path, "rb") as handle:
-            receipt_bytes = handle.read()
-    except OSError as exc:
-        return None, f"旧 receipt 证据不可读：{rel_path}: {exc}"
-    if str(receipt_entry.get("sha256") or "") != hashlib.sha256(receipt_bytes).hexdigest():
-        return None, f"旧 receipt hash 不一致：{rel_path}"
-    try:
-        receipt_payload = json.loads(receipt_bytes)
-    except (ValueError, UnicodeDecodeError) as exc:
-        return None, f"旧 receipt 不是合法 JSON：{rel_path}: {exc}"
-    if not isinstance(receipt_payload, dict):
-        return None, f"旧 receipt 不是合法 JSON 对象：{rel_path}"
-
-    stdout_log_rel = str(receipt_payload.get("stdout_log_path") or "").replace("\\", "/")
-    stderr_log_rel = str(receipt_payload.get("stderr_log_path") or "").replace("\\", "/")
-    if not stdout_log_rel or not stderr_log_rel:
-        return None, f"旧 receipt 缺少日志路径：{rel_path}"
-    expected_logs = _expected_command_log_rel_paths(index, display)
-    if stdout_log_rel != expected_logs["stdout_log_path"] or stderr_log_rel != expected_logs["stderr_log_path"]:
-        return None, f"旧 receipt 日志路径不匹配：第 {index} 步"
-    for log_rel in (stdout_log_rel, stderr_log_rel):
-        log_abs = os.path.join(REPO_ROOT, log_rel.replace("/", os.sep))
-        if not os.path.isfile(log_abs):
-            return None, f"旧 receipt 日志缺失：{log_rel}"
-    try:
-        stdout_text = _read_repo_text(stdout_log_rel)
-        stderr_text = _read_repo_text(stderr_log_rel)
-        returncode = int(receipt_payload.get("returncode") or 0)
-    except (OSError, ValueError) as exc:
-        return None, f"旧 receipt 证据不可读：{rel_path}: {exc}"
-
-    expected_payload = build_quality_gate_command_receipt(
-        command,
-        run_id=previous_run_id,
-        command_index=index,
-        returncode=returncode,
-        stdout=stdout_text,
-        stderr=stderr_text,
-        stdout_log_path=stdout_log_rel,
-        stderr_log_path=stderr_log_rel,
+    payload, error = quality_gate_shared._load_verified_quality_gate_receipt(
+        REPO_ROOT, receipt_entry, command, index=index,
     )
-    header_error = quality_gate_shared._verify_receipt_header(
-        receipt_payload, quality_gate_shared._normalize_command_rows([command])[0],
-        index=index, run_id=previous_run_id,
+    if error or payload is None:
+        return None, str(error or "旧 receipt 证据缺失")
+    normalized_command = _command_identity(command)
+    error = quality_gate_shared._verify_receipt_header(
+        payload, normalized_command, index=index, run_id=previous_run_id,
     )
-    if header_error:
-        return None, f"旧 receipt 命令身份不一致：第 {index} 步 ({header_error})"
-    identity_fields = (
-        "display",
-        "args",
-        "capture_output",
-        "output_policy",
-        "env_overlay",
-        "stdout_log_path",
-        "stderr_log_path",
-    )
-    for field_name in identity_fields:
-        if receipt_payload.get(field_name) != expected_payload.get(field_name):
-            return None, f"旧 receipt 命令身份不一致：第 {index} 步"
-    if int(receipt_payload.get("returncode") or 0) != returncode:
-        return None, f"旧 receipt returncode 不一致：第 {index} 步"
-    for field_name in ("stdout_sha256", "stderr_sha256"):
-        if receipt_payload.get(field_name) != expected_payload.get(field_name):
-            return None, f"旧 receipt 输出日志 hash 不一致：第 {index} 步"
-    receipt_payload["_validated_log_texts"] = {"stdout": stdout_text, "stderr": stderr_text}
-    return receipt_payload, ""
+    if error:
+        return None, error
+    error = quality_gate_shared._verify_receipt_command_fields(payload, command, normalized_command)
+    if error:
+        return None, error
+    if int(payload.get("returncode") or 0) == 0:
+        error = quality_gate_shared._verify_receipt_execution_fields(payload)
+        if error:
+            return None, error
+    expected_logs = _expected_command_log_rel_paths(index, str(command.get("display") or ""))
+    texts: Dict[str, str] = {}
+    policy = quality_gate_shared._command_output_policy(command)
+    for stream in ("stdout", "stderr"):
+        rel = str(payload.get(stream + "_log_path") or "").replace("\\", "/")
+        if rel != expected_logs[stream + "_log_path"]:
+            return None, f"旧 receipt 日志路径不匹配：第 {index} 步"
+        try:
+            text = _read_repo_text(rel)
+        except OSError:
+            return None, f"旧 receipt 日志缺失或不可读：{rel}"
+        if payload.get(stream + "_content") != quality_gate_shared._normalize_command_output_for_policy(text, policy=policy):
+            return None, f"旧 receipt 输出原文不一致：{rel}"
+        texts[stream] = text
+    payload["_validated_log_texts"] = texts
+    return payload, ""
 
 
 def _result_from_receipt_logs(receipt_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -620,6 +550,11 @@ def _strict_long_gate_fingerprint(entry: Dict[str, Any], *, file_snapshot: Optio
         return fingerprint_entry(entry, REPO_ROOT, strict=True, file_snapshot=file_snapshot)
     except LongGateFingerprintError as exc:
         raise QualityGateError(str(exc)) from exc
+    except ValueError as exc:
+        failure = LongGateFingerprintError(
+            str(exc), details={"failure_kind": "source_content_unavailable"},
+        )
+        raise QualityGateError(str(failure)) from failure
 
 
 def _decide_resume_from_previous_failure(
@@ -639,7 +574,7 @@ def _decide_resume_from_previous_failure(
     manifest = dict(loaded_manifest.payload or {})
     if str(manifest.get("status") or "") != "failed":
         return ResumeDecision(False, "上次不是失败记录")
-    if manifest.get("schema_version") not in (2, quality_gate_shared.QUALITY_GATE_PROOF_SCHEMA_VERSION):
+    if manifest.get("schema_version") != quality_gate_shared.QUALITY_GATE_PROOF_SCHEMA_VERSION:
         return ResumeDecision(False, "旧 manifest schema_version 不一致，不能续跑")
 
     previous_head_sha = str(manifest.get("head_sha") or "").strip()
@@ -671,11 +606,11 @@ def _decide_resume_from_previous_failure(
     if previous_python_version != current_python_version:
         return ResumeDecision(False, "旧 manifest 使用的 Python 版本与当前不一致，不能续跑")
 
-    previous_dirty_fingerprint = manifest.get("dirty_worktree_fingerprint_before")
-    current_dirty_fingerprint = _dirty_worktree_fingerprint(current_git_status_short)
+    previous_dirty_fingerprint = manifest.get("dirty_worktree_content_before")
+    current_dirty_fingerprint = _dirty_worktree_content(current_git_status_short)
     if not isinstance(previous_dirty_fingerprint, dict):
         return ResumeDecision(False, "旧 manifest 缺少脏工作区指纹，不能续跑")
-    if previous_dirty_fingerprint != current_dirty_fingerprint:
+    if not content_equal(previous_dirty_fingerprint, current_dirty_fingerprint):
         return ResumeDecision(False, "脏工作区内容已变化，本次完整重跑")
 
     previous_run_id = str(manifest.get("run_id") or "").strip()
@@ -691,12 +626,10 @@ def _decide_resume_from_previous_failure(
     ]
     if normalized_previous_plan != current_planned_commands:
         return ResumeDecision(False, "命令计划已变化，本次完整重跑")
-    if manifest.get("schema_version") == 2 and manifest.get("planned_commands_hash") != hash_quality_gate_commands(command_plan):
-        return ResumeDecision(False, "命令计划已变化，本次完整重跑")
 
     previous_commands = list(manifest.get("commands") or [])
     previous_receipts = list(manifest.get("command_receipts") or [])
-    reusable_receipts: List[Dict[str, str]] = []
+    reusable_receipts: List[Dict[str, Any]] = []
     reusable_payloads: List[Dict[str, Any]] = []
     if not previous_receipts:
         return ResumeDecision(False, "旧 receipt 缺失：manifest 中没有 command_receipts")
@@ -731,16 +664,16 @@ def _decide_resume_from_previous_failure(
                 start_command_display=str(command.get("display") or ""),
                 reusable_receipts=tuple(dict(item) for item in reusable_receipts),
                 reusable_receipt_payloads=tuple(dict(item) for item in reusable_payloads),
-                validated_dirty_fingerprint=dict(current_dirty_fingerprint),
+                validated_dirty_content=dict(current_dirty_fingerprint),
             )
         reusable_receipts.append(
-            {"path": str(receipt_entry.get("path") or ""), "sha256": str(receipt_entry.get("sha256") or "")}
+            {"path": str(receipt_entry.get("path") or ""), "content": dict(receipt_entry["content"])}
         )
         reusable_payloads.append(dict(receipt_payload or {}))
     return ResumeDecision(False, "旧记录没有可定位的失败命令 receipt")
 
 
-def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, result: Dict[str, Any]) -> Dict[str, str]:
+def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, result: Dict[str, Any]) -> Dict[str, Any]:
     display = str(command.get("display") or "")
     if not str(result.get("stdout_log_path") or "") or not str(result.get("stderr_log_path") or ""):
         result.update(_write_command_output_logs(index=index, display=display, result=result))
@@ -778,9 +711,10 @@ def _write_command_receipt(command: Dict[str, Any], *, run_id: str, index: int, 
     with open(receipt_abs, "w", encoding="utf-8") as handle:
         json.dump(receipt_payload, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
+    result.update(receipt_path=receipt_rel, run_id=run_id, command_index=index)
     return {
         "path": receipt_rel,
-        "sha256": _sha256_file(receipt_abs),
+        "content": receipt_payload,
     }
 
 
@@ -957,9 +891,10 @@ def _repo_identity() -> Dict[str, str]:
     }
 
 
-def _assert_guard_tests_ready() -> None:
+def _assert_guard_tests_ready(*, require_tracked: bool = True) -> None:
     missing = [path for path in REQUIRED_TEST_ARGS if not _guard_test_exists(path)]
-    untracked = [path for path in REQUIRED_TEST_ARGS if path not in missing and not _guard_test_tracked(path)]
+    untracked = ([path for path in REQUIRED_TEST_ARGS if path not in missing and not _guard_test_tracked(path)]
+                 if require_tracked else [])
     if not missing and not untracked:
         return
 
@@ -1020,7 +955,12 @@ def _handle_checked_quality_gate_command(display: str, result: Dict[str, Any]) -
 def _handle_collect_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
     _assert_command_succeeded(PYTEST_COLLECT_ALL_DISPLAY, result)
     collect_output = str(result.get("stdout") or "").strip()
-    return {"collection_proof": _build_collection_proof(_collect_nodeids_or_raise(collect_output))}
+    nodeids = _collect_nodeids_or_raise(collect_output)
+    collected_paths = {nodeid.split("::", 1)[0].replace("\\", "/") for nodeid in nodeids}
+    missing = [path for path in REQUIRED_TEST_ARGS if path.replace("\\", "/") not in collected_paths]
+    if missing:
+        raise QualityGateError("required 文件没有被实际 collect 覆盖：" + ", ".join(missing))
+    return {"collection_proof": _build_collection_proof(nodeids)}
 
 
 def _handle_ruff_version_quality_gate_command(_display: str, result: Dict[str, Any]) -> Dict[str, Any]:
@@ -1135,7 +1075,7 @@ def _run_quality_gate_command_plan(
     *,
     run_id: str,
     commands: List[Dict[str, Any]],
-    command_receipts: List[Dict[str, str]],
+    command_receipts: List[Dict[str, Any]],
     parsed_command_results: Dict[str, Any],
     resume_decision: Optional[ResumeDecision] = None,
     long_gate_cache: bool = False,
@@ -1173,7 +1113,7 @@ def _run_quality_gate_command_plan(
             result["execution_mode"] = "resumed_success_prefix"
             result["reused_from"] = {
                 "receipt_path": str(reusable_receipts[index - 1].get("path") or ""),
-                "receipt_sha256": str(reusable_receipts[index - 1].get("sha256") or ""),
+                "receipt_content": dict(reusable_receipts[index - 1].get("content") or {}),
                 "run_id": str(reusable_payloads[index - 1].get("run_id") or ""),
                 "completed_at": str(reusable_payloads[index - 1].get("ended_at") or ""),
             }
@@ -1222,7 +1162,7 @@ def _run_quality_gate_command_plan(
                     "reused_from": {
                         "result_path": str(decision.get("previous_result_path") or ""),
                         "completed_at": str(previous.get("completed_at") or ""),
-                        "fingerprint_hash": str(previous.get("fingerprint_hash") or ""),
+                        "fingerprint": dict(previous.get("fingerprint") or {}),
                         "duration_s": float(previous.get("duration_s") or 0.0),
                     },
                 }
@@ -1457,7 +1397,7 @@ def _run_quality_gate_command_plan(
                     long_gate_runtime_entry["fingerprint"] = dict(long_gate_fingerprint)
                     decision_for_summary = long_gate_runtime_entry.get("decision")
                     if isinstance(decision_for_summary, dict):
-                        decision_for_summary["current_fingerprint_hash"] = str(long_gate_fingerprint.get("hash") or "")
+                        decision_for_summary["current_fingerprint"] = dict(long_gate_fingerprint)
                     cache_result = dict(result)
                     cache_result.pop("stdout_log_path", None)
                     cache_result.pop("stderr_log_path", None)
@@ -1749,13 +1689,9 @@ def _long_gate_declared_output_paths(entry: Dict[str, Any]) -> List[str]:
 
 
 def _long_gate_success_log_row(result: Dict[str, Any], *, stream: str, rel_path: str) -> Dict[str, Any]:
-    text = str(result.get(stream) or "")
-    encoded = text.encode("utf-8")
-    return {
-        "path": str(rel_path or "").replace("\\", "/"),
-        "sha256": hashlib.sha256(encoded).hexdigest(),
-        "bytes": len(encoded),
-    }
+    text = quality_gate_shared.sanitize_quality_gate_output(str(result.get(stream) or ""))
+    return {"path": str(rel_path or "").replace("\\", "/"),
+            "content": text, "bytes": len(text.encode("utf-8"))}
 
 
 def _is_required_regressions_verifier_args(args: Sequence[str]) -> bool:
@@ -1771,7 +1707,7 @@ def _build_long_gate_execution_proof(
     cache_root = str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/")
     safe_entry_id = log_entry_id.replace("\\", "_").replace("/", "_").strip() or "unknown"
     logs = {
-        stream: _long_gate_success_log_row(result, stream=stream, rel_path=f"{cache_root}/logs/{safe_entry_id}.{stream}.log")
+        stream: _long_gate_success_log_row(result, stream=stream, rel_path=f"{cache_root}/logs/{safe_entry_id}.v2.{stream}.log")
         for stream in ("stdout", "stderr")
     }
     return {
@@ -1781,22 +1717,22 @@ def _build_long_gate_execution_proof(
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "head_sha": _git_head_sha(),
         "run_id": str(run_id or ""),
-        "quality_gate_plan_hash": hash_quality_gate_commands(command_plan),
+        "quality_gate_plan": [_command_identity(command) for command in command_plan],
         "command_index": int(command_index),
         "display": str(entry.get("display") or ""),
         "args": [str(arg) for arg in list(entry.get("args") or [])],
-        "command_hash": str(entry.get("command_hash") or ""),
+        "command": _command_identity(entry),
         "capture_output": bool(entry.get("capture_output")),
         "output_policy": str(entry.get("output_policy") or ""),
         "fingerprint_schema_version": int(entry.get("fingerprint_schema_version") or 0),
-        "fingerprint_hash": str(fingerprint.get("hash") or ""),
+        "fingerprint": dict(fingerprint),
         "returncode": int(result.get("returncode") or 0),
         "execution_mode": str(result.get("execution_mode") or "executed"),
         "duration_s": float(result.get("duration_s") or 0.0),
         "stdout_log_path": logs["stdout"]["path"],
         "stderr_log_path": logs["stderr"]["path"],
-        "stdout_sha256": logs["stdout"]["sha256"],
-        "stderr_sha256": logs["stderr"]["sha256"],
+        "stdout_content": logs["stdout"]["content"],
+        "stderr_content": logs["stderr"]["content"],
         "timed_out": bool(result.get("timed_out")),
         "interrupted": bool(result.get("interrupted")),
         "partial_write": bool(result.get("partial_write")),
@@ -1835,7 +1771,7 @@ def _write_startup_runtime_regressions_proof(
     targets = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else []
     payload.update(
         startup_target_count=len(targets), test_count=len(targets),
-        startup_target_paths=targets, startup_target_hash=stable_json_hash(targets),
+        startup_target_paths=targets,
         pytest_exit_code=payload["returncode"],
     )
     return _write_long_gate_topic_proof(QUALITY_GATE_STARTUP_RUNTIME_REGRESSIONS_REL.replace("\\", "/"), payload)
@@ -1860,7 +1796,7 @@ def _write_required_regressions_proof(
     targets = list(args[4:]) if args[:4] == ["python", "-m", "pytest", "-q"] else list(iter_quality_gate_required_tests())
     payload.update(
         required_target_count=len(targets), test_count=len(targets),
-        required_target_paths=targets, required_target_hash=stable_json_hash(targets),
+        required_target_paths=targets,
         pytest_exit_code=payload["returncode"], verification_exit_code=payload["returncode"],
         verification_method=("full_test_debt_payload_required_coverage" if _is_required_regressions_verifier_args(args)
                              else "direct_pytest_required_targets"),
@@ -1908,7 +1844,7 @@ def _write_debt_ledger_sync_proof(
         ledger_checked_at=str(summary.get("checked_at") or ""),
         ledger_counts={key: int(summary.get(key) or 0) for key in (
             "oversize_count", "complexity_count", "silent_fallback_count", "test_debt_count", "accepted_risk_count")},
-        samples_hash=stable_json_hash(summary.get("samples") or {}),
+        samples=dict(summary.get("samples") or {}),
         architecture_scan_cache=architecture_scan_cache_metadata(REPO_ROOT),
     )
     return _write_long_gate_topic_proof(QUALITY_GATE_DEBT_LEDGER_SYNC_REL.replace("\\", "/"), payload)
@@ -1955,7 +1891,7 @@ def _write_static_check_proof(
     paths = list(QUALITY_GATE_TOOL_PATHS) if entry_id == ENTRY_PYRIGHT_TOOLS_FULL else [
         path for path in QUALITY_GATE_TOOL_PATHS if path in args]
     payload.update(config_path=_option_value(args, "-p"), tool_path_count=len(paths),
-                   tool_paths=paths, tool_paths_hash=stable_json_hash(paths))
+                   tool_paths=paths)
     return _write_long_gate_topic_proof(rel_path, payload)
 
 
@@ -2034,7 +1970,7 @@ def _cached_full_test_debt_failure_result(
         "reused_from": {
             "result_path": str(decision.get("previous_result_path") or ""),
             "completed_at": str(previous.get("completed_at") or ""),
-            "fingerprint_hash": str(previous.get("fingerprint_hash") or ""),
+            "fingerprint": dict(previous.get("fingerprint") or {}),
             "duration_s": float(previous.get("duration_s") or 0.0),
         },
         "stdout_log_path": str(previous.get("stdout_log_path") or ""),
@@ -2125,7 +2061,7 @@ def _long_gate_success_cache_exists(entry_id: str, *, cache_dir: str) -> bool:
         REPO_ROOT,
         str(cache_dir or "evidence/QualityGate/long_gate").replace("\\", "/").replace("/", os.sep),
         "results",
-        f"{safe_entry_id}.success.json",
+        f"{safe_entry_id}.v2.success.json",
     )
     return os.path.isfile(result_path)
 
@@ -2211,37 +2147,37 @@ def _apply_worktree_proof(
     after = None
     if git_status_short_after is not None:
         after = _worktree_status_lines(git_status_short_after)
-    previous_before_fingerprint = manifest.get("dirty_worktree_fingerprint_before")
+    previous_before_fingerprint = manifest.get("dirty_worktree_content_before")
     if isinstance(previous_before_fingerprint, dict) and previous_before_fingerprint.get("status_lines") == before:
         before_fingerprint = previous_before_fingerprint
     else:
-        before_fingerprint = _dirty_worktree_fingerprint(before)
-    after_fingerprint = _dirty_worktree_fingerprint(after) if after is not None else None
+        before_fingerprint = _dirty_worktree_content(before)
+    after_fingerprint = _dirty_worktree_content(after) if after is not None else None
     manifest.update(
         {
             "git_status_short_before": before,
-            "dirty_worktree_fingerprint_before": before_fingerprint,
+            "dirty_worktree_content_before": before_fingerprint,
             "is_dirty_before": bool(before),
             "git_status_short_after": after,
-            "dirty_worktree_fingerprint_after": after_fingerprint,
+            "dirty_worktree_content_after": after_fingerprint,
             "is_dirty_after": None if after is None else bool(after),
-            "tracked_drift_detected": None if after is None else (before_fingerprint != after_fingerprint),
+            "tracked_drift_detected": None if after is None else not content_equal(before_fingerprint, after_fingerprint),
         }
     )
 
 
-def _assert_resume_dirty_fingerprint_still_current(
+def _assert_resume_dirty_content_still_current(
     resume_decision: ResumeDecision,
     *,
     git_status_short_before: Sequence[str],
 ) -> None:
     if not resume_decision.enabled:
         return
-    expected = resume_decision.validated_dirty_fingerprint
+    expected = resume_decision.validated_dirty_content
     if not isinstance(expected, dict):
         raise QualityGateError("续跑缺少已校验的脏工作区指纹")
-    current = _dirty_worktree_fingerprint(git_status_short_before)
-    if current != expected:
+    current = _dirty_worktree_content(git_status_short_before)
+    if not content_equal(current, expected):
         raise QualityGateError("脏工作区内容在续跑判定后又发生变化，本次不能跳过前置命令")
 
 
@@ -2414,7 +2350,7 @@ def _planned_long_gate_decision_forced(entry: Dict[str, Any], *, force_requested
         "invalidated_by": invalidated_by,
         "previous_completed_at": "",
         "previous_result_path": "",
-        "current_fingerprint_hash": "",
+        "current_fingerprint": {},
     }
 
 
@@ -2427,7 +2363,7 @@ def _disabled_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
         "invalidated_by": [],
         "previous_completed_at": "",
         "previous_result_path": "",
-        "current_fingerprint_hash": "",
+        "current_fingerprint": {},
     }
 
 
@@ -2470,14 +2406,18 @@ def _fingerprint_error_long_gate_decision(entry: Dict[str, Any], error: LongGate
         "invalidated_by": invalidated_by,
         "previous_completed_at": "",
         "previous_result_path": "",
-        "current_fingerprint_hash": "",
+        "current_fingerprint": {},
         "cache_unavailable": True,
         "fingerprint_error": fingerprint_error,
     }
 
 
 def _decision_cache_unavailable(decision: Mapping[str, Any]) -> bool:
-    return bool(decision.get("cache_unavailable")) or bool(decision.get("fingerprint_error"))
+    fingerprint = decision.get("current_fingerprint")
+    components = fingerprint.get("components") if isinstance(fingerprint, dict) else None
+    environment = components.get("environment") if isinstance(components, dict) else None
+    sensitive_inputs = environment.get("non_reusable_env_keys") if isinstance(environment, dict) else None
+    return bool(decision.get("cache_unavailable") or decision.get("fingerprint_error") or sensitive_inputs)
 
 
 def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *, force_reason: str) -> Dict[str, Any]:
@@ -2492,7 +2432,8 @@ def _force_long_gate_decision(entry: Dict[str, Any], decision: Dict[str, Any], *
         "invalidated_by": invalidated_by,
         "previous_completed_at": str(decision.get("previous_completed_at") or ""),
         "previous_result_path": str(decision.get("previous_result_path") or ""),
-        "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or ""),
+        "current_fingerprint": dict(decision.get("current_fingerprint") or {}),
+        "cache_unavailable": _decision_cache_unavailable(decision),
     }
 
 
@@ -2519,6 +2460,8 @@ def _refresh_full_test_debt_reuse_decision(runtime_entry: Dict[str, Any], *, cac
 def _refresh_required_regressions_reuse_decision(runtime_entry: Dict[str, Any], *, cache_dir: str) -> None:
     entry = dict(runtime_entry.get("entry") or {})
     if str(entry.get("entry_id") or "") != ENTRY_REQUIRED_REGRESSIONS:
+        return
+    if _decision_cache_unavailable(dict(runtime_entry.get("decision") or {})):
         return
     current_decision = dict(runtime_entry.get("decision") or {})
     if not _full_test_debt_decision_can_refresh(current_decision):
@@ -2598,7 +2541,7 @@ def _prepare_long_gate_cache_decisions(
                 if force_rerun_all or force_requested:
                     decision = _force_long_gate_decision(
                         entry,
-                        {"current_fingerprint_hash": fingerprint["hash"]},
+                        {"current_fingerprint": dict(fingerprint)},
                         force_reason=("forced by --long-gate-force-rerun-all" if force_rerun_all
                                       else f"forced by --long-gate-force-rerun {entry_id}"),
                     )
@@ -2665,8 +2608,8 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
                         print(f"  {key}: {details.get(key)}", flush=True)
         if entry.get("previous_result_path"):
             print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
-        if entry.get("current_fingerprint_hash"):
-            print(f"  fingerprint: {entry.get('current_fingerprint_hash')}", flush=True)
+        if entry.get("current_fingerprint"):
+            print("  fingerprint: complete input content compared", flush=True)
         _print_long_gate_cache_decision_hint(entry)
         invalidated_by = list(entry.get("invalidated_by") or [])
         if invalidated_by:
@@ -2865,7 +2808,7 @@ def _output_file_rows(paths: Sequence[str]) -> List[Dict[str, str]]:
             continue
         abs_path = os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
         if os.path.isfile(abs_path):
-            rows.append({"path": normalized, "sha256": _sha256_file(abs_path)})
+            rows.append({"path": normalized, "content_base64": read_file_content(abs_path)})
     return rows
 
 
@@ -2964,7 +2907,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     run_id = f"{head_sha}:{started_at}"
     runtime_snapshot = _runtime_state_snapshot()
     commands: List[Dict[str, Any]] = []
-    command_receipts: List[Dict[str, str]] = []
+    command_receipts: List[Dict[str, Any]] = []
     collection_proof: Optional[Dict[str, Any]] = None
     ruff_version_output: Optional[str] = None
     pyright_version_output: Optional[str] = None
@@ -3037,9 +2980,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except QualityGateError:
             failure_kind = "environment_blocked"
             raise
-        _assert_guard_tests_ready()
+        _assert_guard_tests_ready(require_tracked=require_clean_worktree)
         try:
-            _assert_resume_dirty_fingerprint_still_current(
+            _assert_resume_dirty_content_still_current(
                 resume_decision,
                 git_status_short_before=git_status_short_before,
             )

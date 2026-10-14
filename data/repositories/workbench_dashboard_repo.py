@@ -3,7 +3,8 @@
 import uuid
 
 from core.infrastructure.workbench_dashboard_schema import contract_issues
-from core.models.workbench_command import canonical_json, input_fingerprint
+from core.models.content import content_text
+from core.models.workbench_command import canonical_json
 from data.repositories.workbench_dashboard_source_repo import rows
 
 
@@ -58,7 +59,8 @@ class WorkbenchDashboardRepository:
         return self.conn.execute("SELECT COUNT(*) FROM " + self.history_table + " WHERE item_ref=?", (item_ref,)).fetchone()[0]
 
     def history_rows(self, item_ref, size, offset):
-        return rows(self.conn, "SELECT h.*,c.receipt_ref FROM " + self.history_table + " h "
+        return rows(self.conn, "SELECT h.*,c.receipt_ref,c.action AS receipt_action,c.context_ref AS receipt_context_ref,"
+                    "c.outcome_json AS receipt_outcome_json FROM " + self.history_table + " h "
                     "LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=h.request_key "
                     "WHERE h.item_ref=? ORDER BY h.sequence DESC LIMIT ? OFFSET ?", (item_ref, size, offset))
 
@@ -78,5 +80,5 @@ class WorkbenchDashboardRepository:
         history_ref = uuid.uuid4().hex + uuid.uuid4().hex[:16]
         self.conn.execute("INSERT INTO " + self.history_table + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (history_ref, ref, sequence, action, canonical_json(before), canonical_json(after), canonical_json(source),
-                           canonical_json(facts), input_fingerprint(facts), reason, actor, stamp, request_key))
+                           content_text(facts), None, reason, actor, stamp, request_key))
         return history_ref

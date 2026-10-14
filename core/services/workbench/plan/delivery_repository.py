@@ -80,6 +80,13 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
             raise WorkbenchCommandRejected("plan_unavailable", "计划涉及的批次已不存在，请到批次管理核对。")
         return batches, operations
 
+    def deferred_batch_keys(self, operation_ids):
+        values, rows = sorted(operation_ids), []
+        for start in range(0, len(values), 400):
+            rows.extend(self.list_operation_batch_ids(values[start:start + 400]))
+        issues = [] if {row["op_id"] for row in rows} == operation_ids else ["deferred_operation_source_missing"]
+        return {row["batch_id"] for row in rows}, issues
+
     def completion_record(self, identity, scenario):
         if identity.source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
             return {"source": identity.source_table, "scenario": scenario}

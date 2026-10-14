@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Any, Dict, List, Mapping, Optional, Sequence, cast
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, cast
 
 from core.errors import ValidationError
+from core.models.content import content_text
 from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABELS
 from core.services.scheduler.operation_execution_feedback_support import _parse_feedback_datetime
 
@@ -36,9 +36,10 @@ class _RowPlan:
 
 
 class ResourceDispatchActualImportPreviewer:
-    def __init__(self, feedback_service: Any):
+    def __init__(self, feedback_service: Any, *, replay_checker: Optional[Callable[[TaskPlan], bool]] = None):
         self.feedback_service = feedback_service
         self.validator = ResourceDispatchActualImportValidator(feedback_service)
+        self.replay_checker = replay_checker
 
     def preview(self, raw_rows: Sequence[Mapping[str, Any]], tasks: Sequence[TaskRef]) -> PreviewResult:
         task_index = self._task_index(tasks)
@@ -82,7 +83,7 @@ class ResourceDispatchActualImportPreviewer:
             return None
         task = task_index.get(task_code)
         if task is None:
-            messages.append("找不到任务，请重新下载填写模板后再导入。")
+            messages.append("任务识别码缺少当前所选计划的原任务归属，请重新下载填写模板后再导入。")
             return None
         return task
 
@@ -207,6 +208,8 @@ class ResourceDispatchActualImportPreviewer:
         plans = [item.plan for item in items if item.plan is not None]
         merged = self._merge_plans(plans)
         messages: List[str] = []
+        if self.replay_checker is not None and self.replay_checker(merged):
+            return
         self.validator.validate_task_plan(merged, messages)
         if not messages:
             return
@@ -243,7 +246,7 @@ class ResourceDispatchActualImportPreviewer:
                 merged.exception_severity = plan.exception_severity
             if plan.exception_remark:
                 merged.exception_remark = plan.exception_remark
-            if plan.feedback_person:
+            if plan.actual_start_time or plan.actual_finish_time or plan.exception_time:
                 merged.feedback_person = plan.feedback_person
             if plan.remark:
                 merged.remark = plan.remark
@@ -339,12 +342,11 @@ def preview_payload(preview: PreviewResult, *, preview_token: str) -> Dict[str, 
 
 
 def preview_token(rows: Sequence[Mapping[str, Any]], query_kwargs: Mapping[str, Any]) -> str:
-    query = {key: text(value) for key, value in sorted((query_kwargs or {}).items()) if text(value)}
+    query = {key: value.strip() if type(value) is str else value
+             for key, value in (query_kwargs or {}).items()
+             if value is not None and not (type(value) is str and not value.strip())}
     raw = {"rows": list(rows or []), "query": query}
-    payload = json.dumps(raw, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":"))
-    import hashlib
-
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return "actual-import-content-v1:" + content_text(raw)
 
 
 __all__ = ["ResourceDispatchActualImportPreviewer", "preview_payload", "preview_token"]

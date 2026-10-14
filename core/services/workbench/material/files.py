@@ -90,7 +90,7 @@ class WorkbenchMaterialFileService:
     def prepare_import(self, content, *, file_format, scope, mode="upsert"):
         request = file_request(content, file_format, mode, scope)
         source, notices = read_material_file(content, file_format)
-        return PreparedImportSource.build("material.import", request, source, notices)
+        return PreparedImportSource.build("material.import", request, source, notices, content=content)
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
@@ -108,7 +108,7 @@ class WorkbenchMaterialFileService:
                     numbers = ", ".join(str(row["row"]) for row in repeated)
                     for row in repeated:
                         reject_row(row, "同一编号在文件中重复，涉及行：" + numbers, code="duplicate_entry")
-            return MaterialPreview.build("material.import", request, rows, notices)
+            return MaterialPreview.build("material.import", request, rows, notices, source=prepared)
 
     def _import_row(self, source):
         row = preview_row(source["row"])
@@ -181,8 +181,7 @@ class WorkbenchMaterialFileService:
         if not self.conn.in_transaction:
             raise RuntimeError("物料导入确认必须在外层工作台写事务中执行。")
         try:
-            prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
-                content, file_format=file_format, scope=scope, mode=mode)
+            prepared = PreparedImportSource.confirmation(preview, content)
             request = prepared.request_for("material.import", file_format, mode, normalize_scope(scope))
         except (ValidationError, WorkbenchCommandRejected) as exc:
             raise WorkbenchCommandRejected("stale_write", "文件内容、模式或范围已变化，请重新预检。") from exc

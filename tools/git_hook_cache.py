@@ -7,7 +7,6 @@ They are not quality gate proof and they are never written into evidence/.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import shutil
@@ -18,11 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from tools.long_gate_schema import content_equal, read_file_content
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CACHE_SCHEMA_VERSION = 1
-STAGED_RUFF_CACHE_NAME = "staged-ruff.json"
-PRE_PUSH_DAILY_CACHE_NAME = "pre-push-daily.json"
-FINAL_GATE_PASS_CACHE_NAME = "final-gate-pass.json"
+CACHE_SCHEMA_VERSION = 2
+STAGED_RUFF_CACHE_NAME = "staged-ruff.v2.json"
+PRE_PUSH_DAILY_CACHE_NAME = "pre-push-daily.v2.json"
+FINAL_GATE_PASS_CACHE_NAME = "final-gate-pass.v2.json"
 
 HOOK_CACHE_TOOL_PATHS = (
     ".pre-commit-config.yaml",
@@ -50,11 +51,11 @@ FINAL_GATE_SOURCE_PATHS = (
     "tools/long_gate_summary.py",
 )
 FINAL_GATE_ARTIFACT_PATHS = (
-    "evidence/QualityGate/quality_gate_manifest.json",
-    "evidence/QualityGate/long_gate/summary.json",
-    "evidence/QualityGate/long_gate/summary.md",
-    "evidence/QualityGate/receipts",
-    "evidence/QualityGate/logs",
+    "evidence/QualityGate/v4/quality_gate_manifest.json",
+    "evidence/QualityGate/long_gate/summary.v2.json",
+    "evidence/QualityGate/long_gate/summary.v2.md",
+    "evidence/QualityGate/v4/receipts",
+    "evidence/QualityGate/v4/logs",
 )
 
 
@@ -138,33 +139,17 @@ def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     os.replace(str(tmp_path), str(path))
 
 
-def _sha256_file(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(65536)
-            if not chunk:
-                break
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
-def _file_hashes(paths: Iterable[str]) -> Dict[str, str]:
-    rows: Dict[str, str] = {}
+def _file_contents(paths: Iterable[str]) -> Dict[str, Optional[str]]:
+    rows: Dict[str, Optional[str]] = {}
     for rel_path in sorted({normalize_repo_path(path) for path in paths}):
         if not rel_path:
             continue
         abs_path = REPO_ROOT / rel_path
         if abs_path.is_file():
-            rows[rel_path] = _sha256_file(abs_path)
+            rows[rel_path] = read_file_content(str(abs_path))
         else:
-            rows[rel_path] = "<missing>"
+            rows[rel_path] = None
     return rows
-
-
-def _stable_hash(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(dict(payload), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def _python_identity(executable: str) -> Dict[str, str]:
@@ -239,20 +224,21 @@ def _cache_key_payload(
         "python": _python_identity(executable),
         "ruff_version": tool_versions.get("ruff", ""),
         "tool_versions": tool_versions,
-        "watched_files": _file_hashes(watched_paths),
+        "watched_files": _file_contents(watched_paths),
     }
 
 
-def _cache_matches(path: Path, key_hash: str) -> bool:
+def _cache_matches(path: Path, key_payload: Mapping[str, Any]) -> bool:
     payload = _load_json(path)
-    return bool(payload and payload.get("status") == "passed" and payload.get("key_hash") == key_hash)
+    return bool(payload and payload.get("schema_version") == CACHE_SCHEMA_VERSION
+                and payload.get("status") == "passed" and "key_payload" in payload
+                and content_equal(payload["key_payload"], dict(key_payload)))
 
 
-def _write_pass_cache(path: Path, *, key_hash: str, key_payload: Mapping[str, Any], extra: Mapping[str, Any]) -> None:
+def _write_pass_cache(path: Path, *, key_payload: Mapping[str, Any], extra: Mapping[str, Any]) -> None:
     payload = {
         "schema_version": CACHE_SCHEMA_VERSION,
         "status": "passed",
-        "key_hash": key_hash,
         "key_payload": dict(key_payload),
         "extra": dict(extra),
         "written_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
@@ -295,9 +281,8 @@ def run_staged_ruff(executable: str) -> int:
             "staged_python_paths": list(targets),
         },
     )
-    key_hash = _stable_hash(key_payload)
     path = cache_path(STAGED_RUFF_CACHE_NAME)
-    if _cache_matches(path, key_hash):
+    if _cache_matches(path, key_payload):
         print("[git-hook-cache] staged ruff: reuse passed cache for unchanged staged tree", flush=True)
         return 0
 
@@ -311,7 +296,6 @@ def run_staged_ruff(executable: str) -> int:
         if int(returncode) == 0:
             _write_pass_cache(
                 path,
-                key_hash=key_hash,
                 key_payload=key_payload,
                 extra={"staged_tree": tree_hash, "staged_python_paths": list(targets)},
             )
@@ -338,10 +322,10 @@ def _daily_scope_cache_extra(scope_payload: Optional[Mapping[str, Any]]) -> Dict
     return {
         "scope_known": bool(payload.get("scope_known")),
         "scope_reason": str(payload.get("reason") or ""),
-        "changed_paths_hash": str(payload.get("changed_paths_hash") or _stable_hash({"changed_paths": []})),
-        "impact_pytest_target_hash": str(impact_payload.get("target_hash") or _stable_hash({"impact_targets": []})),
+        "changed_paths": list(payload.get("changed_paths") or []),
+        "impact_pytest_target_paths": list(impact_payload.get("target_paths") or []),
         "impact_pytest_all_required_groups": bool(impact_payload.get("all_required_groups")),
-        "ruff_target_hash": str(ruff_payload.get("target_hash") or _stable_hash({"ruff_targets": []})),
+        "ruff_target_paths": list(ruff_payload.get("target_paths") or []),
         "ruff_all_files": bool(ruff_payload.get("all_files")),
         "scope_payload": payload,
     }
@@ -368,7 +352,7 @@ def daily_gate_cache_key(
     remote_ref: str = "",
     scope_payload: Optional[Mapping[str, Any]] = None,
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
-) -> Tuple[str, Dict[str, Any]]:
+) -> Dict[str, Any]:
     scope_extra = _daily_scope_cache_extra(scope_payload)
     key_payload = _cache_key_payload(
         kind="pre-push-daily",
@@ -384,7 +368,7 @@ def daily_gate_cache_key(
             **scope_extra,
         },
     )
-    return _stable_hash(key_payload), key_payload
+    return key_payload
 
 
 def pre_push_daily_cache_hit(
@@ -399,14 +383,14 @@ def pre_push_daily_cache_hit(
     cached = _load_json(path)
     if not cached or cached.get("status") != "passed" or git_status_lines():
         return False
-    key_hash, _payload = daily_gate_cache_key(
+    key_payload = daily_gate_cache_key(
         executable,
         remote_name=remote_name,
         remote_ref=remote_ref,
         scope_payload=scope_payload,
         ref_contexts=ref_contexts,
     )
-    return cached.get("key_hash") == key_hash
+    return _cache_matches(path, key_payload)
 
 
 def write_pre_push_daily_cache(
@@ -419,7 +403,7 @@ def write_pre_push_daily_cache(
 ) -> None:
     if git_status_lines():
         raise HookCacheError("pre-push daily gate pass cache 只能在干净工作区写入")
-    key_hash, key_payload = daily_gate_cache_key(
+    key_payload = daily_gate_cache_key(
         executable,
         remote_name=remote_name,
         remote_ref=remote_ref,
@@ -428,25 +412,24 @@ def write_pre_push_daily_cache(
     )
     _write_pass_cache(
         cache_path(PRE_PUSH_DAILY_CACHE_NAME),
-        key_hash=key_hash,
         key_payload=key_payload,
         extra={
             "head_sha": head_sha(),
             "head_tree": key_payload["extra"]["head_tree"],
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
-            "changed_paths_hash": key_payload["extra"]["changed_paths_hash"],
-            "impact_pytest_target_hash": key_payload["extra"]["impact_pytest_target_hash"],
-            "ruff_target_hash": key_payload["extra"]["ruff_target_hash"],
+            "changed_paths": key_payload["extra"]["changed_paths"],
+            "impact_pytest_target_paths": key_payload["extra"]["impact_pytest_target_paths"],
+            "ruff_target_paths": key_payload["extra"]["ruff_target_paths"],
         },
     )
 
 
-def _hash_path(rel_path: str) -> Dict[str, Any]:
+def _path_content(rel_path: str) -> Dict[str, Any]:
     normalized = normalize_repo_path(rel_path)
     abs_path = REPO_ROOT / normalized
     if abs_path.is_file():
-        return {"kind": "file", "path": normalized, "sha256": _sha256_file(abs_path)}
+        return {"kind": "file", "path": normalized, "content_base64": read_file_content(str(abs_path))}
     if abs_path.is_dir():
         rows = []
         for root, dirs, files in os.walk(str(abs_path)):
@@ -455,17 +438,17 @@ def _hash_path(rel_path: str) -> Dict[str, Any]:
             for filename in files:
                 file_path = Path(root) / filename
                 rel_file = normalize_repo_path(str(file_path.relative_to(REPO_ROOT)))
-                rows.append({"path": rel_file, "sha256": _sha256_file(file_path)})
-        return {"kind": "directory", "path": normalized, "files": rows, "hash": _stable_hash({"files": rows})}
+                rows.append({"path": rel_file, "content_base64": read_file_content(str(file_path))})
+        return {"kind": "directory", "path": normalized, "files": rows}
     return {"kind": "missing", "path": normalized}
 
 
-def final_gate_artifact_fingerprints() -> List[Dict[str, Any]]:
-    return [_hash_path(path) for path in FINAL_GATE_ARTIFACT_PATHS]
+def final_gate_artifact_contents() -> List[Dict[str, Any]]:
+    return [_path_content(path) for path in FINAL_GATE_ARTIFACT_PATHS]
 
 
-def final_gate_cache_key(executable: str) -> Tuple[str, Dict[str, Any]]:
-    artifacts = final_gate_artifact_fingerprints()
+def final_gate_cache_key(executable: str) -> Dict[str, Any]:
+    artifacts = final_gate_artifact_contents()
     key_payload = _cache_key_payload(
         kind="final-gate-exact-head",
         executable=executable,
@@ -478,24 +461,23 @@ def final_gate_cache_key(executable: str) -> Tuple[str, Dict[str, Any]]:
             "artifacts": artifacts,
         },
     )
-    return _stable_hash(key_payload), key_payload
+    return key_payload
 
 
 def final_gate_cache_hit(executable: str) -> bool:
     cached = _load_json(cache_path(FINAL_GATE_PASS_CACHE_NAME))
     if not cached or cached.get("status") != "passed" or git_status_lines():
         return False
-    key_hash, _payload = final_gate_cache_key(executable)
-    return cached.get("key_hash") == key_hash
+    key_payload = final_gate_cache_key(executable)
+    return _cache_matches(cache_path(FINAL_GATE_PASS_CACHE_NAME), key_payload)
 
 
 def write_final_gate_cache(executable: str) -> None:
     if git_status_lines():
         raise HookCacheError("final gate pass cache 只能在干净工作区写入")
-    key_hash, key_payload = final_gate_cache_key(executable)
+    key_payload = final_gate_cache_key(executable)
     _write_pass_cache(
         cache_path(FINAL_GATE_PASS_CACHE_NAME),
-        key_hash=key_hash,
         key_payload=key_payload,
         extra={
             "head_sha": key_payload["extra"]["head_sha"],

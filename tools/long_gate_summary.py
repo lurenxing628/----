@@ -9,10 +9,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from tools.long_gate_paths import LONG_GATE_CACHE_DIR_REL, repo_relative_path
 from tools.long_gate_schema import LONG_GATE_SUMMARY_SCHEMA_VERSION
+from tools.quality_gate_shared import sanitize_quality_gate_output
 
 SUMMARY_SCHEMA_VERSION = LONG_GATE_SUMMARY_SCHEMA_VERSION
-SUMMARY_JSON_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.json").replace("\\", "/")
-SUMMARY_MD_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.md").replace("\\", "/")
+SUMMARY_JSON_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.v2.json").replace("\\", "/")
+SUMMARY_MD_REL = os.path.join(LONG_GATE_CACHE_DIR_REL, "summary.v2.md").replace("\\", "/")
 
 
 def tail_text(text: str, max_lines: int = 80) -> str:
@@ -74,8 +75,8 @@ def extract_copyable_failure(
     receipt_path: str,
     max_lines: int = 80,
 ) -> Dict[str, Any]:
-    stdout = str(result.get("stdout") or "")
-    stderr = str(result.get("stderr") or "")
+    stdout = sanitize_quality_gate_output(str(result.get("stdout") or ""))
+    stderr = sanitize_quality_gate_output(str(result.get("stderr") or ""))
     copyable_command = _command_text_from_display(display)
     nodeids = []
     if _display_is_pytest_command(copyable_command):
@@ -177,7 +178,7 @@ def build_summary_entry(
         "stdout_log_path": str((result or {}).get("stdout_log_path") or "").replace("\\", "/"),
         "stderr_log_path": str((result or {}).get("stderr_log_path") or "").replace("\\", "/"),
         "output_files": [_posix_output_file(item) for item in list(output_files or [])],
-        "current_fingerprint_hash": str(decision.get("current_fingerprint_hash") or ""),
+        "current_fingerprint": dict(decision.get("current_fingerprint") or {}),
         "previous_result_path": str(decision.get("previous_result_path") or ""),
         "duration_s": _duration_value(result, "duration_s"),
         "duration_kind": str((result or {}).get("duration_kind") or "").strip(),
@@ -372,7 +373,9 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
                 decision=entry.get("decision") or "",
                 cache_status=entry.get("cache_status") or "",
                 execution_mode=entry.get("execution_mode") or "",
-                env_overlay_keys=", ".join(str(key) for key in list(entry.get("env_overlay_keys") or [])).replace("|", "\\|"),
+                env_overlay_keys=", ".join(str(key) for key in list(entry.get("env_overlay_keys") or [])).replace(
+                    "|", "\\|"
+                ),
                 reason=str(entry.get("reason") or "").replace("|", "\\|"),
                 invalidated_by=invalidated_by.replace("|", "\\|"),
                 receipt_path=entry.get("receipt_path") or "",
@@ -409,7 +412,7 @@ def render_summary_markdown(summary: Mapping[str, Any]) -> str:
     lines.extend(
         [
             "",
-            "For local profiling, run the exact final proof command and inspect evidence/QualityGate/long_gate/summary.json.",
+            "For local profiling, run the exact final proof command and inspect evidence/QualityGate/long_gate/summary.v2.json.",
         ]
     )
     lines.append("")

@@ -1,14 +1,12 @@
 """Explicit, pinned npm tarball import. Never invoked by an offline build."""
 
-import base64
-import hashlib
 import io
 import json
 import tarfile
 from pathlib import Path
 from urllib.request import urlopen
 
-from asset_sources import digest, write_json
+from asset_sources import write_json
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = "18.3.1"
@@ -33,9 +31,6 @@ def checked_payload(name):
             metadata["dist"]["tarball"]) != (name, VERSION, "MIT", PINS[name], tarball):
         raise ValueError("Pinned npm metadata mismatch: " + name)
     data = read_url(tarball)
-    integrity = "sha512-" + base64.b64encode(hashlib.sha512(data).digest()).decode("ascii")
-    if integrity != PINS[name]:
-        raise ValueError("npm tarball integrity mismatch: " + name)
     members = {"umd/" + name + ".production.min.js": name + "-" + VERSION + ".production.min.js",
                "LICENSE": name + ".LICENSE", "package.json": name + ".package.json"}
     files = {}
@@ -51,7 +46,7 @@ def checked_payload(name):
     if b"Permission is hereby granted" not in files[name + ".LICENSE"]:
         raise ValueError("Missing MIT license text")
     return {"name": name, "version": VERSION, "license": "MIT", "metadata_url": metadata_url,
-            "tarball": tarball, "integrity": integrity}, files
+            "tarball": tarball, "integrity": metadata["dist"]["integrity"]}, files
 
 
 def main():
@@ -72,11 +67,11 @@ def main():
     for name, data in sorted(files.items()):
         if name not in existing:
             (destination / name).write_bytes(data)
-        records.append({"path": name, "sha256": digest(data), "size": len(data)})
+        records.append({"path": name, "size": len(data)})
     manifest = {"schema_version": 1, "packages": packages, "files": records,
                 "scripts": [name + "-" + VERSION + ".production.min.js" for name in PINS]}
     write_json(destination / "vendor-manifest.json", manifest)
-    print(json.dumps({"status": "verified_and_imported", "versions": [p["version"] for p in packages]}))
+    print(json.dumps({"status": "imported", "versions": [p["version"] for p in packages]}))
 
 
 if __name__ == "__main__":

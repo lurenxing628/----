@@ -2,7 +2,7 @@
 
 import copy
 
-from core.models.workbench_command import WorkbenchCommandOutcome, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_execution_input import closed_write_context, normalize_report_void_input, reject
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
 
@@ -68,7 +68,7 @@ class WorkbenchReportVoidService:
             reject("这条报工已更正，请刷新后重新核对撤销内容。", "context_stale", 409)
         before = self.ledger.project_loaded(facts, contexts=False)[0]
         existing = facts["voids"].get(payload["report_ref"])
-        snapshot = {"input_hash": input_fingerprint(payload),
+        snapshot = {"input": payload,
                     "execution": self.ledger.fact_snapshot(facts, header["operation_ref"]),
                     "original_revision_ref": original["revision_ref"]}
         if existing:

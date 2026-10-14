@@ -1,6 +1,5 @@
 """BL-only fresh current-schema temporary databases and real engine fixtures."""
 
-import hashlib
 import json
 import sqlite3
 from contextlib import contextmanager
@@ -162,8 +161,4 @@ def edit_capture(case, field, edit):
     edit(value)
     encoded = json.dumps(value, ensure_ascii=False)
     sql = "UPDATE WorkbenchRunJobs SET " + field + "=?"
-    args = (encoded,)
-    if field == "facts_json":
-        sql += ", facts_hash=?"
-        args += (hashlib.sha256(encoded.encode("utf-8")).hexdigest(),)
-    corrupt_update(case.conn, "WorkbenchRunJobs", sql, args)
+    corrupt_update(case.conn, "WorkbenchRunJobs", sql, (encoded,))

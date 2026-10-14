@@ -2,11 +2,11 @@
 
 from datetime import datetime
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import reference
 
 from .analysis_projection import project_dashboard_analysis
-from .facts import DashboardFacts, typed
+from .facts import DashboardFacts
 from .projection import safe_material
 from .service import WorkbenchDashboardService
 
@@ -21,5 +21,5 @@ def read_dashboard_analysis(conn, plan_ref=None):
         # 待排池和任务条要按批次查来源编号，留在读快照里；其余投影在读事务结束后只用已读出的事实。
         material = safe_material(facts)
     data = project_dashboard_analysis(facts.project(), material)
-    state = input_fingerprint(typed({"source": facts.fingerprint(), "data": {k: v for k, v in data.items() if k != "as_of"}}))
+    state = facts.snapshot_contents(view={"data": {k: v for k, v in data.items() if k != "as_of"}})
     return data, state

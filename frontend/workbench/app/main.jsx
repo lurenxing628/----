@@ -26,7 +26,8 @@
       || typeof window.FieldWorkspace !== 'function' || typeof window.ActualGanttWorkspace !== 'function'
       || typeof window.PreflightWorkspace !== 'function' || typeof window.RunWorkspace !== 'function'
       || typeof window.PlanCenterWorkspace !== 'function' || typeof window.RunCandidateWorkspace !== 'function'
-      || typeof window.RunHistoryWorkspace !== 'function' || typeof window.CalibrationWorkspace !== 'function'
+      || typeof window.RunHistoryWorkspace !== 'function' || typeof window.DecisionHistoryWorkspace !== 'function'
+      || !window.DecisionHistoryAPI || typeof window.DecisionHistoryAPI.create !== 'function' || typeof window.CalibrationWorkspace !== 'function'
       || typeof window.RunAdoptionAction !== 'function' || typeof window.WorkbenchTrialWorkspace !== 'function'
       || typeof window.TrialAdoptionAction !== 'function' || typeof window.WorkbenchDashboardWorkspace !== 'function'
       || !window.WorkbenchNavigation || !window.WorkbenchCaption || !window.WorkbenchPageContext || !window.WorkbenchBoundary

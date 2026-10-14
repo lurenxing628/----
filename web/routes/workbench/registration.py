@@ -7,6 +7,7 @@ from .calendars import register_calendar_routes
 from .calibration import register_calibration_routes
 from .calibration_adoption import register_calibration_adoption_routes
 from .dashboard import register_dashboard_routes
+from .decision_history import register_decision_history_routes
 from .execution import register_execution_routes
 from .master_overview import register_master_overview_routes
 from .material_actions import register_material_action_routes
@@ -62,6 +63,7 @@ register_run_candidate_routes(bp)
 register_run_candidate_adoption_routes(bp)
 register_run_candidate_baseline_routes(bp)
 register_run_history_routes(bp)
+register_decision_history_routes(bp)
 register_report_routes(bp)
 register_calibration_routes(bp)
 register_calibration_adoption_routes(bp)

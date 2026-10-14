@@ -2,36 +2,50 @@ from __future__ import annotations
 
 import fnmatch
 import glob
-import hashlib
 import importlib.metadata
 import json
 import os
 import platform
 import shutil
-import signal
 import stat
 import subprocess
 import sys
 import tempfile
-import time
-import urllib.request
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from tools import architecture_scan_cache
-from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, stable_json_hash
-from tools.quality_gate_shared import normalize_quality_gate_command
+from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, content_equal, read_file_content
+from tools.quality_gate_shared import (
+    QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
+    normalize_quality_gate_command,
+    sanitize_quality_gate_output,
+)
 
-_EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 1
-_CURRENT_FULL_TEST_DEBT_REL = "evidence/QualityGate/current_full_test_debt.json"
-_RUNTIME_FINGERPRINT_CACHE: Dict[str, str] = {}
+_EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION = 2
+_CURRENT_FULL_TEST_DEBT_REL = QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL.replace("\\", "/")
+_RUNTIME_FINGERPRINT_CACHE: Dict[Tuple[str, str, Tuple[Tuple[str, str], ...]], Any] = {}
 ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION = 2
-RUNTIME_FINGERPRINT_KEYS = frozenset({
-    "python_executable_realpath", "python_version", "pytest_version",
-    "pytest_plugin_distribution_versions", "ruff_version", "pyright_version", "platform",
-    "node_executable_realpath", "git_executable_realpath", "git_version", "node_version",
-    "node_browser_runtime_capability", "chrome_executable_resolution", "chrome_version",
-    "chrome_executable_identity", "chrome_headless_preflight", "architecture_scan_cache_metadata",
-})
+RUNTIME_FINGERPRINT_KEYS = frozenset(
+    {
+        "python_executable_realpath",
+        "python_version",
+        "pytest_version",
+        "pytest_plugin_distribution_versions",
+        "ruff_version",
+        "pyright_version",
+        "platform",
+        "node_executable_realpath",
+        "git_executable_realpath",
+        "git_version",
+        "node_version",
+        "node_browser_runtime_capability",
+        "chrome_executable_resolution",
+        "chrome_version",
+        "chrome_executable_identity",
+        "chrome_headless_preflight",
+        "architecture_scan_cache_metadata",
+    }
+)
 
 
 class LongGateFingerprintError(RuntimeError):
@@ -46,17 +60,6 @@ def _collect_nodeids_by_file(nodeids: Sequence[str]) -> Dict[str, List[str]]:
         file_path = str(nodeid).split("::", 1)[0]
         grouped.setdefault(file_path, []).append(str(nodeid))
     return {path: grouped[path] for path in sorted(grouped)}
-
-
-def _sha256_file(path: str) -> str:
-    hasher = hashlib.sha256()
-    with open(path, "rb") as handle:
-        while True:
-            chunk = handle.read(65536)
-            if not chunk:
-                break
-            hasher.update(chunk)
-    return hasher.hexdigest()
 
 
 def _run_git_paths(repo_root: str, args: Sequence[str], *, strict: bool) -> List[str]:
@@ -147,11 +150,7 @@ def _candidate_paths_for_scope(scope: str, repo_root: str, tracked: Set[str], un
     if not _has_glob_chars(normalized_scope):
         return {normalized_scope}
 
-    candidates = {
-        path
-        for path in set(tracked) | set(untracked)
-        if fnmatch.fnmatch(path, normalized_scope)
-    }
+    candidates = {path for path in set(tracked) | set(untracked) if fnmatch.fnmatch(path, normalized_scope)}
     root = _real_repo_root(repo_root)
     glob_pattern = normalized_scope if os.path.isabs(normalized_scope) else os.path.join(root, normalized_scope)
     if not _is_within_repo(glob_pattern, root):
@@ -187,62 +186,51 @@ def _fingerprint_one_file(rel_path: str, repo_root: str, tracked: Set[str], untr
             "kind": "outside_repo",
             "size": 0,
             "mode": "",
-            "sha256": "",
             "source": "outside_repo",
         }
     exists = os.path.lexists(abs_path)
-    if normalized in tracked:
-        source = "tracked"
-    elif normalized in untracked:
-        source = "untracked"
-    elif exists:
-        source = "filesystem"
-    else:
-        source = "missing"
-
+    source = (
+        "tracked"
+        if normalized in tracked
+        else "untracked"
+        if normalized in untracked
+        else "filesystem"
+        if exists
+        else "missing"
+    )
     if not exists:
-        return {
-            "path": normalized,
-            "exists": False,
-            "kind": "missing",
-            "size": 0,
-            "mode": "",
-            "sha256": "",
-            "source": source,
-        }
-
+        return {"path": normalized, "exists": False, "kind": "missing", "size": 0, "mode": "", "source": source}
+    content: Dict[str, Any] = {}
     if os.path.islink(abs_path):
-        kind = "symlink"
-        try:
-            link_target = os.readlink(abs_path)
-        except OSError:
-            link_target = ""
+        link_target = os.readlink(abs_path)
         link_realpath = os.path.realpath(abs_path)
-        if not _is_within_repo(link_realpath, repo_root):
-            kind = "symlink_outside_repo"
-        digest = hashlib.sha256(link_target.encode("utf-8", errors="replace")).hexdigest()
-        size = len(link_target.encode("utf-8", errors="replace"))
+        inside = _is_within_repo(link_realpath, repo_root)
+        kind = "symlink" if inside else "symlink_outside_repo"
+        content = {
+            "target": link_target,
+            "target_realpath": link_realpath,
+            "target_inside_repo": inside,
+            "target_content_base64": read_file_content(link_realpath)
+            if inside and os.path.isfile(link_realpath)
+            else "",
+        }
+        size = len(os.fsencode(link_target))
     elif os.path.isfile(abs_path):
         kind = "file"
-        digest = _sha256_file(abs_path)
+        content = {"content_base64": read_file_content(abs_path)}
         size = os.path.getsize(abs_path)
     elif os.path.isdir(abs_path):
-        kind = "directory"
-        digest = ""
-        size = 0
+        kind, size = "directory", 0
     else:
-        kind = "other"
-        digest = ""
-        size = 0
-
+        kind, size = "other", 0
     return {
         "path": normalized,
         "exists": True,
         "kind": kind,
         "size": int(size),
         "mode": _file_mode(abs_path, kind),
-        "sha256": digest,
         "source": source,
+        **content,
     }
 
 
@@ -274,8 +262,13 @@ class FingerprintFileSnapshot:
         return self.scopes[scope]
 
 
-def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str, *, strict: bool = False,
-                      file_snapshot: Optional[FingerprintFileSnapshot] = None) -> Dict[str, Any]:
+def fingerprint_files(
+    paths_or_patterns: Sequence[str],
+    repo_root: str,
+    *,
+    strict: bool = False,
+    file_snapshot: Optional[FingerprintFileSnapshot] = None,
+) -> Dict[str, Any]:
     root = os.path.abspath(repo_root)
     snapshot = file_snapshot or FingerprintFileSnapshot(root, strict=strict)
     if snapshot.repo_root != root or snapshot.strict != strict:
@@ -297,14 +290,18 @@ def fingerprint_files(paths_or_patterns: Sequence[str], repo_root: str, *, stric
     ]
     return {
         "git_source_status": git_source_status,
-        "paths_hash": stable_json_hash(path_rows),
-        "content_hash": stable_json_hash(files),
+        "paths": path_rows,
         "files": files,
     }
 
 
-def fingerprint_command(command: Mapping[str, Any]) -> str:
-    return stable_json_hash(normalize_quality_gate_command(command))
+def fingerprint_command(command: Mapping[str, Any]) -> Dict[str, Any]:
+    normalized = normalize_quality_gate_command(command)
+    if "SECRET_KEY" in normalized["env_overlay"]:
+        raise LongGateFingerprintError(
+            "SECRET_KEY must remain in the process environment, not the persisted command overlay"
+        )
+    return normalized
 
 
 def _pytest_version(*, strict: bool = False) -> str:
@@ -335,14 +332,11 @@ def _effective_environment(environment: Optional[Mapping[str, str]] = None) -> M
     return environment if environment is not None else os.environ
 
 
-def _runtime_probe_cache_key(probe: str, exe_realpath: str, environment: Mapping[str, str]) -> str:
-    """探针成功值的去重键：(探针名, 解析出的可执行 realpath, 完整 env 签名)。
-
-    同机同进程内同一 realpath + 同一 env 必产出逐位一致的 --version/capability，
-    故缓存命中对指纹 proof 透明；env 任何差异（如 PATH overlay）即换键真跑，
-    覆盖不弱。仅缓存成功值，strict/失败路径不入缓存（见各探针）。
-    """
-    return stable_json_hash({"probe": probe, "exe": exe_realpath, "env": dict(environment)})
+def _runtime_probe_cache_key(
+    probe: str, exe_realpath: str, environment: Mapping[str, str]
+) -> Tuple[str, str, Tuple[Tuple[str, str], ...]]:
+    """Deduplicate successful probes with exact inputs only within this process."""
+    return (probe, exe_realpath, tuple(sorted((str(key), str(value)) for key, value in environment.items())))
 
 
 def _git_executable_realpath(environment: Optional[Mapping[str, str]] = None) -> str:
@@ -427,7 +421,7 @@ def _node_version(*, strict: bool = False, environment: Optional[Mapping[str, st
     return value
 
 
-def _node_browser_runtime_capability(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+def _node_browser_runtime_capability(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
     env = _effective_environment(environment)
     node = shutil.which("node", path=env.get("PATH"))
     if not node:
@@ -461,8 +455,8 @@ def _node_browser_runtime_capability(*, strict: bool = False, environment: Optio
         return "__node_browser_runtime_capability_unavailable__"
     payload = {
         "returncode": int(completed.returncode),
-        "stdout": str(completed.stdout or "").strip(),
-        "stderr": str(completed.stderr or "").strip(),
+        "stdout": sanitize_quality_gate_output(str(completed.stdout or "")),
+        "stderr": sanitize_quality_gate_output(str(completed.stderr or "")),
     }
     if int(completed.returncode) != 0:
         if strict:
@@ -470,8 +464,8 @@ def _node_browser_runtime_capability(*, strict: bool = False, environment: Optio
                 "node browser runtime capability is required for long gate fingerprint: "
                 + json.dumps(payload, ensure_ascii=False, sort_keys=True)
             )
-        return "__node_browser_runtime_capability_failed__:" + stable_json_hash(payload)
-    value = "passed:" + stable_json_hash(payload)
+        return {"status": "failed", **payload}
+    value = {"status": "passed", **payload}
     _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
     return value
 
@@ -494,11 +488,11 @@ def _chrome_executable_resolution(*, strict: bool = False, environment: Optional
     return os.path.realpath(chrome_path)
 
 
-def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
     resolved = _chrome_executable_resolution(strict=strict, environment=environment)
     if resolved.startswith("__chrome_"):
         return resolved
-    cache_key = _runtime_probe_cache_key("chrome_version", resolved, {})
+    cache_key = _runtime_probe_cache_key("chrome_version", resolved, _effective_environment(environment))
     cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -510,6 +504,7 @@ def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, 
             encoding="utf-8",
             errors="replace",
             timeout=10,
+            env=dict(_effective_environment(environment)),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         if strict:
@@ -517,21 +512,21 @@ def _chrome_version(*, strict: bool = False, environment: Optional[Mapping[str, 
         return "__chrome_version_unavailable__"
     payload = {
         "returncode": int(completed.returncode),
-        "stdout": str(completed.stdout or "").strip(),
-        "stderr": str(completed.stderr or "").strip(),
+        "stdout": sanitize_quality_gate_output(str(completed.stdout or "")),
+        "stderr": sanitize_quality_gate_output(str(completed.stderr or "")),
     }
     if int(completed.returncode) != 0:
         if strict:
             raise LongGateFingerprintError(
                 "Chrome version probe failed: " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
             )
-        return "__chrome_version_failed__:" + stable_json_hash(payload)
-    value = "passed:" + stable_json_hash(payload)
+        return {"status": "failed", **payload}
+    value = {"status": "passed", **payload}
     _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
     return value
 
 
-def _chrome_executable_identity(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+def _chrome_executable_identity(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
     resolved = _chrome_executable_resolution(strict=strict, environment=environment)
     if resolved.startswith("__chrome_"):
         return resolved
@@ -541,20 +536,20 @@ def _chrome_executable_identity(*, strict: bool = False, environment: Optional[M
             "realpath": resolved,
             "size": int(st.st_size),
             "mtime_ns": int(getattr(st, "st_mtime_ns", int(st.st_mtime * 1000000000))),
-            "sha256": _sha256_file(resolved),
+            "content_base64": read_file_content(resolved),
         }
     except OSError as exc:
         if strict:
             raise LongGateFingerprintError(f"Chrome identity probe failed: {exc}") from exc
         return "__chrome_identity_unavailable__"
-    return "sha256:" + stable_json_hash(payload)
+    return payload
 
 
-def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> str:
+def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Mapping[str, str]] = None) -> Any:
     resolved = _chrome_executable_resolution(strict=strict, environment=environment)
     if resolved.startswith("__chrome_"):
         return resolved
-    cache_key = _runtime_probe_cache_key("chrome_headless_preflight", resolved, {})
+    cache_key = _runtime_probe_cache_key("chrome_headless_preflight", resolved, _effective_environment(environment))
     cached = _RUNTIME_FINGERPRINT_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -576,6 +571,7 @@ def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Ma
                 encoding="utf-8",
                 errors="replace",
                 timeout=20,
+                env=dict(_effective_environment(environment)),
             )
     except (OSError, subprocess.TimeoutExpired) as exc:
         if strict:
@@ -583,21 +579,21 @@ def _chrome_headless_preflight(*, strict: bool = False, environment: Optional[Ma
         return "__chrome_headless_preflight_unavailable__"
     payload = {
         "returncode": int(completed.returncode),
-        "stdout_hash": stable_json_hash(str(completed.stdout or "").strip()[:500]),
-        "stderr_hash": stable_json_hash(str(completed.stderr or "").strip()[:500]),
+        "stdout": sanitize_quality_gate_output(str(completed.stdout or "")),
+        "stderr": sanitize_quality_gate_output(str(completed.stderr or "")),
     }
     if int(completed.returncode) != 0:
         if strict:
             raise LongGateFingerprintError(
                 "Chrome headless preflight failed: " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
             )
-        return "__chrome_headless_preflight_failed__:" + stable_json_hash(payload)
-    value = "passed:" + stable_json_hash(payload)
+        return {"status": "failed", **payload}
+    value = {"status": "passed", **payload}
     _RUNTIME_FINGERPRINT_CACHE[cache_key] = value
     return value
 
 
-def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
+def _pytest_plugin_distribution_versions(*, strict: bool = False) -> Any:
     try:
         entry_points = importlib.metadata.entry_points()
         select = getattr(entry_points, "select", None)
@@ -618,7 +614,7 @@ def _pytest_plugin_distribution_versions(*, strict: bool = False) -> str:
                     "version": dist_version,
                 }
             )
-        return stable_json_hash(sorted(rows, key=lambda row: (row["name"], row["module"], row["distribution"])))
+        return sorted(rows, key=lambda row: (row["name"], row["module"], row["distribution"]))
     except Exception as exc:
         if strict:
             raise LongGateFingerprintError(f"pytest plugin distribution list is required: {exc}") from exc
@@ -631,7 +627,7 @@ def _runtime_fingerprint_value(
     strict: bool = False,
     environment: Optional[Mapping[str, str]] = None,
     repo_root: Optional[str] = None,
-) -> Optional[str]:
+) -> Any:
     if key == "python_executable_realpath":
         return os.path.realpath(sys.executable)
     if key == "python_version":
@@ -665,12 +661,47 @@ def _runtime_fingerprint_value(
     if key == "chrome_headless_preflight":
         return _chrome_headless_preflight(strict=strict, environment=environment)
     if key == "architecture_scan_cache_metadata":
-        return "sha256:" + stable_json_hash(architecture_scan_cache.architecture_scan_cache_metadata(repo_root))
+        return architecture_scan_cache.architecture_scan_cache_metadata(repo_root)
     source = environment if environment is not None else os.environ
     value = source.get(str(key))
-    if key == "SECRET_KEY" and value is not None:
-        return "sha256:" + stable_json_hash(value)
+    if key == "SECRET_KEY":
+        return {"present": value is not None}
     return value
+
+
+PUBLIC_ENVIRONMENT_KEYS = frozenset(
+    {
+        "APS_ENV",
+        "APS_DB_PATH",
+        "APS_LOG_DIR",
+        "APS_BACKUP_DIR",
+        "APS_EXCEL_TEMPLATE_DIR",
+        "APS_HOST",
+        "APS_PORT",
+        "APS_SHARED_DATA_ROOT",
+        "APS_STATIC_VERSION",
+        "APS_CHROME_PATH",
+        "WERKZEUG_RUN_MAIN",
+        "WORKBENCH_NODE",
+        "NODE_PATH",
+        "NODE_OPTIONS",
+        "PATH",
+        "VIRTUAL_ENV",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONUTF8",
+        "PYTHONIOENCODING",
+        "PYTEST_ADDOPTS",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD",
+        "PYTEST_PLUGINS",
+        "LANG",
+        "LC_ALL",
+        "CI",
+        "APS_FULL_TEST_DEBT_SHARDED",
+        "APS_FULL_TEST_DEBT_SHARD_COUNT",
+    }
+)
 
 
 def fingerprint_environment(
@@ -680,6 +711,11 @@ def fingerprint_environment(
     environment: Optional[Mapping[str, str]] = None,
     repo_root: Optional[str] = None,
 ) -> Dict[str, Any]:
+    unsupported = sorted(
+        {str(key) for key in keys} - RUNTIME_FINGERPRINT_KEYS - PUBLIC_ENVIRONMENT_KEYS - {"SECRET_KEY"}
+    )
+    if unsupported:
+        raise LongGateFingerprintError("environment keys require a public allowlist entry: " + ", ".join(unsupported))
     values = {
         str(key): _runtime_fingerprint_value(
             str(key),
@@ -693,7 +729,7 @@ def fingerprint_environment(
         "schema_version": ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION,
         "keys": [str(key) for key in list(keys or [])],
         "values": values,
-        "hash": stable_json_hash({"schema_version": ENVIRONMENT_FINGERPRINT_SCHEMA_VERSION, "values": values}),
+        "non_reusable_env_keys": [key for key in values if key == "SECRET_KEY" and values[key]["present"]],
     }
 
 
@@ -716,7 +752,9 @@ def _entry_output_result_files(entry: Mapping[str, Any]) -> List[str]:
 
 
 def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
-    rel_path = "evidence/QualityGate/collect_nodeids.json"
+    from tools.long_gate_collect import COLLECT_NODEIDS_REL
+
+    rel_path = COLLECT_NODEIDS_REL
     abs_path = _abs_for_scope_path(rel_path, repo_root)
     component: Dict[str, Any] = {
         "path": rel_path,
@@ -724,7 +762,8 @@ def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
         "validated": False,
         "schema_version": None,
         "status": "",
-        "nodeid_hash": "",
+        "nodeids": [],
+        "nodeids_by_file": {},
         "nodeid_count": None,
         "error": "",
     }
@@ -739,27 +778,51 @@ def _collect_nodeids_component(repo_root: str) -> Dict[str, Any]:
     if not isinstance(payload, dict):
         component["error"] = "collect_nodeids payload must be an object"
         return component
-    raw_nodeids = payload.get("nodeids")
-    nodeids = [str(item) for item in raw_nodeids] if isinstance(raw_nodeids, list) else []
-    expected_nodeids_by_file = _collect_nodeids_by_file(nodeids)
-    component["schema_version"] = payload.get("schema_version")
-    component["status"] = str(payload.get("status") or "")
-    component["nodeid_hash"] = str(payload.get("nodeid_hash") or "")
-    component["nodeid_count"] = payload.get("nodeid_count")
+    component.update(
+        {
+            key: payload.get(key)
+            for key in (
+                "schema_version",
+                "status",
+                "nodeids",
+                "nodeids_by_file",
+                "nodeid_count",
+                "pytest_version",
+                "collect_stdout_content",
+                "collect_stdout_log_path",
+            )
+        }
+    )
+    nodeids = payload.get("nodeids")
     if component["schema_version"] != _EXPECTED_COLLECT_NODEIDS_SCHEMA_VERSION:
         component["error"] = "collect_nodeids schema_version is invalid"
-    elif not isinstance(raw_nodeids, list) or any(not isinstance(item, str) for item in raw_nodeids):
+    elif not isinstance(nodeids, list) or any(not isinstance(item, str) for item in nodeids):
         component["error"] = "collect_nodeids nodeids must be a list of strings"
     elif component["nodeid_count"] != len(nodeids):
         component["error"] = "collect_nodeids nodeid_count does not match nodeids"
-    elif not component["nodeid_hash"]:
-        component["error"] = "collect_nodeids nodeid_hash is missing"
-    elif component["nodeid_hash"] != stable_json_hash(nodeids):
-        component["error"] = "collect_nodeids nodeid_hash does not match nodeids"
-    elif payload.get("nodeids_by_file") != expected_nodeids_by_file:
+    elif not content_equal(component["nodeids_by_file"], _collect_nodeids_by_file(nodeids)):
         component["error"] = "collect_nodeids nodeids_by_file does not match nodeids"
+    elif not isinstance(payload.get("collect_stdout_content"), str):
+        component["error"] = "collect_nodeids collect_stdout_content is missing"
     else:
-        component["validated"] = True
+        from tools.quality_gate_shared import parse_pytest_collect_nodeids
+
+        if not content_equal(parse_pytest_collect_nodeids(payload["collect_stdout_content"]), nodeids):
+            component["error"] = "collect_nodeids stdout does not match nodeids"
+        else:
+            log_path = str(payload.get("collect_stdout_log_path") or "")
+            if log_path:
+                from tools.long_gate_paths import resolve_repo_path
+
+                try:
+                    log_abs = resolve_repo_path(repo_root, log_path, description="collect stdout log path")
+                    with open(log_abs, "rb") as handle:
+                        log_bytes = handle.read()
+                    if log_bytes != payload["collect_stdout_content"].encode("utf-8"):
+                        component["error"] = "collect_nodeids stdout log content changed"
+                except (OSError, ValueError) as exc:
+                    component["error"] = str(exc)
+            component["validated"] = not bool(component["error"])
     return component
 
 
@@ -770,11 +833,7 @@ def _required_full_test_debt_component(repo_root: str) -> Dict[str, Any]:
         "path": rel_path,
         "exists": os.path.isfile(abs_path),
         "validated": False,
-        "required_target_hash": "",
-        "required_nodeid_hash": "",
-        "required_nodeid_count_by_path_hash": "",
-        "group_coverage_hash": "",
-        "hash": "",
+        "verification": None,
         "error": "",
     }
     if not component["exists"]:
@@ -783,48 +842,34 @@ def _required_full_test_debt_component(repo_root: str) -> Dict[str, Any]:
         with open(abs_path, encoding="utf-8") as handle:
             payload = json.load(handle)
         if not isinstance(payload, dict):
-            component["error"] = "current_full_test_debt payload is not an object"
-            return component
-
-        from tools.verify_required_regressions_from_full_test_debt import (  # noqa: PLC0415
-            verify_required_regressions_from_payload,
-        )
+            raise ValueError("current_full_test_debt payload is not an object")
+        from tools.verify_required_regressions_from_full_test_debt import verify_required_regressions_from_payload
 
         verification = verify_required_regressions_from_payload(payload)
-    except Exception as exc:  # verifier errors become a fingerprint component, not a cache crash
+    except Exception as exc:
         component["error"] = str(exc)
         return component
-
-    normalized = {
-        "required_target_hash": str(verification.get("required_target_hash") or ""),
-        "required_nodeids": list(verification.get("required_nodeids") or []),
-        "required_nodeid_count_by_path": dict(verification.get("required_nodeid_count_by_path") or {}),
-        "group_coverage": dict(verification.get("group_coverage") or {}),
-    }
-    component.update(
-        {
-            "validated": True,
-            "required_target_hash": normalized["required_target_hash"],
-            "required_nodeid_hash": stable_json_hash(normalized["required_nodeids"]),
-            "required_nodeid_count_by_path_hash": stable_json_hash(normalized["required_nodeid_count_by_path"]),
-            "group_coverage_hash": stable_json_hash(normalized["group_coverage"]),
-            "hash": stable_json_hash(normalized),
-        }
-    )
+    component.update({"validated": True, "verification": verification})
     return component
 
 
-def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool = False,
-                      file_snapshot: Optional[FingerprintFileSnapshot] = None) -> Dict[str, Any]:
-    command_payload = normalize_quality_gate_command(entry)
+def fingerprint_entry(
+    entry: Mapping[str, Any],
+    repo_root: str,
+    *,
+    strict: bool = False,
+    file_snapshot: Optional[FingerprintFileSnapshot] = None,
+) -> Dict[str, Any]:
+    command_payload = fingerprint_command(entry)
     env_overlay = command_payload["env_overlay"]
     effective_environment = {str(key): str(value) for key, value in os.environ.items()}
     effective_environment.update(env_overlay)
     env_keys = [str(key) for key in list(entry.get("env_keys") or [])]
     components = {
-        "command_hash": stable_json_hash(command_payload),
-        "files": fingerprint_files(_entry_file_scopes_for_fingerprint(entry), repo_root, strict=strict,
-                                   file_snapshot=file_snapshot),
+        "command": command_payload,
+        "files": fingerprint_files(
+            _entry_file_scopes_for_fingerprint(entry), repo_root, strict=strict, file_snapshot=file_snapshot
+        ),
         "environment": fingerprint_environment(
             env_keys,
             strict=strict,
@@ -833,7 +878,6 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool 
         ),
         "output_result_files": {
             "paths": _entry_output_result_files(entry),
-            "hash": stable_json_hash(_entry_output_result_files(entry)),
         },
     }
     if str(entry.get("entry_id") or "") == "full_test_debt":
@@ -844,7 +888,6 @@ def fingerprint_entry(entry: Mapping[str, Any], repo_root: str, *, strict: bool 
         "schema_version": LONG_GATE_FINGERPRINT_SCHEMA_VERSION,
         "components": components,
     }
-    payload["hash"] = f"sha256:{stable_json_hash(payload)}"
     return payload
 
 
@@ -855,213 +898,52 @@ def _files_by_path(fingerprint: Mapping[str, Any]) -> Dict[str, Mapping[str, Any
     return {str(row.get("path") or ""): row for row in list(files or []) if isinstance(row, dict)}
 
 
-def _compact_diff_value(value: Any) -> Any:
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-    return {"summary_hash": stable_json_hash(value)}
-
-
-def _file_diff_summary(row: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
-    if row is None:
-        return {}
-    return {
-        "exists": bool(row.get("exists")),
-        "kind": str(row.get("kind") or ""),
-        "sha256": str(row.get("sha256") or ""),
-    }
-
-
-def _component_payload(fingerprint: Mapping[str, Any], component: str) -> Any:
-    components = fingerprint.get("components") if isinstance(fingerprint.get("components"), dict) else {}
-    return components.get(component) if isinstance(components, dict) else None
-
-
 def diff_fingerprint_components(previous: Mapping[str, Any], current: Mapping[str, Any]) -> Dict[str, Any]:
     changes: List[Dict[str, Any]] = []
-    if previous.get("schema_version") != current.get("schema_version"):
+    if not content_equal(previous.get("schema_version"), current.get("schema_version")):
         changes.append(
             {
                 "component": "schema_version",
                 "reason": "fingerprint schema changed",
-                "previous": _compact_diff_value(previous.get("schema_version")),
-                "current": _compact_diff_value(current.get("schema_version")),
+                "previous": previous.get("schema_version"),
+                "current": current.get("schema_version"),
             }
         )
-
-    previous_components_obj = previous.get("components")
-    current_components_obj = current.get("components")
-    previous_components = cast(
-        Mapping[str, Any],
-        previous_components_obj if isinstance(previous_components_obj, dict) else {},
-    )
-    current_components = cast(
-        Mapping[str, Any],
-        current_components_obj if isinstance(current_components_obj, dict) else {},
-    )
-
-    if previous_components.get("command_hash") != current_components.get("command_hash"):
-        changes.append(
-            {
-                "component": "command_hash",
-                "reason": "command hash changed",
-                "previous": _compact_diff_value(previous_components.get("command_hash")),
-                "current": _compact_diff_value(current_components.get("command_hash")),
-            }
-        )
-
-    previous_files = _files_by_path(previous)
-    current_files = _files_by_path(current)
-    for path in sorted(set(current_files) - set(previous_files)):
-        changes.append(
-            {
-                "component": "files",
-                "reason": "added input file",
-                "path": path,
-                "current": _file_diff_summary(current_files.get(path)),
-            }
-        )
-    for path in sorted(set(previous_files) - set(current_files)):
-        changes.append(
-            {
-                "component": "files",
-                "reason": "removed input file",
-                "path": path,
-                "previous": _file_diff_summary(previous_files.get(path)),
-            }
-        )
-    for path in sorted(set(previous_files) & set(current_files)):
-        before = previous_files[path]
-        after = current_files[path]
-        if (
-            before.get("sha256") != after.get("sha256")
-            or before.get("exists") != after.get("exists")
-            or before.get("kind") != after.get("kind")
-        ):
+    before = previous.get("components")
+    if not isinstance(before, dict):
+        before = {}
+    after = current.get("components")
+    if not isinstance(after, dict):
+        after = {}
+    previous_files, current_files = _files_by_path(previous), _files_by_path(current)
+    for path in sorted(set(previous_files) | set(current_files)):
+        old, new = previous_files.get(path), current_files.get(path)
+        if not content_equal(old, new):
+            reason = (
+                "added input file" if old is None else "removed input file" if new is None else "modified input file"
+            )
+            changes.append({"component": "files", "reason": reason, "path": path, "previous": old, "current": new})
+    for component in sorted((set(before) | set(after)) - {"files"}):
+        if not content_equal(before.get(component), after.get(component)):
             changes.append(
                 {
-                    "component": "files",
-                    "reason": "modified input file",
-                    "path": path,
-                    "previous": _file_diff_summary(before),
-                    "current": _file_diff_summary(after),
+                    "component": component,
+                    "reason": "command identity changed" if component == "command" else "fingerprint component changed",
+                    "previous": before.get(component),
+                    "current": after.get(component),
                 }
             )
-
-    previous_environment = _component_payload(previous, "environment")
-    current_environment = _component_payload(current, "environment")
-    previous_values = previous_environment.get("values") if isinstance(previous_environment, dict) else {}
-    current_values = current_environment.get("values") if isinstance(current_environment, dict) else {}
-    if not isinstance(previous_values, dict):
-        previous_values = {}
-    if not isinstance(current_values, dict):
-        current_values = {}
-    for key in sorted(set(previous_values) | set(current_values)):
-        if previous_values.get(key) != current_values.get(key):
-            changes.append(
-                {
-                    "component": "environment",
-                    "reason": "environment value changed",
-                    "key": str(key),
-                    "previous": _compact_diff_value(previous_values.get(key)),
-                    "current": _compact_diff_value(current_values.get(key)),
-                }
-            )
-    if (
-        isinstance(previous_environment, dict)
-        and isinstance(current_environment, dict)
-        and previous_environment.get("hash") != current_environment.get("hash")
-        and not any(change.get("component") == "environment" for change in changes)
-    ):
-        changes.append(
-            {
-                "component": "environment",
-                "reason": "environment hash changed",
-                "previous": _compact_diff_value(previous_environment.get("hash")),
-                "current": _compact_diff_value(current_environment.get("hash")),
-            }
-        )
-
-    previous_collect = _component_payload(previous, "collect_nodeids")
-    current_collect = _component_payload(current, "collect_nodeids")
-    if isinstance(previous_collect, dict) or isinstance(current_collect, dict):
-        previous_collect_map = previous_collect if isinstance(previous_collect, dict) else {}
-        current_collect_map = current_collect if isinstance(current_collect, dict) else {}
-        for field in ("exists", "validated", "schema_version", "status", "nodeid_hash", "nodeid_count", "error"):
-            if previous_collect_map.get(field) != current_collect_map.get(field):
-                changes.append(
-                    {
-                        "component": "collect_nodeids",
-                        "reason": "collect nodeids field changed",
-                        "field": field,
-                        "previous": _compact_diff_value(previous_collect_map.get(field)),
-                        "current": _compact_diff_value(current_collect_map.get(field)),
-                    }
-                )
-
-    previous_outputs = _component_payload(previous, "output_result_files")
-    current_outputs = _component_payload(current, "output_result_files")
-    previous_paths = previous_outputs.get("paths") if isinstance(previous_outputs, dict) else []
-    current_paths = current_outputs.get("paths") if isinstance(current_outputs, dict) else []
-    if not isinstance(previous_paths, list):
-        previous_paths = []
-    if not isinstance(current_paths, list):
-        current_paths = []
-    for path in sorted(set(str(item) for item in current_paths) - set(str(item) for item in previous_paths)):
-        changes.append({"component": "output_result_files", "reason": "added output result file", "path": path})
-    for path in sorted(set(str(item) for item in previous_paths) - set(str(item) for item in current_paths)):
-        changes.append({"component": "output_result_files", "reason": "removed output result file", "path": path})
-    if (
-        isinstance(previous_outputs, dict)
-        and isinstance(current_outputs, dict)
-        and previous_outputs.get("hash") != current_outputs.get("hash")
-        and not any(change.get("component") == "output_result_files" for change in changes)
-    ):
-        changes.append(
-            {
-                "component": "output_result_files",
-                "reason": "output result files hash changed",
-                "previous": _compact_diff_value(previous_outputs.get("hash")),
-                "current": _compact_diff_value(current_outputs.get("hash")),
-            }
-        )
-
-    known_components = {"command_hash", "files", "environment", "collect_nodeids", "output_result_files"}
-    for component in sorted((set(previous_components) | set(current_components)) - known_components):
-        if stable_json_hash(previous_components.get(component)) != stable_json_hash(current_components.get(component)):
-            changes.append(
-                {
-                    "component": str(component),
-                    "reason": "fingerprint component changed",
-                    "previous": _compact_diff_value(previous_components.get(component)),
-                    "current": _compact_diff_value(current_components.get(component)),
-                }
-            )
-
-    if previous.get("hash") != current.get("hash") and not changes:
+    if not content_equal(previous, current) and not changes:
         changes.append({"component": "fingerprint", "reason": "input fingerprint changed"})
     return {"changed": bool(changes), "components": changes}
 
 
 def diff_fingerprints(previous: Mapping[str, Any], current: Mapping[str, Any]) -> Dict[str, Any]:
-    if previous.get("hash") == current.get("hash"):
-        return {"changed": False, "reasons": []}
-
+    if content_equal(previous, current):
+        return {"changed": False, "reasons": [], "components": []}
     diff = diff_fingerprint_components(previous, current)
-    reasons: List[str] = []
-    for change in list(diff.get("components") or []):
-        component = str(change.get("component") or "")
-        reason = str(change.get("reason") or "input fingerprint changed")
-        if component == "files" and change.get("path"):
-            reasons.append(f"{reason}: {change.get('path')}")
-        elif component == "environment" and change.get("key"):
-            reasons.append(f"environment changed: {change.get('key')}")
-        elif component == "collect_nodeids" and change.get("field"):
-            reasons.append(f"collect_nodeids changed: {change.get('field')}")
-        elif component == "output_result_files" and change.get("path"):
-            reasons.append(f"{reason}: {change.get('path')}")
-        else:
-            reasons.append(reason)
-
-    if not reasons:
-        reasons.append("input fingerprint changed")
-    return {"changed": True, "reasons": reasons, "components": list(diff.get("components") or [])}
+    reasons = [
+        str(row["reason"]) + (": " + str(row["path"]) if row.get("path") else ": " + str(row["component"]))
+        for row in diff["components"]
+    ]
+    return {"changed": True, "reasons": reasons or ["input fingerprint changed"], "components": diff["components"]}

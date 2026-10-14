@@ -4,13 +4,15 @@ import base64
 import binascii
 from collections import defaultdict
 from types import SimpleNamespace
-from typing import NoReturn
+from typing import Any, Dict, NoReturn
 
 from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_metadata_schema import _canonical_sql, canonical_ddl_parts
+from core.models.content import unpacked
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.models.workbench_preflight import normalize_preflight_input
 from core.models.workbench_run_baseline import elapsed_hours
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference, reject
@@ -28,24 +30,19 @@ def invalid_baseline() -> NoReturn:
     reject("candidate_baseline_invalid", "排产时的对照资料不完整，无法对比。请重新排产后查看。", 500)
 
 
-class AdmissionBaseline:
-    """Cross-check redundant captures against the SHA-256-checked archived facts."""
+class ArchivedAdmissionPlan:
+    """Verify the captured official plan against its archived rows and identities."""
 
-    def __init__(self, capture, facts, disposition, accepted_at, *, point_work=None, origins=None, origin_issue=None):
+    def __init__(self, capture, facts):
         self.facts = facts
-        self._point_work_loader = point_work
-        self._point_work = None
-        self._origins = origins or {}
-        self._origin_issue = origin_issue or {"code": "adoption_not_recorded", "message": "此正式版本未保存可核对的采用来源。"}
         archive = facts.archive
         self.sources = self._required(archive, "WorkbenchPlanSourceRefs")
         self.tasks = _index(self._required(archive, "WorkbenchTaskRefs"), "ref")
+        self.history = self._required(archive, "ScheduleHistory")
+        self.schedule = self._required(archive, "Schedule")
         self.baseline = capture["baseline"]
         self._check_baseline(archive)
-        self.settings = self._settings(capture["input"])
-        self.selected = self._selected(disposition)
         self._bindings()
-        self._execution(capture, disposition, archive, accepted_at)
 
     @staticmethod
     def _required(archive, name):
@@ -59,7 +56,7 @@ class AdmissionBaseline:
         if set(baseline) != {"plan_ref", "version", "rows"} or type(baseline["rows"]) is not list:
             invalid_baseline()
         bounded_size(len(baseline["rows"]), MAX_TASKS)
-        history = self._required(archive, "ScheduleHistory")
+        history = self.history
         if any(type(row.get("version")) is not int or row["version"] < 1 for row in history):
             invalid_baseline()
         version = max((row["version"] for row in history), default=None)
@@ -69,7 +66,7 @@ class AdmissionBaseline:
         self._check_baseline_ref(version)
 
     def _check_baseline_rows(self, archive, version):
-        schedule = self._required(archive, "Schedule")
+        schedule = self.schedule
         rows = [row for row in schedule if row.get("version") == version] if version is not None else []
         if any(type(row.get("id")) is not int or type(row.get("op_id")) is not int for row in rows):
             invalid_baseline()
@@ -88,6 +85,42 @@ class AdmissionBaseline:
         if len(refs) != 1 or refs[0].get("ref") != baseline["plan_ref"]:
             invalid_baseline()
         reference(baseline["plan_ref"], stored=True)
+
+    def _bindings(self):
+        source_refs = _index(self.sources, "ref")
+        active_rows = defaultdict(list)
+        for row in source_refs.values():
+            if row.get("kind") == "schedule_row" and row.get("active") == 1:
+                active_rows[(row.get("version"), row.get("source_key"))].append(row)
+        self._schedule_bindings = active_rows
+        self.by_operation = defaultdict(list)
+        for row in self.baseline["rows"]:
+            matches = active_rows[(self.baseline["version"], str(row["id"]))]
+            if len(matches) != 1:
+                invalid_baseline()
+            source = matches[0]
+            ref = reference(source.get("operation_ref"), stored=True)
+            row_ref = reference(source.get("ref"), stored=True)
+            if (self.facts.operations.get(ref) != row["op_id"] or row["op_id"] not in self.facts.tables["BatchOperations"]
+                    or source.get("operation_id") != row["op_id"] or source.get("source_table") != "schedule"):
+                invalid_baseline()
+            self.by_operation[ref].append({**row, "row_ref": row_ref})
+
+
+class AdmissionBaseline(ArchivedAdmissionPlan):
+    """Verify selection and complete execution evidence after the archived plan."""
+
+    source_state: Dict[str, Any]
+
+    def __init__(self, capture, facts, disposition, accepted_at, *, point_work=None, origins=None, origin_issue=None):
+        super().__init__(capture, facts)
+        self._point_work_loader = point_work
+        self._point_work = None
+        self._origins = origins or {}
+        self._origin_issue = origin_issue or {"code": "adoption_not_recorded", "message": "此正式版本未保存可核对的采用来源。"}
+        self.settings = self._settings(capture["input"])
+        self.selected = self._selected(disposition)
+        self._execution(capture, disposition, facts.archive, accepted_at)
 
     def _settings(self, value):
         try:
@@ -121,25 +154,6 @@ class AdmissionBaseline:
                 invalid_baseline()
         return selected
 
-    def _bindings(self):
-        source_refs = _index(self.sources, "ref")
-        active_rows = defaultdict(list)
-        for row in source_refs.values():
-            if row.get("kind") == "schedule_row" and row.get("active") == 1:
-                active_rows[(row.get("version"), row.get("source_key"))].append(row)
-        self.by_operation = defaultdict(list)
-        for row in self.baseline["rows"]:
-            matches = active_rows[(self.baseline["version"], str(row["id"]))]
-            if len(matches) != 1:
-                invalid_baseline()
-            source = matches[0]
-            ref = reference(source.get("operation_ref"), stored=True)
-            row_ref = reference(source.get("ref"), stored=True)
-            if (self.facts.operations.get(ref) != row["op_id"] or row["op_id"] not in self.facts.tables["BatchOperations"]
-                    or source.get("operation_id") != row["op_id"] or source.get("source_table") != "schedule"):
-                invalid_baseline()
-            self.by_operation[ref].append({**row, "row_ref": row_ref})
-
     def _execution_scope(self, archive):
         # Admission also captures each operation's last official execution,
         # including operations absent from the latest (possibly partial) plan.
@@ -149,7 +163,7 @@ class AdmissionBaseline:
         if version is None:
             return self.selected
         scheduled = set()
-        for row in self._required(archive, "Schedule"):
+        for row in self.schedule:
             if type(row.get("version")) is not int or type(row.get("op_id")) is not int:
                 invalid_baseline()
             if row["version"] <= version:
@@ -160,11 +174,19 @@ class AdmissionBaseline:
         return self.selected | {identities[key] for key in scheduled}
 
     def _execution(self, capture, disposition, archive, accepted_at):
+        expected = self._execution_scope(archive)
+        raw = capture["execution"]
+        if type(raw) is not list or len(raw) != len(expected):
+            invalid_baseline()
         try:
-            projections = restore_execution_projections(capture["execution"])
+            # Historical reads retain their whole archived scope. The ordinary
+            # worker decoder keeps its admission limit for each bounded chunk.
+            projections = [row for offset in range(0, len(raw), MAX_OPERATIONS)
+                           for row in restore_execution_projections(raw[offset:offset + MAX_OPERATIONS])]
         except (CandidateRunInputError, TypeError, ValueError):
             invalid_baseline()
-        if {row.operation_ref for row in projections} != self._execution_scope(archive):
+        refs = {row.operation_ref for row in projections}
+        if len(refs) != len(projections) or refs != expected:
             invalid_baseline()
         snapshots = []
         for projection in projections:
@@ -258,6 +280,8 @@ class AdmissionBaseline:
 
 
 def _blob(value):
+    if type(value) is dict and set(value) in ({"$sqlite_blob"}, {"$sqlite_real"}):
+        return unpacked(value)
     if type(value) is not dict:
         return value
     if set(value) != {"sqlite_blob_base64"} or type(value["sqlite_blob_base64"]) is not str:

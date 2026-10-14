@@ -49,7 +49,7 @@ class WorkbenchPlanDeliveryRepository(SchedulePlanQueryRepository):
     def list_batches_by_ids(self, batch_ids: Sequence[str]) -> List[Dict[str, Any]]:
         marks = ",".join("?" for _ in batch_ids)
         return self.fetchall(
-            "SELECT batch_id, part_no, part_name, CAST(due_date AS TEXT) AS due_date FROM Batches "
+            "SELECT batch_id, part_no, part_name, quantity, priority, CAST(due_date AS TEXT) AS due_date FROM Batches "
             "WHERE batch_id IN (" + marks + ") ORDER BY batch_id COLLATE BINARY", list(batch_ids),
         )
 
@@ -59,6 +59,10 @@ class WorkbenchPlanDeliveryRepository(SchedulePlanQueryRepository):
             "SELECT id AS op_id, batch_id, seq, piece_id FROM BatchOperations WHERE batch_id IN (" + marks +
             ") ORDER BY batch_id COLLATE BINARY, id LIMIT ?", list(batch_ids) + [limit],
         )
+
+    def list_operation_batch_ids(self, operation_ids: Sequence[int]) -> List[Dict[str, Any]]:
+        marks = ",".join("?" for _ in operation_ids)
+        return self.fetchall("SELECT id AS op_id, batch_id FROM BatchOperations WHERE id IN (" + marks + ")", list(operation_ids))
 
     def get_candidate_summary(self, version: Any, candidate_id: Any) -> Optional[Dict[str, Any]]:
         return self.fetchone("SELECT summary_json FROM ScheduleCandidate WHERE version = ? AND id = ?",

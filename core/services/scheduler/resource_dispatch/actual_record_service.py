@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from core.errors import AppError, ErrorCode, ValidationError
+from core.models.content import same
 from core.models.operation_execution_labels import REASON_LABELS, SEVERITY_LABELS
 from core.models.operation_execution_scope import operation_execution_scope_from_event
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
-from core.services.scheduler.dispatch_task_ids import public_task_id
+from core.services.common.plan_query import SchedulePlanQueryService
+from core.services.common.plan_task_identity import public_task_id
 from core.services.scheduler.execution.operation_execution_scope_read import (
+    events_for_task_ref,
     state_for_feedback_context,
     state_for_task_ref,
 )
@@ -28,6 +32,7 @@ from .actual_records import (
     PreviewResult,
     TaskPlan,
     TaskRef,
+    datetime_text,
     feedback_person,
     normalize_choice,
     ordered_pauses,
@@ -68,9 +73,11 @@ class ResourceDispatchActualRecordService:
             logger=logger,
             op_logger=op_logger,
         )
-        self.previewer = ResourceDispatchActualImportPreviewer(self.feedback_service)
+        self.previewer = ResourceDispatchActualImportPreviewer(
+            self.feedback_service, replay_checker=self._import_plan_is_full_replay)
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
         self.batch_operation_repo = BatchOperationRepository(conn, logger=logger)
+        self.plan_query_service = getattr(self.execution_service, "plan_query_service", None) or SchedulePlanQueryService(conn, logger=logger)
 
     def build_template_workbook(self, **query_kwargs: Any) -> io.BytesIO:
         context = self._execution_context_for_write(**query_kwargs)
@@ -95,25 +102,30 @@ class ResourceDispatchActualRecordService:
                     "rows": preview.rows,
                 },
             )
-        return self._write_preview(preview, import_token=preview_token(preview.raw_rows, query_kwargs))
+        return self._write_preview(preview)
 
     def confirm_import(self, rows: Sequence[Mapping[str, Any]], preview_token_value: Any, **query_kwargs: Any) -> Dict[str, Any]:
         raw_rows = [dict(row) for row in rows or []]
         preview = self._preview_raw_rows(raw_rows, **query_kwargs)
         expected_token = preview_token(preview.raw_rows, query_kwargs)
-        if text(preview_token_value) != expected_token:
+        if not same(preview_token_value, expected_token):
             raise ValidationError("导入内容已经变化，请重新上传 Excel 并检查后再确认导入。", field="preview_token")
         if not preview.summary.get("can_confirm"):
             raise ValidationError("导入预览还有错误，请先修改 Excel 后重新上传检查。", field="file")
-        return self._write_preview(preview, import_token=expected_token)
+        return self._write_preview(preview)
 
-    def _write_preview(self, preview: PreviewResult, *, import_token: str) -> Dict[str, Any]:
+    def _write_preview(self, preview: PreviewResult) -> Dict[str, Any]:
         written = 0
         skipped = int(preview.summary.get("skip_count") or 0)
         with self.feedback_service.tx_manager.transaction(begin_immediate=True):
             for plan in preview.task_plans:
                 if planned_event_count(plan) <= 0:
                     continue
+                import_token = "import:" + manual_plan_token(plan)
+                if self._plan_is_full_replay(plan, import_token):
+                    revision = self._first_replay_revision(plan, import_token)
+                    plan = replace(plan, task=replace(plan.task, expected_state_revision=revision))
+                    import_token = "import:" + manual_plan_token(plan)
                 result = self._apply_task_plan(plan, import_token=import_token)
                 written += int(result.get("written") or 0)
                 skipped += int(result.get("skipped") or 0)
@@ -137,7 +149,7 @@ class ResourceDispatchActualRecordService:
         self._ensure_context_can_write(context)
         task = self._task_ref_from_feedback_context(context)
         plan = self._task_plan_from_actual_payload(task, payload, row_number=1)
-        token = text(payload.get("idempotency_key")) or manual_plan_token(plan)
+        token = self._submission_token(payload, plan)
         messages: List[str] = []
         if not self._plan_is_full_replay(plan, token):
             self.previewer.validator.validate_task_plan(plan, messages)
@@ -149,14 +161,31 @@ class ResourceDispatchActualRecordService:
     def actual_payload_replay_state_revision(self, context: ExecutionFeedbackContext, payload: Mapping[str, Any]) -> Optional[str]:
         task = self._task_ref_from_feedback_context(context)
         plan = self._task_plan_from_actual_payload(task, payload, row_number=1)
-        token = text(payload.get("idempotency_key")) or manual_plan_token(plan)
+        token = self._submission_token(payload, plan)
         if not self._plan_is_full_replay(plan, token):
             return None
+        return self._first_replay_revision(plan, token)
+
+    @staticmethod
+    def _submission_token(payload: Mapping[str, Any], plan: TaskPlan) -> str:
+        value = payload.get("idempotency_key")
+        if value is None or (type(value) is str and not value.strip()):
+            return manual_plan_token(plan)
+        if type(value) is not str:
+            raise ValidationError("重复提交标记格式不正确，请刷新任务后再提交。", field="idempotency_key")
+        return "client:" + value.strip()
+
+    def _import_plan_is_full_replay(self, plan: TaskPlan) -> bool:
+        return self._plan_is_full_replay(plan, "import:" + manual_plan_token(plan))
+
+    def _first_replay_revision(self, plan: TaskPlan, token: str) -> str:
         for key in self._plan_idempotency_keys(plan, token):
             event = self.feedback_service.get_event_by_idempotency_key(key)
             if event is not None:
-                return text(getattr(event, "previous_state_revision", None)) or None
-        return None
+                revision = getattr(event, "previous_state_revision", None)
+                if type(revision) is str and revision:
+                    return revision
+        raise AppError(ErrorCode.NOT_FOUND, "原现场提交的状态版本缺失，请核对保存记录。", details={"reason": "event_revision_missing"})
 
     def _preview_raw_rows(self, raw_rows: Sequence[Mapping[str, Any]], **query_kwargs: Any):
         context = self._execution_context_for_write(**query_kwargs)
@@ -249,24 +278,23 @@ class ResourceDispatchActualRecordService:
         op_name = text(getattr(batch_op, "op_code", None)) or f"工序{text(getattr(batch_op, 'seq', None))}"
         machine_id = text(getattr(schedule, "machine_id", None))
         operator_id = text(getattr(schedule, "operator_id", None))
+        source_row = {
+            "schedule_id": getattr(schedule, "id", None), "op_id": getattr(schedule, "op_id", None),
+            "op_code": op_name, "batch_id": batch_id,
+            "start_time": getattr(schedule, "start_time", ""), "end_time": getattr(schedule, "end_time", ""),
+            "machine_id": machine_id, "operator_id": operator_id,
+        }
+        task_id = self.plan_query_service.task_id_for_row(source_row,
+            version=int(context.schedule_version), source_table=text(context.source_table),
+            candidate_id=None, scenario_id=text(context.scenario_id) or None,
+            effective_plan_role=text(context.effective_plan_role))
         return TaskRef(
             task_code=task_code_from_parts(
                 batch_id=batch_id,
                 op_name=op_name,
                 planned_start_time=getattr(schedule, "start_time", ""),
                 planned_machine_label=machine_id,
-                public_task_id=public_task_id(
-                    {
-                        "schedule_id": getattr(schedule, "id", None),
-                        "op_id": getattr(schedule, "op_id", None),
-                        "op_code": op_name,
-                        "batch_id": batch_id,
-                        "start_time": getattr(schedule, "start_time", ""),
-                        "end_time": getattr(schedule, "end_time", ""),
-                        "machine_id": machine_id,
-                        "operator_id": operator_id,
-                    }
-                ),
+                public_task_id=task_id,
             ),
             schedule_version=int(context.schedule_version),
             schedule_id=int(context.schedule_id),
@@ -345,6 +373,7 @@ class ResourceDispatchActualRecordService:
 
     def _apply_task_plan(self, plan: TaskPlan, *, import_token: Optional[str]) -> Dict[str, Any]:
         current_state = state_for_task_ref(self.feedback_service, plan.task)
+        event_keys = self._event_keys(plan, import_token)
         context = ExecutionFeedbackContext(
             schedule_version=plan.task.schedule_version,
             schedule_id=plan.task.schedule_id,
@@ -352,7 +381,8 @@ class ResourceDispatchActualRecordService:
             batch_id=plan.task.batch_id,
             expected_state_revision=text(plan.task.expected_state_revision),
             created_by=plan.feedback_person,
-            idempotency_key=idempotency_key(import_token, plan.task.task_code, "actual", plan.row_number),
+            idempotency_key=event_keys.get("actual") or idempotency_key(
+                import_token, self._task_event_identity(plan.task), "actual", plan.row_number),
             requested_plan_role=plan.task.requested_plan_role,
             source_table=plan.task.source_table,
             effective_plan_role=plan.task.effective_plan_role,
@@ -368,21 +398,21 @@ class ResourceDispatchActualRecordService:
                 machine_id=plan.task.planned_machine_id,
                 remark=plan.remark,
             )
-            written += 1
-            context = self._next_context(context, self._revision_for_next_event(result), import_token, plan, "after-start")
+            written += int(not result.idempotency_reused)
+            context = replace(context, expected_state_revision=self._revision_for_next_event(result))
             current_state = result.state
         if current_state.current_status == "not_started" and not plan.actual_start_time:
             raise ValidationError("填写暂停、异常或完工前，请先填写实际开工。", field="actual_start_time")
         for index, pause in enumerate(ordered_pauses(plan)):
-            result = self._apply_pause(context, plan, pause, import_token, index)
-            written += 2
+            pause_result, result = self._apply_pause(context, pause, index, event_keys)
+            written += int(not pause_result.idempotency_reused) + int(not result.idempotency_reused)
             context = replace(context, expected_state_revision=self._revision_for_next_event(result))
             current_state = result.state
         if plan.exception_time:
             context = replace(
                 context,
                 created_by=plan.feedback_person,
-                idempotency_key=idempotency_key(import_token, plan.task.task_code, "exception", plan.row_number),
+                idempotency_key=event_keys["exception"],
             )
             result = self.feedback_service.report_exception(
                 context,
@@ -392,13 +422,13 @@ class ResourceDispatchActualRecordService:
                 remark=plan.exception_remark,
                 reason_detail=plan.exception_remark,
             )
-            written += 1
-            context = replace(context, expected_state_revision=result.state_revision)
+            written += int(not result.idempotency_reused)
+            context = replace(context, expected_state_revision=self._revision_for_next_event(result))
         if plan.actual_finish_time:
             context = replace(
                 context,
                 created_by=plan.feedback_person,
-                idempotency_key=idempotency_key(import_token, plan.task.task_code, "finish", plan.row_number),
+                idempotency_key=event_keys["finish"],
             )
             result = self.feedback_service.finish_operation(
                 context,
@@ -407,7 +437,7 @@ class ResourceDispatchActualRecordService:
                 quantity_scrapped=plan.quantity_scrapped,
                 remark=plan.remark,
             )
-            written += 1
+            written += int(not result.idempotency_reused)
         if result is None:
             state = state_for_task_ref(self.feedback_service, plan.task)
             return {"written": written, "skipped": 1, "state": state, "result": None}
@@ -442,30 +472,89 @@ class ResourceDispatchActualRecordService:
         return all(self.feedback_service.has_event_by_idempotency_key(key) for key in keys)
 
     def _plan_idempotency_keys(self, plan: TaskPlan, import_token: str) -> List[str]:
-        keys: List[str] = []
+        return list(self._event_keys(plan, import_token).values())
+
+    @staticmethod
+    def _task_event_identity(task: TaskRef) -> Dict[str, Any]:
+        return {key: getattr(task, key) for key in (
+            "schedule_version", "schedule_id", "op_id", "batch_id", "source_table", "effective_plan_role", "scenario_id")}
+
+    def _event_keys(self, plan: TaskPlan, import_token: Optional[str]) -> Dict[str, str]:
+        """Restore original keys from persisted events without recomputing them."""
+        slots = []
         if plan.actual_start_time:
-            keys.append(idempotency_key(import_token, plan.task.task_code, "actual", plan.row_number))
+            slots.append(("actual", "start", plan.actual_start_time, plan.row_number))
         for index, pause in enumerate(ordered_pauses(plan)):
-            keys.append(idempotency_key(import_token, plan.task.task_code, f"pause-{index}", pause.row_number))
-            keys.append(idempotency_key(import_token, plan.task.task_code, f"resume-{index}", pause.row_number))
+            slots.append((f"pause-{index}", "pause", pause.start_time, pause.row_number))
+            slots.append((f"resume-{index}", "resume", pause.end_time, pause.row_number))
         if plan.exception_time:
-            keys.append(idempotency_key(import_token, plan.task.task_code, "exception", plan.row_number))
+            slots.append(("exception", "exception", plan.exception_time, plan.row_number))
         if plan.actual_finish_time:
-            keys.append(idempotency_key(import_token, plan.task.task_code, "finish", plan.row_number))
-        return keys
+            slots.append(("finish", "finish", plan.actual_finish_time, plan.row_number))
+        identity = self._task_event_identity(plan.task)
+        keys = {slot: idempotency_key(import_token, identity, slot, row_number)
+                for slot, _, _, row_number in slots}
+        if not slots or str(import_token or "").startswith("client:"):
+            return keys
+        source = "import:manual:" if str(import_token or "").startswith("import:manual:") else "manual:"
+        if not str(import_token or "").startswith(source):
+            return keys
+        if all(self.feedback_service.has_event_by_idempotency_key(key) for key in keys.values()):
+            return keys
+        events = events_for_task_ref(self.feedback_service, plan.task)
+        restored = []
+        first_slot, first_type, first_time, first_row = slots[0]
+        for index, event in enumerate(events):
+            if not self._matches_event_slot(event, first_type, first_time):
+                continue
+            revision = getattr(event, "previous_state_revision", None)
+            if type(revision) is not str or not revision:
+                continue
+            original_token = source + revision
+            if same(getattr(event, "idempotency_key", None),
+                    idempotency_key(original_token, identity, first_slot, first_row)):
+                restored.append({slot: idempotency_key(original_token, identity, slot, row_number)
+                                 for slot, _, _, row_number in slots})
+                continue
+            # Legacy digests retain no submission field. A complete contiguous
+            # saved event chain and its original revisions establish a replay.
+            group = events[index:index + len(slots)]
+            if len(group) != len(slots) or any(
+                re.fullmatch(r"resource-dispatch-actual-[0-9a-f]{16}", text(item.idempotency_key)) is None
+                or not self._matches_event_slot(item, slot[1], slot[2])
+                for item, slot in zip(group, slots)
+            ):
+                continue
+            if any(not same(item.previous_state_revision,
+                            f"{plan.task.op_id}:{index + offset}:{group[offset - 1].id}")
+                   for offset, item in enumerate(group) if offset > 0):
+                continue
+            final_revision = f"{plan.task.op_id}:{index + len(group)}:{group[-1].id}"
+            if not (same(plan.task.expected_state_revision, revision)
+                    or (index + len(group) == len(events) and same(plan.task.expected_state_revision, final_revision))):
+                continue
+            restored.append({slot[0]: item.idempotency_key for item, slot in zip(group, slots)})
+        if len(restored) > 1:
+            raise AppError(ErrorCode.SCHEDULE_CONFLICT, "原现场事件存在多个对应记录，请核对保存记录。",
+                           details={"reason": "actual_event_identity_ambiguous"})
+        return restored[0] if restored else keys
+
+    @staticmethod
+    def _matches_event_slot(event: Any, event_type: str, event_time: str) -> bool:
+        return (same(getattr(event, "event_type", None), event_type)
+                and same(datetime_text(getattr(event, "event_time", None), field_label="现场记录时间"), event_time))
 
     def _apply_pause(
         self,
         context: ExecutionFeedbackContext,
-        plan: TaskPlan,
         pause: PausePlan,
-        import_token: Optional[str],
         index: int,
+        event_keys: Mapping[str, str],
     ) -> Any:
         context = replace(
             context,
             created_by=pause.feedback_person,
-            idempotency_key=idempotency_key(import_token, plan.task.task_code, f"pause-{index}", pause.row_number),
+            idempotency_key=event_keys[f"pause-{index}"],
         )
         pause_result = self.feedback_service.pause_operation(
             context,
@@ -476,23 +565,9 @@ class ResourceDispatchActualRecordService:
         context = replace(
             context,
             expected_state_revision=self._revision_for_next_event(pause_result),
-            idempotency_key=idempotency_key(import_token, plan.task.task_code, f"resume-{index}", pause.row_number),
+            idempotency_key=event_keys[f"resume-{index}"],
         )
-        return self.feedback_service.resume_operation(context, event_time=pause.end_time, remark=pause.remark)
-
-    def _next_context(
-        self,
-        context: ExecutionFeedbackContext,
-        revision: str,
-        import_token: Optional[str],
-        plan: TaskPlan,
-        action: str,
-    ) -> ExecutionFeedbackContext:
-        return replace(
-            context,
-            expected_state_revision=revision,
-            idempotency_key=idempotency_key(import_token, plan.task.task_code, action, plan.row_number),
-        )
-
+        resume_result = self.feedback_service.resume_operation(context, event_time=pause.end_time, remark=pause.remark)
+        return pause_result, resume_result
 
 __all__ = ["ResourceDispatchActualRecordService"]

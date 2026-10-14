@@ -7,8 +7,7 @@ from collections import Counter
 from statistics import median
 
 from core.services.execution.processing_hours import covered_legacy_scopes
-
-from .review_values import hour_totals
+from core.services.workbench.facts.execution_values import hour_totals
 
 
 def _completion_summary(operations):

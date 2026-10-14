@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_outsourcing import MAX_ROWS, bounded, page, pagination, reference, reject
 from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRepository
 
@@ -89,7 +89,7 @@ class WorkbenchOutsourcingService:
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing detail requires a caller-owned snapshot")
         item, snapshot = self._entry(ref, as_of or self.now())
-        return {"item": item, "fingerprint": input_fingerprint(snapshot)}
+        return {"item": item, "content": snapshot}
 
     def history(self, ref, *, number=1, size=20, as_of=None):
         pagination(number, size)
@@ -114,7 +114,7 @@ class WorkbenchOutsourcingService:
             matches = {"all": True, "awaiting": item["awaiting_return"], "overdue": item["overdue"], "returned": not item["awaiting_return"]}
             if matches[status]:
                 rows.append(item)
-        return bounded({**page(rows, number, size), "fingerprint": input_fingerprint(bounded(snapshots)),
+        return bounded({**page(rows, number, size), "content": bounded(snapshots),
                         "as_of": now.isoformat(timespec="seconds"), "tracking_basis": "manual_receipt_facts"})
 
     def targets(self, *, batch_ref=None, query="", number=1, size=20):
@@ -128,5 +128,5 @@ class WorkbenchOutsourcingService:
             raise RuntimeError("Outsourcing targets require a caller-owned snapshot")
         rows = self.sources.targets(batch_ref, query)
         clock = self.repo.plan_identity_revision()
-        return bounded({**page(rows, number, size), "fingerprint": input_fingerprint({"rows": rows, "clock": clock, "query": query}),
+        return bounded({**page(rows, number, size), "content": {"rows": rows, "clock": clock, "query": query},
                         "grouping_basis": "explicit_receipt_membership", "dates_inferred": False})

@@ -1,6 +1,5 @@
 """可操作设备关系文件的列目录。只读列是参考资料，不写入；文件不删除任何已有关系。"""
 
-import hashlib
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
 from core.errors import ValidationError
@@ -121,7 +120,7 @@ def import_request(kind: str, content: bytes, file_format: str, mode: str) -> Di
         raise ValidationError("必须提供CSV/XLSX原始文件字节。", field="file")
     if type(mode) is not str or mode != "upsert":
         raise ValidationError("只支持按编号增量导入，不支持替换。", field="mode")
-    return {"file_sha256": hashlib.sha256(content).hexdigest(), "format": file_format, "mode": mode, "scope": {}}
+    return {"format": file_format, "mode": mode, "scope": {}}
 
 
 def table_descriptor(kind: str) -> Dict[str, Any]:

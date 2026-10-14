@@ -1,0 +1,729 @@
+(function () {
+  'use strict';
+  const A = window.RunCandidateAPI, { check, ref, time, envelope } = A;
+  const queryKeys = ['selected_candidate_ref', 'reference_candidate_ref', 'comparison_mode', 'resource_view', 'range_start', 'range_end', 'snapshot_ref'];
+  const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
+  function bindSnapshot(payload, query) {
+    if (query.snapshot_ref) check(payload.meta.snapshot_ref === query.snapshot_ref, '比较资料已更新，请刷新后重试。');
+  }
+  function bindScope(payload, data, query) {
+    bindSnapshot(payload, query);
+    check(data.scope.resource_view === query.resource_view, '资源统计范围已变化，请刷新。');
+    for (const key of ['range_start', 'range_end']) if (query[key])
+      check(time(data.scope[key]) && timeKey(data.scope[key]) === timeKey(query[key]), '比较时间范围已变化，请刷新。');
+    if (query.comparison_mode === 'admission_official')
+      check(data.scope.reference && data.scope.reference.kind === 'admission_official' && data.baseline && data.baseline.kind === 'admission_official'
+        && data.baseline.baseline_ref === data.scope.reference.baseline_ref && data.baseline.state === data.scope.reference_state,
+      '比较基准的正式计划资料已变化，请刷新。');
+  }
+  function scope(runRef, query = {}) {
+    check(ref(runRef), '请从排产记录打开方案对比。');
+    const value = { comparison_mode: 'candidates', resource_view: 'selected_batches' };
+    queryKeys.forEach(key => { if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key]; });
+    check(['candidates', 'admission_official'].includes(value.comparison_mode), '请选择本次排产的方案或排产时的正式计划进行比较。');
+    check(['selected_batches', 'full_candidate'].includes(value.resource_view), '请选择资源统计范围。');
+    check(value.comparison_mode !== 'admission_official' || value.reference_candidate_ref === undefined, '比较方式与比较基准不匹配，请从排产记录重新打开方案对比。');
+    ['selected_candidate_ref', 'reference_candidate_ref'].forEach(key => check(value[key] === undefined || ref(value[key]), '方案选择已失效，请重新选择。'));
+    if (value.range_start !== undefined || value.range_end !== undefined)
+      check(time(value.range_start) && time(value.range_end) && value.range_start < value.range_end, '请同时填写开始和结束时间，结束须晚于开始。');
+    return value;
+  }
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const numeric = value => value === null || typeof value === 'number' && Number.isFinite(value);
+  const count = value => Number.isSafeInteger(value) && value >= 0;
+  const issue = value => object(value) && typeof value.code === 'string' && typeof value.message === 'string';
+  const coreMetricKeys = ['expected_operation_count', 'scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count',
+    'overdue_count', 'total_tardiness_hours', 'makespan_hours', 'weighted_tardiness_hours', 'elapsed_seconds', 'changeover_count',
+    'machine_used_count', 'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg'];
+  function tradeoff(item, data, candidateRef) {
+    check(window.RecommendationContract.entry(item), '推荐方案的对比资料不完整，请点“刷新方案对比”。');
+    const definition = data.metric_definitions.find(row => row.key === item.metric_key);
+    check(definition && item.unit === definition.unit && item.precision === definition.precision
+      && item.metric_version === definition.metric_version, '推荐方案的对比资料不完整，请点“刷新方案对比”。');
+    item.supporting_refs.forEach(target => {
+      check(target.candidate_ref === candidateRef, '推荐理由对应的方案已变化，请点“刷新方案对比”。');
+      recommendationDrill(target.drill, data, candidateRef, target.side || 'selected', target.kind);
+    });
+  }
+  function recommendationDrill(context, data, candidateRef, side = 'selected', kind) {
+    const referenceSide = side === 'reference', formalReference = referenceSide && data.scope.comparison_mode === 'admission_official';
+    const actualRef = referenceSide && !formalReference ? data.scope.reference.candidate_ref : candidateRef;
+    check(object(context) && context.run_ref === (data.run ? data.run.run_ref : data.run_ref) && context.candidate_ref === actualRef
+      && (context.selected_candidate_ref === undefined || context.selected_candidate_ref === candidateRef)
+      && context.comparison_mode === data.scope.comparison_mode
+      && (context.resource_view === undefined || context.resource_view === data.scope.resource_view), '推荐理由的甘特位置或比较范围已变化，请点“刷新方案对比”。');
+    check(referenceSide ? kind === 'operation' && data.scope.reference_state === 'available' && context.comparison_tab === undefined
+      && (formalReference ? context.reference_view === true && context.plan_ref === data.scope.reference.baseline_ref : context.reference_view !== true && context.plan_ref === undefined)
+      : context.reference_view !== true && context.plan_ref === undefined, '推荐理由对应的方案或正式计划已变化，请点“刷新方案对比”。');
+    if (context.comparison_mode === 'candidates' && data.scope.reference_state === 'available') check(context.reference_candidate_ref === data.scope.reference.candidate_ref, '推荐理由的比较基准已变化，请点“刷新方案对比”。');
+    if (context.comparison_tab === undefined) check(ref(context.operation_ref) && time(context.range_start) && time(context.range_end)
+      && timeKey(context.range_start) <= timeKey(data.scope.range_start) && timeKey(context.range_end) >= timeKey(data.scope.range_end)
+      && (timeKey(context.range_start) === timeKey(data.scope.range_start) && timeKey(context.range_end) === timeKey(data.scope.range_end) || context.drill_range_adjusted === true), '推荐理由的工序位置资料不完整，请点“刷新方案对比”。');
+    else for (const key of ['range_start', 'range_end']) if (context[key] !== undefined)
+      check(time(context[key]) && timeKey(context[key]) === timeKey(data.scope[key]), '推荐理由的比较时间范围已变化，请点“刷新方案对比”。');
+    if (context.comparison_tab !== undefined) check(['batches', 'operations', 'resources', 'preparation', 'changeovers'].includes(context.comparison_tab)
+      && object(context.detail_query), '推荐理由的明细资料不完整，请点“刷新方案对比”。');
+  }
+
+  function completion(value) {
+    const counts = ['complete_batch_count', 'incomplete_batch_count', 'ordinary_incomplete_batch_count', 'deferred_batch_count', 'unknown_batch_count', 'unplanned_operation_count', 'deferred_operation_count'];
+    return object(value) && value.scope === 'full_admission' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(value.state)
+      && typeof value.source_available === 'boolean' && counts.every(key => value[key] === null || count(value[key]))
+      && object(value.sample_batch_refs) && ['complete', 'incomplete', 'deferred', 'unknown'].every(key => Array.isArray(value.sample_batch_refs[key]) && value.sample_batch_refs[key].length <= 3 && value.sample_batch_refs[key].every(ref))
+      && object(value.remaining_work) && object(value.remaining_work.metrics)
+      && preparationMetrics.every(key => window.EffortProjectionContract.metric(value.remaining_work.metrics[key]))
+      && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => value.remaining_work[key] === null || count(value.remaining_work[key]));
+  }
+  function recommendation(data) {
+    const value = data.recommendation, basis = data.selection_basis, comparison = value && value.current_comparison;
+    check(object(basis) && ['selected_candidate_ref', 'raw_score_best_candidate_ref', 'health_reference_candidate_ref'].every(key => basis[key] === null || ref(basis[key]) && data.candidates.some(row => row.candidate_ref === basis[key]))
+      && ['complete', 'partial', 'unavailable'].includes(basis.evidence_state)
+      && object(value) && value.recommendation_version === 'decision-recommendation-v1' && ['available', 'unavailable'].includes(value.state)
+      && value.candidate_ref === basis.selected_candidate_ref && (value.state === 'available' ? ref(value.candidate_ref) : value.candidate_ref === null)
+      && value.viewed_candidate_ref === data.scope.selected_candidate_ref
+      && typeof value.headline === 'string' && (value.state === 'available' ? ['complete', 'schedulable_scope', 'partial'].includes(value.recommendation_type) : value.recommendation_type === null),
+    '推荐方案或推荐理由已变化，请点“刷新方案对比”。');
+    check(object(basis.explanation) && typeof basis.explanation.headline === 'string' && Array.isArray(basis.explanation.entries)
+      && basis.explanation.entries.every(entry => object(entry) && ['key', 'label', 'text', 'state', 'source', 'scope'].every(key => typeof entry[key] === 'string')
+        && (entry.unit === null || typeof entry.unit === 'string') && (entry.tolerance_unit === null || typeof entry.tolerance_unit === 'string')
+        && ['reference_value', 'selected_value', 'value', 'limit', 'tolerance'].every(key => numeric(entry[key])))
+      && Array.isArray(basis.explanation.issues) && basis.explanation.issues.every(issue), '推荐理由资料不完整，请点“刷新方案对比”。');
+    if (basis.decision_evidence !== null) check(object(basis.decision_evidence) && basis.selection_evidence_version === 'candidate-selection-evidence-v1'
+      && basis.decision_evidence.version === basis.selection_evidence_version && object(basis.decision_evidence.anchors) && object(basis.decision_evidence.selected)
+      && basis.decision_evidence.selected.candidate_ref === basis.selected_candidate_ref && object(basis.decision_evidence.anchors.raw_score_best)
+      && basis.decision_evidence.anchors.raw_score_best.candidate_ref === basis.raw_score_best_candidate_ref
+      && (basis.decision_evidence.anchors.health_reference === null ? basis.health_reference_candidate_ref === null : object(basis.decision_evidence.anchors.health_reference) && basis.decision_evidence.anchors.health_reference.candidate_ref === basis.health_reference_candidate_ref),
+    '推荐理由与本次选择的方案不一致，请点“刷新方案对比”。');
+    check(basis.health_decision_evidence === null || object(basis.health_decision_evidence) && basis.health_decision_evidence.version === 'candidate-health-evidence-v1', '推荐理由中的方案比较资料不完整，请点“刷新方案对比”。');
+    check(object(value.axes) && object(value.axes.algorithm) && value.axes.algorithm.state === (value.state === 'available' ? 'selected' : 'unavailable')
+      && value.axes.algorithm.reason_code === basis.reason_code && value.axes.algorithm.evidence_state === basis.evidence_state
+      && object(value.axes.completion) && object(value.axes.preflight) && value.axes.preflight.state === 'not_checked' && value.axes.preflight.source === 'existing_adoption_preview'
+      && (value.state === 'available' ? completion(value.completion_scope) && object(value.axes.completion.search) && object(value.axes.completion.schedulable)
+        && completion(value.axes.completion.delivery) : value.completion_scope === null), '推荐方案的工序安排或采用检查资料不完整，请点“刷新方案对比”。');
+    check(object(comparison) && comparison.candidate_ref === value.candidate_ref && comparison.viewed_candidate_ref === data.scope.selected_candidate_ref
+      && ['available', 'unavailable', 'absent', 'selection_required'].includes(comparison.state) && object(comparison.reference)
+      && comparison.reference.kind === data.scope.reference.kind
+      && (data.scope.comparison_mode === 'candidates' ? comparison.reference.candidate_ref === data.scope.reference.candidate_ref : comparison.reference.baseline_ref === data.scope.reference.baseline_ref)
+      && ['benefits', 'costs', 'all_differences'].every(key => Array.isArray(comparison[key])) && comparison.benefits.length <= 3 && comparison.costs.length <= 3,
+    '推荐方案与当前查看方案或比较基准不一致，请点“刷新方案对比”。');
+    if (value.state === 'available') recommendationDrill(value.completion_scope.drill, data, value.candidate_ref);
+    check(comparison.all_differences.length === (value.state === 'available' ? data.metric_definitions.length : 0), '推荐方案的指标对比资料不完整，请点“刷新方案对比”。');
+    const all = new Map();
+    comparison.all_differences.forEach(item => { tradeoff(item, data, value.candidate_ref); check(!all.has(item.metric_key), '推荐方案的对比结果重复，请点“刷新方案对比”。'); all.set(item.metric_key, item); });
+    for (const [key, direction] of [['benefits', 'better'], ['costs', 'worse']]) comparison[key].forEach(item => {
+      tradeoff(item, data, value.candidate_ref); const full = all.get(item.metric_key);
+      check(full && item.direction === direction && ['value', 'reference_value', 'selected_value', 'state', 'direction', 'text'].every(field => item[field] === full[field]), '推荐方案的收益和代价与对比结果不一致，请点“刷新方案对比”。');
+    });
+    const common = comparison.common_completed_delivery;
+    check(common === null || object(common) && common.scope === 'common_completed_batches' && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(common.state)
+      && count(common.batch_count) && Array.isArray(common.sample_batch_refs) && common.sample_batch_refs.length <= 3 && common.sample_batch_refs.every(ref)
+      && object(common.before) && object(common.after) && numeric(common.delay_delta_hours) && numeric(common.overdue_delta_count), '推荐方案的批次交付对比资料不完整，请点“刷新方案对比”。');
+  }
+  function completionGroups(data) {
+    check(Array.isArray(data.completion_groups) && data.completion_groups.every(group => object(group) && count(group.group_index) && typeof group.source_available === 'boolean'
+      && (group.complete_batch_count === null || count(group.complete_batch_count)) && Array.isArray(group.sample_complete_batch_refs) && group.sample_complete_batch_refs.length <= 3 && group.sample_complete_batch_refs.every(ref)
+      && Array.isArray(group.candidate_refs) && group.candidate_refs.every(ref)), '方案的批次安排分类资料不完整，请点“刷新方案对比”。');
+    const grouped = data.completion_groups.flatMap(group => group.candidate_refs);
+    check(grouped.length === data.candidates.length && new Set(grouped).size === grouped.length && data.candidates.every(row => grouped.includes(row.candidate_ref)), '批次安排分类与本次排产方案不一致，请点“刷新方案对比”。');
+  }
+  function decisionCore(payload, runRef, query = {}) {
+    const data = envelope(payload), q = scope(runRef, query);
+    check(data.run && data.run.run_ref === runRef && data.scope && data.scope.run_ref === runRef
+      && data.scope.comparison_mode === q.comparison_mode && Array.isArray(data.candidates) && Array.isArray(data.metric_definitions), '比较资料与当前排产记录不一致，请点“刷新方案对比”。');
+    check(data.metric_definitions.every(metric => object(metric) && typeof metric.key === 'string' && typeof metric.metric_version === 'string')
+      && new Set(data.metric_definitions.map(metric => metric.key)).size === data.metric_definitions.length
+      && coreMetricKeys.every(key => data.metric_definitions.some(metric => metric.key === key)), '方案核心指标目录不完整，请点“刷新方案对比”。');
+    const candidates = new Set();
+    data.candidates.forEach(row => {
+      check(ref(row.candidate_ref) && !candidates.has(row.candidate_ref) && object(row.coverage)
+        && ['schedulable', 'delivery', 'search'].every(key => object(row.coverage[key])) && row.metrics && row.deltas && Array.isArray(row.selection_role), '方案的比较资料不完整，请点“刷新方案对比”。');
+      candidates.add(row.candidate_ref);
+      coreMetricKeys.forEach(key => {
+        const metric = data.metric_definitions.find(definition => definition.key === key);
+        check(metric && window.EffortProjectionContract.metric(row.metrics[key]) && row.metrics[key].metric_version === metric.metric_version
+          && window.EffortProjectionContract.delta(row.deltas[key]), '方案核心指标资料不完整，请点“刷新方案对比”。');
+      });
+    });
+    check(data.scope.selected_candidate_ref === null || candidates.has(data.scope.selected_candidate_ref), '当前查看方案已不在这次排产中，请点“刷新方案对比”。');
+    if (q.selected_candidate_ref) check(data.scope.selected_candidate_ref === q.selected_candidate_ref, '当前查看方案已变化，请点“刷新方案对比”。');
+    if (q.comparison_mode === 'candidates' && data.scope.reference_state === 'available') check(data.scope.reference && candidates.has(data.scope.reference.candidate_ref), '比较基准已不在这次排产中，请点“刷新方案对比”。');
+    if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '比较基准已变化，请点“刷新方案对比”。');
+    if (q.comparison_mode === 'admission_official') check(data.scope.reference && data.scope.reference.kind === 'admission_official', '比较基准的正式计划资料已变化，请点“刷新方案对比”。');
+    bindScope(payload, data, q);
+    recommendation(data);
+    if (data.difference_summary !== undefined) {
+      const keys = ['overdue_count', 'total_tardiness_hours', 'makespan_hours'];
+      check(data.difference_summary && data.difference_summary.scope === 'full_admission'
+        && Array.isArray(data.difference_summary.items) && data.difference_summary.items.length === keys.length
+        && data.difference_summary.items.every((item, index) => item.key === keys[index]
+          && data.metric_definitions.some(definition => definition.key === item.key && definition.unit === item.unit && definition.scope === item.scope)
+          && [item.value, item.reference_value, item.selected_value].every(numeric)
+          && ['comparable', 'unavailable', 'different_coverage'].includes(item.state)
+          && ['better', 'worse', 'equal', 'neutral'].includes(item.direction)
+          && object(item.reference_coverage) && object(item.selected_coverage)),
+      '方案差异摘要的指标或统计范围不完整，请点“刷新方案对比”。');
+    }
+    return data;
+  }
+  function decision(payload, runRef, query = {}) {
+    const data = decisionCore(payload, runRef, query);
+    data.candidates.forEach(row => data.metric_definitions.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key])
+      && row.metrics[metric.key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[metric.key]), '比较指标资料不完整，请点“刷新方案对比”。')));
+    completionGroups(data);
+    return data;
+  }
+  function decisionSummary(payload, runRef, query = {}) {
+    const data = decisionCore(payload, runRef, query), exactCore = value => object(value)
+      && Object.keys(value).length === coreMetricKeys.length && coreMetricKeys.every(key => Object.prototype.hasOwnProperty.call(value, key));
+    const baseline = data.baseline, missingCandidateBaseline = data.scope.comparison_mode === 'candidates' && data.scope.reference_state === 'selection_required';
+    check(data.completion_groups === undefined && data.candidates.every(row => exactCore(row.metrics) && exactCore(row.deltas)
+        && Object.keys(row.coverage).length === 3)
+      && baseline && object(baseline.coverage) && baseline.state === data.scope.reference_state
+      && (missingCandidateBaseline ? object(baseline.metrics) && Object.keys(baseline.metrics).length === 0 && baseline.candidate_ref === null
+        && Object.keys(baseline.coverage).length === 1 && baseline.coverage.schedulable && baseline.coverage.schedulable.state === 'unavailable'
+        : Object.keys(baseline.coverage).length === 2 && ['schedulable', 'delivery'].every(key => object(baseline.coverage[key]))
+          && (data.scope.comparison_mode !== 'candidates' || baseline.candidate_ref === data.scope.reference.candidate_ref)
+          && exactCore(baseline.metrics) && coreMetricKeys.every(key => window.EffortProjectionContract.metric(baseline.metrics[key])
+          && baseline.metrics[key].metric_version === data.metric_definitions.find(metric => metric.key === key).metric_version))
+      && data.difference_summary !== undefined, '方案首屏指标或基准资料不完整，请点“刷新方案对比”。');
+    return data;
+  }
+  const completionFilters = ['all', 'complete', 'unfinished', 'ordinary', 'deferred', 'unknown'];
+  function completionScope(runRef, query = {}) {
+    const value = { ...scope(runRef, query), completion_filter: 'all', sort: 'batch_id', order: 'asc', page: 1, size: 20 };
+    ['completion_candidate_ref', 'completion_filter', 'sort', 'order', 'page', 'size'].forEach(key => {
+      if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
+    });
+    if (value.completion_candidate_ref === undefined) value.completion_candidate_ref = value.selected_candidate_ref;
+    check(ref(value.completion_candidate_ref), '请选择要查看批次安排的方案。');
+    check(completionFilters.includes(value.completion_filter) && value.sort === 'batch_id' && ['asc', 'desc'].includes(value.order), '批次安排的筛选或排序条件无效，请重新选择。');
+    check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '批次清单每页支持 20 或 50 条，请重新选择页码。');
+    return value;
+  }
+  function completionBatches(payload, runRef, query = {}) {
+    const data = envelope(payload), q = completionScope(runRef, query), E = window.EffortProjectionContract;
+    check(A.shape(data, ['run_ref', 'scope', 'baseline', 'candidate', 'source', 'filters', 'items', 'page', 'summary', 'metric_version'])
+      && data.run_ref === runRef && object(data.scope) && data.scope.run_ref === runRef
+      && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref))
+      && data.scope.comparison_mode === q.comparison_mode
+      && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end)
+      && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.scope.reference)
+      && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state
+      && A.shape(data.candidate, ['candidate_ref', 'label', 'persisted_status']) && data.candidate.candidate_ref === q.completion_candidate_ref
+      && (data.candidate.label === null || typeof data.candidate.label === 'string') && ['completed', 'failed', 'skipped'].includes(data.candidate.persisted_status)
+      && data.metric_version === 'decision-preparation-v4', '批次安排资料与当前方案或比较范围不一致，请刷新批次清单。');
+    if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate'
+      && data.baseline.candidate_ref === data.scope.reference.candidate_ref
+      && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null)
+      && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '批次安排的比较基准已变化，请刷新批次清单。');
+    else check(data.scope.reference.kind === 'admission_official'
+      && (data.scope.reference_state === 'available' ? ref(data.scope.reference.baseline_ref) : data.scope.reference_state === 'absent' && data.scope.reference.baseline_ref === null), '批次安排使用的正式计划资料已变化，请刷新批次清单。');
+    bindScope(payload, data, q);
+    const source = data.source, available = data.candidate.persisted_status === 'completed';
+    check(A.shape(source, ['role', 'grain', 'candidate_ref', 'available', 'reason']) && source.role === 'completion_anchor'
+      && source.grain === 'full_admission_per_candidate_batch' && source.candidate_ref === q.completion_candidate_ref && source.available === available
+      && (available || data.scope.selected_candidate_ref !== q.completion_candidate_ref)
+      && (available ? source.reason === null : issue(source.reason)), '所选方案的批次安排资料不完整，请刷新批次清单。');
+    check(A.shape(data.filters, ['section', 'completion_candidate_ref', 'completion_filter', 'sort', 'order'])
+      && data.filters.section === 'completion-batches' && ['completion_candidate_ref', 'completion_filter', 'sort', 'order'].every(key => data.filters[key] === q[key]),
+    '批次清单的方案、筛选或排序已变化，请刷新批次清单。');
+    check(completion(data.summary) && data.summary.source_available === available && (available || data.summary.state === 'unavailable'), '批次安排和待安排工时资料不完整，请刷新批次清单。');
+    const cohort = new Set(data.scope.batch_refs);
+    check(Object.values(data.summary.sample_batch_refs).every(values => values.every(value => cohort.has(value))), '批次清单与本次选择的批次不一致，请刷新批次清单。');
+    const totalKey = { complete: 'complete_batch_count', unfinished: 'incomplete_batch_count', ordinary: 'ordinary_incomplete_batch_count', deferred: 'deferred_batch_count', unknown: 'unknown_batch_count' }[q.completion_filter];
+    const total = totalKey ? data.summary[totalKey] : cohort.size;
+    check(A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size
+      && count(data.page.total) && data.page.total === total && data.page.has_more === (q.page * q.size < total)
+      && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, total - (q.page - 1) * q.size)),
+    '批次清单的记录条数或页码已变化，请刷新批次清单。');
+    function remainingDrill(value, operationCount, batchRef) {
+      if (operationCount === null || operationCount === 0) { check(value === null, '待安排工序的定位资料已失效，请刷新批次清单。'); return; }
+      check(object(value) && value.comparison_tab === 'preparation' && value.selected_candidate_ref === q.completion_candidate_ref
+        && A.shape(value.detail_query, ['work_scope'], batchRef ? ['batch_ref'] : []) && value.detail_query.work_scope === 'remaining'
+        && (batchRef ? value.detail_query.batch_ref === batchRef : value.detail_query.batch_ref === undefined), '待安排工序的方案、批次或范围已变化，请刷新批次清单。');
+      recommendationDrill(value, data, q.completion_candidate_ref);
+      check(['range_start', 'range_end'].every(key => time(value[key]) && timeKey(value[key]) === timeKey(data.scope[key])), '待安排工序的比较时间范围已变化，请刷新批次清单。');
+    }
+    remainingDrill(data.summary.drill, data.summary.remaining_work.operation_count);
+    check(available ? data.summary.remaining_work.operation_count === data.summary.unplanned_operation_count + data.summary.deferred_operation_count
+      && ['unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === data.summary[key])
+      : data.summary.unplanned_operation_count === null && data.summary.deferred_operation_count === null
+        && ['operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => data.summary.remaining_work[key] === null)
+        && preparationMetrics.every(key => data.summary.remaining_work.metrics[key].state === 'unavailable' && data.summary.remaining_work.metrics[key].value === null),
+    '所选方案的待安排工序资料不完整，请刷新批次清单。');
+    data.items.forEach(row => {
+      check(A.shape(row, ['batch_ref', 'batch_label', 'part_no', 'part_label', 'quantity', 'completion_state', 'schedule_complete', 'scheduled_operation_count',
+        'unplanned_operation_count', 'deferred_operation_count', 'remaining_work', 'issues', 'remaining_drill'])
+        && ref(row.batch_ref) && cohort.has(row.batch_ref) && ['batch_label', 'part_no', 'part_label'].every(key => row[key] === null || typeof row[key] === 'string')
+        && (row.quantity === null || typeof row.quantity === 'number' && Number.isFinite(row.quantity) && row.quantity >= 0)
+        && ['complete', 'incomplete', 'deferred', 'unknown'].includes(row.completion_state)
+        && A.shape(row.remaining_work, ['operation_count', 'metrics']) && object(row.remaining_work.metrics)
+        && preparationMetrics.every(key => E.metric(row.remaining_work.metrics[key])) && Array.isArray(row.issues) && row.issues.every(value => typeof value === 'string'),
+      '批次安排或待安排工时资料不完整，请刷新批次清单。');
+      check(available ? typeof row.schedule_complete === 'boolean' && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => count(row[key]))
+        && count(row.remaining_work.operation_count) && row.remaining_work.operation_count === row.unplanned_operation_count + row.deferred_operation_count
+        : row.completion_state === 'unknown' && row.schedule_complete === null && ['scheduled_operation_count', 'unplanned_operation_count', 'deferred_operation_count'].every(key => row[key] === null)
+          && row.remaining_work.operation_count === null && preparationMetrics.every(key => row.remaining_work.metrics[key].state === 'unavailable' && row.remaining_work.metrics[key].value === null),
+      '批次的工序安排数量与读取的资料不一致，请刷新批次清单。');
+      check(q.completion_filter === 'all' || q.completion_filter === 'complete' && row.schedule_complete === true
+        || q.completion_filter === 'unfinished' && row.schedule_complete !== true || q.completion_filter === 'ordinary' && row.completion_state === 'incomplete'
+        || q.completion_filter === 'deferred' && row.completion_state === 'deferred' || q.completion_filter === 'unknown' && row.completion_state === 'unknown',
+      '批次清单与当前筛选条件不一致，请刷新批次清单。');
+      remainingDrill(row.remaining_drill, row.remaining_work.operation_count, row.batch_ref);
+    });
+    check(new Set(data.items.map(row => row.batch_ref)).size === data.items.length, '批次清单出现重复记录，请刷新批次清单。');
+    return data;
+  }
+  function processScope(runRef, query = {}) {
+    const value = { ...scope(runRef, query), record_kind: 'attempts', order: 'asc', page: 1, size: 20 };
+    ['process_candidate_ref', 'record_kind', 'sort', 'order', 'page', 'size'].forEach(key => {
+      if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
+    });
+    if (value.process_candidate_ref === undefined && value.selected_candidate_ref) value.process_candidate_ref = value.selected_candidate_ref;
+    if (value.sort === undefined) value.sort = value.record_kind === 'progress' ? 'elapsed_ms' : 'rank';
+    check(value.process_candidate_ref === undefined || ref(value.process_candidate_ref), '优化过程的方案选择已失效，请重新选择方案。');
+    check(['attempts', 'progress'].includes(value.record_kind)
+      && (value.record_kind === 'progress' ? ['event_index', 'elapsed_ms', 'primary_value'] : ['rank', 'elapsed_ms', 'primary_value']).includes(value.sort)
+      && ['asc', 'desc'].includes(value.order), '优化过程的筛选或排序条件无效，请重新选择。');
+    check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '优化过程每页支持 20 或 50 条，请重新选择页码。');
+    return value;
+  }
+  const processCountKeys = ['evaluated', 'accepted', 'current_accepted', 'strict_improvements', 'rejected', 'unverified_trials', 'decoder_invocations'];
+  const processCompletionKeys = ['expected_operation_count', 'missing_operation_count', 'unexpected_result_count', 'complete_batch_count', 'incomplete_batch_count'];
+  const processMetricKeys = ['changeover_count', 'makespan_hours', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours'];
+  const processComparisonMetricKeys = ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'];
+  const processMemberKeys = ['candidate_ref', 'label', 'status', 'persisted_status', 'kind', 'algo_mode', 'used_strategy', 'dispatch_mode', 'configured_dispatch_rule',
+    'adopted_dispatch_rule', 'source_kind', 'source_candidate_ref', 'own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'stop_reason',
+    'final_metrics', 'completion', 'algorithm_profile', 'legacy_best_updates', 'evidence_state', 'evidence_version'];
+  function processDetails(payload, runRef, query = {}) {
+    const data = envelope(payload), q = processScope(runRef, query);
+    const nullableText = value => value === null || typeof value === 'string';
+    const amount = value => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0;
+    const nullableCount = value => value === null || count(value);
+    const counts = value => A.shape(value, processCountKeys) && processCountKeys.every(key => nullableCount(value[key]));
+    const completed = value => A.shape(value, processCompletionKeys) && processCompletionKeys.every(key => nullableCount(value[key]));
+    const metrics = value => A.shape(value, processMetricKeys) && processMetricKeys.every(key => amount(value[key]));
+    const reason = value => value === null || A.shape(value, ['code', 'message']) && issue(value);
+    const rejectionCounts = value => value === null || object(value) && Object.values(value).every(count);
+    const evidenceVersion = value => value === null || value === 'optimization-process-v1';
+    const evidenceStates = ['complete', 'partial', 'unavailable'], sourceKinds = ['own_search', 'reused', 'not_started', 'failed', 'budget_skipped'];
+    function sameSaved(left, right) {
+      if (left === right) return true;
+      if (Array.isArray(left)) return Array.isArray(right) && left.length === right.length && left.every((value, index) => sameSaved(value, right[index]));
+      return object(left) && object(right) && Object.keys(left).length === Object.keys(right).length
+        && Object.keys(left).every(key => Object.prototype.hasOwnProperty.call(right, key) && sameSaved(left[key], right[key]));
+    }
+    function member(value) {
+      return A.shape(value, processMemberKeys) && ref(value.candidate_ref)
+        && ['label', 'kind', 'algo_mode', 'used_strategy', 'dispatch_mode', 'configured_dispatch_rule', 'adopted_dispatch_rule', 'algorithm_profile'].every(key => nullableText(value[key]))
+        && ['completed', 'failed', 'skipped'].includes(value.persisted_status) && value.status === value.persisted_status
+        && sourceKinds.includes(value.source_kind) && (value.source_candidate_ref === null || ref(value.source_candidate_ref))
+        && ['own_elapsed_ms', 'source_solver_elapsed_ms'].every(key => amount(value[key])) && counts(value.own_counts) && counts(value.solver_counts)
+        && reason(value.stop_reason) && metrics(value.final_metrics) && completed(value.completion) && nullableCount(value.legacy_best_updates)
+        && evidenceStates.includes(value.evidence_state) && evidenceVersion(value.evidence_version)
+        && (value.evidence_version === null ? value.solver_counts.strict_improvements === null : value.legacy_best_updates === null)
+        && (value.source_kind === 'reused' ? value.source_candidate_ref !== value.candidate_ref && processCountKeys.every(key => value.own_counts[key] === 0)
+          : value.source_candidate_ref === value.candidate_ref && sameSaved(value.own_counts, value.solver_counts));
+    }
+    function sampling(value) {
+      return A.shape(value, ['policy', 'point_budget', 'event_total_count', 'retained_point_count', 'bucket_count', 'bucket_width_ms', 'mandatory'])
+        && [null, 'elapsed_equal_width_bucket_end_best_v1', 'legacy_saved_events', 'not_applicable'].includes(value.policy) && value.point_budget === 200
+        && ['event_total_count', 'bucket_count'].every(key => nullableCount(value[key])) && count(value.retained_point_count) && value.retained_point_count <= 200
+        && amount(value.bucket_width_ms) && Array.isArray(value.mandatory) && value.mandatory.every(flag => ['first_valid', 'first_expected_complete', 'final'].includes(flag))
+        && new Set(value.mandatory).size === value.mandatory.length;
+    }
+    function coverage(value, endpoints = false) {
+      return A.shape(value, ['state', 'reason', ...(endpoints ? ['endpoint_coverage'] : [])]) && evidenceStates.includes(value.state) && reason(value.reason)
+        && (!endpoints || A.shape(value.endpoint_coverage, ['first_valid', 'first_expected_complete', 'final'])
+          && Object.values(value.endpoint_coverage).every(flag => flag === null || typeof flag === 'boolean'));
+    }
+    function profile(value) {
+      const texts = ['profile', 'acceptance', 'system_limit_reason', 'message'];
+      const integers = ['seed', 'configured_time_budget_seconds', 'effective_time_budget_seconds', 'assigned_time_budget_ms', 'configured_max_iterations', 'effective_max_iterations'];
+      const booleans = ['enabled', 'system_limit_applied'], lists = ['candidate_strategy_families', 'configured_neighborhoods', 'effective_neighborhoods'];
+      return A.shape(value, [], [...texts, ...integers, ...booleans, ...lists]) && texts.every(key => value[key] === undefined || typeof value[key] === 'string')
+        && integers.every(key => value[key] === undefined || count(value[key])) && booleans.every(key => value[key] === undefined || typeof value[key] === 'boolean')
+        && lists.every(key => value[key] === undefined || Array.isArray(value[key]) && value[key].every(item => typeof item === 'string'));
+    }
+    function attemptComparison(value) {
+      return value === null || A.shape(value, ['kind', 'state', 'objective_name', 'objective_scope', 'reference_scope', 'reference_score', 'reference_metrics', 'reference_completion', 'metric_deltas'])
+        && ['incumbent', 'current_solution', 'reference_capture', 'none'].includes(value.kind)
+        && ['comparable', 'different_coverage', 'unavailable', 'unverified', 'no_reference'].includes(value.state)
+        && ['objective_name', 'objective_scope', 'reference_scope'].every(key => nullableText(value[key]))
+        && (value.reference_score === null || Array.isArray(value.reference_score) && value.reference_score.every(amount))
+        && (value.reference_metrics === null || A.shape(value.reference_metrics, processComparisonMetricKeys) && processComparisonMetricKeys.every(key => amount(value.reference_metrics[key])))
+        && (value.reference_completion === null || completed(value.reference_completion))
+        && (value.metric_deltas === null || A.shape(value.metric_deltas, processComparisonMetricKeys) && processComparisonMetricKeys.every(key => numeric(value.metric_deltas[key])));
+    }
+    check(A.shape(data, ['run_ref', 'capture_ref', 'scope', 'baseline', 'candidates', 'candidate', 'source', 'summary', 'objective', 'progress', 'stages', 'items', 'page', 'filters', 'process_version'], ['attempts'])
+      && data.run_ref === runRef && data.capture_ref === runRef && data.process_version === 'decision-process-v1'
+      && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode
+      && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref))
+      && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end)
+      && object(data.scope.reference) && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref)
+      && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state
+      && Array.isArray(data.candidates) && data.candidates.length > 0 && data.candidates.every(member)
+      && new Set(data.candidates.map(value => value.candidate_ref)).size === data.candidates.length && member(data.candidate),
+    '优化过程资料与当前排产记录或查看方案不一致，请点“刷新优化过程”。');
+    if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate'
+      && data.baseline.candidate_ref === data.scope.reference.candidate_ref
+      && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null)
+      && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '优化过程的比较基准已变化，请点“刷新优化过程”。');
+    else check(data.scope.reference.kind === 'admission_official'
+      && (data.scope.reference_state === 'available' ? ref(data.scope.reference.baseline_ref) : data.scope.reference_state === 'absent' && data.scope.reference.baseline_ref === null),
+    '优化过程使用的正式计划资料已变化，请点“刷新优化过程”。');
+    bindScope(payload, data, q);
+    const catalog = new Map(data.candidates.map(value => [value.candidate_ref, value]));
+    check(data.scope.selected_candidate_ref === null || catalog.has(data.scope.selected_candidate_ref),
+    '当前查看方案已变化，请点“刷新优化过程”。');
+    data.candidates.forEach(value => check(value.source_candidate_ref === null ? value.evidence_state === 'unavailable'
+      : catalog.has(value.source_candidate_ref) && sameSaved(value.solver_counts, catalog.get(value.source_candidate_ref).solver_counts)
+        && value.source_solver_elapsed_ms === catalog.get(value.source_candidate_ref).source_solver_elapsed_ms,
+    '优化过程的计算来源与所选方案不一致，请点“刷新优化过程”。'));
+    const anchorRef = q.process_candidate_ref || data.scope.selected_candidate_ref || data.candidates[0].candidate_ref;
+    check(data.candidate.candidate_ref === anchorRef && catalog.has(anchorRef) && sameSaved(data.candidate, catalog.get(anchorRef)), '所选方案的优化过程资料已变化，请点“刷新优化过程”。');
+    const source = data.source, summary = data.summary, progress = data.progress;
+    check(A.shape(source, ['role', 'grain', 'kind', 'candidate_ref', 'source_candidate_ref', 'evidence_state', 'available', 'reason', 'evidence_version', 'profile', 'rejection_summary'])
+      && source.role === 'process_anchor' && source.grain === 'saved_candidate_solver_process' && source.candidate_ref === anchorRef
+      && source.kind === data.candidate.source_kind && source.source_candidate_ref === data.candidate.source_candidate_ref
+      && source.evidence_state === data.candidate.evidence_state && source.evidence_version === data.candidate.evidence_version
+      && typeof source.available === 'boolean' && source.available === (source.evidence_state !== 'unavailable')
+      && reason(source.reason) && (source.evidence_state === 'complete' ? source.reason === null : source.reason !== null) && profile(source.profile)
+      && rejectionCounts(source.rejection_summary),
+    '优化过程的计算来源或保存状态已变化，请点“刷新优化过程”。');
+    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'record_kind', 'sort', 'order']) && data.filters.section === 'process'
+      && data.filters.process_candidate_ref === anchorRef && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]),
+    '优化过程的方案、筛选或排序已变化，请点“刷新优化过程”。');
+    check(A.shape(summary, ['own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'saved_attempt_count', 'retained_point_count', 'stop_reason', 'coverage', 'sampling', 'legacy_best_updates', 'rejection_summary'])
+      && ['own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'stop_reason', 'legacy_best_updates'].every(key => sameSaved(summary[key], data.candidate[key]))
+      && count(summary.saved_attempt_count) && count(summary.retained_point_count) && summary.retained_point_count <= 200
+      && coverage(summary.coverage) && summary.coverage.state === source.evidence_state && sameSaved(summary.coverage.reason, source.reason) && sampling(summary.sampling)
+      && sameSaved(summary.rejection_summary, source.rejection_summary),
+    '优化过程的计算统计资料不完整，请点“刷新优化过程”。');
+    check(A.shape(data.objective, ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields'])
+      && ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit'].every(key => nullableText(data.objective[key]))
+      && Array.isArray(data.objective.score_fields) && data.objective.score_fields.every(value => A.shape(value, ['index', 'key', 'label', 'unit', 'direction'])
+        && nullableCount(value.index) && ['key', 'label', 'unit'].every(key => nullableText(value[key])) && value.direction === 'lower'),
+    '优化过程的目标指标资料不完整，请点“刷新优化过程”。');
+    function point(value) {
+      return A.shape(value, ['source_candidate_ref', 'event_index', 'elapsed_ms', 'phase', 'phase_visit', 'segment', 'flags', 'score', 'primary_value', 'objective_scope', 'completion', 'verified'], ['evaluation_scope'])
+        && ref(value.source_candidate_ref) && value.source_candidate_ref === source.source_candidate_ref
+        && ['event_index', 'phase_visit', 'segment'].every(key => nullableCount(value[key])) && amount(value.elapsed_ms) && amount(value.primary_value)
+        && nullableText(value.phase) && nullableText(value.objective_scope) && completed(value.completion)
+        && (value.evaluation_scope == null || A.shape(value.evaluation_scope, ['incomplete_batch_ids'])
+          && Array.isArray(value.evaluation_scope.incomplete_batch_ids)
+          && value.evaluation_scope.incomplete_batch_ids.every(id => typeof id === 'string' && id.trim().length > 0)
+          && new Set(value.evaluation_scope.incomplete_batch_ids).size === value.evaluation_scope.incomplete_batch_ids.length)
+        && Array.isArray(value.score) && value.score.every(amount) && Array.isArray(value.flags)
+        && value.flags.every(flag => ['first_valid', 'first_expected_complete', 'final', 'strict_improvement', 'segment_start'].includes(flag))
+        && new Set(value.flags).size === value.flags.length && (value.verified === null || typeof value.verified === 'boolean')
+        && (source.evidence_version !== null || value.flags.length === 0 && value.verified === null);
+    }
+    check(A.shape(progress, ['mode', 'points', 'source_candidate_ref', 'sampling', 'coverage']) && ['curve', 'discrete', 'none'].includes(progress.mode)
+      && progress.source_candidate_ref === source.source_candidate_ref && Array.isArray(progress.points) && progress.points.length <= 200 && progress.points.every(point)
+      && progress.points.length === summary.retained_point_count && sameSaved(progress.sampling, summary.sampling)
+      && summary.sampling.retained_point_count === progress.points.length && coverage(progress.coverage, true)
+      && progress.coverage.state === source.evidence_state && sameSaved(progress.coverage.reason, source.reason)
+      && progress.mode === (source.evidence_version !== null && source.available && progress.points.length ? 'curve' : progress.points.length ? 'discrete' : 'none')
+      && ['first_valid', 'first_expected_complete', 'final'].every(flag => progress.coverage.endpoint_coverage[flag]
+        === (source.evidence_version !== null && source.available ? progress.points.some(value => value.flags.includes(flag)) : null)),
+    '优化过程的进展记录与计算来源不一致，请点“刷新优化过程”。');
+    if (source.evidence_version === null) check(summary.sampling.event_total_count === null && summary.sampling.bucket_count === null
+      && summary.sampling.bucket_width_ms === null && summary.sampling.mandatory.length === 0, '旧记录的优化过程资料已失效，请点“刷新优化过程”。');
+    check(Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'visits', 'evaluated', 'accepted', 'strict_improvements', 'rejected', 'stop_reason', 'status'])
+      && nullableText(value.phase) && nullableText(value.stop_reason) && ['completed', 'skipped', 'failed'].includes(value.status)
+      && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => amount(value[key]))
+      && ['visits', 'evaluated', 'accepted', 'strict_improvements', 'rejected'].every(key => nullableCount(value[key]))),
+    '优化过程的阶段耗时或统计资料不完整，请点“刷新优化过程”。');
+    const total = q.record_kind === 'progress' ? summary.retained_point_count : summary.saved_attempt_count;
+    check(A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size
+      && count(data.page.total) && data.page.total === total && data.page.has_more === (q.page * q.size < total)
+      && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, total - (q.page - 1) * q.size)),
+    '优化过程的记录条数或页码已变化，请点“刷新优化过程”。');
+    function attempt(value) {
+      return A.shape(value, ['source_candidate_ref', 'saved_index', 'rank', 'strategy', 'dispatch_mode', 'dispatch_rule', 'candidate_status', 'source_label',
+        'score', 'failed_ops', 'metrics', 'primary_value', 'objective_scope', 'completion', 'elapsed_ms', 'accepted', 'candidate_origin', 'weight_profile_slug', 'event_index', 'verified', 'strict_improved', 'comparison'])
+        && ref(value.source_candidate_ref) && value.source_candidate_ref === source.source_candidate_ref && count(value.saved_index) && value.saved_index > 0
+        && (value.rank === null || count(value.rank) && value.rank > 0) && nullableCount(value.event_index)
+        && ['strategy', 'dispatch_mode', 'dispatch_rule', 'candidate_status', 'source_label', 'objective_scope', 'candidate_origin', 'weight_profile_slug'].every(key => nullableText(value[key]))
+        && Array.isArray(value.score) && value.score.every(amount) && nullableCount(value.failed_ops) && metrics(value.metrics) && completed(value.completion)
+        && amount(value.primary_value) && amount(value.elapsed_ms) && ['accepted', 'verified', 'strict_improved'].every(key => value[key] === null || typeof value[key] === 'boolean')
+        && attemptComparison(value.comparison);
+    }
+    if (data.attempts !== undefined) check(Array.isArray(data.attempts) && data.attempts.every(attempt)
+      && data.attempts.length === summary.saved_attempt_count && new Set(data.attempts.map(value => value.saved_index)).size === data.attempts.length,
+    '已保存计算尝试与所选方案的计算来源不一致，请点“刷新优化过程”。');
+    if (q.record_kind === 'progress') {
+      check(data.items.every(value => point(value) && progress.points.some(saved => sameSaved(saved, value)))
+        && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
+    } else check(data.items.every(value => data.attempts === undefined ? attempt(value) : data.attempts.some(saved => sameSaved(saved, value)))
+      && new Set(data.items.map(value => value.saved_index)).size === data.items.length, '本页计算尝试的记录不完整，请点“刷新优化过程”。');
+    return data;
+  }
+  function detailScope(runRef, query, section) {
+    const value = { ...scope(runRef, query), page: 1, size: 20, change_kind: 'all', sort: section === 'batches' ? 'worsened' : 'sequence', order: section === 'batches' ? 'desc' : 'asc' };
+    if (section === 'batches') value.delivery_filter = 'all';
+    ['page', 'size', 'change_kind', 'sort', 'order', 'batch_ref', ...(section === 'operations' ? ['resource_ref'] : ['delivery_filter', 'selected_batch_ref'])].forEach(key => {
+      if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
+    });
+    check(ref(value.selected_candidate_ref), '请选择需要查看的方案。');
+    check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '明细每页支持 20 或 50 条，请重新选择页码。');
+    if (value.sort === 'current_priority' && query.order === undefined) value.order = 'asc';
+    ['batch_ref', 'resource_ref', 'selected_batch_ref'].forEach(key => check(value[key] === undefined || ref(value[key]), '明细的批次或资源选择已失效，请重新选择。'));
+    if (section === 'batches') check(['all', 'attention', 'overdue', 'deferred', 'unplanned', 'on_time'].includes(value.delivery_filter), '请选择需要查看的交付问题。');
+    return value;
+  }
+  function details(payload, runRef, query, section) {
+    const data = envelope(payload), q = detailScope(runRef, query, section);
+    check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref
+      && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref
+      && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size && data.filters && data.filters.section === section,
+    '明细的方案、比较范围或页码已变化，请点“刷新影响明细”。');
+    if (q.comparison_mode === 'candidates' && q.reference_candidate_ref)
+      check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '明细的比较基准已变化，请点“刷新影响明细”。');
+    ['change_kind', 'sort', 'order'].forEach(key => check(data.filters[key] === q[key], '明细的筛选或排序已变化，请点“刷新影响明细”。'));
+    ['batch_ref', ...(section === 'operations' ? ['resource_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] || null), '明细的批次或资源已变化，请点“刷新影响明细”。'));
+    if (section === 'batches') {
+      check(data.summary && object(data.summary.operation_changes)
+        && ['changed_operation_count', 'machine_change_count'].every(key => {
+          const metric = data.summary.operation_changes[key];
+          return window.EffortProjectionContract.metric(metric) && metric.scope === 'full_admission' && metric.metric_version === 'decision-preparation-v4';
+        }), '全范围工序安排变化资料不完整，请点“刷新影响明细”。');
+      if (data.filters.delivery_filter !== undefined) check(data.filters.delivery_filter === q.delivery_filter, '交付问题筛选已变化，请点“刷新影响明细”。');
+      if (q.selected_batch_ref || data.filters.selected_batch_ref !== undefined) check(data.filters.selected_batch_ref === (q.selected_batch_ref || null)
+        && (q.selected_batch_ref ? data.selected_batch && data.selected_batch.batch_ref === q.selected_batch_ref : data.selected_batch === null),
+      '所选批次与当前方案的归档资料不一致，请点“刷新影响明细”。');
+    }
+    check(data.items.every(row => ref(row.batch_ref) && (section === 'batches' || ref(row.operation_ref)) && row.drill), '明细的甘特定位资料不完整，请点“刷新影响明细”。');
+    if (section === 'operations') check(data.items.every(row => row.runtime_effort === undefined || row.runtime_effort
+      && window.EffortProjectionContract.compact(row.runtime_effort.before) && window.EffortProjectionContract.compact(row.runtime_effort.after)), '工序工时资料不完整，请点“刷新影响明细”。');
+    bindScope(payload, data, q);
+    return data;
+  }
+  const preparationSorts = ['sequence', 'batch_id', 'after_setup_hours', 'after_required_hours', 'setup_delta_hours'];
+  const changeoverSorts = ['next_start', 'machine_label', 'next_batch_id'];
+  const preparationMetrics = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
+  const changeoverMetrics = ['type_changeover_count', 'changed_machine_count'];
+  function preparationScope(runRef, query = {}, section = 'preparation') {
+    check(['preparation', 'changeovers'].includes(section), '请选择准备需求或工种切换明细。');
+    const value = { ...scope(runRef, query), page: 1, size: 20, sort: section === 'preparation' ? 'sequence' : 'next_start', order: 'asc',
+      ...(section === 'preparation' ? { allocation_state: 'all', work_scope: 'all' } : { event_side: 'all' }) };
+    ['page', 'size', 'sort', 'order', 'machine_ref', ...(section === 'preparation' ? ['batch_ref', 'allocation_state', 'work_scope'] : ['event_side'])].forEach(key => {
+      if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
+    });
+    check(ref(value.selected_candidate_ref), '请选择需要查看的方案。');
+    check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '准备与切换明细每页支持 20 或 50 条。');
+    ['machine_ref', 'batch_ref'].forEach(key => check(value[key] === undefined || ref(value[key]), '准备与切换明细的批次或设备选择已失效，请重新选择。'));
+    check(['asc', 'desc'].includes(value.order) && (section === 'preparation' ? preparationSorts : changeoverSorts).includes(value.sort), '准备与切换排序无效，请重新选择。');
+    check(section === 'preparation' ? ['all', 'remaining'].includes(value.work_scope) && ['all', ...Object.keys(window.WorkbenchTerms.preparation_allocations)].includes(value.allocation_state)
+      : ['all', 'selected', 'reference'].includes(value.event_side), '准备与切换筛选无效，请重新选择。');
+    return value;
+  }
+  function preparationDetails(payload, runRef, query, section = 'preparation') {
+    const data = envelope(payload), q = preparationScope(runRef, query, section), E = window.EffortProjectionContract;
+    check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref
+      && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref
+      && data.metric_version === 'decision-preparation-v4' && data.filters && data.filters.section === section && Array.isArray(data.items)
+      && data.baseline && ['available', 'absent', 'selection_required'].includes(data.baseline.state)
+      && data.page && data.page.number === q.page && data.page.size === q.size && Number.isSafeInteger(data.page.total) && data.page.total >= 0,
+    '准备与切换明细的方案、范围或页码已变化，请点“刷新准备与切换明细”。');
+    if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '准备与切换明细的比较基准已变化，请点“刷新准备与切换明细”。');
+    ['sort', 'order', ...(section === 'preparation' ? ['allocation_state', 'work_scope'] : ['event_side'])].forEach(key => check(data.filters[key] === q[key], '准备与切换明细的筛选或排序已变化，请点“刷新准备与切换明细”。'));
+    ['machine_ref', ...(section === 'preparation' ? ['batch_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] || null), '准备与切换明细的批次或设备已变化，请点“刷新准备与切换明细”。'));
+    bindScope(payload, data, q);
+    check(data.filter_options && Array.isArray(data.filter_options.machines) && data.filter_options.machines.every(row => ref(row.ref) && row.kind === 'machine')
+      && (section !== 'preparation' || Array.isArray(data.filter_options.batches) && data.filter_options.batches.every(row => ref(row.ref))), '准备与切换明细的批次或设备选项不完整，请点“刷新准备与切换明细”。');
+    function drill(value, side, operationRef) {
+      if (side === 'reference' && data.baseline.state !== 'available') return value === null;
+      const official = side === 'reference' && q.comparison_mode === 'admission_official';
+      return value && value.run_ref === runRef && value.comparison_mode === q.comparison_mode && value.operation_ref === operationRef
+        && value.candidate_ref === (side === 'reference' && !official ? data.scope.reference.candidate_ref : q.selected_candidate_ref)
+        && (value.resource_view === undefined || value.resource_view === q.resource_view)
+        && (official ? value.reference_view === true && value.plan_ref === data.baseline.baseline_ref : value.reference_view !== true);
+    }
+    const keys = section === 'preparation' ? preparationMetrics : changeoverMetrics;
+    check(data.summary && data.summary.scope === (section === 'preparation' ? 'full_admission' : 'fixed_changeover_window')
+      && ['before', 'after'].every(side => data.summary[side] && keys.every(key => E.metric(data.summary[side][key])))
+      && data.summary.deltas && keys.every(key => E.delta(data.summary.deltas[key])), '准备与加工工时或切换次数资料不完整，请点“刷新准备与切换明细”。');
+    if (section === 'preparation') {
+      check(data.summary.role_totals && ['before', 'after'].every(side => data.summary.role_totals[side] && ['retained', 'execution', 'completed'].every(role => {
+        const value = data.summary.role_totals[side][role]; return value && Number.isSafeInteger(value.count) && value.count >= 0
+          && ['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].every(key => E.metric(value[key]));
+      })), '已有安排及已开工、已完工工序的工时资料不完整，请点“刷新准备与切换明细”。');
+      check(data.items.every(row => ref(row.operation_ref) && ref(row.batch_ref) && E.side(row.before) && E.side(row.after) && row.deltas
+        && ['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].every(key => E.delta(row.deltas[key]))
+        && row.drill && drill(row.drill.selected, 'selected', row.operation_ref) && drill(row.drill.reference, 'reference', row.operation_ref)), '准备与加工工时或甘特定位资料不完整，请点“刷新准备与切换明细”。');
+    } else check(data.items.every(row => typeof row.event_ref === 'string' && ['selected', 'reference'].includes(row.event_side) && ref(row.machine_ref)
+      && ref(row.previous_operation_ref) && ref(row.next_operation_ref) && ref(row.previous_row_ref) && ref(row.next_row_ref)
+      && row.previous && row.next && typeof row.predecessor_outside_window === 'boolean' && [true, false, null].includes(row.overlap)
+      && row.drill && drill(row.drill.previous, row.event_side, row.previous_operation_ref) && drill(row.drill.next, row.event_side, row.next_operation_ref)), '工种切换事件或甘特定位资料不完整，请点“刷新准备与切换明细”。');
+    return data;
+  }
+  function referenceWorkspace(payload, runRef, query) {
+    const data = envelope(payload);
+    check(data.candidate && data.candidate.run_ref === runRef && data.candidate.candidate_ref === query.selected_candidate_ref
+      && data.reference && data.reference.kind === 'admission_official' && Array.isArray(data.tasks) && Array.isArray(data.unplanned_operations),
+    '正式计划资料与本次比较不一致，请从方案对比重新打开。');
+    check(ref(data.plan_ref) && data.plan_ref === data.reference.plan_ref && data.plan_ref === data.reference.baseline_ref
+      && (!query.plan_ref || data.plan_ref === query.plan_ref), '比较基准的正式计划已变化，请从方案对比重新打开。');
+    check([data.capabilities, data.candidate.capabilities].every(caps => caps && ['edit_draft', 'adopt', 'report_actual'].every(key => caps[key] === false) && caps.trial !== true),
+      '这份正式计划的查看资料已失效，请从方案对比重新打开。');
+    check(data.batch_ref === (query.batch_ref || null), '正式计划的批次范围已变化，请从方案对比重新打开。');
+    for (const key of ['range_start', 'range_end']) if (query[key])
+      check(data.time_scope && time(data.time_scope[key]) && timeKey(data.time_scope[key]) === timeKey(query[key]), '正式计划的时间范围已变化，请从方案对比重新打开。');
+    if (query.resource_view) check(data.scope && data.scope.resource_view === query.resource_view, '正式计划的资源范围已变化，请从方案对比重新打开。');
+    check([...data.tasks, ...data.unplanned_operations].every(row => row.operation_effort === undefined || window.EffortProjectionContract.compact(row.operation_effort)), '正式计划的工序工时资料不完整，请从方案对比重新打开。');
+    bindSnapshot(payload, query);
+    return data;
+  }
+  function resourceScope(runRef, query = {}, section = 'resources') {
+    const value = { ...scope(runRef, query), resource_kind: 'machine', grain: 'day', pressure_threshold: 0.9, page: 1, size: 20 };
+    const keys = ['resource_kind', 'resource_ref', 'grain', 'pressure_threshold', 'page', 'size'];
+    if (section === 'resources') {
+      Object.assign(value, { pressure_filter: 'all', sort: 'after_peak_utilization', order: 'desc', heatmap_page: 1, heatmap_size: 7 });
+      keys.push('pressure_filter', 'sort', 'order', 'heatmap_page', 'heatmap_size', 'display_start', 'display_end');
+    } else keys.push('bucket_start', 'bucket_end');
+    keys.forEach(key => { if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key]; });
+    check(ref(value.selected_candidate_ref) && ['machine', 'operator'].includes(value.resource_kind), '请选择查看方案及设备或人员。');
+    check(value.resource_ref === undefined || ref(value.resource_ref), '设备或人员选择已失效，请重新选择。');
+    check(['hour', 'shift', 'day', 'week'].includes(value.grain) && typeof value.pressure_threshold === 'number'
+      && Number.isFinite(value.pressure_threshold) && value.pressure_threshold > 0 && value.pressure_threshold <= 1,
+    '请选择时间粒度与有效的高负荷关注线。');
+    const rangeKeys = section === 'resources' ? ['display_start', 'display_end'] : ['bucket_start', 'bucket_end'];
+    if (rangeKeys.some(key => value[key] !== undefined)) check(rangeKeys.every(key => time(value[key]))
+      && timeKey(value[rangeKeys[0]]) < timeKey(value[rangeKeys[1]])
+      && (section !== 'resources' || value.grain === 'hour'), '时段起止要同时填写，结束时间须晚于开始时间。');
+    if (section === 'resources') check(['all', 'high_pressure', 'zero_capacity', 'conflicts', 'unknown', 'demand_overload'].includes(value.pressure_filter), '请选择资源负荷筛选。');
+    if (section === 'resource-days') check(ref(value.resource_ref), '请选择要查看逐日明细的设备或人员。');
+    check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '资源明细每页支持 20 或 50 条，请重新选择。');
+    if (section === 'resources') check(Number.isInteger(value.heatmap_page) && value.heatmap_page > 0 && [7, 14, 31].includes(value.heatmap_size), '热力图每页支持 7、14 或 31 天，请重新选择。');
+    return value;
+  }
+  function resourceDetails(payload, runRef, query, section = 'resources') {
+    const data = envelope(payload), q = resourceScope(runRef, query, section);
+    check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref
+      && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref
+      && data.metric_version === 'decision-resource-v4' && data.filters && data.filters.section === section && data.filters.resource_kind === q.resource_kind
+      && data.filters.resource_ref === (q.resource_ref || null) && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size,
+    '资源明细的方案、设备人员范围或页码已变化，请点“刷新资源影响”。');
+    if (q.comparison_mode === 'candidates' && q.reference_candidate_ref)
+      check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '资源明细的比较基准已变化，请点“刷新资源影响”。');
+    bindScope(payload, data, q);
+    check(data.filters.grain === q.grain && data.filters.pressure_threshold === q.pressure_threshold
+      && (section === 'resources' || ['bucket_start', 'bucket_end'].every(key => data.filters[key] === (q[key] || null))),
+    '资源时间粒度、关注线或所选时段已变化，请点“刷新资源影响”。');
+    const cohort = data.scope.resource_refs;
+    check(cohort && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请点“刷新资源影响”。');
+    if (query.expected_resource_refs) check(['machine', 'operator'].every(kind => JSON.stringify(cohort[kind]) === JSON.stringify(query.expected_resource_refs[kind])), '参与比较的设备或人员已变化，请点“刷新资源影响”。');
+    const windowSource = value => window.ResourceProjectionContract.window(value) && value.source === 'archived_resource_calendar';
+    function drillIdentity(value, side, resourceRef) {
+      if (side === 'reference' && data.baseline.state !== 'available') return value === null;
+      const official = side === 'reference' && q.comparison_mode === 'admission_official';
+      return value && value.run_ref === runRef && value.comparison_mode === q.comparison_mode && value.resource_view === q.resource_view
+        && value.resource_kind === q.resource_kind && value.resource_ref === resourceRef
+        && value.candidate_ref === (side === 'reference' && !official ? data.scope.reference.candidate_ref : q.selected_candidate_ref)
+        && (official ? value.reference_view === true && value.plan_ref === data.baseline.baseline_ref : value.reference_view !== true);
+    }
+    const pairedDrill = (row, resourceRef) => row.drill && ['selected', 'reference'].every(side => drillIdentity(row.drill[side], side, resourceRef));
+    check(data.summary && (section === 'resources' ? [data.summary.before, data.summary.after].every(window.ResourceProjectionContract.summary)
+      : [data.summary.before, data.summary.after].every(windowSource)), '资源使用统计所需的班表资料不完整，请点“刷新资源影响”。');
+    check(data.items.every(row => windowSource(row.before) && windowSource(row.after) && row.drill), '设备或人员使用统计所需的班表资料不完整，请点“刷新资源影响”。');
+    if (section === 'resources') {
+      ['pressure_filter', 'sort', 'order'].forEach(key => check(data.filters[key] === q[key], '资源明细的筛选或排序已变化，请点“刷新资源影响”。'));
+      check(data.items.every(row => ref(row.resource_ref) && row.resource_kind === q.resource_kind && cohort[q.resource_kind].includes(row.resource_ref) && (!q.resource_ref || row.resource_ref === q.resource_ref) && pairedDrill(row, row.resource_ref))
+        && data.heatmap && data.heatmap.page.number === q.heatmap_page && data.heatmap.page.size === q.heatmap_size && Array.isArray(data.heatmap.buckets) && Array.isArray(data.heatmap.items),
+      '资源表或热力图的设备人员范围已变化，请点“刷新资源影响”。');
+      {
+        check(data.heatmap.grain === q.grain && Array.isArray(data.heatmap.buckets)
+          && data.heatmap.buckets.every(bucket => typeof bucket.key === 'string' && time(bucket.start) && time(bucket.end)
+            && timeKey(bucket.start) < timeKey(bucket.end))
+          && new Set(data.heatmap.buckets.map(bucket => bucket.key)).size === data.heatmap.buckets.length,
+        '资源时段的粒度或起止时间不完整，请点“刷新资源影响”。');
+        const buckets = new Map(data.heatmap.buckets.map(bucket => [bucket.key, bucket]));
+        check(data.heatmap.items.length === data.items.length && data.heatmap.items.every((row, index) => row.resource_ref === data.items[index].resource_ref
+          && row.resource_kind === q.resource_kind && Array.isArray(row.cells)
+          && new Set(row.cells.map(cell => cell.bucket_key)).size === row.cells.length
+          && row.cells.every(cell => {
+            const bucket = buckets.get(cell.group_key || cell.bucket_key);
+            return bucket && cell.date === bucket.date && typeof cell.bucket_key === 'string' && time(cell.start) && time(cell.end)
+              && timeKey(cell.start) < timeKey(cell.end) && timeKey(cell.start) >= timeKey(bucket.start)
+              && timeKey(cell.start) < timeKey(bucket.end)
+              && timeKey(cell.end) <= timeKey(q.grain === 'shift' ? data.scope.range_end : bucket.end)
+              && windowSource(cell.before) && windowSource(cell.after);
+          })), '热力图的设备人员或实际时段已变化，请点“刷新资源影响”。');
+        if (q.grain === 'hour' && data.heatmap.buckets.length) check(time(data.filters.display_start) && time(data.filters.display_end)
+          && data.filters.display_start === data.heatmap.buckets[0].start && data.filters.display_end === data.heatmap.buckets[data.heatmap.buckets.length - 1].end,
+        '小时筛选与实际显示时段不一致，请点“刷新资源影响”。');
+      }
+    } else {
+      check(data.resource && data.resource.ref === q.resource_ref && data.resource.kind === q.resource_kind && cohort[q.resource_kind].includes(q.resource_ref), '逐日明细的设备或人员已变化，请点“刷新资源影响”。');
+      check(data.items.every(day => typeof day.date === 'string' && time(day.start) && time(day.end) && day.start < day.end), '资源逐日明细的起止时间不完整，请点“刷新资源影响”。');
+      check(data.items.every(day => pairedDrill(day, q.resource_ref) && ['before', 'after'].every(side => Array.isArray(day[side].tasks) && Array.isArray(day[side].conflicts)
+        && [...day[side].tasks, ...day[side].conflicts].every(item => drillIdentity(item.drill, side === 'before' ? 'reference' : 'selected', q.resource_ref)))), '逐日工序或冲突的甘特位置与当前方案不一致，请点“刷新资源影响”。');
+    }
+    return data;
+  }
+  function create(fetcher = window.fetch.bind(window)) {
+    async function request(runRef, query, signal, format, leaf = '') {
+      const path = '/api/workbench/v1/scheduling/runs/' + runRef + '/decision' + (format ? '/export' : leaf);
+      const controller = new AbortController(), abort = () => controller.abort();
+      if (signal) { if (signal.aborted) abort(); else signal.addEventListener('abort', abort, { once: true }); }
+      const timer = setTimeout(abort, 60000);
+      try {
+        const response = await fetcher(path + '?' + new URLSearchParams(query), { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
+        const mime = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+        if (!response.ok) {
+          const value = mime === 'application/json' ? await response.json() : null;
+          throw Object.assign(new Error(value && value.error && value.error.message || '比较资料读取失败，请刷新后重试。'), { status: response.status });
+        }
+        if (!format) { check(mime === 'application/json', '读取的比较资料格式异常，请刷新后重试。'); return await response.json(); }
+        check(mime === (format === 'csv' ? 'text/csv' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+          && /^attachment;/i.test(response.headers.get('Content-Disposition') || ''), '导出文件格式异常，请重新点击下载。');
+        check(response.headers.get('X-Workbench-Run-Ref') === runRef && response.headers.get('X-Workbench-Snapshot-Ref') === query.snapshot_ref, '比较资料已更新，请关闭导出窗口，刷新后重新导出。');
+        const rowCount = response.headers.get('X-Workbench-Row-Count'), blob = await response.blob();
+        check(rowCount !== null && /^\d+$/.test(rowCount) && blob.size > 0, '导出文件没有读取到内容，请重新点击下载。');
+        return { blob, row_count: Number(rowCount), filename: '排产方案对比.' + format };
+      } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
+    }
+    return window.APSReadBoundary.verified({
+      async decision(runRef, query = {}, signal) { const q = scope(runRef, query), value = await request(runRef, q, signal); decision(value, runRef, q); return value; },
+      async decisionSummary(runRef, query = {}, signal) { const q = scope(runRef, query), value = await request(runRef, q, signal, null, '/summary'); decisionSummary(value, runRef, q); return value; },
+      async decisionDetails(runRef, query, section, signal) {
+        const q = detailScope(runRef, query, section), value = await request(runRef, q, signal, null, '/' + section); details(value, runRef, q, section); return value;
+      },
+      async completionBatches(runRef, query = {}, signal) {
+        const q = completionScope(runRef, query), value = await request(runRef, q, signal, null, '/completion-batches'); completionBatches(value, runRef, q); return value;
+      },
+      async process(runRef, query = {}, signal) {
+        const q = processScope(runRef, query), value = await request(runRef, q, signal, null, '/process'); processDetails(value, runRef, q); return value;
+      },
+      async referenceWorkspace(runRef, query, signal) {
+        const q = { ...scope(runRef, { ...query, comparison_mode: 'admission_official' }) };
+        if (query.batch_ref) q.batch_ref = query.batch_ref;
+        const value = await request(runRef, q, signal, null, '/reference-workspace'); referenceWorkspace(value, runRef, { ...q, plan_ref: query.plan_ref }); return value;
+      },
+      async resources(runRef, query, signal) {
+        const q = resourceScope(runRef, query), value = await request(runRef, q, signal, null, '/resources');
+        resourceDetails(value, runRef, { ...q, expected_resource_refs: query.expected_resource_refs }); return value;
+      },
+      async resourceDays(runRef, query, signal) {
+        const q = resourceScope(runRef, query, 'resource-days'), value = await request(runRef, q, signal, null, '/resource-days');
+        resourceDetails(value, runRef, { ...q, expected_resource_refs: query.expected_resource_refs }, 'resource-days'); return value;
+      },
+      async preparation(runRef, query, signal) { const q = preparationScope(runRef, query), value = await request(runRef, q, signal, null, '/preparation'); preparationDetails(value, runRef, q); return value; },
+      async changeovers(runRef, query, signal) { const q = preparationScope(runRef, query, 'changeovers'), value = await request(runRef, q, signal, null, '/changeovers'); preparationDetails(value, runRef, q, 'changeovers'); return value; },
+      async decisionExport(runRef, query, snapshotRef, format, signal, section = 'overview') {
+        check(['csv', 'xlsx'].includes(format) && typeof snapshotRef === 'string' && snapshotRef.length > 0);
+        const detailSection = query.filter_section || (['batches', 'operations', 'resources', 'resource-days', 'preparation', 'changeovers', 'process'].includes(section) ? section : null);
+        const q = detailSection === 'process' ? processScope(runRef, query) : ['preparation', 'changeovers'].includes(detailSection) ? preparationScope(runRef, query, detailSection)
+          : ['resources', 'resource-days'].includes(detailSection) ? resourceScope(runRef, query, detailSection) : detailSection ? detailScope(runRef, query, detailSection) : scope(runRef, query);
+        for (const key of ['page', 'size', 'heatmap_page', 'heatmap_size']) delete q[key];
+        return request(runRef, { ...q, ...(detailSection ? { filter_section: detailSection } : {}), snapshot_ref: snapshotRef, format, section }, signal, format);
+      }
+    }, ['decision', 'decisionSummary', 'decisionDetails', 'completionBatches', 'process', 'referenceWorkspace', 'resources', 'resourceDays', 'preparation', 'changeovers']);
+  }
+  function adapter(value) { return window.APSReadBoundary.checked(value, { decision, decisionSummary, decisionDetails: (payload, runRef, query, section) => details(payload, runRef, query, section), completionBatches, process: processDetails, referenceWorkspace,
+    resources: (payload, runRef, query) => resourceDetails(payload, runRef, query), resourceDays: (payload, runRef, query) => resourceDetails(payload, runRef, query, 'resource-days'),
+    preparation: (payload, runRef, query) => preparationDetails(payload, runRef, query), changeovers: (payload, runRef, query) => preparationDetails(payload, runRef, query, 'changeovers') }); }
+  window.RunDecisionAPI = { create, adapter, decision, decisionSummary, details, scope, detailScope, completionScope, completionBatches, processScope, processDetails, referenceWorkspace, resourceScope, resourceDetails, preparationScope, preparationDetails };
+})();

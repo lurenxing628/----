@@ -1,0 +1,59 @@
+.rd-workspace .rres-business-heading{margin:var(--space-3) 0 var(--space-2);align-items:flex-start}
+.rd-workspace .rres-business-heading h3{margin:0;font-size:var(--font-size-3);font-weight:600}
+.rd-workspace .rres-business-heading p{margin:var(--space-1) 0 0;line-height:var(--wb-line-relaxed);font-size:var(--font-size-1)}
+.rd-workspace .rres-primary-controls{gap:var(--space-2) var(--space-3)}
+.rd-workspace .rres-time-controls{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-2) var(--space-3);margin:var(--space-3) 0;background:var(--ui-surface-muted);border-radius:var(--wb-radius-control)}
+.rd-workspace .rres-segment{display:flex;align-items:center;gap:2px;padding:3px;border-radius:var(--wb-radius-control);background:var(--ui-surface-muted)}
+/* override: body.aps-workbench .rd-workspace .rres-segment button.btn[aria-pressed=true]; the shared button contract pins these three colours with !important, so the active resource, grain, and pressure choices need their state colours at the same priority. */
+body.aps-workbench .rd-workspace .rres-segment button.btn[aria-pressed=true]{border-color:var(--wb-tab-selected)!important;background:var(--ui-primary-soft)!important;color:var(--wb-tab-selected)!important}
+.rd-workspace .rres-filter-details{font-size:var(--font-size-1);line-height:var(--wb-line-relaxed)}
+.rd-workspace .rres-filter-details>div{padding:var(--space-2) 0}
+.rd-workspace .rres-range-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:var(--space-2) var(--space-3);margin:var(--space-2) 0}
+.rd-workspace .rres-range-controls label{display:grid;gap:var(--space-1);font-size:var(--font-size-1);min-width:0}
+.rd-workspace .rres-range-controls input{width:200px;max-width:100%}
+.rd-workspace .rres-grain-controls{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2) var(--space-3);padding:var(--space-2) 0}
+.rd-workspace .rres-grain-controls>span,.rd-workspace .rres-window-note{font-size:var(--font-size-1);color:var(--ui-info-muted);line-height:var(--wb-line-relaxed)}
+.rd-workspace .rres-window-note{margin:var(--space-2) 0}
+.rd-workspace .rres-hour-controls{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);margin:var(--space-2) 0}
+.rd-workspace .rres-hour-controls label{display:flex;align-items:center;gap:var(--space-1);font-size:var(--font-size-1)}
+.rd-workspace .rres-statistics>summary,.rd-workspace .rres-full-table>h3{font-size:var(--font-size-2);font-weight:500;line-height:var(--wb-line-relaxed)}
+.rd-workspace .rres-full-table>h3{margin:var(--space-3) 0 var(--space-2)}
+.rd-workspace .rres-statistics{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--ui-border)}
+.rd-workspace .rres-full-table>.rres-table-frame{margin:var(--space-2) 0}
+body.aps-workbench .rd-workspace .rres-heatmap-frame{--wb-table-max-height:60vh;max-height:60vh}
+.rd-workspace .rres-heatmap-table{--wb-table-min:calc(150px + var(--rres-day-columns)*90px + 130px);--wb-table-cell-py:6px}
+.rd-workspace .rres-heatmap-table th.wb-col-key{width:150px}
+.rd-workspace .rres-heatmap-table th:not(.wb-col-key){width:auto}
+body.aps-workbench .rd-workspace .rres-heatmap-table .rres-total-column,body.aps-workbench .rd-workspace .rres-heatmap-table .rres-resource-total{width:128px;white-space:normal}
+.rd-workspace .rres-heatmap-table th.wb-col-key{vertical-align:middle;white-space:normal;overflow-wrap:anywhere}
+.rd-workspace .rres-heatmap-table th.wb-col-key .wb-control{white-space:normal;text-align:left}
+.rd-workspace .rres-heatmap-table th.wb-col-key[data-current=true]{box-shadow:inset 3px 0 var(--wb-tab-selected)}
+.rd-workspace .rres-heatmap-table th small{display:block;color:var(--ui-info-muted);font-weight:400;line-height:var(--wb-line-relaxed)}
+.rd-workspace .rres-day-cell{min-height:68px;padding:var(--space-2) var(--space-1);gap:var(--space-1);line-height:var(--wb-line-relaxed)}
+.rd-workspace .rres-day-cell>span{font-size:var(--font-size-2)}
+.rd-workspace .rres-day-cell small{font-size:var(--font-size-1);line-height:var(--wb-line-relaxed);white-space:normal}
+.rd-workspace .rres-day-cell[data-value-state=not_applicable]:not([data-zero-capacity=true]){background:var(--ui-surface-muted);color:var(--ui-info-muted)}
+.rd-workspace .rres-day-cell[data-value-state=not_applicable]:before,.rd-workspace .rres-day-cell[data-change=equal]:before{opacity:0}
+.rd-workspace .rres-resource-total{font-variant-numeric:tabular-nums;text-align:center;line-height:var(--wb-line-relaxed)}
+.rd-workspace .rres-resource-total strong{display:block;font-size:var(--font-size-2);font-weight:500}
+.rd-workspace .rres-resource-total small{display:block;color:var(--ui-info-muted);white-space:normal}
+.rd-workspace .rres-period-cells{display:grid;gap:var(--space-2)}
+.rd-workspace .rres-heatmap-legend>span{display:inline-flex;align-items:center;gap:var(--space-1)}
+.rd-workspace .rres-swatch{display:inline-block;width:12px;height:12px;border-radius:2px;background:var(--ui-primary);opacity:.25}
+.rd-workspace .rres-swatch-pressure{background:var(--ui-warning);opacity:1}.rd-workspace .rres-swatch-conflict{background:var(--ui-danger);opacity:1}.rd-workspace .rres-swatch-rest{background:var(--ui-surface-muted);border:1px solid var(--ui-border);opacity:1}
+.rd-workspace .rres-continuation{display:grid;justify-content:center;text-align:center;gap:var(--space-1);white-space:normal;line-height:var(--wb-line-relaxed)}
+.rd-workspace .rres-continuation small{display:block;font-size:var(--font-size-1);color:var(--ui-info-muted)}
+.rd-workspace .rres-selected-window{margin:var(--space-3) 0;padding:var(--space-3);border:1px solid var(--ui-border);border-radius:var(--wb-radius-control)}
+.rd-workspace .rres-selected-window .rc-heading{align-items:flex-start;gap:var(--space-2)}
+.rd-workspace .rres-selected-window h3{margin:0;font-size:var(--font-size-3);scroll-margin-top:calc(var(--wb-header-height) + 16px)}
+.rd-workspace .rres-contribution-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3);margin:var(--space-3) 0}
+.rd-workspace .rres-contribution-summary>div{display:grid;gap:var(--space-1);line-height:var(--wb-line-relaxed);font-size:var(--font-size-1);color:var(--ui-info-muted)}
+.rd-workspace .rres-contribution-summary strong{color:var(--ui-text);font-size:var(--font-size-2);font-weight:500;font-variant-numeric:tabular-nums}
+.rd-workspace .rres-contribution-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(200px,2fr) auto;align-items:start;gap:var(--space-2) var(--space-3);padding:var(--space-2) 0;border-top:1px solid var(--ui-border);line-height:var(--wb-line-relaxed);font-size:var(--font-size-1)}
+.rd-workspace .rres-contribution-row>div{display:grid;gap:var(--space-1);min-width:0;overflow-wrap:anywhere}
+.rd-workspace .rres-contribution-row strong{font-size:var(--font-size-2);font-weight:500}
+.rd-workspace .rres-contribution-row small{color:var(--ui-info-muted);font-size:var(--font-size-1)}
+.rd-workspace .rres-contribution-period h4{font-size:var(--font-size-1);color:var(--ui-info-muted);font-weight:400;margin:var(--space-3) 0 var(--space-1)}
+.rd-workspace .rres-contribution-row .btn.link{padding:0;height:auto;white-space:normal;text-align:left;line-height:var(--wb-line-body)}
+.rd-workspace .rres-contribution-pages label{display:flex;align-items:center;gap:var(--space-1);font-size:var(--font-size-1)}
+@media(max-width:800px){.rd-workspace .rres-contribution-summary{grid-template-columns:minmax(0,1fr)}.rd-workspace .rres-contribution-row{grid-template-columns:minmax(0,1fr)}.rd-workspace .rres-range-controls{align-items:stretch}.rd-workspace .rres-range-controls label{flex:1 1 180px}.rd-workspace .rres-range-controls input{width:100%}.rd-workspace .rres-time-controls{align-items:stretch}.rd-workspace .rres-time-controls>.rres-range-editor{width:100%}}

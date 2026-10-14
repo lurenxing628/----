@@ -1,7 +1,8 @@
 """Risk classification consumes the execution ledger, never another report store."""
 
+from core.services.workbench.facts.execution_values import minutes
 from core.services.workbench.facts.preflight_checks import number
-from core.services.workbench.report.review_values import minutes
+from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_CONTENT
 
 from .projection import category, observation
 
@@ -87,7 +88,7 @@ def _operation(facts, task, raw_task, unresolved):
                                   "plan": facts.execution_facts["plan"],
                                   "unresolved": ref in unresolved,
                                   "legacy": facts.execution_facts["legacy"].get(ref),
-                                  "legacy_source": {"hash": facts.execution_facts["legacy_source"]["hashes"].get(ref),
+                                  "legacy_source": {"state": facts.execution_facts["legacy_source"]["states"].get(ref, EMPTY_SOURCE_CONTENT),
                                                     "changes": facts.execution_facts["legacy_source"]["changes"].get(ref)}})
     return item, uncertain
 

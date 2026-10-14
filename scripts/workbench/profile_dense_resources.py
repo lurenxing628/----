@@ -2,7 +2,6 @@
 
 import argparse
 import cProfile
-import hashlib
 import io
 import json
 import os
@@ -94,7 +93,6 @@ def worker(args):
         "profiled_compute_seconds": seconds, "failure": failure, "original_database_unchanged": preserved,
         "state": None if result is None else result.state, "candidate_row_counts": counts,
         "busy_block_skip_enabled": not args.legacy_busy_skip,
-        "candidate_payload_sha256": hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
         "complete": failure is None and preserved and result is not None and result.state == "complete" and counts == [expected] * 4,
         "timing_scope": "cProfile enabled; shared host, not a dedicated capacity acceptance"}
     (output / "result.json").write_text(json.dumps(proof, indent=2), encoding="utf-8")

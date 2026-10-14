@@ -106,6 +106,8 @@ def run_candidate_adoptions(candidate_ref):
 
 
 def register_run_candidate_routes(bp):
+    from .run_decision import register_run_decision_routes
+
     bp.add_url_rule("/api/workbench/v1/scheduling/runs/<run_ref>/candidates", view_func=run_candidate_list, methods=["GET"])
     base = "/api/workbench/v1/scheduling/candidates/<candidate_ref>"
     bp.add_url_rule(base, endpoint="run_candidate_detail", view_func=run_candidate_workspace, methods=["GET"])
@@ -113,3 +115,4 @@ def register_run_candidate_routes(bp):
     bp.add_url_rule(base + "/export", view_func=run_candidate_export, methods=["GET"])
     bp.add_url_rule(base + "/analysis", view_func=run_candidate_analysis, methods=["GET"])
     bp.add_url_rule(base + "/adoptions", view_func=run_candidate_adoptions, methods=["GET"])
+    register_run_decision_routes(bp)

@@ -1,13 +1,13 @@
 """Read only the original candidate's persisted adoption receipts and audits."""
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_run_adoption import ADOPT_ACTION
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
+from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.plan.adoption_baseline import read_adoption_baseline
-from core.services.workbench.plan.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from data.repositories.workbench_run_candidate_repo import WorkbenchRunCandidateRepository
@@ -87,4 +87,8 @@ def read_candidate_history(conn, candidate_ref):
                 "total": len(items), "state": "available" if items else "empty",
                 "basis": "original_candidate_receipts_and_official_adoption_audits"}
         bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
-        return data, input_fingerprint(data)
+        state = {"read_contract_version": 1, "candidate_ref": candidate_ref, "run_ref": run_ref,
+                 "receipts": [{"receipt_ref": item["receipt_ref"], "can_open": item["can_open"],
+                               "issue_codes": sorted(issue["code"] for issue in item["evidence_gaps"])}
+                              for item in items]}
+        return data, state

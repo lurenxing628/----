@@ -27,3 +27,5 @@ class TrialAdoptionEvidence:
     payload: Any
     # The source run's recorded dates ({} when never recorded); the new plan repeats them.
     run_window: Dict[str, Any] = field(default_factory=dict)
+    # Persistent audit stores source references; complete content stays in the original archives.
+    proof: Dict[str, Any] = field(default_factory=dict)

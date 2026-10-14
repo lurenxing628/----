@@ -396,9 +396,8 @@ def _benchmark_row(
         "same_fingerprint_rejections": int(state.rejection_summary.get("same_fingerprint") or 0),
         "candidate_rejections": dict(state.rejection_summary),
         "best_origin": str(state.best_origin or best.get("candidate_origin") or ""),
-        "best_output_fingerprint": str(state.best_fingerprint or ""),
-        "candidate_output_fingerprints": sorted(state.candidate_fingerprints),
-        "accepted_output_fingerprints": sorted(state.accepted_fingerprints),
+        "best_candidate_id": (state.best_candidate_fingerprint or {}).get("candidate_id"),
+        "candidate_events": list(state.fingerprint_events),
         "best_order": _result_order(best.get("results")),
         "baseline_order": _result_order(baseline.get("results")),
         "comparison_to_meta_baseline": {

@@ -3,7 +3,7 @@
 from flask import current_app, g, jsonify, request
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendar_defaults import WorkbenchCalendarDefaultsService
 from web.api_responses import query_success
@@ -23,7 +23,7 @@ def calendar_defaults_read():
     with TransactionManager(g.db).transaction():
         state = WorkbenchCalendarDefaultsService(g.db).snapshot()
         context = issue_write_context(SUBJECT, [ACTION], state)
-        snapshot = bind_read_snapshot({"kind": "calendar_defaults"}, input_fingerprint(state))
+        snapshot = bind_read_snapshot({"kind": "calendar_defaults"}, state)
     return query_success({"periods": state["periods"], "hours": state["hours"], "write_context": context}, snapshot)
 
 

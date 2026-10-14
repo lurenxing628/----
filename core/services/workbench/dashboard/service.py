@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import (
     CATEGORIES,
     DashboardQuery,
@@ -65,7 +65,7 @@ def _category_counts(categories, observations, stored):
         summary["risk_count"] = summary["known_risk_count"] if known else None
         summary["evaluation_gaps"] = [{"source_ref": row["anchor_ref"], "subject": row["subject"],
                                         "code": row["risk"]["code"], "message": row["risk"]["message"]}
-                                       for row in scope if row["risk"]["active"] is None]
+                                       for row in scope if row["risk"]["active"] is None and row["risk"]["code"] != "due_not_applicable"]
         handled = [row for row in stored.values() if row["category"] == name]
         summary["handling_count"] = len(handled)
         summary["closed_count"] = sum(row["handling"]["status"] == "closed" for row in handled)
@@ -154,17 +154,18 @@ class WorkbenchDashboardService:
         categories["candidate"].update(kind="directory_not_risk", run_count=facts.candidates["run_count"],
                                        entry={"view": "analysis", "target": "/api/workbench/v1/scheduling/runs", "enabled": True})
         stored = sources.stored
-        source_state = facts.fingerprint()
         items = self._merge(observations, sources, categories, facts.now)
         items.extend(self._decorate(item, saved, identity, facts.now) for item, saved, identity in external_items)
         bounded(items)
         _category_counts(categories, observations, stored)
         categories["external"] = external_summary
-        fingerprint = input_fingerprint(typed({"source": source_state, "stored": stored, "external_stored": external_stored,
-                                              "items": [(row["item_ref"], row["_snapshot"]) for row in items]}))
+        snapshot_contents = facts.snapshot_contents(view={
+            "stored": stored, "external_stored": external_stored,
+            "items": [(row["item_ref"], {key: value for key, value in row["_snapshot"].items() if key != "facts"})
+                      for row in items]})
         return {"plan": facts.plan, "as_of": facts.now.isoformat(timespec="seconds"), "items": items,
                 "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
-                "categories": {name: categories[name] for name in CATEGORIES}, "fingerprint": fingerprint}
+                "categories": {name: categories[name] for name in CATEGORIES}, "snapshot_contents": snapshot_contents}
 
     def _merge(self, observations, sources, categories, now):
         found, stored = self._identified(observations, sources.mappings), sources.stored

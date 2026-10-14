@@ -46,12 +46,6 @@ def test_archive_byte_limit_is_exclusive_and_contents_roundtrip(tmp_path):
         portable_delivery.archive(tmp_path / "at-limit.zip", [(source, "payload/input.bin")], package.stat().st_size)
 
 
-def test_crc_metadata_uses_standard_noncryptographic_crc(tmp_path):
-    source = tmp_path / "input.bin"
-    source.write_bytes(b"123456789")
-    assert portable_delivery.record(source, "input.bin") == {"Path": "input.bin", "CRC32": "cbf43926", "Bytes": 9}
-
-
 @pytest.mark.parametrize("runtime_name", ["user-data", "sample-context"])
 def test_runtime_context_is_not_packaged(tmp_path, monkeypatch, runtime_name):
     payload = fixture_payload(tmp_path)
@@ -88,10 +82,10 @@ def test_parts_keep_switches_and_can_be_recovered_without_password_manifest(tmp_
                     assert archive.read(name).endswith(b"\r\n")
                 manifest = list(csv.DictReader(io.StringIO(archive.read("files.csv").decode("utf-8-sig"))))
                 assert len(manifest) == len(portable_release.payload_files(payload))
-                assert all("CRC32" in row and "SHA256" not in row for row in manifest)
+                assert all(set(row) == {"Path", "Bytes"} for row in manifest)
     info = json.loads((output / "delivery.json").read_text(encoding="utf-8"))
     assert all(entry["Bytes"] < 80_000_000 for entry in info["archives"])
-    assert all("CRC32" in entry for entry in info["archives"])
+    assert all(set(entry) == {"Path", "Bytes"} for entry in info["archives"])
 
 
 @pytest.mark.skipif(os.name != "nt" or not (TOOL_DIR / "x64/7za.exe").exists() or not POWERSHELL.exists(),

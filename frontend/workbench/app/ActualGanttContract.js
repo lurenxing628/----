@@ -20,6 +20,17 @@
   const nullableTime = value => value === null || local(value);
   const nullableRef = value => value === null || ref(value);
   const quantity = value => value === null || Number.isSafeInteger(value) && value >= 0;
+  const finite = value => value === null || typeof value === 'number' && Number.isFinite(value);
+  function deviation(value, asOf) {
+    return object(value) && ['available', 'partial', 'unavailable'].includes(value.state) && value.as_of === asOf
+      && ['finish_deviation_minutes', 'elapsed_since_planned_minutes', 'forecast_deviation_minutes'].every(key => finite(value[key]))
+      && ['due', 'complete', 'unclosed', 'late_open', 'finish_late', 'forecast_late'].every(key => typeof value[key] === 'boolean');
+  }
+  function executionSummary(value) {
+    return object(value) && value.scope === 'full_response_cohort'
+      && ['complete', 'reported', 'pending', 'known_finish_count'].every(key => quantity(value[key]))
+      && finite(value.average_finish_deviation_minutes);
+  }
   function planQuantity(t) {
     if (!(t.piece_id === null || typeof t.piece_id === 'string' && t.piece_id.trim() && !t.piece_id.includes('\0'))
       || ![t.quantity, t.batch_quantity].every(value => value === null || C.nonnegativeInt64(value))) return false;
@@ -76,7 +87,7 @@
       || typeof meta.snapshot_ref !== 'string' || !meta.snapshot_ref || query.snapshot_ref && query.snapshot_ref !== meta.snapshot_ref || !object(d)) fail('读到的现场实际甘特数据不完整，或者数据已更新。请刷新后重试。');
     if (!d.plan || d.plan.plan_ref !== query.plan_ref || !d.plan.capabilities.view || !span(d.plan_span) || !interval(d.axis_span)
       || !d.scope || d.scope.kind !== 'actual_gantt' || d.scope.source !== 'production' || !object(d.availability) || !['available', 'unavailable'].includes(d.availability.state)
-      || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !Array.isArray(d.resources)
+      || !Array.isArray(d.items) || d.items.length !== d.task_count || d.task_count > 10000 || d.items_complete !== true || !executionSummary(d.execution_summary) || !Array.isArray(d.resources)
       || !d.resources.every(r => object(r) && ref(r.ref) && ['machine', 'operator', 'supplier'].includes(r.kind) && typeof r.business_code === 'string' && (r.label === null || typeof r.label === 'string'))
       || !object(d.critical_chain) || !Array.isArray(d.critical_chain.task_refs) || !Array.isArray(d.critical_chain.edges)) fail('读到的现场实际甘特范围不完整，请刷新重试。');
     if (!scopeMatches(d.scope, query)) fail('返回的范围与上次查询不同，没有自动扩大范围。');
@@ -87,6 +98,7 @@
       if (t.start < d.plan_span.start || t.end > d.plan_span.end || t.start < d.axis_span.start || t.end > d.axis_span.end) fail('计划任务超出原计划或显示范围。');
       taskRefs.add(t.task_ref);
       if (d.availability.state === 'available' ? !execution(e, t) : e !== null) fail('报工记录缺失或与计划任务不匹配。');
+      if (!deviation(item.deviation, meta.as_of)) fail('执行偏差资料缺失或与原数据时刻不一致，请刷新重试。');
       const used = [t.machine_ref, t.operator_ref];
       if (e) { count += e.reports.length; e.reports.concat(e.legacy_facts).forEach(r => used.push(r.actual_machine_ref, r.actual_operator_ref)); if (e.remaining_plan) used.push(e.remaining_plan.machine_ref, e.remaining_plan.operator_ref); }
       if (used.some(r => r != null && (!ref(r) || !resourceRefs.has(r)))) fail('实际或计划资源清单不完整。');
@@ -100,7 +112,7 @@
   function validateChain(chain, d, query, meta) {
     const taskRefs = new Set(d.items.map(item => item.task.task_ref));
     if (chain.state !== 'unavailable') {
-      if (chain.state !== 'available' || !chain.engine_evidence_ref || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref
+      if (chain.state !== 'available' || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref
         || chain.source !== 'core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows'
         || chain.semantics !== 'selected_plan_control_predecessor_chain' || chain.scope !== 'full_plan' || chain.gap_unit !== 'minute'
         || !['global', 'related'].includes(chain.mode) || (chain.mode === 'global' ? chain.target_task_ref !== null : !ref(chain.target_task_ref))

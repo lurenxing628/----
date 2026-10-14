@@ -95,8 +95,8 @@
         <span><i className="dy-risk-swatch" />批次预计超期</span><span><i className="dy-on-time-swatch" />预计按期</span><span><i className="dy-selected-swatch" />选中批次</span>
         {model.tasks.some(window.PointContract.isPoint) && <span><i className="dy-point-swatch" />零工时工序</span>}
         {mode === 'downtime' && <span><i className="dy-downtime-swatch" />停机时段</span>}</div>
-      <div className="dy-context"><span>{M.timeLabel(M.wire(model.start))} 至 {M.timeLabel(M.wire(model.end))}</span>
-        <span>连续时间 · {model.tasks.length} 道计划工序{mode === 'downtime' ? ' · 阴影为已登记停机，不改变计划' : ''}</span></div>
+      <div className="dy-context"><span title={'显示范围：' + window.WorkbenchFormat.dateTime(M.wire(model.start), { seconds: true, fractions: true }) + ' 至 ' + window.WorkbenchFormat.dateTime(M.wire(model.end), { seconds: true, fractions: true })}>{window.WorkbenchFormat.compactRange(M.wire(model.start), M.wire(model.end))}</span>
+        <span>{model.tasks.length} 道计划工序{mode === 'downtime' ? ' · 阴影为已登记停机' : ''}</span></div>
       {hover && <div role="tooltip" className="dy-analysis-tooltip" style={{ left: Math.max(8, Math.min(hover.x, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 8, window.innerHeight - 220)) }}>{hover.text}</div>}
     </section>;
   }

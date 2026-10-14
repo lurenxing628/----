@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import replace
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Tuple, cast
 
+from core.infrastructure.schema_probe import table_names
 from core.models.schedule_plan_resolution import SchedulePlanResolution, SchedulePlanRoleOption
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
@@ -24,8 +25,11 @@ from core.models.schedule_plan_role import (
     ROLE_CRITICAL_BEST as ROLE_CRITICAL_BEST,
 )
 from core.models.schedule_resource_filter import normalize_overdue_resource_filter
+from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.common.plan_task_identity import assign_task_ids, row_identity
 from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
+from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .plan_identity import build_plan_identity, latest_official_version
 
@@ -58,7 +62,159 @@ class SchedulePlanQueryService:
         logger=None,
         repo: Optional[SchedulePlanQueryRepository] = None,
     ):
+        self.conn, self.logger = conn, logger
         self.repo = repo if repo is not None else SchedulePlanQueryRepository(conn, logger=logger)
+        self._task_rows_sources: Dict[Tuple[int, str, Optional[int], Optional[str]], List[Dict[str, Any]]] = {}
+        self._task_id_sources: Dict[Tuple[int, str, Optional[int], Optional[str], str, Optional[str]], Dict[str, str]] = {}
+
+    def _task_references(self):
+        if not isinstance(self.conn, sqlite3.Connection):
+            return None
+        required = {"WorkbenchPlanSourceRefs", "WorkbenchTaskRefs", "WorkbenchPlanIdentityClock"}
+        installed = required & table_names(self.conn)
+        if not installed:
+            return None
+        if installed != required:
+            raise ValueError("永久计划身份结构不完整，无法分配任务编号。")
+        return WorkbenchPlanIdentityRepository(self.conn, logger=self.logger)
+
+    def _task_source_role(self, *, version, source_table, candidate_id, scenario_id, effective_plan_role=None):
+        role = str(effective_plan_role).strip() if effective_plan_role is not None else None
+        if role is not None and role not in VALID_PLAN_ROLES:
+            raise ValueError("任务编号缺少有效的计划角色。")
+        if source_table == SOURCE_SCHEDULE:
+            role = role or ROLE_ADOPTED
+            if role == ROLE_ADOPTED and candidate_id is None:
+                return ROLE_ADOPTED
+        if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
+            scenario = self.repo.get_scenario_context(scenario_id)
+            if (scenario is None or int(scenario.get("base_version") or 0) != version
+                    or scenario.get("status") != "active" or candidate_id is not None):
+                raise ValueError("任务编号缺少完整的试调方案来源。")
+            base_role = str(scenario.get("base_plan_role") or "").strip()
+            if base_role not in VALID_PLAN_ROLES:
+                raise ValueError("任务编号缺少有效的试调方案角色。")
+            if role is not None and role != base_role:
+                raise ValueError("任务编号指定的角色与试调方案来源不一致。")
+            return base_role
+        if source_table in (SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS):
+            options = [option for option in self.list_plan_roles(version)
+                       if option.source_table == source_table and option.candidate_id == candidate_id
+                       and (role is None or option.role == role)]
+            if len(options) != 1:
+                if role is None and len(options) > 1:
+                    raise ValueError("同一候选方案对应多个角色，请指定实际角色或永久计划编号。")
+                raise ValueError("任务编号指定的角色与已保存的计划来源不一致。")
+            self._validate_resolution_option(version, options[0])
+            return options[0].role
+        raise ValueError("任务编号缺少有效的计划来源。")
+
+    def _task_scope(self, *, version, source_table, candidate_id, scenario_id, effective_plan_role, plan_ref):
+        references = self._task_references()
+        role = effective_plan_role
+        if plan_ref is not None:
+            if references is None:
+                raise ValueError("永久计划身份资料缺失，无法核对指定计划编号。")
+            locator = references.resolve_plan(plan_ref)
+            if (locator.version != version or locator.scenario_id != scenario_id
+                    or role is not None and role != locator.plan_role):
+                raise ValueError("指定的永久计划编号与计划版本、角色或场景不一致。")
+            role = locator.plan_role
+        role = self._task_source_role(version=version, source_table=source_table,
+                                      candidate_id=candidate_id, scenario_id=scenario_id, effective_plan_role=role)
+        if references is not None:
+            resolved_ref = references.get_plan_ref(WorkbenchPlanLocator(version, role, scenario_id))
+            if plan_ref is not None and plan_ref != resolved_ref:
+                raise ValueError("指定的永久计划编号与计划来源不一致。")
+            plan_ref = resolved_ref
+        return {"version": version, "source_table": source_table, "scenario_id": scenario_id,
+                "effective_plan_role": role, "plan_ref": plan_ref}, references
+
+    def _task_reference_rows(self, rows, identity, references):
+        if references is None:
+            return rows
+        task_refs = references.get_task_refs(identity["plan_ref"], rows)
+        result = []
+        for row in rows:
+            task_ref = task_refs[row["schedule_id"]]
+            if row.get("task_ref") and row["task_ref"] != task_ref:
+                raise ValueError("任务资料的永久任务编号与计划来源不一致。")
+            result.append(dict(row, task_ref=task_ref))
+        return result
+
+    def _task_source(
+        self, *, version: int, source_table: str, candidate_id: Optional[int] = None,
+        scenario_id: Optional[str] = None, effective_plan_role: Optional[str] = None,
+        plan_ref: Optional[str] = None, complete_rows=None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+        """Assign identities from one complete source before any time or resource filtering."""
+        key = (int(version), source_table, int(candidate_id) if candidate_id is not None else None,
+               str(scenario_id or "").strip() or None)
+        if key not in self._task_rows_sources:
+            source_rows = complete_rows if complete_rows is not None else self.repo.list_detail_rows_all(
+                version=key[0], source_table=key[1], candidate_id=key[2], scenario_id=key[3])
+            self._task_rows_sources[key] = [dict(row) for row in source_rows]
+        source_rows = self._task_rows_sources[key]
+        identity, references = self._task_scope(version=key[0], source_table=key[1], candidate_id=key[2],
+                                                scenario_id=key[3], effective_plan_role=effective_plan_role, plan_ref=plan_ref)
+        recorded_refs = {row["plan_ref"] for row in source_rows if row.get("plan_ref")}
+        if len(recorded_refs) > 1:
+            raise ValueError("同一计划的任务资料含有不同永久计划编号。")
+        if recorded_refs:
+            recorded_ref = next(iter(recorded_refs))
+            if identity["plan_ref"] is not None and recorded_ref != identity["plan_ref"]:
+                raise ValueError("任务资料的永久计划编号与计划来源不一致。")
+            identity["plan_ref"] = recorded_ref
+        scope_key = (*key, identity["effective_plan_role"], identity["plan_ref"])
+        if scope_key not in self._task_id_sources:
+            originals = {row_identity(row) for row in source_rows}
+            assigned = {}
+            if source_rows:
+                reference_rows = self._task_reference_rows(source_rows, identity, references)
+                for row in assign_task_ids(reference_rows, plan_identity=identity):
+                    location = row_identity(row)
+                    if location not in originals or location in assigned or not row.get("task_id"):
+                        raise ValueError("任务编号与完整计划来源的行归属不一致。")
+                    assigned[location] = row["task_id"]
+                if set(assigned) != originals or len(set(assigned.values())) != len(assigned):
+                    raise ValueError("完整计划来源中的任务编号缺失或重复。")
+            self._task_id_sources[scope_key] = assigned
+        return source_rows, self._task_id_sources[scope_key]
+
+    def public_task_rows_for_resolution(
+        self, *, version: int, source_table: str, candidate_id: Optional[int] = None,
+        scenario_id: Optional[str] = None, effective_plan_role: Optional[str] = None, plan_ref: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        rows, identities = self._task_source(version=version, source_table=source_table,
+                                             candidate_id=candidate_id, scenario_id=scenario_id,
+                                             effective_plan_role=effective_plan_role, plan_ref=plan_ref)
+        return [dict(row, task_id=identities[row_identity(row)]) for row in rows]
+
+    def _with_task_ids(self, rows, *, version, source_table, candidate_id, scenario_id,
+                       effective_plan_role=None, plan_ref=None, complete_rows=None):
+        if not rows:
+            return rows
+        _, identities = self._task_source(version=version, source_table=source_table,
+                                          candidate_id=candidate_id, scenario_id=scenario_id,
+                                          effective_plan_role=effective_plan_role, plan_ref=plan_ref,
+                                          complete_rows=complete_rows)
+        result = []
+        for row in rows:
+            task_id = identities.get(row_identity(row))
+            if task_id is None:
+                raise ValueError("筛选后的任务行在完整计划来源中缺失，无法确定任务编号。")
+            result.append(dict(row, task_id=task_id))
+        return result
+
+    def task_id_for_row(
+        self, row: Mapping[str, Any], *, version: int, source_table: str,
+        candidate_id: Optional[int] = None, scenario_id: Optional[str] = None,
+        effective_plan_role: Optional[str] = None, plan_ref: Optional[str] = None,
+    ) -> str:
+        """Locate one feedback task in the same complete-source identity assignment."""
+        return self._with_task_ids([row], version=version, source_table=source_table,
+                                   candidate_id=candidate_id, scenario_id=scenario_id,
+                                   effective_plan_role=effective_plan_role, plan_ref=plan_ref)[0]["task_id"]
 
     def list_plan_roles(self, version: int) -> List[SchedulePlanRoleOption]:
         rows = self.repo.list_plan_role_options(int(version))
@@ -233,6 +389,7 @@ class SchedulePlanQueryService:
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            effective_plan_role=resolution.selected_role,
             start_time=start_time,
             end_time=end_time,
         )
@@ -254,6 +411,7 @@ class SchedulePlanQueryService:
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            effective_plan_role=resolution.selected_role,
             start_time=start_time,
             end_time=end_time,
             resource_type=resource_type,
@@ -267,13 +425,15 @@ class SchedulePlanQueryService:
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
+        effective_plan_role: Optional[str] = None,
+        plan_ref: Optional[str] = None,
         start_time: str,
         end_time: str,
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
-        return self.repo.list_detail_rows_between(
+        rows = self.repo.list_detail_rows_between(
             version=int(version),
             source_table=source_table,
             candidate_id=candidate_id,
@@ -284,6 +444,9 @@ class SchedulePlanQueryService:
             resource_id=resource_id,
             batch_id=batch_id,
         )
+        return cast(List[ScheduleDetailRow], self._with_task_ids(
+            rows, version=version, source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
+            effective_plan_role=effective_plan_role, plan_ref=plan_ref))
     def list_plan_detail_rows_all(
         self,
         *,
@@ -299,6 +462,7 @@ class SchedulePlanQueryService:
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            effective_plan_role=resolution.selected_role,
             resource_type=resource_type,
             resource_id=resource_id,
             batch_id=batch_id,
@@ -310,11 +474,17 @@ class SchedulePlanQueryService:
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
+        effective_plan_role: Optional[str] = None,
+        plan_ref: Optional[str] = None,
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
         batch_id: Optional[str] = None,
     ) -> List[ScheduleDetailRow]:
-        return self.repo.list_detail_rows_all(
+        if all(value is None for value in (resource_type, resource_id, batch_id)):
+            return cast(List[ScheduleDetailRow], self.public_task_rows_for_resolution(
+                version=version, source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
+                effective_plan_role=effective_plan_role, plan_ref=plan_ref))
+        rows = self.repo.list_detail_rows_all(
             version=int(version),
             source_table=source_table,
             candidate_id=candidate_id,
@@ -323,6 +493,9 @@ class SchedulePlanQueryService:
             resource_id=resource_id,
             batch_id=batch_id,
         )
+        return cast(List[ScheduleDetailRow], self._with_task_ids(
+            rows, version=version, source_table=source_table, candidate_id=candidate_id,
+            scenario_id=scenario_id, effective_plan_role=effective_plan_role, plan_ref=plan_ref))
     def list_plan_overdue_base_rows(self, *, version: int, role: Optional[str]) -> List[Dict[str, Any]]:
         resolution = self.resolve_plan(version, role)
         return self.list_plan_overdue_base_rows_for_resolution(
@@ -371,6 +544,7 @@ class SchedulePlanQueryService:
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
+            effective_plan_role=resolution.selected_role,
             start_time=start_time,
             end_time=end_time,
             scope_type=scope_type,
@@ -386,6 +560,8 @@ class SchedulePlanQueryService:
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
+        effective_plan_role: Optional[str] = None,
+        plan_ref: Optional[str] = None,
         start_time: str,
         end_time: str,
         scope_type: Optional[str] = None,
@@ -394,7 +570,7 @@ class SchedulePlanQueryService:
         schedule_id: Optional[int] = None,
         op_id: Optional[int] = None,
     ) -> List[ScheduleDispatchRow]:
-        return self.repo.list_dispatch_rows(
+        rows = self.repo.list_dispatch_rows(
             version=int(version),
             source_table=source_table,
             candidate_id=candidate_id,
@@ -407,6 +583,9 @@ class SchedulePlanQueryService:
             schedule_id=schedule_id,
             op_id=op_id,
         )
+        return cast(List[ScheduleDispatchRow], self._with_task_ids(
+            rows, version=version, source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
+            effective_plan_role=effective_plan_role, plan_ref=plan_ref))
     @staticmethod
     def _role_option_from_row(row: Dict[str, Any]) -> SchedulePlanRoleOption:
         selection_candidate_id = row.get("selection_candidate_id")

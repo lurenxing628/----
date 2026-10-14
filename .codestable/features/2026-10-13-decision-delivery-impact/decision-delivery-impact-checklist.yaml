@@ -1,0 +1,36 @@
+feature: decision-delivery-impact
+steps:
+  - id: shared-delivery
+    description: 统一交期、完成性、汇总与差值并迁移实际交付调用者
+    status: done
+  - id: decision-details
+    description: 正式基准、批次及工序明细与共同筛选分页导出
+    status: done
+  - id: frontend
+    description: 紧凑页签、筛选排序分页、甘特定位与返回和旧枚举适配
+    status: done
+  - id: verification-docs
+    description: 真实边界场景、浏览器导出、相关检查及架构需求说明同步
+    status: done
+checks:
+  - id: C01
+    description: 三种交期状态、计数覆盖与算法原分数
+    status: passed
+  - id: C02
+    description: 三轴完整性、普通漏排与合法待料和不同覆盖
+    status: passed
+  - id: C03
+    description: 同次候选及受理时正式计划归档基准
+    status: passed
+  - id: C04
+    description: 批次工序明细、变化筛选、稳定排序和分页
+    status: passed
+  - id: C05
+    description: 真实批次工序甘特定位回跳及桌面浅深交互
+    status: passed
+  - id: C06
+    description: 两明细双格式直接读取、普通文字空值及数值类型
+    status: passed
+  - id: C07
+    description: 全调用者接入、相关测试日常检查离线构建文档同步
+    status: passed

@@ -5,6 +5,7 @@ from datetime import datetime
 from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.schedule_repo import ScheduleRepository
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
@@ -40,6 +41,7 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
                  application_operator=application_operator,
                  adopted_at=datetime.now().isoformat(timespec="seconds"), is_simulation=False)
     audit["material_policy"] = _material_policy(prepared.normalized_input, run_window)
+    audit["deferred_operation_ids"] = sorted(material_deferred_ids(prepared.dispositions, prepared.normalized_input))
     # Legacy publishers own transactions or update master status. Only their
     # append repositories are composable with the caller's durable receipt.
     history.create({"version": version, "strategy": "manual", "batch_count": len(prepared.batches),

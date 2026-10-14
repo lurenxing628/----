@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 from core.errors import ValidationError
 
 from .optimizer.graph.predecode import graph_priority_preorder
+from .optimizer.process_evidence import non_search_evidence
 from .schedule_candidate_runtime_helpers import (
     _candidate_cfg,
     _candidate_health,
@@ -192,6 +193,8 @@ def reused_candidate_plan(spec: Any, twin: Any, *, prepared: Tuple[Any, Any], ba
         elapsed_seconds=max(float(elapsed_seconds), 0.0),
         reused_from_candidate_key=str(twin.candidate_key),
         reused_from_label=str(twin.label),
+        process_evidence=non_search_evidence(str(candidate_cfg.objective), kind="reused", reason="equivalent_candidate_reused",
+                                           source_candidate_key=str(twin.candidate_key)),
     )
 
 

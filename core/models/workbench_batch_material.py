@@ -1,7 +1,5 @@
 """Batch-scoped material edits; row keys require the matching write snapshot."""
 
-import hashlib
-
 from core.errors import ValidationError
 
 from .workbench_batch import number, object_fields, public_ref
@@ -19,9 +17,13 @@ def normalize_arrivals(value):
     return sorted(rows, key=lambda row: (row["arrival_date"], row["quantity"]))
 
 
-def material_row_key(batch_ref, row):
-    value = "{}:{}:{}".format(batch_ref, row["id"], row["material_id"])
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+def numbered_material_requirements(requirements):
+    """Number one batch's requirements in their stable internal-id order."""
+    yield from enumerate(sorted(requirements, key=lambda row: row["id"]), start=1)
+
+
+def material_row_key(batch_ref, ordinal):
+    return f"{batch_ref}{ordinal:016x}"
 
 
 def _key(value):

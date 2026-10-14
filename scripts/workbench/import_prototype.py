@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from asset_sources import css_references, digest, local_path, parse_entry, write_json
+from asset_sources import css_references, local_path, parse_entry, write_json
 
 REPO = Path(__file__).resolve().parents[2]
 SOURCE_ROOT = REPO / "前端设计"
@@ -56,7 +56,7 @@ def import_snapshot(source, destination, update=False):
             target.write_bytes(data)
         records.append({"path": name, "source": "前端设计/" + name,
                         "target": "frontend/workbench/prototype/" + name,
-                        "sha256": digest(data), "size": len(data)})
+                        "size": len(data)})
     manifest = {"schema_version": 1, "source_root": "前端设计", "entries": entries, "files": records,
                 "inline_script_policy": "Archived for provenance only; never emitted into the live entry.",
                 "rebuild_policy": "Normal builds read this snapshot only, never the ignored design directory."}

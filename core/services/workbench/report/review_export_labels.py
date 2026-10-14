@@ -1,7 +1,8 @@
 """Keep the existing official-review sheet contract, now labelled from the ledger."""
 
+from core.services.workbench.facts.execution_values import minutes
+
 from .review_records import actual_resource
-from .review_values import minutes
 
 
 def deviation(planned, actual, action):

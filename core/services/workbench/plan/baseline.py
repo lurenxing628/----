@@ -23,12 +23,12 @@ from core.models.workbench_plan_reference import WorkbenchPlanLocator, Workbench
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS, PlanReadScope
 from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
+from core.services.workbench.facts.adoption_baseline_values import REASONS as ADOPTION_REASONS
+from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline import read_adoption_baseline
-from .adoption_baseline_values import REASONS as ADOPTION_REASONS
-from .adoption_baseline_values import AdoptionBaselineUnavailable
 from .projection import check_payload_size, project_plan, project_tasks, public_time
 
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")

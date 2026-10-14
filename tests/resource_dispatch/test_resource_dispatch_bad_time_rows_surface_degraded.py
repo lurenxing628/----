@@ -6,6 +6,7 @@ import json
 import sqlite3
 from pathlib import Path
 
+from core.services.common.plan_task_identity import assign_task_ids
 from core.services.scheduler._sched_display_utils import bad_time_row_sample
 from core.services.scheduler.resource_dispatch.service import ResourceDispatchService
 from tests._support.paths import REPO_ROOT
@@ -17,16 +18,18 @@ def _load_schema(conn: sqlite3.Connection) -> None:
 
 
 def test_bad_time_row_sample_keeps_location_without_raw_bad_time() -> None:
-    sample = bad_time_row_sample(
-        {
+    source_rows = assign_task_ids(
+        [{
             "schedule_id": 17,
             "op_id": 23,
             "op_code": "OP-B001-10",
             "batch_id": "B001",
             "start_time": "2026-03-02 99:00:00",
             "end_time": "2026-03-02 13:00:00",
-        }
+        }],
+        plan_identity={"version": 1, "effective_plan_role": "adopted", "source_table": "schedule"},
     )
+    sample = bad_time_row_sample(source_rows[0])
 
     assert sample is not None
     assert "排程记录编号=17" not in sample
@@ -76,7 +79,13 @@ def test_resource_dispatch_bad_time_rows_surface_degraded() -> None:
         )
         conn.commit()
 
-        payload = ResourceDispatchService(conn, logger=None, op_logger=None).get_dispatch_payload(
+        service = ResourceDispatchService(conn, logger=None, op_logger=None)
+        source_rows = service.plan_query_service.public_task_rows_for_resolution(
+            version=1, source_table="schedule", candidate_id=None)
+        assert len(source_rows) == 1
+        assert source_rows[0]["start_time"] == "坏时间"
+        assert source_rows[0]["task_id"]
+        payload = service.get_dispatch_payload(
             scope_type="operator",
             operator_id="OP001",
             period_preset="week",

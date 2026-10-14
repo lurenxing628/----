@@ -2,7 +2,7 @@
 
 import getpass
 
-from core.models.workbench_command import WorkbenchCommandOutcome, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_outsourcing import bounded, reference, reject
 from core.models.workbench_outsourcing_input import next_values, normalize_input, target_input
 from core.services.workbench.commands import WorkbenchCommandService
@@ -33,7 +33,7 @@ class WorkbenchOutsourcingCommandService:
             reject("这些工序已经有外协登记了；请打开原来的登记修改，不要重复登记或换组。", "constraint_conflict", 409)
         before = values(previous) if previous else None
         after = next_values(before, payload, self.reader.now())
-        snapshot = {"input_hash": input_fingerprint(payload), "source": source["facts"],
+        snapshot = {"input": payload, "source": source["facts"],
                     "memberships": memberships, "header": header, "latest_fact_ref": previous["fact_ref"] if previous else None}
         return {"ref": ref, "target": target, "source": source, "previous": previous, "before": before, "after": after,
                 "input": payload, "snapshot": bounded(snapshot), "subject": ref or target["batch_ref"]}

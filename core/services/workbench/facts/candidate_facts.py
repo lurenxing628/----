@@ -1,14 +1,12 @@
 """Interpret acceptance-time facts only; current replacement entities are irrelevant."""
 
-import hashlib
-
 from core.infrastructure.snapshot_connection import ddl_columns
 from core.models.workbench_run_candidate import reference
 
 from .candidate_values import corrupt, gap, stored_json
 
 _TABLES = {"BatchOperations": "id", "Batches": "batch_id", "Parts": "part_no",
-           "Machines": "machine_id", "Operators": "operator_id", "Suppliers": "supplier_id"}
+           "Machines": "machine_id", "Operators": "operator_id", "Suppliers": "supplier_id", "OpTypes": "op_type_id"}
 
 
 def _columns(sql, name):
@@ -80,14 +78,13 @@ def _operation_refs(facts):
 class GenerationFacts:
     def __init__(self, capture):
         value = capture["facts_text"]
-        if type(value) is not str or hashlib.sha256(value.encode("utf-8")).hexdigest() != capture["facts_hash"]:
-            corrupt()
         facts = stored_json(value)
         self.archive = facts
         self.tables = {name: _index(_table(facts, name), key) for name, key in _TABLES.items()}
         self.entity_refs = _entity_refs(facts)
         self.operations = _operation_refs(facts)
         self.execution = _index(capture["execution"], "operation_ref")
+        self._operation_labels = {}
         for ref in self.execution:
             reference(ref, stored=True)
 

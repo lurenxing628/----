@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import copy
 from typing import Any, Callable, Dict, List, Optional, Sequence, cast
 
+from .long_gate_schema import content_equal
 from .quality_gate_shared import (
     COMPLEXITY_THRESHOLD,
     ENTRY_MANUAL_FIELDS,
@@ -55,7 +57,7 @@ def _maybe_refresh_last_verified(existing: Optional[Dict[str, Any]], merged: Dic
         return
     changed = False
     for field_name in auto_fields:
-        if existing.get(field_name) != merged.get(field_name):
+        if not content_equal(existing.get(field_name), merged.get(field_name)):
             changed = True
             break
     if not existing.get("last_verified_at"):
@@ -102,8 +104,6 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
         "id": entry.get("id"),
         "path": entry.get("path"),
         "symbol": entry.get("symbol"),
-        "handler_fingerprint": entry.get("handler_fingerprint"),
-        "handler_context_hash": entry.get("handler_context_hash"),
         "except_ordinal": int(entry.get("except_ordinal") or 0),
         "line_start": int(entry.get("line_start") or 0),
         "line_end": int(entry.get("line_end") or 0),
@@ -111,13 +111,17 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
         "source": source,
         "exit_condition": "去除静默吞异常，或改为可观测降级并从本分类移出",
     }
+    for field_name in ("handler_signature", "handler_context", "handler_fingerprint", "handler_context_hash"):
+        if field_name in entry:
+            base[field_name] = copy.deepcopy(entry[field_name])
+        elif existing is not None and field_name in ("handler_fingerprint", "handler_context_hash") and field_name in existing:
+            base[field_name] = existing[field_name]
     if scope_tag is not None:
         base["scope_tag"] = scope_tag
     base.update(_default_entry_manual_fields(source=source, fallback_kind=str(entry.get("fallback_kind")), scope_tag=cast(Optional[str], scope_tag)))
     if scope_tag == "render_bridge":
         base["exit_condition"] = "完成替代渲染桥接方案或明确维持现状的长期策略"
     merged = _merge_manual_fields(existing, base)
-    merged["id"] = base["id"]
     if source == "migrated_from_architecture_fitness_counter":
         merged["fallback_kind"] = "silent_swallow"
     for field_name in ("realigned_from", "realigned_at", "realignment_reason"):
@@ -128,7 +132,7 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
     _maybe_refresh_last_verified(
         existing,
         merged,
-        ["line_start", "line_end", "handler_fingerprint", "handler_context_hash", "fallback_kind", "source", "scope_tag"],
+        ["line_start", "line_end", "handler_signature", "handler_context", "fallback_kind", "source", "scope_tag"],
     )
     return merged
 

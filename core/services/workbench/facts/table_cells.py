@@ -5,7 +5,7 @@ import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
 
 def text_value(value):
@@ -21,9 +21,9 @@ class TableCell:
 
 def text_cell(value, *, missing="未知"):
     if value is None:
-        return TableCell(input_fingerprint({"type": "text", "value": None}), missing, (0, ""))
+        return TableCell(canonical_json({"type": "text", "value": None}), missing, (0, ""))
     value = text_value(value)
-    return TableCell(input_fingerprint({"type": "text", "value": value}), value or "（空白）", (1, value))
+    return TableCell(canonical_json({"type": "text", "value": value}), value or "（空白）", (1, value))
 
 
 def number_text(value):
@@ -35,18 +35,18 @@ def number_text(value):
 
 def number_cell(value, unit="", *, missing="未知"):
     if value is None:
-        return TableCell(input_fingerprint({"type": "number", "value": None}), missing, (0, 0))
+        return TableCell(canonical_json({"type": "number", "value": None}), missing, (0, 0))
     if type(value) not in (int, float) or not math.isfinite(value):
         raise WorkbenchCommandRejected("storage_failure", "这个格子里存的数字不合法，没有显示成 0。请到资料总览核对后重试。", 500)
     number = number_text(value)
     unit = text_value(unit) if unit else ""
-    return TableCell(input_fingerprint({"type": "number", "value": number, "unit": unit}),
+    return TableCell(canonical_json({"type": "number", "value": number, "unit": unit}),
                      number + (" " + unit if unit else ""), (1, value))
 
 
 def relation_cell(labels):
     values = sorted(text_value(label) for label in labels)
-    return TableCell(input_fingerprint({"type": "relations", "value": values}), "、".join(values) or "未选", (1, tuple(values)))
+    return TableCell(canonical_json({"type": "relations", "value": values}), "、".join(values) or "未选", (1, tuple(values)))
 
 
 def status_cell(kind, status):

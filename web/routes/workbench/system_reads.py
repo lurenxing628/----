@@ -3,7 +3,8 @@
 from flask import current_app, g, request
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_system import RESTORE_DISABLED, filter_records, query_input
 from core.services.workbench.facts.system_reads import log_records
 from core.services.workbench.facts.system_redaction import public_system_text
@@ -50,7 +51,7 @@ def collection(kind, *, event_journal=None, journal_records=None):
         rows, sources = log_records(g.db, current_app.config["LOG_DIR"], current_app.logger)
     filtered = filter_records(rows, query)
     snapshot = (retain_log_snapshot(scope, filtered, sources) if kind == "logs" else
-                bind_read_snapshot(scope, input_fingerprint({"rows": filtered, "sources": sources}), token))
+                bind_read_snapshot(scope, content_text({"rows": filtered, "sources": sources}), token))
     return filtered, sources, query, snapshot
 
 

@@ -30,7 +30,6 @@ from core.models.workbench_calendar_file import (
 from core.models.workbench_command import (
     WorkbenchCommandOutcome,
     WorkbenchCommandRejected,
-    input_fingerprint,
 )
 from core.models.workbench_operator_calendar import operator_clock
 from core.models.workbench_resource_action import (
@@ -60,11 +59,11 @@ def _blank(value: Any) -> bool:
     return value is None or isinstance(value, str) and not value.strip()
 
 
-def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> str:
-    """按日期范围的读快照指纹：只认真正落过库的那些天的行与修订号。"""
-    return input_fingerprint([{"date": day, "row": state["row"],
-                               "revision": state["identity"]["revision"] if state["identity"] else None}
-                              for day, state in sorted(states.items())])
+def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """日期范围的原读内容：已保存日期的行与修订号。"""
+    return [{"date": day, "row": state["row"],
+             "revision": state["identity"]["revision"] if state["identity"] else None}
+            for day, state in sorted(states.items())]
 
 
 def check_range(start_date: str, end_date: str) -> None:
@@ -92,7 +91,7 @@ class WorkbenchCalendarFileService:
     def prepare_import(self, content, *, file_format, mode="upsert"):
         request = import_request(self.kind, content, file_format, mode)
         source, notices = read_calendar_file(self.kind, content, file_format)
-        return PreparedImportSource.build(self.kind + ".import", request, source, notices)
+        return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
 
     def preview_import(self, content, *, file_format, mode="upsert"):
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
@@ -100,7 +99,7 @@ class WorkbenchCalendarFileService:
         request = prepared.request_for(self.kind + ".import", file_format, mode)
         source, notices = prepared.parsed()
         with self.tx.transaction():
-            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices)
+            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices, source=prepared)
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -262,7 +261,7 @@ class WorkbenchCalendarFileService:
             raise RuntimeError("日历文件导入确认必须在外层工作台写事务中执行。")
         with self.tx.transaction():
             try:
-                current = self.preview_import(content, file_format=file_format, mode=mode)
+                current = self.preview_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, mode=mode)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected(
                     "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
@@ -286,8 +285,8 @@ class WorkbenchCalendarFileService:
 
     # ---------- 导出 ----------
 
-    def range_snapshot(self, start_date: str, end_date: str) -> str:
-        """按日期范围的读快照指纹。月视图指纹绑的是一个月，导出范围要单独算。"""
+    def range_snapshot(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """导出范围的原读内容；月视图只覆盖它所选的月份。"""
         if not self.conn.in_transaction:
             raise RuntimeError("日历范围读取必须在快照事务中执行。")
         check_range(start_date, end_date)

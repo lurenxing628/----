@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import datetime
 
 from core.models.schedule_plan_role import ROLE_ADOPTED
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_report import ReportScope
 from core.services.report import calculations
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
@@ -59,7 +59,7 @@ def catalog_facts(reader, scope):
         if set(mapping) != keys:
             raise WorkbenchCommandRejected("identity_missing", "这张报表里有批次或资源的编号读不到，报表没有生成。请到资料总览核对后再打开。")
         identities[kind] = {key: {"ref": value.ref, "revision": value.revision} for key, value in mapping.items()}
-    fingerprint = input_fingerprint({"plan_revision": reader.plans.references.read_revision(), "plan": plan, "raw": raw, "identities": identities})
+    fingerprint = {"plan_revision": reader.plans.references.read_revision(), "plan": plan, "raw": raw, "identities": identities}
     return {"scope": scope, "plan": plan, "raw": raw, "report": report, "fingerprint": fingerprint, "identities": identities}
 
 

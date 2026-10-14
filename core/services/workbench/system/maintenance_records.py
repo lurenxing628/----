@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.workbench.facts.system_reads import backup_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from data.repositories.system_job_state_repo import SystemJobStateRepository
@@ -30,7 +30,7 @@ def _timestamp(value):
 
 def _event(kind, source, identity, time, status, summary, detail):
     body = public_system_text(json.dumps(detail, ensure_ascii=False, sort_keys=True), 32768)
-    return {"key": input_fingerprint({"source": source, "identity": identity, "time": time, "body": body}),
+    return {"key": canonical_json([source, str(identity)]),
             "record_kind": kind + "_event", "type": kind, "time": _timestamp(time), "status": status,
             "summary": summary, "body": body, "event_ref": str(identity), "event_source": source,
             "file_capabilities": dict(_FILE_ACTIONS)}

@@ -40,7 +40,7 @@
         || data.can_confirm && data.summary.rejected !== 0)
       throw C.failure('预检行内容不完整或统计不一致，本批没有提交。');
     if (mode === 'import' && (data.format !== expected || data.mode !== 'upsert' || data.template_version !== 1
-        || typeof data.file_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(data.file_sha256)))
+        || typeof data.actual_source_ref !== 'string' || !/^[0-9a-f]{32}$/.test(data.actual_source_ref)))
       throw C.failure('导入预检的文件格式或增量方式不一致，本批没有提交。');
     if (mode === 'bulk' && (!Array.isArray(expected) || data.rows.length !== expected.length
         || !data.rows.every((row, index) => row.entity_ref === expected[index])))

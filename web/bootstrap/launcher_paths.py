@@ -6,6 +6,8 @@ import os
 import sys
 from typing import Any, Dict, Optional, Tuple
 
+from web.runtime_host import normalize_runtime_db_path
+
 from .launcher_observability import launcher_log_warning
 
 RUNTIME_CONTRACT_VERSION = 1
@@ -22,10 +24,7 @@ def is_portable_runtime(base_dir: str) -> bool:
 
 
 def _normalize_db_path_for_runtime(db_path: Optional[str]) -> str:
-    raw = str(db_path or "").strip()
-    if not raw:
-        return ""
-    return os.path.normcase(os.path.abspath(raw))
+    return normalize_runtime_db_path(db_path)
 
 
 def _normalize_abs_dir(path: Optional[str]) -> str:

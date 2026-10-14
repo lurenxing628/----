@@ -2,7 +2,7 @@
 
 from flask import current_app, g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
@@ -30,7 +30,7 @@ def _body(fields):
 def run_candidate_adopt_preview(candidate_ref):
     _body(())
     data = _service().preview(candidate_ref)
-    snapshot = bind_read_snapshot({"candidate_ref": candidate_ref, "action": "adopt-preview"}, input_fingerprint(data), None)
+    snapshot = bind_read_snapshot({"candidate_ref": candidate_ref, "action": "adopt-preview"}, data, None)
     response = query_success(data, snapshot)
     response.headers["Cache-Control"] = "no-store"
     return response

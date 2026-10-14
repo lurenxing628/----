@@ -1,0 +1,36 @@
+feature: decision-comparison-loop
+steps:
+  - id: scope
+    description: 收敛共同身份、指标、基准、范围和本阶段边界
+    status: done
+  - id: backend
+    description: 共同归档、指标目录、全部候选差值和保存选择映射
+    status: done
+  - id: frontend
+    description: 原型布局、横向比较、甘特回跳和采用入口
+    status: done
+  - id: web-export
+    description: 共同查询、直接身份快照和 CSV/XLSX 总览导出
+    status: done
+  - id: verification-docs
+    description: 隔离真实排产与采用、相关测试、日常门禁和文档同步
+    status: done
+checks:
+  - id: C01
+    description: 同次全集、任选基准和正确差值
+    status: passed
+  - id: C02
+    description: 固定保存选择依据与可切换查看基准
+    status: passed
+  - id: C03
+    description: 三轴覆盖、合法待料和不同覆盖的差值状态
+    status: passed
+  - id: C04
+    description: 归档回看、导出文字空值数值原样与引用范围快照错误
+    status: passed
+  - id: C05
+    description: 浏览器真实闭环、4/6/8 候选桌面密度、全部指标甘特回跳和浅深主题
+    status: passed
+  - id: C06
+    description: 针对验证、日常门禁和离线构建
+    status: passed

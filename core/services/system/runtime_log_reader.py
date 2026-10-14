@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import BinaryIO, Dict, List, Tuple
+from typing import BinaryIO, List, Literal, Tuple, TypedDict, Union, overload
 
 from core.infrastructure.safe_files import open_fixed_file_for_read_binary
 
@@ -41,10 +41,47 @@ TRUNCATION_MARKER = "……（条目过长，中段已截断）"
 NO_ANCHOR_HEAD = "（无法按时间戳切分，原样显示尾部内容）"
 
 
-def read_log_entries_tail(log_path: str, *, max_entries: int = MAX_ENTRIES) -> List[Dict[str, str]]:
+class LogEntry(TypedDict):
+    head: str
+    body: str
+    level: str
+
+
+class LogOrigin(TypedDict):
+    device: int
+    inode: int
+    offset: int
+
+
+class LogEntryWithOrigin(LogEntry):
+    _origin: LogOrigin
+
+
+@overload
+def read_log_entries_tail(
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: Literal[False] = False
+) -> List[LogEntry]: ...
+
+
+@overload
+def read_log_entries_tail(
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: Literal[True]
+) -> List[LogEntryWithOrigin]: ...
+
+
+@overload
+def read_log_entries_tail(
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: bool
+) -> Union[List[LogEntry], List[LogEntryWithOrigin]]: ...
+
+
+def read_log_entries_tail(
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: bool = False
+) -> Union[List[LogEntry], List[LogEntryWithOrigin]]:
     """从文件尾读取最近 max_entries 条日志条目，倒序返回（最新在前）。
 
     返回 [{"head": 首行, "body": 余下行, "level": "ERROR"}, ...]。
+    include_origin 另带内部 _origin（实际文件身份和字节位置），仅供系统显示键使用。
     文件不存在返回 []（路由层据此区分空态文案）；IO 失败抛 OSError，由路由层明示。
 
     拒绝软链接/非普通文件：文件名白名单
@@ -56,14 +93,22 @@ def read_log_entries_tail(log_path: str, *, max_entries: int = MAX_ENTRIES) -> L
     except FileNotFoundError:
         return []
     with f:
+        origin = os.fstat(f.fileno()) if include_origin else None
         regions = _scan_tail_regions(f, max_entries)
-    return [_build_entry(region) for region in regions]
+    entries = [_build_entry(region) for region in regions]
+    if origin is not None:
+        entries_with_origin: List[LogEntryWithOrigin] = [
+            {**entry, "_origin": {"device": origin.st_dev, "inode": origin.st_ino, "offset": region[-1]}}
+            for entry, region in zip(entries, regions)
+        ]
+        return entries_with_origin
+    return entries
 
 
 def _scan_tail_regions(f: BinaryIO, max_entries: int) -> List[Tuple]:
     """字节层扫描：返回倒序（最新在前）的条目区域列表。
 
-    区域三态：("normal", bytes) / ("truncated", 头半段, 尾半段) / ("unanchored", bytes)。
+    区域三态：("normal", bytes, offset) / ("truncated", 头半段, 尾半段, offset) / ("unanchored", bytes, offset)。
     不变式：buffer 始终持有文件区间 [pos, pos + len(buffer))，右端是下一条目的结束边界。
     """
     f.seek(0, os.SEEK_END)
@@ -77,7 +122,7 @@ def _scan_tail_regions(f: BinaryIO, max_entries: int) -> List[Tuple]:
         buffer = f.read(step) + buffer
         anchors = _valid_anchor_offsets(buffer, at_file_start=(pos == 0))
         if anchors:
-            buffer = _consume_anchored(buffer, anchors, regions, max_entries)
+            buffer = _consume_anchored(buffer, anchors, regions, max_entries, file_offset=pos)
         if len(buffer) > MAX_ENTRY_BYTES and len(regions) < max_entries:
             region, pos, buffer = _hunt_oversize_entry(f, pos, buffer)
             regions.append(region)
@@ -87,10 +132,10 @@ def _scan_tail_regions(f: BinaryIO, max_entries: int) -> List[Tuple]:
         # 收尾：巡锚成功返回的 buffer 可能以文件头锚点开场（主循环已退出收不到它），再切一次
         anchors = _valid_anchor_offsets(buffer, at_file_start=True)
         if anchors:
-            buffer = _consume_anchored(buffer, anchors, regions, max_entries)
+            buffer = _consume_anchored(buffer, anchors, regions, max_entries, file_offset=pos)
         if buffer.strip() and len(regions) < max_entries:
             # 文件头无锚点残段（轮转截断/非本系统格式），原样作一条呈现
-            regions.append(("unanchored", buffer))
+            regions.append(("unanchored", buffer, pos))
     return regions
 
 
@@ -105,14 +150,14 @@ def _valid_anchor_offsets(buffer: bytes, *, at_file_start: bool) -> List[int]:
 
 
 def _consume_anchored(
-    buffer: bytes, anchors: List[int], regions: List[Tuple], max_entries: int
+    buffer: bytes, anchors: List[int], regions: List[Tuple], max_entries: int, *, file_offset: int = 0
 ) -> bytes:
     """按锚点切出条目（靠后的更新、先收），返回首锚点之前的剩余字节。"""
     bounds = anchors + [len(buffer)]
     for i in range(len(anchors) - 1, -1, -1):
         if len(regions) >= max_entries:
             break
-        regions.append(_region_for_entry(buffer[bounds[i]:bounds[i + 1]]))
+        regions.append((*_region_for_entry(buffer[bounds[i]:bounds[i + 1]]), file_offset + bounds[i]))
     return buffer[: anchors[0]]
 
 
@@ -126,6 +171,7 @@ def _hunt_oversize_entry(f: BinaryIO, pos: int, buffer: bytes) -> Tuple[Tuple, i
     """
     half = MAX_ENTRY_BYTES // 2
     tail_half = buffer[-half:]
+    tail_offset = pos + len(buffer) - len(tail_half)
     window = buffer[:_ANCHOR_SPAN_WINDOW]
     hunted = len(buffer)
     while pos > 0 and hunted < ENTRY_HUNT_BUDGET_BYTES:
@@ -140,9 +186,9 @@ def _hunt_oversize_entry(f: BinaryIO, pos: int, buffer: bytes) -> Tuple[Tuple, i
             anchor_abs = pos + anchors[-1]  # 最靠后的锚点即本条目起点
             f.seek(anchor_abs)
             head_half = f.read(half)  # 条目总长必 > MAX_ENTRY_BYTES，头尾半段不会重叠
-            return ("truncated", head_half, tail_half), pos, probe[: anchors[-1]]
+            return ("truncated", head_half, tail_half, anchor_abs), pos, probe[: anchors[-1]]
         window = probe[:_ANCHOR_SPAN_WINDOW]
-    return ("unanchored", tail_half), pos, b""
+    return ("unanchored", tail_half, tail_offset), pos, b""
 
 
 def _region_for_entry(raw: bytes) -> Tuple:
@@ -176,7 +222,7 @@ def _skip_partial_utf8_start(data: bytes) -> bytes:
     return data[skip:]
 
 
-def _build_entry(region: Tuple) -> Dict[str, str]:
+def _build_entry(region: Tuple) -> LogEntry:
     kind = region[0]
     if kind == "unanchored":
         body = _skip_partial_utf8_start(region[1]).decode("utf-8", errors="replace")

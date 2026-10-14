@@ -1,7 +1,8 @@
 """One SQLite transaction owns all eight maintenance values, audit and receipt."""
 
 from core.infrastructure.logging import OperationLogger
-from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, input_fingerprint
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_system import CONFIG_FIELDS, config_input
 from core.services.system.system_config_service import SystemConfigService
 from core.services.workbench.commands import WorkbenchCommandService
@@ -23,7 +24,7 @@ class SystemConfigWorkspace:
                 "stored_values": stored, "dirty_fields": snapshot["dirty_fields"],
                 "dirty_reasons": snapshot["dirty_reasons"],
                 "defaulted_fields": [key for key in CONFIG_FIELDS if stored[key] is None]}, (
-                    input_fingerprint(stored) if capture_fingerprint else None)
+                    content_text(stored) if capture_fingerprint else None)
 
     def save(self, *, request_key, values, guard):
         values = config_input(values)

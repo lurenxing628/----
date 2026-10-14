@@ -7,11 +7,12 @@ from typing import Any, Callable, Dict, Optional
 
 from core.errors import BusinessError, ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.content import content_text
 from core.models.workbench_command import (
     WorkbenchCommandOutcome,
     WorkbenchCommandRejected,
     WorkbenchCommandUncertain,
-    input_fingerprint,
+    canonical_json,
     validate_request_key,
 )
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -34,9 +35,9 @@ class WorkbenchCommandService:
         scheduling run holds the scheduler lock) check this first, so a retry of
         an already committed request still replays instead of being refused.
         """
-        fingerprint = self._admit(request_key, action, context_ref, normalized_input)
+        input_text = self._admit(request_key, action, context_ref, normalized_input)
         try:
-            return self._replay(request_key, action, context_ref, fingerprint)
+            return self._replay(request_key, action, context_ref, input_text)
         except (WorkbenchCommandRejected, BusinessError, ValidationError):
             raise
         except Exception as exc:
@@ -52,20 +53,20 @@ class WorkbenchCommandService:
         A missing lookup means no committed receipt was observed, not that an in-flight
         request cannot still complete. A retry must retain its original request key.
         """
-        fingerprint = self._admit(request_key, action, context_ref, normalized_input)
+        input_text = self._admit(request_key, action, context_ref, normalized_input)
         try:
             # Receipts are immutable and committed atomically with their mutation.
             # A completed SELECT is enough to replay one: taking a write lock here
             # needlessly competes with the worker and long-lived DELETE readers.
-            result = self._replay(request_key, action, context_ref, fingerprint)
+            result = self._replay(request_key, action, context_ref, input_text)
             if result is not None:
                 return result
             with self.tx.transaction(begin_immediate=True):
                 # Another connection may have admitted this intent after the
                 # read-only lookup. Keep the second lookup under the write lock.
-                result = self._replay(request_key, action, context_ref, fingerprint)
+                result = self._replay(request_key, action, context_ref, input_text)
                 if result is None:
-                    result = self._apply(request_key, action, context_ref, fingerprint, guard, mutate)
+                    result = self._apply(request_key, action, context_ref, input_text, guard, mutate)
             return result
         except (WorkbenchCommandRejected, BusinessError, ValidationError):
             raise
@@ -77,33 +78,38 @@ class WorkbenchCommandService:
         if not isinstance(action, str) or not action or not isinstance(context_ref, str) or not context_ref:
             raise WorkbenchCommandRejected("invalid_input", "没有指定要操作哪条记录或做什么操作。", 400)
         try:
-            fingerprint = input_fingerprint(normalized_input)
+            canonical_json(normalized_input)
+            input_text = content_text(normalized_input)
         except (TypeError, ValueError, OverflowError) as exc:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容里有存不下来的数据，操作没有完成。", 400) from exc
         if self.conn.in_transaction:
             raise RuntimeError("工作台命令必须拥有最外层事务，不能在调用方未提交的事务中声称已保存。")
-        return fingerprint
+        return input_text
 
-    def _replay(self, request_key: str, action: str, context_ref: str, fingerprint: str) -> Optional[Dict[str, Any]]:
+    def _replay(self, request_key: str, action: str, context_ref: str, input_text: str) -> Optional[Dict[str, Any]]:
         row = self.repo.get(request_key)
         if not row:
             return None
-        self._check_replay(row, action, context_ref, fingerprint)
+        self._check_replay(row, action, context_ref, input_text)
         return self.repo.public_result(row, replayed=True)
 
-    @staticmethod
-    def _check_replay(row, action: str, context_ref: str, fingerprint: str) -> None:
-        if (row["action"], row["context_ref"], row["input_hash"]) != (action, context_ref, fingerprint):
+    def _check_replay(self, row, action: str, context_ref: str, input_text: str) -> None:
+        if (row["action"], row["context_ref"]) != (action, context_ref):
+            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。")
+        original = self.repo.input_content(row)
+        if original is None:
+            raise WorkbenchCommandRejected("command_original_input_missing", "此操作已有保存结果，原提交内容未保存。请先读取该操作的回执结果。")
+        if original != input_text:
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的内容和上次提交的不一样，请先核对上次的结果。")
 
-    def _apply(self, request_key, action, context_ref, fingerprint, guard, mutate):
+    def _apply(self, request_key, action, context_ref, input_text, guard, mutate):
         checked = guard()
         outcome = mutate(checked)
         if not isinstance(outcome, WorkbenchCommandOutcome):
             raise TypeError("领域动作必须返回明确的数据库命令结果。")
         receipt_ref = uuid.uuid4().hex
         self.repo.insert(request_key=request_key, receipt_ref=receipt_ref, action=action,
-                         context_ref=context_ref, input_hash=fingerprint, outcome=outcome)
+                         context_ref=context_ref, input_json=input_text, outcome=outcome)
         row = self.repo.get(request_key)
         if row is None:
             raise RuntimeError("命令回执写入后无法读回。")

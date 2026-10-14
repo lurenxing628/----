@@ -142,6 +142,7 @@
     }
     return <div className="process-workspace wb-fill-viewport" data-process-workspace>
       <ErrorBox error={navigationError} />{deferred && <div role="status"><p>上次操作还没处理完，暂时没有跳转到指定零件。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
+      {target.notice && <p role="status">{target.notice}</p>}
       <div className="statline wb-metrics" style={{ '--wb-columns': 4 }}>
         {[['total', '零件总数', 'primary'], ['source', '待定归属', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) =>
           <div key={key} className="stat wb-metric" data-tone={tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{counts ? counts[key] : '未读取'}</span></div>)}

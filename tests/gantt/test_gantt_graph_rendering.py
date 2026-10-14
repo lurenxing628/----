@@ -91,7 +91,7 @@ const plan=h.processFixture();
 Object.assign(plan.plan,{kind:'scenario',version:null,display_name:'机加试调'});
 plan.projections.baseline.reason='采纳凭据未记录，无法读取原安排。';
 plan.provenance.reason='生成来源凭据不完整，暂时无法核对。';
-let tree=h.gantt(plan).tree;
+let tree=h.render(h.runtime.PlanGanttSource,{data:plan});
 const source=tree=>h.walk(tree).find(node=>node.props['data-gantt-comparison-source']);
 assert(h.text(source(tree)).includes(plan.projections.baseline.reason),'Unavailable evidence must not be described as no original plan');
 assert(h.text(source(tree)).includes(plan.provenance.reason),'The generation source must retain its own unavailable reason');
@@ -99,7 +99,7 @@ assert(!h.text(source(tree)).includes('vnull'),'A plan without an official versi
 assert(h.text(source(tree)).includes('当前安排：试调方案 · 机加试调'));
 plan.projections.baseline={state:'available',basis:'scenario_base',items:[],
   baseline_plan:{kind:'candidate',version:null,display_name:'候选 A'}};
-tree=h.gantt(plan).tree;
+tree=h.render(h.runtime.PlanGanttSource,{data:plan});
 assert(h.text(source(tree)).includes('原安排：候选方案 · 候选 A'));
 assert(!h.text(source(tree)).includes('正式计划'),'A candidate used as the scenario basis must retain its real identity');
 assert(!h.text(source(tree)).includes('vnull'));

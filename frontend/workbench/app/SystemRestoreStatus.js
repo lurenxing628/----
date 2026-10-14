@@ -7,6 +7,9 @@
     rollback_failed: '还原失败，需人工核对', recovery_required: '结果不确定，需人工核对' };
   const hostLabels = { ready: '系统运行中', draining: '正在准备数据库恢复', restoring: '正在恢复数据库', restart_required: '恢复已结束，请重启软件', recovery_required: '恢复记录需要核对' };
   const origins = { selected_backup: '来自所选备份', protection_backup: '已还原到恢复前的保护副本', unchanged: '原数据库未被替换', unconfirmed: '维护记录尚未确认数据库来源' };
+  const fileStates = { captured: '已读取原文件内容', verified: '与原文件内容一致', not_checked: '尚未核对', unavailable: '原内容核对资料缺失' };
+  const sqliteStates = { passed: '完整性检查通过', not_checked: '尚未检查', unavailable: '完整性检查资料缺失' };
+  const historicalDigests = [['历史所选备份 SHA-256', 'target_sha256'], ['历史保护副本 SHA-256', 'protection_sha256'], ['历史维护结束数据库 SHA-256', 'database_after_sha256']];
   function check(ok) { if (!ok) throw new Error('维护状态数据不完整或存在冲突，请重新查询并核对维护记录。'); }
   function validateHost(host) {
     check(object(host) && ['ready', 'draining', 'restoring', 'restart_required', 'recovery_required'].includes(host.state)
@@ -25,14 +28,27 @@
   function host(value) { const data = envelope(value); check(data.kind === 'restore_host'); return data.host; }
   function operation(op) {
     check(op.result_source === source && typeof op.restart_required === 'boolean'
-      && Object.prototype.hasOwnProperty.call(origins, op.database_origin)
-      && ['target_sha256', 'protection_sha256', 'database_after_sha256'].every(key => op[key] === null || /^[a-f0-9]{64}$/.test(op[key])));
+      && Object.prototype.hasOwnProperty.call(origins, op.database_origin));
+    const value = op.source_verification;
+    check(object(value) && ['original_file_content_and_sqlite', 'legacy_record'].includes(value.basis)
+      && ['target', 'protection'].every(key => Object.prototype.hasOwnProperty.call(fileStates, value[key]))
+      && Object.prototype.hasOwnProperty.call(sqliteStates, value.sqlite_integrity));
+    check(historicalDigests.every(([, key]) => value.basis === 'legacy_record'
+      ? !Object.prototype.hasOwnProperty.call(op, key) || op[key] === null || typeof op[key] === 'string' && /^[a-f0-9]{64}$/.test(op[key])
+      : !Object.prototype.hasOwnProperty.call(op, key)));
     if (op.action === 'restore') {
       check(op.restart_scope === 'restoring_process' && op.references_require_reload === true);
       const expected = { succeeded: 'selected_backup', rolled_back: 'protection_backup', failed: 'unchanged' };
       check(op.database_origin === (expected[op.state] || 'unconfirmed'));
     }
     return op;
+  }
+  function sourceFacts(op) {
+    const value = op.source_verification;
+    return [['所选备份内容', fileStates[value.target]], ['保护副本内容', fileStates[value.protection]], ['SQLite 完整性', sqliteStates[value.sqlite_integrity]]];
+  }
+  function legacyDigests(op) {
+    return op.source_verification.basis === 'legacy_record' ? historicalDigests.filter(([, key]) => op[key]).map(([label, key]) => [label, op[key]]) : [];
   }
   function referencePath(reference, kind = 'request') {
     check(['request', 'job'].includes(kind) && typeof reference === 'string'
@@ -63,5 +79,5 @@
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
     window.APSWorkbenchTransport.saveBlob(DIAGNOSTIC_FILENAME, blob);
   }
-  window.SystemRestoreStatus = { validateHost, envelope, host, operation, referencePath, describe, download, labels, origins, hostLabels, DIAGNOSTIC_FILENAME };
+  window.SystemRestoreStatus = { validateHost, envelope, host, operation, sourceFacts, legacyDigests, referencePath, describe, download, labels, origins, hostLabels, DIAGNOSTIC_FILENAME };
 })();

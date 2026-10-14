@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import sqlite3
 from typing import Any, Dict, List, Optional, Sequence
 
 from core.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.content import same
 from core.models.operation_execution_event import (
     EXECUTION_ACTION_REPORT_EXCEPTION,
     EXECUTION_EVENT_FINISH,
@@ -95,8 +94,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         normalized_context = self._normalize_context(context)
         normalized_action = self._normalize_action(action)
         normalized_payload = self._normalize_payload(normalized_action, payload)
-        fingerprint = self._request_fingerprint(normalized_context, normalized_action, normalized_payload)
-
         existing = self.event_repo.get_by_idempotency_key(normalized_context.idempotency_key)
         if existing is not None:
             return self._resolve_idempotent_existing(
@@ -104,7 +101,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                 context=normalized_context,
                 action=normalized_action,
                 payload=normalized_payload,
-                fingerprint=fingerprint,
             )
 
         with self.tx_manager.transaction(begin_immediate=True):
@@ -115,7 +111,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                     context=normalized_context,
                     action=normalized_action,
                     payload=normalized_payload,
-                    fingerprint=fingerprint,
                 )
             schedule, batch_op = self._load_current_official_schedule(normalized_context)
             current_state = _state_for_context(self.event_repo, normalized_context)
@@ -140,7 +135,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                 batch_id=str(batch_op.batch_id or ""),
                 action=normalized_action,
                 payload=normalized_payload,
-                fingerprint=fingerprint,
             )
             try:
                 event = self.event_repo.insert_event(event_payload)
@@ -150,7 +144,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                     context=normalized_context,
                     action=normalized_action,
                     payload=normalized_payload,
-                    fingerprint=fingerprint,
                 )
             state = _state_for_context(self.event_repo, normalized_context)
             return ExecutionFeedbackResult(
@@ -185,7 +178,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         context: ExecutionFeedbackContext,
         action: str,
         payload: Dict[str, Any],
-        fingerprint: str,
     ) -> ExecutionFeedbackResult:
         if exc.code != ErrorCode.DUPLICATE_ENTRY:
             raise exc
@@ -196,7 +188,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                 context=context,
                 action=action,
                 payload=payload,
-                fingerprint=fingerprint,
             )
         current_revision = self.event_repo.state_revision_for_scope(_scope_for_context(context))
         raise _conflict(
@@ -214,7 +205,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         context: ExecutionFeedbackContext,
         action: str,
         payload: Dict[str, Any],
-        fingerprint: str,
     ) -> ExecutionFeedbackResult:
         schedule, batch_op = self._load_current_official_schedule(context)
         expected_event = OperationExecutionEvent.from_row(
@@ -224,10 +214,9 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
                 batch_id=str(batch_op.batch_id or ""),
                 action=action,
                 payload=payload,
-                fingerprint=fingerprint,
             )
         )
-        if existing.request_fingerprint != fingerprint or _event_public_tuple(existing) != _event_public_tuple(expected_event):
+        if not same(_event_public_tuple(existing), _event_public_tuple(expected_event)):
             raise _conflict("idempotency_conflict")
         state = _state_for_context(self.event_repo, context)
         return ExecutionFeedbackResult(
@@ -338,31 +327,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             },
         )
 
-    def _request_fingerprint(
-        self,
-        context: ExecutionFeedbackContext,
-        action: str,
-        payload: Dict[str, Any],
-    ) -> str:
-        raw = {
-            "context": {
-                "schedule_version": int(context.schedule_version),
-                "schedule_id": int(context.schedule_id),
-                "op_id": int(context.op_id),
-                "batch_id": context.batch_id,
-                "expected_state_revision": context.expected_state_revision,
-                "created_by": context.created_by,
-                "requested_plan_role": context.requested_plan_role,
-                "source_table": context.source_table,
-                "effective_plan_role": context.effective_plan_role,
-                "scenario_id": context.scenario_id,
-            },
-            "action": action,
-            "payload": payload,
-        }
-        text = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
     # 写侧 fail-CLOSED 第一闸：现场事实只能写到当前正式 schedule/adopted、无 scenario 的方案上。
     # 这里拒绝请求身份；_build_event_payload 再做落库身份消毒，两层纵深不可互相替代。
     def _load_current_official_schedule(self, context: ExecutionFeedbackContext):
@@ -461,7 +425,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         batch_id: str,
         action: str,
         payload: Dict[str, Any],
-        fingerprint: str,
     ) -> Dict[str, Any]:
         event_type = action_to_event_type(action)
         return {
@@ -492,7 +455,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             "remark": payload.get("remark"),
             "created_by": context.created_by,
             "idempotency_key": context.idempotency_key,
-            "request_fingerprint": fingerprint,
+            "request_fingerprint": None,
             "previous_state_revision": context.expected_state_revision,
         }
 

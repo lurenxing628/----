@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.execution.actual_gantt_scope import matches_execution_resource
+from core.services.workbench.facts.execution_values import execution_deviation, hour_totals, local_time
 
 from .review_export_labels import export_labels
 from .review_legacy import legacy_review
 from .review_records import actual_resource, project_records, resource_directory
-from .review_values import hour_totals, local_time, minutes
 
 STATUS_LABELS = {"complete": "已完工", "partial": "部分完成", "started": "已开工", "paused": "已暂停",
                  "exception": "异常", "unreported": "待报工"}
@@ -20,11 +20,9 @@ def resource(facts, kind, key):
 
 def project_operation(row, projection, label, facts, as_of):
     planned_start, planned_end = local_time(row.get("start_time")), local_time(row.get("end_time"))
-    complete = projection["execution_state"] == "complete"
     confirmed_finish = projection["confirmed_finish"]
-    end_delta = minutes(planned_end, confirmed_finish)
-    due = planned_end is not None and planned_end <= as_of
-    elapsed = minutes(planned_end, as_of) if due and not complete else None
+    deviation = execution_deviation(planned_end, projection, as_of)
+    complete = deviation["complete"]
     batch = resource(facts, "batch", row["batch_id"])
     machine, operator = resource(facts, "machine", row.get("machine_id")), resource(facts, "operator", row.get("operator_id"))
     invalid_time = any(gap["code"] == "invalid_legacy_sequence" for gap in projection["data_gaps"])
@@ -40,9 +38,8 @@ def project_operation(row, projection, label, facts, as_of):
                 "quantity_complete", "unknown_record_count", "records_complete", "data_quality")},
             "machine_ref": machine["ref"], "machine_label": machine["label"],
             "operator_ref": operator["ref"], "operator_label": operator["label"],
-            "due": due, "complete": complete, "unclosed": due and not complete,
-            "late_open": elapsed is not None and elapsed > 10, "finish_late": end_delta is not None and end_delta > 10,
-            "finish_deviation_minutes": end_delta, "elapsed_since_planned_minutes": elapsed,
+            **{key: deviation[key] for key in ("due", "complete", "unclosed", "late_open", "finish_late",
+                                               "finish_deviation_minutes", "elapsed_since_planned_minutes")},
             "data_gaps": [gap["message"] for gap in projection["data_gaps"]], "execution_data_gaps": projection["data_gaps"],
             **legacy_review(projection)}
 

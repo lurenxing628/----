@@ -5,7 +5,8 @@ import uuid
 
 from flask import g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandUncertain, input_fingerprint
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandUncertain
 from core.models.workbench_trial import fields
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
@@ -39,7 +40,7 @@ def _query(data, scope):
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         from core.models.workbench_trial import reject
         reject("invalid_input", messages.STALE, 400)
-    response = query_success(data, bind_read_snapshot(scope, input_fingerprint(data), request.args.get("snapshot_ref")))
+    response = query_success(data, bind_read_snapshot(scope, content_text(data), request.args.get("snapshot_ref")))
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -119,8 +120,8 @@ def _catalog(collection):
         numbers[key] = int(raw)
     scope = TrialCatalogScope(collection, status=request.args.get("status", "all"),
         base_kind=request.args.get("base_kind"), base_ref=request.args.get("base_ref"), **numbers)
-    data, digest = WorkbenchTrialCatalogService(g.db).catalog(scope)
-    response = query_success(data, bind_read_snapshot(scope.scope(), digest, request.args.get("snapshot_ref")))
+    data, content = WorkbenchTrialCatalogService(g.db).catalog(scope)
+    response = query_success(data, bind_read_snapshot(scope.scope(), content, request.args.get("snapshot_ref")))
     response.headers["Cache-Control"] = "no-store"
     return response
 

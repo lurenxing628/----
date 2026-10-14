@@ -1,6 +1,5 @@
 """Read-only calibration contracts; lineage is evidence, never a join heuristic."""
 
-import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, Optional
 
@@ -29,8 +28,8 @@ def normalize_calibration_filters(value):
         values = rule["values"]
         if rule["mode"] not in ("include", "exclude") or type(values) is not list or len(values) > 50000:
             raise WorkbenchCommandRejected("invalid_input", "列筛选方式无效，每列最多50000个值。", 400)
-        if any(type(key) is not str or re.fullmatch(r"[0-9a-f]{64}", key) is None for key in values) or len(set(values)) != len(values):
-            raise WorkbenchCommandRejected("invalid_input", "列筛选值必须是唯一的64位小写十六进制标识。", 400)
+        if any(type(key) is not str or not key for key in values) or len(set(values)) != len(values):
+            raise WorkbenchCommandRejected("invalid_input", "列筛选值必须是唯一的非空编号。", 400)
         result[column] = {"mode": rule["mode"], "values": sorted(values)}
     return {column: result[column] for column in sorted(result)}
 

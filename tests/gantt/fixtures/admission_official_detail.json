@@ -1,0 +1,507 @@
+{
+  "data": {
+    "batch_ref": "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
+    "blocked_reasons": [],
+    "candidate": {
+      "candidate_ref": "5ca8eb405054988e9ba5c4ea83905e57716c1781b9fd6d84",
+      "capabilities": {
+        "adopt": false,
+        "edit_draft": false,
+        "export": false,
+        "report_actual": false,
+        "view": true
+      },
+      "completeness": "complete",
+      "data_gaps": [],
+      "kind": "admission_official",
+      "label": "受理时正式计划 v1",
+      "metrics": {},
+      "run_ref": "579e93d3ca41c34b4ed1eae76d520093f88ce523928b3473",
+      "status": "completed",
+      "task_count": 15
+    },
+    "candidate_span": {
+      "end": "2026-10-16T14:15:00",
+      "start": "2026-10-13T08:00:00"
+    },
+    "candidate_task_count": 15,
+    "capabilities": {
+      "adopt": false,
+      "edit_draft": false,
+      "export": false,
+      "report_actual": false,
+      "view": true
+    },
+    "data_gaps": [],
+    "delivery_risks": {
+      "batch_count": 1,
+      "items": [
+        {
+          "batch_id": "DC-04",
+          "batch_ref": "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
+          "completeness": "complete",
+          "completion_state": "complete",
+          "deferred_operation_count": 0,
+          "delay_days": 0.0,
+          "delay_hours": 0.0,
+          "delivery_deadline_exclusive": "2026-10-18T00:00:00",
+          "due_date": "2026-10-17",
+          "due_issue": null,
+          "due_state": "specified",
+          "invalid_task_count": 0,
+          "is_overdue": false,
+          "issues": [],
+          "operation_count": 2,
+          "ordinary_unscheduled_operation_count": 0,
+          "part_label": "决策验收零件",
+          "part_no": "P1",
+          "partial_planned_finish": null,
+          "planned_finish": "2026-10-16T09:19:30",
+          "priority": "urgent",
+          "quantity": 7,
+          "risk": "on_time",
+          "schedule_complete": true,
+          "scheduled_operation_count": 2,
+          "task_count": 2,
+          "unscheduled_operation_count": 0
+        }
+      ],
+      "state": "complete",
+      "summary": {
+        "batch_count": 1,
+        "complete_batch_count": 1,
+        "complete_batch_refs": [
+          "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7"
+        ],
+        "deferred_batch_count": 0,
+        "deferred_batch_refs": [],
+        "due_eligible_count": 1,
+        "due_evaluation_count": 1,
+        "excluded_due_count": 0,
+        "incomplete_batch_count": 0,
+        "invalid_due_count": 0,
+        "known_batch_refs": [
+          "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7"
+        ],
+        "known_due_count": 1,
+        "known_on_time_count": 1,
+        "known_overdue_count": 0,
+        "known_tardiness_hours": 0.0,
+        "on_time_count": 1,
+        "overdue_count": 0,
+        "state": "complete",
+        "total_tardiness_hours": 0.0,
+        "unknown_batch_refs": [],
+        "unknown_count": 0,
+        "unknown_due_count": 0
+      }
+    },
+    "gantt_graph": {
+      "critical_edges": [
+        {
+          "edge_type": "process",
+          "from_task_ref": "226a17a2ebcf0c13844c52aed4cb1f99b0f541588bef2545",
+          "to_task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a"
+        },
+        {
+          "edge_type": "operator",
+          "from_task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a",
+          "to_task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9"
+        },
+        {
+          "edge_type": "operator",
+          "from_task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9",
+          "to_task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559"
+        },
+        {
+          "edge_type": "operator",
+          "from_task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559",
+          "to_task_ref": "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7"
+        },
+        {
+          "edge_type": "operator",
+          "from_task_ref": "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7",
+          "to_task_ref": "04c48eb9676e3e75971cd3db665ea3496ade713131493a57"
+        },
+        {
+          "edge_type": "operator",
+          "from_task_ref": "04c48eb9676e3e75971cd3db665ea3496ade713131493a57",
+          "to_task_ref": "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7"
+        }
+      ],
+      "critical_task_refs": [
+        "226a17a2ebcf0c13844c52aed4cb1f99b0f541588bef2545",
+        "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a",
+        "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9",
+        "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559",
+        "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7",
+        "04c48eb9676e3e75971cd3db665ea3496ade713131493a57",
+        "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7"
+      ],
+      "edges": [
+        {
+          "edge_type": "process",
+          "from_task_ref": "a74d86c15141b7ca851ac6ad8ac67b3edaf0876fd6e938fb",
+          "to_task_ref": "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "9904f12b5bc06d406833bab9fe79f3c8de3b6431092901e0",
+          "to_task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "226a17a2ebcf0c13844c52aed4cb1f99b0f541588bef2545",
+          "to_task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "42ae73bb7ddede32d61ae01c120047d7b50f598be500a22f",
+          "to_task_ref": "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "4722080e8689b6f607e14d792029bf3f439e055cc5b5cd21",
+          "to_task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "16d5d673fe405b50a743f47983991d105e06e339e07f22ba",
+          "to_task_ref": "04c48eb9676e3e75971cd3db665ea3496ade713131493a57"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559",
+          "to_task_ref": "8e92def268425473de6f22c411fe58508d263f719f3d8648"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a",
+          "to_task_ref": "0b44148e1c2915bbc2c45d371c9e851d7ec5f5a46d46ae71"
+        },
+        {
+          "edge_type": "process",
+          "from_task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9",
+          "to_task_ref": "efd6bb9e70e6e0aa85f868d0844bb1a0f9f469f52b9ca5b2"
+        }
+      ],
+      "nodes": [
+        {
+          "batch_id": "DC-02",
+          "end": "2026-10-16T14:15:00",
+          "operation_ref": "2886ac6322a059dc6cede71207b411995f078349e788ad68",
+          "piece_id": null,
+          "process_label": "铣削",
+          "sequence": 2,
+          "start": "2026-10-16T11:52:30",
+          "task_ref": "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7"
+        },
+        {
+          "batch_id": "DC-04",
+          "end": "2026-10-15T11:06:00",
+          "operation_ref": "33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7",
+          "piece_id": null,
+          "process_label": "车削",
+          "sequence": 1,
+          "start": "2026-10-15T08:59:24",
+          "task_ref": "42ae73bb7ddede32d61ae01c120047d7b50f598be500a22f"
+        },
+        {
+          "batch_id": "DC-03",
+          "end": "2026-10-15T14:39:00",
+          "operation_ref": "44ad48c5ad2d58c7d7bdcff51eef41fd12147641531c1369",
+          "piece_id": null,
+          "process_label": "铣削",
+          "sequence": 2,
+          "start": "2026-10-15T10:18:00",
+          "task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559"
+        },
+        {
+          "batch_id": "DC-05",
+          "end": "2026-10-14T11:15:00",
+          "operation_ref": "452af8dbde1cd473f12db3b9fdc983963f5b80d608bc6a3b",
+          "piece_id": null,
+          "process_label": "铣削",
+          "sequence": 2,
+          "start": "2026-10-13T13:30:00",
+          "task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a"
+        },
+        {
+          "batch_id": "DC-04",
+          "end": "2026-10-16T09:19:30",
+          "operation_ref": "4ecb85ae1e75b36f13f73860ef4a164f4b1a5c98191c338b",
+          "piece_id": null,
+          "process_label": "铣削",
+          "sequence": 2,
+          "start": "2026-10-15T14:39:00",
+          "task_ref": "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7"
+        },
+        {
+          "batch_id": "DC-03",
+          "end": "2026-10-14T12:04:48",
+          "operation_ref": "78fc4cac8f249756fa8cba857a2d4d9cd44ba14d42b286d8",
+          "piece_id": null,
+          "process_label": "车削",
+          "sequence": 1,
+          "start": "2026-10-14T09:03:36",
+          "task_ref": "9904f12b5bc06d406833bab9fe79f3c8de3b6431092901e0"
+        },
+        {
+          "batch_id": "DC-01",
+          "end": "2026-10-15T10:18:00",
+          "operation_ref": "7f765e07b62ae8625bbf4138d83e42788974df102e0df1d3",
+          "piece_id": null,
+          "process_label": "铣削",
+          "sequence": 2,
+          "start": "2026-10-14T11:15:00",
+          "task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9"
+        },
+        {
+          "batch_id": "DC-06",
+          "end": "2026-10-16T11:52:30",
+          "operation_ref": "875fd8cb7d0deb3543023e603c27d3b130dd0d5bb3fe8a10",
+          "piece_id": null,
+          "process_label": "铣削",
+          "sequence": 2,
+          "start": "2026-10-16T09:19:30",
+          "task_ref": "04c48eb9676e3e75971cd3db665ea3496ade713131493a57"
+        },
+        {
+          "batch_id": "DC-02",
+          "end": "2026-10-15T12:33:00",
+          "operation_ref": "889e1c4d5a408651097088d86b7a8037be82b29f2658e714",
+          "piece_id": null,
+          "process_label": "车削",
+          "sequence": 1,
+          "start": "2026-10-15T11:06:00",
+          "task_ref": "a74d86c15141b7ca851ac6ad8ac67b3edaf0876fd6e938fb"
+        },
+        {
+          "batch_id": "DC-03",
+          "end": "2026-10-16T08:06:00",
+          "operation_ref": "8b31c7f93b2e2248470bb325c91ffd6b21b0392c05b2baac",
+          "piece_id": null,
+          "process_label": "精车",
+          "sequence": 3,
+          "start": "2026-10-15T14:39:00",
+          "task_ref": "8e92def268425473de6f22c411fe58508d263f719f3d8648"
+        },
+        {
+          "batch_id": "DC-01",
+          "end": "2026-10-14T09:03:36",
+          "operation_ref": "8b885af19a1a6a5b4893cf088526e48616e687aa8abdd42b",
+          "piece_id": null,
+          "process_label": "车削",
+          "sequence": 1,
+          "start": "2026-10-13T13:30:00",
+          "task_ref": "4722080e8689b6f607e14d792029bf3f439e055cc5b5cd21"
+        },
+        {
+          "batch_id": "DC-05",
+          "end": "2026-10-14T14:19:48",
+          "operation_ref": "ce3fba2b8dadc7c0f751b98c76effbc515a6cb81e6619032",
+          "piece_id": null,
+          "process_label": "精车",
+          "sequence": 3,
+          "start": "2026-10-14T12:04:48",
+          "task_ref": "0b44148e1c2915bbc2c45d371c9e851d7ec5f5a46d46ae71"
+        },
+        {
+          "batch_id": "DC-06",
+          "end": "2026-10-15T08:59:24",
+          "operation_ref": "ce56cbba6e1845ac34ed2e081a6967882f45367794c264b2",
+          "piece_id": null,
+          "process_label": "车削",
+          "sequence": 1,
+          "start": "2026-10-14T14:19:48",
+          "task_ref": "16d5d673fe405b50a743f47983991d105e06e339e07f22ba"
+        },
+        {
+          "batch_id": "DC-01",
+          "end": "2026-10-15T14:36:00",
+          "operation_ref": "d5805de18805f629c6f192a9cc7c79d7c7e80e9c1c1bc1db",
+          "piece_id": null,
+          "process_label": "精车",
+          "sequence": 3,
+          "start": "2026-10-15T12:33:00",
+          "task_ref": "efd6bb9e70e6e0aa85f868d0844bb1a0f9f469f52b9ca5b2"
+        },
+        {
+          "batch_id": "DC-05",
+          "end": "2026-10-13T13:30:00",
+          "operation_ref": "e7b5ff4b65955f02a5c73c3e68614bb203b6d3f38da3fbaf",
+          "piece_id": null,
+          "process_label": "车削",
+          "sequence": 1,
+          "start": "2026-10-13T08:00:00",
+          "task_ref": "226a17a2ebcf0c13844c52aed4cb1f99b0f541588bef2545"
+        }
+      ],
+      "reason": null,
+      "scope": "admission_official",
+      "state": "available"
+    },
+    "generation": {
+      "accepted_at": "2026-10-13T02:03:44",
+      "algorithm": null,
+      "baseline": {
+        "baseline_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+        "candidate_ref": null,
+        "kind": "admission_official",
+        "label": "受理时正式计划 v1",
+        "plan_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+        "source_candidate_ref": "a4183073694ddf7705e6baf6114d3b7e5aa27aa713d37cdb",
+        "source_run_ref": "e4f3ff6fa4234ce6cc85473517303b81ff4405ce59509246",
+        "state": "available",
+        "version": 1
+      },
+      "data_gaps": [],
+      "execution_basis": "captured_at_run_admission",
+      "finished_at": "2026-10-13T02:03:44",
+      "input": {
+        "batch_refs": [
+          "0985d4b9feff43ddcbcb260fe72d41f47763b9fa19cfd4b7",
+          "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
+          "9f1c7e9e060ee33df2a8752fed1a48acadeadbb81189398b",
+          "b11ffc315fb627a971f756bc9bdbd8a9674a2fa31e11ccce",
+          "b581c59bbc02c5437029ebb72eee3ed90e32e295a9f98e50",
+          "cea311fb3d2249bb650d7bd17c8200c90e5fe8905f935ce7"
+        ],
+        "completed_policy": "preserve_actuals",
+        "end_date": "2026-10-30",
+        "hold_window": null,
+        "missing_resource_policy": "auto_assign",
+        "ready_check": true,
+        "start_date": "2026-10-13"
+      },
+      "metadata_basis": "captured_at_run_admission",
+      "run_ref": "579e93d3ca41c34b4ed1eae76d520093f88ce523928b3473"
+    },
+    "plan_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+    "reference": {
+      "baseline_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+      "candidate_ref": null,
+      "kind": "admission_official",
+      "label": "受理时正式计划 v1",
+      "plan_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+      "source_candidate_ref": "a4183073694ddf7705e6baf6114d3b7e5aa27aa713d37cdb",
+      "source_run_ref": "e4f3ff6fa4234ce6cc85473517303b81ff4405ce59509246",
+      "state": "available",
+      "version": 1
+    },
+    "scope": {
+      "batch_refs": [
+        "0985d4b9feff43ddcbcb260fe72d41f47763b9fa19cfd4b7",
+        "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
+        "9f1c7e9e060ee33df2a8752fed1a48acadeadbb81189398b",
+        "b11ffc315fb627a971f756bc9bdbd8a9674a2fa31e11ccce",
+        "b581c59bbc02c5437029ebb72eee3ed90e32e295a9f98e50",
+        "cea311fb3d2249bb650d7bd17c8200c90e5fe8905f935ce7"
+      ],
+      "comparison_mode": "admission_official",
+      "delta_basis": "candidate_minus_reference",
+      "metric_scope": "full_admission",
+      "operation_refs": [
+        "2886ac6322a059dc6cede71207b411995f078349e788ad68",
+        "33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7",
+        "44ad48c5ad2d58c7d7bdcff51eef41fd12147641531c1369",
+        "452af8dbde1cd473f12db3b9fdc983963f5b80d608bc6a3b",
+        "4ecb85ae1e75b36f13f73860ef4a164f4b1a5c98191c338b",
+        "78fc4cac8f249756fa8cba857a2d4d9cd44ba14d42b286d8",
+        "7f765e07b62ae8625bbf4138d83e42788974df102e0df1d3",
+        "875fd8cb7d0deb3543023e603c27d3b130dd0d5bb3fe8a10",
+        "889e1c4d5a408651097088d86b7a8037be82b29f2658e714",
+        "8b31c7f93b2e2248470bb325c91ffd6b21b0392c05b2baac",
+        "8b885af19a1a6a5b4893cf088526e48616e687aa8abdd42b",
+        "ce3fba2b8dadc7c0f751b98c76effbc515a6cb81e6619032",
+        "ce56cbba6e1845ac34ed2e081a6967882f45367794c264b2",
+        "d5805de18805f629c6f192a9cc7c79d7c7e80e9c1c1bc1db",
+        "e7b5ff4b65955f02a5c73c3e68614bb203b6d3f38da3fbaf"
+      ],
+      "range_end": "2026-10-15T11:06:00",
+      "range_start": "2026-10-13T08:00:00",
+      "reference": {
+        "baseline_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+        "kind": "admission_official"
+      },
+      "reference_state": "available",
+      "run_ref": "579e93d3ca41c34b4ed1eae76d520093f88ce523928b3473",
+      "selected_candidate_ref": "5ca8eb405054988e9ba5c4ea83905e57716c1781b9fd6d84",
+      "time_basis": "factory_local"
+    },
+    "task_count": 1,
+    "task_span": {
+      "end": "2026-10-15T11:06:00",
+      "start": "2026-10-15T08:59:24"
+    },
+    "tasks": [
+      {
+        "batch_label": "DC-04",
+        "batch_quantity": 7,
+        "batch_ref": "20fd9d930393fd9fa8afa5839016aa7019559f98205b8bb7",
+        "data_gaps": [],
+        "due_date": "2026-10-17",
+        "effective_processing_hours": null,
+        "elapsed_hours": 2.11,
+        "end": "2026-10-15T11:06:00",
+        "execution_at_generation": {
+          "completion_basis": null,
+          "confirmed_finish": null,
+          "data_quality": "incomplete",
+          "execution_state": "unreported",
+          "first_actual_start": null,
+          "known_completed_quantity": 0,
+          "quantity_complete": false,
+          "records_complete": false,
+          "remaining_quantity": 7,
+          "target_basis": "batch",
+          "target_quantity": 7,
+          "unknown_record_count": 0
+        },
+        "interval_comparable": true,
+        "locked": false,
+        "machine": {
+          "label": "数控车床",
+          "ref": "73e0d4c2bb29e6de6e1d095e6b914932cc021601cc6cb4af"
+        },
+        "official_version": 1,
+        "operation_ref": "33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7",
+        "operator": {
+          "label": "验收计划员 1",
+          "ref": "1dc48f8995186078b7b84519bd71bc05a92b447d7c505ebc"
+        },
+        "part_label": "决策验收零件",
+        "piece_id": null,
+        "plan_ref": "0d7a9dad1ccd4513a883c1f2173b7de53affc7fad74bf901",
+        "process_label": "车削",
+        "quantity": 7,
+        "row_ref": "42ae73bb7ddede32d61ae01c120047d7b50f598be500a22f",
+        "sequence": 1,
+        "source": "internal",
+        "start": "2026-10-15T08:59:24",
+        "supplier": null,
+        "task_ref": "714f2ca6bb1daac320e31e02ca4ffc0d6bc37b6b47d6963f"
+      }
+    ],
+    "tasks_complete": true,
+    "time_scope": {
+      "interval": "half_open_overlap",
+      "range_end": "2026-10-15T11:06:00",
+      "range_start": "2026-10-13T08:00:00",
+      "time_basis": "factory_local",
+      "unplanned_policy": "included_without_time_interval"
+    },
+    "unplanned_operation_count": 0,
+    "unplanned_operations": []
+  },
+  "meta": {
+    "as_of": "2026-10-13T03:54:03",
+    "request_ref": "85787434419b42eea3ad8fb0aa938e46",
+    "snapshot_ref": "vLhNXtOSoixMPmLVAc9LeQAmt0hq0SEh",
+    "source": "production",
+    "time_basis": "factory_local"
+  },
+  "ok": true,
+  "schema_version": 1,
+  "warnings": []
+}

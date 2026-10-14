@@ -80,14 +80,15 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
         part_ref: str,
         operation_ref: str,
         stage: str,
-        signature: str,
+        content_json: str,
         confirmed_at: str,
         confirmed_by: Optional[str],
     ) -> None:
         self.execute(
             """INSERT INTO WorkbenchProcessOperationConfirmations
-                (part_ref,operation_ref,stage,signature,confirmed_at,confirmed_by) VALUES (?,?,?,?,?,?)""",
-            (part_ref, operation_ref, stage, signature, confirmed_at, confirmed_by),
+                (part_ref,operation_ref,stage,signature,confirmed_at,confirmed_by,content_json)
+                VALUES (?,?,?,NULL,?,?,?)""",
+            (part_ref, operation_ref, stage, confirmed_at, confirmed_by, content_json),
         )
 
     def update_confirmation(
@@ -96,14 +97,14 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
         part_ref: str,
         operation_ref: str,
         stage: str,
-        signature: str,
+        content_json: str,
         confirmed_at: str,
         confirmed_by: Optional[str],
     ) -> int:
         cursor = self.execute(
-            """UPDATE WorkbenchProcessOperationConfirmations SET signature=?,confirmed_at=?,confirmed_by=?
+            """UPDATE WorkbenchProcessOperationConfirmations SET content_json=?,confirmed_at=?,confirmed_by=?
                 WHERE part_ref=? AND operation_ref=? AND stage=?""",
-            (signature, confirmed_at, confirmed_by, part_ref, operation_ref, stage),
+            (content_json, confirmed_at, confirmed_by, part_ref, operation_ref, stage),
         )
         return int(cursor.rowcount)
 
@@ -121,15 +122,15 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
         *,
         part_ref: str,
         stage: str,
-        signature: str,
+        content_json: str,
         confirmed_at: str,
         confirmed_by: Optional[str],
     ) -> int:
         if stage not in WORKFLOW_STAGES:
             raise ValueError(f"unknown workflow stage: {stage!r}")
         cursor = self.execute(
-            f"""UPDATE WorkbenchProcessWorkflow SET {stage}_signature=?,
+            f"""UPDATE WorkbenchProcessWorkflow SET {stage}_content_json=?,
                 {stage}_confirmed_at=?,{stage}_confirmed_by=? WHERE part_ref=?""",
-            (signature, confirmed_at, confirmed_by, part_ref),
+            (content_json, confirmed_at, confirmed_by, part_ref),
         )
         return int(cursor.rowcount)

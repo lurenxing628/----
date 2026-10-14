@@ -1,6 +1,5 @@
 """Local entry discovery and content checks; no application imports."""
 
-import hashlib
 import json
 import posixpath
 import re
@@ -8,10 +7,6 @@ import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
-
-
-def digest(data):
-    return hashlib.sha256(data).hexdigest()
 
 
 def write_json(path, value):
@@ -88,20 +83,6 @@ def css_references(text):
     urls = re.findall(r"url\(\s*['\"]?([^'\")]+?)['\"]?\s*\)", text, flags=re.I)
     urls += re.findall(r"@import\s+['\"]([^'\"]+)['\"]", text, flags=re.I)
     return [url.strip() for url in urls if not url.strip().lower().startswith(("data:", "#"))]
-
-
-def verify_snapshot(root, manifest):
-    captured = {}
-    for item in manifest["files"]:
-        name = item["path"]
-        if name in captured:
-            raise ValueError("Duplicate snapshot asset: " + name)
-        file = local_path(root, root, name)
-        data = file.read_bytes()
-        if digest(data) != item["sha256"] or len(data) != item["size"]:
-            raise ValueError("Snapshot hash mismatch: " + name)
-        captured[name] = data
-    return captured
 
 
 def load_json(path):
@@ -274,19 +255,6 @@ def script_dependencies(node, babel_path, payload, load_order, vendor_scripts, b
             if reference["path"] not in indices or indices[reference["path"]] >= indices[name]:
                 raise ValueError("Script dependency must load earlier: " + name + " -> " + reference["path"])
     return evidence
-
-
-def license_origin(root, component, identifiers, source, distributed, scope, provenance=None, data=None):
-    data = (root / source).read_bytes() if data is None else data
-    for identifier in identifiers:
-        if identifier.encode("ascii") not in data:
-            raise ValueError("License identifier not found in local notice: " + source)
-    result = {"component": component, "status": "documented", "identifiers": identifiers,
-              "requires_review": False, "scope": scope,
-              "source": {"path": source, "sha256": digest(data), "asset_path": distributed}}
-    if provenance:
-        result["provenance"] = provenance
-    return result
 
 
 def unknown_license(component, sources, reason):

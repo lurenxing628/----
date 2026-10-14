@@ -106,7 +106,7 @@ class WorkbenchRunService:
             fingerprint, facts = capture_run_facts(self.conn)
             ref = self.repo.insert(request_key=request_key, input_ref=input_ref, settings=settings,
                 facts_hash=fingerprint, facts_json=facts, projections=projections, baseline=baseline,
-                now=self.clock().isoformat(timespec="seconds"))
+                now=self.clock().isoformat(timespec="microseconds"))
             return WorkbenchCommandOutcome("committed", {"run_ref": ref})
 
         result = WorkbenchCommandService(self.conn).execute(request_key=request_key, action="scheduling.run",

@@ -11,7 +11,7 @@ sha256 的扫描结果磁盘缓存（含 ~250 行缓存校验/合并机器）。
   cache_path / force 参数保留但不再有任何作用。
 - 不再读写磁盘缓存文件；同次适应度检查显式共享扫描快照，跨次调用保持新鲜。
 - architecture_scan_cache_metadata 仍被 long_gate_fingerprint 与
-  run_quality_gate 回执使用，保持原字段。
+  run_quality_gate 回执使用，保存源码与实际版本或行为原文。
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import os
 import sys
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, cast
 
-from .long_gate_schema import stable_json_hash, version_hash_for_paths
+from .long_gate_schema import version_rows_for_paths
 from .quality_gate_ledger import entry_sort_key
 from .quality_gate_scan import (
     ScanContext,
@@ -66,7 +66,7 @@ def _normalize_path(path: str) -> str:
     return normalized
 
 
-def _radon_behavior_marker() -> str:
+def _radon_behavior_marker() -> Dict[str, Any]:
     try:
         version = importlib.metadata.version("radon")
     except importlib.metadata.PackageNotFoundError:
@@ -74,7 +74,7 @@ def _radon_behavior_marker() -> str:
     except Exception:
         version = ""
     if version:
-        return "version:" + version
+        return {"kind": "version", "version": version}
 
     try:
         radon_complexity = importlib.import_module("radon.complexity")
@@ -95,20 +95,20 @@ def _radon_behavior_marker() -> str:
                     "letter": str(getattr(block, "letter", "") or ""),
                 }
             )
-        return "behavior:sha256:" + stable_json_hash(rows)
+        return {"kind": "behavior", "rows": rows}
     except Exception as exc:
         payload = {"type": exc.__class__.__name__, "message": str(exc)}
-        return "unavailable:sha256:" + stable_json_hash(payload)
+        return {"kind": "unavailable", "error": payload}
 
 
 def architecture_scan_cache_metadata(repo_root: Optional[str] = None) -> Dict[str, Any]:
     root = os.path.abspath(repo_root or REPO_ROOT)
     return {
         "schema_version": ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION,
-        "scanner_version_hash": version_hash_for_paths(root, ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS),
+        "scanner_version_content": version_rows_for_paths(root, ARCHITECTURE_SCAN_SCANNER_VERSION_PATHS),
         "scanner_schema_version": ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION,
         "python_version": sys.version.splitlines()[0].strip(),
-        "radon_version_or_behavior_hash": _radon_behavior_marker(),
+        "radon_version_or_behavior": _radon_behavior_marker(),
     }
 
 

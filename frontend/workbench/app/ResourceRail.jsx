@@ -55,9 +55,9 @@
     const origin = day.explicit ? '单独设置' : '按默认（未单独设置）';
     if (!day.effective) return day.date + ' · ' + origin + ' · 暂无数据：' + day.issues.map(issue => issue.message).join('；');
     const value = day.effective;
-    return day.date + ' · ' + origin + '\n' + window.WorkbenchFormat.dateTime(value.window_start, { seconds: true }) + ' 至 ' + window.WorkbenchFormat.dateTime(value.window_end, { seconds: true }) +
+    return day.date + ' · ' + origin + '\n' + window.WorkbenchFormat.compactRange(value.window_start, value.window_end) +
       (value.crosses_midnight ? '（跨夜，归班次起始日）' : '') + '\n班次 ' + window.WorkbenchFormat.hours(value.hours) + ' × 效率 ' + amount(value.efficiency * 100) +
-      '%；有效 ' + window.WorkbenchFormat.hours(value.effective_hours) + '\n普通件 ' + (value.allow_normal ? '允许' : '不允许') +
+      '%；折算标准工时 ' + window.WorkbenchFormat.hours(value.effective_hours) + '\n普通件 ' + (value.allow_normal ? '允许' : '不允许') +
       ' / 急件及特急件 ' + (value.allow_urgent ? '允许' : '不允许') +
       (value.rest_reason === 'priorities_disabled' ? '；普通件和急件都不许可，但班次工时不是 0' : '') +
       (day.issues.length ? '\n' + day.issues.map(issue => issue.message).join('；') : '');
@@ -76,14 +76,14 @@
           <span className="rail-calendar-range"><MetricValue pending={loading}>{value ? value.week_start + ' 至 ' + value.week_end : '日期暂无数据'}</MetricValue></span>
         </span>
         <span className="rail-calendar-stats">
-          <span className="rail-calendar-stat" data-calendar-week-hours><span className="rail-calendar-stat-label">本周有效</span>{' '}<span className="rail-calendar-stat-value"><MetricValue pending={loading}>{stats ? hoursOrNone(stats.effective_hours) : '暂无数据'}</MetricValue></span></span>
+          <span className="rail-calendar-stat" data-calendar-week-hours><span className="rail-calendar-stat-label">本周折算标准工时</span>{' '}<span className="rail-calendar-stat-value"><MetricValue pending={loading}>{stats ? hoursOrNone(stats.effective_hours) : '暂无数据'}</MetricValue></span></span>
           <span className="rail-calendar-stat"><span className="rail-calendar-stat-label">工作日</span><span className="rail-calendar-stat-value"><MetricValue pending={loading}>{stats ? stats.work_days == null ? '未知' : integer(stats.work_days) + ' 天' : '暂无数据'}</MetricValue></span></span>
           <span className="rail-calendar-stat"><span className="rail-calendar-stat-label">休息 / 禁排</span><span className="rail-calendar-stat-value"><MetricValue pending={loading}>{stats ? stats.rest_days == null ? '未知' : integer(stats.rest_days) + ' 天' : '暂无数据'}</MetricValue></span></span>
         </span>
-        {differentPriorities && <span className="rail-calendar-facts">普通件 {hoursOrNone(stats.normal_effective_hours)} · 急件 {hoursOrNone(stats.urgent_effective_hours)}</span>}
+        {differentPriorities && <span className="rail-calendar-facts" title="普通件和急件可共用同一时段，两项折算标准工时不能相加。">普通件折算 {hoursOrNone(stats.normal_effective_hours)} · 急件折算 {hoursOrNone(stats.urgent_effective_hours)}</span>}
       </span>
       <span className="rail-calendar-week">
-        <span className="rail-calendar-unit">每日有效工时（小时）</span>
+        <span className="rail-calendar-unit">每日折算标准工时（小时）</span>
         <span className="hb-cal-strip">{days.map(day => {
           const effective = day.effective, rest = effective && effective.is_rest;
           return <span className={'hb-seg' + (rest ? ' rest' : '') + (!loading && !effective ? ' unavailable' : '')} key={day.date} data-calendar-date={day.date}
@@ -92,7 +92,7 @@
             <span className="rail-day-value"><MetricValue pending={loading}>{effective ? rest ? effective.rest_reason === 'priorities_disabled' ? '禁排' : '休息' : amount(effective.effective_hours) : '未知'}</MetricValue></span>
           </span>;
         })}</span>
-        <span className="rail-calendar-source"><MetricValue pending={loading}>{source} · 标准 {standardText} / 日</MetricValue></span>
+        <span className="rail-calendar-source"><MetricValue pending={loading}>{source} · 标准班次 {standardText} / 日</MetricValue></span>
       </span>
     </button>;
   }
@@ -160,6 +160,7 @@
         {(process.lines.length > 0 || value.calendar) && <details className="rail-details"><summary>确认记录与日历规则</summary><div className="rail-detail-content">
           {process.lines.length > 0 && <div><strong>工艺确认记录</strong>{process.lines.map(line => <p key={line}>{line}</p>)}</div>}
           {value.calendar && <div><strong>工作日历规则</strong><p>{value.calendar.basis}</p><p>工厂日期 {value.calendar.factory_today} · 按班次起始日统计</p>
+            <p>折算标准工时按许可时段乘以效率计算。普通件和急件可共用同一时段，两项不能相加。</p>
             <p>假期录入默认效率：{value.calendar.holiday_default_efficiency.status === 'known' ? amount(value.calendar.holiday_default_efficiency.value * 100) + '%' : labels[value.calendar.holiday_default_efficiency.status]}。{value.calendar.holiday_default_efficiency.basis}</p></div>}
         </div></details>}
         <span className="hb-r-spacer" />

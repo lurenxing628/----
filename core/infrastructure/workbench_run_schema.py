@@ -1,6 +1,6 @@
 """Explicit run-ledger installation, owned by the caller's migration transaction."""
 
-from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
+from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
 from .schema_structure import schema_objects
@@ -9,7 +9,7 @@ RUN_TABLES = ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunCandidate
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
-def workbench_run_objects():
+def workbench_run_objects(*, legacy=False):
     objects = {
         "WorkbenchRunJobs": """CREATE TABLE WorkbenchRunJobs (
             run_ref {} PRIMARY KEY, request_key TEXT NOT NULL UNIQUE,
@@ -49,6 +49,8 @@ def workbench_run_objects():
         )""".format(_REF.format("row_ref")),
         "idx_wb_run_state": "CREATE INDEX idx_wb_run_state ON WorkbenchRunJobs(state,accepted_at,run_ref)",
     }
+    if not legacy:
+        objects["WorkbenchRunJobs"] = objects["WorkbenchRunJobs"].replace("facts_hash TEXT NOT NULL", "facts_hash TEXT")
     for table in RUN_TABLES:
         stem = table[len("Workbench"):].lower()
         for event in (("DELETE",) if table == "WorkbenchRunJobs" else ("UPDATE", "DELETE")):
@@ -67,12 +69,14 @@ def workbench_run_objects():
     return objects
 
 
-def workbench_run_contract_issues(conn, *, structure=None):
+def workbench_run_contract_issues(conn, *, structure=None, allow_legacy=True):
     """SELECT only, including when the ledger is absent or only partly present."""
     actual = schema_objects(conn, structure=structure)
+    legacy = workbench_run_objects(legacy=True)
     return [("missing_run_schema:" if name not in actual else "invalid_run_schema:") + name
             for name, sql in workbench_run_objects().items()
-            if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]
+            if name not in actual or not schema_contract_matches(
+                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def install_workbench_run_schema(conn):

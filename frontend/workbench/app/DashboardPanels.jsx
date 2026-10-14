@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.DashboardContract, { Button, Issues, MetricValue } = window.ResourceControls;
+  const C = window.DashboardContract, T = window.WorkbenchTerms, { Button, Issues, MetricValue } = window.ResourceControls;
   // 跳转标签与侧栏视图标题保持同名（web/routes/workbench/navigation_metadata.py VIEW_TITLES）；outsourcing 是页内目标，侧栏没有对应条目。
   const navigationLabels = { gantt: '计划甘特', fieldgantt: '现场实际甘特', batches: '批次管理', analysis: '选择排产方案', field: '现场记录', run: '执行排产', outsourcing: '外协物流登记' };
   function navigationTarget(n, onNavigate) {
@@ -14,13 +14,14 @@
   // Hour columns carry the unit in their header; cells show the number only.
   const hoursValue = v => window.WorkbenchFormat.number(v, 2);
   const dateOnly = v => v === null || v === undefined || v === '' ? '未填写' : window.WorkbenchFormat.date(v);
-  function Risk({ risk }) { return <span className={'dy-badge ' + (risk.active === true ? 'danger' : risk.active === false ? 'success' : 'warning')}>{risk.active === true ? '风险仍在' : risk.active === false ? '当前无风险' : '风险未知'}</span>; }
+  function Risk({ risk }) { return <span className={'dy-badge ' + (risk.code === 'due_not_applicable' ? 'neutral' : risk.active === true ? 'danger' : risk.active === false ? 'success' : 'warning')}>{risk.code === 'due_not_applicable' ? '交期风险不适用' : risk.active === true ? '风险仍在' : risk.active === false ? '当前无风险' : '风险未知'}</span>; }
   function Status({ handling }) { return <span className={'dy-badge ' + ({ new: 'neutral', following: 'info', awaiting_verification: 'warning', closed: 'success' }[handling.status])}>{C.statuses[handling.status]}</span>; }
   function CategoryState({ summary }) {
     if (!summary) return <span>未读取</span>;
-    return <><span>{C.states[summary.state]}{summary.risk_count === null ? ' · 总风险未知' : ' · ' + summary.risk_count + ' 项风险'}</span>
+    return <><span>{summary.state === 'not_applicable' ? '未指定交期，交期风险不适用' : C.states[summary.state] + (summary.risk_count === null ? ' · 总风险未知' : ' · ' + summary.risk_count + ' 项风险')}</span>
       {summary.risk_count === null && summary.known_risk_count > 0 && <small>已确认 {summary.known_risk_count} 项风险</small>}</>;
   }
+  const deliveryCoverage = summary => T.delivery_coverage({ ...summary, known_due_count: summary.assessed_count, unknown_due_count: summary.unknown_count });
   function Overview({ data, analysis, loading = false, error = null, analysisLoading = false, analysisError = null, onCategory, onAnalysis }) { return <div className="dy-metrics" role="region" aria-label="风险概览" aria-busy={loading || analysisLoading}>
     {(loading || analysisLoading) && <span className="wb-visually-hidden" role="status">正在读取风险概览</span>}
     {['delivery', 'pressure', 'actual', 'external', 'downtime', 'material', 'pending'].map(k => {
@@ -30,14 +31,14 @@
       return <button type="button" className="dy-metric" key={k} aria-busy={pending && !failure} onClick={() => onAnalysis(k === 'pressure' ? 'delivery' : 'material')}>
         <span>{k === 'pressure' ? '资源压力' : '待排批次'}</span><strong><MetricValue pending={pending} error={failure}>{!p ? '未读取' : p.count === null ? '未知' : p.count}</MetricValue></strong>
         <small>{k === 'pressure' ? '日峰值占用率 ≥ 90%' : '全部待排批次'}</small>
-        {p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && <small>容量未知 {p.unknown_resources} · 零可用 {p.zero_capacity_resources}</small>}
+        {p && k === 'pressure' && (p.unknown_resources > 0 || p.zero_capacity_resources > 0) && <small>{[p.unknown_resources > 0 && '可排时间未记录 ' + p.unknown_resources + ' 项', p.zero_capacity_resources > 0 && '没有可排时间 ' + p.zero_capacity_resources + ' 项'].filter(Boolean).join(' · ')}</small>}
       </button>;
     }
     const s = data && data.categories[k], pending = !s && loading, failure = !s && error;
     return <button type="button" className="dy-metric" key={k} aria-busy={pending && !failure} onClick={() => onCategory(k)}><span>{C.categories[k]}</span>
-      <strong className={s && s.risk_count > 0 ? 'dy-danger' : 'dy-muted'}><MetricValue pending={pending} error={failure}>{!s ? '未读取' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count}</MetricValue></strong>
-      <small><MetricValue pending={pending && !failure} kind="helper">{failure ? '请刷新重试' : !s ? '未读取' : k === 'external' ? s.awaiting_return_count === null ? '外协风险未读取' : '待回厂 ' + s.awaiting_return_count + ' · 超期 ' + s.overdue_count + ' · 待确认 ' + s.awaiting_confirmation_count :
-        s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : '已关闭处置 ' + s.closed_count + ' 项'}</MetricValue></small></button>;
+      <strong className={s && s.risk_count > 0 ? 'dy-danger' : 'dy-muted'}><MetricValue pending={pending} error={failure}>{!s ? '未读取' : k === 'delivery' && s.state === 'not_applicable' ? '不适用' : s.risk_count === null ? C.states[s.state] === '已读取' ? '未知' : C.states[s.state] : s.risk_count}</MetricValue></strong>
+      <small><MetricValue pending={pending && !failure} kind="helper">{failure ? '请刷新重试' : !s ? '未读取' : k === 'delivery' && s.due_evaluation_count !== undefined ? s.unknown_count > 0 ? s.unknown_count + ' 批交付待确认' : '' : k === 'external' ? s.awaiting_return_count === null ? '外协风险未读取' : [s.awaiting_return_count > 0 && '待回厂 ' + s.awaiting_return_count, s.overdue_count > 0 && '超期 ' + s.overdue_count, s.awaiting_confirmation_count > 0 && '待确认 ' + s.awaiting_confirmation_count].filter(Boolean).join(' · ') :
+        s.risk_count === null ? s.known_risk_count > 0 ? '已确认风险 ' + s.known_risk_count + ' 项' : '总风险未评估' : s.closed_count > 0 ? '已关闭处置 ' + s.closed_count + ' 项' : ''}</MetricValue></small></button>;
   })}</div>; }
   function Rail({ data, category, onCategory }) { return <aside className="dy-rail" aria-label="风险类别"><h3>需要关注</h3>{Object.entries(C.categories).map(([k, label]) => <button
     type="button" className="dy-category" key={k} aria-pressed={category === k} onClick={() => onCategory(k)}><b>{label}</b>
@@ -118,20 +119,26 @@
     </Modal>;
   }
   function Pressure({ data, navigate, canNavigate, showIssues = true }) {
-    const p = data.resource_pressure, rows = p.resources;
+    const p = data.resource_pressure, common = data.analysis && data.analysis.resource_common, rows = data.analysis && data.analysis.resources;
     return <section aria-label="资源压力"><div className="dy-heading"><h3>正式计划资源压力</h3>{data.plan && <Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'gantt', context: { plan_ref: data.plan.plan_ref }, enabled: true })}>计划甘特</Button>}</div>
-      <div className="dy-context">{data.plan ? data.plan.display_name : data.categories.delivery.state === 'no_official_plan' ? '无正式计划' : '正式计划未能读取'} · {p.time_scope ? window.WorkbenchFormat.dateTime(p.time_scope.range_start) + ' 至 ' + window.WorkbenchFormat.dateTime(p.time_scope.range_end) + ' · 含起日，不含止日' : '时间范围未读取'}</div>
       {showIssues && <Issues issues={p.issues} />}
-      {!rows || !rows.length ? <window.WorkbenchListControls.EmptyState kind="empty" title={!rows ? '资源压力暂时无法计算。' : '当前正式计划没有资源占用数据。'} /> : <div className="dy-scroll"><table className="dy-resource"><caption className="wb-sr-only">正式计划资源压力</caption><thead><tr><th scope="col">资源</th><th scope="col">班表内占用（小时）</th><th scope="col">可用（小时）</th><th scope="col">整窗占用率</th><th scope="col">重叠时段（小时）</th><th scope="col">班表外占用（小时）</th><th scope="col">容量缺口（小时）</th></tr></thead><tbody>{rows.map(r => <tr key={r.kind + r.resource_ref} data-resource-ref={r.resource_ref}><td><b>{r.label || '名称未填写'}</b><div className="dy-muted">{r.kind === 'machine' ? '设备' : '人员'} · {r.operation_count} 道工序</div></td>
-        <td>{hoursValue(r.available_occupied_hours)}</td><td>{hoursValue(r.available_hours)}</td><td>{window.WorkbenchFormat.percent(r.utilization)}{r.utilization !== null && <div className={'dy-meter' + (r.capacity_insufficient || r.has_overlap ? ' hot' : '')}><i style={{ width: Math.min(100, Math.max(0, r.utilization * 100)) + '%' }} /></div>}</td>
-        <td className={r.has_overlap ? 'dy-danger' : ''}>{hoursValue(r.overlap_hours)}</td><td className={r.outside_available_hours > 0 ? 'dy-warning' : ''}>{hoursValue(r.outside_available_hours)}</td><td>{hoursValue(r.capacity_shortfall_hours)}<Issues issues={r.issues} /></td></tr>)}</tbody></table></div>}
+      {!rows || !rows.length ? <window.WorkbenchListControls.EmptyState kind="empty" title={!rows ? '资源压力暂时无法计算。' : '当前正式计划没有资源占用数据。'} /> : <div className="dy-scroll"><table className="dy-resource"><caption className="wb-sr-only">正式计划资源压力</caption><thead><tr><th scope="col">资源</th><th scope="col">可排总时长（小时）</th><th scope="col">班内已占（小时）</th><th scope="col">占用比例</th><th scope="col">重叠时长（小时）</th><th scope="col">班外占用（小时）</th><th scope="col">详情</th></tr></thead><tbody>{rows.map(r => { const w = r.window_metrics; return <tr key={r.kind + r.resource_ref} data-resource-ref={r.resource_ref}><td><b>{r.label || '名称未填写'}</b><div className="dy-muted">{T.resource_kinds[r.kind]} · {value(w.operation_count)} 道工序</div></td>
+        <td>{hoursValue(w.available_hours)}</td><td>{hoursValue(w.occupied_hours)}</td><td>{window.WorkbenchFormat.percent(w.utilization_ratio)}</td>
+        <td>{hoursValue(w.overlap_span_hours)}</td><td>{hoursValue(w.outside_calendar_hours)}</td><td><details><summary>计算与资料</summary><dl className="dy-facts">
+          <div><dt>班内工序累计（小时）</dt><dd>{hoursValue(w.summed_load_hours)}</dd></div><div><dt>班内重复计时（小时）</dt><dd>{hoursValue(w.overlap_hours)}</dd></div>
+          <div><dt>班内工序累计 / 可排时间</dt><dd>{window.WorkbenchFormat.percent(w.demand_ratio)}</dd></div><div><dt>资料状态</dt><dd>{T.resource_states[w.state]}{w.unknown_days > 0 && ' · ' + w.unknown_days + ' 天班表未记录'}</dd></div>
+          </dl><Issues issues={w.issues} /></details></td></tr>; })}</tbody></table></div>}
+      <details className="dy-evidence"><summary>统计范围与计算说明</summary>{p.time_scope && <p>从 {window.WorkbenchFormat.dateTime(p.time_scope.range_start, { seconds: true, fractions: true })} 至 {window.WorkbenchFormat.dateTime(p.time_scope.range_end, { seconds: true, fractions: true })}，结束时刻不计入。</p>}
+        {common && <p>使用本次读取的正式计划班表，包含 {common.cohort.length} 项设备、人员。</p>}<p>班内已占时间按班表内有工序安排的时段计一次。重叠时长按同时安排多道工序的时段计时，班内重复计时按多占的份数累计。班外占用包括跨休息和夜间的安排。</p>
+      </details>
+
     </section>;
   }
   function Candidates({ data, navigate, canNavigate }) {
     const c = data.candidate_catalog, runStates = window.WorkbenchTerms.run_statuses;
     return <section aria-label="候选方案列表"><div className="dy-heading"><h3>候选方案列表</h3><div className="dy-tools"><Button reasonDisplay="inline" icon="history" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'analysis', context: { source: 'run_history' }, enabled: true })}>排产记录</Button>
       <Button reasonDisplay="inline" icon="play" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'run', context: {}, enabled: true })}>{navigationLabels.run}</Button></div></div>
-      <div className="dy-note">已保存的候选方案</div><Issues issues={c.issues} />
+      <Issues issues={c.issues} />
       {c.state === 'unavailable' ? <window.WorkbenchListControls.EmptyState kind="empty" title="候选方案列表读不到。" hint="请点右上角的「刷新值班台」按钮重试。" /> : !c.runs.length ? <window.WorkbenchListControls.EmptyState kind="empty" title="还没有排产记录。" /> : <><div className="dy-scroll"><table><caption className="wb-sr-only">候选方案排产记录</caption><thead><tr><th scope="col">排产提交时间</th><th scope="col">计算状态</th><th scope="col">候选数量</th><th scope="col">范围</th><th scope="col">操作</th></tr></thead><tbody>{c.runs.map(r => <tr key={r.run_ref} data-run-ref={r.run_ref}><td>{window.WorkbenchFormat.dateTime(r.accepted_at)}</td><td>{runStates[r.state] || '状态未知'}</td><td>{r.candidate_count}</td><td>{r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'}</td><td><Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'analysis', context: { run_ref: r.run_ref }, enabled: true })}>查看候选</Button></td></tr>)}</tbody></table></div>
         <div className="dy-pager">排产记录 {c.page.total} 次 · 当前显示 {c.runs.length} 次{c.page.has_more ? ' · 还有更多，请点「排产记录」查看' : ''}</div></>}
     </section>;

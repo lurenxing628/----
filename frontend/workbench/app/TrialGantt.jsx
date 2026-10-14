@@ -15,7 +15,7 @@
       && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref)
       && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
   }
-  function Gantt({ data, selected, onSelect }) {
+  function Gantt({ data, selected, onSelect, detailsOpen, onToggleDetails }) {
     const V = window.TrialViewState, preferences = V.useView(data);
     // When the local preference cannot be read, the gantt still renders with defaults and view changes stay on this page.
     const [local, setLocal] = React.useState(null), values = preferences.value || local || V.defaults(data);
@@ -80,15 +80,15 @@
       </button>;
     }
     return <section className={'tt-gantt' + (expanded ? ' tt-expanded' : '')} aria-label="试调甘特">
-      <V.Notice state={preferences} label="试调甘特查看偏好" /><div className="tt-heading"><h3>试调排程图</h3>
-      <span className="tt-muted">含夜间 · 每道工序独立一行</span></div><div className="tt-tools tt-gantt-tools"><U.Tabs value={view} label="甘特分组"
+      <V.Notice state={preferences} label="试调甘特查看偏好" /><div className="tt-tools tt-gantt-tools"><U.Tabs value={view} label="甘特分组"
       options={[["machine", '设备'], ['operator', '人员'], ['batch', '批次']]} onChange={v => { setView(v); setPage(1); }} />
-      {hasOriginal && <><label className="tt-check"><input type="checkbox" checked={baseline} onChange={e => setBaseline(e.target.checked)} />原试调基础</label>
+      {hasOriginal && <><label className="tt-check"><input type="checkbox" checked={baseline} onChange={e => setBaseline(e.target.checked)} />对照原安排</label>
       <label className="tt-check"><input type="checkbox" checked={changed} onChange={e => { setChanged(e.target.checked); setPage(1); }} />仅变更</label></>}
       {!!Object.keys(data.scope).length && <label className="tt-check"><input type="checkbox" checked={limit} onChange={e => { setLimit(e.target.checked); setPage(1); }} />原显示范围</label>}
       <input type="search" aria-label="搜索试调工序" placeholder="批次 / 工序 / 资源" maxLength={200} value={query} onChange={e => { setQuery(e.target.value); setPage(1); }} />
       <TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="试调" onZoom={setZoom} onFit={() => setZoom(1)} />
-      <U.Button icon="chart-gantt" aria-label={expanded ? '收起甘特' : '展开甘特'} aria-expanded={expanded} onClick={toggleExpanded}>{expanded ? '收起' : '展开'}</U.Button></div>
+      <U.Button icon="chart-gantt" aria-label={expanded ? '收起甘特' : '展开甘特'} aria-expanded={expanded} onClick={toggleExpanded}>{expanded ? '收起' : '展开'}</U.Button>
+      {onToggleDetails && <U.Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="trial-gantt-detail" onClick={onToggleDetails}>{detailsOpen ? '收起详情' : '详情'}</U.Button>}</div>
       <div className="tt-board" ref={board} onScroll={() => { setHover(null); measure(); }}><div className="tt-timeline" style={{ width: zoom === 1 ? '100%' : zoom * 100 + '%' }}>
         <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks" ref={axisHost}><window.GanttPresentationUI.Axis axis={axis} width={chart.width} /></div></div>
         {visible.map((r, i) => <React.Fragment key={r.t.task_ref + ':' + r.ghost}>{(i === 0 || visible[i - 1].group !== r.group) && <div className="tt-group">{view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未填写') : name(r.group)}</div>}
@@ -101,8 +101,8 @@
               {baseline && (view === 'batch' || r.ghost || r.t.original[key] === r.group) && (window.PointContract.isPoint(r.t) ? pointMarker(r.t, true) : <span className="tt-baseline" data-baseline-ref={r.t.task_ref} role="img"
                 style={position(r.t.original)} aria-label={'原安排 ' + taskLabel(r.t) + '，' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} title={'原安排 ' + taskLabel(r.t) + '\n' + U.timeLabel(r.t.original.start) + ' 至 ' + U.timeLabel(r.t.original.end)} />)}</div></div></React.Fragment>)}
         {!visible.length && <div className="tt-empty">当前显示范围没有匹配工序</div>}</div></div>
-      <div className="tt-heading"><div className="tt-legend"><span><i />试调安排</span>{baseline && <span><i className="baseline" />原试调基础</span>}<span><i className="conflict" />约束问题</span><span><i className="locked" />已锁定</span></div>
-        <span className="tt-muted">匹配 {filtered.length} / 完整 {data.task_count} 道 · {zoom}×</span></div>
+      <div className="tt-heading"><div className="tt-legend"><span><i />试调安排</span>{baseline && <span><i className="baseline" />原安排</span>}<span><i className="conflict" />约束问题</span><span><i className="locked" />已锁定</span></div>
+        <span className="tt-muted">{filtered.length === data.task_count ? '已安排 ' + data.task_count + ' 道工序' : '显示 ' + filtered.length + ' / ' + data.task_count + ' 道工序'}</span></div>
       <U.Pager page={{ number: current, size: 30, total: rows.length }} label="甘特" onPage={setPage} />
       {hover && <div role="tooltip" className="tt-point-tooltip" style={{ left: Math.max(8, Math.min(innerWidth - 335, hover.x + 12)), top: Math.max(8, Math.min(innerHeight - 160, hover.y + 14)) }}>{hover.title}</div>}
     </section>;

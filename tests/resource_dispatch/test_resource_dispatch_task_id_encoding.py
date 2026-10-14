@@ -1,18 +1,32 @@
-"""回归测试：资源派工任务 id 的哈希契约——非法 Unicode 触发 UnicodeEncodeError；内部 schedule_id/op_id 等隐藏身份不泄漏进公开 payload 与可读前缀；任务 id 在不同可见区间、operator/machine 视图间稳定，但能按资源对区分同工序同时段行；可读前缀剔除分隔符并支撑依赖链。"""
+"""资源派工任务编号来自完整计划；公开编号隐藏内部定位键，并在范围、资源视图和依赖链中保持一致。"""
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
-from core.services.scheduler.dispatch_task_ids import row_identity
+from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.common.plan_query import SchedulePlanQueryService
+from core.services.common.plan_task_identity import assign_task_ids, row_identity
 from core.services.scheduler.resource_dispatch.range import resolve_dispatch_range
 from core.services.scheduler.resource_dispatch.rows import build_dispatch_detail_rows, build_dispatch_tasks
 from core.services.scheduler.resource_dispatch.support import build_single_scope_payload, build_team_scope_payload
+from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
+from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+from tests.operation_execution.operation_execution_state_revision_support import _connect, _seed_plan
+from tests.workbench.plan_catalog_support import candidate, selection
+
+_PLAN_IDENTITY = {"version": 1, "effective_plan_role": "adopted", "source_table": "schedule",
+                  "scenario_id": None, "plan_ref": None}
 
 
-def test_resource_dispatch_task_id_rejects_invalid_unicode_in_hash_source() -> None:
+def _full_plan_rows(rows):
+    return assign_task_ids(rows, plan_identity=_PLAN_IDENTITY)
+
+
+def test_resource_dispatch_task_id_rejects_invalid_unicode_in_public_source() -> None:
     dispatch_range = resolve_dispatch_range(
         period_preset="custom",
         start_date="2026-05-04",
@@ -30,10 +44,10 @@ def test_resource_dispatch_task_id_rejects_invalid_unicode_in_hash_source() -> N
     }
 
     with pytest.raises(UnicodeEncodeError):
-        build_dispatch_tasks(scope_id="OP001", dr=dispatch_range, rows=[row])
+        build_dispatch_tasks(scope_id="OP001", dr=dispatch_range, rows=_full_plan_rows([row]))
 
 
-def test_resource_dispatch_task_id_keeps_hidden_identity_in_hash() -> None:
+def test_resource_dispatch_task_id_distinguishes_source_rows_without_exposing_internal_ids() -> None:
     dispatch_range = resolve_dispatch_range(
         period_preset="custom",
         start_date="2026-05-04",
@@ -53,7 +67,7 @@ def test_resource_dispatch_task_id_keeps_hidden_identity_in_hash() -> None:
     outcome = build_dispatch_tasks(
         scope_id="OP001",
         dr=dispatch_range,
-        rows=[dict(base_row, schedule_id=1), dict(base_row, schedule_id=2)],
+        rows=_full_plan_rows([dict(base_row, schedule_id=1), dict(base_row, schedule_id=2)]),
     )
     ids = [task["id"] for task in outcome.value]
 
@@ -77,6 +91,7 @@ def test_resource_dispatch_task_id_is_stable_across_visible_ranges() -> None:
         "machine_name": "设备1",
     }
 
+    source_rows = _full_plan_rows([row])
     ids = []
     visible_starts = []
     for start_date, end_date in (
@@ -89,7 +104,7 @@ def test_resource_dispatch_task_id_is_stable_across_visible_ranges() -> None:
             start_date=start_date,
             end_date=end_date,
         )
-        outcome = build_dispatch_tasks(scope_id="OP001", dr=dispatch_range, rows=[row])
+        outcome = build_dispatch_tasks(scope_id="OP001", dr=dispatch_range, rows=source_rows)
         assert len(outcome.value) == 1
         ids.append(outcome.value[0]["id"])
         visible_starts.append(outcome.value[0]["start"])
@@ -116,6 +131,7 @@ def test_resource_dispatch_task_id_is_stable_across_ranges_without_schedule_id()
         "counterpart_resource_id": "MC001",
     }
 
+    source_rows = _full_plan_rows([row])
     ids = []
     for start_date, end_date in (
         ("2026-05-04", "2026-05-04"),
@@ -127,7 +143,7 @@ def test_resource_dispatch_task_id_is_stable_across_ranges_without_schedule_id()
             start_date=start_date,
             end_date=end_date,
         )
-        outcome = build_dispatch_tasks(scope_id="OP001", dr=dispatch_range, rows=[row])
+        outcome = build_dispatch_tasks(scope_id="OP001", dr=dispatch_range, rows=source_rows)
         assert len(outcome.value) == 1
         ids.append(outcome.value[0]["id"])
 
@@ -154,18 +170,19 @@ def test_resource_dispatch_task_id_is_stable_across_operator_and_machine_views()
         "machine_id": "MC001",
     }
 
+    source_rows = _full_plan_rows([dict(base_row, operator_name="张三", machine_name="设备1")])
     operator_rows = build_dispatch_detail_rows(
         scope_type="operator",
         scope_id="OP001",
         scope_name="张三",
-        rows=[dict(base_row, operator_name="张三", machine_name="设备1")],
+        rows=source_rows,
         overdue_set=set(),
     ).value
     machine_rows = build_dispatch_detail_rows(
         scope_type="machine",
         scope_id="MC001",
         scope_name="设备1",
-        rows=[dict(base_row, operator_name="张三", machine_name="设备1")],
+        rows=source_rows,
         overdue_set=set(),
     ).value
     operator_task = build_dispatch_tasks(scope_id="OP001", dr=dispatch_range, rows=operator_rows).value[0]
@@ -189,7 +206,7 @@ def test_resource_dispatch_missing_op_code_keeps_internal_op_id_out_of_public_pa
         selected_scope_id="OP001",
         selected_scope_name="张三",
         dr=dispatch_range,
-        rows=[
+        rows=_full_plan_rows([
             {
                 "op_id": internal_op_id,
                 "op_code": "",
@@ -204,7 +221,7 @@ def test_resource_dispatch_missing_op_code_keeps_internal_op_id_out_of_public_pa
                 "machine_id": "MC001",
                 "machine_name": "设备1",
             }
-        ],
+        ]),
         overdue_set=set(),
     )
 
@@ -262,10 +279,10 @@ def test_resource_dispatch_summary_counts_same_op_time_different_resources_witho
         selected_scope_id="",
         selected_scope_name="",
         dr=dispatch_range,
-        rows=[
+        rows=_full_plan_rows([
             dict(base_row, operator_id="OP001", operator_name="张三", machine_id="MC001", machine_name="设备1"),
             dict(base_row, operator_id="OP002", operator_name="李四", machine_id="MC002", machine_name="设备2"),
-        ],
+        ]),
         overdue_set=set(),
     )
 
@@ -303,10 +320,10 @@ def test_resource_dispatch_team_summary_counts_same_op_time_different_cross_team
         selected_scope_name="一组",
         normalized_team_axis="operator",
         dr=dispatch_range,
-        rows=[
+        rows=_full_plan_rows([
             dict(base_row, operator_id="OP001", operator_name="张三", machine_id="MC001", machine_name="设备1"),
             dict(base_row, operator_id="OP002", operator_name="李四", machine_id="MC002", machine_name="设备2"),
-        ],
+        ]),
         overdue_set=set(),
     )
 
@@ -350,7 +367,7 @@ def test_resource_dispatch_team_summary_deduplicates_same_task_on_operator_and_m
         selected_scope_name="一组",
         normalized_team_axis="operator",
         dr=dispatch_range,
-        rows=[row],
+        rows=_full_plan_rows([row]),
         overdue_set=set(),
     )
 
@@ -371,7 +388,7 @@ def test_resource_dispatch_task_id_readable_prefix_is_dependency_safe() -> None:
     outcome = build_dispatch_tasks(
         scope_id="OP001",
         dr=dispatch_range,
-        rows=[
+        rows=_full_plan_rows([
             {
                 "schedule_id": 1,
                 "op_code": "OP,10 / 首件",
@@ -394,10 +411,100 @@ def test_resource_dispatch_task_id_readable_prefix_is_dependency_safe() -> None:
                 "current_resource_id": "OP001",
                 "counterpart_resource_id": "MC001",
             },
-        ],
+        ]),
     )
     first, second = outcome.value
 
     assert "," not in first["id"]
     assert "/" not in first["id"]
     assert second["dependencies"] == first["id"]
+
+
+def test_complete_plan_ids_survive_cold_reordering_filters_and_existing_references(tmp_path: Path) -> None:
+    base = {"version": 1, "op_code": "", "piece_id": "P1", "seq": 10,
+            "start_time": "2026-05-04 08:00:00", "end_time": "2026-05-04 10:00:00",
+            "operator_id": "OP001", "operator_name": "张三"}
+    permanent_ref = "a" * 48
+    full_source = [
+        dict(base, schedule_id=991, op_id=999991, batch_id="B001", machine_id="MC001"),
+        dict(base, schedule_id=701, op_id=999701, batch_id="B002", machine_id="MC002",
+             task_id="task_original_issued", task_ref="b" * 48),
+        dict(base, schedule_id=801, op_id=999801, batch_id="B003", machine_id="MC002",
+             public_task_id="task_original_public"),
+        dict(base, schedule_id=901, op_id=999901, batch_id="B004", machine_id="MC001", task_ref=permanent_ref),
+    ]
+    assigned = _full_plan_rows(full_source)
+    expected = {row["schedule_id"]: row["task_id"] for row in assigned}
+    cold = _full_plan_rows([dict(row) for row in reversed(full_source)])
+    assert {row["schedule_id"]: row["task_id"] for row in cold} == expected
+    assert assigned[1]["task_id"] == "task_original_issued"
+    assert assigned[1]["task_ref"] == full_source[1]["task_ref"]
+    assert assigned[2]["task_id"] == full_source[2]["public_task_id"]
+    assert assigned[3]["task_id"] == "task_" + permanent_ref
+    assert assigned[3]["task_ref"] == permanent_ref
+    assert "task_id" not in full_source[0]
+
+    class CompletePlanRepository:
+        def __init__(self, rows):
+            self.rows, self.full_reads = rows, 0
+
+        def list_detail_rows_all(self, **locator):
+            assert locator == {"version": 1, "source_table": "schedule", "candidate_id": None, "scenario_id": None}
+            self.full_reads += 1
+            return [dict(row) for row in self.rows]
+
+        def list_dispatch_rows(self, **query):
+            assert query["scope_type"] == "machine"
+            return [dict(row) for row in self.rows if row["machine_id"] == query["scope_id"]]
+
+    dr = resolve_dispatch_range(period_preset="custom", start_date="2026-05-04", end_date="2026-05-04")
+    for source_rows in (full_source, [dict(row) for row in reversed(full_source)]):
+        repo = CompletePlanRepository(source_rows)
+        query = SchedulePlanQueryService(None, repo=repo)
+        selected = query.list_plan_dispatch_rows_for_resolution(
+            version=1, source_table="schedule", candidate_id=None, start_time=dr.start_time, end_time=dr.end_time,
+            scope_type="machine", scope_id="MC001")
+        assert {row["schedule_id"]: row["task_id"] for row in selected} == {
+            key: expected[key] for key in (991, 901)}
+        detail_rows = build_dispatch_detail_rows(
+            scope_type="machine", scope_id="MC001", scope_name="设备1", rows=selected, overdue_set=set()).value
+        rendered = build_dispatch_tasks(scope_id="MC001", dr=dr, rows=detail_rows).value
+        assert {row["id"] for row in rendered} == {expected[991], expected[901]}
+        assert query.task_id_for_row(selected[0], version=1, source_table="schedule") == expected[selected[0]["schedule_id"]]
+        assert repo.full_reads == 1
+
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        candidate(conn, 1, "adopted", source="schedule")
+        shared = candidate(conn, 1, "baseline_best", op_id=10)
+        selection(conn, 1, "critical_best", shared, source="candidate_rows")
+        conn.commit()
+        scope = {"version": 1, "source_table": "candidate_rows", "candidate_id": shared}
+        source_rows = SchedulePlanQueryRepository(conn).list_detail_rows_all(**scope)
+        references = WorkbenchPlanIdentityRepository(conn)
+        roles = ("baseline_best", "critical_best")
+        plans = {role: references.get_plan_ref(WorkbenchPlanLocator(1, role)) for role in roles}
+        expected_ids = {
+            role: {row_id: "task_" + task_ref for row_id, task_ref in
+                   references.get_task_refs(plans[role], source_rows).items()} for role in roles}
+        assert plans[roles[0]] != plans[roles[1]]
+        assert expected_ids[roles[0]] != expected_ids[roles[1]]
+        modern_query = SchedulePlanQueryService(conn)
+        for role in roles:
+            rows = modern_query.public_task_rows_for_resolution(**scope, effective_plan_role=role)
+            assert {row["schedule_id"]: row["task_id"] for row in rows} == expected_ids[role]
+        with pytest.raises(ValueError, match="多个角色"):
+            modern_query.public_task_rows_for_resolution(**scope)
+        for role in roles:
+            rows = modern_query.public_task_rows_for_resolution(**scope, plan_ref=plans[role])
+            assert {row["schedule_id"]: row["task_id"] for row in rows} == expected_ids[role]
+            assert (modern_query.task_id_for_row(source_rows[0], **scope, plan_ref=plans[role])
+                    == expected_ids[role][source_rows[0]["schedule_id"]])
+            rows = modern_query.list_plan_detail_rows_all(version=1, role=role)
+            assert {row["schedule_id"]: row["task_id"] for row in rows} == expected_ids[role]
+        with pytest.raises(ValueError, match="角色"):
+            modern_query.public_task_rows_for_resolution(
+                **scope, effective_plan_role="critical_best", plan_ref=plans["baseline_best"])
+    finally:
+        conn.close()

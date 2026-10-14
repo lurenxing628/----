@@ -1,6 +1,6 @@
 """Render ledger reports and preserved events without reinterpreting completion."""
 
-from .review_values import local_time
+from core.services.workbench.facts.execution_values import local_time
 
 EVENT_LABELS = {"start": "开工", "finish": "整道完工", "pause": "暂停", "resume": "恢复", "exception": "异常"}
 # 与前端 WorkbenchTerms.legacy_field_records 同一个词：历史系统留下的现场记录，不是逐次报工。

@@ -41,7 +41,7 @@ from .workbench_run_schema import workbench_run_contract_issues, workbench_run_o
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
-CURRENT_SCHEMA_VERSION = 39
+CURRENT_SCHEMA_VERSION = 40
 
 
 class MigrationContractError(RuntimeError):
@@ -271,21 +271,21 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
         if not ok:
             issues.append(label)
     issues.extend(operation_execution_event_contract_issues(conn, structure=structure))
-    issues.extend(workbench_metadata_contract_issues(conn, structure=structure))
+    issues.extend(workbench_metadata_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(workbench_resource_contract_issues(conn, structure=structure))
     issues.extend(workbench_process_contract_issues(conn, structure=structure))
-    issues.extend(workbench_process_workflow_contract_issues(conn, structure=structure))
+    issues.extend(workbench_process_workflow_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(execution_ledger_contract_issues(conn, structure=structure))
-    issues.extend(workbench_run_contract_issues(conn, structure=structure))
-    issues.extend(template_lineage_contract_issues(conn, structure=structure))
-    issues.extend(workbench_trial_contract_issues(conn, structure=structure))
+    issues.extend(workbench_run_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(template_lineage_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(workbench_trial_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(lineage_lookup_contract_issues(conn, structure=structure))
     issues.extend(calibration_adoption_contract_issues(conn, structure=structure))
-    issues.extend(workbench_dashboard_contract_issues(conn, structure=structure))
+    issues.extend(workbench_dashboard_contract_issues(conn, structure=structure, allow_legacy=False))
     # This contract already validates complete plan identities and their clock.
     issues.extend(plan_identity_write_guard_contract_issues(conn, structure=structure))
     issues.extend(workbench_outsourcing_contract_issues(conn, structure=structure))
-    issues.extend(dashboard_external_contract_issues(conn, structure=structure))
+    issues.extend(dashboard_external_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(workbench_outsourcing_source_contract_issues(conn, structure=structure))
     issues.extend(execution_void_contract_issues(conn, structure=structure))
     issues.extend(batch_external_context_contract_issues(conn, structure=structure))

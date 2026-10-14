@@ -1,0 +1,62 @@
+feature: decision-optimization-process
+steps:
+- id: capture-and-sample
+  description: 共同记录点真实计数阶段与首尾完整性等宽采样
+  status: done
+- id: persist-and-project
+  description: 原完成事务新过程字段永久复用来源及新旧共同投影
+  status: done
+- id: read-and-export
+  description: 独立过程anchor与共享kind分页快照及四grain同源导出
+  status: done
+- id: process-ui
+  description: 独立过程页签按需读取真实阶梯与旧离散记录数值表完整代表尝试及原比较返回
+  status: done
+- id: verification-docs
+  description: 相关检查一次必要隔离运行浏览器原文件保全与材料同步
+  status: done
+- id: prototype-comparison
+  description: 全部候选三身份当前风险与工序差异单一全宽详情和选中上下文
+  status: done
+- id: prototype-resource-periods
+  description: 共同四粒度真实班段夜休冲突语义小时显示窗与导出同源
+  status: done
+- id: prototype-process-tab
+  description: 独立过程图真实阶梯同流指标完整尝试采样点与原明细
+  status: done
+- id: prototype-run-result
+  description: 完成直接工作台在途失败归档范围业务批次与真实时间精度
+  status: done
+- id: prototype-integration-verification
+  description: 公共控件浏览器必要日常组合构建原件保全及本阶段交接
+  status: done
+checks:
+- id: C01
+  description: 200点上限首末首次应排完整后半改善与采样覆盖
+  status: passed
+- id: C02
+  description: 真实计数阶段完整性分段目标原顺序单位及未知
+  status: passed
+- id: C03
+  description: 完成事务失败跳过复用自己的投入与来源身份
+  status: passed
+- id: C04
+  description: 旧代表记录缺首尾离散真实条数及未知计数
+  status: passed
+- id: C05
+  description: 独立anchor共享20/50kind排序快照与完整上下文
+  status: passed
+- id: C06
+  description: 图表数值等价取消成员切换甘特返回；候选四卡首屏与1392／1920／窄屏／原生125和150缩放、6和8候选及零到两个身份胶囊对齐
+  status: passed
+- id: C07
+  description: 原过程和有效数值导出复用；新增工序状态资源时段过滤原件同源
+  status: passed
+- id: C08
+  description: 同代码状态Python3.8相关日常Chrome109离线组合保全与交接
+  status: passed
+
+operator_ui_repair:
+  status: passed
+  scope: 2026-10-14整体体验返修已通过母验收，并入第8；原已通过检查按未变职责复用，当前实例与入口沿第8记录
+  acceptance: passed

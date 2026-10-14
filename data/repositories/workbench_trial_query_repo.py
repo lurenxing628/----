@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.schema_probe import table_columns, table_names
+from core.infrastructure.schema_probe import table_names
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 
 from .base_repo import BaseRepository
+from .sqlite_rows import raw_projection
 
 BOOKKEEPING_TABLES = frozenset(TRIAL_TABLES + RUN_TABLES) | {
     "WorkbenchCommandReceipts", "OperationLogs", "SystemJobState", "sqlite_sequence"}
@@ -36,11 +37,8 @@ class WorkbenchTrialQueryRepository(BaseRepository):
 
     def _read_table(self, name: str) -> Tuple[List[str], List[Dict[str, Any]]]:
         quoted = _quote(name)
-        names = table_columns(self.conn, name)
-        if not names:
-            raise ValueError("Required raw SQLite table has no columns: " + name)
-        columns = ["+" + _quote(column) + ' AS "trial_raw_' + str(index) + '"' for index, column in enumerate(names)]
-        cursor = self.execute("SELECT " + ",".join(columns) + " FROM " + quoted + " ORDER BY rowid")
+        names, columns = raw_projection(self.conn, name)
+        cursor = self.execute("SELECT " + columns + " FROM " + quoted + " ORDER BY rowid")
         return names, [dict(zip(names, tuple(row))) for row in cursor]
 
     def read_whole_table(self, name: str) -> Tuple[List[str], List[Dict[str, Any]]]:

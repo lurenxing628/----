@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Sequence
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_preflight import local_date, normalize_preflight_input
 from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.run.operation_effort import build_operation_efforts
 from core.services.scheduler.run.schedule_execution_reservations import (
     ExecutionResourceCalendar,
     build_execution_resource_reservations,
@@ -26,6 +27,7 @@ from core.services.workbench.facts.run_input_rows import (
 )
 
 from .input_config import candidate_config, configuration_snapshot, hold_window
+from .input_effort import saved_seed_efforts
 from .input_execution import execution_guards
 from .input_external import external_execution_cycles, prime_template_cache
 from .input_materials import bind_material_releases
@@ -112,6 +114,12 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     )
     frozen, seeds, warnings, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime
     missing_ids = _missing_internal_resources(mutable)
+    efforts = build_operation_efforts(
+        operations=operations, batches=batches, algo_operations=algo_outcome.value, operations_to_schedule=to_schedule,
+        seed_results=seeds, execution_facts=execution_facts,
+        execution_projections={op.id: projections[facts.operation_refs[op.id]] for op in operations},
+        saved_efforts=saved_seed_efforts(svc, facts, seeds, execution_facts),
+    )
     return CandidateRunInput(
         normalized_batch_ids=[row["batch_id"] for row in raw_batches], start_dt_norm=start,
         end_date_norm=local_date(settings["end_date"]), created_by_text="system", run_label="排产计算",
@@ -129,6 +137,7 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
         algo_ops_to_schedule=to_schedule, downtime_meta=downtime_meta, resource_pool_meta=pool_meta,
         downtime_map=downtime, resource_pool=pool, optimizer_seed_version=seed_version,
         normalized_input=settings, dispositions=dispositions, facts_fingerprint=fingerprint,
+        operation_efforts=efforts,
     )
 
 

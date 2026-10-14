@@ -1,8 +1,7 @@
 (function () {
   'use strict';
   const { Button, Icon, Modal } = window.ResourceControls;
-  // Minute precision; seconds stay visible when they are not :00. The check is inline so the display-format contract can evaluate this declarator alone.
-  const timeLabel = v => v ? window.WorkbenchFormat.dateTime(v, { seconds: /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(v), fractions: true }) : '未记录';
+  const timeLabel = v => v ? window.WorkbenchFormat.compactDateTime(v) : '未记录';
   const number = v => v === null || v === undefined ? '暂无数据' : typeof v === 'number' ? window.WorkbenchFormat.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
   const percent = v => v === null || v === undefined ? '暂无数据' : window.WorkbenchFormat.percent(v, 2);
   const hours = v => v === null || v === undefined ? '暂无数据' : window.WorkbenchFormat.hours(v, { digits: 2, trim: true });
@@ -37,7 +36,7 @@
     // Older saved snapshots include an adoption capability note as a blocker.
     // Adoption has its own preview/guard; this note is not a task constraint.
     const constraints = rows.filter(row => row.code !== 'scenario_adoption_not_connected');
-    if (!constraints.length) return <p className="tt-muted">未发现约束问题。</p>;
+    if (!constraints.length) return null;
     return <Table rows={constraints} size={10} label="约束问题" columns={[
       ['级别', r => r.severity === 'warning' ? '提示' : '冲突'], ['问题', r => r.message],
       ['关联', r => r.task_ref && onSelect ? <Button icon="arrow-right" aria-label="定位问题工序" onClick={() => onSelect(r.task_ref)}>工序</Button> : '整体']]} />;
@@ -45,10 +44,10 @@
   // 一个「导出」按钮打开弹窗，弹窗里列出全部可下载格式；和计划、候选、现场实际甘特的导出走法一致。
   function Download({ data }) {
     const [error, setError] = React.useState(null), [open, setOpen] = React.useState(false), [notice, setNotice] = React.useState('');
-    function save(raw = false) {
+    function save(section = 'csv') {
       let url, a;
       try {
-        const output = raw ? window.TrialExport.raw(data) : window.TrialExport.csv(data);
+        const output = window.TrialExport[section](data);
         const blob = new Blob([output.text], { type: output.mime });
         url = URL.createObjectURL(blob); a = document.createElement('a'); a.href = url; a.download = output.filename;
         document.body.appendChild(a); a.click(); setError(null); setNotice(window.WorkbenchTerms.download_started(output.filename)); setOpen(false);
@@ -57,9 +56,11 @@
     return <><span className="tt-tools"><Button transfer="export" onClick={() => { setError(null); setNotice(''); setOpen(true); }}>导出</Button>
       {notice && <span role="status" className="tt-muted">{notice}</span>}</span>
       {open && <Modal title="导出试调方案" icon="download" onClose={() => setOpen(false)} footer={<><Button onClick={() => setOpen(false)}>取消</Button>
-        <Button transfer="export" onClick={() => save(false)}>下载 CSV（方案对比）</Button><Button transfer="export" className="btn primary" onClick={() => save(true)}>下载 JSON（原始数据）</Button></>}>
-        <div className="modal-b trial-modal-body"><p>导出当前读取的完整试调方案。空白表示不适用；提前量为负数表示延后。</p>
-          <p>方案对比 CSV：逐批次的交付对比。文本列带一个前置单引号，用程序读取时按 CSV 格式解析，再移除文本列开头的一个单引号。</p>
+        <Button transfer="export" onClick={() => save('csv')}>下载 CSV（方案对比）</Button><Button transfer="export" onClick={() => save('preparation')}>下载 CSV（准备需求）</Button>
+        <Button transfer="export" onClick={() => save('changeovers')}>下载 CSV（工种切换）</Button><Button transfer="export" className="btn primary" onClick={() => save('raw')}>下载 JSON（原始数据）</Button></>}>
+        <div className="modal-b trial-modal-body"><p>导出当前读取的完整试调方案。空白表示该项没有值；提前量为负数表示延后。</p>
+          <p>方案对比 CSV：逐批次的交付对比。普通文字保留原样，空值留空。</p>
+          <p>准备需求 CSV：逐工序原需求与执行目标、准备和加工标准工时。工种切换 CSV：完整汇总与前后工序事件。</p>
           <p>原始数据 JSON：包含任务、资源、班表、报工和调整记录。</p><ErrorBox error={error} /></div></Modal>}</>;
   }
   window.TrialControls = { Button, Icon, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, percent, hours, statusLabel, runStatusLabel, candidateStatusLabel, sourceLabel };

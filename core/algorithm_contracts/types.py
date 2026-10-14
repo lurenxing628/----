@@ -23,6 +23,7 @@ class ScheduleResult:
     op_type_name: Optional[str] = None
     seed_source: Optional[str] = None
     state_revision: Optional[str] = None
+    op_type_id: Optional[str] = None
 
 
 @dataclass

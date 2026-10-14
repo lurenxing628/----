@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from .process_evidence import sample_legacy_trace
+
 
 def score_tuple(score: Any) -> Tuple[float, ...]:
     if not isinstance(score, (list, tuple)) or not score:
@@ -135,5 +137,5 @@ class OptimizerSearchState:
     def compact_attempts(self, *, limit: int = 12) -> List[Dict[str, Any]]:
         return compact_attempts(self.attempts, limit=limit)
 
-    def compact_trace(self, *, limit: int = 200) -> List[Dict[str, Any]]:
-        return list(self.improvement_trace or [])[:limit]
+    def compact_trace(self, *, limit: int = 200, elapsed_ms: Optional[int] = None) -> List[Dict[str, Any]]:
+        return sample_legacy_trace(list(self.improvement_trace or []), elapsed_ms=elapsed_ms, limit=limit)

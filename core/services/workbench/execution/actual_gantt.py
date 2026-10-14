@@ -1,9 +1,12 @@
 """Read-only plan/execution composition; execution arithmetic belongs to the ledger."""
 
 from datetime import datetime, timedelta
+from math import fsum
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.workbench.facts.execution_values import execution_deviation
 from core.services.workbench.plan.process_order import project_process_order
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 
@@ -33,7 +36,27 @@ def bind_axis_time(data, as_of, snapshot_ref=None):
     data["axis_span"] = {"start": min(data["axis_span"]["start"], start), "end": max(data["axis_span"]["end"], end)}
     if snapshot_ref is not None:
         data["critical_chain"]["snapshot_ref"] = snapshot_ref
-    return data
+    for item in data["items"]:
+        item["deviation"] = execution_deviation(item["task"]["end"], item["execution"], as_of)
+    data["execution_summary"] = _execution_summary(data)
+    return check_actual_size(data)
+
+
+def _execution_summary(data):
+    result = {"complete": None, "reported": None, "pending": None,
+              "average_finish_deviation_minutes": None, "known_finish_count": None,
+              "scope": "full_response_cohort"}
+    if data["availability"]["state"] != "available":
+        return result
+    items = data["items"]
+    complete = sum(item["deviation"]["complete"] for item in items)
+    pending = sum(item["execution"]["execution_state"] == "unreported" for item in items)
+    values = [item["deviation"]["finish_deviation_minutes"] for item in items
+              if item["deviation"]["finish_deviation_minutes"] is not None]
+    result.update(complete=complete, reported=len(items) - complete - pending, pending=pending,
+                  average_finish_deviation_minutes=round(fsum(values) / len(values), 2) if values else None,
+                  known_finish_count=len(values))
+    return result
 
 
 def _merge_resources(planned, actual):
@@ -123,16 +146,16 @@ class ActualGanttService:
                 "report_count": sum(len(item["execution"]["reports"]) for item in items) if projection else None,
                 "resources": resources, "calendar": planned["projections"]["calendar"],
                 "gantt_graph": gantt_graph,
-                "critical_chain": plan_chain(self.plans, planned, plan_state, {item["task"]["task_ref"] for item in items}),
+                "critical_chain": plan_chain(self.plans, planned, {item["task"]["task_ref"] for item in items}),
                 "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
                               "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
                               "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
         check_actual_size(data)
-        state = input_fingerprint({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
+        state = content_text({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
                                    "data": data})
         if chain_target is not None:
             # The timeline token pins all plan/ledger facts; target identity also binds the engine evidence.
-            data["critical_chain"] = plan_chain(self.plans, planned, plan_state,
+            data["critical_chain"] = plan_chain(self.plans, planned,
                 {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target)
             check_actual_size(data)
         return data, state

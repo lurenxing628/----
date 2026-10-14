@@ -85,6 +85,7 @@ def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
         op_type_name=_optional_seed_text(item, "op_type_name"),
         seed_source=_optional_seed_text(item, "seed_source"),
         state_revision=_optional_seed_text(item, "state_revision"),
+        op_type_id=_optional_seed_text(item, "op_type_id"),
     )
     if "_external_group_metadata" in item:
         return with_seed_external_group_metadata(result, item["_external_group_metadata"])

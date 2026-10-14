@@ -1,6 +1,5 @@
 """Versioned file columns. Read-only columns are reference data, never written."""
 
-import hashlib
 
 from core.errors import ValidationError
 from core.models.workbench_action_values import FileDownload
@@ -228,7 +227,7 @@ def import_request(kind, content, file_format, mode, scope):
         raise ValidationError("导入按文件编号操作，不接受搜索或状态筛选。", field="scope")
     if kind == "op_type" and scope["category"] not in ("internal", "external"):
         raise ValidationError("工种导入必须明确自制或外协归属。", field="category")
-    return {"file_sha256": hashlib.sha256(content).hexdigest(), "format": file_format, "mode": mode, "scope": scope}
+    return {"format": file_format, "mode": mode, "scope": scope}
 
 
 ResourceFileDownload = FileDownload

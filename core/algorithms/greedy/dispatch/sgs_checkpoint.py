@@ -12,7 +12,6 @@ they never write times for mutable operations, and the adopted candidate is stil
 """
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
@@ -39,7 +38,7 @@ class DecodeCheckpoint:
     position: int
     prefix_op_ids: Tuple[int, ...]
     picked_op_ids: Tuple[int, ...]
-    signature: str
+    signature: Tuple[Any, ...]
     state: ScheduleRunState
     next_idx: Dict[str, int]
     graph_progress: Dict[str, Any]
@@ -68,14 +67,14 @@ class DecodeCheckpointRequest:
             _invalid("解码预算检查必须是函数。", reason="decode_checkpoint_bad_budget_check")
         self.positions: FrozenSet[int] = frozenset(cleaned)
         self.sink = sink
-        self.signature: Optional[str] = None
+        self.signature: Optional[Tuple[Any, ...]] = None
         self.warnings: Tuple[str, ...] = ()
         self.captured = 0
         self.tail_reuse = tail_reuse
         self.check_budget = check_budget
 
-    def arm(self, *, signature: str, warnings: Sequence[str]) -> None:
-        self.signature = str(signature)
+    def arm(self, *, signature: Tuple[Any, ...], warnings: Sequence[str]) -> None:
+        self.signature = signature
         self.warnings = tuple(str(item) for item in warnings)
         if self.tail_reuse is not None:
             self.tail_reuse.arm(self.signature)
@@ -96,6 +95,7 @@ class CheckpointPlan:
         if request.signature is None:
             _invalid("解码断点请求尚未绑定本次解码的输入签名。", reason="decode_checkpoint_not_armed")
         self.request = request
+        self.signature = request.signature
         self.order = graph_key_order(graph_state)
         self.position_of = {op_id: index for index, op_id in enumerate(self.order)}
         self.picked: List[int] = []
@@ -115,7 +115,7 @@ class CheckpointPlan:
             position=int(position),
             prefix_op_ids=tuple(self.order[: self.furthest + 1]),
             picked_op_ids=tuple(self.picked),
-            signature=str(self.request.signature),
+            signature=self.signature,
             state=state.clone(),
             next_idx=dict(next_idx),
             graph_progress=snapshot_graph_progress(graph_state),
@@ -167,8 +167,8 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
 def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any], batch_order: Dict[str, int],
                            params: Any, machine_downtimes: Any, resource_pool: Any, seed_results: Any,
                            graph_ready_context: Any, readiness_gate_enabled: bool, strict_mode: bool,
-                           calendar_signature: Any, warnings: Sequence[str] = ()) -> str:
-    """Digest of every decode input except the graph priority keys (the only thing a reuse may change)."""
+                           calendar_signature: Any, warnings: Sequence[str] = ()) -> Tuple[Any, ...]:
+    """Frozen decode inputs, except the graph priority keys a checkpoint reuse may change."""
     parts: List[Any] = [
         tuple(input_record(op, field="operations") for op in operations),
         tuple((key, input_record(batch, field="batches")) for key, batch in batches.items()),
@@ -180,9 +180,10 @@ def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any]
         input_value(resource_pool, field="resource_pool"),
         tuple(_seed_signature(result) for result in list(seed_results or [])),
         _context_signature(graph_ready_context),
-        bool(readiness_gate_enabled), bool(strict_mode), calendar_signature, tuple(warnings),
+        bool(readiness_gate_enabled), bool(strict_mode),
+        input_value(calendar_signature, field="calendar_signature"), tuple(warnings),
     ]
-    return hashlib.sha1(repr(parts).encode("utf-8")).hexdigest()
+    return tuple(parts)
 
 
 def _seed_signature(result: Any) -> Any:
@@ -191,7 +192,7 @@ def _seed_signature(result: Any) -> Any:
     from ..seed import seed_external_group_key
     fields = tuple(getattr(result, name, None) for name in (
         "op_id", "op_code", "batch_id", "seq", "machine_id", "operator_id", "start_time", "end_time",
-        "source", "op_type_name", "seed_source", "state_revision"))
+        "source", "op_type_name", "op_type_id", "seed_source", "state_revision"))
     return input_value((fields, seed_external_group_key(result), point_seed_valid(result)), field="seed_results")
 
 
@@ -201,20 +202,19 @@ def _context_signature(context: Any) -> Any:
     return tuple((key, input_value(context.get(key), field="graph_ready_context." + key)) for key in _STATIC_CONTEXT_KEYS)
 
 
-def decode_output_digest(results: Sequence[Any], summary: Any) -> str:
-    """Content digest of a decode outcome; identical digests are the equivalence proof for a resumed decode."""
+def decode_output_contents(results: Sequence[Any], summary: Any) -> Tuple[Any, ...]:
+    """Immutable native output values for resumed/full decode comparisons."""
     rows = tuple(
-        tuple(repr(getattr(row, name, None)) for name in (
+        tuple(getattr(row, name, None) for name in (
             "op_id", "op_code", "batch_id", "seq", "machine_id", "operator_id", "start_time", "end_time",
-            "source", "op_type_name", "seed_source"))
+            "source", "op_type_name", "op_type_id", "seed_source"))
         for row in results
     )
     summary_part = (
-        bool(summary.success), int(summary.total_ops), int(summary.scheduled_ops), int(summary.failed_ops),
-        tuple(str(item) for item in summary.warnings), tuple(str(item) for item in summary.errors),
-        repr(list(getattr(summary, "failure_details", []) or [])),
+        summary.success, summary.total_ops, summary.scheduled_ops, summary.failed_ops,
+        summary.warnings, summary.errors, getattr(summary, "failure_details", None),
     )
-    return hashlib.sha1(repr((rows, summary_part)).encode("utf-8")).hexdigest()
+    return input_value((rows, summary_part), field="decode_output")
 
 
 __all__ = [
@@ -223,7 +223,7 @@ __all__ = [
     "DecodeCheckpoint",
     "DecodeCheckpointRequest",
     "decode_input_signature",
-    "decode_output_digest",
+    "decode_output_contents",
     "graph_key_order",
     "plan_decode_checkpoints",
     "resume_graph_progress",

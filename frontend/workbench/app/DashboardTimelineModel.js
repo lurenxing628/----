@@ -15,11 +15,11 @@
   }
   function title(task, risk) {
     return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label,
-      G.timeLabel(task.start) + ' 至 ' + G.timeLabel(task.end), '计划跨度 ' + window.WorkbenchFormat.hours(task.span_hours),
+      window.WorkbenchFormat.compactRange(task.start, task.end), '安排时长 ' + window.WorkbenchFormat.hours(task.span_hours),
       task.start === task.end ? '零工时工序，不占设备人员' : null,
       '设备：' + (task.machine_label || '名称未填写'),
       risk ? '批次交付：' + window.WorkbenchTerms.delivery_risks[risk] : null].filter(Boolean).join('\n');
   }
   window.DashboardTimelineModel = { layout, title, instant: G.instant, wire: G.wire,
-    visibleRows: G.visibleRows, visibleItems: G.visibleItems, number: (value, options) => window.WorkbenchFormat.number(value, options), timeLabel: G.timeLabel };
+    visibleRows: G.visibleRows, visibleItems: G.visibleItems, number: (value, options) => window.WorkbenchFormat.number(value, options), timeLabel: value => window.WorkbenchFormat.compactDateTime(value) };
 })();

@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
@@ -152,8 +153,9 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
     assert comparison["metrics"]["changed_operation_count"]["value"] == 1
     assert comparison["metrics"]["machine_change_count"]["value"] == 0
     if adoption_source == "candidate":
+        frozen = deepcopy(comparison)
         audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=1").fetchone()[0])
-        audit["proof"]["candidate_hash"] = "invalid-existing-proof"
+        audit["proof"]["candidate_ref"] = changed
         case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=1", (json.dumps(audit),))
         case.conn.commit()
         baseline, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(changed))
@@ -161,8 +163,11 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
         gaps = row["baseline_segments"][0]["data_gaps"]
         assert {item["code"] for item in gaps if item["field"] in ("source", "supplier")} == {"adoption_snapshot_invalid"}
         comparison, _ = read_candidate_analysis(case.conn, changed)
+        assert comparison == frozen  # Current comparison keeps the original admission's audit.
+        admitted_bad = run("supplier-bad-proof-run-0004")
+        comparison, _ = read_candidate_analysis(case.conn, admitted_bad)
         issue = next(item for item in comparison["operations"]["issues"] if item["operation_ref"] == row["operation_ref"])
-        assert issue["reasons"] == [{"code": "adoption_snapshot_invalid", "message": "采用记录与归档数据不一致，无法对比。"}]
+        assert {reason["code"] for reason in issue["reasons"]} == {"adoption_snapshot_invalid"}
 
 
 def test_archived_resource_identity_survives_missing_display_directory(candidate_case):

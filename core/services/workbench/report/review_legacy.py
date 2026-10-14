@@ -9,8 +9,7 @@ from core.models.operation_execution_labels import (
     severity_label,
     suggest_reschedule_label,
 )
-
-from .review_values import local_time, minutes
+from core.services.workbench.facts.execution_values import local_time, minutes
 
 
 class LegacyReview(TypedDict):

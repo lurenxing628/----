@@ -566,7 +566,7 @@ function Invoke-PortablePackageBuild {
     $output = "dist\APS_Portable_Win7_x64.zip"
     python scripts/portable_release.py archive "$distDir" "$output"
     if ($LASTEXITCODE -ne 0) { throw "Portable archive validation failed." }
-    Write-Host ("DONE: " + $output + " + .sha256")
+    Write-Host ("DONE: " + $output)
 }
 
 function Invoke-ChromeRuntimeBuild([string]$iscc) {

@@ -44,7 +44,7 @@
           onClick={() => { if (query.error) { history.replaceState({ ...history.state, trialAdoptionHistory: null }, '', location.href); } update({ page: 1, status: query.status || 'all', size: query.size || 20 }); }} />
       </div><U.ErrorBox error={query.error || error || read.error} />
       {read.busy && <p role="status" className="tah-meta">正在读取这个试调方案的采用记录和当前正式计划…</p>}
-      {d && <><p className="tah-meta">{d.source.name} · 本试调方案共 {d.total_adoptions} 次采用 · 核对时间 {U.timeLabel(result.meta.as_of)}</p>
+      {d && <><div className="tah-meta">共 {d.total_adoptions} 次采用 <details className="wb-ref"><summary>本次查询详情</summary><p>刷新时间：{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</p><window.WorkbenchReference entries={{ '试调方案编号': d.source.scenario_ref }} /></details></div>
         {!d.items.length && <p className="tt-empty" role="status">{d.total_adoptions ? '当前筛选没有采用记录。' : '这个试调方案还没有正式采用记录。'}</p>}
         <ol className="tah-list">{d.items.map(item => <li key={item.receipt_ref} data-adoption-receipt={item.receipt_ref}>
           <div className="tah-head"><strong>正式计划第 {item.committed_plan.version} 版</strong><span className={'tah-state tah-' + item.current_state}>{labels[item.current_state]}</span>

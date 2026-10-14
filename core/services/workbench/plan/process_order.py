@@ -3,13 +3,13 @@
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
+from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
 from core.services.workbench.facts.gantt_graph import build_gantt_graph, frozen_process_relations, unavailable_graph
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline_identity import _live_sources
-from .adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
 from .projection import check_payload_size, public_time, read_adopted_source, wire_positive_int64
 
 

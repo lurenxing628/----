@@ -1,7 +1,5 @@
 """Shared column contracts for the six resource-table views, not catalogs."""
 
-import re
-
 from core.models.workbench_command import WorkbenchCommandRejected
 
 TABLE_KINDS = ("material", "op_type", "machine", "operator", "supplier")
@@ -33,7 +31,7 @@ def normalize_column_filters(value, kind, category=None):
         values = condition["values"]
         if condition["mode"] not in ("include", "exclude") or type(values) is not list or len(values) > MAX_FACET_KEYS:
             raise WorkbenchCommandRejected("invalid_input", "列筛选方式不对，每列最多 50000 个值。", 400)
-        if any(type(key) is not str or re.fullmatch(r"[0-9a-f]{64}", key) is None for key in values) or len(set(values)) != len(values):
+        if any(type(key) is not str or not key for key in values) or len(set(values)) != len(values):
             raise WorkbenchCommandRejected("invalid_input", "筛选值不对或有重复，请重新选择筛选条件。", 400)
         result[column] = {"mode": condition["mode"], "values": sorted(values)}
     return {column: result[column] for column in sorted(result)}

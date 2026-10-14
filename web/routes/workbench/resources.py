@@ -4,7 +4,7 @@ import re
 
 from flask import current_app, g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
@@ -99,7 +99,7 @@ def resource_summary():
     reader = WorkbenchResourceQueryService(g.db, "op_type", current_app.logger)
     with reader.read_snapshot() as state:
         data = reader.summary_projection()
-        snapshot = bind_read_snapshot({"kind": "resource_summary"}, input_fingerprint({"resources": state, "summary": data}))
+        snapshot = bind_read_snapshot({"kind": "resource_summary"}, {"resources": state, "summary": data})
     return query_success(data, snapshot)
 
 

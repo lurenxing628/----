@@ -96,9 +96,12 @@
     return v.quantity === (proven ? e.target_quantity : null);
   }
   function operation(v, planned) {
-    check(shape(v, operationKeys.concat(planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason']))
+    check(shape(v, operationKeys.concat(planned ? ['row_ref', 'start', 'end', 'source', 'locked', 'machine', 'operator', 'supplier', ...(P.isPoint(v) ? P.fields : [])] : ['row_ref', 'status', 'reason']), ['operation_effort', 'process_type_ref', 'process_type_label'])
       && ref(v.operation_ref) && (v.batch_ref === null || ref(v.batch_ref)) && ['batch_label', 'part_label', 'process_label', 'due_date'].every(k => nullableText(v[k]))
-      && nullableNumber(v.sequence) && quantityContext(v));
+      && nullableNumber(v.sequence) && quantityContext(v)
+      && (v.process_type_ref === undefined || v.process_type_ref === null || ref(v.process_type_ref))
+      && (v.process_type_label === undefined || nullableText(v.process_type_label))
+      && (v.operation_effort === undefined || window.EffortProjectionContract.compact(v.operation_effort)));
     const e = v.execution_at_generation;
     check(e === null || shape(e, ['target_quantity', 'known_completed_quantity', 'remaining_quantity', 'execution_state', 'data_quality', 'target_basis'])
       && ['target_quantity', 'known_completed_quantity', 'remaining_quantity'].every(k => nullableNumber(e[k]))
@@ -128,18 +131,23 @@
       && ['actual_completion', 'actual_delivery', 'root_causes'].every(k => v.basis[k] === 'not_evaluated'));
     const rowKeys = ['batch_ref', 'batch_id', 'part_no', 'part_label', 'schedule_complete', 'operation_count', 'scheduled_operation_count',
       'unscheduled_operation_count', 'task_count', 'invalid_task_count', 'planned_finish', 'partial_planned_finish', 'risk', 'is_overdue',
-      'delay_hours', 'delay_days', 'due_date', 'delivery_deadline_exclusive', 'completeness', 'issues', 'quantity', 'last_operations'];
+      'delay_hours', 'delay_days', 'due_date', 'delivery_deadline_exclusive', 'due_state', 'due_issue', 'completion_state',
+      'deferred_operation_count', 'ordinary_unscheduled_operation_count', 'completeness', 'issues', 'priority', 'quantity', 'last_operations'];
     const tasks = new Map(data.tasks.map(row => [row.row_ref, row]));
     v.items.forEach(row => {
       check(shape(row, rowKeys) && ref(row.batch_ref) && text(row.batch_id) && row.batch_id.trim()
-        && ['part_no', 'part_label', 'due_date'].every(k => nullableText(row[k])) && nullableNumber(row.quantity)
-        && ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count'].every(k => count(row[k]))
+        && ['part_no', 'part_label', 'due_date', 'priority'].every(k => nullableText(row[k])) && nullableNumber(row.quantity)
+        && ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count',
+          'deferred_operation_count', 'ordinary_unscheduled_operation_count'].every(k => count(row[k]))
         && ['planned_finish', 'partial_planned_finish', 'delivery_deadline_exclusive'].every(k => row[k] === null || time(row[k]))
         && ['delay_hours', 'delay_days'].every(k => nullableNumber(row[k])) && typeof row.schedule_complete === 'boolean'
-        && ['overdue', 'on_time', 'unknown'].includes(row.risk) && ['complete', 'incomplete', 'unknown'].includes(row.completeness)
+        && ['overdue', 'on_time', 'unknown', 'not_applicable'].includes(row.risk) && ['complete', 'incomplete', 'unknown'].includes(row.completeness)
+        && ['specified', 'unspecified', 'invalid'].includes(row.due_state)
+        && (row.due_issue === null || ['due_date_missing', 'due_date_invalid'].includes(row.due_issue))
+        && ['complete', 'deferred', 'incomplete', 'unknown'].includes(row.completion_state)
         && (row.is_overdue === null || typeof row.is_overdue === 'boolean') && Array.isArray(row.issues) && row.issues.every(text)
         && Array.isArray(row.last_operations) && (row.schedule_complete ? row.planned_finish !== null && row.last_operations.length > 0 : row.planned_finish === null && row.last_operations.length === 0)
-        && (row.risk === 'unknown' ? row.is_overdue === null && row.delay_hours === null && row.delay_days === null
+        && (['unknown', 'not_applicable'].includes(row.risk) ? row.is_overdue === null && row.delay_hours === null && row.delay_days === null
           : row.schedule_complete && row.is_overdue === (row.risk === 'overdue') && row.delay_hours !== null && row.delay_days !== null)
         && (!query.batch_ref || row.batch_ref === query.batch_ref));
       row.last_operations.forEach(task => {
@@ -155,12 +163,13 @@
       });
       check(new Set(row.last_operations.map(t => t.row_ref)).size === row.last_operations.length);
     });
-    check(new Set(v.items.map(row => row.batch_ref)).size === v.items.length && shape(v.summary, ['overdue_count', 'unknown_count', 'batch_count', 'total_tardiness_hours'])
-      && v.summary.overdue_count === v.items.filter(row => row.risk === 'overdue').length && count(v.summary.unknown_count)
-      && v.summary.unknown_count === v.items.filter(row => row.risk === 'unknown').length + v.batch_count - v.items.length
-      && v.summary.batch_count === v.batch_count && nullableNumber(v.summary.total_tardiness_hours)
-      && v.summary.total_tardiness_hours === (v.summary.unknown_count || v.issues.length ? null : v.items.reduce((sum, row) => sum + row.delay_hours, 0))
-      && v.items_complete === (v.issues.length === 0));
+    const s = v.summary;
+    check(new Set(v.items.map(row => row.batch_ref)).size === v.items.length && object(s)
+      && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(s.state)
+      && ['batch_count', 'due_eligible_count', 'excluded_due_count', 'invalid_due_count', 'due_evaluation_count',
+        'known_due_count', 'unknown_due_count', 'unknown_count', 'known_overdue_count'].every(k => count(s[k]))
+      && ['overdue_count', 'total_tardiness_hours', 'known_tardiness_hours'].every(k => nullableNumber(s[k]))
+      && s.batch_count === v.batch_count && Array.isArray(s.known_batch_refs) && s.known_batch_refs.every(ref));
   }
   function workspace(v, candidateRef, query = {}, runRef) {
     const d = envelope(v), q = workspaceScope(candidateRef, query);

@@ -14,7 +14,17 @@ from core.services.workbench.facts.candidate_archive import load_adoption_candid
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import (
+    operation_labels,
+    project_validated_tasks,
+    tasks_projection,
+    tasks_projection_with_intervals,
+    validate_saved_tasks,
+)
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
+from core.services.workbench.facts.resource_projection import resource_cohort
+from core.services.workbench.run.decision_delivery import project_decision_delivery, project_saved_decision_delivery
+from core.services.workbench.run.decision_source import DecisionSource
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from tests.workbench.execution_ledger_support import all_rows
@@ -143,6 +153,51 @@ def test_admission_still_checks_agreeing_dtos_against_original_archived_work(can
     original = GenerationFacts(capture)
     AdmissionBaseline(capture, original, scope, accepted_at)
     ref = capture["execution"][0]["operation_ref"]
+    first, _ = operation_labels(original, ref, {"op_id": original.operations[ref]})
+    second, _ = operation_labels(original, ref)
+    assert first == second and first is not second
+    first["data_gaps"].append({"field": "private_probe", "code": "source_missing"})
+    first["execution_at_generation"]["remaining_quantity"] += 1
+    assert second["data_gaps"] == [] and second["execution_at_generation"] != first["execution_at_generation"]
+    missing = GenerationFacts(capture)
+    missing.tables["Parts"].clear()
+    left, _ = operation_labels(missing, ref)
+    right, _ = operation_labels(missing, ref)
+    left["data_gaps"][0]["message"] = "private gap probe"
+    assert right["data_gaps"][0]["message"] != left["data_gaps"][0]["message"]
+    with pytest.raises(WorkbenchCommandRejected) as binding:
+        operation_labels(original, ref, {"op_id": original.operations[ref] + 1})
+    assert binding.value.code == "candidate_artifact_invalid"
+    store = CandidateStore(case.conn)
+    run_ref = case.conn.execute("SELECT run_ref FROM WorkbenchRunJobs").fetchone()[0]
+    candidate = store.candidates(run_ref)[0]
+    rows = store.tasks(candidate["candidate_ref"])
+    projected, intervals = tasks_projection_with_intervals(rows, candidate, original)
+    repeated = tasks_projection(rows, candidate, original)
+    assert projected == repeated
+    validated, saved_intervals = validate_saved_tasks(rows, candidate, original)
+    assert validated is rows and saved_intervals == intervals
+    assert project_validated_tasks(validated, candidate, original, saved_intervals) == repeated
+    delivery = project_decision_delivery(original, repeated, capture["input"]["batch_refs"], candidate=candidate)
+    assert project_saved_decision_delivery(original, validated, capture["input"]["batch_refs"],
+                                          candidate=candidate, intervals=saved_intervals) == delivery
+    source = DecisionSource(store, run_ref)
+    assert not source._projected
+    assert source.resource_cohort["resources"] == resource_cohort([repeated], task_intervals=[intervals])
+    assert source.delivery(candidate["candidate_ref"]) == delivery
+    rich = source.tasks(candidate["candidate_ref"])
+    assert rich == repeated and candidate["candidate_ref"] not in source._verified
+    assert source.core_tasks(candidate["candidate_ref"]) is rich
+    assert source.delivery(candidate["candidate_ref"]) == delivery
+    assert intervals == {row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"])) for row in projected}
+    assert all("intervals" not in row and "task_intervals" not in row for row in projected)
+    projected[0]["data_gaps"].append({"field": "private_probe", "code": "source_missing"})
+    assert repeated[0]["data_gaps"] == []
+    traced = {**candidate, "artifact": {**candidate["artifact"], "results": [
+        dict(row, op_type_id=None) for row in candidate["artifact"]["results"]]}}
+    actual = tasks_projection(rows, traced, original)
+    assert actual[0]["process_type_ref"] is actual[0]["process_type_label"] is None
+    assert repeated[0]["process_type_ref"] is not None
     quantity = capture["execution"][0]["target_quantity"] + 1
     capture["execution"][0]["target_quantity"] = quantity
     scope[ref]["execution"]["target_quantity"] = quantity

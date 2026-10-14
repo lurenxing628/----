@@ -2,7 +2,7 @@
 
 from flask import current_app, g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_downtime import normalize_downtime
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.downtimes import WorkbenchDowntimeService
@@ -24,7 +24,7 @@ def machine_downtimes(ref):
     with service.reader.read_snapshot(capture_fingerprint=False):
         state = service.snapshot(ref)
         data = {"entity_ref": ref, **service.public(state), "write_context": issue_write_context(ref, ACTIONS, state)}
-        snapshot = bind_read_snapshot({"kind": "machine_downtimes", "ref": ref}, input_fingerprint(state))
+        snapshot = bind_read_snapshot({"kind": "machine_downtimes", "ref": ref}, state)
     return query_success(data, snapshot)
 
 

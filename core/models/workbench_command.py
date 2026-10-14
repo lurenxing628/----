@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -30,11 +29,7 @@ def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def input_fingerprint(value: Any) -> str:
-    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
-
-
-def validate_request_key(value: str) -> str:
+def validate_request_key(value: object) -> str:
     if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9_-]{16,128}", value) is None:
         raise WorkbenchCommandRejected("invalid_input", "操作编号无效，请刷新页面后重新提交。", 400)
     return value

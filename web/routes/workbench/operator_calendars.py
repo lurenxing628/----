@@ -8,7 +8,7 @@ import re
 
 from flask import current_app, g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
@@ -73,7 +73,7 @@ def operator_calendar_month(ref):
                     cells=[by_date[cell["date"]] if cell is not None else None for cell in month["cells"]])
         binding = _month_binding(record, month)
         data["write_context"] = issue_write_context(ref, [ACTIONS["upsert"], ACTIONS["delete"], ACTIONS["range_clear"]], binding)
-        snapshot = bind_read_snapshot({"kind": "operator_calendar", "ref": ref, **values}, input_fingerprint(binding),
+        snapshot = bind_read_snapshot({"kind": "operator_calendar", "ref": ref, **values}, binding,
                                       request.args.get("snapshot_ref"))
     return query_success(data, snapshot)
 
@@ -127,7 +127,7 @@ def operator_calendar_range_preview(ref):
                 "days": [WorkbenchOperatorCalendarService.public_day(day) for day in preview["days"]],
                 "write_context": issue_write_context(ref, [ACTIONS["range_clear"]], {"resource": reader.detail(ref).state, "preview": preview})}
         snapshot = bind_read_snapshot({"kind": "operator_calendar_range", "ref": ref, **preview["request"]},
-                                      input_fingerprint(preview["days"]))
+                                      preview["days"])
     return query_success(data, snapshot)
 
 

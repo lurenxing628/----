@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector
+from core.services.common.plan_task_identity import public_task_id as _public_task_id
+from core.services.common.plan_task_identity import row_identity as _row_identity
 from core.services.scheduler._sched_display_utils import BAD_TIME_EMPTY_REASON as _BAD_TIME_EMPTY_REASON
 from core.services.scheduler._sched_display_utils import duration_minutes as _duration_minutes
 from core.services.scheduler._sched_display_utils import fmt_day_segment as _fmt_day_segment
@@ -13,8 +15,6 @@ from core.services.scheduler._sched_display_utils import parse_dt as _parse_dt
 from core.services.scheduler._sched_display_utils import priority_class as _priority_class
 from core.services.scheduler._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from core.services.scheduler._sched_display_utils import split_by_day as _split_by_day
-from core.services.scheduler.dispatch_task_ids import public_task_id as _public_task_id
-from core.services.scheduler.dispatch_task_ids import row_identity as _row_identity
 from core.services.scheduler.task_chain import attach_process_dependencies, sort_tasks
 
 from .range import DispatchRange
@@ -148,6 +148,7 @@ def normalize_dispatch_row(
     is_cross_team = bool(current["team_id"] and counterpart["team_id"] and current["team_id"] != counterpart["team_id"])
     normalized = {
         "_row_identity": _row_identity(row),
+        "task_id": _public_task_id(row),
         "schedule_id": row.get("schedule_id"),
         "op_id": row.get("op_id"),
         "op_code": task_code,

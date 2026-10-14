@@ -1,14 +1,16 @@
-"""Keep receipts authoritative; audit fields need exact lineage and intent hash."""
+"""Keep receipts authoritative; audit fields use exact lineage and original intent."""
 
 import json
 import re
 from datetime import datetime
 from typing import NoReturn
 
-from core.models.workbench_command import input_fingerprint, validate_request_key
+from core.models.content import content_text
+from core.models.workbench_command import validate_request_key
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_codec import load_object, require_object, same
 from core.services.workbench.facts.trial_policy import load_scenario, require_trial_schema
+from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
@@ -53,7 +55,7 @@ def scenario_evidence(conn, scenario_ref):
     admission_row = repo.draft_admission(draft["draft_ref"])
     if admission_row is None:
         invalid()
-    admission = load_object(admission_row["admission_json"], draft["admission_hash"])
+    admission = load_object(admission_row["admission_json"])
     intent = require_object(admission.get("input"))
     baseline = require_object(admission.get("baseline"))
     source = require_object(admission.get("source"))
@@ -63,7 +65,7 @@ def scenario_evidence(conn, scenario_ref):
                 "base_identity": source["identity"]}
     if (not matches(saved, expected) or draft["status"] != "saved"
             or draft["revision"] != header["revision"] + 1
-            or saved["base"] != {draft["base_kind"]: draft["base_ref"]}):
+            or not same(saved["base"], {draft["base_kind"]: draft["base_ref"]})):
         invalid()
     created = repo.receipt_action(draft["request_key"])
     outcome = json_object(receipt["outcome_json"])
@@ -121,8 +123,16 @@ def _audit_lineage(audit, row, plan, saved, header, draft):
                 "scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"],
                 "version": plan["version"], "row_count": plan["row_count"], "is_simulation": False,
                 "baseline_ref": saved["baseline"]["plan_ref"], "baseline_version": saved["baseline"]["version"]}
-    proof = {"scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"],
-             "scenario_hash": header["snapshot_hash"], "admission_hash": draft["admission_hash"]}
+    proof = {"scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"]}
+    version = audit["proof"].get("proof_version")
+    if version == "content_refs_v1":
+        proof.update(proof_version=version, scenario_revision=header["revision"],
+                     baseline_ref=saved["baseline"]["plan_ref"], baseline_version=saved["baseline"]["version"])
+    elif version is None:
+        # Historical digest values are source metadata, compared as saved, without recalculation.
+        proof.update(scenario_hash=header["snapshot_hash"], admission_hash=draft["admission_hash"])
+    else:
+        raise ValueError("Unknown audit source version")
     if not matches(audit, expected) or not matches(audit["proof"], proof):
         raise ValueError("Audit lineage mismatch")
 
@@ -138,7 +148,7 @@ def audit_fields(repo, row, plan, saved, header, draft):
         if history["result_status"] != "success":
             raise ValueError("Not a successful history record")
         intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
-        if input_fingerprint(intent) != row["input_hash"]:
+        if content_text(intent) != WorkbenchCommandRepository(repo.conn).input_content(row):
             raise ValueError("Audit intent does not match immutable receipt")
         fields = {key: audit[key] for key in empty}
         if any(type(value) is not str or not value.strip() for value in fields.values()):

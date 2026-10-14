@@ -39,6 +39,28 @@ class SourceType(str, Enum):
     EXTERNAL = "external"
 
 
+class OperationSetupState(str, Enum):
+    PENDING = "pending"
+    RETAINED_IN_EXECUTION = "retained_in_execution"
+    ALREADY_COMPLETED = "already_completed"
+    EXTERNAL = "external"
+    UNKNOWN = "unknown"
+
+
+class OperationRequirementRole(str, Enum):
+    NEW_SCHEDULE = "new_schedule"
+    RETAINED = "retained"
+    EXECUTION = "execution"
+    COMPLETED = "completed"
+    NOT_SCHEDULED = "not_scheduled"
+
+
+class OperationQuantityBasis(str, Enum):
+    PIECE = "piece"
+    BATCH = "batch"
+    UNKNOWN = "unknown"
+
+
 class OpTypeCategory(str, Enum):
     INTERNAL = "internal"
     EXTERNAL = "external"
@@ -65,6 +87,26 @@ class BatchPriority(str, Enum):
     NORMAL = "normal"
     URGENT = "urgent"
     CRITICAL = "critical"
+
+
+class DueState(str, Enum):
+    SPECIFIED = "specified"
+    UNSPECIFIED = "unspecified"
+    INVALID = "invalid"
+
+
+class DeliveryRisk(str, Enum):
+    OVERDUE = "overdue"
+    ON_TIME = "on_time"
+    UNKNOWN = "unknown"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class DeliveryCompletionState(str, Enum):
+    COMPLETE = "complete"
+    DEFERRED = "deferred"
+    INCOMPLETE = "incomplete"
+    UNKNOWN = "unknown"
 
 
 class ReadyStatus(str, Enum):

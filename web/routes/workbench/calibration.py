@@ -43,7 +43,7 @@ def _read(*, export=False, suggestion_ref=None):
     as_of = _as_of(token)
     service = WorkbenchCalibrationService(g.db, as_of=as_of)
     with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:
-        facts = service.read(query, bind_snapshot=lambda fingerprint: _bind(query, fingerprint, token, as_of))
+        facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of))
         snapshot = facts["snapshot"]
         data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref)
         if export:

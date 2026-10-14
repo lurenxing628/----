@@ -39,7 +39,8 @@ class SearchStage:
 
 
 class StageScheduler:
-    def __init__(self, stages: Sequence[SearchStage], *, clock: Callable[[], float], deadline: float) -> None:
+    def __init__(self, stages: Sequence[SearchStage], *, clock: Callable[[], float], deadline: float,
+                 process_evidence=None) -> None:
         if not stages:
             raise ValueError("at least one search stage is required")
         names = [stage.name for stage in stages]
@@ -56,6 +57,7 @@ class StageScheduler:
         self.switches = 0
         self.stop_reason: Optional[str] = None
         self._last: Optional[SearchStage] = None
+        self.process_evidence = process_evidence
 
     def recent_rate(self, stage: SearchStage) -> float:
         measured = [(seconds, events) for seconds, events in self.recent[stage.name] if seconds > 0]
@@ -95,8 +97,18 @@ class StageScheduler:
                     self.switches += 1
                 self._last = stage
                 started = self.clock()
-                events = stage.run_task()
-                elapsed = max(self.clock() - started, 0.0)
+                if self.process_evidence is not None:
+                    self.process_evidence.begin_phase(stage.name, at=started)
+                try:
+                    events = stage.run_task()
+                except Exception as exc:
+                    if self.process_evidence is not None:
+                        self.process_evidence.end_phase(at=self.clock(), failed=type(exc).__name__)
+                    raise
+                finished = self.clock()
+                if self.process_evidence is not None:
+                    self.process_evidence.end_phase(at=finished)
+                elapsed = max(finished - started, 0.0)
                 if isinstance(events, bool) or not isinstance(events, int) or events < 0:
                     raise ValueError("search stage must return a nonnegative strict improvement event count")
                 self.seconds[stage.name] += elapsed
@@ -107,6 +119,8 @@ class StageScheduler:
         finally:
             for stage in self.stages:
                 stage.finish()
+                if self.process_evidence is not None:
+                    self.process_evidence.phase_stop(stage.name, self.stop_reason)
 
     def summary(self) -> Dict[str, Any]:
         return {

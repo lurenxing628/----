@@ -40,13 +40,19 @@ def _live_store() -> Dict[str, _RetainedPreview]:
     return store
 
 
-def retain_preview(preview: MaterialPreview, content: FileSource, expires_at: float) -> None:
+def preview_key(document: str) -> str:
+    # Resource contexts import material wire helpers, so reuse their key after module initialization.
+    from .resource_action_context import _context_key
+
+    return _context_key(_EXTENSION, document)
+
+
+def retain_preview(key: str, preview: MaterialPreview, content: FileSource, expires_at: float) -> None:
     with _LOCK:
         store = _live_store()
-        key = preview.digest
         previous = store.get(key)
         if previous is not None:
-            if previous.preview != preview or previous.content != content:
+            if previous.preview.document != preview.document or previous.content != content:
                 raise RuntimeError("物料预览引用对应了不同内容，未替换原预览。")
             expires_at = max(expires_at, previous.expires_at)
         store[key] = _RetainedPreview(preview, content, expires_at)

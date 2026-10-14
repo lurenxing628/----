@@ -16,6 +16,8 @@ function hooks() {
   return { React: { createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), Fragment: 'fragment',
     useRef(value) { const i = cursor++; if (!slots[i]) slots[i] = { current: value }; return slots[i]; },
     useState(value) { const i = cursor++; if (!slots[i]) slots[i] = { value: typeof value === 'function' ? value() : value }; return [slots[i].value, v => { slots[i].value = typeof v === 'function' ? v(slots[i].value) : v; }]; },
+    useReducer(reducer, value) { const [state, setState] = this.useState(value); return [state, action => setState(current => reducer(current, action))]; },
+    useId() { return 'runtime-contract-' + cursor++; },
     useMemo, useCallback: (fn, deps) => useMemo(() => fn, deps), useEffect, useLayoutEffect: useEffect },
     render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); },
     unmount() { effects.length = 0; slots.forEach(slot => { if (slot.cleanup) { const cleanup = slot.cleanup; slot.cleanup = null; cleanup(); } }); }, slots };
@@ -80,9 +82,18 @@ async function main() {
     setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); },
     requestAnimationFrame(fn) { const id = ++animationId; animation.set(id, fn); return id; }, cancelAnimationFrame(id) { animation.delete(id); } });
   load(appContext, 'WorkbenchNavigation.js');
+  const helpBoot = { entry_url: '/workbench', trial_url: '/trial', help_url: '/help', titles: { analysis: '分析', reports: '报表' } };
+  const historyHelp = { view: 'analysis', context: { source: 'run_history', history_topic: 'decision_history' } };
+  const decisionHelp = new URL(window.WorkbenchNavigation.helpUrl(helpBoot, historyHelp), location.origin);
+  assert.equal(decisionHelp.searchParams.get('page'), 'analysis');
+  assert.equal(decisionHelp.searchParams.get('src'), '/workbench?view=analysis');
+  assert.equal(decodeURIComponent(decisionHelp.hash), '#排产记录');
+  assert.equal(new URL(window.WorkbenchNavigation.helpUrl(helpBoot,
+    { ...historyHelp, context: { source: 'run_history', history_topic: 'run_catalog' } }), location.origin).searchParams.get('page'), 'run');
+  assert.equal(new URL(window.WorkbenchNavigation.helpUrl(helpBoot, { view: 'reports', context: {} }), location.origin).searchParams.get('page'), 'reports');
   const mainSource = source('main.jsx'), start = mainSource.indexOf('  function App() {'), end = mainSource.indexOf('  ReactDOM.createRoot(root).render(<App />);');
   load(appContext, 'App-test.jsx', mainSource.slice(start, end) + '\nwindow.TestApp = App;');
-  const find = (node, type) => { if (!node || !node.props) return null; if (node.type === type) return node.props; for (const child of node.props.children.flat()) { const result = find(child, type); if (result) return result; } return null; };
+  const find = (node, type, matches = () => true) => { if (!node || !node.props) return null; if (node.type === type && matches(node.props)) return node.props; for (const child of node.props.children.flat(Infinity)) { const result = find(child, type, matches); if (result) return result; } return null; };
   const finishRestore = () => { while (animation.size) { const [id, fn] = animation.entries().next().value; animation.delete(id); fn(); } };
   const renderApp = (completeRestore = true) => { const node = appHooks.render(() => window.TestApp()); appHooks.flush(); if (completeRestore) finishRestore(); return node; };
   let appNode = renderApp(false), publish = find(appNode, 'remember').remember;
@@ -107,11 +118,67 @@ async function main() {
   await window.TrialAdoptionHistoryState.openPlan(scenario, planB, find(appNode, 'remember').navigate); renderApp();
   assert.equal(history.state.workbench.context.plan_ref, planB); assert.equal(history.state.workbench.context.query, undefined);
 
+  // A narrower plan scope starts on its first analysis page; stale remembered pages still show available rows.
+  const planHooks = hooks(), timeScope = { range_start: '2026-10-12T08:00:00', range_end: '2026-10-14T18:00:00' };
+  const planData = { plan: { plan_ref: planA, display_name: '正式计划', kind: 'official', version: 1, is_current_official: true },
+    scope: { range_start: null }, time_scope: timeScope, plan_span: { start: timeScope.range_start, end: timeScope.range_end, end_inclusive: true },
+    task_count: 0, tasks: [], provenance: {}, projections: { delivery_risks: { state: 'available', issues: [], items: [] } } };
+  const planRead = { result: { data: planData, warnings: [], meta: { snapshot_ref: 'plan-snapshot' } }, loading: false, error: null, reload() {} };
+  const planWindow = { APSResourceContract: { failure: text => new Error(text) }, APSPlanContract: { workspaceScope: (_, value) => value },
+    APSResourceSession: { useQuery: () => planRead }, ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' },
+    PlanCatalogUI: { Catalog: 'catalog' }, PlanGanttModel: { names: () => new Map(), timeLabel: String, number: String },
+    WorkbenchFormat: { compactRange: () => '时间范围', dateTime: String }, WorkbenchDatePickerModel: { factoryTime: value => value },
+    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String },
+    PlanDetailsUI: { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' },
+    WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} }, WorkbenchControls: { Pager: 'pager', EmptyState: 'empty' } };
+  const planContext = vm.createContext({ window: planWindow, React: planHooks.React });
+  load(planContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
+  const renderPlan = () => planHooks.render(() => planWindow.PlanWorkspaceSession({ adapter: {}, planRef: planA, initialContext: { projection_page: 3 } }));
+  let planTree = renderPlan(); assert.equal(find(planTree, 'projection-tables').page, 3);
+  find(find(planTree, 'catalog').actions, 'button').onClick(); planTree = renderPlan();
+  find(planTree, 'form').onSubmit({ preventDefault() {} }); planTree = renderPlan();
+  assert.equal(find(planTree, 'projection-tables').page, 3, 'Applying the same range preserves the current analysis page');
+  find(find(planTree, 'catalog').actions, 'button').onClick(); planTree = renderPlan();
+  find(planTree, 'input', props => props['aria-label'] === '读取开始时间').onChange({ target: { value: '2026-10-13T08:00:00' } });
+  planTree = renderPlan(); find(planTree, 'form').onSubmit({ preventDefault() {} }); planTree = renderPlan();
+  assert.equal(find(planTree, 'projection-tables').page, 0);
+  planData.projections.delivery_risks.items = [{ batch_ref: 'batch-1', batch_id: 'B-01', part_no: 'P-01', part_label: '轴',
+    due_date: null, completion_state: 'complete', risk: 'on_time', unscheduled_operation_count: 0, ordinary_unscheduled_operation_count: 0, deferred_operation_count: 0, issues: [] }];
+  Object.assign(planWindow.WorkbenchTerms, { delivery_risks: { on_time: '准时' }, delivery_completion_states: { complete: '已排齐' }, due_date: () => '未指定' });
+  load(planContext, 'PlanDetailsUI.jsx');
+  const projection = planHooks.render(() => planWindow.PlanDetailsUI.ProjectionTables({ data: planData, page: 3, onPage() {}, onTab() {}, onBatch() {} }));
+  assert.equal(find(projection, 'pager').page, 1); assert(find(projection, 'button', props => props.children.includes('B-01')));
+  assert.equal(find(projection, 'empty'), null);
+
+  // Result/constraint/preparation task selection uses the same guarded detail-opening action.
+  const trialHooks = hooks(), trialData = { draft_ref: 'draft', base: {}, base_identity: {}, name: '试调', status: 'editing',
+    baseline: { version: null }, time_scope: { start: timeScope.range_start, end: timeScope.range_end }, comparison: {}, tasks: [], validation: { constraints_status: 'valid' } };
+  let mayLeave = true, guardCalls = 0;
+  const trialWindow = { addEventListener() {}, removeEventListener() {}, TrialAPI: {}, TrialContract: {},
+    TrialControls: { Button: 'button', ErrorBox: 'error', statusLabel: String, sourceLabel: () => '原安排' },
+    TrialSession: { useRead: () => ({ result: { data: trialData, meta: {} }, busy: false, error: null }), useCommands: () => ({ blocked: false }) },
+    WorkbenchGuards: { useDirtyGuard() {}, confirmLeave: async () => { guardCalls++; return mayLeave; } },
+    WorkbenchCaption: { useCaption() {} }, WorkbenchFormat: { dateTime: String, compactRange: () => '时间范围' }, WorkbenchTerms: { delivery_coverage: () => '' },
+    TrialCatalog: { Directory: 'trial-directory' }, TrialGantt: 'trial-gantt', TrialDetails: 'trial-details', TrialResults: { Summary: 'trial-summary', Results: 'trial-results' } };
+  const trialContext = vm.createContext({ window: trialWindow, React: trialHooks.React, document: { documentElement: {} } });
+  load(trialContext, 'TrialWorkspace.jsx', source('TrialWorkspace.jsx').replace('window.WorkbenchTrialWorkspace = WorkbenchTrialWorkspace;', 'window.TrialWorkspaceSession = Session;'));
+  const renderTrial = () => trialHooks.render(() => trialWindow.TrialWorkspaceSession({ initialTarget: { draft_ref: 'draft' } }));
+  let trialTree = renderTrial(); assert.equal(find(trialTree, 'trial-details'), null);
+  await find(trialTree, 'trial-gantt').onSelect('task-one'); trialTree = renderTrial();
+  assert.equal(find(trialTree, 'trial-details'), null, 'Ordinary Gantt selection keeps details collapsed');
+  await find(trialTree, 'trial-results').onSelect('task-one'); trialTree = renderTrial();
+  assert.equal(find(trialTree, 'trial-details').selected, 'task-one');
+  mayLeave = false; await find(trialTree, 'trial-results').onSelect('task-two'); trialTree = renderTrial();
+  assert.equal(find(trialTree, 'trial-details').selected, 'task-one');
+  mayLeave = true; await find(trialTree, 'trial-details').onCollapse(); trialTree = renderTrial(); assert.equal(find(trialTree, 'trial-details'), null);
+  const beforeReopen = guardCalls; await find(trialTree, 'trial-results').onSelect('task-one'); trialTree = renderTrial();
+  assert.equal(find(trialTree, 'trial-details').selected, 'task-one'); assert.equal(guardCalls, beforeReopen);
+
   const modelContext = vm.createContext({ window: { WorkbenchFormat: {}, FieldContract: { quantityReasons: {}, states: {} } } });
   load(modelContext, 'PlanGanttModel.js'); load(modelContext, 'ActualGanttModel.js'); let reads = 0;
-  const data = { availability: { state: 'available' }, items: Array.from({ length: 1000 }, (_, n) => ({ task: { end: '2026-09-09T08:00:00' },
+  const data = { availability: { state: 'available' }, execution_summary: { scope: 'full_response_cohort', complete: 334, pending: 333, reported: 333, average_finish_deviation_minutes: 30, known_finish_count: 334 }, items: Array.from({ length: 1000 }, (_, n) => ({ task: { end: '2026-09-09T08:00:00' },
     execution: { get execution_state() { reads++; return ['complete', 'unreported', 'partial'][n % 3]; }, confirmed_finish: '2026-09-09T08:30:00' } })) };
-  assert.deepEqual(JSON.parse(JSON.stringify(modelContext.window.ActualGanttModel.metrics(data))), { complete: 334, pending: 333, reported: 333, average: 30 }); assert.equal(reads, 1000);
+  assert.deepEqual(JSON.parse(JSON.stringify(modelContext.window.ActualGanttModel.metrics(data))), { complete: 334, pending: 333, reported: 333, average: 30 }); assert.equal(reads, 0, 'Actual metrics consume the shared full cohort summary without recomputing execution rows');
   // A first historical supplement preserves the selected original scope's
   // start/end, including legacy separators, padding and minute storage. It never takes the
   // aggregate start from another plan or replaces known time with now.
@@ -147,6 +214,8 @@ async function main() {
   console.log(JSON.stringify({ read_identity_and_cancellation: true, unmount_refresh_waiters_cancelled: outcomes.length, unstarted_refresh_loads: queuedLoads,
     scroll_scans: scans, unrelated_scroll_refreshes: 0, context_updates: 60,
     trailing_history_writes: 1, immediate_navigation_and_history_restore: true, restoring_pagehide_preserved: true,
-    forward_branch_plan_bound: true, metric_task_visits: reads }));
+    forward_branch_plan_bound: true, history_help_chapters: true, plan_range_resets_analysis_page: true, stale_plan_page_clamped: true,
+    same_plan_range_keeps_analysis_page: true, trial_task_opens_details: true, gantt_selection_keeps_details_closed: true,
+    trial_edit_guard_preserved: true, metric_task_visits: reads }));
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

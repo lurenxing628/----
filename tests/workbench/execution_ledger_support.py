@@ -9,14 +9,38 @@ from core.infrastructure.machine_capabilities_schema import install as install_m
 from core.infrastructure.migration_state import set_schema_version
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
-from core.infrastructure.workbench_metadata_schema import install_metadata
+from core.infrastructure.workbench_metadata_schema import canonical_sql, install_metadata, metadata_objects
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
+from core.infrastructure.workbench_process_workflow_schema import WORKFLOW_TABLES, workflow_objects
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 from tests.workbench.plan_identity_support import load_v24_schema
 
 NOW = datetime(2026, 9, 10, 12)
 START, END = "2026-09-09T08:00:00", "2026-09-09T10:00:00"
+
+
+def install_current_content_storage(conn):
+    """Keep the frozen business schema while initializing empty current write storage."""
+    current = {**metadata_objects(), **workflow_objects()}
+    legacy = {**metadata_objects(legacy=True), **workflow_objects(legacy=True)}
+    tables = ("WorkbenchCommandReceipts",) + WORKFLOW_TABLES
+    replace = []
+    for table in tables:
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+        if row is not None and canonical_sql(row[0]) == canonical_sql(current[table]):
+            continue
+        assert row is not None and canonical_sql(row[0]) == canonical_sql(legacy[table]), table
+        assert conn.execute('SELECT 1 FROM "' + table + '" LIMIT 1').fetchone() is None, table
+        replace.append(table)
+    attached = [row[0] for row in conn.execute("SELECT sql,tbl_name FROM sqlite_master "
+        "WHERE type IN ('index','trigger') AND sql IS NOT NULL") if row[1] in replace]
+    for table in reversed(replace):
+        conn.execute('DROP TABLE "' + table + '"')
+    for table in replace:
+        conn.execute(current[table])
+    for sql in attached:
+        conn.execute(sql)
 
 
 class LedgerCase:
@@ -85,6 +109,7 @@ def ledger_case(tmp_path):
     conn = sqlite3.connect(str(tmp_path / "execution-ledger.sqlite"))
     conn.row_factory = sqlite3.Row
     load_v24_schema(conn)
+    install_current_content_storage(conn)
     set_schema_version(conn, 24)
     conn.commit()
     conn.execute("BEGIN")

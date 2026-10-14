@@ -116,9 +116,8 @@ def _captured_quantities(operation, batch, execution, basis):
 
 def _adopted_task_facts(conn, plan_ref):
     from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
-
-    from .adoption_baseline_sources import read_adoption_operation_facts
-    from .adoption_baseline_values import AdoptionBaselineUnavailable, require
+    from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
+    from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, require
 
     if conn is None:
         return {}, "plan_target_not_recorded", None
@@ -166,9 +165,8 @@ def _adopted_source_record(conn, plan_ref):
 
 
 def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None):
+    from core.services.workbench.facts.adoption_baseline_sources import candidate_source_evidence
     from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-
-    from .adoption_baseline_sources import candidate_source_evidence
 
     # Only the audited source can supply target work; current batch joins cannot.
     if basis == "candidate_adoption":

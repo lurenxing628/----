@@ -15,7 +15,7 @@ from core.models.workbench_preflight import (
     normalize_preflight_input,
 )
 from core.services.workbench.run.preferences import SchedulingPreferencesService
-from core.services.workbench.run.preflight_facts import full_facts_fingerprint
+from core.services.workbench.run.preflight_facts import full_facts_content
 from web.api_responses import failure, query_success
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
@@ -47,7 +47,7 @@ def _require_current(original, current):
 def resolve_preflight_input(conn, input_ref):
     """Independent resolver retains its full freshness check in the caller's transaction."""
     normalized, original = _preflight_binding(conn, input_ref)
-    _require_current(original, full_facts_fingerprint(conn))
+    _require_current(original, full_facts_content(conn))
     return normalized
 
 

@@ -46,7 +46,7 @@ VIEW_MANUALS: Dict[str, Dict[str, Any]] = {
     "analysis": {
         "title": "选择排产方案",
         "heading": "6.3 选择排产方案",
-        "summary": "选一份正式计划、候选方案或试调方案，看范围内安排、关联批次和预计超期。",
+        "summary": "回看运行与正式采用的保存结果、业务走势和同条件对照，再选择方案核对安排、交付风险并明确采用。",
         "related": ("gantt", "delay", "trial"),
     },
     "gantt": {

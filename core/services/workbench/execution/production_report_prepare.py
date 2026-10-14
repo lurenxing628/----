@@ -3,7 +3,7 @@
 import copy
 from typing import Any, Dict, List, NoReturn, Optional
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import (
     REPORT_FIELDS,
     normalize_report_input,
@@ -117,7 +117,7 @@ class ReportBatchPreparation:
         for group in self.facts["reports"].values():
             for history in group.values():
                 self.by_number[history[-1]["report_no"]] = history[-1]
-        self.snapshot = {"input_hash": input_fingerprint(self.items), "operations": [
+        self.snapshot = {"input": self.items, "operations": [
             self.ledger.fact_snapshot(self.before, ref) for ref in sorted(refs)]}
 
     def prepare(self):

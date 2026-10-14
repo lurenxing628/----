@@ -7,7 +7,7 @@ from core.services.workbench.plan.official_persistence import persist_official_p
 def persist_trial_adoption_in_tx(conn, evidence, intent, request_key, *, application_operator):
     audit = {"source": "workbench_trial_adoption", "action": "adopt_trial_scenario",
              "request_key": request_key, "scenario_ref": evidence.scenario_ref, "draft_ref": evidence.draft_ref,
-             "proof": evidence.snapshot, "reason": intent["reason"], "declared_operator": intent["declared_operator"]}
+             "proof": evidence.proof, "reason": intent["reason"], "declared_operator": intent["declared_operator"]}
     result = persist_official_plan_in_tx(conn, prepared=evidence.prepared, payload=evidence.payload,
         baseline=evidence.baseline, audit=audit, application_operator=application_operator,
         run_window=evidence.run_window)

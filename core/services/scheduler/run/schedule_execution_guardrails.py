@@ -105,6 +105,7 @@ def _build_execution_seed_result(
         "end_time": end_time,
         "source": str(getattr(op, "source", None) or SourceType.INTERNAL.value).strip(),
         "op_type_name": getattr(op, "op_type_name", None),
+        "op_type_id": getattr(op, "op_type_id", None),
         "seed_source": "execution_fact",
         "state_revision": fact.state_revision,
     }

@@ -1,0 +1,93 @@
+roadmap: scheduling-decision-workbench
+created: 2026-10-13
+items:
+- slug: decision-comparison-loop
+  description: 建立共同指标和归档读取，交付同次全部候选横向比较、基准差值和采用最小闭环
+  depends_on: []
+  status: done
+  feature: 2026-10-13-decision-comparison-loop
+  minimal_loop: true
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  notes: 2026-10-13 第 0、1 阶段实施验收及两项 P2 返修的主对话独立复验通过；主复验证据在 evidence/decision-stage-acceptance/stage-01/repair-01/。第2、3阶段主对话独立验收通过，第4阶段已派发，第5—8阶段保持planned。
+- slug: decision-delivery-impact
+  description: 交付完整性、逐批交付和工序变化对照
+  depends_on:
+  - decision-comparison-loop
+  status: done
+  feature: 2026-10-13-decision-delivery-impact
+  minimal_loop: false
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  notes: 共同交付、正式归档模式、逐批工序影响、分页筛选、甘特定位回跳和原始导出实施验收通过；最终日常400 passed/20 skipped、五次真实往返、11场景18份导出通过。当前隔离实例60154/PID37323，证据在evidence/decision-delivery-impact/aps-decision-workbench-20261013/。第2阶段主对话独立验收通过，两项P3关闭；主证据在evidence/decision-stage-acceptance/stage-02/repair-01/。第3阶段主对话独立验收通过，第4阶段已派发，第5—8阶段等待。
+- slug: decision-resource-impact
+  description: 统一设备和人员班表口径，交付资源明细、热力图、压力和冲突定位
+  depends_on:
+  - decision-comparison-loop
+  status: done
+  feature: 2026-10-13-decision-resource-impact
+  minimal_loop: false
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  notes: 第3阶段共同归档日历、固定资源集合、容量占用需求压力、设备人员表热力图、两视角、甘特往返导出及旧资源消费者实施验收通过。日常437 passed/20 skipped，三次真实资源往返、7文件894行最终导出及四条入口通过；实施实例56030/PID56365同库7运行34候选正式v1。主对话独立验收通过，无新增返修；独立证据evidence/decision-stage-acceptance/stage-03/。第4阶段已派发，第5—8等待。
+- slug: decision-preparation-events
+  description: 建立调度共用需求分解，交付准备工时和工种切换事件
+  depends_on:
+  - decision-comparison-loop
+  status: done
+  feature: 2026-10-13-decision-preparation-events
+  minimal_loop: false
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  notes: 第4阶段共同实际需求账、准备加工明细、真实ID切换、旧同义消费者、甘特往返及导出实施通过。日常461 passed/20 skipped，布局增量2项Node及Chrome109构建通过；4次真实往返、1392/1920深浅、原生125/150%、7文件899行9/11表通过。最终实例50306/PID62818，同库10运行38候选，正式v1/15行保持；证据evidence/decision-preparation-events/。主对话独立验收passed且无新增返修，证据evidence/decision-stage-acceptance/stage-04/；第5阶段已派发，第6—8planned。
+- slug: decision-recommendation
+  description: 根据保存的选择证据和共同差值呈现推荐、收益、代价和部分结果解释
+  depends_on:
+  - decision-delivery-impact
+  - decision-resource-impact
+  - decision-preparation-events
+  status: done
+  feature: 2026-10-13-decision-recommendation
+  minimal_loop: false
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  notes: 第5阶段及第一轮P2-05-01／P2-05-02／P3-05-03返修实施验收passed。默认真实主因和当前基准关系、13px／3+3在双宽双主题及三项代价八组合均四完整候选；各候选完整集合及21批20+1／50分页、精确剩余一道与基准甘特完整往返、原生125／150%通过。graph2／graph3映射已修正；日常487 passed／20 skipped、134目标、77.06s、Ruff通过，随后UI的Node、10 payload Chrome109构建及2项离线资产增量通过。当前65050／PID41829，9表完整行集、34参数及正式v1／15行保持；原固定选择／52差值／7原始导出／SHA有效证明复用，返修新增排产、样例、采用与重复导出0。证据evidence/decision-recommendation/repair-01/；主对话独立复验passed，证据evidence/decision-stage-acceptance/stage-05-repair-01/；第6阶段已派发，第7—8等待派发。
+- slug: decision-optimization-process
+  description: 呈现候选来源、停止原因、搜索进步曲线与有覆盖说明的保存尝试
+  depends_on:
+  - decision-comparison-loop
+  status: done
+  feature: 2026-10-13-decision-optimization-process
+  minimal_loop: false
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  operator_ui_repair: passed
+  notes: 2026-10-14最新第6操作者UI返修与最终正常实例由主对话亲验passed：58240/PID3143/main1791956005/CSS1791956823，同原库；证据evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json。第6实施/主验收/UI均passed，第8及A非延期范围passed，性能2秒交C收口，Windows全按用户决定在大改后统一测。以下保留原交付与返修历史。 2026-10-14用户追加整轮操作者体验返修，并入第8；下列原数学／事务／原件结果按未变范围复用。2026-10-14第二版整页接入、四份真实不同安排、候选卡与母验收6项返修实施验收passed；母验收passed。最终53871/PID44499/session96013/main1791922970/CSS1791920118，Python3.8.10，4次正常cold，产品冻结。DQ4样例12批48工序四安排互异，六对变化48/48/48/12/24/32；两次受理中首次networkx3.1缺项失败归档保留，第二次ac9ca5完成。日常136目标498 passed/20 skipped/83.70s/Ruff通过，最后两局部修正由兼容节点1passed、Node、Chrome109 built10、最终资产3passed和真实4项回验补充；旧全集4/4实线、6/7采样及两点无改善平线恢复，部分缺成员保持离散，85.2%固定对照同侧且68px。资源汇总精确区间0.8/0、原生95/98唯一表头、键盘关闭原格焦点正确；返修8原件均通过，6组UI全部passed，原未变23项复用。九表原1249行7869字段/types、34参数170字段及正式v1/15行在最后cold保持，clock158未再增加；84表历史保全与48新工序clock归属单列。整页接入新增Python测试函数3，母返修新增文件/函数0，返修新运行/fixture/采用/试调0。证据evidence/prototype-integration/2026-10-14/integration-summary.json，前49394及52020全部历史原件保留；第7已恢复先前派发、连续实施，Git母对话统一执行。
+- slug: decision-history-trends
+  description: 统一运行和正式采用的历史来源，交付业务趋势与同条件比较
+  depends_on:
+  - decision-delivery-impact
+  - decision-resource-impact
+  - decision-preparation-events
+  - decision-optimization-process
+  status: done
+  feature: 2026-10-14-decision-history-trends
+  minimal_loop: false
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  operator_ui_repair: passed
+  notes: 2026-10-14最新第7操作者UI返修与最终正常实例由主对话亲验passed：15条历史、原值2/2/2/0/12、缺项3/7和实际帮助正常，console空；58240/PID3143/main1791956005/CSS1791956823，证据evidence/decision-stage-acceptance/stage-08/final-cold-runtime/parent-review.json。第7实施/主验收/UI均passed，第8及A非延期范围passed，性能2秒交C收口，Windows全按用户决定在大改后统一测。以下保留原交付与返修历史。 2026-10-14用户追加整轮操作者体验返修，并入第8；下列原数学／事务／原件结果按未变范围复用。2026-10-14四来源历史与母八项返修全部passed，最后52705/PID82711/main1791934561/CSS1791933089；H04单节点1passed/5.01s、最后focus4实际GET200与主动Tab无抢回、90列原件2700格和原85表2633行保全通过，3正常启动日志另列；第8已派发，证据evidence/decision-history-trends/2026-10-14/。
+- slug: decision-integration-acceptance
+  description: 完成主页面、值班台、试调、正式计划和导出的一致接入、重复实现清理及整体业务验收
+  depends_on:
+  - decision-recommendation
+  - decision-history-trends
+  status: done
+  feature: 2026-10-14-decision-integration-acceptance
+  minimal_loop: false
+  implementation_acceptance: passed
+  parent_acceptance: passed
+  deferred_validation:
+    windows: deferred_by_user
+    summary_2_seconds: deferred_to_C
+  notes: 2026-10-14主对话验收A第0—8非延期范围passed。用户明确性能留到C收口，4/6/8候选20k summary3.6246/4.6823/5.2835秒仍未达2秒，保持原候选与完整资源窗口；Windows全部按用户决定大改后统一测。最终正常同库58240/PID3143/main1791956005/CSS1791956823的真实独立操作通过，第6/7passed。Gate09前16步、758收集/722passed/36skipped/0failed复用，17因15Windowssetupskip未核销，原failedmanifest保留，核销规则保持。A源码/测试冻结，逐文件提交清单交主对话执行A提交推送，随后B独立review/debug再C算法U0—U6；当前Git尚未操作、dirty证据保持。原派发、失败及返修记录保留于feature交接和主验收表。

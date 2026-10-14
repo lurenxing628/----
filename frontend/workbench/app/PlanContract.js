@@ -246,17 +246,29 @@
   function occupancyRow(row, data, calendars) {
     const known = ['arranged_hours', 'occupied_hours', 'overlap_hours', 'excess_arranged_hours'];
     const capacity = ['available_hours', 'available_occupied_hours', 'outside_available_hours', 'capacity_shortfall_hours'];
+    const current = row && row.metric_version === 'decision-resource-v4';
+    const versioned = row && own(row, 'metric_version');
+    const extra = current ? ['metric_version', 'available_overlap_hours', 'outside_calendar_basis', 'conflict_basis', 'conflict_segments'] : versioned ? ['metric_version'] : [];
     if (!exact(row, ['kind', 'resource_ref', 'label', ...known, ...capacity, 'state', 'operation_count', 'capacity_basis',
-        'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments']) || !['machine', 'operator'].includes(row.kind)
+        'utilization', 'has_overlap', 'capacity_insufficient', 'issues', 'segments', ...extra]) || !['machine', 'operator'].includes(row.kind)
         || !['available', 'unavailable'].includes(row.state) || !known.every(key => number(row[key])) || !count(row.operation_count) || row.operation_count === 0
-        || !projectionIssues(row.issues) || typeof row.has_overlap !== 'boolean' || row.has_overlap !== (row.overlap_hours > 0)
+        || !projectionIssues(row.issues)
         || !intervals(row.segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 0)) return false;
+    if (current) {
+      if (row.outside_calendar_basis !== 'reservation_span_outside_work_calendar' || row.conflict_basis !== 'work_calendar_reservation_overlap') return false;
+      if (row.available_overlap_hours === null) {
+        if (row.has_overlap !== null || row.conflict_segments !== null) return false;
+      } else if (!number(row.available_overlap_hours) || row.has_overlap !== (row.available_overlap_hours > 1e-9)
+          || !intervals(row.conflict_segments, data.time_scope, ['concurrent_operations'], segment => count(segment.concurrent_operations) && segment.concurrent_operations > 1)) return false;
+    } else if (versioned && row.metric_version !== 'decision-resource-v3' || typeof row.has_overlap !== 'boolean' || row.has_overlap !== (row.overlap_hours > 0)) return false;
     const expected = row.kind === 'machine' ? 'global_calendar_machine_availability' : 'personal_or_operator_shift_calendar';
     const source = calendars.get(row.resource_ref);
     if (row.capacity_basis !== (source ? expected : 'unknown')) return false;
     if (row.state === 'unavailable') return (!source || source.state === 'unavailable') && capacity.every(key => row[key] === null)
+      && (!current || row.available_overlap_hours === null)
       && row.utilization === null && row.capacity_insufficient === null && row.issues.length > 0;
     return source && source.state === 'available' && capacity.every(key => number(row[key])) && row.available_hours === source.available_hours
+      && (!current || number(row.available_overlap_hours))
       && typeof row.capacity_insufficient === 'boolean'
       && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
@@ -272,38 +284,31 @@
     return value.state === state;
   }
   function deliveryItem(row) {
-    const counts = ['operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count'];
-    if (!exact(row, ['batch_ref', 'batch_id', 'part_no', 'part_label', 'planned_finish', 'partial_planned_finish', 'due_date',
-        'delivery_deadline_exclusive', 'risk', 'is_overdue', 'delay_hours', 'delay_days', 'completeness', 'schedule_complete', ...counts, 'issues'])
-        || !ref(row.batch_ref) || !label(row.batch_id) || !nullableLabel(row.part_no) || !nullableLabel(row.part_label)
-        || !nullableTime(row.planned_finish) || !nullableTime(row.partial_planned_finish) || !(row.due_date === null || day(row.due_date))
-        || !nullableTime(row.delivery_deadline_exclusive) || !['overdue', 'on_time', 'unknown'].includes(row.risk)
-        || !['complete', 'incomplete', 'unknown'].includes(row.completeness) || typeof row.schedule_complete !== 'boolean'
-        || !counts.every(key => count(row[key])) || row.invalid_task_count > row.task_count || row.scheduled_operation_count > row.task_count
-        || row.scheduled_operation_count + row.unscheduled_operation_count !== row.operation_count
-        || !Array.isArray(row.issues) || !row.issues.every(label) || new Set(row.issues).size !== row.issues.length) return false;
-    if (row.schedule_complete ? row.planned_finish === null || row.partial_planned_finish !== null || row.operation_count === 0
-      || row.unscheduled_operation_count !== 0 || row.invalid_task_count !== 0 : row.planned_finish !== null) return false;
-    if ((row.completeness === 'complete') !== (row.issues.length === 0)) return false;
-    if (row.risk === 'unknown') return row.is_overdue === null && row.delay_hours === null && row.delay_days === null && row.issues.length > 0;
-    return row.schedule_complete && row.delivery_deadline_exclusive !== null && typeof row.is_overdue === 'boolean'
-      && row.is_overdue === (row.planned_finish >= row.delivery_deadline_exclusive) && (row.risk === 'overdue') === row.is_overdue
-      && number(row.delay_hours) && number(row.delay_days) && (row.is_overdue || row.delay_hours === 0 && row.delay_days === 0);
+    const D = window.DeliveryProjectionContract, counts = D.operationCounts;
+    if (!exact(row, ['batch_ref', 'batch_id', 'part_no', 'part_label', 'priority', 'quantity', 'planned_finish', 'partial_planned_finish', 'due_date',
+        'delivery_deadline_exclusive', 'due_state', 'due_issue', 'completion_state', 'risk', 'is_overdue', 'delay_hours', 'delay_days',
+        'completeness', 'schedule_complete', ...counts, 'issues'])
+        || !D.row(row) || !nullableLabel(row.part_no) || !nullableLabel(row.part_label) || !nullableLabel(row.priority)
+        || !(row.quantity === null || row.quantity === 0 || int64(row.quantity))
+        || !nullableTime(row.delivery_deadline_exclusive) || !['complete', 'incomplete', 'unknown'].includes(row.completeness)
+        || !(row.delay_days === null || number(row.delay_days))) return false;
+    return true;
   }
   function delivery(value, data) {
-    if (!exact(value, ['state', 'plan_ref', 'scope', 'items', 'batch_count', 'items_complete', 'completeness', 'basis'])
-        || !states.includes(value.state) || value.plan_ref !== data.plan.plan_ref || !same(value.scope, data.scope)
+    if (!exact(value, ['state', 'plan_ref', 'scope', 'items', 'batch_count', 'items_complete', 'completeness', 'basis', 'summary'])
+        || ![...states, 'not_applicable'].includes(value.state) || value.plan_ref !== data.plan.plan_ref || !same(value.scope, data.scope)
         || !Array.isArray(value.items) || value.batch_count !== value.items.length || value.items_complete !== true
         || !uniqueRefs(value.items, 'batch_ref') || !uniqueRefs(value.items, 'batch_id') || !value.items.every(deliveryItem)) return false;
-    const basis = {kind: 'planned_delivery', time_basis: 'factory_local', batch_selection: data.scope.range_start === null ? 'plan_task_batches' : 'overlap_or_bad_time_batches',
+    const basis = {kind: 'planned_delivery', time_basis: 'factory_local', batch_selection: data.scope.range_start === null ? 'plan_task_and_deferred_batches' : 'overlap_or_bad_time_batches',
       completion_scope: 'full_selected_plan', operation_scope: 'current_batch_operations', due_boundary: 'next_day_exclusive', actual_completion: 'not_evaluated', actual_delivery: 'not_evaluated'};
     if (!same(value.basis, basis)) return false;
     const batches = new Set(data.tasks.map(row => row.batch_id));
-    const completeness = value.items.some(row => row.completeness === 'incomplete') ? 'incomplete'
-      : !value.items.length || value.items.some(row => row.completeness === 'unknown') ? 'unknown' : 'complete';
-    const known = value.items.filter(row => row.risk !== 'unknown').length;
-    return batches.size === value.items.length && value.items.every(row => batches.has(row.batch_id)) && value.completeness === completeness
-      && value.state === (known === value.items.length ? 'available' : known ? 'partial' : 'unavailable');
+    const s = value.summary;
+    const deliveryBatches = new Set(value.items.map(row => row.batch_id));
+    return [...batches].every(batchId => deliveryBatches.has(batchId)) && value.items.every(row => batches.has(row.batch_id)
+      || data.scope.range_start === null && row.completion_state === 'deferred' && row.deferred_operation_count > 0)
+      && ['complete', 'incomplete', 'unknown'].includes(value.completeness)
+      && window.DeliveryProjectionContract.summary(s) && s.batch_count === value.batch_count;
   }
   function workspaceSpans(data, query) {
     const time = data.time_scope;

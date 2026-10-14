@@ -6,7 +6,6 @@ import csv
 import json
 import shutil
 import zipfile
-import zlib
 from pathlib import Path
 
 from scripts.portable_release import payload_files
@@ -56,16 +55,8 @@ Excel 模板从各业务页的导入窗口下载，不要求目标机安装 Micr
 """
 
 
-def crc32(file: Path) -> str:
-    value = 0
-    with file.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            value = zlib.crc32(block, value)
-    return f"{value & 0xffffffff:08x}"
-
-
 def record(file: Path, relative: str) -> dict:
-    return {"Path": relative, "CRC32": crc32(file), "Bytes": file.stat().st_size}
+    return {"Path": relative, "Bytes": file.stat().st_size}
 
 
 def csv_file(file: Path, rows: list) -> None:
@@ -117,7 +108,7 @@ def main() -> None:
     rows, checks = [], []
     for index, volume in enumerate(volumes, 1):
         relative = "payload/" + volume.name
-        row = dict(record(volume, relative), Zip="", ZipCRC32="", ZipBytes="")
+        row = dict(record(volume, relative), Zip="", ZipBytes="")
         if index == 1:
             shutil.copyfile(str(volume), str(bootstrap / relative))
         else:
@@ -125,7 +116,7 @@ def main() -> None:
             archive(output, [(volume, relative)], args.maximum_bytes)
             archive_record = record(output, output.name)
             checks.append(archive_record)
-            row.update(Zip=output.name, ZipCRC32=archive_record["CRC32"], ZipBytes=archive_record["Bytes"])
+            row.update(Zip=output.name, ZipBytes=archive_record["Bytes"])
         rows.append(row)
     csv_file(bootstrap / "parts.csv", rows)
     readme = README_TEXT
@@ -141,9 +132,8 @@ def main() -> None:
     (args.output / "README.txt").write_text(readme, encoding="utf-8-sig")
     (args.output / "delivery.json").write_text(json.dumps({"maximum_bytes_exclusive": args.maximum_bytes,
         "original_payload_files": len(files), "original_payload_bytes": sum(file.stat().st_size for file in files),
-        "integrity": "ZIP/7z CRC and extracted file-size list",
-        "archives": checks, "sevenzip_exe_crc32": next(row["CRC32"] for row in support_records
-                                                       if row["Path"] == "tools/7za.exe")}, indent=2), encoding="utf-8")
+        "integrity": "ZIP/7z native archive check and extracted file-size list",
+        "archives": checks}, indent=2), encoding="utf-8")
     print(json.dumps(checks))
 
 

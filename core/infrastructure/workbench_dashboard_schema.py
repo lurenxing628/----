@@ -1,6 +1,6 @@
 """Explicit metadata-only installation. The main migration owns version changes."""
 
-from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
+from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
 from .schema_structure import schema_objects
@@ -8,7 +8,7 @@ from .schema_structure import schema_objects
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 
-def workbench_dashboard_objects():
+def workbench_dashboard_objects(*, legacy=False):
     result = {
         "WorkbenchDashboardItems": """CREATE TABLE WorkbenchDashboardItems (
             item_ref {} PRIMARY KEY, category TEXT NOT NULL CHECK(category IN ('delivery','material','actual','downtime')),
@@ -56,6 +56,9 @@ def workbench_dashboard_objects():
             WHEN NEW.item_ref IS NOT OLD.item_ref OR NEW.origin_json IS NOT OLD.origin_json OR NEW.revision<>OLD.revision+1
             BEGIN SELECT RAISE(ABORT,'dashboard origin is permanent'); END""",
     }
+    if not legacy:
+        result["WorkbenchDashboardHistory"] = result["WorkbenchDashboardHistory"].replace(
+            "source_hash TEXT NOT NULL", "source_hash TEXT")
     for table, events in (("WorkbenchDashboardItems", ("UPDATE", "DELETE")),
                           ("WorkbenchDashboardHistory", ("UPDATE", "DELETE")),
                           ("WorkbenchDashboardStates", ("DELETE",)),
@@ -77,11 +80,13 @@ def workbench_dashboard_objects():
     return result
 
 
-def workbench_dashboard_contract_issues(conn, *, structure=None):
+def workbench_dashboard_contract_issues(conn, *, structure=None, allow_legacy=True):
     actual = schema_objects(conn, structure=structure)
+    legacy = workbench_dashboard_objects(legacy=True)
     return [("missing_dashboard_schema:" if name not in actual else "invalid_dashboard_schema:") + name
             for name, sql in workbench_dashboard_objects().items()
-            if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]
+            if name not in actual or not schema_contract_matches(
+                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def install_workbench_dashboard_schema(conn):

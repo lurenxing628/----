@@ -2,11 +2,9 @@
 
 from datetime import datetime
 
-from core.models.workbench_command import input_fingerprint
 from core.models.workbench_plan_scope import PlanReadScope
-from core.services.scheduler.dispatch_task_ids import public_task_id
+from core.services.common.plan_task_identity import public_task_id
 from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_rows
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.plan.projection import public_time, wire_positive_int64
 
 ENGINE = "core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows"
@@ -45,6 +43,7 @@ def _bound_rows(plans, planned):
         if any((row[kind + "_id"] or None) != resources.get(task[kind + "_ref"])
                for kind in ("machine", "operator")):
             return None, None
+        row["task_id"] = "task_" + task["task_ref"]
         key = (row.get("op_code") or "").strip() or public_task_id(row)
         if key in mapping:
             return None, None
@@ -83,13 +82,13 @@ def _result_valid(raw, mapping, point_count, target_id=None):
         target_id is None or bool(ids) and ids[-1] == target_id)
 
 
-def plan_chain(plans, planned, plan_state, visible_refs, *, target_task_ref=None):
+def plan_chain(plans, planned, visible_refs, *, target_task_ref=None):
     plan_ref = planned["plan"]["plan_ref"]
     target = {"target_task_ref": target_task_ref}
     if planned["scope"]["range_start"] is not None:
         # The visible cohort is time-scoped; the existing engine still needs the
         # complete plan to retain predecessors outside this timeline window.
-        planned, plan_state = plans.execution_workspace(PlanReadScope(plan_ref))
+        planned, _ = plans.execution_workspace(PlanReadScope(plan_ref))
     if _mixed_piece_groups(planned["tasks"]):
         return unavailable(plan_ref, "engine_piece_precedence_unsupported",
             "暂不支持共同工序与分件之间的跨组依赖，无法计算关键链。", **target)
@@ -105,18 +104,16 @@ def plan_chain(plans, planned, plan_state, visible_refs, *, target_task_ref=None
     if type(raw) is not dict:
         return unavailable(plan_ref, "chain_engine_unavailable", "关键链计算失败，请重试。",
                            engine_reason="invalid_result_type", **target)
-    evidence_ref = input_fingerprint({"engine": ENGINE, "plan_ref": plan_ref, "plan_state": plan_state,
-                                      "target_task_ref": target_task_ref, "rows": plain_plan_facts(rows), "result": raw})
     if not _result_valid(raw, mapping, point_count, target_id):
         return unavailable(plan_ref, "chain_engine_unavailable", "计划链没算出完整、可核对的结果。请刷新后重试。",
-                           engine_evidence_ref=evidence_ref, engine_reason=raw.get("reason_code", "invalid_result"), **target)
+                           engine_reason=raw.get("reason_code", "invalid_result"), **target)
     if not raw["ids"]:
         return unavailable(plan_ref, "chain_no_supported_nodes", "此计划仅有零工时工序，无可分析的关键链。",
-                           engine_evidence_ref=evidence_ref, omitted_point_count=point_count, **target)
-    return _public_chain(raw, mapping, visible_refs, plan_ref, evidence_ref, point_count, len(planned["tasks"]), target_task_ref)
+                           omitted_point_count=point_count, **target)
+    return _public_chain(raw, mapping, visible_refs, plan_ref, point_count, len(planned["tasks"]), target_task_ref)
 
 
-def _public_chain(raw, mapping, visible_refs, plan_ref, evidence_ref, point_count, plan_task_count, target_task_ref):
+def _public_chain(raw, mapping, visible_refs, plan_ref, point_count, plan_task_count, target_task_ref):
     nodes = [{key: mapping[ref][key] for key in ("task_ref", "operation_ref", "batch_id", "sequence", "process_label",
               "piece_id", "machine_ref", "operator_ref", "start", "end")} for ref in raw["ids"]]
     edges = [{"from_task_ref": mapping[edge["from"]]["task_ref"], "to_task_ref": mapping[edge["to"]]["task_ref"],
@@ -124,7 +121,7 @@ def _public_chain(raw, mapping, visible_refs, plan_ref, evidence_ref, point_coun
     for node in nodes:
         node["in_scope"] = node["task_ref"] in visible_refs
     return {"state": "available", "reason_code": None, "reason": None, "source": ENGINE, "semantics": SEMANTICS,
-            "scope": "full_plan", "plan_ref": plan_ref, "engine_evidence_ref": evidence_ref, "time_basis": "factory_local",
+            "scope": "full_plan", "plan_ref": plan_ref, "time_basis": "factory_local",
             "mode": "related" if target_task_ref is not None else "global", "target_task_ref": target_task_ref,
             "gap_unit": "minute", "gap_rounding": "floor", "nodes": nodes, "task_refs": [node["task_ref"] for node in nodes],
             "edges": edges, "makespan_end": raw["makespan_end"].replace(" ", "T"), "partial": point_count > 0,

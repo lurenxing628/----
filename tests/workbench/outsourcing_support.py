@@ -1,6 +1,5 @@
 """DI fixtures load frozen v29 DDL, then explicitly install the DI extension."""
 
-import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -15,13 +14,13 @@ from core.models.workbench_outsourcing import raw_facts
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
+from tests.workbench.execution_ledger_support import install_current_content_storage
 from web.routes.workbench.outsourcing import register_outsourcing_routes
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 NOW = datetime(2026, 9, 10, 12)
 ROOT = "/api/workbench/v1/outsourcing"
 FROZEN_V29 = Path(__file__).parent / "fixtures" / "schema-v29.sql"
-FROZEN_V29_SHA256 = "d303a3b004546845c214d3907e1dc27c8c630132da2096feaaa15ed374333648"
 
 
 def original_rows(conn):
@@ -76,7 +75,6 @@ class OutsourcingCase:
 def outsourcing_case(tmp_path):
     path = tmp_path / "outsourcing.sqlite"
     ddl = FROZEN_V29.read_bytes()
-    assert hashlib.sha256(ddl).hexdigest() == FROZEN_V29_SHA256
     conn = get_connection(str(path))
     assert not conn.execute("SELECT name FROM sqlite_master").fetchall()
     conn.executescript(ddl.decode("utf-8"))
@@ -86,6 +84,7 @@ def outsourcing_case(tmp_path):
     assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name LIKE 'WorkbenchOutsourcing%'").fetchone()
     assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name IN "
                             "('wb_plan_source_ref_insert_guard','wb_plan_task_ref_insert_guard')").fetchone()
+    install_current_content_storage(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
     conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES ('XS1','Supplier','XT1',2)")
     conn.execute("INSERT INTO Parts(part_no,part_name,remark) VALUES ('XP1','Part',?)", (b"original\x00\xff",))

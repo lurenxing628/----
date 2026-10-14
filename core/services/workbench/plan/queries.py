@@ -16,7 +16,7 @@ from core.models.schedule_plan_role import (
     plan_candidate_label,
     plan_role_label,
 )
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.common.bounded_plan_query import _PagePlanQueryService
@@ -271,6 +271,6 @@ class WorkbenchPlanQueryService:
             data["gantt_graph"] = gantt_graph
             data["provenance"] = provenance
         check_payload_size(data)
-        state = input_fingerprint({"plan_revision": self.references.read_revision(), "data": data,
-                                   "resources": resource_state, "projection_facts": plain_plan_facts(facts)})
+        state = {"plan_revision": self.references.read_revision(), "data": data,
+                 "resources": resource_state, "projection_facts": plain_plan_facts(facts)}
         return data, state

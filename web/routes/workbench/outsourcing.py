@@ -14,7 +14,8 @@ from datetime import datetime
 from flask import g, jsonify, request
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.content import content_text, same, unpacked
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_outsourcing import bounded, reject
 from core.models.workbench_outsourcing_input import factory_time
 from core.services.workbench import messages
@@ -82,11 +83,11 @@ def _read(kind, ref=None):
             if number != 1:
                 reject("单条外协登记没有分页。请直接查看这一条。", status=400)
             data = reader.detail(ref, as_of=now)
-        fingerprint = data.pop("fingerprint")
-        if saved is not None and saved.get("fingerprint") != fingerprint:
+        content = data.pop("content")
+        if saved is not None and ("content" not in saved or not same(unpacked(saved["content"]), content)):
             reject("外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。", "snapshot_stale", 409)
         if token is None:
-            token = issue_public_token(_SCOPE, canonical_json({"scope": scope, "source": "production", "fingerprint": fingerprint,
+            token = issue_public_token(_SCOPE, content_text({"scope": scope, "source": "production", "content": content,
                                        "as_of": now.isoformat(timespec="seconds")}), ttl_seconds=900)
     response = query_success(bounded(data), {"snapshot_ref": token, "as_of": now.isoformat(timespec="seconds")})
     response.headers["Cache-Control"] = "no-store"

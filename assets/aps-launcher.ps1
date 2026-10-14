@@ -203,13 +203,6 @@ function Read-ApsHealth($Runtime, $Budget) {
     }
 }
 
-function Get-ApsIdentityHash([string]$Text) {
-    # Existing runtime health protocol: DB scope and per-instance shutdown token.
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { return [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text))).Replace('-', '').ToLowerInvariant() }
-    finally { $sha.Clear() }
-}
-
 function Test-ApsHealth($Context, $Runtime, $Budget) {
     # Codes match the former launcher: 0 ready, 1 pending, 2 invalid, 3 recovery, 4 other owner.
     $contract = $Runtime.contract
@@ -221,9 +214,14 @@ function Test-ApsHealth($Context, $Runtime, $Budget) {
     $owner = [string](Get-ApsValue $contract 'owner')
     $hostName = [string](Get-ApsValue $contract 'host')
     $database = [string](Get-ApsValue $contract 'db_path')
-    $token = [string](Get-ApsValue $contract 'shutdown_token')
-    if (-not $owner -or -not $hostName -or -not $database -or -not $token -or
-        $database -cne $Context.db -or $Runtime.hostName -ine $hostName -or $Runtime.port -ne $port) { return 2 }
+    $instanceId = [string](Get-ApsValue $contract 'instance_id')
+    if (-not $owner -or -not $hostName -or -not $database -or -not $instanceId -or
+        $Runtime.hostName -ine $hostName -or $Runtime.port -ne $port) { return 2 }
+    try {
+        $database = [IO.Path]::GetFullPath($database.Trim()).ToLowerInvariant()
+        $expectedDatabase = [IO.Path]::GetFullPath([string]$Context.db).ToLowerInvariant()
+    } catch { return 2 }
+    if ($database -cne $expectedDatabase) { return 2 }
     try { $response = Read-ApsHealth $Runtime $Budget }
     catch [ArgumentException] { return 2 }
     catch { return 1 }
@@ -238,9 +236,12 @@ function Test-ApsHealth($Context, $Runtime, $Budget) {
         $available = Get-ApsValue $health 'operations_available'
         if ($status -cne 'recovery_required' -or $available -isnot [bool] -or $available -ne $false) { return 2 }
     } elseif ($response.status -ne 200 -or $status -cne 'ok') { return 2 }
-    if ((Get-ApsValue $health 'owner') -ine $owner -or
-        (Get-ApsValue $health 'db_path_hash') -cne (Get-ApsIdentityHash $database) -or
-        (Get-ApsValue $health 'instance_id') -cne (Get-ApsIdentityHash $token)) { return 2 }
+    $healthDatabase = [string](Get-ApsValue $health 'db_path')
+    if (-not $healthDatabase) { return 2 }
+    try { $healthDatabase = [IO.Path]::GetFullPath($healthDatabase.Trim()).ToLowerInvariant() }
+    catch { return 2 }
+    if ((Get-ApsValue $health 'owner') -ine $owner -or $healthDatabase -cne $database -or
+        (Get-ApsValue $health 'instance_id') -cne $instanceId) { return 2 }
     if ($owner -ine $Context.owner) { return 4 }
     if ($recovery) { return 3 }
     return 0

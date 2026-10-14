@@ -55,7 +55,6 @@ _REQUIRED_TEXT_FIELDS = (
     "event_time",
     "created_by",
     "idempotency_key",
-    "request_fingerprint",
     "previous_state_revision",
 )
 
@@ -272,7 +271,7 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
             remark=_text_or_none(payload.get("remark")),
             created_by=required_text["created_by"],
             idempotency_key=required_text["idempotency_key"],
-            request_fingerprint=required_text["request_fingerprint"],
+            request_fingerprint=payload.get("request_fingerprint"),
             previous_state_revision=required_text["previous_state_revision"],
         )
         self._validate_event_sequence_for_insert(scope, event_to_insert)
@@ -315,7 +314,7 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
                 _text_or_none(payload.get("remark")),
                 required_text["created_by"],
                 required_text["idempotency_key"],
-                required_text["request_fingerprint"],
+                payload.get("request_fingerprint"),
                 required_text["previous_state_revision"],
             ),
         )

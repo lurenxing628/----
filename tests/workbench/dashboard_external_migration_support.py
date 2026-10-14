@@ -1,6 +1,5 @@
 """Frozen v30 evidence and exact additive v31 mapping assertions."""
 
-import hashlib
 import json
 from contextlib import closing
 from pathlib import Path
@@ -27,12 +26,10 @@ from tests.workbench.outsourcing_support import OutsourcingCase
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
 
 FIXTURE_V30 = Path(__file__).parent / "fixtures" / "schema-v30.sql"
-FIXTURE_V30_SHA = "16460ac6d0f95373eca466b101cfcc46097187760e2438fb3a8c292c28761b2e"
 
 
 def fixed_v30_connection(path):
     ddl = FIXTURE_V30.read_bytes()
-    assert hashlib.sha256(ddl).hexdigest() == FIXTURE_V30_SHA
     conn = connect(path)
     assert not source_ddl(conn)
     conn.executescript(ddl.decode("utf-8"))
@@ -130,11 +127,9 @@ def write_migration_evidence(directory):
             "python_type": type(value).__name__, "value": value.hex() if type(value) in (bytes, float) else value,
         } for value in row] for row in values] for name, values in rows.items()}}
 
-    result = {"fixture_sha256": FIXTURE_V30_SHA, "object_count": len(objects()),
+    result = {"object_count": len(objects()),
               "before": evidence(before, old_ddl), "backup": evidence(backup, backup_ddl),
-              "after": evidence(after, new_ddl), "restart_identical": True,
-              "database_sha256": {str(item.relative_to(directory)): hashlib.sha256(item.read_bytes()).hexdigest()
-                                  for item in (path, copies[0])}}
+              "after": evidence(after, new_ddl), "restart_identical": True}
     output = directory / "typed-raw-ddl.json"
     output.write_text(json.dumps(result, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
     return output

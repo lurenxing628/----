@@ -3,7 +3,7 @@
 import secrets
 
 from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
-from core.models.workbench_trial_codec import dump, dump_and_fingerprint, load_object
+from core.models.workbench_trial_codec import dump, dump_document, load_object
 from core.models.workbench_trial_scenario_archive import scenario_archive
 
 
@@ -47,7 +47,7 @@ class WorkbenchTrialRepository:
         self._transaction()
         ref = new_ref()
         key, value = next(iter(admission["input"]["base"].items()))
-        admission_json, admission_hash = dump_and_fingerprint(admission)
+        admission_json, admission_hash = dump_document(admission)
         self.conn.execute("""INSERT INTO WorkbenchTrialDrafts
             (draft_ref,base_kind,base_ref,admission_json,admission_hash,row_count,revision,status,
              validation_json,created_at,updated_at,local_operator,request_key)
@@ -55,7 +55,7 @@ class WorkbenchTrialRepository:
             (ref, key, value, admission_json, admission_hash, len(rows), dump(checked), now, now, actor, request_key))
         stored_rows = []
         for index, row in enumerate(rows):
-            original_json, original_hash = dump_and_fingerprint(row["original"])
+            original_json, original_hash = dump_document(row["original"])
             stored_rows.append((row["row_ref"], row["task_ref"], ref, row["operation_ref"], row["source_task_ref"],
                                 row["source_row_ref"], index, original_json, original_hash, dump(row["current"])))
         self.conn.executemany("""INSERT INTO WorkbenchTrialRows
@@ -91,10 +91,10 @@ class WorkbenchTrialRepository:
         return cur.rowcount == 1
 
     def save(self, head, snapshot, request_key, actor, now):
-        """Persist ordered metadata and permanent task bodies; retain the full public snapshot digest."""
+        """Persist ordered metadata and permanent task bodies under the full document size limit."""
         self._transaction()
         ref = snapshot["scenario_ref"]
-        _, snapshot_hash = dump_and_fingerprint(snapshot)
+        _, snapshot_hash = dump_document(snapshot)
         snapshot_json = dump(scenario_archive(snapshot))
         self.conn.execute("""INSERT INTO WorkbenchTrialScenarios
             (scenario_ref,draft_ref,name,revision,snapshot_json,snapshot_hash,saved_at,local_operator,request_key)

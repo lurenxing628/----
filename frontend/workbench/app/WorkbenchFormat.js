@@ -25,6 +25,20 @@
     return p[1] + '-' + p[2] + '-' + p[3] + ' ' + p[4] + ':' + p[5]
       + (seconds || fraction ? ':' + (p[6] || '00') + fraction : '');
   }
+  // Compact labels only change display. Query values retain their seconds and fractions.
+  function compactDateTime(value, { year = true } = {}) {
+    if (typeof year !== 'boolean') return invalid('日期时间选项');
+    const text = dateTime(value);
+    return empty(value) || year ? text : text.slice(5);
+  }
+  function compactRange(start, end) {
+    const first = dateTime(start), last = dateTime(end);
+    if (empty(start) || empty(end)) return first + ' 至 ' + last;
+    const sameYear = first.slice(0, 4) === last.slice(0, 4);
+    const sameDate = first.slice(0, 10) === last.slice(0, 10);
+    return (sameYear ? first.slice(5) : first) + ' 至 ' +
+      (sameDate ? last.slice(11) : sameYear ? last.slice(5) : last);
+  }
   function date(value) {
     if (empty(value)) return unknown;
     const p = parts(value, true);
@@ -85,5 +99,5 @@
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('工时');
     return number(value, options) + HOURS_UNIT;
   }
-  window.WorkbenchFormat = Object.freeze({ dateTime, date, instant, number, integerText, percent, hours });
+  window.WorkbenchFormat = Object.freeze({ dateTime, compactDateTime, compactRange, date, instant, number, integerText, percent, hours });
 })();

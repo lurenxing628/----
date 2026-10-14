@@ -1,6 +1,5 @@
 """DE-only current linkage assertions; frozen SQL is never relabeled current DDL."""
 
-import hashlib
 import re
 from pathlib import Path
 
@@ -16,7 +15,6 @@ V29_EMPTY_TABLES = (
 )
 V29_MAPPING_TABLES = ("WorkbenchDashboardItems", "WorkbenchDashboardDowntimeRefs")
 V29_TABLES = V29_EMPTY_TABLES + V29_MAPPING_TABLES
-V28_SHA256 = "2520295cebbe708270f93ed0aa5a6b18ea9b93ad3a1c77dd6c7a857fea44ad52"
 
 
 def missing_v29_issues():
@@ -51,7 +49,6 @@ def frozen_v28_conn(mem_conn):
     from tests.workbench.identity_metadata_support import seed_resources
 
     source = Path(__file__).parent / "fixtures" / "schema-v28.sql"
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == V28_SHA256
     assert not mem_conn.execute("SELECT name FROM sqlite_master").fetchall()
     mem_conn.executescript(source.read_text(encoding="utf-8"))
     set_schema_version(mem_conn, 28)

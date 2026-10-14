@@ -1,10 +1,13 @@
 """Failure injection at actual SQLite transaction boundaries; original rows survive."""
 
+import json
 import sqlite3
+from datetime import datetime
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandUncertain
+from core.models.workbench_command import WorkbenchCommandUncertain, canonical_json
+from core.services.workbench.facts.run_policy import public_run
 from core.services.workbench.run.jobs_facts import capture_run_facts
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -34,6 +37,14 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
 def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkeypatch, failure_stage):
     case = job_case
     accepted = case.accept()
+    captured_scope = accepted["data"]["scope_summary"]
+    legacy_row = WorkbenchRunRepository(case.conn).get(accepted["run_ref"])
+    legacy_facts = json.loads(legacy_row["facts_json"])
+    legacy_facts["tables"].pop("ScheduleConfig")
+    legacy_row["facts_json"] = canonical_json(legacy_facts)
+    legacy_scope = public_run(case.conn, legacy_row)["scope_summary"]
+    assert legacy_scope["objective"] is None and legacy_scope["objective_label"] is None
+    assert {"field": "objective", "code": "not_recorded", "message": "排产时没有记下这一项。"} in legacy_scope["data_gaps"]
     before = capture_run_facts(case.conn)
     save = WorkbenchRunResultRepository.save
     finish = WorkbenchRunRepository.finish
@@ -57,16 +68,21 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     monkeypatch.setattr(WorkbenchRunResultRepository, "save", broken_save)
     monkeypatch.setattr(WorkbenchRunRepository, "finish", broken_finish)
     with pytest.raises(WorkbenchCommandUncertain):
-        WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+        WorkbenchRunWorker(case.conn, clock=lambda: datetime(2026, 9, 10, 12, 1, 0, 100000)).execute(accepted["run_ref"])
     assert not case.conn.in_transaction
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidates").fetchone()[0] == 0
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0] == 0
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts").fetchone()[0] == 0
-    assert service(case.conn).get(accepted["run_ref"])["state"] == "running"
+    running = service(case.conn).get(accepted["run_ref"])
+    assert running["state"] == "running" and running["scope_summary"] == captured_scope
     assert capture_run_facts(case.conn) == before
     if failure_stage == "second_candidate":
         assert executed == [1]
     monkeypatch.undo()
-    outcome = service(case.conn).recover_unfinished_runs()
+    recovery = service(case.conn)
+    recovery.clock = lambda: datetime(2026, 9, 10, 12, 1, 0, 123456)
+    outcome = recovery.recover_unfinished_runs()
     assert outcome["recovered"] == [accepted["run_ref"]]
-    assert service(case.conn).get(accepted["run_ref"])["state"] == "interrupted"
+    interrupted = service(case.conn).get(accepted["run_ref"])
+    assert interrupted["state"] == "interrupted" and interrupted["scope_summary"] == captured_scope
+    assert interrupted["finished_at"] == "2026-09-10T12:01:00.123456"

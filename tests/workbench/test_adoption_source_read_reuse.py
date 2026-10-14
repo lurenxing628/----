@@ -11,8 +11,9 @@ from core.models.workbench_command import canonical_json
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
 from core.services.batch.service import BatchService
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
-from core.services.workbench.plan import adoption_baseline, adoption_baseline_sources, projection
-from core.services.workbench.plan.adoption_baseline_values import AdoptionBaselineUnavailable
+from core.services.workbench.facts import adoption_baseline_sources
+from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
+from core.services.workbench.plan import adoption_baseline, projection
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from tests.workbench.plan_adoption_baseline_support import adopt_candidate, mutate_json
@@ -115,7 +116,7 @@ def test_caller_version_and_history_cannot_reuse_another_adoption(adopted_versio
                 version=first["version"], history=history, facts={})
         changed = dict(history)
         audit = json.loads(changed["result_summary"])
-        audit["proof"]["candidate_hash"] = "0" * 64
+        audit["proof"]["run_ref"] = first["source_run_ref"]
         changed["result_summary"] = json.dumps(audit)
         with pytest.raises(AdoptionBaselineUnavailable):
             adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
@@ -130,8 +131,9 @@ def test_new_request_rechecks_broken_source_and_rejects_old_snapshot(adopted_ver
     path = "/" + second["plan_ref"] + "/workspace"
     original = api.read(path)
     if fault == "capture":
-        run_ref = case.conn.execute("SELECT run_ref FROM WorkbenchRunJobs ORDER BY accepted_at DESC, rowid DESC LIMIT 1").fetchone()[0]
-        corrupt_update(case.conn, "WorkbenchRunJobs", "UPDATE WorkbenchRunJobs SET facts_hash=? WHERE run_ref=?", ("0" * 64, run_ref))
+        mutate_json(case.conn, "WorkbenchRunJobs", "baseline_json",
+                    lambda value: value["rows"][0].update(end_time="2026-09-09T15:59:00"),
+                    "run_ref=?", (second["source_run_ref"],))
     elif fault == "receipt":
         audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (second["version"],)).fetchone()[0])
         mutate_json(case.conn, "WorkbenchCommandReceipts", "outcome_json",

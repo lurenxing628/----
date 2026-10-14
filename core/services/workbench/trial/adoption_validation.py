@@ -4,12 +4,11 @@ from dataclasses import replace
 from datetime import datetime
 
 from core.errors import AppError
+from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.models.workbench_run_job import durable_value
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
-from core.models.workbench_trial_codec import fingerprint, same
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.candidate_archive import require_adoption_schema
 from core.services.workbench.facts.preflight_checks import PreflightChecks
@@ -64,13 +63,12 @@ def validate_trial_adoption(conn, scenario_ref):
             svc = ScheduleService(conn)
             _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)
             validate_adoption_payload(conn, prepared, payload)
-            proof = {"scenario_ref": scenario_ref, "draft_ref": head["draft_ref"],
-                     "scenario_hash": fingerprint(saved), "admission_hash": head["admission_hash"],
-                     "facts_hash": live["facts_hash"], "execution_hash": fingerprint(live["execution"]),
-                     "baseline_hash": fingerprint(live["baseline"]),
-                     "rows_hash": fingerprint(rows), "validated_hash": fingerprint(durable_value(payload))}
-            return TrialAdoptionEvidence(scenario_ref, head["draft_ref"], live["baseline"], proof, prepared, payload,
-                                         run_window(admission))
+            proof = {"proof_version": "content_refs_v1", "scenario_ref": scenario_ref,
+                     "draft_ref": head["draft_ref"], "scenario_revision": head["scenario_revision"],
+                     "baseline_ref": live["baseline"]["plan_ref"], "baseline_version": live["baseline"]["version"]}
+            snapshot = {"proof": proof, "facts": live["facts"], "execution": live["execution"]}
+            return TrialAdoptionEvidence(scenario_ref, head["draft_ref"], live["baseline"], snapshot, prepared, payload,
+                                         run_window(admission), proof=proof)
     except TrialAdoptionBlocked:
         raise
     except CandidateAdoptionBlocked as exc:

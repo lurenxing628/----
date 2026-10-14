@@ -1,5 +1,8 @@
 """Copy the explicit complete base, including private legacy row fields."""
 
+from typing import Any, Dict, cast
+
+from core.models.schedule_plan_role import SOURCE_SCHEDULE
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_trial import MAX_TRIAL_TASKS, issue, reject
 from core.services.scheduler.contracts.external_context import (
@@ -14,9 +17,13 @@ from core.services.workbench.facts.candidate_projection import candidate_summary
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import tasks_projection
 from core.services.workbench.facts.candidate_values import stored_json
+from core.services.workbench.facts.decision_baseline import _same_arrangements
+from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
+from core.services.workbench.facts.delivery_completeness import deferred_operation_evidence
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, point_basis
 from core.services.workbench.plan.baseline import _complete_rows
+from core.services.workbench.plan.delivery_repository import PlanDeliveryRepository
 from core.services.workbench.plan.point_evidence import official_point_work
 from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
@@ -26,6 +33,7 @@ from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepo
 from data.repositories.workbench_trial_repo import new_ref
 
 from .archived_external_context import archived_contexts
+from .effort import operation_types
 from .execution_anchors import attach_execution_anchors
 from .facts import entity_maps, live_context
 from .materials import plan_material_policy
@@ -76,7 +84,7 @@ def _plan(conn, ref):
         facts = WorkbenchTrialQueryRepository(conn)
         identity = entry.plan_identity
         if identity is None:
-            reject("plan_unavailable", "所选计划缺少可用的永久身份，未切换到其他计划。")
+            reject("plan_unavailable", "所选计划的编号已失效，请刷新计划列表后重新选择。")
         tables = {"BatchOperations": {row["id"]: row for row in facts.raw_batch_operations()},
                   "Batches": {row["batch_id"]: row for row in facts.raw_batches()}}
         detail = _complete_rows(repo, version=entry.locator.version, source=identity.source_table,
@@ -103,9 +111,32 @@ def _plan(conn, ref):
         _attach_parts(facts, result)
         operations = {int(row["source_key"]): row["ref"] for row in facts.active_operation_source_refs()}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
-        return result, {"identity": project_plan(entry, ref), "source_table": table,
-                        "material_policy": plan_material_policy(conn, entry.locator.version)}, tables["BatchOperations"], operations, issues
+        delivery_record = (PlanDeliveryRepository(conn).completion_record(identity, None)
+                           if identity.source_table == SOURCE_SCHEDULE else {"source": identity.source_table})
+        deferred, deferred_issues = deferred_operation_evidence(conn, delivery_record)
+        runtime = _formal_effort_source(conn, ref, entry.locator.version, delivery_record, list(raw.values()))
+        slot_types = operation_types(result, refs, {row["op_type_id"]: row for row in facts.read_whole_table("OpTypes")[1]})
+        types = runtime.get("operation_types")
+        if types is None:
+            types = {row["operation_ref"]: {"ref": None, "label": None} for row in result}
+        return result, {"identity": project_plan(entry, ref), "source_table": table, **runtime,
+                        "operation_types": types, "trial_operation_types": slot_types,
+                        "material_policy": plan_material_policy(conn, entry.locator.version),
+                        "deferred_operation_ids": sorted(deferred), "deferred_operation_issues": deferred_issues}, tables["BatchOperations"], operations, issues
 
+
+
+def _formal_effort_source(conn, ref, version, record, rows):
+    if record["source"] != SOURCE_SCHEDULE:
+        return {"operation_effort": None}
+    history = {"version": version, "result_summary": record["summary"], "result_status": record["result_status"]}
+    source = decision_baseline_source_resolver(conn)(plan_ref=ref, version=version, history=history)
+    evidence = source.get("evidence")
+    if evidence is not None and not _same_arrangements(rows, evidence.get("arranged")):
+        return {"operation_effort": None, "operation_effort_issues": [
+            {"code": "adoption_plan_drift", "message": "正式安排与原采用来源不同，准备需求分解未知。"}]}
+    return {"operation_effort": source.get("operation_effort"), "operation_types": source.get("operation_types"),
+            "operation_effort_issues": [source["issue"]] if source.get("issue") else []}
 
 def _date_issues(rows):
     issues = []
@@ -113,7 +144,7 @@ def _date_issues(rows):
         for field in ("due_date", "ready_date"):
             value = row["original"]["batch"][field]
             if value is not None and (type(value) is not str or stored_date(value) is None):
-                issues.append(issue("trial_base_date_invalid", "原批次交期或可开工日期无效；保留原值，不能正式采用。", row["task_ref"]))
+                issues.append(dict(issue("trial_base_date_invalid", "原批次交期或可开工日期无效；保留原值，不能正式采用。", row["task_ref"]), field=field))
     return issues
 
 
@@ -142,6 +173,8 @@ def _candidate(conn, ref):
         receipt = store.receipt(run)
         validate_manifest(run, candidates, receipt)
         candidate = next(row for row in candidates if row["candidate_ref"] == ref)
+        # A candidate that passes manifest validation has a saved receipt.
+        receipt = cast(Dict[str, Any], receipt)
         capture = store.capture(run_ref)
         facts = GenerationFacts(capture)
         rows = store.tasks(ref)
@@ -170,7 +203,12 @@ def _candidate(conn, ref):
             issues.append(issue("trial_base_incomplete", "候选方案没有覆盖排产时的全部工序，没排上的工序也照样列出。"))
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
                                "display_name": summary["label"], "completeness": summary["completeness"]},
-                 "capture": capture, "dispositions": scope}
+                 "capture": capture, "dispositions": scope, "operation_effort": receipt.get("operation_effort"),
+                 "trial_operation_types": operation_types(result, facts.entity_refs,
+                      {row["op_type_id"]: row for row in _table(facts.archive, "OpTypes") or []}),
+                 "operation_types": operation_types(result, facts.entity_refs,
+                      {row["op_type_id"]: row for row in _table(facts.archive, "OpTypes") or []},
+                      candidate["artifact"].get("results", []))}
         return result, extra, facts.tables["BatchOperations"], {key: ref for ref, key in facts.operations.items()}, issues
 
 

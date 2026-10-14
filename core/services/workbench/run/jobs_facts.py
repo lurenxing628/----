@@ -1,22 +1,26 @@
 """Durable acceptance facts; self-owned run bookkeeping is not a production change."""
 
-import hashlib
 import json
 
-from core.models.workbench_command import canonical_json
+from core.models.content import content_text, same
 from core.models.workbench_run_job import durable_value
 from core.services.workbench.execution.ledger import ExecutionLedgerService
+from core.services.workbench.facts.schema_compat import archived_columns, project_facts
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
 from .preflight_facts import NON_INPUT_TABLES, non_input_row
 
 
 def capture_run_facts(conn):
+    text = _capture_run_facts_text(conn)
+    return None, text
+
+
+def _capture_run_facts_text(conn):
     repo = WorkbenchRunFactsRepository(conn)
     schema, tables = repo.admission_facts(exclude_tables=NON_INPUT_TABLES)
     facts = _production_facts({"schema": schema, "tables": tables}, repo.command_receipt_columns())
-    text = canonical_json(durable_value(facts))
-    return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
+    return content_text(facts)
 
 
 def _production_facts(value, receipt_columns):
@@ -27,33 +31,21 @@ def _production_facts(value, receipt_columns):
 
 
 def run_facts_unchanged(conn, captured_text, captured_hash):
-    """Prove archive integrity, then compare production inputs across audit writes.
-
-    Keep the original full archive and SHA unchanged, including older admissions:
-    the exclusions apply to both sides only while comparing, so an archive taken
-    before they existed still compares on the same terms. OperationLogs and
-    SystemJobState hold telemetry and maintenance timing; neither contents nor
-    their allocators are scheduling inputs. An 'unchanged' command receipt only records that a command found
-    nothing to change. Trial drafts/scenarios and dashboard handling, with their
-    receipts, are never read by the run (see NON_INPUT_TABLES); a trial adoption
-    still changes the official plan tables. Every other committed or partial
-    receipt, all other tables (including unknown extensions), sequence counters,
-    and the complete schema remain part of this comparison.
-    """
-    if type(captured_text) is not str or hashlib.sha256(captured_text.encode("utf-8")).hexdigest() != captured_hash:
+    """Compare the original production archive; old digest values remain metadata."""
+    if type(captured_text) is not str:
         return False
-    return production_facts_match(conn, captured_text, captured_hash)
+    return production_facts_match(conn, captured_text)
 
 
-def production_facts_match(conn, captured_text, captured_hash):
+def production_facts_match(conn, captured_text):
     """Compare live inputs after the caller has verified the immutable archive once."""
-    current_hash, current_text = capture_run_facts(conn)
-    if current_hash == captured_hash:
+    current_text = _capture_run_facts_text(conn)
+    if current_text == captured_text:
         return True
-    # The schema itself is compared, so the current column order also describes the archive whenever both can match.
-    columns = WorkbenchRunFactsRepository(conn).command_receipt_columns()
-    return (canonical_json(_production_facts(json.loads(current_text), columns))
-            == canonical_json(_production_facts(json.loads(captured_text), columns)))
+    current, captured = json.loads(current_text), json.loads(captured_text)
+    current = _production_facts(current, archived_columns(current, "WorkbenchCommandReceipts"))
+    captured = _production_facts(captured, archived_columns(captured, "WorkbenchCommandReceipts"))
+    return same(project_facts(current), project_facts(captured))
 
 
 def run_execution_projections(conn, settings):

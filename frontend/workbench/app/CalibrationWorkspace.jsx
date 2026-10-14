@@ -6,11 +6,12 @@
     const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const partAdapter = React.useMemo(() => ({ detail: (...args) => window.APSProcessAPI.create().detail(...args) }), []);
     const [part, setPart] = React.useState(null);
-    const [input, setInput] = React.useState(() => A.initial(initialContext));
+    const [restored] = React.useState(() => A.restoreInitial(initialContext));
+    const [input, setInput] = React.useState(restored.input);
     const [widths, setWidths] = React.useState(initialContext.table_widths || {});
     const [selected, setSelected] = React.useState(initialContext.selected || null), [sampleRef, setSample] = React.useState(initialContext.sample_ref || null);
     const [revision, refresh] = React.useReducer(value => value + 1, 0), [format, setFormat] = React.useState('csv');
-    const [notice, setNotice] = React.useState(''), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false);
+    const [notice, setNotice] = React.useState(restored.notice), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false);
     const [stale, setStale] = React.useState(false), downloadAbort = React.useRef(null);
     const identity = JSON.stringify(input) + ':' + revision;
     const request = useRead(signal => A.readView(api, input, signal), identity, api);

@@ -11,6 +11,7 @@ HEALTH_UNAVAILABLE = "unavailable"
 HEALTH_RELATIVE_TOLERANCE_RATIO = 0.05
 HEALTH_BETTER_MIN_SCORE = 2
 HEALTH_WORSE_MAX_SCORE = -2
+HEALTH_EVIDENCE_VERSION = "candidate-health-evidence-v1"
 
 _OP_NODE_PREFIX = "op:"
 
@@ -26,9 +27,10 @@ class CandidateHealth:
     critical_chain_slack_hours_delta: Optional[float]
     critical_chain_node_count: int
     top_impact_op_count: int
+    decision_evidence: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        value = {
             "state": self.state,
             "score": int(self.score),
             "reason_code": self.reason_code,
@@ -39,6 +41,9 @@ class CandidateHealth:
             "critical_chain_node_count": int(self.critical_chain_node_count),
             "top_impact_op_count": int(self.top_impact_op_count),
         }
+        if self.decision_evidence is not None:
+            value["decision_evidence"] = self.decision_evidence
+        return value
 
 
 @dataclass(frozen=True)
@@ -58,6 +63,9 @@ def unavailable_health(reason_code: str) -> CandidateHealth:
         critical_chain_slack_hours_delta=None,
         critical_chain_node_count=0,
         top_impact_op_count=0,
+        decision_evidence={"version": HEALTH_EVIDENCE_VERSION, "state": "unavailable", "reason_code": reason_code,
+                           "relative_tolerance_ratio": None, "neutral_tolerance_hours": None,
+                           "score_thresholds": None, "components": []},
     )
 
 
@@ -86,26 +94,25 @@ def evaluate_candidate_health(
     candidate_wait_hours = _chain_wait_hours(candidate_by_op_id, critical_op_ids)
     wait_delta = candidate_wait_hours - baseline_wait_hours
     top_impact_op_ids = _top_impact_op_ids(graph_metrics)
-    top_start_delta = _avg_start_delta_hours(
+    top_start = _mean_start_values(
         baseline_by_op_id=baseline_by_op_id,
         candidate_by_op_id=candidate_by_op_id,
         op_ids=top_impact_op_ids,
     )
-    slack_delta = _critical_slack_delta_hours(graph_metrics)
-
-    score = 0
-    score += _smaller_is_better_score(
-        finish_delta,
-        _relative_tolerance_hours(baseline_finish_hours, fallback_hours=neutral_tolerance_hours),
-    )
-    score += _smaller_is_better_score(
-        wait_delta,
-        _relative_tolerance_hours(baseline_wait_hours, fallback_hours=neutral_tolerance_hours),
-    )
-    if top_start_delta is not None:
-        score += _smaller_is_better_score(top_start_delta, neutral_tolerance_hours)
-    if slack_delta is not None:
-        score += _larger_is_better_score(slack_delta, neutral_tolerance_hours)
+    slack = _critical_slack_values(graph_metrics)
+    components = [
+        _health_component("critical_chain_finish_hours_delta", "critical_path_span", baseline_finish_hours,
+                          candidate_finish_hours, finish_delta,
+                          _relative_tolerance_hours(baseline_finish_hours, fallback_hours=neutral_tolerance_hours)),
+        _health_component("critical_chain_wait_hours_delta", "critical_path_wait", baseline_wait_hours,
+                          candidate_wait_hours, wait_delta,
+                          _relative_tolerance_hours(baseline_wait_hours, fallback_hours=neutral_tolerance_hours)),
+        _health_component("top_impact_ops_avg_start_hours_delta", "common_origin_mean_start", top_start["reference"],
+                          top_start["candidate"], top_start["delta"], neutral_tolerance_hours, origin=top_start["origin"]),
+        _health_component("critical_chain_slack_hours_delta", slack["basis"], slack["reference"], slack["candidate"],
+                          slack["delta"], neutral_tolerance_hours, improvement="higher"),
+    ]
+    score = sum(item["contribution"] for item in components)
 
     if score >= HEALTH_BETTER_MIN_SCORE:
         state = HEALTH_BETTER
@@ -120,11 +127,24 @@ def evaluate_candidate_health(
         reason_code=f"critical_chain_{state}",
         critical_chain_finish_hours_delta=_round_hours(finish_delta),
         critical_chain_wait_hours_delta=_round_hours(wait_delta),
-        top_impact_ops_avg_start_hours_delta=_round_hours(top_start_delta),
-        critical_chain_slack_hours_delta=_round_hours(slack_delta),
+        top_impact_ops_avg_start_hours_delta=_round_hours(top_start["delta"]),
+        critical_chain_slack_hours_delta=_round_hours(slack["delta"]),
         critical_chain_node_count=int(len(critical_op_ids)),
         top_impact_op_count=int(len(top_impact_op_ids)),
+        decision_evidence={"version": HEALTH_EVIDENCE_VERSION, "state": "complete", "reason_code": f"critical_chain_{state}",
+                           "relative_tolerance_ratio": HEALTH_RELATIVE_TOLERANCE_RATIO,
+                           "neutral_tolerance_hours": float(neutral_tolerance_hours),
+                           "score_thresholds": {"better_min": HEALTH_BETTER_MIN_SCORE, "worse_max": HEALTH_WORSE_MAX_SCORE},
+                           "components": components},
     )
+
+
+def _health_component(key, basis, reference, candidate, delta, tolerance, *, improvement="lower", origin=None):
+    score = _smaller_is_better_score if improvement == "lower" else _larger_is_better_score
+    return {"key": key, "basis": basis, "reference_value": reference, "candidate_value": candidate,
+            "delta_hours": delta, "tolerance_hours": float(tolerance) if delta is not None else None,
+            "contribution": score(delta, tolerance) if delta is not None else 0, "improvement": improvement,
+            "state": "complete" if delta is not None else "not_applicable", "origin": origin}
 
 
 def _results_by_op_id(results: Sequence[Any]) -> Dict[int, Any]:
@@ -215,35 +235,36 @@ def _chain_wait_hours(results_by_op_id: Dict[int, Any], op_ids: Set[int]) -> flo
     return wait_hours
 
 
-def _avg_start_delta_hours(
+def _mean_start_values(
     *,
     baseline_by_op_id: Dict[int, Any],
     candidate_by_op_id: Dict[int, Any],
     op_ids: Set[int],
-) -> Optional[float]:
+) -> Dict[str, Any]:
     comparable = [op_id for op_id in op_ids if op_id in baseline_by_op_id and op_id in candidate_by_op_id]
     if not comparable:
-        return None
-    deltas = [
-        _hours(
-            _require_datetime(getattr(candidate_by_op_id[op_id], "start_time", None))
-            - _require_datetime(getattr(baseline_by_op_id[op_id], "start_time", None))
-        )
-        for op_id in comparable
-    ]
-    return sum(deltas) / float(len(deltas))
+        return {"reference": None, "candidate": None, "delta": None, "origin": None}
+    before = [_require_datetime(getattr(baseline_by_op_id[op_id], "start_time", None)) for op_id in comparable]
+    after = [_require_datetime(getattr(candidate_by_op_id[op_id], "start_time", None)) for op_id in comparable]
+    origin, count = min(before), float(len(comparable))
+    # Keep the original mean of pairwise deltas for the scoring boundary. The
+    # two mean positions use one origin, so their saved levels remain inspectable.
+    return {"reference": sum(_hours(value - origin) for value in before) / count,
+            "candidate": sum(_hours(value - origin) for value in after) / count,
+            "delta": sum(_hours(second - first) for first, second in zip(before, after)) / count,
+            "origin": origin.isoformat()}
 
 
-def _critical_slack_delta_hours(graph_metrics: Optional[Dict[str, Any]]) -> Optional[float]:
+def _critical_slack_values(graph_metrics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    empty = {"reference": None, "candidate": None, "delta": None, "basis": None}
     if not isinstance(graph_metrics, dict):
-        return None
+        return empty
     if "candidate_critical_chain_slack_hours" in graph_metrics and "baseline_critical_chain_slack_hours" in graph_metrics:
-        return float(graph_metrics["candidate_critical_chain_slack_hours"]) - float(
-            graph_metrics["baseline_critical_chain_slack_hours"]
-        )
+        before, after = (float(graph_metrics[key]) for key in ("baseline_critical_chain_slack_hours", "candidate_critical_chain_slack_hours"))
+        return {"reference": before, "candidate": after, "delta": after - before, "basis": "saved_slack_levels"}
     if "critical_chain_slack_hours_delta" in graph_metrics:
-        return float(graph_metrics["critical_chain_slack_hours_delta"])
-    return None
+        return {**empty, "delta": float(graph_metrics["critical_chain_slack_hours_delta"]), "basis": "saved_slack_delta"}
+    return empty
 
 
 def _require_datetime(value: Any) -> datetime:

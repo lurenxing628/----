@@ -1,37 +1,13 @@
 """Lossless SQLite snapshot encoding, including legacy BLOB and REAL values."""
 
-import base64
-import hashlib
 import json
-import math
 from typing import Optional
 
-from core.models.workbench_command import canonical_json, input_fingerprint
+from core.models.content import packed as packed
+from core.models.content import same as same
+from core.models.content import unpacked as unpacked
+from core.models.workbench_command import canonical_json
 from core.models.workbench_trial import MAX_TRIAL_BYTES, reject
-
-
-def packed(value):
-    if isinstance(value, bytes):
-        return {"$sqlite_blob": base64.b64encode(value).decode("ascii")}
-    if type(value) is float and not math.isfinite(value):
-        return {"$sqlite_real": value.hex()}
-    if type(value) is dict:
-        return {key: packed(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [packed(item) for item in value]
-    return value
-
-
-def unpacked(value):
-    if type(value) is dict:
-        if set(value) == {"$sqlite_blob"}:
-            return base64.b64decode(value["$sqlite_blob"], validate=True)
-        if set(value) == {"$sqlite_real"}:
-            return float.fromhex(value["$sqlite_real"])
-        return {key: unpacked(item) for key, item in value.items()}
-    if type(value) is list:
-        return [unpacked(item) for item in value]
-    return value
 
 
 def _encoded(value):
@@ -46,20 +22,18 @@ def dump(value):
     return _encoded(value)[0]
 
 
-def dump_and_fingerprint(value):
-    """One lossless encoding supplies both the size check and the stored digest."""
-    text, encoded = _encoded(value)
-    return text, hashlib.sha256(encoded).hexdigest()
+def dump_document(value):
+    """Save the original document; the legacy digest column remains empty."""
+    text, _ = _encoded(value)
+    return text, None
 
 
 def load_document(text: object, fingerprint: Optional[str] = None):
-    """One parse preserves both the stored packed representation and typed values."""
+    """Parse the original packed document and typed values; retain legacy metadata."""
     if type(text) is not str or len(text.encode("utf-8")) > MAX_TRIAL_BYTES:
         reject("trial_snapshot_invalid", "试调数据读不到或超过上限。请刷新后重试。")
     try:
         value = json.loads(text)
-        if fingerprint is not None and input_fingerprint(value) != fingerprint:
-            reject("trial_snapshot_invalid", "试调数据没有通过完整性检查，这里不改用最新计划。请刷新后重试。")
         return value, unpacked(value)
     except (ValueError, TypeError) as exc:
         from core.models.workbench_command import WorkbenchCommandRejected
@@ -80,12 +54,3 @@ def require_object(value: object):
     if type(value) is not dict:
         reject("trial_snapshot_invalid", "试调数据格式不对，这里不替换原数据。请刷新后重试。")
     return value
-
-
-def fingerprint(value):
-    return input_fingerprint(packed(value))
-
-
-def same(left, right):
-    """Lossless canonical equality, including strict JSON numeric/boolean types."""
-    return canonical_json(packed(left)) == canonical_json(packed(right))

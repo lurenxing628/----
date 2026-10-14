@@ -9,7 +9,7 @@ from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCom
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_KEY, normalize_preflight_input
 from core.services.workbench.run.jobs_facts import capture_run_facts, run_facts_unchanged
 from core.services.workbench.run.preferences import SchedulingPreferencesService
-from core.services.workbench.run.preflight_facts import full_facts_fingerprint
+from core.services.workbench.run.preflight_facts import full_facts_content
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -83,10 +83,10 @@ def test_corrupt_or_unknown_saved_document_is_an_explicit_failure(pf, stored):
 def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf):
     checked = pf.post("/api/workbench/v1/scheduling/preflight", json=payload(pf))
     assert checked.status_code == 200, checked.get_json()
-    before = full_facts_fingerprint(pf.conn)
+    before = full_facts_content(pf.conn)
     captured_hash, captured_text = capture_run_facts(pf.conn)
     assert save(pf, payload(pf), read(pf)["write_context"]["write_token"]).status_code == 200
-    assert full_facts_fingerprint(pf.conn) == before
+    assert full_facts_content(pf.conn) == before
     assert run_facts_unchanged(pf.conn, captured_text, captured_hash)
     from web.routes.workbench.preflight import resolve_preflight_input
 
@@ -100,7 +100,7 @@ def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf)
     # The exclusion is only this one interface preference; normal system configuration stays in the facts.
     SystemConfigRepository(pf.conn).set("auto_backup_enabled", "yes")
     pf.conn.commit()
-    assert full_facts_fingerprint(pf.conn) != before
+    assert full_facts_content(pf.conn) != before
     assert not run_facts_unchanged(pf.conn, captured_text, captured_hash)
 
 

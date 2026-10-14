@@ -42,8 +42,8 @@ def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, log
     calendar, calendar_facts = project_plan_calendar(conn, **arguments)
     occupancy, occupancy_facts = project_plan_occupancy(conn, calendar_facts=calendar_facts, **arguments)
     delivery, delivery_facts = read_plan_delivery(conn, scope=scope, identity=entry.plan_identity, logger=logger)
-    known = sum(item["risk"] != "unknown" for item in delivery["items"])
-    delivery = dict(delivery, state="available" if known == len(delivery["items"]) else "partial" if known else "unavailable")
+    state = delivery["summary"]["state"]
+    delivery = dict(delivery, state="available" if state == "complete" else state)
     process_order, process_facts, gantt_graph = project_process_order(conn, plan_ref=scope.plan_ref)
     provenance = baseline_facts.get("provenance") or {
         "state": "unavailable", "reason": baseline.get("reason") or "此计划未记录可核对的生成来源。",

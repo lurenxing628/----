@@ -3,7 +3,6 @@
 from collections import defaultdict
 
 from core.models.workbench_calibration import CalibrationCandidate, issue
-from core.models.workbench_command import input_fingerprint
 
 from .method import build_suggestion, summarize_samples
 from .samples import review_sample
@@ -17,13 +16,12 @@ def project_lineage_calibration(templates, instances, projections, lineage, *, a
         origin = lineage["lineages"].get(ref)
         template = by_ref.get(origin.template_operation_ref) if origin else None
         candidate = CalibrationCandidate(projections[ref], row["part_no"], row["batch_id"], row["op_code"], row["source"], origin)
-        sample = review_sample(candidate, template=template, as_of=as_of)
+        sample = review_sample(candidate, template=template, as_of=as_of,
+                               lineage_origin=lineage["origins"].get(ref), lineage_events=lineage["events"].get(ref, ()))
         problems = lineage["problems"].get(ref, [])
         sample["exclusion_reasons"].extend(problems)
         sample["eligible"] = sample["eligible"] and not problems
         if origin:
-            sample["sample_revision"] = input_fingerprint({"execution": sample["sample_revision"],
-                "origin": lineage["origins"][ref]["instance_fingerprint"], "events": [event["event_id"] for event in lineage["events"][ref]]})
             samples_by_template[origin.template_operation_ref].append(sample)
         else:
             unbound[row["part_no"]].append(sample)

@@ -1,0 +1,206 @@
+"""Saved identity, calendar versions and known/unknown day coverage contracts."""
+
+from copy import deepcopy
+
+import pytest
+
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.facts.archived_calendar import ArchivedCalendar, archived_resource_calendars
+from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+
+MACHINE, OPERATOR = "a" * 48, "b" * 48
+RESOURCES = [{"kind": "machine", "ref": MACHINE, "saved_id": "M1"},
+             {"kind": "operator", "ref": OPERATOR, "saved_id": "O1"}]
+
+
+def archive(version=35):
+    return {"tables": {"SchemaVersion": [{"id": 1, "version": version}],
+        "WorkbenchEntityRefs": [{"kind": kind, "ref": ref, "entity_key": key, "active": 1}
+                                for kind, ref, key in (("machine", MACHINE, "M1"), ("operator", OPERATOR, "O1"))],
+        "Machines": [{"machine_id": "M1", "name": "保存的设备", "status": "active"}],
+        "Operators": [{"operator_id": "O1", "name": "保存的人员", "status": "active"}],
+        "WorkCalendar": [], "OperatorCalendar": [], "MachineDowntimes": [],
+        "WorkbenchOperatorProfiles": [], "WorkbenchShiftProfiles": [], "WorkbenchShiftPatternDays": [],
+        "WorkbenchShiftDayPeriods": [], "WorkbenchCalendarDefaults": []}}
+
+
+def day(key, start="08:00", end="16:00", *, hours=8, efficiency=1, normal="yes", urgent="yes", operator=None):
+    row = {"date": key, "day_type": "workday", "shift_start": start, "shift_end": end,
+           "shift_hours": hours, "efficiency": efficiency, "allow_normal": normal, "allow_urgent": urgent,
+           "remark": None, "periods_json": None}
+    if operator is not None:
+        row["operator_id"] = operator
+    return row
+
+
+def project(saved, start="2026-10-12T00:00:00", end="2026-10-13T00:00:00", resources=RESOURCES, **kwargs):
+    return archived_resource_calendars(saved, resources, start, end, source_ref="saved-calendar-ref", **kwargs)
+
+
+def test_saved_schema_defaults_keep_old_hours_and_modern_periods():
+    legacy, modern = archive(33), archive(35)
+    del legacy["tables"]["WorkbenchCalendarDefaults"]
+    del legacy["tables"]["WorkbenchShiftDayPeriods"]
+    old = project(legacy)[MACHINE]
+    new = project(modern)[MACHINE]
+    assert old["available_hours"] == 8
+    assert [(row["start"], row["end"]) for row in old["windows"]] == [
+        ("2026-10-12T08:00:00", "2026-10-12T16:00:00")]
+    assert new["available_hours"] == pytest.approx(22 / 3, abs=1e-6)
+    assert len(new["windows"]) == 2
+    assert old["source"]["schema_version"] == 33 and new["source"]["schema_version"] == 35
+    resources = project(modern)
+    assert resources[OPERATOR]["windows"] == resources[MACHINE]["windows"]
+    assert resources[OPERATOR]["basis"] == "personal_or_operator_shift_calendar"
+    assert all(row["provenance"] == "domain_default" for row in resources[OPERATOR]["windows"])
+    assert resources[MACHINE]["days"][0]["downtime_scope_hours"] == 0.0
+    assert resources[MACHINE]["days"][0]["downtime_available_hours"] == 0.0
+    modern["tables"]["WorkbenchCalendarDefaults"] = [{"singleton": 1, "periods_json":
+        '[{"start":"09:00","end":"12:00","day_offset":0},{"start":"14:00","end":"18:00","day_offset":0}]'}]
+    assert project(modern)[MACHINE]["available_hours"] == 7
+
+
+def test_night_tail_priority_overlay_and_downtime_use_exact_half_open_window():
+    saved = archive()
+    saved["tables"]["WorkCalendar"] = [day("2026-10-12", "22:00", "06:00", efficiency=0.5),
+                                        day("2026-10-13", "05:00", "05:30", hours=0.5, normal="no")]
+    saved["tables"]["MachineDowntimes"] = [
+        {"machine_id": "M1", "start_time": "2026-10-13T04:30:00", "end_time": "2026-10-13T05:15:00", "status": "active"},
+        {"machine_id": "M1", "start_time": "2026-10-13T00:00:00", "end_time": "2026-10-14T00:00:00", "status": "cancelled"},
+        {"machine_id": "M1", "start_time": "2026-10-14T00:00:00", "end_time": "2026-10-15T00:00:00", "status": "active"}]
+    result = project(saved, "2026-10-13T04:00:00", "2026-10-13T06:00:00")[MACHINE]
+    assert result["available_hours"] == 1.25
+    assert result["effective_hours"] == 0.75
+    assert result["normal_available_hours"] == 1 and result["urgent_available_hours"] == 1.25
+    assert [(row["start"], row["end"]) for row in result["windows"]] == [
+        ("2026-10-13T04:00:00", "2026-10-13T04:30:00"),
+        ("2026-10-13T05:15:00", "2026-10-13T05:30:00"),
+        ("2026-10-13T05:30:00", "2026-10-13T06:00:00")]
+    saved["tables"]["MachineDowntimes"] = [
+        {"machine_id": "M1", "start_time": "2026-10-14T01:00:00", "end_time": "2026-10-14T00:00:00", "status": "active"}]
+    invalid = project(saved, "2026-10-13T04:00:00", "2026-10-13T06:00:00")[MACHINE]
+    assert invalid["state"] == "unavailable" and invalid["issues"][0]["code"] == "downtime_invalid"
+
+
+def test_saved_personal_override_and_rotating_rest_keep_operator_capacity():
+    saved = archive()
+    tables = saved["tables"]
+    tables["WorkbenchCalendarDefaults"] = [{"singleton": 1, "periods_json":
+        '[{"start":"08:00","end":"16:00","day_offset":0}]'}]
+    tables["WorkbenchOperatorProfiles"] = [{"operator_id": "O1", "shift_profile_id": "NIGHT"}]
+    tables["WorkbenchShiftProfiles"] = [{"profile_id": "NIGHT", "anchor_date": "2026-10-12", "cycle_days": 2, "status": "active"}]
+    tables["WorkbenchShiftPatternDays"] = [
+        {"profile_id": "NIGHT", "day_offset": 0, "is_rest": 0, "shift_start": "22:00", "shift_end": "06:00"},
+        {"profile_id": "NIGHT", "day_offset": 1, "is_rest": 1, "shift_start": "22:00", "shift_end": "06:00"}]
+    tail = project(saved, "2026-10-13T00:00:00", "2026-10-13T06:00:00")[OPERATOR]
+    assert tail["available_hours"] == 6 and tail["windows"][0]["provenance"] == "domain_default_operator_shift"
+    rest = project(saved, "2026-10-13T08:00:00", "2026-10-13T16:00:00")[OPERATOR]
+    assert rest["state"] == "available" and rest["windows"] == [] and rest["available_hours"] == 0
+    tables["OperatorCalendar"] = [day("2026-10-13", "09:00", "12:00", hours=3, efficiency=0.25, normal="no", operator="O1")]
+    tables["WorkbenchShiftProfiles"][0]["status"] = "inactive"
+    personal = project(saved, "2026-10-13T09:00:00", "2026-10-13T12:00:00")[OPERATOR]
+    assert personal["state"] == "available" and personal["available_hours"] == 3
+    assert personal["effective_hours"] == 0.75 and personal["normal_available_hours"] == 0
+    assert personal["windows"][0]["provenance"] == "personal_calendar"
+    tables["WorkbenchOperatorProfiles"] = []
+    tables["OperatorCalendar"] = [day("2026-10-12", "22:00", "06:00", operator="O1")]
+    personal_tail = project(saved, "2026-10-13T00:00:00", "2026-10-13T06:00:00")[OPERATOR]
+    assert personal_tail["available_hours"] == 6
+    assert personal_tail["windows"][0]["provenance"] == "personal_calendar"
+    tables["OperatorCalendar"][0]["operator_id"] = None
+    distinct = project(saved, "2026-10-13T00:00:00", "2026-10-13T06:00:00")
+    assert distinct[MACHINE]["available_hours"] == 6 and distinct[OPERATOR]["available_hours"] == 0
+
+
+def test_broken_policy_days_keep_other_days_known_and_defaults_are_lazy():
+    saved = archive()
+    saved["tables"]["WorkCalendar"] = [day("2026-10-13", end=None, hours=None)]
+    result = project(saved, "2026-10-12T00:00:00", "2026-10-16T00:00:00")[MACHINE]
+    assert result["state"] == "partial" and result["available_hours"] is None and result["windows"] is None
+    assert [row["state"] for row in result["days"]] == ["available", "unavailable", "unavailable", "available"]
+    assert (result["known_days"], result["unknown_days"]) == (2, 2)
+    assert result["known_windows"]
+    saved["tables"]["WorkbenchCalendarDefaults"] = [{"singleton": 1, "periods_json": "null"}]
+    saved["tables"]["WorkCalendar"] = [day("2026-10-14", end=None, hours=0), day("2026-10-15")]
+    explicit = project(saved, "2026-10-15T08:00:00", "2026-10-15T16:00:00")[MACHINE]
+    assert explicit["state"] == "available" and explicit["available_hours"] == 8
+    implicit = project(saved, "2026-10-16T08:00:00", "2026-10-16T16:00:00")[MACHINE]
+    assert implicit["state"] == "unavailable" and implicit["available_hours"] is None
+
+
+def test_deleted_or_replaced_identity_stays_unknown_while_true_zero_stays_zero():
+    saved = archive()
+    original = deepcopy(saved)
+    saved["tables"]["WorkbenchEntityRefs"][0]["ref"] = "c" * 48
+    replaced = project(saved)[MACHINE]
+    assert replaced["state"] == "unavailable" and replaced["available_hours"] is None
+    assert replaced["issues"][0]["missing_fact"] == "WorkbenchEntityRefs.machine"
+    unavailable = project(original, resources=[{"kind": "machine", "ref": "d" * 48, "saved_id": None}])["d" * 48]
+    assert unavailable["available_hours"] is None
+    zero = project(original, "2026-10-17T00:00:00", "2026-10-18T00:00:00")[MACHINE]
+    assert zero["state"] == "available" and zero["windows"] == [] and zero["available_hours"] == 0
+    original["tables"]["Machines"][0]["status"] = "inactive"
+    inactive = project(original)
+    assert inactive[MACHINE]["available_hours"] == 0 and inactive[MACHINE]["windows"] == []
+    assert inactive[OPERATOR]["available_hours"] == pytest.approx(22 / 3, abs=1e-6)
+    original["tables"]["Machines"][0]["status"] = "maintain"
+    maintain = project(original)
+    assert maintain[MACHINE]["available_hours"] == 0 and maintain[MACHINE]["windows"] == []
+    assert maintain[OPERATOR]["available_hours"] == inactive[OPERATOR]["available_hours"]
+    del original["tables"]["OperatorCalendar"]
+    missing = project(original)[OPERATOR]
+    assert missing["state"] == "unavailable" and missing["available_hours"] is None
+    assert missing["issues"][0]["missing_fact"] == "OperatorCalendar"
+    missing_profile = archive()
+    del missing_profile["tables"]["WorkbenchOperatorProfiles"]
+    missing = project(missing_profile)[OPERATOR]
+    assert missing["state"] == "unavailable" and missing["issues"][0]["missing_fact"] == "WorkbenchOperatorProfiles"
+
+
+def test_declared_bounded_coverage_is_not_extended_with_implicit_defaults():
+    saved = archive()
+    result = project(saved, "2026-10-12T00:00:00", "2026-10-15T00:00:00",
+                     coverage={"start": "2026-10-12T00:00:00", "end": "2026-10-14T00:00:00"})[MACHINE]
+    assert [row["state"] for row in result["days"]] == ["available", "available", "unavailable"]
+    assert result["days"][-1]["end"] == "2026-10-15T00:00:00"
+    assert result["days"][-1]["issues"][0]["missing_fact"] == "calendar_coverage"
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        project(saved, "2020-01-01T00:00:00", "2031-01-01T00:00:00")
+    assert exc.value.status == 422
+
+
+def test_real_run_table_archive_and_trial_dictionary_archive_never_read_live_calendars(candidate_case):
+    case = candidate_case
+    schema, tables = WorkbenchRunFactsRepository(case.conn).admission_facts()
+    saved = {"schema": [list(row) for row in schema], "tables": {
+        name: [list(row) for row in rows] for name, rows in tables.items()}}
+    resources = [{"kind": kind, "ref": case.ref(kind, key), "saved_id": key}
+                 for kind, key in (("machine", "M1"), ("operator", "O1"))]
+    case.conn.execute("UPDATE Machines SET status='inactive' WHERE machine_id='M1'")
+    case.conn.execute("UPDATE WorkbenchCalendarDefaults SET periods_json=?",
+                      ('[{"start":"09:00","end":"12:00","day_offset":0}]',))
+    case.conn.commit()
+    case.conn.execute("BEGIN")
+    current_schema, current_tables = WorkbenchRunFactsRepository(case.conn).admission_facts()
+    current_snapshot = {"schema": [list(row) for row in current_schema], "tables": {
+        name: [list(row) for row in rows] for name, rows in current_tables.items()}}
+    statements = []
+    case.conn.set_trace_callback(statements.append)
+    try:
+        factory = ArchivedCalendar(saved)
+        run = factory.for_resources(resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00")
+        trial = ArchivedCalendar({"tables": factory._tables}).for_resources(
+            resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00")
+        current = ArchivedCalendar(current_snapshot, metadata_basis="current_transaction_snapshot").for_resources(
+            resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00")
+    finally:
+        case.conn.set_trace_callback(None)
+        case.conn.rollback()
+    assert statements == []
+    assert run == trial
+    assert all(row["available_hours"] == 8 for row in run.values())
+    assert all(row["source"]["metadata_basis"] == "saved_archive" for row in run.values())
+    assert current[resources[0]["ref"]]["available_hours"] == 0
+    assert current[resources[1]["ref"]]["available_hours"] == 3
+    assert all(row["source"]["metadata_basis"] == "current_transaction_snapshot" for row in current.values())

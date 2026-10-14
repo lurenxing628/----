@@ -4,7 +4,8 @@ import uuid
 
 from flask import current_app, g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandUncertain, input_fingerprint, validate_request_key
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandUncertain, validate_request_key
 from core.models.workbench_trial import fields, reject
 from web.api_responses import query_success
 
@@ -31,7 +32,7 @@ def _body(required):
 
 
 def _query(data, scope):
-    response = query_success(data, bind_read_snapshot(scope, input_fingerprint(data), None))
+    response = query_success(data, bind_read_snapshot(scope, content_text(data), None))
     response.headers["Cache-Control"] = "no-store"
     return response
 

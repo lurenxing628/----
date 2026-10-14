@@ -2,7 +2,7 @@
 
 from flask import g, jsonify, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from core.services.workbench.execution.field_workspace_scope import PARAMETERS, normalize_scope, page_input
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
@@ -114,7 +114,7 @@ def field_report_void_preview(report_ref):
         raise WorkbenchCommandRejected('invalid_input', '请填写撤销原因后重新查看影响。', 400)
     service = WorkbenchProductionReportService(g.db, context_factory=field_context)
     preview = service.preview('report_void', report_ref, body['input'])
-    snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, input_fingerprint(preview.pop('snapshot')))
+    snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, preview.pop('snapshot'))
     response = query_success(preview, snapshot)
     response.headers['Cache-Control'] = 'no-store'
     return response

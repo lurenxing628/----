@@ -19,6 +19,13 @@ from .facts import CalibrationFacts
 from .samples import number
 
 
+def _source_revisions(facts):
+    samples = [sample for groups in (facts["samples_by_template"], facts["unbound_samples_by_part"])
+               for group in groups.values() for sample in group]
+    return [{key: sample[key] for key in ("sample_ref", "sample_revision", "eligible", "exclusion_reasons")}
+            for sample in sorted(samples, key=lambda row: row["sample_ref"])]
+
+
 def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime]):
     if not conn.in_transaction:
         raise RuntimeError("Calibration evidence requires a caller-owned SQLite snapshot.")
@@ -38,8 +45,10 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         selected = {sample["sample_ref"]: sample for sample in facts["samples_by_template"].get(template_ref, []) if sample["selected"]}
         samples = [selected[ref] for ref in suggestion["sample_refs"]]
         preview_intent = {key: intent[key] for key in ("reason", "declared_operator")}
-        binding = {"source": "production", "intent": preview_intent, "template": snapshot(template),
-                   "facts_fingerprint": facts["fingerprint"], "suggestion": suggestion, "latest_adoption": latest}
+        binding = {"schema_version": 2, "source": "production", "intent": preview_intent,
+                   "template": snapshot(template), "source_revisions": _source_revisions(facts),
+                   "lineage_available": facts["lineage_available"], "source_constraints": facts["source_constraints"],
+                   "suggestion": suggestion, "latest_adoption": latest}
         method_blockers = [reason for reason in row["blocked_reasons"]
                            if reason["code"] == SUGGESTION_BELOW_PRECISION_CODE]
         blockers = _blockers(template, suggestion, samples, facts["lineage_available"], method_blockers)

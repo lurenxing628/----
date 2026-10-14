@@ -11,7 +11,6 @@ from core.models.workbench_template_lineage import (
     COPY_COLUMNS,
     EVIDENCE_VERSION,
     STATE_COLUMNS,
-    fingerprint,
     state_snapshot,
 )
 
@@ -166,7 +165,7 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
                    source_lineage_ref=source["lineage_ref"] if source else None, source_event_id=source_event_id,
                    source_eligible=int(source_eligible), birth_event_id=birth_event_id,
                    evidence_version=EVIDENCE_VERSION, template_snapshot=template_snapshot,
-                   template_fingerprint=fingerprint(template_snapshot), instance_snapshot=encoded, instance_fingerprint=fingerprint(encoded))
+                   template_fingerprint=None, instance_snapshot=encoded, instance_fingerprint=None)
         self.conn.execute("INSERT INTO WorkbenchTemplateLineageOrigins (" + ",".join(row) + ") VALUES (" +
                           ",".join("?" for _ in row) + ")", tuple(row.values()))
         return row

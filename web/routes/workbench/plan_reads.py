@@ -16,7 +16,7 @@ from io import BytesIO
 from flask import current_app, g, request, send_file
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, input_fingerprint
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_scope import (
     MAX_PLAN_RESPONSE_BYTES,
     PLAN_READ_TTL_SECONDS,
@@ -82,7 +82,7 @@ def plan_list():
     seek, token = _cursor(scope)
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as revision:
-        snapshot = bind_read_snapshot(scope.scope(), input_fingerprint({"plan_revision": revision}), token)
+        snapshot = bind_read_snapshot(scope.scope(), revision, token)
         data, next_seek = reader.catalog_page(scope, seek)
         data["page"]["next_cursor"] = None
         if next_seek is not None:
