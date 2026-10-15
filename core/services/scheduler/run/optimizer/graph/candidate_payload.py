@@ -6,7 +6,6 @@ from typing import Any, Dict, List
 
 from core.algorithms import ScheduleResult
 from core.algorithms.evaluation import objective_score
-from core.algorithms.greedy.algo_stats import capture_algo_stats
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
     GRAPH_READY_V2_REPAIRED_ORIGIN,
@@ -35,10 +34,9 @@ def build_graph_ready_candidate_payload(**kwargs: Any) -> Dict[str, Any]:
         "decoded_batch_order": decoded_batch_order,
         "metrics": metrics,
         "score": (float(kwargs["summ"].failed_ops),) + objective_score(kwargs["objective_name"], metrics),
-        "algo_stats": capture_algo_stats(kwargs["scheduler"], kwargs["optimizer_algo_stats"]),
+        "algo_stats": kwargs["algo_stats"],
         "resource_pool": kwargs["resource_pool"] or {},
         "seed_result_count": len(kwargs["seed_sr_list"] or []),
-        "locked_seed_range": [getattr(item, "op_id", None) for item in list(kwargs["seed_sr_list"] or [])],
         "mutable_scope": _mutable_scope(profile, version=int(kwargs["version"])),
         "candidate_origin": profile.candidate_origin,
         "runtime_ms": int(kwargs["runtime_ms"]),

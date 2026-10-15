@@ -1,6 +1,5 @@
 (function () {
   'use strict';
-  const M = window.ActualGanttModel;
   function dimensions(width) {
     const labelWidth = width < 550 ? 160 : 292;
     return { labelWidth, viewport: Math.max(80, width - labelWidth) };
@@ -18,35 +17,22 @@
       return ((position.centerAt - model.start) / (model.end - model.start) * zoom - .5) * viewport;
     return position.viewport === undefined ? position.left : position.left * viewport / position.viewport;
   }
-  function range(values) {
-    const points = values.filter(Number.isFinite);
-    if (!points.length) return null;
-    let start = points[0], end = points[0];
-    points.forEach(at => { start = Math.min(start, at); end = Math.max(end, at); });
-    return { start, end };
-  }
-  function dataRange(data) {
-    const plan = range(data.items.flatMap(item => [M.instant(item.task.start), M.instant(item.task.end)]));
-    if (plan) return plan;
-    return range(data.items.flatMap(item => item.execution ? item.execution.reports.flatMap(report => [M.instant(report.actual_start), M.instant(report.actual_end)]) : []));
-  }
   // The default window follows the data but never opens beyond 64x: a few hours inside a months-long axis otherwise
   // started at 1024x with a board hundreds of thousands of pixels wide and a scrollbar thumb too small to grab.
   // Manual zoom still reaches 1024.
   const INITIAL_ZOOM_MAX = 64;
-  function initial(data, model) {
-    const target = dataRange(data);
+  function initial(model) {
+    const target = model.dataRange;
     if (!target) return { zoom: 1, center: .5 };
     const span = model.end - model.start, pad = Math.max(60000, (target.end - target.start) * .08);
     const start = Math.max(model.start, target.start - pad), end = Math.min(model.end, target.end + pad);
     return { zoom: Math.max(1, Math.min(INITIAL_ZOOM_MAX, span / Math.max(60000, end - start))), center: ((start + end) / 2 - model.start) / span };
   }
-  function anchor(data, model, selectedRef, reportRef) {
-    const selected = data.items.find(item => item.task.task_ref === selectedRef);
-    const report = selected && selected.execution && selected.execution.reports.find(item => item.report_ref === reportRef);
-    const selectedRange = report && report.actual_start ? range([M.instant(report.actual_start), M.instant(report.actual_end)])
-      : selected ? range([M.instant(selected.task.start), M.instant(selected.task.end)]) : dataRange(data);
-    return selectedRange ? ((selectedRange.start + selectedRange.end) / 2 - model.start) / (model.end - model.start) : .5;
+  function anchor(model, selectedRef, reportRef) {
+    const selected = model.taskIndex.get(selectedRef), report = selected && selected.reportIndex.get(reportRef);
+    const selectedRange = report && Number.isFinite(report.start) ? report : selected ? selected.baseline : model.dataRange;
+    return selectedRange && Number.isFinite(selectedRange.start) && Number.isFinite(selectedRange.end)
+      ? ((selectedRange.start + selectedRange.end) / 2 - model.start) / (model.end - model.start) : .5;
   }
   function markBox(mark, model, width, left = 0) {
     const scale = width / (model.end - model.start), x = (mark.start - model.start) * scale - left;

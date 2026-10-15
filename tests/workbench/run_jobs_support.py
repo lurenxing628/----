@@ -2,6 +2,7 @@
 
 import sqlite3
 from datetime import datetime
+from types import MappingProxyType
 
 import pytest
 from flask import Flask
@@ -40,7 +41,7 @@ class JobCase(RunCase):
         data, fingerprint = PreflightService(self.conn).evaluate(settings or self.settings())
         bound = {"input": data["normalized_input"], "scope": data["scope"], "fingerprint": fingerprint,
                  "check_ref": new_run_ref()}
-        return issue_public_token_with_expiry(INPUT_SCOPE, canonical_json(bound), ttl_seconds=ttl)[0]
+        return issue_public_token_with_expiry(INPUT_SCOPE, MappingProxyType(bound), key=bound["check_ref"], group=fingerprint, ttl_seconds=ttl)[0]
 
     def intent(self, settings=None):
         ref = self.preflight(settings)

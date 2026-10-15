@@ -14,7 +14,7 @@ class PreparedFieldReportSource:
     @classmethod
     def build(cls, content, rows):
         original = bytes(content)
-        return cls(original, uuid4().hex, tuple(deepcopy(rows)))
+        return cls(original, uuid4().hex, tuple(rows))
 
     def parsed(self):
         # Business matching owns its mutable diagnostics; retained source rows stay untouched.

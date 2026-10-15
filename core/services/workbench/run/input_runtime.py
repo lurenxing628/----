@@ -5,6 +5,7 @@ from functools import partial
 from types import SimpleNamespace
 
 from core.services.scheduler.resource_pool_builder import (
+    CapturedResourceFacts,
     build_resource_pool,
     extend_downtime_map_for_resource_pool,
     load_machine_downtimes,
@@ -13,19 +14,19 @@ from core.services.scheduler.run.freeze_window import build_freeze_window_seed
 from core.services.scheduler.run.schedule_input_runtime_support import _build_runtime_support_inputs
 from core.services.workbench.facts.preflight_checks import number, stored_date
 from core.services.workbench.facts.run_input_rows import fail
-from core.services.workbench.plan.point_evidence import official_point_work
-from data.repositories.workbench_run_input_repo import WorkbenchRunInputRepository
 
 from .input_points import read_point_freeze_rows
 
 
-def stored_point_validator(conn, version):
+def stored_point_validator(facts, version):
     work = None
 
     def validate(row):
         nonlocal work
         if work is None:
-            work = official_point_work(conn, version)
+            context = facts.official_source(version)
+            reader = context.get("point_work") if context is not None else None
+            work = reader() if reader is not None else {}
         item = work.get(row.op_id)
         if item is None or not item["witness"].matches(row):
             fail("point_evidence_unproven", "有零工时工序在正式计划里找不到对应依据，这次排产没有开始。请重新做排产检查后再排。", op_id=row.op_id)
@@ -34,8 +35,8 @@ def stored_point_validator(conn, version):
     return validate
 
 
-def _strict_pool(svc, *, cfg, algo_ops, meta):
-    pool, warnings = build_resource_pool(svc, cfg=cfg, algo_ops=algo_ops, meta=meta)
+def _strict_pool(svc, *, cfg, algo_ops, meta, resource_facts):
+    pool, warnings = build_resource_pool(svc, cfg=cfg, algo_ops=algo_ops, meta=meta, resource_facts=resource_facts)
     if cfg.auto_assign_enabled == "yes" and (pool is None or meta.get("resource_pool_build_ok") is not True):
         fail("resource_pool_unavailable", "自动分配要用的设备人员清单建不起来，这次排产没有开始。请到资料总览核对设备和人员后重试。")
     return pool, warnings
@@ -50,13 +51,14 @@ def _overlaps(seed, intervals):
     return [(start, end) for start, end in intervals if start < seed["end_time"] and end > seed["start_time"]]
 
 
-def held_machine_downtimes(svc, seeds):
+def held_machine_downtimes(svc, seeds, *, facts):
     """保留安排所用设备的有效停机，与候选采用同一口径：按安排自己的设备，从最早一条安排起读。"""
     internal = [seed for seed in seeds if _occupies_machine(seed)]
     if not internal:
         return {}
     return load_machine_downtimes(svc, algo_ops=[SimpleNamespace(**seed) for seed in internal],
-                                  start_dt=min(seed["start_time"] for seed in internal))
+                                  start_dt=min(seed["start_time"] for seed in internal),
+                                  downtimes=runtime_resource_facts(facts).downtimes)
 
 
 def downtime_overlap(seed, downtimes):
@@ -70,17 +72,17 @@ def downtime_overlap(seed, downtimes):
     return overlaps[0] if overlaps else None
 
 
-def _freeze_hold_window(svc, *, cfg, prev_version, start_dt, operations, reschedulable_operations, strict_mode, meta,
+def _freeze_hold_window(svc, *, facts, cfg, prev_version, start_dt, operations, reschedulable_operations, strict_mode, meta,
                         hold_window=None, hold_start=None):
     """只按本次的不重排时段保留原安排。正式计划里的锁定标记（旧版「锁定近期排程」顺带打上的）不再起作用：
     已开工、做完的工序由报工记录保护，其余工序要不要保持原安排，每次排产由不重排时段决定。"""
-    validator = stored_point_validator(svc.conn, prev_version)
+    validator = stored_point_validator(facts, prev_version)
     frozen, seeds, warnings = build_freeze_window_seed(
         # hold_start：试调采用按来源排产的起日起算冻结（同批前道从那天起找），与来源排产同一口径。
         svc, cfg=cfg, prev_version=prev_version, start_dt=hold_start or start_dt, operations=operations,
         reschedulable_operations=reschedulable_operations, strict_mode=strict_mode, meta=meta,
         point_validator=validator,
-        schedule_rows_reader=partial(read_point_freeze_rows, svc),
+        schedule_rows_reader=partial(read_point_freeze_rows, svc, facts=facts),
         # 前道原安排不在排产起日之后（排产起日前还没报工，或者没排过）的批次整批前后顺序保不住：
         # 这批本次不保留、照常重排，排产检查事先提醒；其它原安排读不出来仍整次拒绝。
         skip_incomplete_prefix=True,
@@ -93,7 +95,7 @@ def _freeze_hold_window(svc, *, cfg, prev_version, start_dt, operations, resched
     return set(frozen), seeds, warnings
 
 
-def held_arrangements(svc, *, cfg, prev_version, start_dt, operations, reschedulable_operations, hold_window=None):
+def held_arrangements(svc, *, facts, cfg, prev_version, start_dt, operations, reschedulable_operations, hold_window=None):
     """排产会原样保留的原安排：落在本次不重排时段里的（含同批次一起保留的前道）；与排产计算同一口径、同样严格。
 
     返回 (保留安排, 保留信息)；保留信息里 hold_window 是本次的不重排时段，freeze_skipped_batch_ids 是前道原安排不全、
@@ -101,7 +103,7 @@ def held_arrangements(svc, *, cfg, prev_version, start_dt, operations, reschedul
     """
     meta = {}
     _, seeds, _ = _freeze_hold_window(
-        svc, cfg=cfg, prev_version=prev_version, start_dt=start_dt, operations=operations,
+        svc, facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt, operations=operations,
         reschedulable_operations=reschedulable_operations, strict_mode=True, meta=meta, hold_window=hold_window)
     return seeds, meta
 
@@ -148,31 +150,50 @@ def _validate_downtime_row(row):
             fail("invalid_downtime_interval", "有生效的停机记录时间填得不对，这次排产没有开始。请到工作日历按 2026-09-13 08:30 这样改好。")
         if start.tzinfo is not None or end.tzinfo is not None or end <= start:
             fail("invalid_downtime_interval", "有生效的停机记录结束时间不比开始时间晚，这次排产没有开始。请到工作日历改好起止时间。")
+        return start, end
 
 
-def _validate_stored_runtime(conn):
-    repo = WorkbenchRunInputRepository(conn)
-    for table, row in repo.calendar_rows():
-        _validate_calendar_row(row, table)
-    for row in repo.machine_downtime_rows():
-        _validate_downtime_row(row)
+def runtime_resource_facts(facts):
+    """Prepare each stored runtime row once under its production capture owner."""
+    capture = facts.capture
+    if not hasattr(capture, "runtime_resources"):
+        for table in ("WorkCalendar", "OperatorCalendar"):
+            for row in capture.table(table):
+                _validate_calendar_row(row, table)
+        downtimes = {}
+        for row in capture.table("MachineDowntimes"):
+            interval = _validate_downtime_row(row)
+            if interval is not None:
+                downtimes.setdefault(str(row["machine_id"] or "").strip(), []).append(interval)
+        for intervals in downtimes.values():
+            intervals.sort(key=lambda interval: interval[0])
+        capture.runtime_resources = CapturedResourceFacts(facts.tables, downtimes)
+    return capture.runtime_resources
 
 
-def build_runtime(svc, *, cfg, prev_version, start_dt, batches, operations, mutable, algo_ops,
+def _validate_stored_runtime(facts):
+    runtime_resource_facts(facts)
+
+
+def build_runtime(svc, *, facts, cfg, prev_version, start_dt, batches, operations, mutable, algo_ops,
                   fixed_ids, completed_ids, execution_seeds, reservations, hold_window=None, hold_start=None):
     from .input_piece import input_piece_scope, validate_piece_seed_precedence
 
     scope = input_piece_scope(operations, batches)
     seed_validator = partial(validate_piece_seed_precedence, scope=scope, algo_ops=algo_ops) if scope is not None else None
-    _validate_stored_runtime(svc.conn)
+    resources = runtime_resource_facts(facts)
     return _build_runtime_support_inputs(
         svc, cfg=cfg, prev_version=prev_version, start_dt_norm=start_dt, run_label="排产计算",
         batches=batches, operations=operations, reschedulable_operations=mutable, algo_ops=algo_ops,
         execution_fixed_op_ids=set(fixed_ids) | set(completed_ids), execution_completed_op_ids=completed_ids,
         execution_seed_results=execution_seeds, execution_reservations=reservations, strict_mode=True,
-        build_freeze_window_seed_fn=partial(_freeze_hold_window, hold_window=hold_window, hold_start=hold_start),
-        load_machine_downtimes_fn=load_machine_downtimes,
-        build_resource_pool_fn=_strict_pool, extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool,
+        build_freeze_window_seed_fn=partial(_freeze_hold_window, facts=facts,
+                                          hold_window=hold_window, hold_start=hold_start),
+        load_machine_downtimes_fn=partial(load_machine_downtimes, downtimes=resources.downtimes),
+        build_resource_pool_fn=partial(_strict_pool, resource_facts=resources),
+        extend_downtime_map_for_resource_pool_fn=partial(extend_downtime_map_for_resource_pool,
+                                                       downtimes=resources.downtimes),
         raise_schedule_empty_result_fn=lambda message, *, reason: fail(reason, message),
         validate_completed_seed_constraints_fn=seed_validator,
+        validate_fixed_operator_qualifications_fn=resources.validate_fixed,
     )

@@ -2,9 +2,8 @@
   'use strict';
   const M = window.RunCandidateModel, B = window.RunBaselineModel, BC = window.RunBaselineControls, { Button } = window.RunCandidateControls;
   const { TimelineZoom, timelineZoomKey, timelineZoomStep } = window.ResourceControls, ZOOM_MAX = 128;
-  function PointLane({ row, model, risks, width, left, viewport, printing, selected, baselineSelected, active, onSelect, onHover }) {
-    const scale = width / (model.end - model.start), G = window.PointGanttModel;
-    const items = G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale);
+  function PointLane({ row, items, model, risks, width, left, viewport, printing, selected, baselineSelected, active, onSelect, onHover }) {
+    const scale = width / (model.end - model.start);
     return <div data-candidate-point-lane style={{ position: 'absolute', left, width: viewport, height: row.height, overflow: 'hidden' }}>
       {items.map(item => <window.PointGantt.Marker key={item.task.row_ref} task={item.task} title={M.title(item.task)}
         data-gantt-critical={active.critical.has(item.task.row_ref) || undefined} data-gantt-related={active.related.has(item.task.row_ref) || undefined} data-gantt-muted={!!active.target && !active.related.has(item.task.row_ref) && !active.critical.has(item.task.row_ref) || undefined}
@@ -13,56 +12,37 @@
         onSelect={() => onSelect(item.task)} onHover={event => onHover(event ? { taskRef: item.task.row_ref, text: M.title(item.task), x: event.clientX, y: event.clientY } : null)} />)}
     </div>;
   }
-  function Lane({ row, model, mode, risks, width, left, viewport, printing, selected, baselineSelected, active, onSelect, onBaselineSelect, onHover, reference }) {
+  function Lane({ row, items, model, mode, risks, width, left, viewport, printing, selected, baselineSelected, active, onSelect, onBaselineSelect, onHover, reference }) {
     const ref = React.useRef(null), scale = width / (model.end - model.start);
-    const items = row.baselinePoint ? window.PointGanttModel.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale)
-      : M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
-    React.useLayoutEffect(() => {
-      function paint() {
-        const node = ref.current, ratio = devicePixelRatio || 1, w = Math.max(1, viewport), h = row.height;
-        node.width = Math.round(w * ratio); node.height = h * ratio;
-        const ctx = node.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        const P = window.GanttPresentation, colors = P.palette(node);
-        for (const item of items) {
-          const x = (item.start - model.start) * scale - left, barWidth = (item.end - item.start) * scale;
-          if (row.baseline) {
-            const chosen = baselineSelected && baselineSelected.comparison.operation_ref === item.comparison.operation_ref;
-            if (row.baselinePoint) { window.PointGanttModel.paint(ctx, x, 15, colors.plan.fill, chosen ? colors.gold : colors.plan.edge, chosen); continue; }
-            P.paintBar(ctx, { x, y: 11, width: barWidth, height: 7, fill: 'transparent', edge: chosen ? colors.gold : colors.plan.edge,
-              lineWidth: chosen ? 2 : 1, dashed: true, viewport: w });
-            continue;
-          }
-          const external = item.task.source === 'external', risk = risks.get(item.task.batch_ref);
-          const colorsForTask = colors[risk === 'overdue' ? 'critical' : 'primary'];
-          const chosen = !baselineSelected && item.task.row_ref === (selected && selected.row_ref);
-          const related = active.related.has(item.task.row_ref), critical = active.critical.has(item.task.row_ref);
-          const lines = P.taskLines({ sequence: M.number(item.task.sequence), process: item.task.process_label || '工序未记录',
-            batch: item.task.batch_label || '批次未记录', piece: M.pieceLabel(item.task),
-            resource: [item.task.machine && item.task.machine.label, item.task.operator && item.task.operator.label].filter(Boolean).join(' / ') || '资源未记录' }, mode, barWidth);
-          P.paintBar(ctx, { x, y: 7, width: barWidth, height: 40, fill: colorsForTask.fill,
-            edge: chosen || related || critical ? colors.gold : colorsForTask.edge, lineWidth: chosen || critical ? 2 : related ? 1.5 : 1,
-            dashed: external, texture: external ? 'external' : item.overlap ? 'overlap' : null, textureColor: external ? colors.plan.edge : colors.overlap.edge,
-            textColor: colorsForTask.ink, font: colors.font, lines, viewport: w,
-            critical, criticalColor: colors.gold, muted: !!active.target && !related && !critical,
-            onTime: risk === 'on_time', locked: item.task.locked, statusColor: colors.success.edge });
+    const P = window.GanttPresentation;
+    P.useCanvasPaint(ref, (ctx, w, h, colors) => {
+      const paintScale = (printing ? w : width) / (model.end - model.start);
+      for (const item of items) {
+        const x = (item.start - model.start) * paintScale - left, barWidth = (item.end - item.start) * paintScale;
+        if (row.baseline) {
+          const chosen = baselineSelected && baselineSelected.comparison.operation_ref === item.comparison.operation_ref;
+          if (row.baselinePoint) { window.PointGanttModel.paint(ctx, x, 15, colors.plan.fill, chosen ? colors.gold : colors.plan.edge, chosen); continue; }
+          P.paintBar(ctx, { x, y: 11, width: barWidth, height: 7, fill: 'transparent', edge: chosen ? colors.gold : colors.plan.edge,
+            lineWidth: chosen ? 2 : 1, dashed: true, viewport: w });
+          continue;
         }
+        const external = item.task.source === 'external', risk = risks.get(item.task.batch_ref);
+        const colorsForTask = colors[risk === 'overdue' ? 'critical' : 'primary'];
+        const chosen = !baselineSelected && item.task.row_ref === (selected && selected.row_ref);
+        const related = active.related.has(item.task.row_ref), critical = active.critical.has(item.task.row_ref);
+        const lines = P.taskLines({ sequence: M.number(item.task.sequence), process: item.task.process_label || '工序未记录',
+          batch: item.task.batch_label || '批次未记录', piece: M.pieceLabel(item.task),
+          resource: [item.task.machine && item.task.machine.label, item.task.operator && item.task.operator.label].filter(Boolean).join(' / ') || '资源未记录' }, mode, barWidth);
+        P.paintBar(ctx, { x, y: 7, width: barWidth, height: 40, fill: colorsForTask.fill,
+          edge: chosen || related || critical ? colors.gold : colorsForTask.edge, lineWidth: chosen || critical ? 2 : related ? 1.5 : 1,
+          dashed: external, texture: external ? 'external' : item.overlap ? 'overlap' : null, textureColor: external ? colors.plan.edge : colors.overlap.edge,
+          textColor: colorsForTask.ink, font: colors.font, lines, viewport: w,
+          critical, criticalColor: colors.gold, muted: !!active.target && !related && !critical,
+          onTime: risk === 'on_time', locked: item.task.locked, statusColor: colors.success.edge });
       }
-      paint(); const theme = new MutationObserver(paint), media = typeof matchMedia === 'function' ? matchMedia('print') : null;
-      theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
-      if (media) {
-        if (typeof media.addEventListener === 'function') media.addEventListener('change', paint);
-        else media.addListener(paint);
-      }
-      return () => {
-        theme.disconnect();
-        if (media) {
-          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', paint);
-          else media.removeListener(paint);
-        }
-      };
-    }, [row, model, mode, risks, width, left, viewport, printing, selected, baselineSelected, active]);
+    }, P.palette, [items, model.start, model.end, mode, risks, width, left, viewport, printing, selected, baselineSelected, active], printing);
     function hit(event) { const box = ref.current.getBoundingClientRect(), at = model.start + (event.clientX - box.left + left) / scale;
-      return row.baselinePoint ? window.PointGanttModel.hit(row.items, event.clientX - box.left, event.clientY - box.top, model, width, left, 15) : M.visibleItems(row.items, at, at + 0.001)[0]; }
+      return row.baselinePoint ? window.PointGanttModel.hit(items, event.clientX - box.left, event.clientY - box.top, model, width, left, 15) : M.visibleItems(items, at, at + 0.001)[0]; }
     const choose = item => row.baseline ? onBaselineSelect(item) : onSelect(item.task);
     const selectedItem = row.items.find(item => !row.baseline && selected && item.task.row_ref === selected.row_ref);
     return <canvas ref={ref} data-candidate-lane={row.baseline ? undefined : true} data-baseline-lane={row.baseline ? true : undefined} data-item-count={row.items.length} role="button" tabIndex={0} aria-label={row.label + '，' + M.laneLabel(row, reference) + '，' + row.items.length + ' 道安排' + (selectedItem ? '\n' + M.title(selectedItem.task) : '')}
@@ -111,7 +91,7 @@
             <TaskCells task={t} planned={planned} onDetails={onDetails} /></div>)}
         </div></div></div>{!tasks.length && <window.WorkbenchListControls.EmptyState title="当前范围没有匹配记录" />}</>;
   }
-  function RunCandidateGantt({ data, comparison, query, onQuery, selected, onSelect, resourceFocus, toolbarActions }) {
+  function RunCandidateGantt({ data, prepared: facts, comparison, query, onQuery, selected, onSelect, resourceFocus, toolbarActions }) {
     const [mode, setMode] = React.useState(resourceFocus && resourceFocus.kind === 'operator' ? 'operator' : 'machine'), [zoom, setZoom] = React.useState(1), [viewport, setViewport] = React.useState(600);
     const [scroll, setScroll] = React.useState({ left: 0, top: 0 }), [hover, setHover] = React.useState(null), host = React.useRef(null), owner = React.useRef(null);
     const [chainEnabled, setChainEnabled] = React.useState(false), [changedOnly, setChangedOnly] = React.useState(false);
@@ -136,16 +116,17 @@
       return row ? { comparison: row, segment: row.baseline_segments[0] || null } : null;
     }, [result, inspectedRef]);
     const selectedItem = selection && selection.result === result ? selection.item : inspected;
-    const chosen = selectedItem && (!operationRefs || operationRefs.has(selectedItem.comparison.operation_ref))
-      && B.matching([selectedItem.comparison], query).length ? selectedItem : null;
+    const candidateGroups = React.useMemo(() => M.groupPrepared(facts, mode), [facts, mode]);
+    const candidate = React.useMemo(() => M.selectPrepared(candidateGroups, query, operationRefs, resourceFocus), [candidateGroups, query, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    const baselineFacts = React.useMemo(() => B.prepare(baseline.retainedResult && baseline.retainedResult.data), [baseline.retainedResult]);
+    const baselineGroups = React.useMemo(() => B.groupPrepared(baselineFacts, mode, resourceFocus), [baselineFacts, mode, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    const prepared = React.useMemo(() => B.selectPrepared(candidate, baselineGroups, query, operationRefs, !!result), [candidate, baselineGroups, query, operationRefs, !!result]);
+    const chosen = selectedItem && prepared.comparisons.some(row => row.operation_ref === selectedItem.comparison.operation_ref) ? selectedItem : null;
     // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
     const labelWidth = 156, width = printing ? 640 : Math.max(1, viewport) * zoom;
-    const candidate = React.useMemo(() => M.prepare(resourceFocus ? { ...data, tasks: data.tasks.filter(task => M.resourceMatches(task, resourceFocus)) } : data, mode, query, operationRefs), [data, mode, query, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
-    const displayedBaseline = React.useMemo(() => result && resourceFocus ? { ...result.data, comparisons: result.data.comparisons.map(row => ({ ...row, baseline_segments: row.baseline_segments.filter(segment => M.resourceMatches(segment, resourceFocus)) })) } : result && result.data, [result, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
-    const prepared = React.useMemo(() => B.prepare(candidate, displayedBaseline, mode, query, operationRefs), [candidate, displayedBaseline, mode, query, operationRefs]);
     const model = React.useMemo(() => B.layoutPrepared(prepared, width), [prepared, width]);
     const risks = React.useMemo(() => new Map(data.delivery_risks.items.map(row => [row.batch_ref, row.risk])), [data]);
-    const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
+    const graph = facts.graph;
     const targetRef = hover && hover.taskRef || !chosen && selected && selected.row_ref || null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, { enabled: chainEnabled, targetRef }), [graph, chainEnabled, targetRef]);
     const graphLocations = React.useMemo(() => window.GanttGraph.locations(model, { candidate: true }), [model]);
@@ -224,7 +205,11 @@
     const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
       left: renderLeft, top: printing ? 0 : scroll.top, width: renderViewport, height: printing ? model.height : viewportHeight
     }, { locationIndex }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing, locationIndex]);
-    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
+    const visible = React.useMemo(() => {
+      const rows = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
+      const scale = width / (model.end - model.start), start = model.start + renderLeft / scale, end = model.start + (renderLeft + renderViewport) / scale;
+      return rows.map(row => ({ row, items: row.point || row.baselinePoint ? window.PointGanttModel.visible(row.items, start, end, scale) : M.visibleItems(row.items, start, end) }));
+    }, [model, printing, scroll.top, viewportHeight, width, renderLeft, renderViewport]);
     const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
     const axis = window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport });
     return <section ref={host} className={'rc-gantt' + (expansion.expanded ? ' rc-expanded' : '')} aria-label="候选甘特图" onKeyDown={zoomKeys}>
@@ -249,11 +234,11 @@
       <div ref={owner} className="rc-scroll" data-candidate-gantt-scroll role="region" aria-label="候选时间安排" tabIndex={0}
         onScroll={e => { if (!printState.current && !window.matchMedia('print').matches) setScroll({ left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop }); setHover(null); }}>
         <div style={{ position: 'relative', width: width + labelWidth, height: Math.max(120, model.height) }}>
-          {visible.map(row => <div key={row.key} className="rc-lane" data-candidate-track={row.baseline ? undefined : row.key} data-baseline-track={row.baseline ? row.key : undefined}
+          {visible.map(({ row, items }) => <div key={row.key} className="rc-lane" data-candidate-track={row.baseline ? undefined : row.key} data-baseline-track={row.baseline ? row.key : undefined}
             data-gantt-row-kind={row.baseline ? 'original' : row.point ? 'point' : row.normalLaneCount > 1 ? 'overlap' : 'current'} data-gantt-subrow={row.lane + 1}
             style={{ top: row.top, height: row.height }}><div className="rc-lane-label" style={{ height: row.height - 1, paddingTop: row.baseline ? 5 : 7 }} title={row.label + ' · ' + M.laneLabel(row, data.reference)}>
               <strong>{row.label}</strong>{row.baseline ? <span className="rc-lane-kind"> · {M.laneLabel(row, data.reference)}</span> : <small><span className="rc-lane-kind">{M.laneLabel(row, data.reference)}</span> · {row.items.length} 道</small>}</div>
-            <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, model, mode, risks, width, left: renderLeft, viewport: renderViewport, printing, selected, baselineSelected: chosen, active, reference: data.reference, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div>
+            <div className="rc-bar-space" style={{ width, height: row.height, overflow: 'hidden' }}>{React.createElement(row.point ? PointLane : Lane, { row, items, model, mode, risks, width, left: renderLeft, viewport: renderViewport, printing, selected, baselineSelected: chosen, active, reference: data.reference, onSelect: selectCandidate, onBaselineSelect: selectBaseline, onHover: setHover })}</div>
             {printing && <window.GanttGraphLayer.Lines geometry={geometry} width={width} height={row.height} labelWidth={labelWidth} rowTop={row.top} />}</div>)}
           {!printing && <window.GanttGraphLayer.Lines geometry={geometry} width={width} height={model.height} labelWidth={labelWidth} />}
           {!model.rows.length && <div className="rc-empty">{model.unplottableTasks.length > 0 ? '安排时间缺项，请在下方任务安排表核对。' : displayChangedOnly ? '当前范围没有匹配的变更安排。' : '当前范围没有可绘制的安排。'}</div>}</div></div>

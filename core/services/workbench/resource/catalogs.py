@@ -1,17 +1,12 @@
-"""Real equipment groups and fully specified fixed/rotating shift catalogs."""
-
-from dataclasses import asdict
-from typing import Any, Dict, Optional
+"""Equipment groups and rotating shifts use the shared prepared-change write path."""
 
 from core.errors import ValidationError
 from core.models.calendar_periods import shift_pattern_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_input import normalize_resource_input
 
-from .states import WorkbenchResourceStateService
+from .states import ResourceChange, WorkbenchResourceStateService
 
-# 提示里按界面上的叫法称呼这类资料，不写内部的“目录”。
 _KIND_NAMES = {"machine_group": "设备组", "shift_profile": "班次档"}
 
 
@@ -29,76 +24,58 @@ class WorkbenchResourceCatalogService:
     def snapshot(self, identity):
         return self.state.snapshot(identity, kind=self.kind)
 
-    def apply(self, action, normalized_input, identity=None):
-        if not self.conn.in_transaction:
-            raise RuntimeError("资源目录写入必须由外层工作台事务负责。")
-        payload = self.normalize_input(action, normalized_input)
-        checked: Optional[Dict[str, Any]] = None
-        if action == "create":
-            if identity is not None:
-                raise WorkbenchCommandRejected("invalid_input", "新增" + _KIND_NAMES[self.kind] + "时不能指定已有记录，没有保存。请重新点「新增」。", 400)
-        else:
-            current, raw = self.state.current(identity, self.kind)
-            checked = {"identity": asdict(current), "record": raw}
-            if action == "delete":
-                checked["members"] = self.repo.group_members(current.entity_key) if self.kind == "machine_group" else self.repo.shift_members(current.entity_key)
-            elif self.kind == "shift_profile":
-                checked["pattern"] = self.repo.pattern(current.entity_key)
-        return self._apply_checked(action, payload, checked)
+    def apply(self, action, payload, identity=None):
+        from .queries import WorkbenchResourceQueryService
 
-    def _apply_checked(self, action, payload, checked):
-        """Use the catalog row, members and pattern checked in this command transaction."""
-        if not self.conn.in_transaction:
-            raise RuntimeError("资源目录写入必须由外层工作台事务负责。")
-        if action == "create":
-            return self._create(payload)
-        current = WorkbenchEntityIdentity(**checked["identity"])
-        raw = checked["record"]
-        code = current.entity_key
+        preparation = WorkbenchResourceQueryService(self.conn, self.kind).preparation()
+        if action == "create" and identity is not None:
+            raise WorkbenchCommandRejected("invalid_input", "新增资源时请使用新增入口。", 400)
+        checked = None if action == "create" else preparation.state(self.kind,
+            preparation.current(self.kind, identity).entity_key)
+        return self.apply_prepared(self.prepare(action, self.normalize_input(action, payload), checked, preparation))
+
+    def prepare(self, action, payload, checked, preparation):
+        identity = None if action == "create" else preparation.identity(self.kind, checked["identity"]["ref"])
+        code = payload["business_code"] if identity is None else identity.entity_key
         if action == "delete":
             if checked["members"]:
-                raise WorkbenchCommandRejected("constraint_conflict", "还有资源在用这个" + _KIND_NAMES[self.kind] + "，没有删除。请先把这些资源改到别处。")
-            self.repo.delete_catalog(self.kind, code)
-            changed = True
-        else:
-            changed = self._update(code, raw, payload, checked.get("pattern", []))
-        return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"entity_ref": current.ref, "business_code": code})
-
-    def _create(self, payload):
-        code = payload["business_code"]
-        if self.repo.get_raw(self.kind, code) is not None:
-            raise WorkbenchCommandRejected("constraint_conflict", "这个" + _KIND_NAMES[self.kind] + "编号已经存在，没有新增。请换一个编号。")
-        fields = {"name": payload["label"], "status": "active", **payload["fields"]}
-        self._check_name(code, fields["name"])
-        pattern = fields.pop("pattern", None)
-        self._check_pattern(fields, pattern)
-        self.repo.insert_catalog(self.kind, code, fields)
-        if pattern is not None:
-            self.repo.set_pattern(code, pattern)
-        identity = self.state.identities.find_active(self.kind, code)
-        if identity is None:
-            raise RuntimeError("新目录记录缺少永久引用。")
-        return WorkbenchCommandOutcome("committed", {"entity_ref": identity.ref, "business_code": code})
-
-    def _update(self, code, raw, payload, old_pattern):
+                raise WorkbenchCommandRejected("constraint_conflict", "还有资源在用这个" + _KIND_NAMES[self.kind] + "，请先把这些资源改到别处。")
+            return ResourceChange(action, code, identity, {}, {})
+        if action == "create" and preparation.raw(self.kind, code) is not None:
+            raise WorkbenchCommandRejected("constraint_conflict", "这个" + _KIND_NAMES[self.kind] + "编号已经存在，请换一个编号。")
         fields = dict(payload["fields"])
         pattern = fields.pop("pattern", None)
         if "label" in payload:
             fields["name"] = payload["label"]
-            self._check_name(code, fields["name"])
-        self._check_pattern({**raw, **fields}, pattern if pattern is not None else old_pattern)
-        changes = {key: value for key, value in fields.items() if raw[key] != value}
-        changed_pattern = pattern is not None and pattern != [shift_pattern_fields(row) for row in old_pattern]
-        self.repo.update_catalog(self.kind, code, changes)
-        if changed_pattern:
-            self.repo.set_pattern(code, pattern)
-        return bool(changes or changed_pattern)
-
-    def _check_pattern(self, fields, pattern):
-        if self.kind == "shift_profile" and (pattern is None or fields["cycle_days"] != len(pattern)):
+            owner = preparation.name_owner(self.kind, fields["name"])
+            if owner is not None and owner != code:
+                raise WorkbenchCommandRejected("constraint_conflict", "这个名称已经被占用，请换一个名称。")
+        raw = checked["record"] if checked is not None else {}
+        old_pattern = checked.get("pattern", []) if checked is not None else []
+        desired = {**raw, **fields}
+        if self.kind == "shift_profile" and (pattern is None and action == "create" or
+                desired["cycle_days"] != len(pattern if pattern is not None else old_pattern)):
             raise ValidationError("轮换周期与逐日规则条数不一致，请补齐每一天。", field="fields.pattern")
+        related = {}
+        if pattern is not None and pattern != [shift_pattern_fields(row) for row in old_pattern]:
+            related["pattern"] = pattern
+        changes = {"status": "active", **fields} if action == "create" else {key: value for key, value in fields.items() if raw[key] != value}
+        return ResourceChange(action, code, identity, changes, related)
 
-    def _check_name(self, code, name):
-        existing = self.repo.catalog_by_name(self.kind, name)
-        if existing is not None and existing["business_code"] != code:
-            raise WorkbenchCommandRejected("constraint_conflict", "这个名称已经被占用，没有保存。请换一个名称。")
+    def apply_prepared(self, change):
+        if not self.conn.in_transaction:
+            raise RuntimeError("资源目录写入必须由外层工作台事务负责。")
+        code, identity = change.business_code, change.identity
+        if change.action == "delete":
+            self.repo.delete_catalog(self.kind, code)
+        elif change.action == "create":
+            self.repo.insert_catalog(self.kind, code, change.fields)
+            identity = self.state.identities.find_active(self.kind, code)
+            if identity is None:
+                raise RuntimeError("新目录记录缺少永久引用。")
+        elif change.fields:
+            self.repo.update_catalog(self.kind, code, change.fields)
+        if "pattern" in change.related:
+            self.repo.set_pattern(code, change.related["pattern"])
+        changed = change.action != "update" or bool(change.fields or change.related)
+        return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"entity_ref": identity.ref, "business_code": code})

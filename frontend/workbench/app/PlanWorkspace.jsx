@@ -31,6 +31,10 @@
       return adapter.workspace(selection.plan_ref, scope, signal);
     }, [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result, data = result && result.data;
+    const prepared = React.useMemo(() => {
+      if (!data) return null;
+      const facts = M.prepare(data); facts.graph = window.GanttGraph.create(data.gantt_graph); return facts;
+    }, [data]);
     const chosen = selected && selected.result === result ? selected : null;
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
@@ -40,7 +44,7 @@
       if (!target) return;
       const before = target.side === 'before';
       const original = before && data.projections.baseline.items.find(row => row.before && row.before.task_ref === target.ref);
-      const task = before ? original && original.before : data.tasks.find(row => row.task_ref === target.ref);
+      const task = before ? original && original.before : prepared.taskIndex.get(target.ref)?.task;
       if (task) setSelected({ task, before, result, ...(relatedRef || view === 'gantt' && (!before || original.before_in_scope) ? { locate: true } : {}) });
       else setRangeError(C.failure(relatedRef ? '此计划中未找到相关工序。'
         : before ? '要恢复的原安排已不存在。' : '要恢复的工序不在当前范围内。'));
@@ -60,7 +64,7 @@
     }
     function selectTask(task, before = false, locate = false) { initialTask.current = null; setSelected(task ? { task, before, result, ...(locate ? { locate: true } : {}) } : null); }
     function openResource(resource) {
-      const task = data.tasks.find(row => row[resource.kind + '_ref'] === resource.resource_ref);
+      const member = prepared.resourceMembers.get(resource.resource_ref), task = member && member[0] && member[0].task;
       const target = { ...remembered, query: '', resource_kind: resource.kind };
       delete target.selected_task_ref; delete target.selected_task_side;
       if (task) Object.assign(target, { selected_task_ref: task.task_ref, selected_task_side: 'current' });
@@ -80,10 +84,14 @@
     }
     function selectRelated(ref) {
       initialTask.current = null;
-      const task = data.tasks.find(row => row.task_ref === ref);
+      const fact = prepared.taskIndex.get(ref), task = fact && fact.task;
       setQuery(''); setRangeError(null);
       if (task) setSelected({ task, before: false, result, locate: true });
-      else { setRelatedRef(ref); changeScope({}); }
+      else {
+        const node = prepared.graph.nodes.get(ref);
+        setRelatedRef(ref); changeScope(P.workspaceScope(selection.plan_ref, { range_start: node.start,
+          range_end: node.start === node.end ? window.WorkbenchDatePickerModel.nextInstant(node.end) : node.end }));
+      }
     }
     function applyRange(event) {
       event.preventDefault();
@@ -96,11 +104,7 @@
         changeScope(next);
       } catch (error) { setRangeError(error); }
     }
-    const matches = React.useMemo(() => {
-      if (!data) return [];
-      const labels = M.names(data), needle = query.trim().toLocaleLowerCase();
-      return data.tasks.filter(task => !needle || M.searchText(task, labels).includes(needle));
-    }, [data, query]);
+    const matches = React.useMemo(() => prepared ? M.matching(prepared, query) : [], [prepared, query]);
     const risks = data && data.projections.delivery_risks.items;
     const ready = !!data && !disabled;
     const scopeCaption = data ? M.scopeCaption(data) : '';
@@ -148,11 +152,11 @@
             <div className="stat wb-metric" key={label} data-tone={tone === 'warn' && value === 0 ? 'neutral' : tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{value}</span></div>)}
         </div>}</section>
       {data && <div className={'plan-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : '')} data-details-open={(view === 'gantt' ? detailsOpen : !!chosen) || undefined}><div className={view === 'gantt' ? 'wb-gantt-main-column' : undefined}>
-          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={data} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} initialMode={initialContext.resource_kind} initialBaseline={!!initialTask.current && initialTask.current.side === 'before'}
+          {view === 'gantt' && <window.PlanGantt key={'gantt:' + data.plan.plan_ref} data={data} prepared={prepared} asOf={result.meta.as_of} selected={chosen} onSelect={selectTask} query={query} onQuery={setQuery} disabled={disabled} initialMode={initialContext.resource_kind} initialBaseline={!!initialTask.current && initialTask.current.side === 'before'}
             toolbarActions={<span ref={detailsToggle}><Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="plan-gantt-detail" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? '收起详情' : '详情'}</Button></span>} />}
-          {view !== 'gantt' && <ProjectionTables key={'risk:' + result.meta.snapshot_ref} data={data} tab={projectionTab} onTab={setProjectionTab} page={projectionPage} onPage={setProjectionPage} onResource={openResource} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} />}
-          {view === 'delay' && <Conflicts key={'conflicts:' + result.meta.snapshot_ref} data={data} />}
-        </div>{(view === 'gantt' ? detailsOpen : !!chosen) && <TaskDetail data={data} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
+          {view !== 'gantt' && <ProjectionTables prepared={prepared} key={'risk:' + result.meta.snapshot_ref} data={data} tab={projectionTab} onTab={setProjectionTab} page={projectionPage} onPage={setProjectionPage} onResource={openResource} onBatch={batch => { setQuery(batch); const task = data.tasks.find(row => row.batch_id === batch); if (task) selectTask(task, false, true); }} />}
+          {view === 'delay' && <Conflicts prepared={prepared} key={'conflicts:' + result.meta.snapshot_ref} data={data} />}
+        </div>{(view === 'gantt' ? detailsOpen : !!chosen) && <TaskDetail data={data} prepared={prepared} selected={chosen} onSelect={selectTask} onRelated={selectRelated}
           onCollapse={view === 'gantt' ? collapseDetails : undefined}
           renderTrial={renderTrial} scope={scope} query={query} disabled={!ready || read.loading || !!read.error} />}</div>}
     </div>;

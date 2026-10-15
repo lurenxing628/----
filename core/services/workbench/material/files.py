@@ -28,7 +28,6 @@ in header comments (no demo records that could accidentally be imported).
 from __future__ import annotations
 
 import re
-from contextlib import closing
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -50,7 +49,6 @@ from core.models.workbench_material_file import (
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.services.workbench import messages
-from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
@@ -84,7 +82,6 @@ class WorkbenchMaterialFileService:
         self.adapter = WorkbenchMaterialService(conn, logger=logger)
         self.query = WorkbenchMaterialQueryRepository(conn, logger=logger)
         self.repo = WorkbenchMaterialFileRepository(conn, logger=logger)
-        self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
     def prepare_import(self, content, *, file_format, scope, mode="upsert"):
@@ -96,21 +93,28 @@ class WorkbenchMaterialFileService:
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
             content, file_format=file_format, scope=scope, mode=mode)
         request = prepared.request_for("material.import", file_format, mode, normalize_scope(scope))
-        source, notices = prepared.parsed()
         with self.tx.transaction():
-            rows = [self._import_row(item) for item in source]
-            duplicates = {}
-            for row in rows:
-                if row["business_code"] is not None:
-                    duplicates.setdefault(row["business_code"], []).append(row)
-            for repeated in duplicates.values():
-                if len(repeated) > 1:
-                    numbers = ", ".join(str(row["row"]) for row in repeated)
-                    for row in repeated:
-                        reject_row(row, "同一编号在文件中重复，涉及行：" + numbers, code="duplicate_entry")
-            return MaterialPreview.build("material.import", request, rows, notices, source=prepared)
+            preview, _ = self._prepare_import(prepared, request)
+            return preview
 
-    def _import_row(self, source):
+    def _prepare_import(self, prepared, request):
+        source, notices = prepared.parsed()
+        codes = {code for row in source for code in (row["values"].get("business_code"),)
+                 if type(code) is str}
+        captured = self.repo.capture(codes=codes | {code.strip() for code in codes})
+        rows = [self._import_row(item, captured) for item in source]
+        duplicates = {}
+        for row in rows:
+            if row["business_code"] is not None:
+                duplicates.setdefault(row["business_code"], []).append(row)
+        for repeated in duplicates.values():
+            if len(repeated) > 1:
+                numbers = ", ".join(str(row["row"]) for row in repeated)
+                for row in repeated:
+                    reject_row(row, "同一编号在文件中重复，涉及行：" + numbers, code="duplicate_entry")
+        return MaterialPreview.build("material.import", request, rows, notices, source=prepared), rows
+
+    def _import_row(self, source, captured):
         row = preview_row(source["row"])
         values = source["values"]
         row["errors"] = list(source["errors"])
@@ -118,18 +122,20 @@ class WorkbenchMaterialFileService:
         try:
             code = normalize_material_input("create", {"business_code": values.get("business_code"), "label": "_"})["business_code"]
             row["business_code"] = code
-            if values["business_code"] != code and self.repo.raw_material(values["business_code"]) is not None:
+            if values["business_code"] != code and values["business_code"] in captured["materials"]:
                 raise ValidationError("物料编号不能有首尾空格，请修正。", field="business_code")
-            raw = self.query.get_raw(code)
+            raw = captured["materials"].get(code)
             row["action"] = "create" if raw is None else "update"
             if raw is None:
                 row["expected"] = {"identity": None, "material": None, "requirements": [],
-                                   "identity_history": self.repo.identity_history(code)}
+                                   "identity_history": captured["identity_history"].get(code, [])}
             else:
-                identity = self.identities.get(raw["ref"]) if raw["ref"] else None
+                identity = captured["identities"].get(raw["ref"])
+                identity = WorkbenchEntityIdentity(identity["ref"], identity["kind"], identity["entity_key"],
+                                                    identity["revision"], bool(identity["active"])) if identity else None
                 if identity is None:
                     raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，请联系维护人员核对资料。", 500)
-                row["expected"] = full_material_snapshot(self.adapter, self.repo, identity, material=raw)
+                row["expected"] = full_material_snapshot(self.adapter, captured, identity)
                 if code != raw["material_id"] or raw["material_id"] != raw["material_id"].strip():
                     raise ValidationError("原来的物料编号首尾有空格，不能安全更新。请先核对原记录。", field="business_code")
             if not row["errors"]:
@@ -187,14 +193,17 @@ class WorkbenchMaterialFileService:
             raise WorkbenchCommandRejected("stale_write", "文件内容、模式或范围已变化，请重新预检。") from exc
         check_request(preview, "material.import", request)
         with self.tx.transaction():
-            current = self.preview_import(prepared, file_format=file_format, scope=scope, mode=mode)
+            current, rows = self._prepare_import(prepared, request)
             check_preview(preview, current)
+            changes = [self.adapter.prepare_checked(row["action"], row["input"], row["expected"]) for row in rows]
             results = []
-            for row in current.as_dict()["rows"]:
-                outcome = self.adapter._apply_checked(row["action"], row["input"], row["expected"])
+            for row, change in zip(rows, changes):
+                outcome = self.adapter.apply_prepared(change)
                 results.append({"row": row["row"], "result": outcome.result, **outcome.data})
             result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
-            return WorkbenchCommandOutcome(result, {"rows": results, "summary": current.as_dict()["summary"]})
+            summary = {key: sum(row["result"] == key for row in rows)
+                       for key in ("new", "update", "unchanged", "delete", "rejected")}
+            return WorkbenchCommandOutcome(result, {"rows": results, "summary": summary})
 
     def export_rows(self, file_format, *, scope=None, selected_refs=None):
         """在调用方已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
@@ -204,14 +213,15 @@ class WorkbenchMaterialFileService:
             raise ValidationError("导出要么按筛选范围，要么按勾选的记录，只能选一种。", field="scope")
         if selected_refs is None:
             query = MaterialPageRequest(**normalize_scope(scope))
-            matching = WorkbenchMaterialQueryService(self.conn).matching_rows(query)
-            rows, total = (self.query.get_by_ref(row["ref"]) for row in matching), len(matching)
+            index = WorkbenchMaterialQueryService(self.conn).table_index(query)
+            matching = index.matching_keys(query)
+            rows, total = (index.rows[code].state["material"] for code in matching), len(matching)
         else:
             refs = normalize_refs(selected_refs, allow_empty=True)
-            rows, total = (self.query.get_by_ref(ref) for ref in refs), len(refs)
+            captured = {row["ref"]: row for row in self.query.export_by_refs(refs)}
+            rows, total = (captured.get(ref) for ref in refs), len(refs)
         check_export_capacity(total, file_format)
-        with closing(rows), closing(self._export_rows(rows)) as projected:
-            return list(projected)
+        return list(self._export_rows(rows))
 
     @staticmethod
     def write_export(rows, file_format):
@@ -222,10 +232,8 @@ class WorkbenchMaterialFileService:
         for raw in rows:
             if raw is None:
                 raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了。请刷新后重新勾选。", 404)
-            identity = self.identities.get(raw["ref"]) if raw["ref"] else None
-            if identity is None:
+            if type(raw.get("ref")) is not str or re.fullmatch(r"[0-9a-f]{48}", raw["ref"]) is None or raw.get("revision") is None:
                 raise WorkbenchCommandRejected("storage_failure", "要导出的物料缺少系统编号，请联系维护人员核对资料。", 500)
-            self.adapter.snapshot(identity)
             row = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
             row["created_at"] = local_created_at(raw["created_at"])
             yield row

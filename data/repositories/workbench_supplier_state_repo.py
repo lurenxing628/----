@@ -40,17 +40,11 @@ class WorkbenchSupplierStateRepository(BaseRepository):
     def get_profile(self, code):
         return self.fetchone("SELECT * FROM WorkbenchSupplierProfiles WHERE supplier_id = ?", (code,))
 
-    def set_reason(self, code, reason):
-        current = self.get_profile(code)
-        if current is None:
-            if reason is None:
-                return False
+    def write_reason(self, code, reason, *, exists):
+        if not exists:
             self.execute("INSERT INTO WorkbenchSupplierProfiles(supplier_id, inactive_reason) VALUES (?, ?)", (code, reason))
-        elif current["inactive_reason"] != reason:
-            self.execute("UPDATE WorkbenchSupplierProfiles SET inactive_reason = ? WHERE supplier_id = ?", (reason, code))
         else:
-            return False
-        return True
+            self.execute("UPDATE WorkbenchSupplierProfiles SET inactive_reason = ? WHERE supplier_id = ?", (reason, code))
 
     def replace_op_types(self, code, existing, desired):
         removed, added = set(existing) - set(desired), set(desired) - set(existing)

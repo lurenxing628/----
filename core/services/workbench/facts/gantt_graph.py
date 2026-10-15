@@ -16,7 +16,7 @@ def frozen_process_relations(operations, batches, refs):
 
 
 def unavailable_graph(scope, reason):
-    return {"state": "unavailable", "reason": reason, "scope": scope, "nodes": [], "edges": [],
+    return {"state": "unavailable", "reason": reason, "scope": scope, "nodes": [],
             "critical_task_refs": [], "critical_edges": []}
 
 
@@ -24,17 +24,16 @@ def build_gantt_graph(tasks, relations, *, scope):
     by_operation = {task["operation_ref"]: task["task_ref"] for task in tasks}
     previous = {task["task_ref"]: [by_operation[parent] for parent in relations[task["operation_ref"]]
                                  if parent in by_operation] for task in tasks}
-    edges = [{"from_task_ref": parent, "to_task_ref": child, "edge_type": "process"}
-             for child, parents in previous.items() for parent in parents]
     rows = [{"op_code": task["task_ref"], "operation_ref": task["operation_ref"],
              "start_time": task["start"], "end_time": task["end"],
              "machine_id": task.get("machine_ref"), "operator_id": task.get("operator_ref")}
             for task in tasks]
     critical = compute_critical_chain_from_dependencies(rows, previous)
     return {"state": "available", "reason": None, "scope": scope,
-            "nodes": [{key: task[key] for key in ("task_ref", "operation_ref", "batch_id", "piece_id", "sequence", "process_label", "start", "end")}
+            "nodes": [{**{key: task[key] for key in ("task_ref", "operation_ref", "batch_id", "piece_id", "sequence", "process_label", "start", "end")},
+                       "predecessor_operation_refs": list(relations[task["operation_ref"]])}
                       for task in tasks],
-            "edges": edges, "critical_task_refs": critical["ids"],
+            "critical_task_refs": critical["ids"],
             "critical_edges": [{"from_task_ref": edge["from"], "to_task_ref": edge["to"], "edge_type": edge["edge_type"]}
                                for edge in critical["edges"]]}
 

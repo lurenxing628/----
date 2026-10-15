@@ -1,8 +1,10 @@
 """Editable factory defaults with the same guarded command and receipt contract."""
 
+import json
+
 from core.errors import ValidationError
 from core.infrastructure.transaction import in_transaction_context
-from core.models.calendar_periods import encode_periods, normalize_periods, period_hours
+from core.models.calendar_periods import normalize_periods, period_hours
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.scheduler.calendar.defaults import default_periods_from_row
 from data.repositories.calendar_defaults_repo import CalendarDefaultsRepository
@@ -32,13 +34,13 @@ class WorkbenchCalendarDefaultsService:
         current = self.snapshot()
         if current != checked:
             raise WorkbenchCommandRejected("stale_write", "默认工作时间已变化，请刷新后重新核对。")
-        return self._apply_checked(payload, current)
+        return self._apply_checked(self.normalize(payload), current)
 
     def _apply_checked(self, payload, current):
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
             raise RuntimeError("Default calendar writes require a workbench command transaction.")
-        periods = self.normalize(payload)["periods"]
+        periods = payload["periods"]
         if periods == current["periods"]:
             return WorkbenchCommandOutcome("unchanged", {"subject": "calendar-defaults"})
-        self.repo.set_periods(encode_periods(periods))
+        self.repo.set_periods(json.dumps(periods, ensure_ascii=False, separators=(",", ":")))
         return WorkbenchCommandOutcome("committed", {"subject": "calendar-defaults"})

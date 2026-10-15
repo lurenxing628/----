@@ -85,7 +85,7 @@ def test_overview_material_readiness_follows_arrival_day_and_quantity_review(ove
     repeated = client.get(BASE, query_string={**query, "snapshot_ref": direct["meta"]["snapshot_ref"]}).get_json()
     assert repeated["data"] == direct["data"] and repeated["meta"].keys() == direct["meta"].keys()
     assert repeated["meta"]["request_ref"] != direct["meta"]["request_ref"]
-    assert all(repeated["meta"][key] == value for key, value in direct["meta"].items() if key != "request_ref")
+    assert all(repeated["meta"][key] == value for key, value in direct["meta"].items() if key not in ("request_ref", "as_of"))
     missing = client.get(BASE + "/export", query_string={"scope": json.dumps(SCOPE)})
     assert missing.status_code == 409 and missing.get_json()["error"]["code"] == "snapshot_stale"
     # Keep the original readiness oracle's single-material first screen after
@@ -110,7 +110,15 @@ def test_overview_material_readiness_follows_arrival_day_and_quantity_review(ove
     monkeypatch.setattr(overview_facts, "date", Tomorrow)
     response = client.get(BASE + "/entities/material/" + entity["ref"], query_string={
         "scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"], "section": "issues"})
-    assert response.status_code == 409 and response.get_json()["error"]["code"] == "snapshot_stale"
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["data"]["counts"]["issues"] == 0
+    # The original scope remains valid while each read follows current facts.
+    current = client.get(BASE, query_string={"scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"]})
+    assert current.status_code == 200, current.get_json()
+    download = client.get(BASE + "/export", query_string={"scope": json.dumps(SCOPE), "snapshot_ref": result["meta"]["snapshot_ref"]})
+    assert download.status_code == 200 and int(download.headers["X-Workbench-Row-Count"]) == current.get_json()["data"]["page"]["total"]
+    changed_scope = client.get(BASE, query_string={"scope": json.dumps({**SCOPE, "query": "other"}), "snapshot_ref": result["meta"]["snapshot_ref"]})
+    assert changed_scope.status_code == 409 and changed_scope.get_json()["error"]["code"] == "snapshot_stale"
     _, entity = _overview(client)
     assert entity["status"] == "checked" and entity["issue_count"] == 0
 

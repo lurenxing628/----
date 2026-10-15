@@ -7,7 +7,7 @@ from .schedule_graph_dispatch_context import (
     node_op_id,
     positive_op_id_set,
 )
-from .schedule_input_collector import ScheduleRunInput
+from .schedule_input_contracts import ScheduleRunInput
 
 GRAPH_SCORE_WEIGHTS_ZERO_REASON = "score_weights_zero"
 _GRAPH_SCORE_SAMPLE_LIMIT = 10

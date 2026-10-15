@@ -13,8 +13,8 @@ from core.services.report.report_context_filters import (
     REPORT_RESOURCE_FILTER_ARG_KEYS,
     normalize_report_resource_filter,
 )
-from core.services.scheduler.gantt.plan_query import resolve_gantt_range_for_version
 from core.services.scheduler.version_resolution import resolve_version_or_latest
+from core.services.workbench.plan.legacy_range import resolve_legacy_gantt_range
 from web.plan_context_token import request_scenario_id_from_args
 
 from .legacy_page_contract import LegacyNavigationInvalid
@@ -77,7 +77,7 @@ def resource_filter(args):
 
 def gantt_context(queries, plan, args):
     locator = plan.locator
-    wr, _span, source = resolve_gantt_range_for_version(
+    wr, _span, source = resolve_legacy_gantt_range(
         plan_query_service=queries, version=locator.version,
         plan_role=locator.plan_role, scenario_id=locator.scenario_id,
         week_start=args.get("week_start"), offset_weeks=args.get("offset_weeks", 0),

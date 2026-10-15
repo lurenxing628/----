@@ -1,12 +1,12 @@
 """Read and update default work periods without changing per-date overrides."""
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendar_defaults import WorkbenchCalendarDefaultsService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -43,7 +43,7 @@ def calendar_defaults_write():
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTION, context_ref=SUBJECT, normalized_input=payload,
         guard=guard, mutate=lambda state: service._apply_checked(payload, state))
-    return jsonify(result)
+    return json_response(result)
 
 
 def register_calendar_defaults_routes(bp):

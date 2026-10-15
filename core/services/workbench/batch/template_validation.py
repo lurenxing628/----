@@ -5,13 +5,14 @@ from core.models.workbench_batch import number
 from core.services.process.template_source import source_issues, valid_external_group, valid_supplier
 
 from .projection import issue
+from .resource_choices import BatchResourceFacts
 
 
-def template_diagnostics(rows, facts, batch):
+def template_diagnostics(rows, facts, batch, resources=None):
     diagnostics = []
     sequences = set()
     types = {row["op_type_id"]: row for row in facts["OpTypes"]}
-    groups, suppliers = _source_catalogs(rows, facts, batch)
+    groups, suppliers = _source_catalogs(rows, facts, batch, resources)
     for row in rows:
         if type(row["seq"]) is not int or row["seq"] <= 0:
             diagnostics.append(issue("工序号 " + str(row["seq"]) + " 无效，请填写正整数。"))
@@ -48,18 +49,16 @@ _SOURCE_MESSAGES = {
 }
 
 
-def _source_catalogs(rows, facts, batch):
+def _source_catalogs(rows, facts, batch, resources):
     members = {}
     for row in rows:
         members.setdefault(row.get("ext_group_id"), []).append((row["seq"], row["source"], row["supplier_id"]))
     groups = {group["group_id"]: dict(group, valid=valid_external_group(
         group, batch["part_no"], members.get(group["group_id"], []))) for group in facts["ExternalGroups"]}
     profiles = {row["supplier_id"]: row for row in facts["WorkbenchSupplierProfiles"]}
-    suppliers = {row["supplier_id"]: dict(row, capabilities={row["op_type_id"]},
+    resources = resources if resources is not None else BatchResourceFacts(facts)
+    suppliers = {row["supplier_id"]: dict(row, capabilities=resources.supplier_types.get(row["supplier_id"], set()),
         inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason")) for row in facts["Suppliers"]}
-    for row in facts["WorkbenchSupplierOpTypes"]:
-        if row["supplier_id"] in suppliers:
-            suppliers[row["supplier_id"]]["capabilities"].add(row["op_type_id"])
     return groups, suppliers
 
 
@@ -67,11 +66,11 @@ def _supplier_valid(supplier, op_type_id):
     return valid_supplier(dict(supplier, capable=op_type_id in supplier["capabilities"])) if supplier else False
 
 
-def template_status(facts, batch):
+def template_status(facts, batch, resources=None):
     """The detail and replacement preview apply the same completeness policy."""
     rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
     workflow = facts["workflow"][batch["part_no"]]["workflow"]
-    diagnostics = template_diagnostics(rows, facts, batch)
+    diagnostics = template_diagnostics(rows, facts, batch, resources)
     if not rows:
         diagnostics.insert(0, issue("尚未录入有效工序，请先完善工艺路线。"))
     elif workflow["origin"] == "managed" and not workflow["ready"]:

@@ -11,6 +11,7 @@ from core.models.workbench_resource_input import resource_object, resource_text
 
 from .file_values import typed_value
 from .part_actions import WorkbenchProcessPartActionService
+from .part_actions_facts import check_process_template
 from .projection import project_group, public_sequence, require_ref
 from .route_apply import affected_group_rows
 from .route_choices import preview_existing_route, route_choice_context
@@ -74,17 +75,13 @@ class RouteFilePreview:
         self.parts = {row["part_no"]: row for row in facts["parts"]}
         self.identities = {row["ref"]: row for row in facts["identities"]}
         self.operations, self.groups = defaultdict(list), defaultdict(list)
-        owners = {row["group_id"]: row["part_no"] for row in facts["groups"]}
-        self.foreign_members = set()
         for row in facts["operations"]:
             self.operations[row["part_no"]].append(row)
-            owner = owners.get(row["ext_group_id"])
-            if owner is not None and owner != row["part_no"]:
-                self.foreign_members.add(owner)
         for row in facts["groups"]:
             self.groups[row["part_no"]].append(row)
         self.target_ref, self.stack = target_ref, stack
-        self.parser = ProcessRoutePreviewService(conn, logger)
+        self.facts = facts
+        self.parser = ProcessRoutePreviewService(conn, logger, facts=facts)
         self.parser_ready = False
         self.choices = None
 
@@ -171,19 +168,7 @@ class RouteFilePreview:
 
     def _check_template(self, code):
         operations, groups = self.operations[code], self.groups[code]
-        keys = {row["group_id"] for row in groups}
-        for row in operations:
-            require_ref(row["ref"], "模板工序")
-            if row["status"] not in ("active", "deleted") or type(row["seq"]) is not int or row["seq"] <= 0:
-                raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态无效。请到基础资料核对工序。", 422)
-            if row["ext_group_id"] is not None and row["ext_group_id"] not in keys:
-                raise WorkbenchCommandRejected("group_invalid", "原工序关联的外协组不存在，或者属于别的零件。请到基础资料核对外协组。", 422)
-        for row in groups:
-            require_ref(row["ref"], "模板外协组")
-            if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
-                raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围无效，算不准影响面。请到基础资料核对外协组起止序。", 422)
-        if code in self.foreign_members:
-            raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在本零件解除。请先到那些零件上解除。", 422)
+        check_process_template(operations, groups, code, self.facts["operations"])
         return operations, groups
 
     def _route(self, row, part):
@@ -221,7 +206,7 @@ class RouteFilePreview:
             return preview
         if self.choices is None:
             self.choices = route_choice_context(self.parser.conn,
-                                                [op for rows in self.operations.values() for op in rows])
+                                                [op for rows in self.operations.values() for op in rows], self.facts)
         return preview_existing_route(self.parser.conn, preview, existing, context=self.choices)
 
     def affected_groups(self, rows):

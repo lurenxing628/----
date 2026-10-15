@@ -1,6 +1,6 @@
 """Register resource batch routes only; global blueprint mounting belongs to the host."""
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_resource_action import action_kind, resource_refs
@@ -8,7 +8,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
 from core.services.workbench.resource.files import WorkbenchResourceFileService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -26,7 +26,7 @@ def resource_bulk_preview(kind):
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(query_scope, fingerprint, token)
-        preview = WorkbenchResourceBulkService(g.db, kind, current_app.logger).preview_delete(refs, scope=scope)
+        preview = WorkbenchResourceBulkService(g.db, kind, current_app.logger, reader=reader).preview_delete(refs, scope=scope)
         data = issue_preview(kind, preview)
     return query_success(data, snapshot)
 
@@ -57,7 +57,7 @@ def resource_import_preview(kind):
     action_kind(kind)
     content, fmt, mode, scope = _upload(kind)
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
-    service = WorkbenchResourceFileService(g.db, kind, current_app.logger)
+    service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
     source = service.prepare_import(content, file_format=fmt, mode=mode, scope=scope)
     with reader.read_snapshot(capture_fingerprint=False):
         preview = service.preview_import(source, file_format=fmt, mode=mode, scope=scope)
@@ -94,7 +94,7 @@ def resource_action_confirm(kind, action):
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=operation, context_ref=ref, normalized_input={"preview_ref": ref},
         guard=lambda: resolve_preview(ref, operation, body["write_token"]), mutate=lambda checked: _apply(kind, action, checked))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 def register_resource_action_routes(bp):

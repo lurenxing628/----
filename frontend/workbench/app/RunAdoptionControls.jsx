@@ -15,7 +15,7 @@
     </details>;
   }
   function Fields({ draft, onChange, consent, onConsent, readOnly, busy }) {
-    const id = React.useId(), memoryHint = window.WorkbenchHandlerMemory.hint(draft.declared_operator);
+    const id = React.useId(), memoryHint = window.WorkbenchHandlerMemory.useHint(draft.declared_operator);
     return <div className="ra-fields"><div className="field"><label htmlFor={id + '-reason'}>采用原因</label>
       <textarea id={id + '-reason'} rows={3} maxLength={1000} value={draft.reason} readOnly={readOnly} disabled={busy}
         onChange={e => onChange({ ...draft, reason: e.target.value })} /></div>

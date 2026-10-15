@@ -1,12 +1,12 @@
 """Single-machine downtime read and idempotent write routes."""
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_downtime import normalize_downtime
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.downtimes import WorkbenchDowntimeService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -42,7 +42,7 @@ def machine_downtime_command(ref, action):
         validate_write_context(body["write_token"], ref, name, state)
         return state
 
-    return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(
+    return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=name, context_ref=ref, normalized_input=payload,
         guard=guard, mutate=lambda state: service.apply(ref, action, payload, state)))
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from copy import deepcopy
 from dataclasses import replace
 from typing import Any, Callable, Optional
 
@@ -18,7 +19,7 @@ from .schedule_candidate_plan import (
 )
 from .schedule_candidate_runtime_helpers import _public_budget, _replace_schedule_input_cfg, _resolve_total_budget
 from .schedule_candidate_selection import BusinessObjectiveSelectionResult
-from .schedule_graph_report import make_cached_graph_preparation_fn
+from .schedule_graph_report import prepare_schedule_graph_for_dispatch
 from .schedule_shared_optimizer import optimize_shared_schedule
 
 
@@ -41,7 +42,7 @@ def run_candidate_comparison(
     deadline = started + total_budget
     budget = SearchBudget(clock=now, started_at=started, deadline=deadline,
                           outer_deadline=deadline, assigned_seconds=total_budget)
-    prepare_graph = prepare_graph_fn or make_cached_graph_preparation_fn()
+    prepare_graph = prepare_graph_fn or prepare_schedule_graph_for_dispatch
     preparation = None
 
     def graph_prepare():
@@ -109,7 +110,7 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
     labels = {"min_overdue": "交期优先", "min_tardiness": "拖期更轻", "min_changeover": "切换更少",
               "min_weighted_tardiness": "加权拖期更轻"}
     params = dict(candidate["params"])
-    origin = dict(entry.evidence_origin)
+    origin = deepcopy(entry.evidence_origin)
     profile = params.get("graph_ready_profile")
     if profile is not None:
         origin["graph_ready_profile"] = profile

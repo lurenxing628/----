@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
-from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.workbench.facts.adoption_baseline_values import (
     fail,
     indexed,
@@ -31,8 +30,6 @@ def verify_capture(baseline, tables):
     if version is None:
         require(baseline["plan_ref"] is None and not baseline["rows"], "empty_baseline")
         return
-    if len(archived) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected("query_too_large", "采用时的完整初始计划超过 10000 条上限。请缩小时间范围后重试。", 413)
     require(bool(archived), "baseline_complete_row_count")
     _captured_official(baseline, tables)
 

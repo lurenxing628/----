@@ -21,5 +21,5 @@
     {"code": "JY", "name": "检验", "count": 3, "skills": ["INSPECT", "INSPECT_FINAL", "INSPECT_GENERAL", "EXPERIMENT", "NDT", "SPECIAL_INSPECT", "AIRTIGHT"]},
     {"code": "BY", "name": "标印", "count": 1, "skills": ["MARK"]}
   ],
-  "schedule_config": {"algo_mode": "improve", "time_budget_seconds": 30, "auto_assign_enabled": "yes", "graph_analysis_mode": "on", "graph_candidate_weight_count": 3, "ortools_enabled": "no"}
+  "schedule_config": {"algo_mode": "improve", "time_budget_seconds": 30, "auto_assign_enabled": "yes", "graph_analysis_mode": "on", "ortools_enabled": "no"}
 }

@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_relation_file import (
     EXPORT_LABELS,
@@ -76,15 +77,26 @@ class WorkbenchRelationFileService:
         request = prepared.request_for(self.kind + ".import", file_format, mode)
         source, notices = prepared.parsed()
         with self.tx.transaction():
-            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices, source=prepared)
+            return self._prepare_import(prepared, request, source, notices)[0]
 
-    def _build_rows(self, source) -> List[Dict[str, Any]]:
+    def _prepare_import(self, prepared, request, source, notices):
+        preparation = self._reader().preparation()
+        rows = self._build_rows(source, preparation)
+        targets = [OperatorMachine(None, row["after"]["operator_code"], row["after"]["machine_code"],
+                                   row["after"]["skill_level"], row["after"]["is_primary"])
+                   for row in rows if row["result"] in ("new", "update")]
+        operators = sorted({row["values"]["operator_code"] for row in rows if not _blocked(row)})
+        current_rows = [link for code in operators for link in preparation.authorizations("operator", code)]
+        changes = self.domain.prepare_changes(current_rows, targets)
+        return ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared), changes
+
+    def _build_rows(self, source, preparation) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
         self._reject_duplicate_pairs(rows)
-        entities = self._load_entities(rows)
+        entities = self._load_entities(rows, preparation)
         for row in rows:
             self._resolve_entities(row, entities)
-        current = self._load_current_links(rows)
+        current = self._load_current_links(rows, preparation)
         primaries = self._final_primaries(rows, current)
         for row in rows:
             self._classify(row, current, primaries)
@@ -134,7 +146,7 @@ class WorkbenchRelationFileService:
                     reject_action_row(item, "文件里有重复的工号和设备编号组合，这些行都没有导入：第 " + numbers
                                       + " 行。请去掉重复项后重新上传。", field="machine_code", code="duplicate_entry")
 
-    def _load_entities(self, rows) -> Dict[str, Dict[str, Any]]:
+    def _load_entities(self, rows, preparation) -> Dict[str, Dict[str, Any]]:
         """按去重后的编号取实体，避免逐行查库。"""
         wanted: Dict[str, set] = {"operator": set(), "machine": set()}
         for row in rows:
@@ -145,7 +157,7 @@ class WorkbenchRelationFileService:
         loaded: Dict[str, Dict[str, Any]] = {"operator": {}, "machine": {}}
         for entity, codes in wanted.items():
             for code in sorted(codes):
-                raw = self.repo.raw(entity, code)
+                raw = preparation.raw(entity, code)
                 loaded[entity][code] = dict(raw) if raw is not None else None
         return loaded
 
@@ -164,18 +176,19 @@ class WorkbenchRelationFileService:
         row["values"]["operator_label"] = operator.get("name")
         row["values"]["machine_label"] = machine.get("name")
 
-    def _load_current_links(self, rows) -> Dict[str, Dict[str, Dict[str, str]]]:
+    def _load_current_links(self, rows, preparation) -> Dict[str, Dict[str, Dict[str, str]]]:
         """一次取回涉及人员的全部现有关联；连带影响要看整组，不能只看文件里这几行。"""
         codes = sorted({row["values"].get("operator_code") for row in rows
                         if not _blocked(row) and row["values"].get("operator_code")})
         current: Dict[str, Dict[str, Dict[str, str]]] = {code: {} for code in codes}
         if not codes:
             return current
-        for link in self.links.list_simple_rows_for_operators(codes):
-            current.setdefault(link["operator_id"], {})[link["machine_id"]] = {
-                "skill_level": normalize_skill_level_stored(link.get("skill_level")),
-                "is_primary": normalize_yes_no_stored(link.get("is_primary")),
-            }
+        for code in codes:
+            for link in preparation.authorizations("operator", code):
+                current[code][link["machine_id"]] = {
+                    "skill_level": normalize_skill_level_stored(link.get("skill_level")),
+                    "is_primary": normalize_yes_no_stored(link.get("is_primary")),
+                }
         return current
 
     def _final_primaries(self, rows, current) -> Dict[str, Set[str]]:
@@ -283,21 +296,17 @@ class WorkbenchRelationFileService:
             raise RuntimeError("关系导入确认必须在外层工作台写事务中执行。")
         with self.tx.transaction():
             try:
-                current = self.preview_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, mode=mode)
+                prepared = PreparedImportSource.confirmation(preview, content)
+                request = prepared.request_for(self.kind + ".import", file_format, mode)
+                source, notices = prepared.parsed()
+                current, changes = self._prepare_import(prepared, request, source, notices)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected(
                     "stale_write", "文件或相关资料已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             body = current.as_dict()
             rows = body["rows"]
-            # 主操那一行最后写：底层写入主操时会清掉同一个人其他设备的主操标记。
-            for row in sorted(rows, key=lambda item: (item.get("after") or {}).get("is_primary") == "yes"):
-                if row["result"] in ("unchanged", "rejected"):
-                    continue
-                after = row["after"]
-                writer = self.domain.add_link if row["action"] == "create" else self.domain.update_link_fields
-                writer(after["operator_code"], after["machine_code"], skill_level=after["skill_level"],
-                       is_primary=after["is_primary"], preserve_unchanged=True)
+            self.domain.apply_changes(changes)
             results = [{"row": row["row"], "business_code": row["business_code"],
                         "result": "unchanged" if row["result"] == "unchanged" else "committed"} for row in rows]
             changed = any(item["result"] == "committed" for item in results)

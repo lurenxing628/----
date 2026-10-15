@@ -2,9 +2,11 @@
 
 import uuid
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_dashboard_schema import contract_issues
 from core.models.content import content_text
 from core.models.workbench_command import canonical_json
+from core.models.workbench_dashboard import MAX_BYTES, bounded
 from data.repositories.workbench_dashboard_source_repo import rows
 
 
@@ -17,7 +19,7 @@ class WorkbenchDashboardRepository:
         self.conn = conn
 
     def schema_installed(self):
-        return not contract_issues(self.conn)
+        return not schema_contract_memo(self.conn).get_schema(contract_issues)
 
     def mappings(self, category, refs):
         """{anchor ref: item row} for the category; the service decides whether every ref is mapped."""
@@ -75,14 +77,19 @@ class WorkbenchDashboardRepository:
         row = self.conn.execute("SELECT revision FROM " + self.states_table + " WHERE item_ref=?", (ref,)).fetchone()
         sequence = row[0] + 1 if row else 1
         source = {key: item[key] for key in ("item_ref", "category", "subject", "source", "risk", "navigation")}
+        before_text, after_text = canonical_json(before), canonical_json(after)
+        source_text, facts_text = canonical_json(source), content_text(facts)
+        # These exact fields are stored below. Count their logical document once.
+        document_size = sum(len(value.encode("utf-8")) for value in (before_text, after_text, source_text, facts_text))
+        bounded(range(document_size + len('{"after":,"before":,"facts":,"source":}')), MAX_BYTES)
         if row:
             self.conn.execute("UPDATE " + self.states_table + " SET revision=?,handling_json=?,updated_at=? WHERE item_ref=?",
-                              (sequence, canonical_json(after), stamp, ref))
+                              (sequence, after_text, stamp, ref))
         else:
             self.conn.execute("INSERT INTO " + self.states_table + " VALUES (?,?,?,?,?)",
-                              (ref, sequence, canonical_json(after), canonical_json(source), stamp))
+                              (ref, sequence, after_text, source_text, stamp))
         history_ref = uuid.uuid4().hex + uuid.uuid4().hex[:16]
         self.conn.execute("INSERT INTO " + self.history_table + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                          (history_ref, ref, sequence, action, canonical_json(before), canonical_json(after), canonical_json(source),
-                           content_text(facts), None, reason, actor, stamp, request_key))
+                          (history_ref, ref, sequence, action, before_text, after_text, source_text,
+                           facts_text, None, reason, actor, stamp, request_key))
         return history_ref

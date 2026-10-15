@@ -33,7 +33,6 @@
         if (typeof ref !== 'string' || !ref) throw C.failure('新增结果里没有工种编号，工序还没绑定。请刷新后核对。');
         const detail = C.query(await adapter.detail('op_type', ref, controller.signal), 'entity');
         if (detail.data.ref !== ref) throw C.failure('读到的工种详情和新增结果不一致，请刷新后核对。');
-        await adapter.list('op_type', scope, controller.signal);
         if (!controller.signal.aborted) setRefresh({ done: true, detail });
       } catch (failure) { if (!controller.signal.aborted) setRefresh({ error: failure }); }
       finally { if (request.current === controller) request.current = null; }

@@ -184,7 +184,7 @@ def _candidate(conn, ref):
         facts = GenerationFacts(capture)
         rows = store.tasks(ref)
         prepared_tasks = {}
-        validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
+        rows, _, scheduled_op_ids = validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
         result = []
         for item in rows:
             prepared = prepared_tasks[item["row_ref"]]
@@ -199,10 +199,10 @@ def _candidate(conn, ref):
                 _attach_point_work(result[-1], prepared["point_work"])
             result[-1]["original"]["part"] = facts.tables["Parts"].get(batch["part_no"])
         scope = dispositions(receipt)
-        summary = candidate_summary(candidate, scope)
+        summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
         issues = []
         try:
-            expected = require_candidate_scope(run, candidate, scope, capture)
+            expected = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=scheduled_op_ids)
             if {row["original"]["operation"]["id"] for row in result} != expected:
                 raise CandidateAdoptionBlocked("candidate_scope_incomplete", "候选任务范围不完整。")
         except CandidateAdoptionBlocked:
@@ -217,7 +217,7 @@ def _candidate(conn, ref):
         return result, extra, facts.tables["BatchOperations"], {key: ref for ref, key in facts.operations.items()}, issues, facts
 
 
-def prepare_base(conn, intent):
+def prepare_base(conn, intent, *, execution_service):
     key, ref = next(iter(intent["base"].items()))
     capture = ProductionFactsCapture(conn)
     if key == "plan_ref":
@@ -231,7 +231,7 @@ def prepare_base(conn, intent):
         reject("query_too_large", "完整基础范围超过10000条，未按可见范围截断。", 413)
     issues.extend(_date_issues(rows))
     _predecessors(rows, all_ops, operation_refs, issues)
-    live = live_context(conn, [row["operation_ref"] for row in rows], capture)
+    live = live_context(conn, [row["operation_ref"] for row in rows], capture, execution_service=execution_service)
     admission = {"input": intent, "source": source, "facts": live["facts"], "facts_hash": live["facts_hash"],
                  "baseline": live["baseline"], "execution": live["execution"], "base_issues": issues}
     _attach_original_context(rows, source, key, live, source_facts)

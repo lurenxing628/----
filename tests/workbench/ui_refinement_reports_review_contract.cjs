@@ -133,4 +133,14 @@ for (const count of [0, 18]) {
   assert.equal(late.props.helper, '超过计划完工时间 10 分钟');
   assert.equal(late.props.tone, count ? 'warning' : undefined);
 }
+vm.runInContext(fs.readFileSync(path.join(base, 'ReportAPI.js'), 'utf8'), context);
+const operationDetail = { event_count: 0, production_report_count: 0, record_count: 0, unknown_record_count: 0,
+  known_completed_quantity: null, remaining_quantity: 5, effective_processing_hours: null,
+  known_effective_processing_hours: 0, unknown_hour_events: 0 };
+const narrowDetail = { ok: true, meta: { source: 'production', snapshot_ref: 'same-snapshot' },
+  data: { plan: { is_current_official: true }, detail: { operation: operationDetail, records: [] } } };
+assert.equal(context.window.ReportAPI.validateDetail(narrowDetail), narrowDetail, 'Detail only requires its operation, records, plan and metadata');
+assert.throws(() => context.window.ReportAPI.validate(narrowDetail), /报表数据不完整/);
+assert.throws(() => context.window.ReportAPI.validateDetail({ ...narrowDetail, data: { ...narrowDetail.data,
+  detail: { operation: { ...operationDetail, production_report_count: 1 }, records: [] } } }), /工序详情不完整/);
 process.stdout.write('reports-review display contracts passed\n');

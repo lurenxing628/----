@@ -45,7 +45,18 @@ def test_calibration_restores_page_once_and_keeps_scope_source_and_expiry(lineag
     record_property("fact_query_calls", len(calls))
     record_property("data_fields", sorted(direct["data"]))
     token = direct["meta"]["snapshot_ref"]
-    repeated = client.get(path, query_string={**query, "snapshot_ref": token}).get_json()
+    from web.routes.workbench import read_context
+
+    resolves, original_resolve = [], read_context.resolve_public_token
+
+    def resolved(*args, **kwargs):
+        resolves.append(args[1])
+        return original_resolve(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(read_context, "resolve_public_token", resolved)
+        repeated = client.get(path, query_string={**query, "snapshot_ref": token}).get_json()
+    assert resolves == [token]
     assert repeated["data"] == direct["data"] and repeated["meta"].keys() == direct["meta"].keys()
     assert repeated["meta"]["request_ref"] != direct["meta"]["request_ref"]
     assert all(repeated["meta"][key] == value for key, value in direct["meta"].items() if key != "request_ref")
@@ -63,3 +74,97 @@ def test_calibration_restores_page_once_and_keeps_scope_source_and_expiry(lineag
         expired = client.get(path, query_string={**query, "snapshot_ref": token})
     assert expired.status_code == 409 and expired.get_json()["error"]["code"] == "snapshot_stale"
     assert case.conn.total_changes == before
+
+
+def test_token_bindings_share_facts_preserve_types_and_own_their_lifetime(monkeypatch, record_property):
+    from datetime import date
+
+    import pytest
+
+    from core.errors import ValidationError
+    from core.models.content import content_text
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from web.routes.workbench import read_context, write_context
+
+    app = Flask("direct-token-values")
+    clock = [1000.0]
+    monkeypatch.setattr(public_token_registry.time, "time", lambda: clock[0])
+    with app.app_context():
+        class SharedFacts(str):
+            equalities = 0
+            __hash__ = str.__hash__
+
+            def __eq__(self, other):
+                SharedFacts.equalities += 1
+                return str.__eq__(self, other)
+
+        snapshot = SharedFacts(content_text({"facts": list(range(1000))}))
+        issue_context = write_context.issue_write_context.for_snapshot(snapshot)
+        tokens = [issue_context(str(index), ["save"])["write_token"] for index in range(100)]
+        same_content = SharedFacts(snapshot)
+        assert same_content is not snapshot
+        SharedFacts.equalities = 0
+        reopened = write_context.issue_write_context.for_snapshot(same_content)
+        reused = [reopened(str(index), ["save"])["write_token"] for index in range(100)]
+        assert reused == tokens and SharedFacts.equalities == 1
+        record_property("shared_facts_equalities", SharedFacts.equalities)
+        record_property("tokens_reused", reused == tokens)
+        bindings = [public_token_registry.resolve_public_token(write_context._SCOPE, token, message="expired", field="token")
+                    for token in tokens]
+        assert all(binding.snapshot[1] is snapshot for binding in bindings)
+        indexes = public_token_registry._registry()[write_context._SCOPE]["by_value"]
+        assert len(indexes) == 1 and len(next(iter(indexes.values()))) == 100
+        assert write_context.issue_write_context("0", ["save"], snapshot)["write_token"] == tokens[0]
+        for old, new in ((True, 1), (1, 1.0), (1, "1"), (b"x", {"$sqlite_blob": "eA=="}),
+                         (date(2026, 10, 15), {"storage_type": "date", "iso": "2026-10-15"})):
+            token = write_context.issue_write_context("typed", ["save"], old)["write_token"]
+            write_context.validate_write_context(token, "typed", "save", old)
+            with pytest.raises(WorkbenchCommandRejected):
+                write_context.validate_write_context(token, "typed", "save", new)
+        # An independent retained reference survives expiry of the original read token.
+        read = read_context.bind_read_snapshot({"kind": "source"}, snapshot)
+        binding = read_context.resolve_read_snapshot(read["snapshot_ref"])
+        clock[0] += 800
+        retained = public_token_registry.issue_public_token("retained", binding, key="one", ttl_seconds=900)
+        clock[0] += 101
+        with pytest.raises(ValidationError):
+            public_token_registry.resolve_public_token(read_context._SCOPE, read["snapshot_ref"], message="expired", field="token")
+        assert public_token_registry.resolve_public_token("retained", retained, message="expired", field="token") is binding
+        with pytest.raises(WorkbenchCommandRejected):
+            write_context.validate_write_context(tokens[0], "0", "save", snapshot)
+
+
+def test_direct_token_reissue_keeps_old_expiry_and_lru_drops_empty_groups(monkeypatch):
+    import pytest
+
+    from core.errors import ValidationError
+
+    app = Flask("direct-token-expiry")
+    clock = [1000.0]
+    monkeypatch.setattr(public_token_registry.time, "time", lambda: clock[0])
+    with app.app_context():
+        value = object()
+        issuer = public_token_registry.PublicTokenIssuer("values", group="facts", ttl_seconds=100)
+        first, expiry = issuer.issue_with_expiry(value, key="row")
+        clock[0] = 1060
+        second, next_expiry = issuer.issue_with_expiry(value, key="row")
+        assert first != second and expiry == 1100 and next_expiry == 1160
+        assert public_token_registry.resolve_public_token("values", first, message="expired", field="token") is value
+        clock[0] = 1100
+        with pytest.raises(ValidationError):
+            public_token_registry.resolve_public_token("values", first, message="expired", field="token")
+        assert public_token_registry.resolve_public_token("values", second, message="expired", field="token") is value
+        state = public_token_registry._registry()["values"]
+        public_token_registry._drop_token(state, second)
+        assert not state["by_value"]
+        current, _ = public_token_registry.issue_public_token_with_expiry("values", value, key="row", group="facts", ttl_seconds=100)
+        assert issuer.issue_with_expiry(value, key="row")[0] == current
+        monkeypatch.setattr(public_token_registry, "_MAX_SCOPE_TOKENS", 2)
+        public_token_registry.issue_public_token("lru", "old")
+        clock[0] += 1
+        active = public_token_registry.issue_public_token("lru", "active")
+        clock[0] += 1
+        public_token_registry.resolve_public_token("lru", active, message="expired", field="token")
+        public_token_registry.issue_public_token("lru", "third")
+        public_token_registry.issue_public_token("lru", "fourth")
+        assert public_token_registry.resolve_public_token("lru", active, message="expired", field="token") == "active"

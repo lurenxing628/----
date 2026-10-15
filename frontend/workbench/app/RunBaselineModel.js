@@ -4,11 +4,10 @@
   const resourceLabels = { machine: '设备', operator: '人员', supplier: '供应商' };
   const sourceLabel = side => side.source === 'internal' ? '内部' : side.source === 'external' ? '外协' : '来源未记录';
   const statusLabels = { matched: '可对照安排', newly_scheduled: '新增安排', unscheduled: '候选未排', baseline_only: '仅原安排', not_comparable: '无法一一对照' };
-  function matching(rows, query) {
-    const needle = query.trim().toLocaleLowerCase();
-    return !needle ? rows : rows.filter(r => [r.operation_ref, r.row_ref, r.batch_ref, r.batch_label, r.part_label, r.sequence, r.process_label,
-      r.candidate, ...r.baseline_segments].flatMap(v => typeof v === 'object' && v ? [v.row_ref, v.machine && v.machine.label, v.operator && v.operator.label, v.supplier && v.supplier.label] : [v])
-      .filter(v => v != null).join(' ').toLocaleLowerCase().includes(needle));
+  function searchText(row) {
+    return [row.operation_ref, row.row_ref, row.batch_ref, row.batch_label, row.part_label, row.sequence, row.process_label,
+      row.candidate, ...row.baseline_segments].flatMap(value => typeof value === 'object' && value ? [value.row_ref, value.machine && value.machine.label, value.operator && value.operator.label, value.supplier && value.supplier.label] : [value])
+      .filter(value => value != null).join(' ').toLocaleLowerCase();
   }
   function title(item) {
     const r = item.comparison, s = item.segment;
@@ -50,38 +49,44 @@
     }
     return rows;
   }
-  function prepare(candidate, baseline, mode, query, operationRefs = null) {
-    const groups = new Map();
-    const comparisons = baseline ? matching(baseline.comparisons, query).filter(row => !operationRefs || operationRefs.has(row.operation_ref)) : [];
-    const included = new Set(comparisons.map(r => r.operation_ref));
-    // compose() also accepts its existing, already-laid-out candidate argument.
-    if (candidate.rows) {
-      for (const row of candidate.rows) {
-        if (!groups.has(row.id)) groups.set(row.id, { id: row.id, label: row.label, current: [], before: [] });
-        groups.get(row.id).current.push(row);
+  function prepare(baseline) {
+    return { hasBaseline: !!baseline, facts: baseline ? baseline.comparisons.map(comparison => ({ comparison,
+      segments: comparison.baseline_segments.filter(segment => segment.interval_comparable).map(segment => ({ comparison, segment,
+        start: M.instant(segment.start), end: M.instant(segment.end), point: window.PointContract.isPoint(segment) })) })) : [] };
+  }
+  function groupPrepared(prepared, mode, focus = null) {
+    const groups = new Map(), comparisons = []; let start = null, end = null, hasPoints = false;
+    for (const fact of prepared.facts) {
+      const comparison = focus ? { ...fact.comparison, baseline_segments: fact.comparison.baseline_segments.filter(segment => M.resourceMatches(segment, focus)) } : fact.comparison;
+      const entry = { comparison, search: searchText(comparison) }; comparisons.push(entry);
+      for (const source of fact.segments) {
+        if (!M.resourceMatches(source.segment, focus)) continue;
+        const item = { ...source, comparison }, resource = mode === 'batch' ? { ref: comparison.batch_ref, label: comparison.batch_label } : item.segment[mode];
+        const id = resource && resource.ref || 'baseline-missing:' + item.segment.row_ref;
+        start = start === null ? item.start : Math.min(start, item.start); end = end === null ? item.end : Math.max(end, item.end); hasPoints = hasPoints || item.point;
+        if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(item.segment, mode), before: [] });
+        groups.get(id).before.push(item);
       }
-    } else {
-      for (const group of candidate.groups.values()) groups.set(group.id, { id: group.id, label: group.label, candidate: group, before: [] });
     }
-    let start = candidate.start, end = candidate.end, hasPoints = false;
-    for (const comparison of baseline ? baseline.comparisons : []) for (const segment of comparison.baseline_segments) {
-      if (!segment.interval_comparable) continue;
-      const item = { comparison, segment, start: M.instant(segment.start), end: M.instant(segment.end) };
-      hasPoints = hasPoints || window.PointContract.isPoint(segment);
-      start = start === null ? item.start : Math.min(start, item.start); end = end === null ? item.end : Math.max(end, item.end);
-      if (!included.has(comparison.operation_ref)) continue;
-      const resource = mode === 'batch' ? { ref: comparison.batch_ref, label: comparison.batch_label } : segment[mode];
-      const id = resource && resource.ref || 'baseline-missing:' + segment.row_ref;
-      if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(segment, mode), current: [], before: [] });
-      groups.get(id).before.push(item);
-    }
-    if (hasPoints) ({ start, end } = window.PointGanttModel.bounds(start, end, true));
     for (const group of groups.values()) {
-      const isPoint = item => window.PointContract.isPoint(item.segment);
-      group.intervals = tracks(group.before.filter(item => !isPoint(item)));
-      group.points = window.PointGanttModel.prepareTracks(group.before.filter(isPoint));
+      group.intervals = tracks(group.before.filter(item => !item.point)); group.points = window.PointGanttModel.prepareTracks(group.before.filter(item => item.point));
     }
-    return { candidate, groups, start, end, comparisons, hasBaseline: !!baseline };
+    return { ...prepared, groups, comparisons, start, end, hasPoints };
+  }
+  function selectPrepared(candidate, baseline, query = '', operationRefs = null, baselineVisible = true) {
+    const groups = new Map(), needle = query.trim().toLocaleLowerCase();
+    const comparisons = (baselineVisible ? baseline.comparisons : []).filter(entry => (!operationRefs || operationRefs.has(entry.comparison.operation_ref)) && (!needle || entry.search.includes(needle))).map(entry => entry.comparison);
+    const included = new Set(comparisons.map(row => row.operation_ref));
+    for (const group of candidate.groups.values()) groups.set(group.id, { id: group.id, label: group.label, candidate: group, intervals: [], points: [], before: [], shown: new Set() });
+    for (const [id, source] of baselineVisible ? baseline.groups : []) {
+      const before = source.before.filter(item => included.has(item.comparison.operation_ref)); if (!before.length) continue;
+      const shown = new Set(before), group = groups.get(id) || { id, label: source.label, current: [] };
+      groups.set(id, { ...group, before, shown, intervals: source.intervals.map(lane => lane.filter(item => shown.has(item))), points: source.points });
+    }
+    let start = candidate.start, end = candidate.end;
+    if (baselineVisible && baseline.start !== null) { start = start === null ? baseline.start : Math.min(start, baseline.start); end = end === null ? baseline.end : Math.max(end, baseline.end); }
+    if (baselineVisible && baseline.hasPoints) ({ start, end } = window.PointGanttModel.bounds(start, end, true));
+    return { candidate, groups, start, end, comparisons, hasBaseline: baselineVisible && baseline.hasBaseline };
   }
   function layoutPrepared(prepared, width = 1000) {
     const { candidate, start, end } = prepared;
@@ -95,18 +100,15 @@
     for (const [id, group] of prepared.groups) {
       const current = group.candidate ? M.groupRows(group.candidate, start, end, width, true) : group.current;
       current.forEach(append);
-      const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width) : [];
-      for (const [baselinePoint, lanes] of [[false, group.intervals], [true, points]]) lanes.forEach((items, lane) => append({
+      const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
+      for (const [baselinePoint, lanes] of [[false, group.intervals], [true, points]]) lanes.forEach((items, lane) => { if (items.length) append({
         id, key: 'baseline:' + id + ':' + (baselinePoint ? 'point:' : '') + lane, label: group.label, items,
         height: 30, lane, laneCount: lanes.length, baseline: true, baselinePoint
-      }));
+      }); });
     }
-    const facts = candidate.rows ? candidate : { tasks: candidate.tasks, unplottableTasks: candidate.unplottableTasks };
+    const facts = { tasks: candidate.tasks, unplottableTasks: candidate.unplottableTasks };
     return { ...facts, rows, height: top, locations, baselineLocations, start, end, groupCount: prepared.groups.size,
       ...(prepared.hasBaseline ? { comparisons: prepared.comparisons } : {}) };
   }
-  function compose(candidate, baseline, mode, query, operationRefs = null, width = 1000) {
-    return baseline ? layoutPrepared(prepare(candidate, baseline, mode, query, operationRefs), width) : candidate;
-  }
-  window.RunBaselineModel = { prepare, layoutPrepared, compose, matching, title, resourceLabel, resourceChange, sourceLabel, statusLabels };
+  window.RunBaselineModel = { prepare, groupPrepared, selectPrepared, layoutPrepared, title, resourceLabel, resourceChange, sourceLabel, statusLabels };
 })();

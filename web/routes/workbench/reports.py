@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import fields
 from datetime import datetime
 
@@ -15,23 +14,21 @@ from core.services.workbench import messages
 from core.services.workbench.report.columns import public_columns
 from core.services.workbench.report.exports import export_table
 from core.services.workbench.report.facts import WorkbenchReportFacts
-from core.services.workbench.report.queries import SORTS, report_workspace
+from core.services.workbench.report.queries import SORTS, report_detail, report_workspace
 from web.api_responses import query_success
-from web.public_token_registry import resolve_public_token
 
 from . import read_context
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, resolve_read_snapshot
 
 
-def report_read_time(token):
+def report_read_time(token, binding=None):
     if token is None:
         return read_context.datetime.now().replace(microsecond=0)
     try:
-        payload = json.loads(resolve_public_token(read_context._SCOPE, token,
-            message=messages.STALE, field="snapshot_ref"))
-        as_of = datetime.fromisoformat(payload["as_of"])
+        payload = resolve_read_snapshot(token) if binding is None else binding
+        as_of = datetime.fromisoformat(payload.as_of)
         if as_of.tzinfo is not None:
             raise ValueError("factory local time required")
         return as_of
@@ -39,8 +36,8 @@ def report_read_time(token):
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
 
 
-def bind_report_snapshot(scope, fingerprint, token, as_of):
-    return bind_read_snapshot(scope, fingerprint, token, as_of=as_of)
+def bind_report_snapshot(scope, fingerprint, token, as_of, binding=None):
+    return bind_read_snapshot(scope, fingerprint, token, as_of=as_of, binding=binding)
 
 
 def _report_page(topic):
@@ -86,21 +83,24 @@ def _read(export=False, operation_ref=None):
     if operation_ref is not None:
         reference(operation_ref)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
-    as_of = report_read_time(token)
+    binding = resolve_read_snapshot(token) if token is not None else None
+    as_of = report_read_time(token, binding)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = reader.read(scope, as_of=as_of)
-            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of)
-            data, rows, _ = report_workspace(reader, facts, snapshot, topic, page, operation_ref)
-    data["columns"] = public_columns(topic)
-    data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
+            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of, binding)
+            if operation_ref is not None:
+                data = report_detail(reader, facts, snapshot, operation_ref)
+            else:
+                data, rows, _ = report_workspace(reader, facts, snapshot, topic, page)
+                data["columns"] = public_columns(topic)
+                data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:
         # 读事务和读额度都已释放：文件只用已读出的结果生成，编码再久也不挡别人提交写入。
         return download_response(export_table(reader.engine, data, rows, snapshot, request.args.get("format", "csv")), snapshot)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=8 * 1024 * 1024,
+        too_large_message="这次要读的报表数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。")
     response.headers["Cache-Control"] = "no-store"
-    if len(response.get_data()) > 8 * 1024 * 1024:
-        raise WorkbenchCommandRejected("query_too_large", "这次要读的报表数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。", 413)
     return response
 
 

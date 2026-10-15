@@ -13,8 +13,8 @@ from collections import defaultdict
 from typing import Any, Dict, Tuple
 
 from core.models.schedule_plan_identity import PlanIdentity
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.facts.delivery_completeness import completion_evidence, deferred_operation_evidence
 from core.services.workbench.facts.delivery_projection import (
     delivery_summary,
@@ -76,8 +76,6 @@ def _read_plan_delivery(conn, *, scope, identity, logger, context):
                         "completion_scope": "full_selected_plan", "operation_scope": "current_batch_operations",
                         "due_boundary": "next_day_exclusive", "actual_completion": "not_evaluated",
                         "actual_delivery": "not_evaluated"}}
-    if len(canonical_json(public).encode("utf-8")) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "交付风险查询结果超过 8 MB 上限。请缩小时间范围后重试。", 413)
     facts = {"identity": {"version": identity.version, "role": identity.effective_plan_role,
                           "source_table": identity.source_table, "candidate_id": identity.candidate_id,
                           "candidate_key": identity.candidate_key, "scenario_id": identity.scenario_id},

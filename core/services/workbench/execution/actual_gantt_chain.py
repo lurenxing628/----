@@ -2,10 +2,9 @@
 
 from datetime import datetime
 
-from core.models.workbench_plan_scope import PlanReadScope
 from core.services.common.plan_task_identity import public_task_id
 from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_rows
-from core.services.workbench.plan.projection import public_time, wire_positive_int64
+from core.services.workbench.plan.projection import wire_positive_int64
 
 ENGINE = "core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows"
 SEMANTICS = "selected_plan_control_predecessor_chain"
@@ -25,19 +24,21 @@ def _mixed_piece_groups(tasks):
     return any(len(values) > 1 for values in groups.values())
 
 
-def _bound_rows(plans, planned):
-    plan_ref = planned["plan"]["plan_ref"]
-    repo, entry, _ = plans._selected(plan_ref)
-    rows = plans._task_rows(repo, entry, PlanReadScope(plan_ref))
-    task_refs = plans.references.get_task_refs(plan_ref, rows)
-    tasks = {task["task_ref"]: task for task in planned["tasks"]}
+def _bound_rows(plan_ref, *, context):
+    _, entry, _ = context.selected(plan_ref)
+    rows = context.detail_rows(entry)
+    projected, _, identities, _ = context.projected_tasks(plan_ref, entry, rows)
+    task_refs = context.task_refs(plan_ref, rows)
+    tasks = {task["task_ref"]: task for task in projected}
     if set(task_refs.values()) != set(tasks) or len(rows) != len(tasks):
         return None, None
-    resources = {item["ref"]: item["business_code"] for item in planned["resources"]}
-    mapping = {}
-    for row in rows:
+    resources = {identity.ref: identity.entity_key for values in identities.values() for identity in values.values()}
+    mapping, bound = {}, []
+    for original in rows:
+        row = dict(original)
         task = tasks[task_refs[row["schedule_id"]]]
-        if (public_time(row["start_time"]), public_time(row["end_time"]), row["batch_id"], wire_positive_int64(row["seq"]), row.get("piece_id")) != (
+        start, end = (value.replace(" ", "T") for value in context.row_times(plan_ref, row))
+        if (start, end, row["batch_id"], wire_positive_int64(row["seq"]), row.get("piece_id")) != (
                 task["start"], task["end"], task["batch_id"], task["sequence"], task["piece_id"]):
             return None, None
         if any((row[kind + "_id"] or None) != resources.get(task[kind + "_ref"])
@@ -48,7 +49,8 @@ def _bound_rows(plans, planned):
         if key in mapping:
             return None, None
         mapping[key] = task
-    return rows, mapping
+        bound.append(row)
+    return bound, mapping
 
 
 def _result_structure_valid(raw, mapping, point_count):
@@ -82,24 +84,20 @@ def _result_valid(raw, mapping, point_count, target_id=None):
         target_id is None or bool(ids) and ids[-1] == target_id)
 
 
-def plan_chain(plans, planned, visible_refs, *, target_task_ref=None):
-    plan_ref = planned["plan"]["plan_ref"]
+def plan_chain(plan_ref, visible_refs, *, target_task_ref=None, context):
     target = {"target_task_ref": target_task_ref}
-    if planned["scope"]["range_start"] is not None:
-        # The visible cohort is time-scoped; the existing engine still needs the
-        # complete plan to retain predecessors outside this timeline window.
-        planned, _ = plans.execution_workspace(PlanReadScope(plan_ref))
-    if _mixed_piece_groups(planned["tasks"]):
-        return unavailable(plan_ref, "engine_piece_precedence_unsupported",
-            "暂不支持共同工序与分件之间的跨组依赖，无法计算关键链。", **target)
-    rows, mapping = _bound_rows(plans, planned)
+    with context.read_scope():
+        rows, mapping = _bound_rows(plan_ref, context=context)
     if rows is None or mapping is None:
         return unavailable(plan_ref, "chain_plan_facts_mismatch",
             "关键链与计划明细不一致，请刷新重试。", **target)
+    if _mixed_piece_groups(mapping.values()):
+        return unavailable(plan_ref, "engine_piece_precedence_unsupported",
+            "暂不支持共同工序与分件之间的跨组依赖，无法计算关键链。", **target)
     target_id = next((key for key, task in mapping.items() if task["task_ref"] == target_task_ref), None)
     if target_task_ref is not None and target_id is None:
         return unavailable(plan_ref, "chain_target_not_found", "所选工序不在此计划中，请重新选择。", **target)
-    point_count = sum(task["start"] == task["end"] for task in planned["tasks"])
+    point_count = sum(task["start"] == task["end"] for task in mapping.values())
     raw = compute_critical_chain_from_rows(rows, target_id=target_id)
     if type(raw) is not dict:
         return unavailable(plan_ref, "chain_engine_unavailable", "关键链计算失败，请重试。",
@@ -110,7 +108,7 @@ def plan_chain(plans, planned, visible_refs, *, target_task_ref=None):
     if not raw["ids"]:
         return unavailable(plan_ref, "chain_no_supported_nodes", "此计划仅有零工时工序，无可分析的关键链。",
                            omitted_point_count=point_count, **target)
-    return _public_chain(raw, mapping, visible_refs, plan_ref, point_count, len(planned["tasks"]), target_task_ref)
+    return _public_chain(raw, mapping, visible_refs, plan_ref, point_count, len(mapping), target_task_ref)
 
 
 def _public_chain(raw, mapping, visible_refs, plan_ref, point_count, plan_task_count, target_task_ref):

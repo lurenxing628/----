@@ -17,6 +17,7 @@ from core.models.schedule_config_runtime_read import (
     seed_snapshot_degradation_collector as _seed_snapshot_degradation_collector,
 )
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot, snapshot_from_values
+from core.models.schedule_config_runtime_weights import normalize_weight_triplet
 from core.shared.degradation import (
     DegradationCollector,
     degradation_events_to_dicts,
@@ -30,7 +31,6 @@ from .config_field_spec import (
     default_snapshot_values,
     list_config_fields,
 )
-from .config_weight_policy import normalize_weight_triplet
 
 
 def coerce_runtime_config_field(

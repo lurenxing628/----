@@ -12,7 +12,7 @@ const data=h.fixture(), before=JSON.stringify(data), view=h.gantt(data), task=da
 const bar=view.nodes.find(node=>node.type==='button' && node.props['data-plan-task']===task.task_ref);
 bar.props.onClick(); assert.strictEqual(view.selections[0].task,task);
 assert.strictEqual(view.selections[0].before,false);
-const detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task,before:false},onSelect:()=>{}});
+const detail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared:h.prepare(h.runtime.PlanGanttModel,data),selected:{task,before:false},onSelect:()=>{}});
 const text=h.text(detail);
 for (const value of [task.batch_id,task.process_label,'Machine 1','Operator 1',h.runtime.WorkbenchFormat.compactDateTime(task.start),h.runtime.WorkbenchFormat.compactDateTime(task.end)]) assert(text.includes(value),value);
 assert(h.walk(detail).some(node=>node.type==='aside' && node.props['aria-label']==='工序详情'));
@@ -22,15 +22,15 @@ assert.strictEqual(JSON.stringify(data),before);
 assert.strictEqual(view.queries.length,0);
 const routeData=h.processFixture();
 routeData.tasks[0].piece_id=null; routeData.gantt_graph.nodes[0].piece_id=null;
-const sibling={...routeData.gantt_graph.nodes[1],task_ref:h.reference(90),operation_ref:h.reference(91),piece_id:'piece-b'};
+const sibling={...routeData.gantt_graph.nodes[1],task_ref:h.reference(90),operation_ref:h.reference(91),piece_id:'piece-b',predecessor_operation_refs:[routeData.tasks[0].operation_ref]};
 routeData.gantt_graph.nodes.push(sibling);
-routeData.gantt_graph.edges.push({from_task_ref:routeData.tasks[0].task_ref,to_task_ref:sibling.task_ref,edge_type:'process'});
 const selected=routeData.tasks[1], candidateTask={...selected,row_ref:selected.task_ref,batch_label:selected.batch_id,
   machine:{label:'Machine 1'},operator:{label:'Operator 1'},data_gaps:[],source:'internal',execution_at_generation:null};
 for (const candidate of [false,true]) {
   let collapsed=0;
-  const props=candidate?{data:{tasks:[candidateTask],gantt_graph:routeData.gantt_graph},task:candidateTask,onClose:()=>assert.fail('Collapse must retain selection')}:
-    {data:routeData,selected:{task:selected,before:false},onSelect:()=>assert.fail('Collapse must retain selection')};
+  const candidateData={tasks:[candidateTask],gantt_graph:routeData.gantt_graph};
+  const props=candidate?{data:candidateData,prepared:h.prepare(h.runtime.RunCandidateModel,candidateData),task:candidateTask,onClose:()=>assert.fail('Collapse must retain selection')}:
+    {data:routeData,prepared:h.prepare(h.runtime.PlanGanttModel,routeData),selected:{task:selected,before:false},onSelect:()=>assert.fail('Collapse must retain selection')};
   const panel=h.render(candidate?h.runtime.RunCandidateControls.Detail:h.runtime.PlanDetailsUI.TaskDetail,
     {...props,onCollapse:()=>collapsed++,onRelated:()=>{}});
   const nodes=h.walk(panel), body=nodes.find(node=>node.props.className==='wb-gantt-detail-body');
@@ -46,7 +46,8 @@ for (const candidate of [false,true]) {
   if (!candidate) assert(h.text(panel).includes('本工序目标量原计划未记录应做数量'), 'Missing quantity explains its captured source without opening another section');
 }
 const zeroTask={...task,quantity:0,batch_quantity:3,quantity_reason:null,quantity_basis:'run_admission'};
-const zeroDetail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task:zeroTask,before:false},onSelect:()=>{},onCollapse:()=>{}});
+const zeroData={...data,tasks:data.tasks.map(row=>row.task_ref===zeroTask.task_ref?zeroTask:row)};
+const zeroDetail=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data:zeroData,prepared:h.prepare(h.runtime.PlanGanttModel,zeroData),selected:{task:zeroTask,before:false},onSelect:()=>{},onCollapse:()=>{}});
 assert(h.text(zeroDetail).includes('本工序目标量0.00'),'A recorded zero must remain a quantity');
 const generation=h.render(h.runtime.RunCandidateControls.Generation,{data:{
   candidate:{label:'候选A',status:'completed',completeness:'complete',candidate_ref:h.reference(301),data_gaps:[],blocked_reasons:[],
@@ -59,33 +60,36 @@ const generation=h.render(h.runtime.RunCandidateControls.Generation,{data:{
 assert(!h.walk(generation).some(node=>node.type==='dt'&&h.text(node)==='实际工时 / 成本'),'Candidate metrics must not invent an unavailable actual-hours/cost metric');
 const missingNames={...candidateTask,machine:{ref:h.reference(401),label:null},operator:{ref:h.reference(402),label:null},supplier:null,
   data_gaps:[{field:'machine',code:'source_missing',message:'排产时设备目录已不存在。'},{field:'operator.label',code:'not_recorded',message:'排产时人员姓名未填写。'}]};
-const resourcePanel=h.render(h.runtime.RunCandidateControls.Detail,{data:{tasks:[missingNames],gantt_graph:routeData.gantt_graph},task:missingNames,onCollapse:()=>{},onRelated:()=>{}});
+const candidateResourceData={tasks:[missingNames],gantt_graph:routeData.gantt_graph};
+const resourcePanel=h.render(h.runtime.RunCandidateControls.Detail,{data:candidateResourceData,prepared:h.prepare(h.runtime.RunCandidateModel,candidateResourceData),task:missingNames,onCollapse:()=>{},onRelated:()=>{}});
 for (const label of ['设备名称未记录：排产时设备目录已不存在。','人员名称未记录：排产时人员姓名未填写。']) {
   assert(h.text(resourcePanel).includes(label)); assert(h.runtime.RunCandidateModel.title(missingNames).includes(label));
 }
 for (const ref of [missingNames.machine.ref,missingNames.operator.ref])
   assert(h.walk(resourcePanel).some(node=>node.type==='code'&&h.text(node)===ref),'Known resource identity remains inspectable in the existing reference section');
-const resourceLayout=h.runtime.RunCandidateModel.layout({tasks:[missingNames],task_span:{start:missingNames.start,end:missingNames.end}},'machine','');
+const candidateLayout=value=>{const model=h.runtime.RunCandidateModel,prepared=model.prepare(value);return model.layoutPrepared(model.selectPrepared(model.groupPrepared(prepared,'machine')));};
+const resourceLayout=candidateLayout({...candidateResourceData,task_span:{start:missingNames.start,end:missingNames.end}});
 assert(resourceLayout.rows[0].label.includes('设备名称未记录'));
 const untimed={...candidateTask,row_ref:h.reference(404),start:null,end:null,data_gaps:[{field:'start',code:'not_recorded',message:'正式归档未保存有效起止时间。'}]};
-const archived={tasks:[candidateTask,untimed],task_span:{start:candidateTask.start,end:candidateTask.end}}, archivedBefore=JSON.stringify(archived);
-const archivedLayout=h.runtime.RunCandidateModel.layout(archived,'machine','');
+const archived={tasks:[candidateTask,untimed],gantt_graph:routeData.gantt_graph,task_span:{start:candidateTask.start,end:candidateTask.end}}, archivedBefore=JSON.stringify(archived);
+const archivedLayout=candidateLayout(archived);
 assert.deepEqual(archivedLayout.tasks,[candidateTask]); assert.deepEqual(archivedLayout.unplottableTasks,[untimed]);
 assert(archivedLayout.rows.every(row=>row.items.every(item=>Number.isFinite(item.start)&&Number.isFinite(item.end))));
 assert.strictEqual(JSON.stringify(archived),archivedBefore,'Unknown-time saved arrangements remain in the source task table');
-const untimedPanel=h.render(h.runtime.RunCandidateControls.Detail,{data:{tasks:archived.tasks,gantt_graph:routeData.gantt_graph},task:untimed,onCollapse:()=>{},onRelated:()=>{}});
+const untimedData={tasks:archived.tasks,gantt_graph:routeData.gantt_graph};
+const untimedPanel=h.render(h.runtime.RunCandidateControls.Detail,{data:untimedData,prepared:h.prepare(h.runtime.RunCandidateModel,untimedData),task:untimed,onCollapse:()=>{},onRelated:()=>{}});
 assert(h.text(untimedPanel).includes('开始未记录') && h.text(untimedPanel).includes('结束未记录'));
 assert(h.walk(untimedPanel).some(node=>node.type==='div'&&h.text(node).includes(untimed.data_gaps[0].message)),'The archive time gap remains inspectable in operation details');
 const formalData={...archived,candidate:{candidate_ref:h.reference(405),label:'受理时正式计划 v1'},generation:{algorithm:null,baseline:{version:1}},
   reference:{kind:'admission_official',label:'受理时正式计划 v1'},gantt_graph:routeData.gantt_graph,delivery_risks:{items:[]},task_count:2};
-const formalGantt=h.render(h.runtime.RunCandidateGantt,{data:formalData,query:'',selected:untimed,comparison:null,onQuery:()=>{},onSelect:()=>{}});
+const formalGantt=h.render(h.runtime.RunCandidateGantt,{data:formalData,prepared:h.prepare(h.runtime.RunCandidateModel,formalData),query:'',selected:untimed,comparison:null,onQuery:()=>{},onSelect:()=>{}});
 assert(h.text(formalGantt).includes('正式归档') && h.text(formalGantt).includes('安排的时间缺项或无效'));
 assert(!h.text(formalGantt).includes('算法排产结果'),'The official archive does not claim a newly computed algorithm result');
 const focusedTask={...candidateTask,machine:{ref:h.reference(501),label:'Focus Machine'},operator:{ref:h.reference(502),label:'Focus Operator'}},
   otherResource={...candidateTask,row_ref:h.reference(503),machine:{ref:h.reference(504),label:'Other Machine'},operator:{ref:h.reference(505),label:'Other Operator'}};
 const focusedData={...formalData,tasks:[focusedTask,otherResource],task_count:2}, sourceBefore=JSON.stringify(focusedData);
 for (const kind of ['machine','operator']) {
-  const focusedGantt=h.render(h.runtime.RunCandidateGantt,{data:focusedData,query:'',selected:null,comparison:null,onQuery:()=>{},onSelect:()=>{},resourceFocus:{kind,ref:focusedTask[kind].ref}});
+  const focusedGantt=h.render(h.runtime.RunCandidateGantt,{data:focusedData,prepared:h.prepare(h.runtime.RunCandidateModel,focusedData),query:'',selected:null,comparison:null,onQuery:()=>{},onSelect:()=>{},resourceFocus:{kind,ref:focusedTask[kind].ref}});
   const lanes=h.walk(focusedGantt).filter(node=>node.type==='canvas'&&node.props['data-candidate-lane']);
   assert.equal(lanes.length,1,'A resource drill renders only the requested actual resource');
   assert.equal(lanes[0].props['data-item-count'],1); assert(lanes[0].props['aria-label'].includes(focusedTask[kind].label));
@@ -99,7 +103,8 @@ assert(h.runtime.RunCandidateModel.resourceLabel({...external,data_gaps:[{field:
 const missingQuantities={...candidateTask,quantity:null,batch_quantity:null,data_gaps:[
   {field:'execution_at_generation.target_quantity',code:'not_recorded',message:'生成时执行记录未保存目标数量。'},
   {field:'batch',code:'source_missing',message:'生成时批次原始记录缺失。'}]};
-const quantityPanel=h.render(h.runtime.RunCandidateControls.Detail,{data:{tasks:[missingQuantities],gantt_graph:routeData.gantt_graph},task:missingQuantities,onCollapse:()=>{},onRelated:()=>{}});
+const quantityData={tasks:[missingQuantities],gantt_graph:routeData.gantt_graph};
+const quantityPanel=h.render(h.runtime.RunCandidateControls.Detail,{data:quantityData,prepared:h.prepare(h.runtime.RunCandidateModel,quantityData),task:missingQuantities,onCollapse:()=>{},onRelated:()=>{}});
 assert(h.text(quantityPanel).includes('本工序目标量生成时执行记录未保存目标数量。'),'Compact details expose the target-quantity source gap');
 for (const message of missingQuantities.data_gaps.map(gap=>gap.message)) {
   assert(h.walk(quantityPanel).some(node=>node.type==='dd'&&h.text(node)===message));
@@ -109,7 +114,7 @@ assert.equal(h.runtime.RunCandidateModel.quantityLabel({...missingQuantities,qua
 data.resources.push({ref:h.reference(202),label:'Original machine'});
 data.projections.baseline={state:'available',items:[{operation_ref:task.operation_ref,change:'changed',before_in_scope:true,after_in_scope:true,
   before:{...task,start:'2026-05-11T07:00:00',end:'2026-05-11T10:00:00',machine_ref:h.reference(202)},after:task}]};
-const comparison=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,selected:{task,before:false},onSelect:()=>{},onCollapse:()=>{}});
+const comparison=h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared:h.prepare(h.runtime.PlanGanttModel,data),selected:{task,before:false},onSelect:()=>{},onCollapse:()=>{}});
 const comparisonNodes=h.walk(comparison);
 for (const value of ['延后 60 分钟','提前 60 分钟','Original machine → Machine 1'])
   assert(comparisonNodes.some(node=>node.type==='dd'&&h.text(node)===value),value);
@@ -157,7 +162,7 @@ try {
   assert.equal(target.resource_kind,'operator'); assert.equal(target.selected_task_ref,resourceData.tasks[0].task_ref);
   assert.equal(target.selected_task_side,'current');
   assert.equal(target.query,'','The resource opens by saved task identity rather than the source search text');
-  const targetGantt=h.render(h.runtime.PlanGantt,{data:resourceData,asOf:resourceResult.meta.as_of,
+  const targetGantt=h.render(h.runtime.PlanGantt,{data:resourceData,prepared:h.prepare(h.runtime.PlanGanttModel,resourceData),asOf:resourceResult.meta.as_of,
     query:target.query,initialMode:target.resource_kind,selected:{task:resourceData.tasks[0],before:false,locate:true},onSelect:()=>{},onQuery:()=>{}});
   assert(h.walk(targetGantt).some(node=>node.props['aria-label']==='人员甘特时间轴'));
   assert(h.walk(targetGantt).some(node=>node.props['data-plan-task']===target.selected_task_ref&&node.props['aria-pressed']===true));
@@ -232,6 +237,41 @@ return true;
     assert result["result"] is True
 
 
+def test_plan_detail_switches_to_out_of_scope_current_arrangement() -> None:
+    result = run_current_js(r"""
+const data=h.fixture(), current=data.tasks[0], original={...current,plan_ref:h.reference(99),task_ref:h.reference(300)},
+  moved={...current,start:'2026-05-12T08:00:00',end:'2026-05-12T10:30:00'};
+data.tasks=data.tasks.slice(1); data.task_count=data.tasks.length;
+Object.assign(data.scope,{range_start:'2026-05-11T08:00:00',range_end:'2026-05-11T12:00:00'});
+Object.assign(data.time_scope,{range_start:data.scope.range_start,range_end:data.scope.range_end});
+data.plan_span={start:data.tasks[0].start,end:moved.end};
+data.projections.baseline={state:'available',items:[{operation_ref:current.operation_ref,change:'changed',
+  before_in_scope:true,after_in_scope:false,before:original,after:moved}]};
+const prepared=h.prepare(h.runtime.PlanGanttModel,data), before=JSON.stringify(data), selections=[];
+assert(!prepared.taskIndex.has(moved.task_ref),'The current arrangement outside the scope stays out of the plotted tasks');
+let selected={task:original,before:true};
+const render=()=>h.render(h.runtime.PlanDetailsUI.TaskDetail,{data,prepared,selected,onSelect:(task,before)=>{
+  selected={task,before}; selections.push(selected);
+}});
+const duration=tree=>{
+  const nodes=h.walk(tree), label=nodes.findIndex(node=>node.type==='dt'&&h.text(node)==='安排时长');
+  assert(label>=0 && nodes[label+1].type==='dd'); return h.text(nodes[label+1]);
+};
+let panel=render(); assert.equal(duration(panel),'1.00 小时');
+h.walk(panel).find(node=>node.type==='button'&&h.text(node)==='查看当前安排').props.onClick({currentTarget:{}});
+assert.strictEqual(selected.task,moved); assert.equal(selected.before,false);
+panel=render(); assert.equal(duration(panel),'2.50 小时');
+assert(h.text(panel).includes('当前安排已移出所选时间范围，仍显示完整起止时间。'));
+h.walk(panel).find(node=>node.type==='button'&&h.text(node)==='查看原安排').props.onClick({currentTarget:{}});
+assert.strictEqual(selected.task,original); assert.equal(selected.before,true);
+assert.equal(duration(render()),'1.00 小时'); assert.equal(selections.length,2);
+selected={task:data.tasks[0],before:false}; assert.equal(duration(render()),'1.00 小时');
+assert.strictEqual(JSON.stringify(data),before,'Switching detail sides preserves the scoped task collection and saved comparison');
+return true;
+""")
+    assert result["result"] is True
+
+
 def test_formal_archive_detail_renders_full_saved_execution() -> None:
     """真实正式归档详情保留布尔完整性、空值、零计数和全部执行字段。"""
     payload = json.loads((Path(__file__).parent / "fixtures/admission_official_detail.json").read_text(encoding="utf-8"))
@@ -239,7 +279,7 @@ def test_formal_archive_detail_renders_full_saved_execution() -> None:
 const data=sourceData.data, before=JSON.stringify(data);
 const task=data.tasks.find(row=>row.operation_ref==='33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7');
 assert(task && task.execution_at_generation.records_complete===false && task.execution_at_generation.quantity_complete===false);
-const detail=h.render(h.runtime.RunCandidateControls.Detail,{data,task,onRelated:()=>{},onCollapse:()=>{}});
+const detail=h.render(h.runtime.RunCandidateControls.Detail,{data,prepared:h.prepare(h.runtime.RunCandidateModel,data),task,onRelated:()=>{},onCollapse:()=>{}});
 const nodes=h.walk(detail), facts=new Map(nodes.filter(node=>node.type==='div').map(node=>{
   const children=Array.isArray(node.children)?node.children.flat(Infinity):[node.children];
   return [children.find(child=>child&&child.type==='dt'),children.find(child=>child&&child.type==='dd')];
@@ -253,7 +293,7 @@ assert(nodes.some(node=>node.type==='summary'&&h.text(node)==='排产时的开�
 assert(nodes.every(node=>node.type!=='dt'||h.text(node)), 'Every saved execution field has a business label');
 assert.strictEqual(JSON.stringify(data),before,'Detail formatting preserves all saved business facts');
 for (const [workspace,label] of [[data,'正式归档'],[{...data,reference:undefined,generation:{...data.generation,algorithm:{mode_label:'候选计算',strategy_label:null}}},'新安排']]) {
-  const gantt=h.render(h.runtime.RunCandidateGantt,{data:workspace,query:'',selected:task,comparison:null,onQuery:()=>{},onSelect:()=>{}});
+  const gantt=h.render(h.runtime.RunCandidateGantt,{data:workspace,prepared:h.prepare(h.runtime.RunCandidateModel,workspace),query:'',selected:task,comparison:null,onQuery:()=>{},onSelect:()=>{}});
   const rendered=h.walk(gantt), kind=rendered.find(node=>node.props.className==='rc-lane-kind');
   const lane=rendered.find(node=>node.type==='canvas'&&node.props['data-candidate-lane']);
   const heading=rendered.find(node=>node.props.className==='rc-lane-label');

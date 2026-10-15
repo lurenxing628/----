@@ -8,12 +8,12 @@ import json
 import secrets
 from typing import Any, Dict, Optional, TypedDict
 
-from core.infrastructure.schema_structure import SchemaStructure
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_outsourcing_schema import contract_issues
 from core.infrastructure.workbench_outsourcing_source_schema import contract_issues as source_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
-from core.models.workbench_command import canonical_json
+from core.models.workbench_outsourcing import document_text
 
 
 class RawReceiptFacts(TypedDict):
@@ -27,10 +27,10 @@ class WorkbenchOutsourcingRepository:
 
     def schema_issues(self):
         """Receipt, source-confirmation, metadata and plan-identity contract issues; empty when complete."""
-        structure = SchemaStructure(self.conn)
-        return (contract_issues(self.conn, structure=structure) + source_contract_issues(self.conn, structure=structure) +
-                workbench_metadata_contract_issues(self.conn, structure=structure) +
-                workbench_plan_identity_contract_issues(self.conn, structure=structure))
+        memo = schema_contract_memo(self.conn)
+        return (memo.get_schema(contract_issues) + memo.get_schema(source_contract_issues) +
+                memo.get_schema(workbench_metadata_contract_issues) +
+                memo.get_schema(workbench_plan_identity_contract_issues))
 
     def header(self, ref):
         """Receipt header with decoded origin/identity and the stored member refs; None when absent.
@@ -110,7 +110,7 @@ class WorkbenchOutsourcingRepository:
         if previous is None:
             self.conn.execute("""INSERT INTO WorkbenchOutsourcingReceipts
                 (outsourcing_ref,target_kind,batch_ref,supplier_ref,origin_json,identity_json,created_at) VALUES (?,?,?,?,?,?,?)""",
-                (ref, target["kind"], target["batch_ref"], target["supplier_ref"], canonical_json(source["public"]), canonical_json(source["identity"]), now))
+                (ref, target["kind"], target["batch_ref"], target["supplier_ref"], document_text(source["public"]), document_text(source["identity"]), now))
             self.conn.executemany("INSERT INTO WorkbenchOutsourcingMembers(operation_ref,outsourcing_ref) VALUES (?,?)",
                                   [(op, ref) for op in target["operation_refs"]])
         fact_ref = secrets.token_hex(24)
@@ -122,7 +122,7 @@ class WorkbenchOutsourcingRepository:
             (fact_ref, ref, previous["sequence"] + 1 if previous else 1, previous["fact_ref"] if previous else None,
              values["sent"], values["planned"], values["returned"], values["confirmedState"],
              prepared["input"]["declared_operator"], local_operator, prepared["input"]["reason"], now,
-             canonical_json(prepared["before"]), canonical_json(source["facts"]), request_key))
+             document_text(prepared["before"]), document_text(source["facts"]), request_key))
         if previous is None:
             self.conn.executemany("INSERT INTO WorkbenchOutsourcingSourceConfirmations(operation_ref,batch_ref,fact_ref) VALUES (?,?,?)",
                                   [(op, target["batch_ref"], fact_ref) for op in source["source_confirmations"]])

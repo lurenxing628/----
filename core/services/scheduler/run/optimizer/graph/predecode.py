@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from itertools import groupby
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -23,15 +22,10 @@ def graph_priority_preorder(keys: Dict[int, Tuple[float, ...]]) -> Tuple[Tuple[i
     over identical ready sets and resource states gives identical SGS decisions.
     Variable-length keys are excluded: a prefix key could consume dispatch data.
     """
-    normalized: Dict[int, Tuple[float, ...]] = {}
-    for op_id, key in keys.items():
-        if not key or any(isinstance(value, bool) or not math.isfinite(value) for value in key):
-            raise ValidationError("GraphReady predecode requires finite nonempty keys.", field="graph_ready_predecode")
-        normalized[op_id] = tuple(float(value) for value in key)
-    if len({len(key) for key in normalized.values()}) > 1:
+    if len({len(key) for key in keys.values()}) > 1:
         raise ValidationError("GraphReady predecode requires uniform key arity.", field="graph_ready_predecode")
-    ordered = sorted(normalized, key=lambda op_id: (normalized[op_id], op_id))
-    return tuple(tuple(group) for _key, group in groupby(ordered, key=normalized.__getitem__))
+    ordered = sorted(keys, key=lambda op_id: (keys[op_id], op_id))
+    return tuple(tuple(group) for _key, group in groupby(ordered, key=keys.__getitem__))
 
 
 class GraphReadyProfileSearch:

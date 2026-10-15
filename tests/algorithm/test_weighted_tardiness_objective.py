@@ -1,18 +1,10 @@
-"""回归测试：min_weighted_tardiness 目标契约——objective_score 在 min_tardiness 下按总拖期、在 min_weighted_tardiness 下按加权拖期比较优劣，且 ConfigService 能落库并回读 objective=min_weighted_tardiness。"""
+"""加权拖期按其目标比较优劣，并由共同运行配置接收。"""
 
 from __future__ import annotations
 
-import sqlite3
-from pathlib import Path
-
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
-from core.services.scheduler.config.config_service import ConfigService
-from tests._support.paths import REPO_ROOT
-
-
-def _load_schema(conn: sqlite3.Connection) -> None:
-    conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
-    conn.commit()
+from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 
 
 def test_weighted_tardiness_objective_contract() -> None:
@@ -34,16 +26,7 @@ def test_weighted_tardiness_objective_contract() -> None:
     assert objective_score("min_tardiness", metrics_a) < objective_score("min_tardiness", metrics_b)
     assert objective_score("min_weighted_tardiness", metrics_b) < objective_score("min_weighted_tardiness", metrics_a)
 
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    _load_schema(conn)
-    try:
-        cfg = ConfigService(conn)
-        cfg.ensure_defaults()
-        cfg.set_objective("min_weighted_tardiness")
-        snap = cfg.get_snapshot()
-        assert snap.objective == "min_weighted_tardiness"
-        assert cfg.get("objective") == "min_weighted_tardiness"
-    finally:
-        conn.close()
+    snapshot = ensure_schedule_config_snapshot(
+        dict(default_snapshot_values(), objective="min_weighted_tardiness"), strict_mode=True,
+    )
+    assert snapshot.objective == "min_weighted_tardiness"

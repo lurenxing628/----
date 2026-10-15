@@ -7,12 +7,11 @@ All retained receipts count toward receipt_count; stale sources only produce gap
 An unregistered operation is unknown, not a dispatched shipment or zero risk.
 """
 
-from core.infrastructure.schema_probe import object_sql_map
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_outsourcing_schema import objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import bounded
 from core.models.workbench_outsourcing import STATES
-from core.models.workbench_outsourcing import bounded as receipt_bounded
 from core.models.workbench_outsourcing_input import next_values
 from core.services.workbench.outsourcing.projection import values
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
@@ -50,7 +49,7 @@ def _receipts(reader, now, result, facts, sources):
             result["evaluation_gaps"].append(gap(ref, "外协原登记", issues))
             snapshots.append({"latest": latest, "issues": issues})
             continue
-        item, snapshot = reader.entry_from_facts(header, receipt_bounded(latest), now, sources=sources)
+        item, snapshot = reader.entry_from_facts(header, latest, now, sources=sources)
         captured[ref].update(header=header, receipt=item, snapshot=snapshot)
         snapshots.append({"source": snapshot, "receipt": item})
         if item["source_state"] != "current":
@@ -108,7 +107,8 @@ def load_external(conn, now):
     if not conn.in_transaction:
         raise RuntimeError("External dashboard reads require a caller-owned snapshot")
     definitions = objects()
-    schema = object_sql_map(conn, definitions)
+    structure = schema_contract_memo(conn).structure
+    schema = {name: stored[2] for name, stored in structure.objects.items() if name in definitions}
     reader = WorkbenchOutsourcingService(conn, clock=lambda: now)
     try:
         reader.require_schema()

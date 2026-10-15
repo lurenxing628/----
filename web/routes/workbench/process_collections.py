@@ -1,6 +1,6 @@
 """Process collection mutations with exact preview selection and shared receipts."""
 
-from flask import current_app, g, jsonify
+from flask import current_app, g
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_process_actions import process_part_refs, process_part_scope
@@ -10,7 +10,7 @@ from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .process_action_context import action_preview, checked_preview, confirmed_body
@@ -44,11 +44,12 @@ def process_create():
     def guard():
         with reader.read_snapshot() as state:
             validate_write_context(body["write_token"], "process:create", "process.create", state)
+            return domain.prepare_create(payload, parts={row["part_no"]: row for row in reader.facts()["parts"]})
 
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="process.create", context_ref="process:create",
-        normalized_input=payload, guard=guard, mutate=lambda _: domain.create(payload))
-    return jsonify(result)
+        normalized_input=payload, guard=guard, mutate=domain.apply_create)
+    return json_response(result)
 
 
 @read_endpoint
@@ -82,7 +83,7 @@ def process_bulk_confirm():
     result = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="process_bulk.confirm", context_ref=ref, normalized_input=body["input"],
         guard=lambda: checked_preview(ref, "part.bulk_delete", body["write_token"]), mutate=apply)
-    return jsonify(result)
+    return json_response(result)
 
 
 def register_process_collection_routes(bp):

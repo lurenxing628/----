@@ -25,7 +25,7 @@ from core.services.workbench.run.decision_process_export import (
     process_csv,
     process_export_tables,
 )
-from tests._support.shared_schedule_archive import _archive, _candidate, _failure, _result
+from tests._support.shared_schedule_archive import _archive, _candidate, _failure, _observe_decoded, _result
 
 
 def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run():
@@ -228,15 +228,15 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     better = _candidate([_result(1, 0), _result(3, 1), _result(2, 2)], objective="min_overdue")
     shared = _SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
     shared.phase = "initial_construct"
-    shared.observe("min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
+    _observe_decoded(shared, "min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
     initial = build_shared_process(shared, runtime_ms=100, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
     assert shared.events[0]["initialized_objectives"] == targets and shared.events[0]["improved_objectives"] == []
     for target in initial["targets"].values():
         assert target["first_improvement_elapsed_ms"] is target["last_improvement_elapsed_ms"] is None
         assert all("strict_improvement" not in point["flags"] for point in target["points"])
     shared.phase = "improve"
-    shared.observe("min_overdue", candidate=deepcopy(better), origin="real_arrangement", verified=True, elapsed_ms=15)
-    shared.observe("min_overdue", candidate=deepcopy(better), origin="real_duplicate", verified=True, elapsed_ms=20)
+    _observe_decoded(shared, "min_overdue", candidate=deepcopy(better), origin="real_arrangement", verified=True, elapsed_ms=15)
+    _observe_decoded(shared, "min_overdue", candidate=deepcopy(better), origin="real_duplicate", verified=True, elapsed_ms=20)
     assert shared.events[1]["improved_objectives"] == targets
     assert shared.events[2]["content_reused"] and shared.events[2]["improved_objectives"] == []
     actual = build_shared_process(shared, runtime_ms=100, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
@@ -249,8 +249,8 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
 
     # The same real collector at the last bucket boundary loses its 999ms point while keeping the saved time.
     sampled = _SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
-    sampled.observe("min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
-    sampled.observe("min_overdue", candidate=deepcopy(better), origin="real_arrangement", verified=True, elapsed_ms=999)
+    _observe_decoded(sampled, "min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
+    _observe_decoded(sampled, "min_overdue", candidate=deepcopy(better), origin="real_arrangement", verified=True, elapsed_ms=999)
     sampled_process = build_shared_process(sampled, runtime_ms=1000, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
     for target in sampled_process["targets"].values():
         assert target["first_improvement_elapsed_ms"] == target["last_improvement_elapsed_ms"] == 999
@@ -261,13 +261,13 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
 
     # Only strict changes within the same known partial scope count; new and unknown scopes initialize separately.
     partial = _SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
-    partial.observe("min_overdue", candidate=_candidate([_result(1, 5), _result(2, 7)], failures=(_failure(3),)),
+    _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 5), _result(2, 7)], failures=(_failure(3),)),
                     origin="known_partial", verified=True, elapsed_ms=10)
-    partial.observe("min_overdue", candidate=_candidate([_result(1, 0), _result(2, 2)], failures=(_failure(3),)),
+    _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 0), _result(2, 2)], failures=(_failure(3),)),
                     origin="known_partial", verified=True, elapsed_ms=15)
-    partial.observe("min_overdue", candidate=_candidate([_result(1, 0)]),
+    _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 0)]),
                     origin="unknown_partial", verified=True, elapsed_ms=25)
-    partial.observe("min_overdue", candidate=_candidate([_result(1, 0), _result(3, 1)], failures=(_failure(2),)),
+    _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 0), _result(3, 1)], failures=(_failure(2),)),
                     origin="other_partial_scope", verified=True, elapsed_ms=30)
     assert partial.events[0]["partial_group_improved_objectives"] == []
     assert partial.events[1]["improved_objectives"] == [] and partial.events[1]["partial_group_improved_objectives"] == targets

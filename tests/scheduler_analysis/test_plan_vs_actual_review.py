@@ -1,4 +1,4 @@
-"""回归测试：/reports/execution-review “计划和现场实际”页与 xlsx 导出——按计划身份精确匹配现场反馈，无反馈时显示“暂无现场反馈”，身份不匹配时忽略反馈，匹配时展示实际开工/完工偏差、暂停、异常、计划/实际资源等，且页面与工作簿都不泄漏 event_type/plan_role/source_table/schedule_id 等内部字段；含日期参数校验、报表索引/资源派工入口、场景导航禁用、流式导出与离线模板契约。"""
+"""Current report cohort, detail, export binding and standalone XLSX contracts."""
 
 from __future__ import annotations
 
@@ -8,14 +8,9 @@ import openpyxl
 import pytest
 
 from core.errors import ValidationError
-from core.infrastructure.database import get_connection
-from core.models.operation_execution_labels import action_to_event_type
-from core.services.report import ReportEngine
-from core.services.report.execution_review import _execution_scope
+from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.report.exporters.xlsx import export_execution_review_xlsx
-from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
 from tests._support.paths import REPO_ROOT
-from tests.operation_execution.operation_execution_feedback_test_support import _build_app
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
 
 EXPECTED_HEADERS = [
@@ -51,11 +46,11 @@ DEAD_EXECUTION_REVIEW_LABEL_KEYS = (
     "actual_resource_export_label",
 )
 
-
 def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_case, monkeypatch):
     from flask import Blueprint, Flask, g
 
     from core.models.workbench_command import WorkbenchCommandRejected
+    from core.models.workbench_plan_scope import PlanReadScope
     from core.models.workbench_report import ReportScope
     from core.services.workbench.plan import queries as plan_queries
     from core.services.workbench.report import facts as report_facts
@@ -87,7 +82,16 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     assert whole.status_code == 413 and whole.get_json()['error']['code'] == 'query_too_large'
     dates = {'plan_finish_date_from': '2026-09-09', 'plan_finish_date_to': '2026-09-09'}
     before = case.conn.total_changes
-    first = client.get(url, query_string=dates)
+    resource_map_calls, original_maps = [], report_facts.WorkbenchReportFacts._resource_maps
+
+    def captured_resources(reader, rows):
+        resource_map_calls.append(rows)
+        return original_maps(reader, rows)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(report_facts.WorkbenchReportFacts, '_resource_maps', captured_resources)
+        first = client.get(url, query_string=dates)
+    assert len(resource_map_calls) == 1
     assert first.status_code == 200, first.get_data(as_text=True)
     payload = first.get_json()
     assert payload['data']['summary']['operations'] == 1
@@ -155,8 +159,11 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     assert case.conn.total_changes == before
     export_scope['snapshot_ref'] = client.get(url, query_string=dates).get_json()['meta']['snapshot_ref']
     reader = plan_queries.WorkbenchPlanQueryService(case.conn)
-    with pytest.raises(WorkbenchCommandRejected) as rejection, reader.read_snapshot():
-        reader._selected(case.plan_ref(2))
+    with reader.read_snapshot():
+        _, selected, _ = reader._selected(case.plan_ref(2))
+        assert selected.can_view
+        with pytest.raises(WorkbenchCommandRejected) as rejection:
+            reader.workspace(PlanReadScope(case.plan_ref(2)))
     assert rejection.value.code == 'query_too_large'
     case.conn.execute("UPDATE Schedule SET end_time='2026-09-09 23:59:59.234567' WHERE version=2 AND op_id=?", (case.op_id,))
     case.conn.commit()
@@ -173,7 +180,6 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     assert rejection.value.code == 'plan_unavailable'
     invalid = client.get(url, query_string=dates)
     assert invalid.status_code == 409 and invalid.get_json()['error']['code'] == 'plan_unavailable'
-
 
 def test_workbench_report_restores_second_page_once_and_keeps_export_binding(ledger_case, monkeypatch, record_property):
     from flask import Blueprint, Flask, g
@@ -214,6 +220,23 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
     record_property('fact_query_calls', len(calls))
     record_property('data_fields', sorted(direct['data']))
     token = direct['meta']['snapshot_ref']
+    from core.services.workbench.report import queries as report_queries
+
+    def unwanted_workspace(*args, **kwargs):
+        raise AssertionError('A detail read must not build the list workspace')
+
+    detail_url = url + '/operations/' + direct['data']['rows'][0]['operation_ref']
+    with monkeypatch.context() as patch:
+        patch.setattr(report_queries, 'summary', unwanted_workspace)
+        patch.setattr(report_queries, 'charts', unwanted_workspace)
+        detail = client.get(detail_url, query_string={**query, 'snapshot_ref': token})
+    assert detail.status_code == 200, detail.get_json()
+    assert set(detail.get_json()['data']) == {'plan', 'detail'}
+    assert detail.get_json()['data']['detail']['operation'] == direct['data']['rows'][0]
+    excluded_scope = {'query': 'no matching operation'}
+    excluded = client.get(url, query_string=excluded_scope).get_json()
+    outside = client.get(detail_url, query_string={**excluded_scope, 'snapshot_ref': excluded['meta']['snapshot_ref']})
+    assert outside.status_code == 404 and outside.get_json()['error']['code'] == 'entity_not_found'
     repeated = client.get(url, query_string={**query, 'snapshot_ref': token}).get_json()
     assert repeated['data'] == direct['data'] and repeated['meta'].keys() == direct['meta'].keys()
     assert repeated['meta']['request_ref'] != direct['meta']['request_ref']
@@ -256,121 +279,21 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
     assert rebound['data'] == direct_catalog['data']
     missing = client.get(catalog_url + '/export', query_string={**query, 'format': 'csv'})
     assert missing.status_code == 400 and missing.get_json()['error']['code'] == 'snapshot_required'
-    exported = client.get(catalog_url + '/export', query_string={**query, 'snapshot_ref': catalog_token, 'format': 'csv'})
+    from core.services.workbench.report import exports as report_exports
+
+    static_encodes, original_json = [], report_exports.canonical_json
+
+    def capture_scope(value):
+        if value is direct_catalog['data']['scope'] or isinstance(value, dict) and value.get('kind') == 'utilization':
+            static_encodes.append(value)
+        return original_json(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(report_exports, 'canonical_json', capture_scope)
+        exported = client.get(catalog_url + '/export', query_string={**query, 'snapshot_ref': catalog_token, 'format': 'csv'})
+    assert len(static_encodes) == 1
     assert exported.status_code == 200 and exported.headers['X-Workbench-Row-Count'] == '12'
     assert case.conn.total_changes == before
-
-
-def _insert_event(repo: OperationExecutionEventRepo, **overrides) -> None:
-    event_type = action_to_event_type(overrides.get("event_type") or "start")
-    reported_status = {
-        "start": "processing",
-        "pause": "paused",
-        "resume": "processing",
-        "exception": "exception",
-        "finish": "completed",
-    }[event_type]
-    payload = {
-        "schedule_version": 1,
-        "schedule_id": 101,
-        "op_id": 10,
-        "batch_id": "B1",
-        "source_table": "schedule",
-        "effective_plan_role": "adopted",
-        "scenario_id": None,
-        "event_type": event_type,
-        "reported_status": reported_status,
-        "event_time": "2026-05-01 08:10:00",
-        "actual_machine_id": None,
-        "actual_operator_id": None,
-        "quantity_done": None,
-        "quantity_scrapped": None,
-        "reason_code": None,
-        "reason_detail": None,
-        "severity": None,
-        "impact_minutes": None,
-        "affected_machine_id": None,
-        "affected_operator_id": None,
-        "handling_status": None,
-        "suggest_reschedule": 0,
-        "remark": None,
-        "created_by": "pytest",
-        "idempotency_key": f"execution-review-{event_type}-{overrides.get('previous_state_revision')}",
-        "request_fingerprint": f"execution-review-{event_type}-{overrides.get('previous_state_revision')}",
-        "previous_state_revision": "10:0:0",
-    }
-    payload.update(overrides)
-    payload["event_type"] = action_to_event_type(payload["event_type"])
-    payload["reported_status"] = {
-        "start": "processing",
-        "pause": "paused",
-        "resume": "processing",
-        "exception": "exception",
-        "finish": "completed",
-    }[payload["event_type"]]
-    repo.insert_event(payload)
-
-
-def _seed_execution_events(db_path: str, **identity) -> None:
-    conn = get_connection(db_path)
-    try:
-        repo = OperationExecutionEventRepo(conn)
-        _insert_event(
-            repo,
-            **identity,
-            event_type="start",
-            event_time="2026-05-01 08:10:00",
-            actual_machine_id="M2",
-            actual_operator_id="O2",
-            previous_state_revision="10:0:0",
-        )
-        _insert_event(
-            repo,
-            **identity,
-            event_type="pause",
-            event_time="2026-05-01 08:20:00",
-            reason_code="equipment",
-            remark="设备检查",
-            previous_state_revision="10:1:1",
-        )
-        _insert_event(
-            repo,
-            **identity,
-            event_type="resume",
-            event_time="2026-05-01 08:35:00",
-            remark="继续生产",
-            previous_state_revision="10:2:2",
-        )
-        _insert_event(
-            repo,
-            **identity,
-            event_type="exception",
-            event_time="2026-05-01 08:45:00",
-            reason_code="equipment",
-            reason_detail="主轴异常",
-            severity="high",
-            impact_minutes=30,
-            affected_machine_id="M2",
-            affected_operator_id="O2",
-            handling_status="checking",
-            suggest_reschedule=1,
-            remark="主轴异常",
-            previous_state_revision="10:3:3",
-        )
-        _insert_event(
-            repo,
-            **identity,
-            event_type="finish",
-            event_time="2026-05-01 09:05:00",
-            quantity_done=10,
-            quantity_scrapped=0,
-            remark="完成",
-            previous_state_revision="10:4:4",
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
 
 def _all_workbook_values(wb) -> str:
     values = []
@@ -381,44 +304,6 @@ def _all_workbook_values(wb) -> str:
                 if cell.value is not None:
                     values.append(str(cell.value))
     return "\n".join(values)
-
-
-def _assert_stream_export(db_path: str) -> None:
-    conn = get_connection(db_path)
-    try:
-        engine = ReportEngine(conn)
-        engine.EXPORT_DIRECT_MAX_ROWS = 0
-        export = engine.export_execution_review_xlsx(2, date_from="2026-05-01", date_to="2026-05-01", batch_id="B1")
-        assert export.mode == "stream"
-        export.data.seek(0)
-        wb = openpyxl.load_workbook(BytesIO(export.data.read()), data_only=True)
-        try:
-            assert "计划和现场实际" in wb.sheetnames
-            ws = wb["计划和现场实际"]
-            assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
-            assert ws["R2"].value == "二号设备 / 李四"
-        finally:
-            wb.close()
-    finally:
-        conn.close()
-
-
-def test_execution_review_rows_do_not_emit_dead_label_aliases(tmp_path, monkeypatch) -> None:
-    _app, db_path = _build_app(tmp_path, monkeypatch)
-    _seed_execution_events(db_path, schedule_version=2, schedule_id=100)
-    conn = get_connection(db_path)
-    try:
-        report = ReportEngine(conn).execution_review(2, date_from="2026-05-01", date_to="2026-05-01", batch_id="B1")
-    finally:
-        conn.close()
-
-    assert report["rows"]
-    row = report["rows"][0]
-    for key in DEAD_EXECUTION_REVIEW_LABEL_KEYS:
-        assert key not in row
-    assert row["planned_resource_label"] == "一号设备 / 张三"
-    assert row["actual_resource_label"] == "二号设备 / 李四"
-
 
 def test_execution_review_xlsx_uses_canonical_labels_when_legacy_export_aliases_exist() -> None:
     row = {
@@ -462,16 +347,11 @@ def test_execution_review_xlsx_uses_canonical_labels_when_legacy_export_aliases_
         wb.close()
 
 
-def test_execution_review_validation_and_offline_template_contract(tmp_path, monkeypatch) -> None:
-    _app, _db_path = _build_app(tmp_path, monkeypatch)
+def test_report_date_limit_and_offline_view_contract():
+    from datetime import date
 
-    conn = get_connection(_db_path)
-    try:
-        with pytest.raises(ValidationError, match="日期范围不能超过 62 天"):
-            ReportEngine(conn).execution_review(2, date_from="2026-01-01", date_to="2026-04-15")
-    finally:
-        conn.close()
-
+    with pytest.raises(ValidationError, match="日期范围不能超过 62 天"):
+        ensure_report_date_range_within_limit(date(2026, 1, 1), date(2026, 4, 15))
     assert not (REPO_ROOT / "templates/reports/execution_review.html").exists()
     forbidden = ("http://", "https://", "cdn", "reason_code", "event_type", "report_exception", "text-meta")
     for relative in ("frontend/workbench/app/ReviewWorkspace.jsx", "frontend/workbench/app/ReportWorkspace.jsx",
@@ -481,12 +361,13 @@ def test_execution_review_validation_and_offline_template_contract(tmp_path, mon
             assert token not in source
 
 
-def test_execution_review_scope_fails_loudly_when_plan_identity_is_incomplete() -> None:
-    with pytest.raises(ValidationError, match="计划数据缺少现场执行身份字段"):
-        _execution_scope({"op_id": 10, "batch_id": "B1"}, 10)
-
-
-def test_execution_review_stream_export_keeps_canonical_headers(tmp_path, monkeypatch) -> None:
-    _app, db_path = _build_app(tmp_path, monkeypatch)
-    _seed_execution_events(db_path, schedule_version=2, schedule_id=100)
-    _assert_stream_export(db_path)
+def test_standalone_execution_xlsx_stream_keeps_canonical_headers():
+    output = export_execution_review_xlsx(
+        [{"batch_id_label": "B1", "actual_resource_label": "二号设备 / 李四"}], write_only=True)
+    workbook = openpyxl.load_workbook(BytesIO(output.read()), data_only=True)
+    try:
+        sheet = workbook["计划和现场实际"]
+        assert [cell.value for cell in sheet[1]] == EXPECTED_HEADERS
+        assert sheet["R2"].value == "二号设备 / 李四"
+    finally:
+        workbook.close()

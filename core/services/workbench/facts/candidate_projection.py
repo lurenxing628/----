@@ -102,12 +102,12 @@ def scheduled_ids(row):
     return set(values)
 
 
-def completion(row, disposition, gaps):
+def completion(row, disposition, gaps, scheduled_op_ids):
     if row["status"] in ("failed", "skipped"):
         if row["task_count"]:
             corrupt()
         return "no_result"
-    ids = scheduled_ids(row)
+    ids = scheduled_op_ids
     if disposition is None or ids is None:
         gaps.append(gap("completeness"))
         return "unknown"
@@ -147,12 +147,12 @@ def metrics(artifact, gaps):
     return result
 
 
-def candidate_summary(row, disposition):
+def candidate_summary(row, disposition, *, scheduled_op_ids):
     artifact, gaps = row["artifact"], []
     if artifact.get("status") != row["status"] or artifact.get("sequence") != row["sequence"]:
         corrupt()
     label = text(artifact.get("label"), "label", gaps)
-    completeness = completion(row, disposition, gaps)
+    completeness = completion(row, disposition, gaps, scheduled_op_ids)
     status = "partial" if row["status"] == "completed" and completeness == "partial" else row["status"]
     reasons = blocked_reasons()
     if row["status"] != "completed":

@@ -88,7 +88,7 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
     ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=str(tmp_path / "backups"))
     conn = connect(path)
     try:
-        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION == 42
+        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION == 43
         assert contract_issues(conn) == []
         assert business_role_contract_issues(conn) == []
         assert current_schema_contract_issues(conn) == []
@@ -103,7 +103,7 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
         assert [tuple(row) for row in conn.execute("SELECT rowid,name,seq FROM sqlite_sequence "
             "WHERE name IN (?,?,?) ORDER BY rowid", REBUILD_TABLES)] == sequences
         assert [tuple(row) for row in conn.execute("SELECT type,name,tbl_name,sql FROM sqlite_master "
-            "WHERE tbl_name IN (?,?,?) AND type IN ('index','trigger') ORDER BY type,name", REBUILD_TABLES)] == attached
+            "WHERE tbl_name IN (?,?,?) AND type IN ('index','trigger') ORDER BY type,name", REBUILD_TABLES)] == [row for row in attached if row[1] not in ("idx_schedule_candidate_selection_version", "idx_schedule_candidate_version")]
         assert conn.execute("SELECT sql FROM sqlite_master WHERE name='ScheduleCandidateRows'").fetchone()[0] == rows_ddl
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert not conn.execute("PRAGMA foreign_key_check").fetchall()

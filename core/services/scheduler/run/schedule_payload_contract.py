@@ -32,23 +32,6 @@ class ValidatedSchedulePayload:
     out_of_scope_op_ids: List[int] = field(default_factory=list)
     validation_errors: List[str] = field(default_factory=list)
 
-    def to_repo_rows(self, svc: Any, *, version: int, frozen_op_ids: Set[int]) -> List[Dict[str, Any]]:
-        rows: List[Dict[str, Any]] = []
-        for row in self.schedule_rows:
-            rows.append(
-                {
-                    "op_id": int(row.op_id),
-                    "machine_id": row.machine_id,
-                    "operator_id": row.operator_id,
-                    "start_time": svc._format_dt(row.start_time),
-                    "end_time": svc._format_dt(row.end_time),
-                    "lock_status": "locked" if int(row.op_id) in frozen_op_ids else "unlocked",
-                    "version": int(version),
-                }
-            )
-        return rows
-
-
 def _strict_positive_int(value: Any) -> int:
     return parse_required_int(value, field="op_id", min_value=1, reject_integer_float=True)
 
@@ -212,6 +195,7 @@ def build_validated_schedule_payload(
     missing_internal_resource_op_ids: Optional[Set[int]] = None,
     schedule_errors: Optional[List[str]] = None,
     point_validator: Any = None,
+    operation_sources: Optional[Tuple[Dict[int, str], List[str]]] = None,
 ) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
     scheduled_op_ids: Set[int] = set()
@@ -220,7 +204,8 @@ def build_validated_schedule_payload(
     validation_errors: List[str] = []
     duplicate_op_ids: List[int] = []
     no_actionable_errors = list(schedule_errors or [])
-    op_source_by_id, operation_source_errors = _operation_sources(operations)
+    op_source_by_id, operation_source_errors = (_operation_sources(operations) if operation_sources is None
+                                               else operation_sources)
     validation_errors.extend(operation_source_errors)
 
     for index, result in enumerate(list(results or [])):

@@ -15,7 +15,7 @@
     }
     return execution.legacy_facts.length ? '仅有历史现场记录' : '暂无实际报工';
   }
-  function Bar({ mark, row, model, width, selected, active, onSelect, onHover, canvasPainted = false }) {
+  function Bar({ mark, row, visibleMarks, model, width, selected, active, onSelect, onHover, canvasPainted = false }) {
     const box = window.ActualGanttWindow.markBox(mark, model, width), { x, size } = box;
     const kind = { actual: 'act', plan: 'plan', remaining: 'remaining' }[mark.kind];
     const title = M.markTitle(mark, row.item, model.labels);
@@ -24,7 +24,7 @@
       'data-gantt-muted': active.target && !critical && !related || undefined };
     function atPointer(event) {
       const track = event.currentTarget.closest('.fg-track').getBoundingClientRect();
-      return window.ActualGanttWindow.hitMark(M.marks(row), model, width, 0, event.clientX - track.left, event.clientY - track.top);
+      return window.ActualGanttWindow.hitMark(visibleMarks, model, width, 0, event.clientX - track.left, event.clientY - track.top);
     }
     function hover(event) {
       if (!event) { onHover(null); return; }
@@ -49,15 +49,17 @@
     </button>;
   }
   function Rows({ model, view, width, viewport, left, top, height, labelWidth, dense, active, onSelect, onHover, onChainTarget, patch }) {
-    const visible = M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100), ticks = M.ticks(model, width, left, viewport);
-    return <>{visible.map(row => {
+    const visible = React.useMemo(() => M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100).map(row => ({ row,
+      visibleMarks: row.kind === 'group' ? [] : row.marks.filter(mark => (mark.end - model.start) / (model.end - model.start) * width >= left - 12 && (mark.start - model.start) / (model.end - model.start) * width <= left + viewport + 12)
+    })), [model, top, height, width, left, viewport]), ticks = M.ticks(model, width, left, viewport);
+    return <>{visible.map(({ row, visibleMarks }) => {
       const style = { top: row.top + 52, height: row.height, width: width + labelWidth };
       if (row.kind === 'group') return <div key={row.key} className="fg-virtual-row fg-group-row" style={style} data-resource={row.group.id}>
         <div className="fg-frozen"><Button className="fg-icon-button" icon={view.collapsed[row.group.id] ? 'chevron-right' : 'chevron-down'} aria-label={(view.collapsed[row.group.id] ? '展开 ' : '折叠 ') + row.group.label}
           aria-expanded={!view.collapsed[row.group.id]} onClick={() => patch({ collapsed: { ...view.collapsed, [row.group.id]: !view.collapsed[row.group.id] } })} />
           <strong className="fg-resource-label" title={row.group.label}>{row.group.label}</strong></div><div className="fg-group-summary">{row.group.members.size} 道工序 · {model.executionAvailable ? row.group.reportCount + ' 次报工 · ' + (row.group.knownHours === null ? row.group.reportCount ? '本组报工未填写有效工时' : '本组暂无逐次报工工时' : '已知实报工时 ' + M.hours(row.group.knownHours)) + (row.group.unknownHours ? ' · ' + row.group.unknownHours + ' 条工时待补' : '') + (row.group.legacyCount ? ' · ' + row.group.legacyCount + ' 条历史记录' : '') : '报工记录不可用'}</div></div>;
-      const { item } = row, e = item.execution, t = item.task, marks = M.marks(row);
-      const renderMark = (mark, canvasPainted = false) => <Bar key={mark.key} {...{ mark, row, model, width, active, onSelect, onHover, canvasPainted }} selected={view.selected} />;
+      const { item } = row, e = item.execution, t = item.task, marks = row.marks;
+      const renderMark = (mark, canvasPainted = false) => <Bar key={mark.key} {...{ mark, row, visibleMarks, model, width, active, onSelect, onHover, canvasPainted }} selected={view.selected} />;
       const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '剩余数量还没安排';
       const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
       const timing = M.deadlines(item);
@@ -72,10 +74,9 @@
         <div className="fg-track" style={{ width }}>
           {ticks.map(tick => <i className="fg-gridline" key={tick.at} style={{ left: tick.x }} />)}
           {nowX >= 0 && nowX <= width && <i className="fg-now" style={{ left: nowX }} aria-hidden="true" />}
-          {row.kind === 'actual' && !window.PointContract.isPoint(t) && (row.baseline || row.reports.length > 0) && <i className="fg-baseline-end" data-plan-end={t.end} style={{ left: (M.instant(t.end) - model.start) / (model.end - model.start) * width }} title={'计划完工 ' + M.time(t.end)} aria-hidden="true" />}
-          {(dense || marks.length > 50) ? <window.ActualGanttCanvas.DenseRow {...{ row, model, width, viewport, left, onSelect, onHover, renderMark }} graphActive={active} selected={view.selected} /> :
-            marks.filter(mark => (mark.end - model.start) / (model.end - model.start) * width >= left - 12 && (mark.start - model.start) / (model.end - model.start) * width <= left + viewport + 12)
-              .map(mark => renderMark(mark))}
+          {row.kind === 'actual' && !window.PointContract.isPoint(t) && (row.baseline || row.reports.length > 0) && <i className="fg-baseline-end" data-plan-end={t.end} style={{ left: (row.planEnd - model.start) / (model.end - model.start) * width }} title={'计划完工 ' + M.time(t.end)} aria-hidden="true" />}
+          {(dense || marks.length > 50) ? <window.ActualGanttCanvas.DenseRow {...{ row, marks, visibleMarks, model, width, viewport, left, onSelect, onHover, renderMark }} graphActive={active} selected={view.selected} /> :
+            visibleMarks.map(mark => renderMark(mark))}
           {row.kind === 'remaining' && !e.remaining_plan && <span className="fg-wait">{pending} · {M.number(e.remaining_quantity)} 件</span>}
           {row.kind === 'actual' && !row.reports.length && <span className="fg-wait">{emptyReports(row, view.mode)}</span>}
           {row.reports.some(r => !r.actual_start) && <span className="fg-wait">本次开工待补，未绘制时段</span>}

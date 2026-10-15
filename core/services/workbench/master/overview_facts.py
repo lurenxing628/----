@@ -6,7 +6,6 @@ from datetime import date, datetime
 
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import RESOURCE_TABLES
-from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_master_overview import public_ref
 from core.services.process.workflow_state import workflow_snapshot
@@ -109,6 +108,4 @@ class MasterOverviewFacts:
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
             self._load()
-            # 只用来判断数据变没变：整份资料一次写成文本取摘要，不先 plain() 复制一遍几十张整表。
-            yield content_text({"tables": self.tables, "workflow": self.workflow, "gaps": self.gaps,
-                                     "material_day": self.material_day})
+            yield datetime.now().isoformat(timespec="seconds")

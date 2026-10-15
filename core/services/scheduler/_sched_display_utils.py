@@ -4,17 +4,9 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.degradation import DegradationCollector
-from core.shared.local_datetime import format_local_datetime, parse_local_datetime
+from core.shared.local_datetime import parse_local_datetime
 
 BAD_TIME_EMPTY_REASON = "all_rows_filtered_by_invalid_time"
-
-
-def parse_dt(value: Any) -> Optional[datetime]:
-    return parse_local_datetime(value)
-
-
-def fmt_dt(dt: datetime) -> str:
-    return format_local_datetime(dt)
 
 
 def duration_minutes(st: datetime, et: datetime) -> int:
@@ -57,9 +49,9 @@ def bad_time_row_sample(row: Dict[str, Any]) -> Optional[str]:
     if batch_id:
         parts.append(f"批次号={batch_id}")
     bad_fields: List[str] = []
-    if row.get("start_time") is not None and parse_dt(row.get("start_time")) is None:
+    if row.get("start_time") is not None and parse_local_datetime(row.get("start_time")) is None:
         bad_fields.append("开始时间")
-    if row.get("end_time") is not None and parse_dt(row.get("end_time")) is None:
+    if row.get("end_time") is not None and parse_local_datetime(row.get("end_time")) is None:
         bad_fields.append("结束时间")
     parts.append(f"字段={'、'.join(bad_fields) if bad_fields else '开始时间或结束时间'}")
     return " / ".join(parts) if parts else None

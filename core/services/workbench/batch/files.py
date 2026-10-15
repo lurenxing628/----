@@ -4,7 +4,7 @@ from core.errors import ValidationError
 from core.models.workbench_batch_file import COLUMNS
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 
-from .facts import BatchFacts, index_relations
+from .facts import BatchFacts
 from .file_codec import read_batch_file, write_batch_file
 from .file_preview import BatchImportPreview, file_values
 from .service import WorkbenchBatchService
@@ -41,17 +41,21 @@ class WorkbenchBatchFileService:
             raise RuntimeError("批次文件确认必须由工作台命令事务持有。")
         if document["operation"] != "batch.import_confirm" or not document["can_confirm"]:
             raise WorkbenchCommandRejected("constraint_conflict", "预检里还有不能通过的行，系统一条批次都没有写入。")
-        # 第一次写入前算好全部批次的关联：替换模式一次删完，改数量的行也不再每行重读整本批次数据。
-        index = index_relations(self.reader.load()) if any(row["action"] == "update" for row in document["rows"]) else None
-        self.domain.delete_many([row["entity_ref"] for row in document["deleted"]])
+        preparation = self.domain.preparation()
+        deletions = [preparation.prepare("delete", {}, row["entity_ref"]) for row in document["deleted"]]
+        changes = [(row, preparation.prepare(row["action"], row["input"], row["entity_ref"]))
+                   for row in document["rows"] if row["action"] not in ("skipped", "unchanged")]
+        for change in deletions:
+            self.domain.apply_prepared(change)
+        prepared = iter(changes)
         outcomes = []
         for row in document["rows"]:
             if row["action"] in ("skipped", "unchanged"):
                 outcomes.append({"entity_ref": row["entity_ref"], "business_code": row["business_code"], "result": row["action"]})
-                continue
-            result = self.domain.apply(row["action"], row["input"], row["entity_ref"] if row["action"] == "update" else None,
-                                       relations_index=index)
-            outcomes.append({**result.data, "result": result.result})
+            else:
+                _row, change = next(prepared)
+                result = self.domain.apply_prepared(change)
+                outcomes.append({**result.data, "result": result.result})
         changed = bool(document["deleted"]) or any(row["result"] == "committed" for row in outcomes)
         return WorkbenchCommandOutcome("committed" if changed else "unchanged", {"items": outcomes, "count": len(outcomes),
             "deleted_count": len(document["deleted"]), "deleted_refs": [row["entity_ref"] for row in document["deleted"]],

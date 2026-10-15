@@ -1,6 +1,5 @@
 """Snapshot clock and binding shared only by calibration list and facet reads."""
 
-import json
 from datetime import datetime
 
 from flask import request
@@ -8,9 +7,8 @@ from flask import request
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from web.public_token_registry import resolve_public_token
 
-from .read_context import _SCOPE, bind_read_snapshot
+from .read_context import bind_read_snapshot, resolve_read_snapshot
 
 
 def page_integer(key: str, default: str) -> int:
@@ -20,12 +18,12 @@ def page_integer(key: str, default: str) -> int:
     return int(value)
 
 
-def as_of(token):
+def as_of(token, binding=None):
     if token is None:
         return datetime.now().replace(microsecond=0)
     try:
-        payload = json.loads(resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref"))
-        value = datetime.fromisoformat(payload["as_of"])
+        payload = resolve_read_snapshot(token) if binding is None else binding
+        value = datetime.fromisoformat(payload.as_of)
         if value.tzinfo is not None:
             raise ValueError("Factory-local time required")
         return value
@@ -33,6 +31,6 @@ def as_of(token):
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
 
 
-def bind(query, content, token, clock, *, snapshot_scope=None):
+def bind(query, content, token, clock, *, snapshot_scope=None, binding=None):
     scope = query.scope() if snapshot_scope is None else snapshot_scope
-    return bind_read_snapshot(scope, content, token, as_of=clock)
+    return bind_read_snapshot(scope, content, token, as_of=clock, binding=binding)

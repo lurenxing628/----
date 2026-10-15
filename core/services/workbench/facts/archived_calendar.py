@@ -140,7 +140,7 @@ def _aggregate(days, basis, source):
               "windows": [window for day in known for window in day["windows"]] if complete else None,
               "known_windows": [window for day in known for window in day["windows"]],
               "days": days, "known_days": len(known), "unknown_days": len(days) - len(known), "source": source}
-    result.update({key: round(sum(day[key] for day in known), 6) if complete else None for key in _MEASURES})
+    result.update({key: sum(day[key] for day in known) if complete else None for key in _MEASURES})
     issues, seen = [], set()
     for day in days:
         for item in day["issues"]:
@@ -160,8 +160,8 @@ class ArchivedCalendar:
     window retains its known days/windows; its total capacity remains unknown.
     """
 
-    def __init__(self, archive, *, source_ref=None, coverage=None, metadata_basis="saved_archive"):
-        self.archive, self._tables = archive, {}
+    def __init__(self, archive, *, source_ref=None, coverage=None, metadata_basis="saved_archive", facts=None):
+        self.archive, self._tables, self.facts = archive, {}, facts
         self.coverage = _bounds(coverage["start"], coverage["end"]) if coverage is not None else None
         versions = self.table("SchemaVersion") or []
         rows = [row for row in versions if row.get("id") == 1]
@@ -193,6 +193,9 @@ class ArchivedCalendar:
     def table(self, name):
         """Decode each saved table once; trial dictionary rows are already decoded."""
         if name not in self._tables:
+            if self.facts is not None:
+                self._tables[name] = self.facts.table(name)
+                return self._tables[name]
             rows = self.archive["tables"].get(name)
             if rows is None or type(rows) is list and all(type(row) is dict for row in rows):
                 self._tables[name] = rows

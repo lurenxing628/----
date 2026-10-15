@@ -134,6 +134,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
         - `set-entry-fields` 仅可修改主条目的人工治理字段。
         - `set-entry-fields --status` 当前只接受 `open`、`in_progress`、`blocked`、`fixed` 四个治理状态。
         - `upsert-risk` / `delete-risk` 仅负责维护 `accepted_risks`。
+        - `retire-test-debt` 仅将对应职责已退役的 `fixed` 测试债务标记为 `retired`，保留原节点、原因及退出记录。
         - 结构块解析失败、重复标记、缺字段、非法分类或悬空引用都会直接失败。
 
         ## 分类说明
@@ -260,6 +261,9 @@ def _validate_test_debt_entry(entry: Dict[str, Any], field_prefix: str) -> Tuple
     mode = _require_string(entry.get("mode"), f"{field_prefix}.mode")
     if mode not in TEST_DEBT_MODE_VALUES:
         raise QualityGateError(f"{field_prefix}.mode 非法：{mode}")
+    if mode == "retired":
+        _require_string(entry.get("retired_at"), f"{field_prefix}.retired_at")
+        _require_string(entry.get("retirement_reason"), f"{field_prefix}.retirement_reason")
     for field_name in ["reason", "domain", "style", "owner", "exit_condition", "last_verified_at", "debt_family"]:
         value = _require_string(entry.get(field_name), f"{field_prefix}.{field_name}")
         _require_no_untriaged(value, f"{field_prefix}.{field_name}")
@@ -551,6 +555,9 @@ def _ordered_test_debt_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         "last_verified_at": entry.get("last_verified_at"),
         "debt_family": entry.get("debt_family"),
     }
+    if entry.get("mode") == "retired":
+        data["retired_at"] = entry.get("retired_at")
+        data["retirement_reason"] = entry.get("retirement_reason")
     if "notes" in entry:
         data["notes"] = entry.get("notes")
     return data

@@ -16,10 +16,10 @@ from .schedule_resource_sql_filters import append_detail_filters, overdue_resour
 from .schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
 from .schedule_time_sql import (
     DETAIL_OVERLAP_OR_BAD_TIME_SQL,
+    decode_interval_summary,
+    interval_summary_sql,
     register_schedule_time_sql_functions,
     require_dt_for_sql,
-    time_dt,
-    valid_time_range_sql,
 )
 
 _SCHEDULE_PLAN_ROWS_SQL = """
@@ -275,11 +275,9 @@ class SchedulePlanQueryRepository(BaseRepository):
         if source_table == SOURCE_SCHEDULE:
             row = self.fetchone(
                 f"""
-                SELECT MIN({time_dt(None, "start_time")}) AS min_start_time,
-                       MAX({time_dt(None, "end_time")}) AS max_end_time
+                SELECT {interval_summary_sql()} AS interval_summary
                 FROM Schedule
                 WHERE version = ?
-                  AND {valid_time_range_sql(None)}
                 """,
                 (int(version),),
             )
@@ -287,11 +285,9 @@ class SchedulePlanQueryRepository(BaseRepository):
             _require_candidate_id(source_table, candidate_id)
             row = self.fetchone(
                 f"""
-                SELECT MIN({time_dt(None, "start_time")}) AS min_start_time,
-                       MAX({time_dt(None, "end_time")}) AS max_end_time
+                SELECT {interval_summary_sql()} AS interval_summary
                 FROM ScheduleCandidateRows
                 WHERE version = ? AND candidate_id = ?
-                  AND {valid_time_range_sql(None)}
                 """,
                 (int(version), int(candidate_id or 0)),
             )
@@ -299,12 +295,10 @@ class SchedulePlanQueryRepository(BaseRepository):
             scenario_key = _require_scenario_id(source_table, scenario_id)
             row = self.fetchone(
                 f"""
-                SELECT MIN({time_dt("r", "start_time")}) AS min_start_time,
-                       MAX({time_dt("r", "end_time")}) AS max_end_time
+                SELECT {interval_summary_sql("r")} AS interval_summary
                 FROM ScheduleAdjustmentScenarioRow r
                 JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
                 WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
-                  AND {valid_time_range_sql("r")}
                 """,
                 (int(version), scenario_key),
             )
@@ -312,8 +306,7 @@ class SchedulePlanQueryRepository(BaseRepository):
             raise ValueError(f"未知的排产方案数据来源：{source_table}")
         if not row:
             return None
-        start_time = row.get("min_start_time")
-        end_time = row.get("max_end_time")
+        start_time, end_time, _invalid = decode_interval_summary(row.get("interval_summary"))
         if not start_time or not end_time:
             return None
         return {"version": int(version), "start_time": str(start_time), "end_time": str(end_time)}
@@ -426,12 +419,8 @@ class SchedulePlanQueryRepository(BaseRepository):
               b.part_name AS part_name,
               b.quantity AS quantity,
               CAST(b.due_date AS TEXT) AS due_date,
-              MAX(CASE WHEN {valid_time_range_sql("s")} THEN {time_dt("s", "end_time")} ELSE NULL END) AS finish_time,
-              COUNT(s.id) AS schedule_row_count,
-              COALESCE(
-                SUM(CASE WHEN s.id IS NOT NULL AND NOT ({valid_time_range_sql("s")}) THEN 1 ELSE 0 END),
-                0
-              ) AS invalid_time_count
+              {interval_summary_sql("s")} AS interval_summary,
+              COUNT(s.id) AS schedule_row_count
             FROM Batches b
             LEFT JOIN BatchOperations bo ON bo.batch_id = b.batch_id
             LEFT JOIN plan_rows s ON s.op_id = bo.id
@@ -442,7 +431,10 @@ class SchedulePlanQueryRepository(BaseRepository):
             ORDER BY b.due_date ASC, b.batch_id ASC
         """
         params: List[Any] = [int(version)] + extra_params + [batch_id_text, batch_id_text] + resource_params
-        return self.fetchall(sql, tuple(params))
+        rows = self.fetchall(sql, tuple(params))
+        for row in rows:
+            _first, row["finish_time"], row["invalid_time_count"] = decode_interval_summary(row.pop("interval_summary"))
+        return rows
 
     def list_dispatch_rows(
         self,

@@ -7,7 +7,7 @@ import getpass
 from contextlib import nullcontext
 
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.models.workbench_dashboard import payload_size, reference
+from core.models.workbench_dashboard import reference
 from core.models.workbench_dashboard_input import next_handling, normalize_input
 from core.services.workbench.command_prefetch import run_prefetched, write_stamp
 from core.services.workbench.commands import WorkbenchCommandService
@@ -74,8 +74,8 @@ class WorkbenchDashboardCommandService:
                     facts={"facts": item["_facts"], "guard": {key: value for key, value in item["_snapshot"].items() if key != "facts"}},
                     actor=actor, action=action,
                     reason=normalized.get("reason"), request_key=request_key, now=now)
-            result = payload_size({"item_ref": item_ref, "handling": after, "history_ref": history_ref,
-                                   "risk": item["risk"], "source": item["source"], "refresh_required": True})
+            result = {"item_ref": item_ref, "handling": after, "history_ref": history_ref,
+                      "risk": item["risk"], "source": item["source"], "refresh_required": True}
             return WorkbenchCommandOutcome("committed" if changed else "unchanged", result)
 
         return mutate

@@ -11,10 +11,10 @@ def zero_confirmation_required(before, after, confirmation):
         before.get(key) != after.get(key, before.get(key)) for key in ("setup_hours", "unit_hours"))
 
 
-def require_zero_confirmation(conn, proposals, acknowledged):
+def require_zero_confirmation(conn, proposals, acknowledged, *, states=None):
     if acknowledged:
         return
-    states, pending = {}, []
+    states, pending = {} if states is None else states, []
     for before, after in proposals:
         if after.get("unit_hours") != 0:
             continue

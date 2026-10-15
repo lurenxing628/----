@@ -99,10 +99,13 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
                                       clock=perf_counter, started_at=started, deadline=started + 10)
 
         def decode(*, owner=session, decoder=scheduler, **extra):
-            return decode_and_metrics(decode_session=owner, scheduler=decoder,
-                                      schedule_fn=schedule_with_optional_strict_mode,
-                                      expected_operations=owned["operations"], objective_name="min_overdue",
-                                      **dict(owned, **extra))
+            changes = dict(owned, **extra)
+            context = changes.pop("graph_ready_context")
+            for name in ("operations", "batches", "seed_results", "machine_downtimes", "resource_pool"):
+                changes.pop(name, None)
+            return decode_and_metrics(decode_session=owner, objective_name="min_overdue",
+                                      graph_enabled=True, graph_score_enabled=context["score_enabled"],
+                                      graph_priority_key_by_op_id=context["graph_priority_key_by_op_id"], **changes)
 
         def new_session(decoder):
             begin = perf_counter()
@@ -118,8 +121,8 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             candidate = dict(results=decoded.results, summary=decoded.summary, metrics=decoded.metrics,
                              score=(float(decoded.summary.failed_ops),) + objective_score("min_overdue", decoded.metrics),
                              runtime_ms=7, decode_receipt=decoded.receipt)
-            observation = archive.observe(candidate, validation_state="valid", decode_completed=True,
-                                          origin={"origin": "checkpoint-content"}, elapsed_ms=elapsed)
+            observation = decoded.archive_observation
+            archive.finish_observation(observation, candidate, origin={"origin": "checkpoint-content"})
             assert observation.entry_id is not None
             session.bind_observation(decoded.receipt, observation.entry_id, True, candidate=candidate)
             return observation.entry_id
@@ -132,16 +135,18 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
         with patch("core.services.scheduler.run.optimizer.shared_decode.compute_metrics", wraps=compute_metrics) as metrics, \
                 patch.object(native_preparation, "checkpoint_calendar_signature",
                              wraps=native_preparation.checkpoint_calendar_signature) as certificate, \
-                patch.object(native_preparation, "input_value", wraps=native_preparation.input_value) as calendar_encoding:
+                patch.object(native_preparation, "input_value", wraps=native_preparation.input_value) as input_encoding:
+            def calendar_encodings():
+                return sum(call.kwargs.get("field") == "calendar_signature" for call in input_encoding.call_args_list)
             first_capture = []
             before_calls = scheduler._decode_invocations
             ordinary = decode()
             entry_id = observe(ordinary, 1)
-            assert certificate.call_count == calendar_encoding.call_count == len(metadata) == 0
+            assert certificate.call_count == calendar_encodings() == len(metadata) == 0
             original = decode(decode_checkpoints=DecodeCheckpointRequest([1, 2], first_capture.append))
             assert observe(original, 2) == entry_id
             assert len(first_capture) == 2 and metrics.call_count == 2
-            assert certificate.call_count == calendar_encoding.call_count == 1 and len(metadata) == 4
+            assert certificate.call_count == calendar_encodings() == 1 and len(metadata) == 4
             component = first_capture[0].signature[10]
             assert component == checkpoint.signature[10]
             assert component is session.native_preparation.checkpoint_calendar_component()
@@ -172,14 +177,14 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             assert archive.entry(entry_id).first_found_elapsed_ms == first_found
             assert session.actual_decoder_calls == scheduler._decode_invocations - before_calls == 4
             assert session.new_decisions == session.reused_decisions == 1
-            assert certificate.call_count == calendar_encoding.call_count == 1 and len(metadata) == 4
+            assert certificate.call_count == calendar_encodings() == 1 and len(metadata) == 4
             assert all(item.signature[10] is component for item in recaptured_sink)
 
             next_owner = new_session(scheduler)
             assert next_owner.native_preparation is not session.native_preparation
             next_capture = []
             decode(owner=next_owner, decode_checkpoints=DecodeCheckpointRequest([1], next_capture.append))
-            assert certificate.call_count == calendar_encoding.call_count == 2 and len(metadata) == 8
+            assert certificate.call_count == calendar_encodings() == 2 and len(metadata) == 8
             assert next_capture[0].signature[10] == component
 
             release_components = []
@@ -195,7 +200,7 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
                            if row.operator_id == "O1" and row.op_id != 99)
                 release_components.append(overlay_capture[0].signature[10])
             assert release_components[0] != release_components[1]
-            assert certificate.call_count == calendar_encoding.call_count == 4 and len(metadata) == 16
+            assert certificate.call_count == calendar_encodings() == 4 and len(metadata) == 16
 
             class UnregisteredCalendar:
                 def __getattr__(self, name):
@@ -211,13 +216,13 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
                        decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None))
             assert caught.value.details["reason"] == "decode_checkpoint_unsupported_calendar"
             assert unsupported_owner.native_preparation._calendar_signature is None
-            assert certificate.call_count == 5 and calendar_encoding.call_count == 4 and len(metadata) == 16
+            assert certificate.call_count == 5 and calendar_encodings() == 4 and len(metadata) == 16
             print("R28 native checkpoint counts:", {"same_session_certificate": 1, "same_session_encoding": 1,
                   "same_session_metadata": 4, "same_session_actual_decodes": session.actual_decoder_calls,
                   "new_session_certificate": 1, "two_release_calendars_certificate": 2,
                   "unsupported_ordinary_certificate": 0, "unsupported_capture_failures": 1,
                   "total_calendar_certificate_attempts": certificate.call_count,
-                  "total_calendar_encodings": calendar_encoding.call_count, "total_metadata_pragmas": len(metadata)})
+                  "total_calendar_encodings": calendar_encodings(), "total_metadata_pragmas": len(metadata)})
         calendar.conn.set_trace_callback(None)
 
 
@@ -227,7 +232,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     search = object.__new__(ig_module._IteratedGreedySearch)
     profile = default_weight_profiles(max_weight_profiles=1)[0][0]
     search.profile = ig_module.ig_decode_profile(profile)
-    search.parent = SimpleNamespace(batch_order=("B1",), order=(1,), inherited=())
+    search.parent = SimpleNamespace(batch_order=("B1",), order=(1,), inherited=(), prepared=None)
     search.scores, search.pending_outputs, search.decoded_entries = {}, OrderedDict(), OrderedDict()
     search.pending_output_rows, search.scored_decodes = 0, 0
     search.checkpoints = CheckpointStore(1)
@@ -299,7 +304,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
 
     template.update(score=(10.0,))
     search._score_trial((40000,), reference)
-    search._set_parent(SimpleNamespace(batch_order=("B2",), order=(1,), inherited=()), profile)
+    search._set_parent(SimpleNamespace(batch_order=("B2",), order=(1,), inherited=(), prepared=None), profile)
     assert not search.pending_outputs and search.pending_output_rows == 0
     assert not search.scores and not search.decoded_entries and search.report["context_switches"] == 1
 
@@ -347,10 +352,18 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         budget = SharedSearchBudget(clock=clock, started_at=started, deadline=started + 10,
                                     target_objectives=archive.target_objectives, configured_seconds=10)
         owner = _SharedSearch(archive=archive, clock=clock, started_at=started, budget=budget)
+        def schedule(decoder, **kwargs):
+            try:
+                return decoder.schedule(**kwargs)
+            finally:
+                if after_schedule is not None:
+                    after_schedule(kwargs)
+
         session = SharedDecodeSession(archive=archive, budget=budget, scheduler=scheduler, operations=operations,
                                       batches=batches, seed_results=case["seed_results"],
                                       downtime_map=case["machine_downtimes"], resource_pool=None,
-                                      graph_ready_context=context, clock=clock, started_at=started, deadline=started + 10,
+                                      graph_ready_context=context, schedule_fn=schedule if after_schedule is not None else None,
+                                      start_dt=case["start_dt"], clock=clock, started_at=started, deadline=started + 10,
                                       event_sink=owner.record_event)
         owner.decode_session = session
         report = OptimizationSearchReportState(
@@ -362,20 +375,13 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         owner.views["min_overdue"] = view
         decode_profile = ig_module.ig_decode_profile(profile)
 
-        def schedule(decoder, **kwargs):
-            try:
-                return decoder.schedule(**kwargs)
-            finally:
-                if after_schedule is not None:
-                    after_schedule(kwargs)
-
         def evaluate(**kwargs):
             return evaluate_graph_ready_candidate(
-                graph_ready_context=context, metrics_by_op_id=metrics, scheduler=scheduler, strict_mode=True,
-                algo_ops_to_schedule=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=case["start_dt"],
-                end_date=None, downtime_map=case["machine_downtimes"], seed_sr_list=case["seed_results"],
+                graph_ready_context=context, metrics_by_op_id=metrics, strict_mode=True,
+                algo_ops_to_schedule=operations, strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=case["start_dt"],
+                end_date=None, seed_sr_list=case["seed_results"],
                 dispatch_rule="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=None,
-                schedule_fn=schedule, readiness_gate_enabled=False, version=0, clock=clock, **kwargs)
+                readiness_gate_enabled=False, version=0, clock=clock, **kwargs)
 
         decision = RepairDecision(tuple(batches), tuple(op.id for op in operations))
         source = evaluate(profile=decode_profile, order=list(decision.batch_order), repair_decision=decision,
@@ -413,7 +419,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         assert trial is not None and not trial["decode_receipt"]["verified"]
         assert trial["decode_receipt"]["execution_kind"] == "trial_decode"
         assert owner.archive.retained_entry_ids == before_entries and session.new_decisions == before_new
-        assert "_shared_entry_id" not in trial and not trial["decode_receipt"].get("observation_bound")
+        assert type(trial["_shared_entry_id"]) is int and not trial["decode_receipt"].get("observation_bound")
         assert native.report["unverified_trial_decodes"] == 1
         native._remember_output(trial_order, trial)
         verified = native._decode_entry(trial_order)
@@ -493,3 +499,53 @@ def test_calendar_content_cache_does_not_reuse_rolled_back_transaction(schema_co
         readonly = calendar_checkpoint_snapshot(calendar)
         assert readonly == original and calendar_checkpoint_snapshot(calendar) is readonly
         assert reader.call_count == 4
+
+
+def test_shared_preparation_reuses_seed_resource_hours_and_checkpoint_records():
+    from core.algorithm_runtime import internal_slot
+    from core.algorithms.greedy import auto_assign
+    from core.algorithms.greedy import scheduler as scheduler_module
+    from core.algorithms.greedy import seed as seed_module
+
+    case = _saturated_case(batch_count=2, ops_per_batch=2)
+    operations, batches = case["operations"], case["batches"]
+    seeds = [ScheduleResult(99, "SEED", "FROZEN", 1, "M1", "O1", at(-1), at())]
+    pool = {"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}, "pair_rank": {}}
+    for op in operations:
+        pool["machines_by_op_type"].setdefault(op.op_type_id, []).append(op.machine_id)
+        pool["operators_by_machine"].setdefault(op.machine_id, []).append(op.operator_id)
+        pool["machines_by_operator"].setdefault(op.operator_id, []).append(op.machine_id)
+    targets = target_objectives_for("min_overdue")
+    archive = SharedScheduleArchive("min_overdue", targets, [99] + [op.id for op in operations], set(batches) | {"FROZEN"})
+    budget = SharedSearchBudget(clock=lambda: 0.0, started_at=0.0, deadline=100.0,
+                               target_objectives=targets, configured_seconds=100)
+    with native_calendar() as calendar, \
+            patch.object(scheduler_module, "normalize_seed_results", wraps=seed_module.normalize_seed_results) as normalize, \
+            patch.object(seed_module, "_build_operation_lookup", wraps=seed_module._build_operation_lookup) as lookup, \
+            patch.object(auto_assign, "prepare_resource_candidates", wraps=auto_assign.prepare_resource_candidates) as qualify, \
+            patch.object(internal_slot, "validate_internal_hours", wraps=internal_slot.validate_internal_hours) as hours, \
+            patch.object(native_preparation, "input_record", wraps=native_preparation.input_record) as records:
+        scheduler = GreedyScheduler(calendar_service=calendar, config_service={"auto_assign_enabled": "no"})
+        session = SharedDecodeSession(
+            archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
+            seed_results=seeds, downtime_map={}, resource_pool=pool, graph_ready_context=case["graph_ready_context"],
+            clock=lambda: 0.0, started_at=0.0, deadline=100.0, start_dt=case["start_dt"],
+        )
+        changes = dict(objective_name="min_overdue", strategy=SortStrategy.FIFO, strategy_params={},
+                       dispatch_mode="sgs", strict_mode=True, graph_enabled=True, graph_score_enabled=True,
+                       batch_order_override=list(batches),
+                       graph_priority_key_by_op_id=case["graph_ready_context"]["graph_priority_key_by_op_id"])
+        first = decode_and_metrics(decode_session=session, dispatch_rule="slack",
+                                   decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None), **changes)
+        prepared_counts = qualify.call_count, hours.call_count, records.call_count
+        assert prepared_counts[0] > 0
+        assert prepared_counts[1:] == (len(operations), len(operations) + len(batches))
+        second = decode_and_metrics(decode_session=session, dispatch_rule="cr",
+                                    decode_checkpoints=DecodeCheckpointRequest([1], lambda item: None), **changes)
+        assert session.actual_decoder_calls == 2
+        assert (qualify.call_count, hours.call_count, records.call_count) == prepared_counts
+        assert normalize.call_count == 1 and lookup.call_count == 0
+        assert first.used_params["dispatch_rule"] == "slack" and second.used_params["dispatch_rule"] == "cr"
+        reused = decode_and_metrics(decode_session=session, dispatch_rule="cr", **changes)
+        assert reused.receipt["execution_kind"] == "decision_reused" and session.actual_decoder_calls == 2
+        assert reused.results is second.results

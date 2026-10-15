@@ -53,32 +53,28 @@ def evaluate_graph_ready_candidate(
     profile: GraphReadyWeightProfile,
     graph_ready_context: Dict[str, Any],
     metrics_by_op_id: Dict[int, Dict[str, Any]],
-    scheduler: Any,
     strict_mode: bool,
     algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     order: List[str],
     seed_sr_list: List[ScheduleResult],
     dispatch_rule: str,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
-    schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
     version: int,
     clock: Callable[[], float],
     v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
     repair_order: Optional[List[str]] = None,
     repair_decision: Optional[Any] = None,
+    repair_parent: Optional[Any] = None,
     before_decode: Optional[Callable[[], None]] = None,
     decode_resume: Optional[Any] = None,
     decode_checkpoints: Optional[Any] = None,
-    topology_cache: Optional[Dict[str, Any]] = None,
     decode_session: SharedDecodeSession,
     redecode_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -101,25 +97,16 @@ def evaluate_graph_ready_candidate(
             graph_ready_context=graph_ready_context, metrics_by_op_id=metrics_by_op_id,
             profile=profile, v2_common_rank_cache=v2_common_rank_cache,
         )
-    candidate_operations = algo_ops_to_schedule
+    operation_resources = None
     if repair_decision is not None:
-        from .repair_decisions import apply_repair_decision, native_readonly_inputs
+        from .repair_decisions import repair_decision_inputs
 
-        candidate_context, candidate_operations = apply_repair_decision(
+        candidate_context, operation_resources = repair_decision_inputs(
             candidate_context, algo_ops_to_schedule, repair_decision, resource_pool,
-            share_unchanged=native_readonly_inputs(schedule_fn, scheduler, algo_ops_to_schedule),
+            prepared_parent=repair_parent,
         )
     elif repair_order is not None:
         candidate_context = repair_priority_context(candidate_context, operations=algo_ops_to_schedule, order=repair_order)
-    if topology_cache is not None:
-        from .repair_decisions import native_readonly_inputs
-        if native_readonly_inputs(schedule_fn, scheduler, candidate_operations):
-            from core.algorithms.greedy.dispatch.sgs_graph import prepare_graph_ready_topology
-            topology = topology_cache.get("topology")
-            if topology is None:
-                topology = prepare_graph_ready_topology(candidate_context, candidate_operations)
-                topology_cache["topology"] = topology
-            candidate_context["_prepared_graph_ready_topology"] = topology
     # Decode checkpoints are an optimizer-internal trial accelerator; only forwarded when a stage asks.
     decode_kwargs: Dict[str, Any] = {}
     if decode_resume is not None:
@@ -129,16 +116,18 @@ def evaluate_graph_ready_candidate(
     from core.services.scheduler.run.optimizer.shared_decode import decode_and_metrics
 
     decoded = decode_and_metrics(
-        decode_session=decode_session, scheduler=scheduler, schedule_fn=schedule_fn,
-        expected_operations=algo_ops_to_schedule, objective_name=objective_name,
+        decode_session=decode_session, objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
         before_decode=before_decode,
         redecode_reason=redecode_reason,
-        strict_mode=bool(strict_mode), operations=candidate_operations, batches=batches,
+        strict_mode=bool(strict_mode),
+        operation_resources=operation_resources,
         strategy=strategy, strategy_params=_candidate_params(params, profile=profile, version=version), start_dt=start_dt,
-        end_date=end_date, machine_downtimes=downtime_map, batch_order_override=list(order), seed_results=seed_sr_list,
-        dispatch_mode="sgs", dispatch_rule=dispatch_rule, resource_pool=resource_pool,
-        readiness_gate_enabled=bool(readiness_gate_enabled), graph_ready_context=candidate_context, **decode_kwargs,
+        end_date=end_date, batch_order_override=list(order),
+        dispatch_mode="sgs", dispatch_rule=dispatch_rule,
+        readiness_gate_enabled=bool(readiness_gate_enabled), graph_enabled=True,
+        graph_score_enabled=bool(candidate_context.get("score_enabled")),
+        graph_priority_key_by_op_id=candidate_context.get("graph_priority_key_by_op_id"), **decode_kwargs,
     )
     runtime_ms = max(int((clock() - t_candidate_begin) * 1000), 0)
     candidate = build_graph_ready_candidate_payload(
@@ -151,15 +140,15 @@ def evaluate_graph_ready_candidate(
         order=order,
         dispatch_rule=dispatch_rule,
         objective_name=objective_name,
-        scheduler=scheduler,
-        optimizer_algo_stats=optimizer_algo_stats,
+        algo_stats=decoded.algo_stats,
         resource_pool=resource_pool,
         seed_sr_list=seed_sr_list,
         version=version,
         runtime_ms=runtime_ms,
         repair_decision=repair_decision,
     )
-    candidate["algo_stats"] = decoded.algo_stats
+    candidate["_shared_entry_id"] = decoded.entry_id
+    candidate["_archive_observation"] = decoded.archive_observation
     if decoded.receipt is not None:
         candidate["decode_receipt"] = decoded.receipt
         if decoded.receipt["execution_kind"] == "decision_reused":

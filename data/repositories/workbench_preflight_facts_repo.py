@@ -9,7 +9,7 @@ import re
 import sqlite3
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
-from core.infrastructure.schema_probe import table_names
+from core.infrastructure.connection_guards import schema_contract_memo
 
 from .base_repo import BaseRepository
 from .batch_external_context_repo import BatchExternalContextRepository
@@ -36,7 +36,7 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
 
     def _present_tables(self) -> Set[str]:
         if self._present is None:
-            self._present = table_names(self.conn)
+            self._present = {name for name, (kind, _table, _sql) in schema_contract_memo(self.conn).structure.objects.items() if kind == "table"}
         return self._present
 
     def _optional_legacy_rows(self, name):

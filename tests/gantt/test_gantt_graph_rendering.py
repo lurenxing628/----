@@ -3,6 +3,30 @@
 from tests._support.gantt_current_js import run_current_js
 
 
+def test_actual_critical_chain_reuses_prepared_nodes_across_renders():
+    result = run_current_js(r"""
+const data=h.processFixture(), index=h.runtime.GanttGraph.create(data.gantt_graph), located=[];
+const expected=data.gantt_graph.critical_task_refs.slice();
+Object.defineProperty(data.gantt_graph,'nodes',{get(){throw Error('Critical-chain rendering must consume the prepared node index');}});
+for (const items of [data.tasks.map(task=>({task})),[],data.tasks.slice(0,1).map(task=>({task}))]) {
+  const tree=h.render(h.runtime.ActualGanttControls.Chain,{index,model:{items},onLocate:ref=>located.push(ref)});
+  const buttons=h.walk(tree).filter(node=>node.props['data-chain-node']);
+  assert.deepEqual(buttons.map(node=>node.props['data-chain-node']),expected);
+  for (const button of buttons) {
+    const node=index.nodes.get(button.props['data-chain-node']);
+    assert(h.text(button).includes(node.batch_id));
+    assert(h.text(button).includes(node.process_label));
+  }
+  assert.equal(h.walk(tree).filter(node=>node.props['data-chain-edge-reason']).length,index.graph.critical_edges.length);
+  buttons[0].props.onClick({currentTarget:{}});
+  assert.equal(located.at(-1),expected[0]);
+  if (!items.length) assert(buttons.every(button=>h.text(button).includes('当前视图外')));
+}
+return true;
+""")
+    assert result["result"] is True
+
+
 def test_shipped_gantts_highlight_complete_route_on_hover_and_keep_clicked_route():
     result = run_current_js(r"""
 const plan=h.processFixture();
@@ -14,7 +38,7 @@ const candidate={tasks:plan.tasks.map(task=>({...task,row_ref:task.task_ref,batc
   gantt_graph:{...plan.gantt_graph,scope:'full_candidate'}};
 for (const isCandidate of [false,true]) {
   const component=isCandidate?'RunCandidateGantt':'PlanGantt', data=isCandidate?candidate:plan;
-  const choices=[], props={data,query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
+  const choices=[], props={data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),query:'',selected:null,onSelect:(task,before)=>choices.push(isCandidate?task:{task,before}),
     onQuery:()=>{},asOf:'2026-05-11T12:00:00'};
   const render=states=>h.render(h.runtime[component],props,states||{});
   const edges=tree=>h.walk(tree).filter(node=>node.props['data-gantt-edge']);
@@ -64,7 +88,7 @@ try {
   for (const isCandidate of [false,true]) {
     const data=isCandidate?candidate:plan, task=data.tasks[1];
     const tree=h.render(h.runtime[isCandidate?'RunCandidateGantt':'PlanGantt'],{
-      data,query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
+      data,prepared:h.prepare(h.runtime[isCandidate?'RunCandidateModel':'PlanGanttModel'],data),query:'',selected:isCandidate?task:{task,before:false},onSelect:()=>{},onQuery:()=>{},asOf:'2026-05-11T12:00:00'});
     const nodes=h.walk(tree), rows=nodes.filter(node=>node.props.className===(isCandidate?'rc-lane':'plan-lane'));
     const slices=nodes.filter(node=>node.props['data-gantt-graph-lines']);
     assert.equal(rows.length,3); assert.equal(slices.length,rows.length,'Printing must not keep an independently paginating whole-chart SVG');

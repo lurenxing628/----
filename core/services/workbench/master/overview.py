@@ -39,7 +39,7 @@ class MasterOverviewService:
 
     @contextmanager
     def read_snapshot(self):
-        with self.facts.read_snapshot() as fingerprint:
+        with self.facts.read_snapshot() as as_of:
             self.graph = MasterOverviewGraph(self.facts)
             add_resources(self.graph)
             add_process(self.graph)
@@ -50,7 +50,7 @@ class MasterOverviewService:
             self.entities = self.graph.finalize()
             self.issues = [{**issue, "issue_count": entity["issue_count"], "relation_count": entity["relation_count"]}
                            for entity in self.entities for issue in entity["issues"]]
-            yield fingerprint
+            yield as_of
 
     def overview(self):
         if self.graph is None:

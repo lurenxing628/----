@@ -3,7 +3,48 @@
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_read_models import Memberships, analysis_arrangements, decode_model
+
+
+def test_delivery_projections_share_one_static_batch_group_and_reverse_identity_index():
+    from core.services.workbench.facts.candidate_delivery import project_legacy_delivery_detail
+    from core.services.workbench.facts.decision_delivery import project_decision_delivery
+
+    scans = []
+
+    class OperationRows(dict):
+        def values(self):
+            scans.append("operations")
+            return super().values()
+
+    class EntityRefs(dict):
+        def items(self):
+            scans.append("identities")
+            return super().items()
+
+    facts = GenerationFacts.__new__(GenerationFacts)
+    facts.operations = {"op-a": 1, "op-b": 2}
+    facts.entity_refs = EntityRefs({("batch", key): ref for key, ref in
+                                   (("B1", "batch-a"), ("B2", "batch-b"), ("B3", "batch-c"))})
+    facts.tables = {
+        "BatchOperations": OperationRows({1: {"id": 1, "batch_id": "B1"}, 2: {"id": 2, "batch_id": "B2"}}),
+        "Batches": {key: {"batch_id": key, "part_no": "P1", "part_name": "零件", "due_date": "2026-10-15"}
+                    for key in ("B1", "B2", "B3")}}
+    tasks = [{"row_ref": "row-a", "operation_ref": "op-a", "sequence": 0, "piece_id": None,
+              "process_label": "车削", "start": "2026-10-15T08:00:00", "end": "2026-10-15T09:00:00",
+              "machine": None, "operator": None}]
+    batch_refs = ["batch-a", "batch-b", "batch-c"]
+    candidate = {"artifact": {"metrics": {}}}
+    settings = {"batch_refs": batch_refs}
+    before = canonical_json(facts.tables)
+    delivery = project_decision_delivery(facts, tasks, batch_refs, deferred_ids={2})
+    detail = project_legacy_delivery_detail(candidate, facts, tasks, {}, settings, deferred_ids={2})
+    assert [{key: value for key, value in row.items() if key != "last_operations"} for row in detail] == delivery
+    assert [row["completion_state"] for row in delivery] == ["complete", "deferred", "unknown"]
+    assert detail[0]["last_operations"] == tasks and detail[1]["last_operations"] == []
+    assert scans == ["operations", "identities"]
+    assert canonical_json(facts.tables) == before
 
 
 def test_known_memberships_restore_scoring_metrics_and_preparation_roles_once():

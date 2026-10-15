@@ -24,7 +24,8 @@ def prepare_system_restore_startup(app):
         directory = os.environ.get("APS_SYSTEM_JOURNAL_DIR", system_journal_directory(app.config["DATABASE_PATH"]))
         app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = directory
     try:
-        assert_system_maintenance_ready(app.config["DATABASE_PATH"], directory)
+        app.extensions["workbench_startup_maintenance_records"] = assert_system_maintenance_ready(
+            app.config["DATABASE_PATH"], directory)
         gate = lookup_workbench_request_lifecycle(app.config["DATABASE_PATH"])
         if gate is not None and gate.status["state"] != "accepting":
             raise RuntimeError("Database lifecycle already stopped; restart the process")
@@ -75,6 +76,6 @@ def assert_exit_system_restore_ready(manager):
     if app is not None:
         directory = app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")
         host = app.extensions.get(RESTORE_HOST_EXTENSION)
-        if app.extensions.get(RECOVERY) or (host is not None and host.status["restart_required"]):
+        if app.extensions.get(RECOVERY) or (host is not None and host.static_status()["restart_required"]):
             raise RuntimeError("Restore requires process restart; exit backup must not open the database")
     assert_system_maintenance_ready(manager.db_path, directory)

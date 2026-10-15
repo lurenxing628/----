@@ -5,11 +5,9 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime
 
-from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_report import ReportScope
 from core.services.report import calculations
-from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.report.exporters.xlsx import (
     export_downtime_impact_xlsx,
     export_overdue_xlsx,
@@ -36,20 +34,19 @@ CATALOG_CONTEXT = {
 
 
 def catalog_facts(reader, scope):
-    _, plan, version, span = reader.current_plan_metadata(ReportScope(source=scope.source, plan_ref=scope.plan_ref))
+    _, plan, resolution, span = reader.current_plan_metadata(ReportScope(source=scope.source, plan_ref=scope.plan_ref))
     scope = replace(scope, plan_ref=plan["plan_ref"])
     if scope.kind != "overdue":
         scope = replace(scope, window_date_from=scope.window_date_from or span["start"][:10],
                         window_date_to=scope.window_date_to or span["end"][:10])
-        ensure_report_date_range_within_limit(datetime.fromisoformat(scope.window_date_from).date(), datetime.fromisoformat(scope.window_date_to).date())
     engine = reader.engine
     if scope.kind == "overdue":
-        raw = engine._fetch_overdue_base_rows_for_plan(version, ROLE_ADOPTED, None)
+        raw = engine._fetch_overdue_base_rows_for_plan(resolution)
         report = None
         collections = [("batch", raw)]
     else:
         report = getattr(engine, "utilization" if scope.kind == "utilization" else "downtime_impact")(
-            version, scope.window_date_from, scope.window_date_to, plan_role=ROLE_ADOPTED, scenario_id=None)
+            resolution, scope.window_date_from, scope.window_date_to)
         raw = report
         collections = [("machine", report.get("machines", [])), ("operator", report.get("operators", []))]
     identities = {}

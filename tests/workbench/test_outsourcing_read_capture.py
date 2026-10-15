@@ -60,7 +60,7 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
         result = source.load_targets()
         conn.set_trace_callback(None)
         assert result == expected
-        assert sum(sql.startswith("PRAGMA table_info") for sql in statements) == 4
+        assert sum(sql.startswith("PRAGMA table_info") for sql in statements) == 0
         assert sum("SELECT revision FROM WorkbenchPlanIdentityClock" in sql for sql in statements) == 1
         captured_queries = []
         conn.set_trace_callback(captured_queries.append)
@@ -74,7 +74,7 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
         conn.set_trace_callback(selected_queries.append)
         reader.targets(batch_ref=target["batch_ref"])
         conn.set_trace_callback(None)
-        assert sum(sql.startswith('PRAGMA table_info("Batches")') for sql in selected_queries) == 1
+        assert sum(sql.startswith('PRAGMA table_info("Batches")') for sql in selected_queries) == 0
         assert sum("SELECT revision FROM WorkbenchPlanIdentityClock" in sql for sql in selected_queries) == 1
 
     calls = Counter()

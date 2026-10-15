@@ -1,49 +1,30 @@
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import Batch, BatchOperation, ExternalGroup, PartOperation
-from core.models.enums import BatchOperationStatus, BatchStatus
 from core.services.common.normalize import normalize_text
 from core.shared.number_utils import parse_finite_float
+from data.repositories import (
+    BatchOperationRepository,
+    BatchRepository,
+    ExternalGroupRepository,
+    MachineRepository,
+    OperatorMachineRepository,
+    OperatorRepository,
+    PartOperationRepository,
+    SupplierRepository,
+)
 
 from . import operation_edit_service as op_edit
-from ._sched_display_utils import fmt_dt, parse_dt
-from .repository_bundle import build_schedule_repository_bundle
-from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_resource_pool, load_machine_downtimes
-from .run.freeze_window import build_freeze_window_seed
-from .run.schedule_input_builder import build_algo_operations
-from .run.schedule_input_collector import collect_schedule_run_input
-from .run.schedule_orchestrator import orchestrate_schedule_run
-from .run.schedule_persistence import (
-    persist_schedule_run_with_candidates as persist_schedule,
-)
-from .run.schedule_persistence import (
-    validate_execution_guard_before_persist,
-)
 from .run.schedule_template_lookup import get_template_and_group_for_op
-from .schedule_lock import RUN_SCHEDULE_LOCK
-from .summary.schedule_summary import build_result_summary
 
-_TERMINAL_OPERATION_STATUSES = frozenset(
-    (BatchOperationStatus.COMPLETED.value, BatchOperationStatus.SKIPPED.value)
-)
-_FAIL_FAST_BATCH_STATUSES = frozenset((BatchStatus.COMPLETED.value, BatchStatus.CANCELLED.value))
-
-
-def _normalized_status_text(value: Any) -> str:
-    return (normalize_text(value) or "").strip().lower()
-
-
-def _get_snapshot_with_strict_mode(cfg_svc: Any, *, strict_mode: bool) -> Any:
-    return cfg_svc.get_snapshot(strict_mode=bool(strict_mode))
 
 class ScheduleService:
     """
-    排产服务（Phase 6：先做“非算法部分”）。
+    批次工序编辑服务。
 
     本类主要负责：
     - 批次工序补充/编辑：内部工序（设备/人员/工时），外部工序（供应商/周期）
@@ -56,18 +37,14 @@ class ScheduleService:
         self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
 
-        self._repos = build_schedule_repository_bundle(conn, logger=logger)
-        self.batch_repo = self._repos.batch_repo
-        self.op_repo = self._repos.op_repo
-        self.part_op_repo = self._repos.part_op_repo
-        self.group_repo = self._repos.group_repo
-        self.machine_repo = self._repos.machine_repo
-        self.operator_repo = self._repos.operator_repo
-        self.operator_machine_repo = self._repos.operator_machine_repo
-        self.supplier_repo = self._repos.supplier_repo
-        self.schedule_repo = self._repos.schedule_repo
-        self.history_repo = self._repos.history_repo
-        self.candidate_repo = self._repos.candidate_repo
+        self.batch_repo = BatchRepository(conn, logger=logger)
+        self.op_repo = BatchOperationRepository(conn, logger=logger)
+        self.part_op_repo = PartOperationRepository(conn, logger=logger)
+        self.group_repo = ExternalGroupRepository(conn, logger=logger)
+        self.machine_repo = MachineRepository(conn, logger=logger)
+        self.operator_repo = OperatorRepository(conn, logger=logger)
+        self.operator_machine_repo = OperatorMachineRepository(conn, logger=logger)
+        self.supplier_repo = SupplierRepository(conn, logger=logger)
 
     # -------------------------
     # 工具方法
@@ -75,11 +52,6 @@ class ScheduleService:
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
         return normalize_text(value)
-
-    @staticmethod
-    def _is_reschedulable_operation(op: Any) -> bool:
-        status = _normalized_status_text(getattr(op, "status", None)) or BatchOperationStatus.PENDING.value
-        return status not in _TERMINAL_OPERATION_STATUSES
 
     @staticmethod
     def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
@@ -107,14 +79,6 @@ class ScheduleService:
 
     def _get_template_and_group_for_op(self, op: BatchOperation) -> Tuple[Optional[PartOperation], Optional[ExternalGroup]]:
         return get_template_and_group_for_op(self, op)
-
-    @staticmethod
-    def _format_dt(dt: datetime) -> str:
-        return fmt_dt(dt)
-
-    @staticmethod
-    def _normalize_datetime(value: Any) -> Optional[datetime]:
-        return parse_dt(value)
 
     # -------------------------
     # 查询
@@ -176,171 +140,3 @@ class ScheduleService:
             ext_days=ext_days,
             status=status,
         )
-
-    # -------------------------
-    # Phase 7：执行排产（算法 + 落库 + 留痕）
-    # -------------------------
-    def run_schedule(
-        self,
-        batch_ids: List[str],
-        start_dt: Any = None,
-        end_date: Any = None,
-        created_by: Optional[str] = None,
-        simulate: bool = False,
-        enforce_ready: Optional[bool] = None,
-        strict_mode: bool = False,
-        run_time_budget_seconds: Any = None,
-    ) -> Dict[str, Any]:
-        if not RUN_SCHEDULE_LOCK.acquire(blocking=False):
-            raise ValidationError("系统正在执行排产，请稍后重试。", field="排产")
-        try:
-            self._aps_schedule_input_cache = {"batch": {}, "tmpl": {}, "grp": {}}
-            return self._run_schedule_impl(
-                batch_ids=batch_ids,
-                start_dt=start_dt,
-                end_date=end_date,
-                created_by=created_by,
-                simulate=simulate,
-                enforce_ready=enforce_ready,
-                strict_mode=strict_mode,
-                run_time_budget_seconds=run_time_budget_seconds,
-            )
-        finally:
-            self._aps_schedule_input_cache = None
-            RUN_SCHEDULE_LOCK.release()
-
-    def _run_schedule_impl(
-        self,
-        batch_ids: List[str],
-        start_dt: Any = None,
-        end_date: Any = None,
-        created_by: Optional[str] = None,
-        simulate: bool = False,
-        enforce_ready: Optional[bool] = None,
-        strict_mode: bool = False,
-        run_time_budget_seconds: Any = None,
-    ) -> Dict[str, Any]:
-        """
-        执行排产并落库（Schedule）+ 留痕（ScheduleHistory + OperationLogs）。
-
-        说明：
-        - 版本号：从 ScheduleHistory.max(version)+1 递增
-        - Schedule 写入、状态更新、ScheduleHistory 写入：**单事务原子**
-        - OperationLogs：由于 OperationLogger 内部会 commit()，因此放到事务提交后写入，避免破坏原子性
-        - simulate=True 时：用于“插单模拟/模拟排产”
-          - 只做安全校验和试算返回，不写 Schedule、ScheduleHistory 或正式状态
-        - enforce_ready 取值规则：
-          - 显式传入 True/False：按传入值执行
-          - 传入 None：回退读取配置 `enforce_ready_default`
-        """
-        from .calendar.service import CalendarService
-        from .config.config_service import ConfigService
-
-        schedule_input = collect_schedule_run_input(
-            self,
-            batch_ids=batch_ids,
-            start_dt=start_dt,
-            end_date=end_date,
-            created_by=created_by,
-            simulate=simulate,
-            enforce_ready=enforce_ready,
-            strict_mode=bool(strict_mode),
-            run_time_budget_seconds=run_time_budget_seconds,
-            calendar_service_cls=CalendarService,
-            config_service_cls=ConfigService,
-            get_snapshot_with_strict_mode=_get_snapshot_with_strict_mode,
-            build_algo_operations_fn=build_algo_operations,
-            build_freeze_window_seed_fn=build_freeze_window_seed,
-            load_machine_downtimes_fn=load_machine_downtimes,
-            build_resource_pool_fn=build_resource_pool,
-            extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool,
-        )
-
-        simulate_without_persistence = bool(simulate)
-
-        def _validate_execution_guard_before_version(validated_schedule_payload):
-            validate_execution_guard_before_persist(
-                self,
-                validated_schedule_payload=validated_schedule_payload,
-                execution_guard_state_revisions=dict(schedule_input.execution_guard_state_revisions or {}),
-                execution_facts=dict(schedule_input.execution_facts or {}),
-                execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids or set()),
-                execution_completed_op_ids=set(schedule_input.execution_completed_op_ids or set()),
-                execution_snapshot_revision=schedule_input.execution_snapshot_revision,
-                execution_snapshot_op_ids=list(schedule_input.execution_snapshot_op_ids),
-                payload_validation_operations=list(schedule_input.payload_validation_operations or []),
-            )
-
-        def _persist_formal_orchestration(orchestration):
-            if simulate_without_persistence:
-                raise AssertionError("模拟排产不能进入正式持久化流程。")
-            persist_schedule(
-                self,
-                cfg=schedule_input.cfg,
-                version=orchestration.version,
-                validated_schedule_payload=orchestration.validated_schedule_payload,
-                summary=orchestration.summary,
-                used_strategy=orchestration.used_strategy,
-                used_params=orchestration.used_params,
-                batches=schedule_input.batches,
-                reschedulable_operations=schedule_input.reschedulable_operations,
-                normalized_batch_ids=schedule_input.normalized_batch_ids,
-                created_by=schedule_input.created_by_text,
-                simulate=False,
-                frozen_op_ids=set(schedule_input.frozen_op_ids),
-                execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids),
-                execution_completed_op_ids=set(schedule_input.execution_completed_op_ids),
-                execution_guard_state_revisions=dict(schedule_input.execution_guard_state_revisions),
-                execution_snapshot_revision=schedule_input.execution_snapshot_revision,
-                execution_snapshot_op_ids=list(schedule_input.execution_snapshot_op_ids),
-                execution_facts=dict(schedule_input.execution_facts),
-                payload_validation_operations=list(schedule_input.payload_validation_operations),
-                result_status=orchestration.result_status,
-                result_summary_json=orchestration.result_summary_json,
-                result_summary_obj=orchestration.result_summary_obj,
-                missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
-                overdue_items=orchestration.overdue_items,
-                time_cost_ms=orchestration.time_cost_ms,
-                candidate_comparison=orchestration.candidate_comparison,
-            )
-
-        orchestration = orchestrate_schedule_run(
-            self,
-            schedule_input=schedule_input,
-            simulate=simulate,
-            strict_mode=bool(strict_mode),
-            build_result_summary_fn=build_result_summary,
-            before_version_allocate_fn=_validate_execution_guard_before_version,
-            allocate_version=not simulate_without_persistence,
-            version_override=schedule_input.prev_version,
-            persist_schedule_fn=None if simulate_without_persistence else _persist_formal_orchestration,
-        )
-
-        if simulate_without_persistence:
-            validate_execution_guard_before_persist(
-                self,
-                validated_schedule_payload=orchestration.validated_schedule_payload,
-                execution_guard_state_revisions=dict(schedule_input.execution_guard_state_revisions or {}),
-                execution_facts=dict(schedule_input.execution_facts or {}),
-                execution_fixed_op_ids=set(schedule_input.execution_fixed_op_ids or set()),
-                execution_completed_op_ids=set(schedule_input.execution_completed_op_ids or set()),
-                execution_snapshot_revision=schedule_input.execution_snapshot_revision,
-                execution_snapshot_op_ids=list(schedule_input.execution_snapshot_op_ids),
-                payload_validation_operations=list(schedule_input.payload_validation_operations or []),
-            )
-
-        result: Dict[str, Any] = {
-            "is_simulation": bool(simulate),
-            "version": None if simulate_without_persistence else int(orchestration.version),
-            "result_persisted": not simulate_without_persistence,
-            "can_open_result_version": not simulate_without_persistence,
-            "strategy": orchestration.used_strategy.value,
-            "strategy_params": orchestration.used_params or {},
-            "result_status": orchestration.result_status,
-            "summary": orchestration.summary_contract.to_dict(),
-            "overdue_batches": orchestration.overdue_items,
-            "time_cost_ms": int(orchestration.time_cost_ms),
-        }
-        if simulate_without_persistence:
-            result["user_message"] = "这次模拟只做安全检查，没有生成新的排程版本，也没有改动正式排程。"
-        return result

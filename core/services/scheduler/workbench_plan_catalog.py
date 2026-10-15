@@ -73,6 +73,7 @@ class PlanCatalogEntry:
     role_option: Optional[SchedulePlanRoleOption]
     scenario_status: Optional[str] = None
     published_version: Optional[int] = None
+    resolution: Optional[SchedulePlanResolution] = None
 
 
 def _history_state(history: Dict[str, Any]) -> Tuple[Completeness, Tuple[PlanCatalogIssue, ...]]:
@@ -113,6 +114,7 @@ def _role_entry(
     completeness, issues = _history_state(history)
     option = None
     identity = None
+    resolution = None
     try:
         if raw_option is not None:
             option = query._role_option_from_row(raw_option)
@@ -137,10 +139,11 @@ def _role_entry(
         blocked_reasons=issues,
         plan_identity=identity,
         role_option=option,
+        resolution=resolution,
     )
 
 
-def _scenario_resolution(query: SchedulePlanQueryService, scenario: ScheduleAdjustmentScenario) -> PlanIdentity:
+def _scenario_resolution(query: SchedulePlanQueryService, scenario: ScheduleAdjustmentScenario) -> SchedulePlanResolution:
     base = query.resolve_existing_plan(scenario.base_version, scenario.base_plan_role)
     base_option = next(item for item in base.available_roles if item.role == scenario.base_plan_role)
     _check_role_binding(base, base_option)
@@ -159,7 +162,7 @@ def _scenario_resolution(query: SchedulePlanQueryService, scenario: ScheduleAdju
         raise ValueError("模拟方案没有可确认的计划身份。")
     _check_detail_times(query, resolution)
     # Existing scenario resolution has no role detail_saved flag for its own rows.
-    return replace(resolution.plan_identity, detail_saved=True)
+    return replace(resolution, plan_identity=replace(resolution.plan_identity, detail_saved=True))
 
 
 def _scenario_entry(
@@ -168,6 +171,7 @@ def _scenario_entry(
 ) -> PlanCatalogEntry:
     issues: Tuple[PlanCatalogIssue, ...] = ()
     identity = None
+    resolution = None
     completeness: Completeness = "unknown"
     if history is None:
         issues = (PlanCatalogIssue("history_missing", "模拟方案的基础排产历史不存在。"),)
@@ -181,7 +185,8 @@ def _scenario_entry(
         issues += (PlanCatalogIssue("scenario_not_active", message),)
     elif history is not None:
         try:
-            identity = _scenario_resolution(query, scenario)
+            resolution = _scenario_resolution(query, scenario)
+            identity = resolution.plan_identity
         except (ValueError, TypeError, OverflowError) as exc:
             issues += (PlanCatalogIssue("scenario_unavailable", str(exc)),)
             completeness = "invalid"
@@ -198,4 +203,5 @@ def _scenario_entry(
         role_option=None,
         scenario_status=scenario.status,
         published_version=scenario.published_version,
+        resolution=resolution,
     )

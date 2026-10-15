@@ -40,6 +40,7 @@ def actual_gantt_csv(data, snapshot, view):
     writer = csv.writer(stream)
     writer.writerow(HEADERS)
     count = 0
+    scope_text, view_text = canonical_json(data["scope"]), canonical_json(view)
     for item in selected:
         t, e = item["task"], item["execution"]
         future = e["remaining_plan"] or {}
@@ -50,7 +51,7 @@ def actual_gantt_csv(data, snapshot, view):
                   e["confirmed_finish"], DATA_QUALITY_TEXT[e["data_quality"]]]
         suffix = [e["remaining_quantity"], future.get("start"), future.get("end"), names.get(future.get("machine_ref")),
                   names.get(future.get("operator_ref")), canonical_json(e["legacy_facts"]), canonical_json(e["data_gaps"]),
-                  snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), canonical_json(view),
+                  snapshot["as_of"], snapshot["snapshot_ref"], scope_text, view_text,
                   t.get("event_kind"), t.get("duration_seconds"), t.get("occupies_resources"), t["piece_id"],
                   t["quantity"], t["batch_quantity"], t["quantity_basis"], t["quantity_reason"]]
         for report in e["reports"] or [None]:

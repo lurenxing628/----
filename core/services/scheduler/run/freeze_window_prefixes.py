@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from core.shared.local_datetime import parse_local_datetime as parse_dt
+
 
 def group_seed_operations_by_batch(seed_operations: List[Any]) -> Dict[str, List[Any]]:
     grouped: Dict[str, List[Any]] = {}
@@ -54,8 +56,8 @@ def rows_in_window(svc, start: Optional[datetime], end: Optional[datetime],
         return schedule_map
     result = {}
     for oid, row in schedule_map.items():
-        begin = svc._normalize_datetime(row.get("start_time"))
-        finish = svc._normalize_datetime(row.get("end_time"))
+        begin = parse_dt(row.get("start_time"))
+        finish = parse_dt(row.get("end_time"))
         if not begin or not finish or begin < end and (finish > start or begin == finish >= start):
             result[oid] = row
     return result

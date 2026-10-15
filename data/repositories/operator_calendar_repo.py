@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Iterable, List, Optional
 
 from core.models import OperatorCalendar
 
@@ -43,9 +43,12 @@ class OperatorCalendarRepository(BaseRepository):
         )
         return [OperatorCalendar.from_row(r) for r in rows]
 
-    def upsert(self, calendar: Union[OperatorCalendar, Dict[str, Any]]) -> OperatorCalendar:
-        c = calendar if isinstance(calendar, OperatorCalendar) else OperatorCalendar.from_row(calendar)
-        self.execute(
+    def upsert(self, calendar: OperatorCalendar) -> OperatorCalendar:
+        self.upsert_many((calendar,))
+        return calendar
+
+    def upsert_many(self, calendars: Iterable[OperatorCalendar]) -> None:
+        self.executemany(
             """
             INSERT INTO OperatorCalendar (operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -60,21 +63,11 @@ class OperatorCalendarRepository(BaseRepository):
               remark=excluded.remark,
               periods_json=excluded.periods_json
             """,
-            (
-                c.operator_id,
-                c.date,
-                c.day_type,
-                c.shift_start,
-                c.shift_end,
-                c.shift_hours,
-                c.efficiency,
-                c.allow_normal,
-                c.allow_urgent,
-                c.remark,
-                c.periods_json,
-            ),
+            ((c.operator_id, c.date, c.day_type, c.shift_start, c.shift_end, c.shift_hours, c.efficiency, c.allow_normal, c.allow_urgent, c.remark, c.periods_json) for c in calendars),
         )
-        return c
+
+    def delete_many(self, keys) -> None:
+        self.executemany("DELETE FROM OperatorCalendar WHERE operator_id = ? AND date = ?", keys)
 
     def delete(self, operator_id: str, date: str) -> None:
         self.execute("DELETE FROM OperatorCalendar WHERE operator_id = ? AND date = ?", (operator_id, date))

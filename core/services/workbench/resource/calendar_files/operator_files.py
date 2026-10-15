@@ -6,11 +6,13 @@
 所以界面存不了的组合文件也存不了。工时不是可填列：它由班次起止算出来，导出时作为只读列带出。
 """
 
+from dataclasses import replace
 from datetime import date
 from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.calendar import OperatorCalendar
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
@@ -24,6 +26,7 @@ from core.models.workbench_calendar_file import (
     REQUIRED,
     UI_FIELDS,
     CalendarFileDownload,
+    CalendarFilePreview,
     file_columns,
     import_request,
     row_identity,
@@ -34,7 +37,6 @@ from core.models.workbench_command import (
 )
 from core.models.workbench_operator_calendar import operator_clock
 from core.models.workbench_resource_action import (
-    ResourceActionPreview,
     action_row,
     check_resource_preview,
     reject_action_row,
@@ -43,6 +45,7 @@ from core.models.workbench_resource_action import (
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
+from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
 from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_row
@@ -78,6 +81,7 @@ class WorkbenchOperatorCalendarFileService:
         self.repo = WorkbenchResourceFileRepository(conn, logger)
         self.tx = TransactionManager(conn)
         self._calendars: Dict[str, WorkbenchOperatorCalendarService] = {}
+        self._domain_calendar = CalendarService(conn, logger=logger)
 
     def _calendar(self, operator_code: str) -> WorkbenchOperatorCalendarService:
         if operator_code not in self._calendars:
@@ -85,10 +89,14 @@ class WorkbenchOperatorCalendarFileService:
                 WorkbenchOperatorCalendarService(self.conn, operator_code, self.logger, clock=self._clock)
                 if self._clock is not None
                 else WorkbenchOperatorCalendarService(self.conn, operator_code, self.logger))
+            self._calendars[operator_code]._calendar = self._domain_calendar
         return self._calendars[operator_code]
 
     def _reader(self):
         return WorkbenchResourceQueryService(self.conn, "operator", self.logger)
+
+    def _normalization_operation(self):
+        return self._domain_calendar._admin.normalization_operation()
 
     # ---------- 导入 ----------
 
@@ -102,8 +110,11 @@ class WorkbenchOperatorCalendarFileService:
             content, file_format=file_format, mode=mode)
         request = prepared.request_for(self.kind + ".import", file_format, mode)
         source, notices = prepared.parsed()
-        with self.tx.transaction():
-            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices, source=prepared)
+        with self.tx.transaction(), self._normalization_operation():
+            rows = self._build_rows(source)
+            calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
+            return replace(CalendarFilePreview.build(self.kind + ".import", request, rows, notices, source=prepared),
+                           calendars=calendars)
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -233,8 +244,9 @@ class WorkbenchOperatorCalendarFileService:
         if after is None:
             return
         row["expected"] = {**(row["expected"] or {}), "state": before}
-        row["input"] = after
-        self._describe(row, before, after)
+        row["calendar"] = after
+        row["input"] = after.to_dict()
+        self._describe(row, before, row["input"])
 
     def _fields_for(self, row, before) -> Optional[Dict[str, Any]]:
         """把这一行的取值翻成人员详情用的字段名；人员详情存不了的组合在这里就挡住，返回 None。"""
@@ -256,7 +268,7 @@ class WorkbenchOperatorCalendarFileService:
             return None
         return fields
 
-    def _after_row(self, row, calendar, fields, before) -> Optional[Dict[str, Any]]:
+    def _after_row(self, row, calendar, fields, before) -> Optional[OperatorCalendar]:
         """交给人员详情那条链算出保存后的行；它不认的组合按原因标红这一行。"""
         try:
             return calendar.proposed_row(fields, before)
@@ -328,20 +340,16 @@ class WorkbenchOperatorCalendarFileService:
                     "stale_write", "文件或个人日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             body = current.as_dict()
-            results = []
+            by_operator = {}
             for row in body["rows"]:
-                if row["result"] == "unchanged":
-                    results.append({"row": row["row"], "business_code": row["business_code"], "result": "unchanged"})
-                    continue
-                outcome = self._calendar(row["values"]["operator_code"]).write_day(
-                    row["expected"]["state"], row["input"])
-                # 与全局日历同一条守卫：回执照实说，不把"预检说要写、领域层判定无事可写"
-                # 包装成成功。个人日历这条路今天走不到（只填工号和日期的行会先被拒），
-                # 守在这里是防止将来某个字段变成可选后又悄悄退回假回执。
-                if outcome.result != "committed":
-                    raise RuntimeError(
-                        f"预检判这一行要写入，个人日历领域层却判定无事可写，不能确认保存：第 {row['row']} 行 {row['business_code']}")
-                results.append({"row": row["row"], "business_code": row["business_code"], "result": "committed"})
+                if row["result"] != "unchanged":
+                    by_operator.setdefault(row["values"]["operator_code"], []).append(
+                        (row["expected"]["state"], current.calendars[row["row"]]))
+            for code, changes in by_operator.items():
+                self._calendar(code).write_days(changes, include_refs=False)
+            results = [{"row": row["row"], "business_code": row["business_code"],
+                        "result": "unchanged" if row["result"] == "unchanged" else "committed"}
+                       for row in body["rows"]]
             changed = any(item["result"] == "committed" for item in results)
             return WorkbenchCommandOutcome("committed" if changed else "unchanged",
                                            {"rows": results, "summary": body["summary"]})

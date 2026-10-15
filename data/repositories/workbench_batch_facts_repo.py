@@ -7,16 +7,30 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from core.infrastructure.connection_guards import schema_contract_memo
+
 from .base_repo import BaseRepository
 
 BATCH_FACT_TABLES = ("Batches", "BatchOperations", "Parts", "PartOperations", "ExternalGroups", "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits", "Materials",
                      "Machines", "MachineOpTypes", "Operators", "OperatorMachine", "OperatorSkill", "OpTypes", "Suppliers", "WorkbenchSupplierOpTypes",
-                     "WorkbenchSupplierProfiles", "WorkbenchOperatorProfiles", "Schedule", "ScheduleCandidateRows", "ScheduleAdjustmentChange",
-                     "ScheduleAdjustmentScenarioRow", "OperationExecutionEvents", "WorkbenchEntityRefs", "WorkbenchPlanSourceRefs")
+                     "WorkbenchSupplierProfiles", "WorkbenchOperatorProfiles", "WorkbenchEntityRefs")
 VERSIONED_FACT_TABLES = ("WorkbenchOutsourcingReceipts", "BatchExternalContexts")
 
 
 class WorkbenchBatchFactsRepository(BaseRepository):
+    def plan_reference_counts(self):
+        """Only live operation references affect batch maintenance, regardless of plan contents."""
+        rows = self.fetchall("""SELECT p.op_id, COUNT(*) AS reference_count FROM (
+            SELECT op_id FROM Schedule UNION ALL SELECT op_id FROM ScheduleCandidateRows
+            UNION ALL SELECT op_id FROM ScheduleAdjustmentChange
+            UNION ALL SELECT op_id FROM ScheduleAdjustmentScenarioRow
+        ) p JOIN BatchOperations o ON o.id=p.op_id GROUP BY p.op_id ORDER BY p.op_id""")
+        return {row["op_id"]: row["reference_count"] for row in rows}
+
+    def legacy_execution_facts(self):
+        return {"OperationExecutionEvents": self.fetchall("SELECT * FROM OperationExecutionEvents ORDER BY rowid"),
+                "WorkbenchPlanSourceRefs": self.fetchall("SELECT * FROM WorkbenchPlanSourceRefs ORDER BY rowid")}
+
     def whole_tables(self) -> Dict[str, List[Dict[str, Any]]]:
         """按 BATCH_FACT_TABLES 顺序整表读取（rowid 序），返回 {表名: [行 dict]}。"""
         return {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in BATCH_FACT_TABLES}
@@ -26,9 +40,9 @@ class WorkbenchBatchFactsRepository(BaseRepository):
 
     def versioned_facts(self):
         """Return absent tables as None so the service can distinguish old schemas from damage."""
-        installed = {row["name"] for row in self.fetchall("SELECT name FROM sqlite_master WHERE type='table'")}
+        structure = schema_contract_memo(self.conn).structure
         return {"version": self.fetchone("SELECT version FROM SchemaVersion WHERE id=1"),
                 "has_outsourcing_commands": self.fetchone(
                     "SELECT 1 FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm' LIMIT 1") is not None,
-                "tables": {name: self.fetchall('SELECT * FROM "' + name + '" ORDER BY rowid') if name in installed else None
+                "tables": {name: self.fetchall('SELECT * FROM "' + name + '" ORDER BY rowid') if structure.has_table(name) else None
                            for name in VERSIONED_FACT_TABLES}}

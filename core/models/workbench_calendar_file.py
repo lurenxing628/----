@@ -1,11 +1,13 @@
 """全局工作日历文件的列目录。文件只改列出的日期，不删除整行；清除某一天请用日历页的范围清除。"""
 
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
 from core.models.calendar_period_columns import PERIOD_CLOCKS, PERIOD_COLUMNS, PERIOD_DAYS, period_column_label
 from core.models.workbench_action_values import FileDownload
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_action import ResourceActionPreview
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
     UPSERT_ONLY,
@@ -230,3 +232,8 @@ CalendarFileDownload = FileDownload
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。
 INSTRUCTIONS = {kind: instructions_text(table_descriptor(kind)) for kind in CALENDAR_KINDS}
+
+
+@dataclass(frozen=True)
+class CalendarFilePreview(ResourceActionPreview):
+    calendars: dict = field(default_factory=dict, repr=False, compare=False)

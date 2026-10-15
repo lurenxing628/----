@@ -98,3 +98,116 @@ def test_receipt_failure_rolls_back_nested_domain_and_identity(schema_conn, monk
     assert schema_conn.execute("SELECT COUNT(*) FROM OpTypes").fetchone()[0] == 0
     assert schema_conn.execute("SELECT COUNT(*) FROM WorkbenchEntityRefs").fetchone()[0] == 0
     assert service.lookup(KEY) is None and not schema_conn.in_transaction
+
+
+def test_response_counts_and_sends_the_same_strict_utf8_envelope(monkeypatch):
+    from flask import Flask
+
+    from web import api_responses
+
+    encoded = []
+    canonical = api_responses.canonical_json
+
+    def encode(value):
+        content = canonical(value)
+        encoded.append(content)
+        return content
+
+    monkeypatch.setattr(api_responses, "canonical_json", encode)
+    with Flask("actual-output-budget").app_context():
+        data, snapshot = {"label": "加工中文"}, {"as_of": "2026-10-15T12:00:00"}
+        response = api_responses.query_success(data, snapshot)
+        actual_bytes = len(response.data)
+        assert response.data == encoded[0].encode("utf-8") and "加工中文".encode() in response.data
+        assert len(encoded) == 1
+        exact = api_responses.query_success(data, snapshot, byte_limit=actual_bytes)
+        assert len(exact.data) == actual_bytes and len(encoded) == 2
+        with pytest.raises(WorkbenchCommandRejected) as rejected:
+            api_responses.query_success(data, snapshot, byte_limit=actual_bytes - 1)
+        assert rejected.value.code == "query_too_large" and rejected.value.status == 413 and len(encoded) == 3
+        with pytest.raises(ValueError):
+            api_responses.query_success({"value": float("nan")}, snapshot)
+
+
+def test_command_input_admission_keeps_json_types_and_returns_stored_shape(schema_conn):
+    for value in (date(2026, 10, 15), b"raw", float("inf")):
+        with pytest.raises(WorkbenchCommandRejected) as rejected:
+            run(schema_conn, normalized_input={"value": value})
+        assert rejected.value.code == "invalid_input"
+    first = run(schema_conn, mutate=lambda _: WorkbenchCommandOutcome("committed", {"values": (1, "中文")}))
+    assert first["data"]["values"] == [1, "中文"]
+    assert WorkbenchCommandService(schema_conn).lookup(KEY) == {**first, "replayed": True}
+
+
+def test_token_clock_starts_under_the_registry_lock_and_preserves_receipt_replay(schema_conn, monkeypatch):
+    from threading import Event, Thread
+    from types import SimpleNamespace
+
+    from flask import Flask
+
+    from web import public_token_registry as tokens
+    from web.routes.workbench.resource_action_context import PREVIEW_SCOPE, resolve_context, retain_context
+
+    app, clock = Flask("token-lock-clock"), [1000.0]
+    monkeypatch.setattr(tokens, "time", SimpleNamespace(time=lambda: clock[0]))
+    original_lock, attempting = tokens._LOCK, Event()
+
+    class ObservedLock:
+        def __enter__(self):
+            attempting.set()
+            original_lock.acquire()
+
+        def __exit__(self, *args):
+            original_lock.release()
+
+    def wait_across_clock(operation, before, after):
+        result = {}
+
+        def worker():
+            with app.app_context():
+                try:
+                    result["value"] = operation()
+                except Exception as exc:
+                    result["error"] = exc
+
+        attempting.clear()
+        clock[0] = before
+        # Keep the real registry lock held until this worker tries to acquire it.
+        with original_lock:
+            thread = Thread(target=worker)
+            thread.start()
+            assert attempting.wait(5)
+            clock[0] = after
+        thread.join(5)
+        assert not thread.is_alive()
+        return result
+
+    with app.app_context():
+        ref, _ = retain_context(PREVIEW_SCOPE, "pending-preview")
+        issuer = tokens.PublicTokenIssuer("token-lock-reissue", ttl_seconds=100)
+        original, original_expiry = issuer.issue_with_expiry("value")
+    monkeypatch.setattr(tokens, "_LOCK", ObservedLock())
+    renewed = wait_across_clock(lambda: issuer.issue_with_expiry("value"), 1040.0, 1060.0)
+    assert renewed["value"][0] != original
+    assert original_expiry == 1100.0 and renewed["value"][1] == 1160.0
+
+    intent = {"context_ref": ref, "normalized_input": {"preview_ref": ref},
+              "guard": lambda: resolve_context(PREVIEW_SCOPE, ref, "stale_write")}
+    changes = schema_conn.total_changes
+    rejected = wait_across_clock(lambda: run(schema_conn, **intent), 1899.0, 1901.0)
+    assert isinstance(rejected.get("error"), WorkbenchCommandRejected)
+    assert rejected["error"].code == "stale_write" and rejected["error"].status == 409
+    assert schema_conn.total_changes == changes
+    assert schema_conn.execute("SELECT COUNT(*) FROM OpTypes").fetchone()[0] == 0
+    assert WorkbenchCommandService(schema_conn).lookup(KEY) is None
+
+    with app.app_context():
+        fresh, _ = retain_context(PREVIEW_SCOPE, "pending-preview")
+        intent.update(context_ref=fresh, normalized_input={"preview_ref": fresh},
+                      guard=lambda: resolve_context(PREVIEW_SCOPE, fresh, "stale_write"))
+        first = run(schema_conn, **intent)
+        clock[0] = 2802.0
+        with pytest.raises(WorkbenchCommandRejected, match="预检结果已过期"):
+            intent["guard"]()
+        assert run(schema_conn, **intent) == {**first, "replayed": True}
+        assert schema_conn.execute("SELECT COUNT(*) FROM OpTypes").fetchone()[0] == 1

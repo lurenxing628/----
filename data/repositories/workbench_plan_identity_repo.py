@@ -12,6 +12,7 @@ import re
 from contextlib import contextmanager
 from typing import Any, Callable, Dict, Iterable, List, Mapping, NoReturn, Optional, Tuple
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.models.schedule_plan_role import VALID_PLAN_ROLES, plan_role_order_sql
@@ -132,7 +133,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
                 return self._binding_facts["revision"]
         version = self.fetchvalue("SELECT schema_version FROM pragma_schema_version")
         if version != self._checked_schema_version:
-            issues = workbench_plan_identity_contract_issues(self.conn)
+            issues = workbench_plan_identity_contract_issues(self.conn, structure=schema_contract_memo(self.conn).structure)
             if issues:
                 raise RuntimeError("Workbench plan identity schema unavailable: " + "; ".join(issues))
             self._checked_schema_version = version

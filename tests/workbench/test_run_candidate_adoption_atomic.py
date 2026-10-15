@@ -54,3 +54,39 @@ def test_two_connections_concurrently_replay_one_adoption(candidate_case):
     assert len({row["receipt_ref"] for row in results}) == 1
     assert case.conn.execute("SELECT COUNT(*) FROM ScheduleHistory").fetchone()[0] == 1
     assert case.conn.execute("SELECT COUNT(*) FROM OperationLogs WHERE action='adopt_run_candidate'").fetchone()[0] == 1
+
+
+def test_adoption_reuses_one_capture_through_input_and_constraints(candidate_case, monkeypatch):
+    from collections import Counter
+
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
+    from core.services.workbench.run.candidate_adoption_validation import validate_adoption
+    from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
+    from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
+
+    case = candidate_case
+    ref = candidate(case)
+    counts = Counter()
+    initialize, read = ProductionFactsCapture.__init__, WorkbenchPreflightFactsRepository.capture_table
+
+    def capture_once(capture, conn):
+        counts["capture"] += 1
+        initialize(capture, conn)
+
+    def table_once(repo, name):
+        counts[name] += 1
+        return read(repo, name)
+
+    def redundant_query(*args, **kwargs):
+        raise AssertionError("adoption must consume captured plan and execution rows")
+
+    monkeypatch.setattr(ProductionFactsCapture, "__init__", capture_once)
+    monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_once)
+    monkeypatch.setattr(OperationExecutionEventRepo, "aggregate_states_by_scopes", redundant_query)
+    sql = []
+    case.conn.set_trace_callback(sql.append)
+    evidence = validate_adoption(case.conn, ref)
+    full_schema_reads = [statement for statement in sql if "FROM sqlite_master" in statement and " WHERE " not in statement]
+    assert full_schema_reads == ["SELECT type, name, tbl_name, sql FROM sqlite_master"]
+    assert evidence.payload.scheduled_op_ids == {case.op_id}
+    assert counts and set(counts.values()) == {1}

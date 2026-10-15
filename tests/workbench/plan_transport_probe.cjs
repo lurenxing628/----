@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
-const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js', 'PlanProcessOrder.js', 'GanttGraph.js', 'DeliveryProjectionContract.js', 'PlanContract.js', 'PlanAPI.js'];
+const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js', 'GanttGraph.js', 'DeliveryProjectionContract.js', 'PlanContract.js', 'PlanAPI.js'];
 const scripts = files.map(name => ({name, source: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 const P = 'a'.repeat(48), OTHER = 'b'.repeat(48), TASK = 'c'.repeat(48), OP = 'd'.repeat(48);
@@ -31,8 +31,8 @@ const workspace = () => align(envelope({plan: header(), scope: {source: 'product
 function align(payload) {
   const d = payload.data, time = clone(d.time_scope);
   d.provenance = {state:'unavailable',reason:'No generation evidence',source_kind:null,source_ref:null,source_label:null,run_ref:null,accepted_at:null,finished_at:null,adopted_at:null,algorithm:null,baseline:null};
-  d.gantt_graph = {state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], edges: [], critical_task_refs: [], critical_edges: []};
-  d.projections.process_order = {state: 'unavailable', basis: null, items: [], issues: [{code: 'process_order_not_recorded', message: 'No captured process order'}]};
+  d.gantt_graph = {state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: []};
+  d.projections.process_order = {state: 'unavailable', basis: null, issues: [{code: 'process_order_not_recorded', message: 'No captured process order'}]};
   d.projections.calendar = {state: 'available', plan_ref: P, time_scope: time, global: {state: 'available', basis: 'global_calendar',
     windows: [], issues: [], available_hours: 0, effective_hours: 0, normal_available_hours: 0, normal_effective_hours: 0,
     urgent_available_hours: 0, urgent_effective_hours: 0}, resources: [], issues: []};

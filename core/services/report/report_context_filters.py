@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from core.errors import ValidationError
 from core.models.schedule_resource_filter import (
@@ -166,16 +166,16 @@ def normalize_report_resource_filter(
     return resource_filter.resource_type, resource_filter.resource_id
 
 
-def _row_text(row: Dict[str, Any], key: str) -> str:
+def _row_text(row: Mapping[str, Any], key: str) -> str:
     return str((row or {}).get(key) or "").strip()
 
 
-def _schedule_machine_ids(schedule_rows: Iterable[Dict[str, Any]]) -> set:
+def _schedule_machine_ids(schedule_rows: Iterable[Mapping[str, Any]]) -> set:
     return {_row_text(row, "machine_id") for row in schedule_rows or [] if _row_text(row, "machine_id")}
 
 
 def _downtime_machine_filter(
-    schedule_rows: Iterable[Dict[str, Any]],
+    schedule_rows: Iterable[Mapping[str, Any]],
     *,
     resource_type: str,
     resource_id: str,
@@ -191,7 +191,7 @@ def _downtime_machine_filter(
 
 
 def _filter_downtime_rows_by_machine(
-    downtime_rows: Iterable[Dict[str, Any]],
+    downtime_rows: Iterable[Mapping[str, Any]],
     allowed_machine_ids: Optional[set],
 ) -> List[Dict[str, Any]]:
     if allowed_machine_ids is None:
@@ -205,7 +205,7 @@ def _filter_downtime_rows_by_machine(
     ]
 
 
-def _parsed_interval(row: Dict[str, Any]) -> Optional[Tuple[Any, Any]]:
+def _parsed_interval(row: Mapping[str, Any]) -> Optional[Tuple[Any, Any]]:
     start = parse_dt((row or {}).get("start_time"))
     end = parse_dt((row or {}).get("end_time"))
     if not start or not end:
@@ -215,7 +215,7 @@ def _parsed_interval(row: Dict[str, Any]) -> Optional[Tuple[Any, Any]]:
     return start, end
 
 
-def _has_bad_time(row: Dict[str, Any]) -> bool:
+def _has_bad_time(row: Mapping[str, Any]) -> bool:
     # 与 downtime_impact._index_downtime_rows 口径一致：解析不出有效区间即算坏时间行，
     # 包含 start/end 全空的脏停机记录——此前要求至少一端非空，会把“全空时间”的停机行
     # 在 batch_filter 路径静默丢弃、不计入降级提示。
@@ -223,7 +223,7 @@ def _has_bad_time(row: Dict[str, Any]) -> bool:
 
 
 def _schedule_overlaps_downtime(
-    schedule_row: Dict[str, Any],
+    schedule_row: Mapping[str, Any],
     *,
     machine_id: str,
     downtime_interval: Tuple[Any, Any],
@@ -239,8 +239,8 @@ def _schedule_overlaps_downtime(
 
 
 def _downtime_row_overlaps_schedule(
-    downtime_row: Dict[str, Any],
-    schedule_rows: Iterable[Dict[str, Any]],
+    downtime_row: Mapping[str, Any],
+    schedule_rows: Iterable[Mapping[str, Any]],
 ) -> bool:
     machine_id = _row_text(downtime_row, "machine_id")
     downtime_interval = _parsed_interval(downtime_row)
@@ -254,7 +254,7 @@ def _downtime_row_overlaps_schedule(
 
 def _filter_downtime_rows_by_batch_overlap(
     downtime_rows: Iterable[Dict[str, Any]],
-    schedule_rows: Iterable[Dict[str, Any]],
+    schedule_rows: Iterable[Mapping[str, Any]],
     *,
     batch_filter: str,
     degradation_collector: Optional[DegradationCollector] = None,
@@ -272,8 +272,8 @@ def _filter_downtime_rows_by_batch_overlap(
 
 
 def filter_downtime_rows_for_report_context(
-    downtime_rows: Iterable[Dict[str, Any]],
-    schedule_rows: Iterable[Dict[str, Any]],
+    downtime_rows: Iterable[Mapping[str, Any]],
+    schedule_rows: Iterable[Mapping[str, Any]],
     *,
     resource_type: Optional[str] = None,
     resource_id: Optional[str] = None,

@@ -59,7 +59,7 @@ def test_compute_exception_is_logged_with_original_ref_and_durable_failure(runti
     client, case, runtime = runtime_api
     value = intent(client, case)
 
-    def fail(_self, _row):
+    def fail(_self, _row, _admission):
         raise ValueError("BN explicit compute failure")
 
     monkeypatch.setattr(WorkbenchRunWorker, "_compute", fail)

@@ -143,7 +143,7 @@ def _run_preflight_on_probe(
                     )
                 set_schema_version(conn, version)
             if to_version == CURRENT_SCHEMA_VERSION:
-                ensure_current_schema_contract(conn, schema_version=to_version, schema_sql=schema_sql)
+                ensure_current_schema_contract(conn, schema_version=to_version, schema_sql=schema_sql, full_data=True)
     finally:
         _close_connection(conn)
 
@@ -215,7 +215,7 @@ def _apply_migrations(
                 return
             _apply_version_range(conn, current=current, to_version=to_version, schema_sql=schema_sql, logger=logger)
             if to_version == CURRENT_SCHEMA_VERSION:
-                ensure_current_schema_contract(conn, schema_version=to_version, schema_sql=schema_sql)
+                ensure_current_schema_contract(conn, schema_version=to_version, schema_sql=schema_sql, full_data=True)
         if logger:
             fallback_log(logger, "info", f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
     finally:

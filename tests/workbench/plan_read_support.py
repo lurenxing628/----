@@ -9,8 +9,6 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
-from core.services.workbench.plan import queries as plan_queries
-from data.repositories import schedule_time_sql
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.plan_catalog_support import candidate, history, scenario, seed_operation, selection
 from web.routes.workbench.plan_reads import register_plan_read_routes
@@ -57,53 +55,6 @@ def add_tasks(conn, count, *, start="2026-09-11 22:00:00", end="2026-09-12 02:00
                      ((op, "EXTRA-" + str(op), op) for op in ids))
     conn.executemany("INSERT INTO Schedule(version,op_id,start_time,end_time) VALUES (3,?,?,?)",
                      ((op, start, end) for op in ids))
-
-
-def grow_catalog_source(conn, source):
-    """Three rows in exactly one source, using timestamps the parser must not touch."""
-    first = conn.execute("SELECT MAX(id)+1 FROM BatchOperations").fetchone()[0]
-    ids = (first, first + 1)
-    conn.executemany("INSERT INTO BatchOperations(id,op_code,batch_id,seq,op_type_name) VALUES (?,?,'CAT-B',?,'Capacity op')",
-                     ((op, "CAP-" + str(op), op) for op in ids))
-    start, end = "2077-07-07 22:00:00", "2077-07-08 06:00:00"
-    if source == "official":
-        conn.execute("UPDATE Schedule SET start_time=?,end_time=? WHERE version=3", (start, end))
-        conn.executemany("INSERT INTO Schedule(version,op_id,start_time,end_time) VALUES (3,?,?,?)",
-                         ((op, start, end) for op in ids))
-    elif source == "candidate":
-        candidate_id = conn.execute("SELECT candidate_id FROM ScheduleCandidateSelection WHERE version=3 AND role='critical_best'").fetchone()[0]
-        conn.execute("UPDATE ScheduleCandidateRows SET start_time=?,end_time=? WHERE candidate_id=?", (start, end, candidate_id))
-        conn.executemany("INSERT INTO ScheduleCandidateRows(version,candidate_id,op_id,start_time,end_time) VALUES (3,?,?,?,?)",
-                         ((candidate_id, op, start, end) for op in ids))
-    elif source == "scenario":
-        conn.execute("UPDATE ScheduleAdjustmentScenarioRow SET start_time=?,end_time=? WHERE scenario_id='PRIVATE-ACTIVE'", (start, end))
-        conn.executemany("INSERT INTO ScheduleAdjustmentScenarioRow(scenario_id,source_table,op_id,start_time,end_time) "
-                         "VALUES ('PRIVATE-ACTIVE','schedule',?,?,?)", ((op, start, end) for op in ids))
-    else:
-        raise ValueError("Unknown fixture source")
-    return {start, end}
-
-
-def prepare_capacity_case(api, monkeypatch, source):
-    monkeypatch.setattr(plan_queries, "MAX_PLAN_TASKS", 2)
-    with api.db() as conn:
-        blocked_times = grow_catalog_source(conn, source)
-        scenario(conn, "Z-SMALL", 2, op_id=1)
-    parse = schedule_time_sql.parse_dt_for_sql
-
-    def guarded(value):
-        assert value not in blocked_times, "Oversized source must never enter detail time validation"
-        return parse(value)
-
-    monkeypatch.setattr(schedule_time_sql, "parse_dt_for_sql", guarded)
-    return api.state()
-
-
-def assert_capacity_blocked(entry):
-    assert entry["capabilities"] == {"view": False, "export": False, "edit_draft": False, "adopt": False, "report_actual": False}
-    assert entry["completeness"] == "unknown"
-    assert entry["is_current_official"] is False
-    assert entry["blocked_reasons"][0]["code"] == "plan_capacity_exceeded"
 
 
 class PlanReadApi:

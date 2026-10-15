@@ -6,11 +6,14 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.models.operation_execution_event import (
     EXECUTION_STATUS_NOT_STARTED,
+    OperationExecutionEvent,
     parse_operation_event_time,
+    validate_operation_execution_event_sequence,
 )
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.workbench_execution import ExecutionProjection
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
+from data.repositories.operation_execution_state_builder import build_operation_execution_state
 
 from .execution_ledger_adapter import adapt_ledger_facts, ledger_read_snapshot
 from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
@@ -109,10 +112,12 @@ class ExecutionFactProvider:
     具体计划页和重排保护必须按计划身份读取。
     """
 
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, *, capture=None, ledger=None):
         self.conn = conn
         self.logger = logger
         self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
+        self.capture: Any = capture
+        self.ledger = ledger
 
     def list_by_op_ids(self, op_ids: Sequence[int]) -> List[ExecutionFact]:
         raise ValueError("现场执行事实必须按完整计划身份读取，不能只按 op_id 聚合。")
@@ -130,7 +135,7 @@ class ExecutionFactProvider:
             if execution_projections is not None:
                 raise ValueError("执行投影适配需要真实连接核对永久计划身份。")
             return self._legacy_facts(normalized)
-        with ledger_read_snapshot(self.conn) as ledger:
+        with ledger_read_snapshot(self.conn, ledger=self.ledger) as ledger:
             facts = self._legacy_facts(normalized)
             if ledger is None:
                 if execution_projections:
@@ -139,7 +144,10 @@ class ExecutionFactProvider:
             return adapt_ledger_facts(ledger, facts, execution_projections=execution_projections)
 
     def _legacy_facts(self, normalized: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:
-        states = self.event_repo.aggregate_states_by_scopes(normalized)
+        if self.capture is None:
+            states = self.event_repo.aggregate_states_by_scopes(normalized)
+        else:
+            states = self._captured_states(normalized)
         return {
             scope: _fact_from_state(
                 int(scope.op_id),
@@ -148,6 +156,34 @@ class ExecutionFactProvider:
             )
             for scope in normalized
         }
+
+    def _captured_states(self, scopes):
+        capture = self.capture
+        scope_fields = ("schedule_version", "schedule_id", "op_id", "batch_id", "source_table", "effective_plan_role", "scenario_id")
+        if not hasattr(capture, "execution_event_rows"):
+            capture.execution_event_rows, capture.execution_states = {}, {}
+            for row in capture.table("OperationExecutionEvents"):
+                key = tuple(row[field] for field in scope_fields)
+                capture.execution_event_rows.setdefault(key, []).append(row)
+            from core.models.resource_identity import build_resource_identity
+
+            capture.execution_machine_identities = {
+                row["machine_id"]: build_resource_identity(resource_id=row["machine_id"], resource_name=row["name"])
+                for row in capture.table("Machines")}
+            capture.execution_operator_identities = {
+                row["operator_id"]: build_resource_identity(resource_id=row["operator_id"], resource_name=row["name"])
+                for row in capture.table("Operators")}
+        for scope in scopes:
+            if scope in capture.execution_states:
+                continue
+            key = tuple(getattr(scope, field) for field in scope_fields)
+            events = [OperationExecutionEvent.from_row(row) for row in capture.execution_event_rows.get(key, ())]
+            validate_operation_execution_event_sequence(events)
+            capture.execution_states[scope] = build_operation_execution_state(
+                op_id=scope.op_id, batch_id=scope.batch_id, events=events,
+                machine_resources=capture.execution_machine_identities,
+                operator_resources=capture.execution_operator_identities)
+        return {scope: capture.execution_states[scope] for scope in scopes}
 
     def facts_by_op_id_for_scopes(
         self,

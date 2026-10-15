@@ -7,16 +7,11 @@ from core.models.scheduler_degradation_messages import (
     FREEZE_WINDOW_DEGRADED_MESSAGE,
     FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
 )
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.contracts.schedule_summary_types import ScheduleResultStatus
 
 
 def _freeze_window_config_state(cfg: Any) -> Tuple[bool, int]:
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=False,
-        source="scheduler.summary.freeze_window",
-    )
+    snapshot = cfg
     enabled = str(snapshot.freeze_window_enabled).strip().lower() == YesNo.YES.value
     return bool(enabled), int(snapshot.freeze_window_days)
 

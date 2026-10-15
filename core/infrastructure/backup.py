@@ -37,7 +37,6 @@ from core.infrastructure.maintenance_lock import (
 from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
     UnsafeFixedFileError,
-    assert_same_regular_file,
     create_fixed_file_exclusive,
     guard_fixed_file_replace_target,
     remove_fixed_file,
@@ -75,10 +74,7 @@ class RestoreResult:
 
 def _prepare_exclusive_sqlite_target(path: str):
     fd = create_fixed_file_exclusive(path)
-    try:
-        return os.fstat(fd)
-    finally:
-        os.close(fd)
+    os.close(fd)
 
 
 def _sqlite_existing_file_uri(path: str) -> str:
@@ -134,25 +130,20 @@ class BackupManager:
                     raise RuntimeError(f"清理备份临时文件失败：{exc}") from exc
 
                 try:
-                    tmp_stat = _prepare_exclusive_sqlite_target(tmp_path)
+                    _prepare_exclusive_sqlite_target(tmp_path)
                 except Exception as exc:
                     raise RuntimeError(f"创建备份临时文件失败：{exc}") from exc
 
-                source_stat = stat_regular_file(self.db_path)
+                stat_regular_file(self.db_path)
                 with closing(_connect_existing_sqlite_file(self.db_path)) as source:
-                    assert_same_regular_file(self.db_path, source_stat)
                     with closing(_connect_existing_sqlite_file(tmp_path)) as dest:
-                        assert_same_regular_file(tmp_path, tmp_stat)
                         source.backup(dest)
-                        assert_same_regular_file(self.db_path, source_stat)
-                        assert_same_regular_file(tmp_path, tmp_stat)
                         _run_sqlite_integrity_check(
                             dest,
                             logger=self.logger,
                             check_label="备份后的数据库完整性检查",
                             execute_failed_hint="视为不可信备份，不落地",
                         )
-                assert_same_regular_file(tmp_path, tmp_stat)
                 guard_fixed_file_replace_target(backup_path)
                 os.replace(tmp_path, backup_path)
                 fallback_log(self.logger, "info", f"数据库已备份：{backup_path}")
@@ -169,10 +160,9 @@ class BackupManager:
         retries = 6
         for i in range(retries):
             try:
-                source_stat = stat_regular_file(source_path)
-                target_stat = stat_regular_file(self.db_path)
+                stat_regular_file(source_path)
+                stat_regular_file(self.db_path)
                 with closing(_connect_existing_sqlite_file(source_path)) as source:
-                    assert_same_regular_file(source_path, source_stat)
                     # B05：任何源文件（用户选定的备份 / 自动回滚的 before_restore 快照）
                     # 盖到主库前先过 integrity_check；失败 fail-loud，绝不落地损坏库。
                     _run_sqlite_integrity_check(
@@ -183,11 +173,7 @@ class BackupManager:
                     )
                     with closing(_connect_existing_sqlite_file(self.db_path, timeout=30)) as dest:
                         dest.execute("PRAGMA busy_timeout = 30000")
-                        assert_same_regular_file(source_path, source_stat)
-                        assert_same_regular_file(self.db_path, target_stat)
                         source.backup(dest)
-                        assert_same_regular_file(source_path, source_stat)
-                        assert_same_regular_file(self.db_path, target_stat)
                 return
             except (UnsafeFixedFileError, BackupIntegrityError):
                 raise

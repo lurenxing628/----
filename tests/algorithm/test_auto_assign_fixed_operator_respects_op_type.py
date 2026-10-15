@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Optional
 
+import pytest
+
 
 @dataclass
 class _StubCalendarService:
@@ -87,3 +89,46 @@ def test_auto_assign_fixed_operator_respects_op_type() -> None:
     r0 = results[0]
     assert r0.machine_id == "M_OK", f"自动选机应尊重 op_type_id，仅允许 M_OK，实际 {r0.machine_id!r}"
     assert r0.operator_id == "O1", f"operator_id 应保持为固定值 O1，实际 {r0.operator_id!r}"
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+@pytest.mark.parametrize("failure", ["hours_and_qualification", "machine_and_hours", "qualification"])
+def test_auto_assign_keeps_machine_hours_qualification_failure_order(prepared, failure):
+    from core.algorithm_runtime.algo_stats import make_algo_stats
+    from core.algorithm_runtime.auto_assign_contract import (
+        AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
+        AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
+    )
+    from core.algorithms import GreedyScheduler
+    from core.algorithms.greedy.auto_assign import auto_assign_internal_resources_attempt
+    from core.algorithms.greedy.scheduler import prepare_native_schedule_inputs
+    from core.errors import ValidationError
+
+    op = SimpleNamespace(id=1, batch_id="B1", machine_id="", operator_id="", op_type_id="T1",
+                         setup_hours=1.0 if failure == "qualification" else float("nan"), unit_hours=0.0)
+    batch = SimpleNamespace(batch_id="B1", quantity=1)
+    pool = {"machines_by_op_type": {"T1": [] if failure == "machine_and_hours" else ["M1"]},
+            "operators_by_machine": {"M1": ["O1"]}, "machines_by_operator": {},
+            "operator_skills": {}, "pair_rank": {}}
+    scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=_Cfg())
+    preparation = (prepare_native_schedule_inputs(None, scheduler=scheduler, operations=[op],
+                                                 batches={"B1": batch}, resource_pool=pool) if prepared else None)
+    stats = make_algo_stats()
+    kwargs = dict(calendar=scheduler.calendar, algo_stats=stats, op=op, batch=batch, batch_progress={},
+                  machine_timeline={}, operator_timeline={}, base_time=datetime(2026, 1, 1, 8),
+                  end_dt_exclusive=None, machine_downtimes=None, resource_pool=pool,
+                  last_op_type_by_machine={}, machine_busy_hours={}, operator_busy_hours={},
+                  resource_preparation=preparation)
+    if failure == "qualification":
+        with pytest.raises(ValidationError) as caught:
+            auto_assign_internal_resources_attempt(**kwargs)
+        assert caught.value.field == "operator_qualification"
+        assert stats["fallback_counts"] == {}
+    else:
+        attempt = auto_assign_internal_resources_attempt(**kwargs)
+        expected = (AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL if failure == "machine_and_hours"
+                    else AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS)
+        counter = ("auto_assign_missing_machine_pool_count" if failure == "machine_and_hours"
+                   else "auto_assign_invalid_total_hours_count")
+        assert attempt.reason == expected
+        assert stats["fallback_counts"] == {counter: 1}

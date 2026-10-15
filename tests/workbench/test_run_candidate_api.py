@@ -70,9 +70,18 @@ def test_full_app_explicit_registration_only_temporary_connections(candidate_cas
         assert generation["algorithm"] == {"mode": "greedy", "mode_label": "快速计算",
                                            "strategy": "priority_first", "strategy_label": "优先级优先"}
     token = result["meta"]["snapshot_ref"]
-    for fmt in ("csv", "xlsx"):
-        response = client.get(BASE + "/candidates/" + refs[0] + "/export", query_string={"format": fmt, "snapshot_ref": token})
-        assert response.status_code == 200 and response.headers["X-Workbench-Task-Count"] == "1"
+    from web.routes.workbench import run_candidates
+
+    with monkeypatch.context() as patch:
+        patch.setattr(run_candidates, "_response", lambda *_: pytest.fail("Downloads must not rehearse a discarded JSON envelope"))
+        for fmt in ("csv", "xlsx"):
+            response = client.get(BASE + "/candidates/" + refs[0] + "/export", query_string={"format": fmt, "snapshot_ref": token})
+            assert response.status_code == 200 and response.headers["X-Workbench-Task-Count"] == "1"
+            if fmt == "csv":
+                csv_size = len(response.data)
+        patch.setattr(run_candidates, "MAX_RESPONSE_BYTES", csv_size - 1)
+        oversized = client.get(BASE + "/candidates/" + refs[0] + "/export", query_string={"format": "csv", "snapshot_ref": token})
+        assert oversized.status_code == 413 and oversized.get_json()["error"]["code"] == "candidate_capacity_exceeded"
     assert state(case.conn) == before
     assert connections and str(case.path) in connections
     assert client.post(BASE + "/candidates/" + refs[0]).status_code == 405
@@ -181,7 +190,7 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
 
 def test_archived_resource_identity_survives_missing_display_directory(candidate_case):
     _, refs = compute(candidate_case)
-    _, _, _, capture = load_adoption_candidate(candidate_case.conn, refs[0])
+    _, _, _, _, capture, _ = load_adoption_candidate(candidate_case.conn, refs[0])
     facts = GenerationFacts(capture)
     ref = facts.entity_refs["machine", "M1"]
     facts.tables["Machines"].clear()

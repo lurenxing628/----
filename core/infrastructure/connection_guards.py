@@ -12,6 +12,8 @@ from typing import Any, Iterator, List, Optional, Tuple
 
 from .schema_structure import SchemaStructure
 
+_SCHEMA_CONTRACTS: ContextVar[tuple] = ContextVar("aps_schema_contracts", default=())
+
 _QUERY_ONLY: ContextVar[Tuple[sqlite3.Connection, ...]] = ContextVar("aps_query_only", default=())
 
 
@@ -83,11 +85,15 @@ class SchemaContractMemo:
             self._results[check] = check(self.conn)
         return self._results[check]
 
+    @property
+    def structure(self):
+        if self._structure is None:
+            self._structure = SchemaStructure(self.conn)
+        return self._structure
+
     def get_schema(self, check):
         if check not in self._results:
-            if self._structure is None:
-                self._structure = SchemaStructure(self.conn)
-            self._results[check] = check(self.conn, structure=self._structure)
+            self._results[check] = check(self.conn, structure=self.structure)
         return self._results[check]
 
 
@@ -101,3 +107,23 @@ def connection_snapshot_metadata(conn: sqlite3.Connection) -> Tuple[int, int, in
             raise ValueError(f"connection metadata unavailable: {statement}")
         values.append(row[0])
     return values[0], values[1], values[2], values[3]
+
+
+def schema_contract_memo(conn):
+    """Use the current transaction/read owner; standalone callers get fresh facts."""
+    return next((memo for memo in reversed(_SCHEMA_CONTRACTS.get()) if memo.conn is conn), None) or SchemaContractMemo(conn)
+
+
+@contextmanager
+def schema_contract_scope(conn):
+    """Share one lazy structure until the existing operation boundary exits."""
+    existing = next((memo for memo in _SCHEMA_CONTRACTS.get() if memo.conn is conn), None)
+    if existing is not None:
+        yield existing
+        return
+    memo = SchemaContractMemo(conn)
+    token = _SCHEMA_CONTRACTS.set(_SCHEMA_CONTRACTS.get() + (memo,))
+    try:
+        yield memo
+    finally:
+        _SCHEMA_CONTRACTS.reset(token)

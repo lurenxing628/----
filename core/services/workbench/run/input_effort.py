@@ -2,7 +2,6 @@
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
 from core.services.workbench.facts.run_input_rows import fail
 
@@ -15,30 +14,23 @@ def saved_seed_efforts(svc, facts, seed_results, execution_facts):
     """Read original run/trial work once per actual official version, without math."""
     if not seed_results:
         return {}
-    plans = {}
-    for row in facts.tables["WorkbenchPlanSourceRefs"]:
-        if row.get("kind") == "official" and row.get("active") == 1:
-            plans.setdefault(row.get("version"), []).append(row["ref"])
     result, sources = {}, {}
     with read_evidence_scope(svc.conn):
-        resolve = decision_baseline_source_resolver(svc.conn)
         for seed in seed_results:
             op_id = seed["op_id"]
             fact = execution_facts.get(op_id)
             version = getattr(fact, "schedule_version", None)
             if version not in sources:
-                matches = plans.get(version, [])
-                history = svc.history_repo.get_by_version(version) if type(version) is int else None
-                if history is None or len(matches) != 1:
+                if type(version) is not int:
                     sources[version] = None
                 else:
                     try:
-                        context = resolve(plan_ref=matches[0], version=version, history=history.to_dict())
+                        context = facts.official_source(version)
                     except WorkbenchCommandRejected as exc:
                         if exc.code not in ("adoption_snapshot_invalid", "adoption_source_archived", "entity_not_found"):
                             raise
                         context = {"operation_effort": None}
-                    sources[version] = saved_operation_efforts(context.get("operation_effort"))
+                    sources[version] = saved_operation_efforts(context.get("operation_effort")) if context is not None else None
             source = sources[version]
             ref = facts.operation_refs.get(op_id)
             item = source.get(ref) if source is not None else None

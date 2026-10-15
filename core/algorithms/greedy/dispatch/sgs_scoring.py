@@ -21,7 +21,7 @@ from core.algorithm_runtime.internal_slot import (
     validate_internal_hours_for_mode,
 )
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, current_sgs_reuse, remember_sgs_estimate
+from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.errors import ValidationError
 from core.shared.strict_parse import parse_optional_date, parse_required_int
@@ -457,8 +457,7 @@ def _estimate_scoring_slot(
         estimate = compute()
     if estimate.abort_after_hit:
         raise RuntimeError("SGS 评分不应命中 abort_after 早停")
-    reuse = current_sgs_reuse()
-    if (reuse is not None and reuse.scoring_op is op) or current_sgs_handoff() is not None:
+    if current_sgs_handoff() is not None:
         remember_sgs_estimate(
             estimate, calendar=ctx.calendar, op=op, batch=batch,
             machine_id=machine_id, operator_id=operator_id, base_time=state.base_time, prev_end=meta["prev_end"],

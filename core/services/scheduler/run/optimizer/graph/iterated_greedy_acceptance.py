@@ -115,8 +115,11 @@ class PoolEntry:
     profile: Optional[GraphReadyWeightProfile] = None
     decoded_order: bool = False
 
+    def __post_init__(self) -> None:
+        self.resource_overrides = tuple(sorted(self.resource_overrides))
+
     def decision_key(self) -> Tuple[Any, ...]:
-        return (self.batch_order, self.order, tuple(sorted(self.resource_overrides)), profile_identity(self.profile))
+        return (self.batch_order, self.order, self.resource_overrides, profile_identity(self.profile))
 
 
 def profile_identity(profile: Optional[GraphReadyWeightProfile]) -> Tuple[Any, ...]:

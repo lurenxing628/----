@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.schema_probe import table_names
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 
@@ -44,7 +44,7 @@ class WorkbenchTrialQueryRepository(BaseRepository):
     def read_whole_table(self, name: str) -> Tuple[List[str], List[Dict[str, Any]]]:
         """(columns, rows) of one existing non-bookkeeping table; any other name is refused."""
         if self._existing_tables is None:
-            self._existing_tables = table_names(self.conn)
+            self._existing_tables = {name for name, (kind, _table, _sql) in schema_contract_memo(self.conn).structure.objects.items() if kind == "table"}
         if name not in self._existing_tables or name in BOOKKEEPING_TABLES:
             raise ValueError("Raw table read is not allowed: " + str(name))
         return self._read_table(name)
@@ -90,8 +90,3 @@ class WorkbenchTrialQueryRepository(BaseRepository):
 
     def active_source_refs_by_kind(self, kind: str) -> List[Dict[str, Any]]:
         return self.fetchall("SELECT source_key,ref FROM WorkbenchPlanSourceRefs WHERE kind=? AND active=1", (kind,))
-
-    def official_rows_without_history_exist(self) -> bool:
-        """Whether any Schedule row belongs to a version that has no ScheduleHistory head."""
-        return self.fetchone("SELECT 1 FROM Schedule s WHERE NOT EXISTS "
-                             "(SELECT 1 FROM ScheduleHistory h WHERE h.version=s.version) LIMIT 1") is not None

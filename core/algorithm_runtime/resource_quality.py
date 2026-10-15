@@ -137,7 +137,8 @@ def prefer_resource_pair(state: Mapping[str, str], op: Any, candidate: Tuple[Any
     return (penalties[0],) + candidate[2:] < (penalties[1],) + best[2:]
 
 
-def initialize_resource_quality(state: Any, operations: List[Any], resource_pool: Any) -> None:
+def initialize_resource_quality(state: Any, operations: List[Any], resource_pool: Any, *, preparation: Any) -> None:
     types = state.last_op_type_by_machine
     if isinstance(types, MachineTypeState) and resource_pool is not None:
-        types.demand = ResourceDemand(operations, resource_pool)
+        claims = (preparation.resource_claim_for(op) for op in operations)
+        types.demand = ResourceDemand(claim for claim in claims if claim is not None)

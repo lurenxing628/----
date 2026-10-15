@@ -9,14 +9,14 @@ The scope is exact; unknown parameters (including unsupported filters) are refus
 
 from __future__ import annotations
 
-import json
 import re
 from io import BytesIO
+from types import MappingProxyType
 
 from flask import current_app, g, request, send_file
 
 from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import (
     MAX_PLAN_RESPONSE_BYTES,
     PLAN_READ_TTL_SECONDS,
@@ -41,9 +41,8 @@ def _arguments(allowed):
 
 
 def _response(data, snapshot):
-    response = query_success(data, snapshot)
-    if len(response.get_data()) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "这次要读的计划数据太多，系统没有给出不完整结果。请缩小日期范围后点「刷新」。", 413)
+    response = query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES,
+        too_large_message="这次要读的计划数据太多，系统没有给出不完整结果。请缩小日期范围后点「刷新」。")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -54,9 +53,7 @@ def _cursor(scope):
     if token is None:
         return None, snapshot
     try:
-        payload = json.loads(resolve_public_token(_CURSOR_SCOPE, token, message="翻页位置已失效，请回到第 1 页重新查询。", field="cursor"))
-        if not isinstance(payload, dict) or set(payload) != {"scope", "seek", "snapshot_ref"}:
-            raise ValueError("Invalid stored cursor")
+        payload = resolve_public_token(_CURSOR_SCOPE, token, message="翻页位置已失效，请回到第 1 页重新查询。", field="cursor")
         if payload["scope"] != scope.scope() or not isinstance(payload["snapshot_ref"], str):
             raise ValueError("Cursor scope mismatch")
         if snapshot is not None and snapshot != payload["snapshot_ref"]:
@@ -87,7 +84,7 @@ def plan_list():
         data["page"]["next_cursor"] = None
         if next_seek is not None:
             binding = {"scope": scope.scope(), "snapshot_ref": snapshot["snapshot_ref"], "seek": next_seek}
-            data["page"]["next_cursor"] = issue_public_token(_CURSOR_SCOPE, canonical_json(binding), ttl_seconds=PLAN_READ_TTL_SECONDS)
+            data["page"]["next_cursor"] = issue_public_token(_CURSOR_SCOPE, MappingProxyType(binding), key=(snapshot["snapshot_ref"], next_seek), ttl_seconds=PLAN_READ_TTL_SECONDS)
     return _response(data, snapshot)
 
 
@@ -116,9 +113,9 @@ def plan_export(plan_ref):
             data, state = reader.workspace(scope)
     snapshot = bind_read_snapshot(scope.scope(), state, token)
     # 读事务和读额度都已释放：大小检查和生成文件只用已读出的计划，不再占着读锁。
-    # Downloads obey the same aggregate HTTP envelope budget as workspace.
-    _response(data, snapshot)
     download = write_plan_export(data, snapshot, fmt)
+    if len(download.content) > MAX_PLAN_RESPONSE_BYTES:
+        raise WorkbenchCommandRejected("query_too_large", "导出文件超过 8 MB，请缩小范围后重新导出。", 413)
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
     response.headers["Cache-Control"] = "no-store"

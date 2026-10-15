@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .schedule_graph_dispatch_context import build_predecessor_successor_maps, node_op_id, positive_op_id_set
-from .schedule_input_collector import ScheduleRunInput
+from .schedule_input_contracts import ScheduleRunInput
 
 GRAPH_RESOURCE_NOT_DAG_REASON = "graph_not_dag"
 GRAPH_RESOURCE_ENHANCEMENT_DISABLED_REASON = "graph_enhancement_disabled"

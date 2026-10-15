@@ -1,17 +1,17 @@
 """Frozen scoped all/filtered/selected exports, independent from list pagination."""
 
-import json
 from io import BytesIO
 
 from flask import current_app, g, request, send_file
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import action_kind
 from core.services.workbench.resource.files import WorkbenchResourceFileService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import query_success
 
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .resource_action_context import (
     EXPORT_SCOPE,
     json_body,
@@ -23,11 +23,11 @@ from .resource_action_context import (
 )
 
 
-def _selection(kind, body, scope):
+def _selection(kind, body, scope, reader):
     selection = body["selection"]
     if selection not in ("all", "filtered", "selected") or ("refs" in body) != (selection == "selected"):
         raise WorkbenchCommandRejected("invalid_input", "请先选好导出全部、当前筛选还是选中的记录，没有开始下载。选好后重新点「导出」。", 400)
-    service = WorkbenchResourceFileService(g.db, kind, current_app.logger)
+    service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
     return service.preview_export(selection, scope=scope, selected_refs=body.get("refs"))
 
 
@@ -38,10 +38,12 @@ def resource_export_preview(kind):
     scope, query_scope, snapshot_ref = scope_input(kind, body)
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref)
-        arguments, count = _selection(kind, body, scope)
-        document = canonical_json({"kind": kind, "query_scope": query_scope, "snapshot_ref": snapshot_ref, "arguments": arguments})
-        ref, expires_at = retain_context(EXPORT_SCOPE, document)
+        read_binding = resolve_read_snapshot(snapshot_ref)
+        snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
+        arguments, count = _selection(kind, body, scope, reader)
+        document = {"kind": kind, "query_scope": query_scope, "snapshot_ref": snapshot_ref, "arguments": arguments}
+        ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
+                                         key=(kind, read_binding.scope, document["snapshot_ref"], content_text(arguments)))
     return query_success({"export_ref": ref, "expires_at": expires_at, "selection": body["selection"],
                           "row_count": count, "scope": arguments["scope"], "formats": ["csv", "xlsx"]}, snapshot)
 
@@ -68,14 +70,13 @@ def resource_export(kind):
     action_kind(kind)
     fmt = _download_args({"export_ref", "format"})
     ref = opaque_ref(request.args["export_ref"], "export_ref")
-    document, _ = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
-    binding = json.loads(document)
+    binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
-    service = WorkbenchResourceFileService(g.db, kind, current_app.logger)
+    service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
     with reader.read_snapshot() as fingerprint:
-        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])
+        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
         rows = service.export_rows(fmt, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
     response = _response(service.write_export(rows, fmt, scope=binding["arguments"]["scope"]))

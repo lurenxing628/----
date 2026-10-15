@@ -167,3 +167,35 @@ def test_execution_feedback_requires_pause_and_exception_details_before_write(tm
         assert _event_count(conn) == 1
     finally:
         conn.close()
+
+
+def test_event_read_normalizes_once_and_checks_each_scope_once(tmp_path, monkeypatch):
+    from core.models import operation_execution_event as event_model
+    from core.services.scheduler.operation_execution_scope_read import scope_from_feedback_context
+    from data.repositories import operation_execution_event_repo as event_repo
+
+    conn = _connect(tmp_path)
+    try:
+        _seed_plan(conn)
+        service = OperationExecutionFeedbackService(conn)
+        service.start_operation(_context(), event_time="2026-05-01 08:00:00", operator_id="O1", machine_id="M1")
+        normalized, checked = [], []
+        normalize = event_model.normalize_operation_execution_event_values
+        validate = event_repo.validate_operation_execution_event_sequence
+
+        def normalize_one(**values):
+            normalized.append(values)
+            return normalize(**values)
+
+        def validate_scope(events):
+            checked.append(list(events))
+            return validate(events)
+
+        monkeypatch.setattr(event_model, "normalize_operation_execution_event_values", normalize_one)
+        monkeypatch.setattr(event_repo, "validate_operation_execution_event_sequence", validate_scope)
+        scope = scope_from_feedback_context(_context())
+        state = service.event_repo.aggregate_states_by_scopes([scope])[scope]
+        assert state.current_status == "processing"
+        assert len(normalized) == 1 and len(checked) == 1
+    finally:
+        conn.close()

@@ -44,3 +44,174 @@ def test_mid_mutation_exception_rolls_back_report_revision_clock_and_receipt(led
         case.command("create", case.task(1, case.op_id), case.values(1), key="ledger-rollback-000001")
     assert all_rows(case.conn) == before
     assert case.writer.commands.lookup("ledger-rollback-000001") is None
+
+
+def test_report_preparation_batches_relatives_and_shares_unchanged_facts(ledger_case, monkeypatch):
+    from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+
+    case = ledger_case
+    case.install()
+    middle, last = case.op("OP2", seq=2), case.op("OP3", seq=3)
+    case.plan(2, [case.op_id, middle, last])
+    task = case.task(2, middle)
+    case.command("create", task, case.values(1))
+    from core.services.execution import ledger_reader
+
+    read_groups, plans, legacy_preparations = [], [], []
+    original_legacy = ledger_reader.legacy_evidence
+
+    def legacy(rows, now):
+        legacy_preparations.append(rows)
+        return original_legacy(rows, now)
+    original_read = WorkbenchExecutionRepository.reports
+    original_plan = case.writer.ledger.current_plan_provider
+
+    def reports(repo, refs, limit):
+        read_groups.append(set(refs))
+        return original_read(repo, refs, limit)
+
+    def plan(conn):
+        plans.append(True)
+        return original_plan(conn)
+
+    monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
+    monkeypatch.setattr(case.writer.ledger, "current_plan_provider", plan)
+    monkeypatch.setattr(ledger_reader, "legacy_evidence", legacy)
+    preparation = case.writer.prepare_batch([{"action": "create", "ref": task, "payload": case.values(1)}])
+    assert len(plans) == 1 and len(read_groups) == 2 and len(legacy_preparations) == 3
+    assert len(read_groups[0]) == 1 and len(read_groups[1]) == 2 and not read_groups[0] & read_groups[1]
+    assert preparation.facts["operations"] is preparation.before["operations"]
+    assert preparation.facts["legacy"] is preparation.before["legacy"]
+    assert preparation.facts["plan"] is preparation.before["plan"]
+    assert preparation.facts["reports"] is not preparation.before["reports"]
+    operation_ref = preparation.resolved[0]["operation_ref"]
+    old = next(iter(preparation.before["reports"][operation_ref].values()))
+    retained = preparation.facts["reports"][operation_ref][old[0]["report_ref"]]
+    assert old is not retained and old[0] is retained[0]
+    # A direct command enters the same scope and reads fresh current facts.
+    read_groups.clear()
+    case.command("create", task, case.values(1))
+    assert len(plans) == 2 and len(read_groups) == 2
+
+
+def test_ledger_snapshot_reuses_loaded_facts_and_next_snapshot_refreshes(ledger_case, monkeypatch):
+    from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+
+    case = ledger_case
+    case.install()
+    saved = case.command("create", case.task(1, case.op_id), case.values(1))["data"]["rows"][0]
+    reads, original = [], WorkbenchExecutionRepository.reports
+
+    def reports(repo, refs, limit):
+        reads.append(list(refs))
+        return original(repo, refs, limit)
+
+    monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
+    with case.ledger.read_snapshot():
+        first = case.ledger.load([saved["operation_ref"]], comparison_plan_ref=case.plan_ref(1))
+        second = case.ledger.load([saved["operation_ref"]], comparison_plan_ref=case.plan_ref(1))
+        assert first["plan"] is second["plan"]
+        assert first["reports"][saved["operation_ref"]] is second["reports"][saved["operation_ref"]]
+        assert len(reads) == 1
+    case.ledger.project_operations([saved["operation_ref"]])
+    assert len(reads) == 2
+
+
+def test_report_preparation_chunks_dependencies_across_valid_batch_routes(ledger_case, monkeypatch):
+    from core.models.workbench_execution_input import MAX_OPERATIONS
+    from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+
+    case = ledger_case
+    case.install()
+    case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('B2','P1',10)")
+    second = case.op("B2-OP1", batch="B2")
+    case.conn.executemany("""INSERT INTO BatchOperations
+        (op_code,batch_id,seq,op_type_id,op_type_name,source)
+        VALUES (?,?,?,'T1','Turning','internal')""",
+        [(f"{batch}-OP{seq}", batch, seq) for batch in ("B1", "B2") for seq in range(2, 6002)])
+    case.plan(2, [case.op_id, second])
+    reads, plans = [], []
+    original_read = WorkbenchExecutionRepository.reports
+    original_plan = case.writer.ledger.current_plan_provider
+
+    def reports(repo, refs, limit):
+        reads.append(set(refs))
+        return original_read(repo, refs, limit)
+
+    def plan(conn):
+        plans.append(True)
+        return original_plan(conn)
+
+    monkeypatch.setattr(WorkbenchExecutionRepository, "reports", reports)
+    monkeypatch.setattr(case.writer.ledger, "current_plan_provider", plan)
+    preparation = case.writer.prepare_batch([
+        {"action": "create", "ref": case.task(2, op_id), "payload": case.values(1)}
+        for op_id in (case.op_id, second)])
+
+    assert len(preparation.appended) == 2 and len(plans) == 1
+    assert len(reads[0]) == 2
+    assert [len(group) for group in reads[1:]] == [MAX_OPERATIONS, 12000 - MAX_OPERATIONS]
+    assert len(set.union(*reads)) == sum(map(len, reads)) == 12002
+    assert case.conn.execute("SELECT count(*) FROM WorkbenchProductionReports").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('preloaded', [False, True])
+def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledger_case, monkeypatch, preloaded):
+    from core.models.operation_execution_scope import OperationExecutionScope
+    from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
+    from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
+    from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+
+    case = ledger_case
+    case.install()
+    saved = case.command('create', case.task(1, case.op_id), case.values(1))['data']['rows'][0]
+    schedule_id = case.conn.execute('SELECT id FROM Schedule WHERE version=1 AND op_id=?', (case.op_id,)).fetchone()[0]
+    scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id,
+        batch_id='B1', source_table='schedule', effective_plan_role='adopted')
+    calls = {'plan': 0, 'tasks': 0, 'scope': 0, 'resources': 0, 'orphans': 0}
+    original_plan = case.ledger.current_plan_provider
+
+    def plan(conn):
+        calls['plan'] += 1
+        return original_plan(conn)
+
+    monkeypatch.setattr(case.ledger, 'current_plan_provider', plan)
+    for cls, name, counter in [(WorkbenchExecutionRepository, 'task_rows', 'tasks'),
+            (WorkbenchExecutionRepository, 'resources', 'resources'),
+            (ExecutionLedgerScopeRepository, 'scope_task_rows', 'scope'),
+            (ExecutionLedgerScopeRepository, 'reported_operation_without_schedule_row', 'orphans')]:
+        original = getattr(cls, name)
+
+        def captured(self, *args, original=original, counter=counter, **kwargs):
+            calls[counter] += 1
+            return original(self, *args, **kwargs)
+
+        monkeypatch.setattr(cls, name, captured)
+    with case.ledger.read_snapshot():
+        projected = case.ledger.project_operations([saved['operation_ref']]) if preloaded else None
+        provider = ExecutionFactProvider(case.conn, ledger=case.ledger)
+        first = provider.facts_by_scope([scope], execution_projections=projected)
+        second = provider.facts_by_scope([scope], execution_projections=projected)
+        assert first == second and first[scope].target_quantity == 10
+    assert calls == {'plan': 1, 'tasks': int(preloaded), 'scope': int(not preloaded), 'resources': 1, 'orphans': 1}
+
+
+@pytest.mark.parametrize("method", ["require_schema", "load"])
+def test_execution_adapter_translates_ledger_read_rejection(ledger_case, monkeypatch, method):
+    from core.errors import AppError
+    from core.models.operation_execution_scope import OperationExecutionScope
+    from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
+
+    case = ledger_case
+    case.install()
+    schedule_id = case.conn.execute("SELECT id FROM Schedule WHERE op_id=?", (case.op_id,)).fetchone()[0]
+    scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id,
+        batch_id="B1", source_table="schedule", effective_plan_role="adopted")
+
+    def deny(*_args, **_kwargs):
+        raise WorkbenchCommandRejected("ledger_read_rejected", "injected ledger read rejection", 409)
+
+    monkeypatch.setattr(case.ledger, method, deny)
+    with pytest.raises(AppError) as error:
+        ExecutionFactProvider(case.conn, ledger=case.ledger).facts_by_scope([scope])
+    assert error.value.details == {"reason": "ledger_read_rejected"}

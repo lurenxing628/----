@@ -12,6 +12,7 @@ from core.models.scheduler_degradation_messages import (
     FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
 )
 from core.shared.boolean_normalize import to_yes_no
+from core.shared.local_datetime import format_local_datetime as fmt_dt
 
 from .freeze_window_prefixes import (
     group_seed_operations_by_batch,
@@ -284,8 +285,8 @@ def _prepare_freeze_seed_scope(
 
     return _FreezeSeedScope(
         freeze_days=int(freeze_days),
-        start_str=svc._format_dt(start_dt),
-        freeze_end_str=svc._format_dt(freeze_end),
+        start_str=fmt_dt(start_dt),
+        freeze_end_str=fmt_dt(freeze_end),
         seed_operations=seed_operations,
         seed_operations_by_batch=seed_operations_by_batch,
         op_by_id=op_by_id,

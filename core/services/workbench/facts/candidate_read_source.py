@@ -9,7 +9,7 @@ from core.models.workbench_run_candidate import reference
 from .candidate_effort import candidate_operation_effort_projection
 from .candidate_facts import GenerationFacts
 from .candidate_projection import dispositions, validate_manifest
-from .candidate_tasks import tasks_projection, unplanned_projection
+from .candidate_tasks import tasks_projection_with_intervals, unplanned_projection
 from .candidate_values import corrupt
 from .gantt_graph import candidate_gantt_graph
 
@@ -25,6 +25,7 @@ class CandidateReadSource:
     tasks: list
     unplanned: Optional[list]
     catalog: list
+    scheduled_op_ids: Optional[set]
     receipt: Optional[dict] = None
 
     @property
@@ -89,6 +90,7 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         disposition = prepared["disposition"] if "disposition" in prepared else dispositions(receipt)
         raw_tasks = prepared.get("raw_tasks")
         tasks = prepared.get("tasks")
+        ids = prepared["scheduled_op_ids"] if tasks is not None else None
         if raw_tasks is None:
             if tasks is not None:
                 corrupt()
@@ -96,9 +98,10 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
     if tasks is None:
         if len(raw_tasks) != candidate["task_count"]:
             corrupt()
-        tasks = tasks_projection(raw_tasks, candidate, facts)
+        tasks, _, ids = tasks_projection_with_intervals(raw_tasks, candidate, facts)
     if prepared is not None and "unplanned" in prepared:
         unplanned = prepared["unplanned"]
     else:
         unplanned = unplanned_projection(disposition, tasks, facts)
-    return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks, tasks, unplanned, rows, receipt=receipt)
+    return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks, tasks, unplanned, rows, ids,
+                               receipt=receipt)

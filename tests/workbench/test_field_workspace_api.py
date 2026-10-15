@@ -142,3 +142,70 @@ def test_legacy_supplement_keeps_known_facts_through_correction(ledger_case):
     assert execution["known_completed_quantity"] == 10 and execution["unknown_record_count"] == 0
     assert execution["reports"][0]["actual_start"] == "2026-09-09T08:00:00"
     assert all_rows(case.conn)["WorkbenchExecutionLegacyFacts"] == source
+
+
+def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_expiry(field_api, monkeypatch):
+    from core.services.workbench.commands import WorkbenchCommandService
+    from web import public_token_registry
+    from web.routes.workbench.execution_files import PREVIEW_NAMESPACE
+    from web.routes.workbench.read_context import _SCOPE
+
+    api = field_api
+    api.create()
+    reading = api.read()
+    exported = api.client.get(BASE + '/files/export', query_string={**reading['data']['scope'],
+        'snapshot_ref': reading['meta']['snapshot_ref']})
+    assert exported.status_code == 200
+    preview = success(api.upload(exported.data, reading))
+    assert preview['data']['can_confirm']
+    with api.app.app_context():
+        public_token_registry._registry()[_SCOPE]['tokens'][reading['meta']['snapshot_ref']]['expires_at'] = 0
+    confirmed = success(api.client.post(BASE + '/files/confirm', json=api.confirm_body(preview)))
+    assert confirmed['result'] == 'unchanged'
+
+    preview = success(api.upload(exported.data))
+    ref, before = preview['data']['preview_ref'], all_rows(api.case.conn)
+    execute = WorkbenchCommandService.execute
+
+    def expired_after_prefetch(service, **kwargs):
+        # The file has been prepared; the write-lock guard must still reject expiry.
+        public_token_registry._registry()[PREVIEW_NAMESPACE]['tokens'][ref]['expires_at'] = 0
+        return execute(service, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(WorkbenchCommandService, 'execute', expired_after_prefetch)
+        response = api.client.post(BASE + '/files/confirm', json=api.confirm_body(preview))
+    assert response.status_code == 409 and response.get_json()['error']['code'] == 'stale_write'
+    assert all_rows(api.case.conn) == before
+
+
+def test_report_and_task_contexts_locate_shared_operation_facts_once(field_api, record_property):
+    from core.models.content import content_text
+    from core.services.workbench.facts.execution_projection import attach_context
+    from web.routes.workbench.execution import field_context
+
+    class SharedFacts(str):
+        equalities = 0
+        __hash__ = str.__hash__
+
+        def __eq__(self, other):
+            SharedFacts.equalities += 1
+            return str.__eq__(self, other)
+
+    api = field_api
+    api.create()
+    task = api.task()
+    with api.case.ledger.read_snapshot():
+        facts = api.case.ledger.load([task['operation_ref']])
+        projection = api.case.ledger.project_loaded(facts, contexts=False)[0]
+        snapshot = SharedFacts(content_text(api.case.ledger.fact_snapshot(facts, task['operation_ref'])))
+    # The common attachment owner serves every report and the task in either ledger path.
+    with api.app.app_context():
+        first = attach_context(projection, field_context, snapshot)
+        same_content = SharedFacts(snapshot)
+        SharedFacts.equalities = 0
+        reopened = attach_context(projection, field_context, same_content)
+    assert SharedFacts.equalities == 1
+    assert first.write_context['write_token'] == reopened.write_context['write_token']
+    assert [row.write_context['write_token'] for row in first.reports] == [row.write_context['write_token'] for row in reopened.reports]
+    record_property('shared_facts_equalities', SharedFacts.equalities)

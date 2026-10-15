@@ -19,8 +19,6 @@ from core.models.workbench_resource_file import (
     status_words,
 )
 
-from .states import WorkbenchResourceStateService
-
 
 def _column(field):
     """提示里按“列 英文名（中文说明）”称呼文件里的列，英文名是文件格式的一部分，必须留。"""
@@ -41,9 +39,8 @@ def _same_column(field, value, previous):
 
 
 class ResourceFileInput:
-    def __init__(self, reader, repo):
-        self.reader, self.repo, self.kind = reader, repo, reader.kind
-        self.state = WorkbenchResourceStateService(reader.conn)
+    def __init__(self, reader, preparation):
+        self.reader, self.preparation, self.kind = reader, preparation, reader.kind
 
     def normalize(self, action, code, values, before, scope):
         changes = self._changes(values, before, scope)
@@ -135,15 +132,15 @@ class ResourceFileInput:
     def _selected_code(self, code, kind, category, field):
         if type(code) is not str or not code or code != code.strip():
             raise ValidationError(_column(field) + "要填准确的编号，不能填空格或名称，这一行没有导入。请改填编号。", field=field)
-        identity = self.reader.identities.find_active(kind, code)
+        identity = self.preparation.find_identity(kind, code)
         if identity is None:
             raise ValidationError(_column(field) + "里的编号 " + code + " 在资料里找不到，这一行没有导入。请先在资料总览新增它，或者改填已有编号。", field=field)
-        return self.state.selected_record(kind, identity, category=category)
+        return self.preparation.selected_record(kind, identity, category=category)
 
     def _unique_name(self, code, payload):
         if self.kind == "op_type" and "label" in payload:
-            owner = self.repo.name_owner(self.kind, payload["label"])
-            if owner and owner["business_code"] != code:
+            owner = self.preparation.name_owner(self.kind, payload["label"])
+            if owner is not None and owner != code:
                 raise ValidationError("这个工种名称已经被另一个编号用了，这一行没有导入。请换一个名称。", field="label")
 
     @staticmethod

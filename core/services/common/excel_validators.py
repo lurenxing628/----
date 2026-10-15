@@ -1,30 +1,23 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Callable, Dict, Optional
 
 from core.errors import ValidationError
 from core.models.enums import (
     BATCH_PRIORITY_VALUES,
-    CALENDAR_DAY_TYPE_STORED_VALUES,
     READY_STATUS_VALUES,
-    YESNO_VALUES,
     BatchPriority,
-    CalendarDayType,
     ReadyStatus,
-    YesNo,
 )
-from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from core.services.common.normalization_matrix import (
     normalize_batch_priority_value,
-    normalize_calendar_day_type_value,
     normalize_ready_status_value,
-    normalize_yes_no_narrow_value,
 )
 from core.services.common.normalize import is_blank_value, to_str_or_blank
-from core.services.common.number_utils import parse_finite_float, parse_finite_int
-from data.repositories import OperatorRepository, PartRepository
+from core.services.common.number_utils import parse_finite_int
+from data.repositories import PartRepository
 
 
 def _normalize_batch_priority(value: Any) -> str:
@@ -41,18 +34,6 @@ def _normalize_ready_status(value: Any) -> str:
         default=ReadyStatus.YES.value,
         unknown_policy="passthrough",
     )
-
-
-def _normalize_operator_calendar_day_type(value: Any) -> str:
-    return normalize_calendar_day_type_value(
-        value,
-        default=CalendarDayType.WORKDAY.value,
-        unknown_policy="passthrough",
-    )
-
-
-def _normalize_yesno(value: Any) -> str:
-    return normalize_yes_no_narrow_value(value, default=YesNo.YES.value, unknown_policy="passthrough")
 
 
 def _normalize_batch_date_cell(value: Any, field_label: str) -> Dict[str, Any]:
@@ -144,107 +125,6 @@ def get_batch_row_validate_and_normalize(
         if due_res.get("error"):
             return str(due_res.get("error"))
         target["交期"] = due_res.get("value")
-        return None
-
-    return _validate_and_normalize
-
-
-def get_operator_calendar_row_validate_and_normalize(
-    conn,
-    *,
-    holiday_default_efficiency: float,
-    op_repo=None,
-    inplace: bool = True,
-) -> Callable[[dict], Optional[str]]:
-    repo = op_repo if op_repo is not None else OperatorRepository(conn)
-    hde = parse_finite_float(holiday_default_efficiency, field="假期工作效率", allow_none=False)
-    if hde <= 0:
-        raise ValidationError("假期工作效率必须大于 0。", field="假期工作效率")
-    # 一次性预建在册工号集合，避免逐行 repo.exists 的 N+1；与同文件批次校验器 parts_cache
-    # 同一“导入开始定格快照”语义（单次导入内人员表不会增删，集合判定与逐行 exists 等价）。
-    # 等价前提：人员主键经服务层 strip 归一化入库（无前后空格脏键），故两侧归一化判定一致。
-    existing_operator_ids = {to_str_or_blank(o.operator_id) for o in repo.list()}
-
-    def _validate_and_normalize(row: dict) -> Optional[str]:
-        target = row if inplace else dict(row)
-
-        op_id = to_str_or_blank(target.get("工号"))
-        if not op_id:
-            return "“工号”不能为空"
-        if op_id not in existing_operator_ids:
-            return f"人员“{op_id}”不存在，请先在人员管理中新增该人员。"
-
-        if is_blank_value(target.get("日期")):
-            return "“日期”不能为空"
-        try:
-            target["日期"] = normalize_date(target.get("日期"))
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“日期”格式不合法（期望：YYYY-MM-DD）"
-
-        target["类型"] = _normalize_operator_calendar_day_type(target.get("类型"))
-        if target["类型"] not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            return "“类型”这一列系统没认出来，新文件请填写：工作日 / 假期。以前的 Excel 如果写过周末 / 节假日或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
-
-        try:
-            ss = normalize_hhmm(target.get("班次开始"), field="班次开始", allow_none=True)
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“班次开始”格式不合法（期望：HH:MM）"
-        target["班次开始"] = ss or "08:00"
-
-        try:
-            se = normalize_hhmm(target.get("班次结束"), field="班次结束", allow_none=True)
-        except ValidationError as e:
-            return e.message
-        except Exception:
-            return "“班次结束”格式不合法（期望：HH:MM）"
-        target["班次结束"] = se or ""
-
-        sh = target.get("可用工时")
-        if sh is None or (isinstance(sh, str) and sh.strip() == ""):
-            target["可用工时"] = 8 if target["类型"] == CalendarDayType.WORKDAY.value else 0
-        else:
-            try:
-                parsed_shift_hours = parse_finite_float(sh, field="可用工时", allow_none=False)
-                if parsed_shift_hours < 0:
-                    return "“可用工时”不能为负数"
-                target["可用工时"] = parsed_shift_hours
-            except ValidationError as e:
-                return e.message
-
-        if target.get("班次结束"):
-            try:
-                st_t = datetime.strptime(str(target["班次开始"]), "%H:%M")
-                et_t = datetime.strptime(str(target["班次结束"]), "%H:%M")
-                if et_t <= st_t:
-                    et_t = et_t + timedelta(days=1)
-                target["可用工时"] = (et_t - st_t).total_seconds() / 3600.0
-            except Exception:
-                return "“班次开始/结束”格式不合法（期望：HH:MM）"
-
-        eff = target.get("效率")
-        if eff is None or (isinstance(eff, str) and eff.strip() == ""):
-            target["效率"] = 1.0 if target["类型"] == CalendarDayType.WORKDAY.value else hde
-        else:
-            try:
-                parsed_efficiency = parse_finite_float(eff, field="效率", allow_none=False)
-                if parsed_efficiency <= 0:
-                    return "“效率”必须大于 0"
-                target["效率"] = parsed_efficiency
-            except ValidationError as e:
-                return e.message
-
-        target["允许普通件"] = _normalize_yesno(target.get("允许普通件"))
-        if target["允许普通件"] not in YESNO_VALUES:
-            return "“允许普通件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
-        target["允许急件"] = _normalize_yesno(target.get("允许急件"))
-        if target["允许急件"] not in YESNO_VALUES:
-            return "“允许急件”这一列系统没认出来，可填写：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
-
-        target["__id"] = f"{op_id}|{target.get('日期')}"
         return None
 
     return _validate_and_normalize

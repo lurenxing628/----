@@ -1,16 +1,14 @@
 """Public SELECT-only ledger queries, usable inside an existing plan read snapshot."""
 
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
-from core.models.workbench_command import canonical_json
-from core.models.workbench_execution_input import MAX_REPORT_BYTES, public_ref, reject
+from core.models.workbench_execution_input import public_ref, reject
 from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
-from core.services.workbench.facts.execution_projection import attach_context
+from core.services.workbench.facts.execution_projection import ExecutionContextFactory, attach_context
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from data.repositories.workbench_execution_source_repo import EMPTY_SOURCE_CONTENT
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
 def _check_workspace_tasks(tasks, facts, plan_ref):
@@ -42,10 +40,11 @@ def _stable_projection_rows(rows):
 
 class ExecutionLedgerService(ExecutionLedgerReader):
     def __init__(self, conn, *, clock: Optional[Callable[[], datetime]] = None,
-                 context_factory: Optional[Callable[[str, List[str], dict], dict]] = None):
+                 context_factory: Optional[ExecutionContextFactory] = None,
+                 current_plan_provider=current_execution_plan):
         if context_factory is not None and not callable(context_factory):
             raise TypeError("Ledger context factory must be callable.")
-        super().__init__(conn, current_plan_provider=current_execution_plan, clock=clock)
+        super().__init__(conn, current_plan_provider=current_plan_provider, clock=clock)
         self.context_factory = context_factory
 
     @staticmethod
@@ -62,14 +61,9 @@ class ExecutionLedgerService(ExecutionLedgerReader):
     def project_loaded(self, facts, *, contexts=True):
         projections = super().project_loaded(facts)
         if not contexts or self.context_factory is None:
-            # The neutral reader has already enforced MAX_REPORT_BYTES. With
-            # no write-context factory attach_context returns these same DTOs;
-            # do not rebuild and serialize an unchanged 5000-operation ledger.
             return projections
         result = [attach_context(row, self.context_factory if contexts else None,
                                  self.fact_snapshot(facts, row.operation_ref)) for row in projections]
-        if len(canonical_json([row.to_dict() for row in result]).encode("utf-8")) > MAX_REPORT_BYTES:
-            reject("这次要读的报工记录太多，超过一次能返回的上限，系统没有截断历史记录。请缩小范围后重试。", "query_too_large", 413)
         return result
 
     def get_task(self, task_ref, *, comparison_task_ref=None):
@@ -113,7 +107,6 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def list_tasks(self, plan_ref, *, size=100, after_task_ref=None):
         with self.read_snapshot():
-            WorkbenchPlanIdentityRepository(self.conn).resolve_plan(plan_ref)
             rows = self.page_tasks(plan_ref, size, after_task_ref)
             selected = rows[:size]
             projections = self.project_operations([row["operation_ref"] for row in selected], comparison_plan_ref=plan_ref)
@@ -127,7 +120,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             facts = self.load(refs, comparison_plan_ref=plan_ref)
             _check_workspace_tasks(tasks, facts, plan_ref)
             projections = self.project_loaded(facts)
-            resources = _actual_resources(self.repo, projections)
+            resources = _actual_resources(self, projections)
             plain = [row.to_dict() for row in projections]
             return {"available": True, "time_basis": "factory_local", "projections": plain,
                     "resources": {"machines": [row for row in resources if row["kind"] == "machine"],

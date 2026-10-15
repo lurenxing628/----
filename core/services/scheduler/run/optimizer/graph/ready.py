@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
@@ -49,7 +49,6 @@ class SharedGraphFeatures:
 
     metrics_by_op_id: Dict[int, Dict[str, Any]]
     v2_common_rank_cache: Dict[str, Dict[int, float]]
-    topology_cache: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -122,7 +121,6 @@ def build_graph_search_stages(
     strict_mode: bool,
     graph_ready_context: Optional[Any],
     clock: Callable[[], float],
-    schedule_fn: Callable[..., Any],
     search_report_state: Optional[OptimizationSearchReportState] = None,
     max_weight_profiles: int = 9,
     profiles_override: Optional[List[GraphReadyWeightProfile]] = None,
@@ -200,12 +198,9 @@ def build_graph_search_stages(
         profiles=profiles,
         best=best,
         version=version,
-        scheduler=scheduler,
         algo_ops_to_schedule=algo_ops_to_schedule,
-        batches=batches,
         start_dt=start_dt,
         end_date=end_date,
-        downtime_map=downtime_map,
         seed_sr_list=seed_sr_list,
         base_strategy=base_strategy,
         base_params=base_params,
@@ -222,7 +217,6 @@ def build_graph_search_stages(
         graph_ready_context=graph_ready_context,
         metrics_by_op_id=metrics_by_op_id,
         clock=clock,
-        schedule_fn=schedule_fn,
         search_report_state=search_report_state,
         order=order,
         repair_limits=repair_limits,
@@ -306,12 +300,9 @@ def _build_weight_profile_stages(
     profiles: List[GraphReadyWeightProfile],
     best: Optional[Dict[str, Any]],
     version: int,
-    scheduler: Any,
     algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_sr_list: List[ScheduleResult],
     base_strategy: SortStrategy,
     base_params: Dict[str, Any],
@@ -328,7 +319,6 @@ def _build_weight_profile_stages(
     graph_ready_context: Any,
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     clock: Callable[[], float],
-    schedule_fn: Callable[..., Any],
     search_report_state: Optional[OptimizationSearchReportState],
     order: List[str],
     repair_limits: EliteRepairLimits,
@@ -343,13 +333,12 @@ def _build_weight_profile_stages(
     evaluate = partial(
         evaluate_graph_ready_candidate,
         graph_ready_context=graph_ready_context, metrics_by_op_id=metrics_by_op_id,
-        scheduler=scheduler, strict_mode=bool(strict_mode), algo_ops_to_schedule=algo_ops_to_schedule,
-        batches=batches, strategy=base_strategy, params=base_params, start_dt=start_dt, end_date=end_date,
-        downtime_map=downtime_map, seed_sr_list=seed_sr_list, dispatch_rule=dispatch_rule_cfg,
+        strict_mode=bool(strict_mode), algo_ops_to_schedule=algo_ops_to_schedule,
+        strategy=base_strategy, params=base_params, start_dt=start_dt, end_date=end_date,
+        seed_sr_list=seed_sr_list, dispatch_rule=dispatch_rule_cfg,
         resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
-        schedule_fn=schedule_fn, readiness_gate_enabled=bool(readiness_gate_enabled), version=int(version),
+        readiness_gate_enabled=bool(readiness_gate_enabled), version=int(version),
         clock=clock, v2_common_rank_cache=v2_common_rank_cache,
-        topology_cache=prepared_features.topology_cache if prepared_features is not None else {},
         decode_session=decode_session,
     )
     pool = EliteRepairPool(limits=repair_limits, objective_name=objective_name, operations=algo_ops_to_schedule,

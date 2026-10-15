@@ -63,7 +63,7 @@ def _resource_occupancy(kind, key, operations, calendar, resources, label):
     measures = {"arranged_hours": arranged_hours, "occupied_hours": occupied_hours,
                 "overlap_hours": overlap_hours, "excess_arranged_hours": arranged_hours - occupied_hours,
                 **capacity_measures}
-    row.update({name: round(value, 6) if value is not None else None for name, value in measures.items()})
+    row.update(measures)
     row.update(state="available" if available is not None else "unavailable", operation_count=len(operations),
                capacity_basis=calendar["basis"] if calendar is not None else "unknown",
                utilization=utilization,
@@ -85,7 +85,7 @@ def _bounding_window_metrics(intervals, available):
     last = max((high for _, high in bounds), default=first)
     calculator = ResourceUtilizationMetrics.from_normalized_availability(intervals, available)
     conflicts = [(low, high, count) for low, high, count in calculator.calendar.load.rows if count > 1] if calculator.calendar is not None else None
-    return {**calculator.window(first, last),
+    return {**calculator.window(first, last, precision=None),
             "available_overlap_hours": hours([(low, high) for low, high, _count in conflicts]) if conflicts is not None else None,
             "conflict_segments": [{"start": wire(low), "end": wire(high), "concurrent_operations": count}
                                   for low, high, count in conflicts] if conflicts is not None else None,

@@ -110,8 +110,8 @@ def _read(conn, values, *, all_rows):
                 "official": sum(row["timeline"] == "official" for row in catalog), "filtered": len(rows)},
             "metric_definitions": definitions, "selection": {"entry": selected, "reference": reference},
             "comparison": comparison, "trend": trend, "resource_window": policy}
-        # Page-only projections are immutable archive views. Explicit anchors bind
-        # their original saved content, while catalog heads bind every page.
+        # Immutable archives bind permanent source identities and known gaps;
+        # the directory's existing identity clock covers mutable legacy history.
         state["source_anchors"] = [reader.source_state(descriptor) for descriptor in (selected_descriptor, reference_descriptor)
                                    if descriptor is not None]
         return data, history_snapshot_scope(query), state

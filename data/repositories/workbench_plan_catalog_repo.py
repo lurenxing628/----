@@ -23,14 +23,16 @@ from core.models.schedule_plan_role import (
     SOURCE_SCHEDULE,
 )
 
-from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_plan_query_repo import _SCENARIO_PLAN_ROWS_SQL, SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
-from .schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL
 
 DEFAULT_PLAN_PAGE_SIZE = 20
 MAX_PLAN_PAGE_SIZE = 50
 MAX_PLAN_VERSION = (1 << 63) - 1
+_OPERATION_DETAIL_FIELDS = (
+    "op_code", "batch_id", "piece_id", "seq", "op_type_name", "source", "op_status", "supplier_id",
+    "part_no", "part_name", "due_date", "priority", "supplier_name",
+)
 
 
 def validate_page_size(value: int) -> None:
@@ -155,10 +157,8 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
     def list_history_identity_rows(self) -> List[Dict[str, Any]]:
         raise RuntimeError("分页目录禁止调用全量历史查询。")
 
-    # ---- bounded whole-plan reads (callers admit the plan by comparing len() with their cap) ----
-    def list_plan_storage_rows_bounded(
+    def list_plan_storage_rows(
         self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
-        limit: int,
     ) -> List[Dict[str, Any]]:
         """Capture every persisted field without declared DATE/TIMESTAMP conversion."""
         _, extra = self._plan_rows_sql(
@@ -179,32 +179,42 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             quoted = '"' + name.replace('"', '""') + '"'
             expressions.append(f"CASE WHEN 1 THEN r.{quoted} ELSE NULL END AS {quoted}")
         sql = "SELECT " + ", ".join(expressions) + f' FROM "{table}" r{joins} WHERE {where}'
-        return self.fetchall(sql + " ORDER BY r.id ASC, r.rowid ASC LIMIT ?", [version] + extra + [limit])
+        return self.fetchall(sql + " ORDER BY r.id ASC, r.rowid ASC", [version] + extra)
 
-    def list_plan_row_ids_bounded(
-        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
-        limit: int,
-    ) -> List[Dict[str, Any]]:
-        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
-        return self.fetchall("SELECT id FROM (" + sql + ") LIMIT ?", [version] + extra + [limit])
-
-    def list_plan_rows_bounded(
-        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
-        limit: int,
-    ) -> List[Dict[str, Any]]:
-        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
-        return self.fetchall("SELECT * FROM (" + sql + ") LIMIT ?", [version] + extra + [limit])
-
-    def list_detail_rows_bounded(
-        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
-        range_start: Optional[str] = None, range_end: Optional[str] = None, limit: int,
-    ) -> List[Dict[str, Any]]:
-        """Full detail rows of one plan; with a range, rows overlapping it or carrying bad times."""
-        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
-        params: List[Any] = [version] + extra
-        where = ["1 = 1"]
-        if range_start is not None:
-            where = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
-            params += [range_end, range_start]
-        detail = build_schedule_detail_sql(where_clauses=where, plan_rows_cte_sql=sql)
-        return self.fetchall(detail + " LIMIT ?", params + [limit])
+    def enrich_arrangements(self, arrangements, *, version, captured_machines=None):
+        """Enrich captured arrangements; supplied machines are complete, including missing keys."""
+        operation_ids = list(dict.fromkeys(row["op_id"] for row in arrangements))
+        operations = {}
+        for start in range(0, len(operation_ids), 400):
+            chunk = operation_ids[start:start + 400]
+            rows = self.fetchall("""SELECT bo.id AS op_id, bo.op_code, bo.batch_id, bo.piece_id, bo.seq,
+                bo.op_type_name, bo.source, bo.status AS op_status, bo.supplier_id,
+                b.part_no, b.part_name, CAST(b.due_date AS TEXT) AS due_date, b.priority,
+                sup.name AS supplier_name
+                FROM BatchOperations bo LEFT JOIN Batches b ON b.batch_id=bo.batch_id
+                LEFT JOIN Suppliers sup ON sup.supplier_id=bo.supplier_id
+                WHERE bo.id IN (""" + ",".join("?" for _ in chunk) + ")", chunk)
+            operations.update((row["op_id"], row) for row in rows)
+        names = {}
+        for kind, table, column in (("machine", "Machines", "machine_id"), ("operator", "Operators", "operator_id")):
+            if kind == "machine" and captured_machines is not None:
+                names[kind] = {str(row[column]): row["name"] for row in captured_machines}
+                continue
+            keys = list(dict.fromkeys(row[column] for row in arrangements if row[column] not in (None, "")))
+            names[kind] = {}
+            for start in range(0, len(keys), 400):
+                chunk = keys[start:start + 400]
+                rows = self.fetchall("SELECT " + column + ",name FROM " + table + " WHERE " + column +
+                                     " IN (" + ",".join("?" for _ in chunk) + ")", chunk)
+                names[kind].update((str(row[column]), row["name"]) for row in rows)
+        result = []
+        for row in arrangements:
+            operation = operations.get(row["op_id"], {})
+            detail = {key: operation.get(key) for key in _OPERATION_DETAIL_FIELDS}
+            detail.update({key: row[key] for key in
+                           ("op_id", "start_time", "end_time", "lock_status", "machine_id", "operator_id")})
+            detail.update(schedule_id=row["id"], version=row.get("version", version),
+                          machine_name=names["machine"].get(str(row["machine_id"])) if row["machine_id"] is not None else None,
+                          operator_name=names["operator"].get(str(row["operator_id"])) if row["operator_id"] is not None else None)
+            result.append(detail)
+        return result

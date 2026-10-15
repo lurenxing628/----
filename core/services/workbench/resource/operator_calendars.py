@@ -14,6 +14,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager, in_transaction_context
+from core.infrastructure.workbench_metadata_schema import entity_key
+from core.models.calendar import OperatorCalendar
 from core.models.calendar_periods import decode_periods
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_operator_calendar import (
@@ -157,7 +159,7 @@ class WorkbenchOperatorCalendarService:
         """这个人某一天的完整状态。states 必须来自同一次 range_states。"""
         return self._state(day, states)
 
-    def proposed_row(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Dict[str, Any]:
+    def proposed_row(self, fields: Dict[str, Any], before: Dict[str, Any]) -> OperatorCalendar:
         """按领域规则算出这一天保存后的行；与人员详情面板走同一条一致性校验，不合规直接抛拒绝。
 
         fields 用的是界面字段名（type/shiftStart/shiftEnd/eff/allowNormal/allowUrgent/note），
@@ -165,14 +167,9 @@ class WorkbenchOperatorCalendarService:
         """
         return self._proposed(fields, before)
 
-    def write_day(self, before: Dict[str, Any], after: Optional[Dict[str, Any]]) -> WorkbenchCommandOutcome:
-        """写这个人的一天。必须由外层 WorkbenchCommandService 持有写事务。"""
-        self._require_write_transaction()
-        return self._write(before, after)
-
     # ---------- 写 ----------
 
-    def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Dict[str, Any]:
+    def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> OperatorCalendar:
         """以这一天的原行为基底再打补丁，没给的项保持原样。
 
         旧行可能只保存开始和工时；非时间修改须保留这段工时。
@@ -182,7 +179,8 @@ class WorkbenchOperatorCalendarService:
         if before["row"] is not None:
             # 旧行空着的班次开始、工时、效率先按排产引擎的解释补上：三项全空时保存规则会把它当成新建的一天、
             # 套上默认工作时间，没改的班次就被悄悄换掉了。
-            payload.update({key: engine_read_row(before["row"])[key] for key in
+            reading = engine_read_row(before["row"])
+            payload.update({key: reading[key] for key in
                             ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
                              "allow_normal", "allow_urgent", "remark", "periods_json")})
         if payload.get("periods_json") is not None and "periods" not in fields and fields.get("type") != "rest":
@@ -192,10 +190,7 @@ class WorkbenchOperatorCalendarService:
                 # 休息日存成空时段，没有逐段时间要保护；填了班次起止就按单班保存。
                 payload["periods_json"] = None
         _patch_day_hours(payload, fields, before)
-        proposed = self._calendar._admin._build_operator_calendar_from_payload(payload).to_dict()
-        if self._calendar._admin._build_operator_calendar_from_payload(proposed).to_dict() != proposed:
-            raise WorkbenchCommandRejected("constraint_conflict", "填的班次换算后存不稳，请核对班次起止。")
-        return proposed
+        return self._calendar._admin._build_operator_calendar_from_payload(payload)
 
     def _require_write_transaction(self) -> None:
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
@@ -216,7 +211,7 @@ class WorkbenchOperatorCalendarService:
     def _apply_checked(self, action, normalized_input, checked):
         """The guard has already read and bound these facts under this command lock."""
         self._require_write_transaction()
-        payload = self.normalize(action, normalized_input)
+        payload = normalized_input
         if action == "range_clear":
             return self._clear_checked_range(checked)
         if action not in ("upsert", "delete"):
@@ -224,24 +219,42 @@ class WorkbenchOperatorCalendarService:
         return self._apply_day(action, payload, checked)
 
     def _apply_day(self, action, payload, before):
-        after = self._proposed(payload["fields"], before) if action == "upsert" else None
+        with self._calendar._admin.normalization_operation():
+            after = self._proposed(payload["fields"], before) if action == "upsert" else None
         return self._write(before, after)
 
-    def _write(self, before: Dict[str, Any], after: Optional[Dict[str, Any]]) -> WorkbenchCommandOutcome:
-        day, ref = before["date"], before["calendar_ref"]
-        if after == before["row"]:
-            return WorkbenchCommandOutcome("unchanged", {"date": day, "calendar_ref": ref})
-        if after is None:
-            self._calendar.delete_operator_calendar(self.operator_code, day)
-        else:
-            self._calendar.upsert_operator_calendar_no_tx(after)
-        saved = self.snapshot(day)
-        if saved["row"] != after:
-            raise RuntimeError("个人日历保存结果与预览不一致，不能确认保存。")
-        if after is not None and before["row"] is not None and (
-                saved["calendar_ref"] != ref or saved["revision"] != before["revision"] + 1):
-            raise RuntimeError("个人日历更新未保持永久引用及修订号，不能确认保存。")
-        return WorkbenchCommandOutcome("committed", {"date": day, "calendar_ref": saved["calendar_ref"] or ref})
+    def _write(self, before, after) -> WorkbenchCommandOutcome:
+        return self.write_days([(before, after)])[0]
+
+    def write_days(self, changes, *, include_refs=True):
+        self._require_write_transaction()
+        results, calendars, deleted, created = [], [], [], []
+        for before, after in changes:
+            day, ref = before["date"], before["calendar_ref"]
+            row = after.to_dict() if isinstance(after, OperatorCalendar) else after
+            changed = row != before["row"]
+            results.append(WorkbenchCommandOutcome("committed" if changed else "unchanged",
+                                                   {"date": day, "calendar_ref": ref}))
+            if not changed:
+                continue
+            if after is None:
+                deleted.append((self.operator_code, day))
+            else:
+                calendars.append(after)
+                if ref is None and include_refs:
+                    created.append(entity_key(self.operator_code, day))
+        repo = self._calendar._admin.operator_calendar_repo
+        if calendars:
+            repo.upsert_many(calendars)
+        if deleted:
+            repo.delete_many(deleted)
+        if calendars or deleted:
+            self._calendar._engine.clear_policy_cache()
+        refs = self._query.created_refs("operator_calendar", created) if created else {}
+        for outcome in results:
+            if include_refs and outcome.result == "committed" and outcome.data["calendar_ref"] is None:
+                outcome.data["calendar_ref"] = refs[entity_key(self.operator_code, outcome.data["date"])]
+        return results
 
     def preview_range_clear(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """只读：这段日期里有哪些天是单独设过的，清除后会恢复成班次或全局日历。"""
@@ -259,7 +272,7 @@ class WorkbenchOperatorCalendarService:
         return self._clear_checked_range(current)
 
     def _clear_checked_range(self, current):
-        results = [self._write(state, None) for state in current["days"]]
+        results = self.write_days([(state, None) for state in current["days"]])
         return WorkbenchCommandOutcome("committed" if any(item.result == "committed" for item in results) else "unchanged",
                                        {"dates": [{**item.data, "result": item.result} for item in results],
                                         "cleared_count": sum(item.result == "committed" for item in results)})

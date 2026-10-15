@@ -3,31 +3,24 @@
 from core.models.workbench_preflight import normalize_preflight_input
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
 from core.services.workbench.run.input import _prepare, _projection_map
-from core.services.workbench.run.preflight_facts import TABLES, PreflightFacts
 
 
-def prepare_trial_adoption_input(conn, settings, projections, live, hold=None, *, capture=None, validated_projections=None):
+def prepare_trial_adoption_input(conn, settings, projections, live, hold=None, *, capture, validated_projections=None):
     if not conn.in_transaction:
         raise RuntimeError("Saved scenario input requires the caller's current read transaction")
     settings = normalize_preflight_input(settings)
-    facts = PreflightFacts(conn, capture=capture)
+    facts = live["preflight_facts"]
     # These tables were read on this same connection/transaction by live_context.
     # Do not re-read them with PARSE_DECLTYPES or change the global connection.
-    if capture is not None:
-        if capture.conn is not conn:
-            raise RuntimeError("Trial input requires this transaction's own production capture")
-        facts.bind_capture(capture)
-    else:
-        facts.tables = {name: live["facts"]["tables"][name] for name in TABLES}
-        facts.refs = {(row["kind"], row["entity_key"]): row["ref"]
-                      for row in facts.tables["WorkbenchEntityRefs"] if row["active"]}
-        facts.operation_refs = {int(row["source_key"]): row["ref"] for row in facts.tables["WorkbenchPlanSourceRefs"]
-                                if row["kind"] == "operation" and row["active"]}
+    if capture.conn is not conn:
+        raise RuntimeError("Trial input requires this transaction's own production capture")
+    facts.bind_capture(capture)
     raw_batches = facts.selected(settings["batch_refs"])
     batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
     raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
     operations = [operation_model(row) for row in raw_ops]
     projected = _projection_map(projections, [facts.operation_ref(row) for row in raw_ops], validated=validated_projections)
+    facts.execution_projections.update(projected)
     # Adoption validates in this caller-owned read transaction; it does not
     # hand this prepared input to an independent calculation.
     return _prepare(conn, settings, facts, "", raw_batches, batches, operations, projected, hold=hold,

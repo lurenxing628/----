@@ -72,6 +72,7 @@ def _verify_restored_database(
             database_path,
             logger,
             backup_dir=backup_dir,
+            full_data=True,
         )
     except Exception:
         if copied_pending_verify:

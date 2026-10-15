@@ -1,9 +1,9 @@
 """System-only opaque contexts and response boundary. No shared namespace edits."""
 
-import json
 import os
 from datetime import datetime
 from functools import wraps
+from types import MappingProxyType
 
 from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
@@ -11,7 +11,6 @@ from werkzeug.exceptions import HTTPException
 from core.infrastructure.backup import MaintenanceWindowError
 from core.models.workbench_command import (
     WorkbenchCommandRejected,
-    canonical_json,
     validate_request_key,
 )
 from core.models.workbench_system import object_fields
@@ -55,13 +54,16 @@ def database_scope():
 
 
 def issue_context(kind, value, *, database=None):
-    return issue_public_token(SCOPE, canonical_json({"source": "production", "database": database_scope() if database is None else database,
-                                                    "kind": kind, "value": value}), ttl_seconds=900)
+    from .read_context import fact_value
+
+    db_scope = database_scope() if database is None else database
+    return issue_public_token(SCOPE, MappingProxyType({"database": db_scope, "kind": kind, "value": value}),
+                              key=(db_scope, kind), group=fact_value(value), ttl_seconds=900)
 
 
 def resolve_context(kind, token):
     try:
-        payload = json.loads(resolve_public_token(SCOPE, token, message=messages.STALE, field="write_token"))
+        payload = resolve_public_token(SCOPE, token, message=messages.STALE, field="write_token")
     except (ValueError, TypeError) as exc:
         raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
     except Exception as exc:
@@ -69,7 +71,7 @@ def resolve_context(kind, token):
         if isinstance(exc, ValidationError):
             raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
         raise
-    if payload.get("source") != "production" or payload.get("database") != database_scope() or payload.get("kind") != kind:
+    if payload.get("database") != database_scope() or payload.get("kind") != kind:
         raise WorkbenchCommandRejected("stale_write", "本页数据已过期，和这次操作对不上，数据没有改动。请刷新页面后重试。")
     return payload["value"]
 

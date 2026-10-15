@@ -121,7 +121,7 @@ def _build_algo_operations_outcome(
     把已收口的可重排工序（BatchOperation）转换为算法输入。
 
     约定：
-    - `completed/skipped` 之类的终态过滤由 `ScheduleService` 统一负责；
+    - 可重排范围由工作台输入准备的处置记录统一确定；
     - 本层只消费调用方传入的 `reschedulable_operations`，不再自行扩散状态语义。
     """
     cache = getattr(svc, "_aps_schedule_input_cache", None)

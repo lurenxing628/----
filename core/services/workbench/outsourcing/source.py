@@ -6,7 +6,7 @@ snapshot-local instances. The repository only reads; every rejection is here.
 """
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_outsourcing import MAX_ROWS, bounded, label, raw_facts, reject
+from core.models.workbench_outsourcing import MAX_ROWS, label, raw_facts, reject
 from data.repositories.workbench_outsourcing_source_repo import WorkbenchOutsourcingSourceRepository
 
 MEMBER_KEYS = ("op_code", "batch_id", "piece_id", "seq", "op_type_id", "op_type_name", "source", "supplier_id")
@@ -126,11 +126,11 @@ class WorkbenchOutsourcingSourceService:
                                   "sequence": label(op["row"]["seq"]), "piece": label(op["row"]["piece_id"]),
                                   "label": label(op["row"]["op_type_name"])} for op in operations]}
         clock = self.repo.plan_identity_revision()
-        return {"public": bounded(public), "identity": raw_facts(identity),
+        return {"public": public, "identity": raw_facts(identity),
                 "source_confirmations": [op["identity"]["ref"] for op in operations
                                          if op["binding"]["source_resolution"]["basis"] == "current_relation"],
-                "facts": bounded(raw_facts({"batch": batch, "part": part, "supplier": supplier,
-                                           "operations": operations, "source_clock": clock}))}
+                "facts": raw_facts({"batch": batch, "part": part, "supplier": supplier,
+                                    "operations": operations, "source_clock": clock})}
 
     @staticmethod
     def _target_entity_labels(row, kind, source):
@@ -196,5 +196,4 @@ class WorkbenchOutsourcingSourceService:
                 except WorkbenchCommandRejected as exc:
                     item["issues"] = [{"code": exc.code, "message": str(exc)}]
             result.append((item, source))
-        bounded([item for item, source in result])
         return result

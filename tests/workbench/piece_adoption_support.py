@@ -11,16 +11,19 @@ from types import SimpleNamespace
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.services.scheduler.calendar.service import CalendarService
-from core.services.scheduler.run.schedule_execution_guardrails import _collect_execution_guardrails
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
+from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
+from core.services.scheduler.run.schedule_execution_reservations import build_execution_resource_reservations
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
-from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
 from core.services.workbench.run.input_config import candidate_config, hold_window
-from core.services.workbench.run.input_external import prime_template_cache
+from core.services.workbench.run.input_external import execution_groups, prime_template_cache
 from core.services.workbench.run.input_runtime import held_arrangements
+from core.services.workbench.run.jobs_facts import run_execution_projections
+from core.services.workbench.run.preflight_facts import PreflightFacts
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.run_candidate_adoption_support import snapshot
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
@@ -56,9 +59,17 @@ def lower_input(case, *batch_ids):
                for key in ids}
     operations = [operation_model(dict(row)) for key in ids for row in case.conn.execute(
         "SELECT * FROM BatchOperations WHERE batch_id=? ORDER BY id", (key,))]
-    svc = ScheduleService(case.conn)
+    svc = build_schedule_repository_bundle(case.conn)
+    production = PreflightFacts(case.conn)
+    with production.snapshot(fingerprint=False):
+        pass
+    production.execution_projections.update((item.operation_ref, item) for item in run_execution_projections(
+        case.conn, settings, capture=production.capture))
     version = svc.history_repo.get_latest_version()
-    facts, fixed, completed, actual, revisions, snap = _collect_execution_guardrails(svc, operations, prev_version=version)
+    prior_refs = {production.operation_refs[op_id] for op_id in production.latest_plan_rows(version)}
+    facts, fixed, completed, actual, revisions, snap = build_execution_guardrails_from_projections(svc, operations, prev_version=version,
+        execution_projections=[row for row in production.execution_projections.values() if row.operation_ref in prior_refs],
+        facts=production, external_groups=execution_groups(production, batches, operations))
     refs = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs(op.id for op in operations)
     projected = {item.operation_ref: item.to_dict() for item in case.projections(*ids)}
     scope = build_piece_adoption_scope(operations, batches)
@@ -72,10 +83,14 @@ def lower_input(case, *batch_ids):
     prime_template_cache(svc, tables, batches, operations)
     cfg = candidate_config(case.conn, settings)
     # 正式计划里的锁定标记不再起作用：受保护的只有报工保护的工序，和本次不重排时段里保持原安排的工序。
-    held, _ = held_arrangements(svc, cfg=cfg, prev_version=version, start_dt=START, operations=operations,
+    held, _ = held_arrangements(svc, facts=production, cfg=cfg, prev_version=version, start_dt=START, operations=operations,
         reschedulable_operations=[op for op in operations if op.id not in fixed | completed],
         hold_window=hold_window(case.conn, settings)[0])
-    return SimpleNamespace(normalized_batch_ids=ids, normalized_input=settings,
+    return SimpleNamespace(preflight_facts=production, latest_plan_rows=production.latest_plan_rows(version),
+        execution_reservations=build_execution_resource_reservations(svc, facts=facts,
+            selected_op_ids={op.id for op in operations}, capture=production.capture),
+        operation_sources=({op.id: op.source for op in operations}, []),
+        normalized_batch_ids=ids, normalized_input=settings,
         operations=operations, batches=batches, dispositions=dispositions,
         cal_svc=CalendarService(case.conn), prev_version=version, start_dt_norm=START, cfg=cfg,
         end_date_norm=datetime(2026, 9, 25).date(), readiness_gate_enabled=True, downtime_map={},

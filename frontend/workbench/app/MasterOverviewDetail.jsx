@@ -13,7 +13,6 @@
         <Button className="btn mo-icon" icon="arrow-right" aria-label="定位当前资料" reason={entity.target.unavailable_reason || (!navigation ? window.WorkbenchTerms.outcomes.unavailable : '')} onClick={() => onMaintain(entity.target)} /></div>
         <p className="mo-muted"><span className="mo-status" data-status={entity.status}>{C.statuses[entity.status]}</span> · 已填 {entity.filled_fields} / {entity.checked_fields} 个检查项</p>
         {!entity.checks_complete && <p className="mo-muted">部分检查尚未完成，请查看待维护项和资料项。</p>}
-        {selected && selected.title && <div className="mo-focus"><strong>{selected.title}</strong><p>{selected.evidence}</p></div>}
         <Tabs label="资料明细类型" value={section} onChange={onSection} values={[["issues", "待维护项", data.counts.issues], ["relations", "相关项", data.counts.relations], ["fields", "资料项", data.counts.fields]]} />
         <div role="tabpanel" aria-label={section === 'fields' ? '资料项' : section === 'relations' ? '资料相关项' : '资料待维护项'}>
           {!data.rows.length && <p className="mo-muted">{section === 'relations' ? entity.relations_complete ? '暂无关联项。' : '关联资料尚未完成核对。' : entity.checks_complete ? '暂无待维护项。' : '检查尚未完成，请核对资料项。'}</p>}

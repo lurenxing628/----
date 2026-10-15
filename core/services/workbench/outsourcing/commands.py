@@ -1,10 +1,11 @@
 """Preview and confirm exact shipment intent using the shared receipt transaction."""
 
 import getpass
+from typing import cast
 
 from core.models.workbench_command import WorkbenchCommandOutcome
-from core.models.workbench_outsourcing import bounded, reference, reject
-from core.models.workbench_outsourcing_input import next_values, normalize_input, target_input
+from core.models.workbench_outsourcing import reject
+from core.models.workbench_outsourcing_input import normalize_input, prepare_values
 from core.services.workbench.commands import WorkbenchCommandService
 
 from .projection import execution_boundary, values
@@ -32,11 +33,12 @@ class WorkbenchOutsourcingCommandService:
         if header is None and memberships:
             reject("这些工序已经有外协登记了；请打开原来的登记修改，不要重复登记或换组。", "constraint_conflict", 409)
         before = values(previous) if previous else None
-        after = next_values(before, payload, self.reader.now())
+        prepared_values = prepare_values(before, payload, self.reader.now())
+        after = prepared_values.values
         snapshot = {"input": payload, "source": source["facts"],
                     "memberships": memberships, "header": header, "latest_fact_ref": previous["fact_ref"] if previous else None}
         return {"ref": ref, "target": target, "source": source, "previous": previous, "before": before, "after": after,
-                "input": payload, "snapshot": bounded(snapshot), "subject": ref or target["batch_ref"]}
+                "input": payload, "snapshot": snapshot, "subject": ref or target["batch_ref"], "values": prepared_values}
 
     def preview(self, payload):
         normalized = normalize_input(payload)
@@ -47,13 +49,12 @@ class WorkbenchOutsourcingCommandService:
                       "can_confirm": True, "execution": execution_boundary(prepared["target"]), "write_context": None}
             if self.context_factory:
                 result["write_context"] = self.context_factory(prepared["subject"], ["confirm"], prepared["snapshot"])
-            return bounded(result)
+            return result
 
     def execute(self, payload, *, request_key, validate_context):
         normalized = normalize_input(payload)
-        self.reader.require_schema()
-        subject = (reference(normalized["outsourcing_ref"]) if "outsourcing_ref" in normalized
-                   else target_input(normalized["target"])["batch_ref"])
+        subject = (normalized["outsourcing_ref"] if "outsourcing_ref" in normalized
+                   else cast(dict, normalized["target"])["batch_ref"])
         if type(subject) is not str:
             raise RuntimeError("Validated outsourcing subject must be a permanent text reference")
 
@@ -70,14 +71,14 @@ class WorkbenchOutsourcingCommandService:
         def mutate(prepared):
             now = self.reader.now()
             # Revalidate at the actual recording time; never store preview's clock.
-            next_values(prepared["before"], normalized, now)
+            prepared["values"].check_recording_time(now)
             refs = self.reader.repo.append(prepared, request_key=request_key, local_operator=prepared["actor"],
                                            now=now.isoformat(timespec="seconds"))
-            return WorkbenchCommandOutcome("committed", bounded({**refs, **prepared["after"],
+            return WorkbenchCommandOutcome("committed", {**refs, **prepared["after"],
                 "target": prepared["source"]["public"], "declared_operator": normalized["declared_operator"],
                 "local_operator": prepared["actor"], "reason": normalized["reason"],
                 "confirmed_at": now.isoformat(timespec="seconds"), "refresh_required": True,
-                "execution": execution_boundary(prepared["target"])}))
+                "execution": execution_boundary(prepared["target"])})
 
         return self.commands.execute(request_key=request_key, action="outsourcing.confirm", context_ref=subject,
                                      normalized_input=normalized, guard=guard, mutate=mutate)

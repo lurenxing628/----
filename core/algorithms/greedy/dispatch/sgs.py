@@ -15,7 +15,7 @@ from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
 from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, sgs_handoff_scope
+from core.algorithm_runtime.sgs_estimate_reuse import sgs_handoff_scope
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
 from core.errors import ValidationError
 
@@ -167,12 +167,19 @@ def _average_proc_hours(
     strict_mode: bool,
 ) -> Tuple[float, Dict[int, float]]:
     samples: List[float] = []
-    total_hours_by_op_id: Dict[int, float] = {}
+    preparation = getattr(ctx, "native_preparation", None)
+    total_hours_by_op_id: Dict[int, float] = preparation.total_hours_by_op_id if preparation is not None else {}
     for batch_id, operations in ops_by_batch.items():
         batch = batches.get(batch_id)
         for op in operations:
             if batch and (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == INTERNAL:
-                sample = _append_proc_sample(ctx, samples, op=op, batch=batch, strict_mode=strict_mode)
+                op_id = _positive_op_id(getattr(op, "id", 0))
+                cached = total_hours_by_op_id.get(op_id) if op_id is not None else None
+                if cached is not None:
+                    sample = cached
+                    samples.append(sample)
+                else:
+                    sample = _append_proc_sample(ctx, samples, op=op, batch=batch, strict_mode=strict_mode)
                 if sample is not None:
                     cache_key = _positive_op_id(getattr(op, "id", 0))
                     if cache_key is not None:
@@ -185,7 +192,7 @@ def _average_proc_hours(
 
 def _append_proc_sample(ctx: Any, samples: List[float], *, op: Any, batch: Any, strict_mode: bool) -> Optional[float]:
     try:
-        sample = validate_internal_hours_for_mode(op, operation_batch(op, batch), strict_mode=strict_mode)
+        sample = validate_internal_hours_for_mode(op, _operation_batch(ctx, op, batch), strict_mode=strict_mode)
     except ValueError:
         # 非 strict 预扫跳过坏工时样本会让均值悄悄偏移，必须计数留痕（不许零留痕静默跳过）。
         ctx.increment("dispatch_key_avg_proc_hours_sample_skipped_count")
@@ -225,8 +232,10 @@ def _run_sgs_loop(
     score_cache = getattr(ctx, "sgs_score_cache", None)
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
+    if not hasattr(ctx, "native_scoring"):
+        ctx.native_scoring = _native_score_functions_unchanged()
     pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id, strict_mode=strict_mode)
-               if _native_score_functions_unchanged() else None)
+               if ctx.native_scoring else None)
     acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id, ctx)
 
     def collect():
@@ -243,7 +252,7 @@ def _run_sgs_loop(
             acceleration.before_pick(position)
             if score_cache is not None:
                 score_cache.next_round()
-            scored = score_next_ready(acceleration.frontier, collect=collect, score=score, native=_native_score_functions_unchanged,
+            scored = score_next_ready(acceleration.frontier, collect=collect, score=score, native=lambda: ctx.native_scoring,
                                       blocked_batches=state.blocked_batches, cache=score_cache)
             if not scored:
                 if graph_state is not None:
@@ -287,12 +296,7 @@ def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch
 
 
 def _prepare_scoring_round(ctx, state, candidates, priority_pruning):
-    natives_intact = _native_score_functions_unchanged()
-    reuse = current_sgs_reuse()
-    if reuse is not None and (reuse.state is not state or not natives_intact):
-        reuse = None
-    if reuse is not None and not reuse.begin_round(candidates):
-        reuse = None
+    natives_intact = ctx.native_scoring
     cache = getattr(ctx, "sgs_score_cache", None)
     if cache is not None and not natives_intact:
         # The handoff scope still holds this cache; an instrumented scorer must see every estimate itself.
@@ -300,9 +304,9 @@ def _prepare_scoring_round(ctx, state, candidates, priority_pruning):
         cache = None
     if cache is not None and not cache.begin_round():
         cache = None
-    if reuse is not None or cache is None or cache._timing is None:
+    if cache is None or cache._timing is None:
         priority_pruning = None
-    return reuse, cache, priority_pruning
+    return cache, priority_pruning
 
 
 def _score_candidates(
@@ -323,7 +327,7 @@ def _score_candidates(
     *,
     priority_pruning: Optional[GraphPriorityPruning] = None,
 ) -> List[Tuple[Tuple[float, ...], str, Any]]:
-    reuse, cache, priority_pruning = _prepare_scoring_round(ctx, state, candidates, priority_pruning)
+    cache, priority_pruning = _prepare_scoring_round(ctx, state, candidates, priority_pruning)
     candidates, remainder = (priority_pruning.partition(candidates, graph_state)
                              if priority_pruning is not None else (candidates, []))
     attempt_sink = cache.record_attempt if cache is not None else None
@@ -353,15 +357,7 @@ def _score_candidates(
             def cached(batch_id=batch_id, op=op, score=score, active_cache=cache):
                 return active_cache.resolve(op, batches[batch_id], batch_id, graph_state, score)
             fallback = cached
-        if reuse is not None:
-            key = reuse.score(score, dict(
-                op=op, batch=batches[batch_id], batch_id=batch_id, batch_order=batch_order,
-                graph_state=graph_state, end_dt_exclusive=end_dt_exclusive,
-                machine_downtimes=machine_downtimes, dispatch_rule=dispatch_rule,
-                strict_mode=strict_mode, avg_proc_hours=avg_proc_hours, total_hours_by_op_id=total_hours_by_op_id,
-            ), fallback=fallback)
-        else:
-            key = fallback() if fallback is not None else score()
+        key = fallback() if fallback is not None else score()
         scored.append((key, batch_id, op))
     if remainder:
         if any(item[0][0] == 0.0 for item in scored):
@@ -374,6 +370,11 @@ def _score_candidates(
                 machine_downtimes, auto_assign_enabled, resource_pool, strict_mode,
                 avg_proc_hours, total_hours_by_op_id, graph_state))
     return scored
+
+
+def _operation_batch(ctx: Any, op: Any, batch: Any) -> Any:
+    preparation = getattr(ctx, "native_preparation", None)
+    return preparation.operation_batch(op, batch) if preparation is not None else operation_batch(op, batch)
 
 
 def _score_candidate(
@@ -395,7 +396,7 @@ def _score_candidate(
     attempt_sink: Optional[Any] = None,
 ) -> Tuple[float, ...]:
     state = operation_dispatch_state(state, graph_state, op, batch)
-    batch = operation_batch(op, batch)
+    batch = _operation_batch(ctx, op, batch)
     def score() -> Tuple[float, ...]:
         if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
             return _score_external_candidate(

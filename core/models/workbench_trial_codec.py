@@ -28,18 +28,30 @@ def dump_document(value):
     return text, None
 
 
-def load_document(text: object, fingerprint: Optional[str] = None):
-    """Parse the original packed document and typed values; retain legacy metadata."""
-    if type(text) is not str or len(text.encode("utf-8")) > MAX_TRIAL_BYTES:
+def _load_document(text):
+    size = len(text.encode("utf-8")) if type(text) is str else 0
+    if type(text) is not str or size > MAX_TRIAL_BYTES:
         reject("trial_snapshot_invalid", "试调数据读不到或超过上限。请刷新后重试。")
     try:
         value = json.loads(text)
-        return value, unpacked(value)
+        return value, unpacked(value), size
     except (ValueError, TypeError) as exc:
         from core.models.workbench_command import WorkbenchCommandRejected
         if isinstance(exc, WorkbenchCommandRejected):
             raise
         reject("trial_snapshot_invalid", "试调数据读不出来，这里不改用最新计划。请刷新后重试。")
+
+
+def load_document(text: object, fingerprint: Optional[str] = None):
+    """Parse the original packed document and typed values; retain legacy metadata."""
+    packed_value, value, _size = _load_document(text)
+    return packed_value, value
+
+
+def load_object_with_size(text):
+    """Decode one stored fragment and retain its actual UTF-8 byte count."""
+    _packed_value, value, size = _load_document(text)
+    return require_object(value), size
 
 
 def load(text: object, fingerprint: Optional[str] = None):

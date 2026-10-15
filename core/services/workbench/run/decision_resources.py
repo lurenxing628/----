@@ -7,12 +7,10 @@ from math import isfinite
 from typing import Any, Dict, Union
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reference, reject
+from core.models.workbench_run_candidate import local_time, reference, reject
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.facts.decision_metrics import RESOURCE_METRICS, metric_value
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
 from core.services.workbench.facts.resource_projection import (
@@ -536,5 +534,4 @@ def read_resource_details(conn, run_ref, section, *, selected_candidate_ref=None
         source = DecisionSource(store, run_ref, selected_candidate_ref=selected_candidate_ref, comparison_mode=comparison_mode,
                                 reference_candidate_ref=reference_candidate_ref, range_start=range_start, range_end=range_end, resource_view=resource_view)
         data = resource_details(source, filters, page=page, size=size, heatmap_page=heatmap_page, heatmap_size=heatmap_size)
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, source.state()

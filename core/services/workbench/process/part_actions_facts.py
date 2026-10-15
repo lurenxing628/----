@@ -3,17 +3,47 @@
 import math
 from datetime import date, datetime
 
-from core.infrastructure.connection_guards import SchemaContractMemo, foreign_keys_enabled
+from core.infrastructure.connection_guards import foreign_keys_enabled, schema_contract_memo
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
+from .projection import require_ref
+
+
+def check_process_template(operations, groups, part_no, all_operations):
+    group_keys = {row["group_id"] for row in groups}
+    for row in operations:
+        require_ref(row["ref"], "模板工序")
+        if row["status"] not in ("active", "deleted") or type(row["seq"]) is not int or row["seq"] <= 0:
+            raise WorkbenchCommandRejected("template_invalid", "原工序的序号或状态说不清。请到基础资料核对工序。", 422)
+        if row["ext_group_id"] is not None and row["ext_group_id"] not in group_keys:
+            raise WorkbenchCommandRejected("group_invalid", "原工序关联外协组不存在或属于其他零件，请先核对资料。", 422)
+    for row in groups:
+        require_ref(row["ref"], "模板外协组")
+        if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
+            raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围说不清，算不准影响面。请到基础资料核对外协组起止序。", 422)
+    if any(row["part_no"] != part_no and row["ext_group_id"] in group_keys for row in all_operations):
+        raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在当前零件解除。请先到那些零件上解除。", 422)
+
+
+def checked_process_facts(identity, facts):
+    """Select the current template once for both review and its actual change."""
+    part_no = identity.entity_key
+    part = next((row for row in facts["parts"] if row["part_no"] == part_no), None)
+    if part is None:
+        raise WorkbenchCommandRejected("entity_not_found", "这个零件不存在。请刷新列表后重新选择。", 404)
+    operations = [row for row in facts["operations"] if row["part_no"] == part_no]
+    groups = [row for row in facts["groups"] if row["part_no"] == part_no]
+    check_process_template(operations, groups, part_no, facts["operations"])
+    return identity, part, operations, groups, facts["workflow"][part_no]["workflow"]
+
 
 def check_part_action_storage(conn, contracts=None):
     # 本命令不执行 DDL、不改外键设置；逐行写入共用首次入口的检查结果。
-    contracts = contracts if contracts is not None else SchemaContractMemo(conn)
+    contracts = contracts if contracts is not None else schema_contract_memo(conn)
     issues = (contracts.get_schema(workbench_metadata_contract_issues)
               + contracts.get_schema(workbench_process_contract_issues)
               + contracts.get_schema(workbench_process_workflow_contract_issues))
@@ -39,19 +69,13 @@ class ProcessPartActionFacts:
     def __init__(self, conn, logger=None):
         self.repo = WorkbenchProcessPartFactsRepository(conn, logger)
 
-    def snapshot(self, identity):
+    def capture(self, refs):
+        return self.repo.capture(refs)
+
+    @staticmethod
+    def snapshot(identity, captured):
         code = identity.entity_key
-        part = self.repo.part(code)
-        if part is None:
+        snapshot = captured["parts"].get(code)
+        if snapshot is None:
             raise WorkbenchCommandRejected("entity_not_found", "零件已不存在，请返回列表重新选择。", 404)
-        return {
-            "identity": self.repo.identity(identity.ref),
-            "part": part,
-            "operations": self.repo.operations(code),
-            "groups": self.repo.groups(code),
-            "batches": self.repo.batches(code),
-            "foreign_group_members": self.repo.foreign_group_members(code),
-            "template_identities": self.repo.template_identities(code),
-            "workflow": self.repo.workflow(identity.ref),
-            "confirmations": self.repo.confirmations(identity.ref),
-        }
+        return dict(snapshot, identity=captured["identities"].get(identity.ref))

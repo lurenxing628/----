@@ -8,6 +8,7 @@ from .quality_gate_ledger import load_ledger, sort_ledger, validate_ledger
 from .quality_gate_shared import (
     FORMAL_FULL_TEST_PYTEST_ARGS,
     LEDGER_SCHEMA_VERSION,
+    TEST_DEBT_MODE_VALUES,
     QualityGateError,
     extract_json_code_block,
     now_shanghai_iso,
@@ -513,8 +514,11 @@ def validate_test_debt_entry(entry: Dict[str, Any]) -> None:
         "debt_family",
     ]:
         _require_text(entry.get(field_name), field_name)
-    if str(entry.get("mode")) not in {"xfail", "fixed"}:
+    if str(entry.get("mode")) not in TEST_DEBT_MODE_VALUES:
         raise QualityGateError(f"mode 非法：{entry.get('mode')}")
+    if entry.get("mode") == "retired":
+        _require_text(entry.get("retired_at"), "retired_at")
+        _require_text(entry.get("retirement_reason"), "retirement_reason")
     root = entry.get("root")
     if not isinstance(root, dict):
         raise QualityGateError("root 必须是对象")
@@ -611,6 +615,42 @@ def mark_test_debt_fixed(
     return sorted_ledger, summary
 
 
+def retire_test_debt(
+    ledger: Dict[str, Any],
+    debt_id: str,
+    *,
+    reason: str,
+    retired_at: str,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Retain a fixed debt's history after its actual test responsibility retires."""
+    validate_ledger(ledger)
+    target_debt_id = _require_text(debt_id, "debt_id")
+    retirement_reason = _require_text(reason, "reason")
+    timestamp = _require_text(retired_at, "retired_at")
+    matches = [entry for entry in registered_test_debt_entries(ledger) if entry["debt_id"] == target_debt_id]
+    if len(matches) != 1:
+        raise QualityGateError(f"测试债务 debt_id 不存在或重复：{target_debt_id}")
+    target = matches[0]
+    if target["mode"] != "fixed":
+        raise QualityGateError(f"只有 fixed 测试债务可以退役：{target_debt_id}")
+
+    next_ledger = copy.deepcopy(ledger)
+    next_ledger["updated_at"] = timestamp
+    entries = cast(List[Dict[str, Any]], next_ledger["test_debt"]["entries"])
+    for entry in entries:
+        if entry["debt_id"] == target_debt_id:
+            entry.update(mode="retired", retired_at=timestamp, retirement_reason=retirement_reason)
+    sorted_ledger = sort_ledger(next_ledger)
+    validate_ledger(sorted_ledger)
+    return sorted_ledger, {
+        "debt_id": target_debt_id,
+        "nodeid": target["nodeid"],
+        "mode": "retired",
+        "retired_at": timestamp,
+        "retirement_reason": retirement_reason,
+    }
+
+
 def registered_test_debt_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
     validate_ledger(ledger)
     return [
@@ -645,6 +685,7 @@ def load_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> Dict[str
     entries = registered_test_debt_entries(source_ledger)
     active_entries = [entry for entry in entries if str(entry.get("mode") or "") == "xfail"]
     fixed_entries = [entry for entry in entries if str(entry.get("mode") or "") == "fixed"]
+    retired_entries = [entry for entry in entries if str(entry.get("mode") or "") == "retired"]
     test_debt = _require_dict(source_ledger.get("test_debt"), "test_debt")
     ratchet = _require_dict(test_debt.get("ratchet"), "test_debt.ratchet")
     max_registered_xfail = _require_plain_int(
@@ -653,6 +694,7 @@ def load_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> Dict[str
     )
     active_entries.sort(key=lambda entry: str(entry["nodeid"]))
     fixed_entries.sort(key=lambda entry: str(entry["nodeid"]))
+    retired_entries.sort(key=lambda entry: str(entry["nodeid"]))
     active_nodeids = [str(entry["nodeid"]) for entry in active_entries]
     return {
         "required_tests": iter_required_tests(),
@@ -662,6 +704,8 @@ def load_test_debt_registry(ledger: Optional[Dict[str, Any]] = None) -> Dict[str
         "active_xfail_nodeids": active_nodeids,
         "fixed_count": len(fixed_entries),
         "fixed_entries": fixed_entries,
+        "retired_count": len(retired_entries),
+        "retired_entries": retired_entries,
         "max_registered_xfail": max_registered_xfail,
     }
 
@@ -689,6 +733,7 @@ __all__ = [
     "load_full_test_debt_baseline",
     "load_test_debt_registry",
     "mark_test_debt_fixed",
+    "retire_test_debt",
     "registered_test_debt_entries",
     "validate_current_candidate_payload",
     "validate_importable_baseline",

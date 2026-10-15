@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
 from core.services.scheduler.schedule_plan_query_service import (
     ROLE_ADOPTED,
     ROLE_BASELINE_BEST,
     ROLE_CRITICAL_BEST,
     SchedulePlanQueryService,
 )
-from data.repositories.schedule_candidate_repo import ScheduleCandidateRepository
 from data.repositories.schedule_plan_query_repo import (
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
@@ -53,11 +51,6 @@ def _connect_fresh_schema(tmp_path):
     return get_connection(str(db_path))
 
 
-def _require_id(value):
-    assert value is not None
-    return int(value)
-
-
 def _seed_base(conn) -> None:
     conn.executescript(
         """
@@ -90,64 +83,26 @@ def _seed_base(conn) -> None:
 
 
 def _seed_candidates(conn) -> None:
-    repo = ScheduleCandidateRepository(conn)
-    adopted = repo.create_candidate(
-        ScheduleCandidate(
-            id=None,
-            version=VERSION,
-            candidate_key="adopted",
-            candidate_label="最终采用",
-            candidate_kind="baseline",
-            status="completed",
-            graph_enabled="no",
-            detail_saved="no",
-        )
+    adopted_id = conn.execute(
+        "INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status,graph_enabled,detail_saved) "
+        "VALUES (?,'adopted',?,'baseline','completed','no','no')", (VERSION, '最终采用'),
+    ).lastrowid
+    baseline_id = conn.execute(
+        "INSERT INTO ScheduleCandidate(version,candidate_key,candidate_label,candidate_kind,status,graph_enabled,detail_saved) "
+        "VALUES (?,'baseline_best','原算法候选','baseline','completed','no','yes')", (VERSION,),
+    ).lastrowid
+    assert adopted_id is not None and baseline_id is not None
+    conn.executemany(
+        "INSERT INTO ScheduleCandidateRows(version,candidate_id,op_id,machine_id,operator_id,start_time,end_time,lock_status) "
+        "VALUES (?,?,?,?,?,?,?,'locked')",
+        [(VERSION, baseline_id, *row) for row in [
+            (10, 'M-CANDIDATE', 'O-CANDIDATE', '2026-05-05 13:00:00', '2026-05-05 14:00:00')
+        ]],
     )
-    baseline = repo.create_candidate(
-        ScheduleCandidate(
-            id=None,
-            version=VERSION,
-            candidate_key="baseline_best",
-            candidate_label="原算法候选",
-            candidate_kind="baseline",
-            status="completed",
-            graph_enabled="no",
-            detail_saved="yes",
-        )
-    )
-    baseline_id = _require_id(baseline.id)
-    repo.bulk_create_candidate_rows(
-        [
-            ScheduleCandidateRows(
-                id=None,
-                version=VERSION,
-                candidate_id=baseline_id,
-                op_id=10,
-                machine_id="M-CANDIDATE",
-                operator_id="O-CANDIDATE",
-                start_time="2026-05-05 13:00:00",
-                end_time="2026-05-05 14:00:00",
-                lock_status="locked",
-            )
-        ]
-    )
-    repo.create_selection(
-        ScheduleCandidateSelection(
-            id=None,
-            version=VERSION,
-            role=ROLE_ADOPTED,
-            candidate_id=_require_id(adopted.id),
-            source_table=SOURCE_SCHEDULE,
-        )
-    )
-    repo.create_selection(
-        ScheduleCandidateSelection(
-            id=None,
-            version=VERSION,
-            role=ROLE_BASELINE_BEST,
-            candidate_id=baseline_id,
-            source_table=SOURCE_CANDIDATE_ROWS,
-        )
+    conn.executemany(
+        "INSERT INTO ScheduleCandidateSelection(version,role,candidate_id,source_table) VALUES (?,?,?,?)",
+        [(VERSION, ROLE_ADOPTED, adopted_id, SOURCE_SCHEDULE),
+         (VERSION, ROLE_BASELINE_BEST, baseline_id, SOURCE_CANDIDATE_ROWS)],
     )
 
 

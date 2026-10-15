@@ -33,6 +33,7 @@ from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleA
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 from core.services.scheduler.run.optimizer.shared_process import build_shared_process
+from core.services.scheduler.run.optimizer.signature_support import schedule_with_optional_strict_mode
 from core.services.scheduler.run.optimizer.step_report_hooks import _append_multi_start_trace, _append_ortools_trace
 from core.services.scheduler.run.schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
 from core.services.scheduler.run.schedule_payload_contract import ValidatedSchedulePayload
@@ -45,6 +46,7 @@ from tests._support.optimizer_graph_ready_benchmark import (
     graph_ready_benchmark_batches,
     graph_ready_benchmark_operations,
 )
+from tests._support.shared_schedule_archive import _observe_decoded, _register_decode
 from tests.workbench.legacy_run_archive_support import load_legacy_process_evidence
 
 
@@ -69,11 +71,13 @@ def _candidate(primary, *, complete=True, objective="min_tardiness"):
         completion=completion,
     )
     failed = 0 if complete else 1
-    return {"results": [], "summary": ScheduleSummary(failed_ops=failed, success=complete, total_ops=3,
+    candidate = {"results": [], "summary": ScheduleSummary(failed_ops=failed, success=complete, total_ops=3,
                                                       scheduled_ops=3 - failed, warnings=[], errors=[], duration_seconds=0.0),
             "score": (float(failed),) + objective_score(objective, metrics), "metrics": metrics,
             "strategy": SortStrategy.PRIORITY_FIRST, "params": {}, "algo_stats": {},
             "dispatch_mode": "sgs", "dispatch_rule": "cr", "order": ["B1", "B2"]}
+    archive = SharedScheduleArchive(objective, target_objectives_for(objective), (1, 2, 3), ("B1", "B2"))
+    return _register_decode(archive, candidate)
 
 
 def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_observer(monkeypatch):
@@ -95,6 +99,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
         seed_results=seed_results, downtime_map=downtime_map, resource_pool=None,
         clock=clock, started_at=started_at, deadline=deadline, event_sink=shared.record_event,
+        schedule_fn=schedule_with_optional_strict_mode, start_dt=START_DT,
     )
     shared.decode_session = session
     decode_inputs = dict(
@@ -157,6 +162,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
     assert raised.value is observer_failure
     assert scheduler._decode_invocations == 2 and len(observed) == 1
     assert not report.optional_warmstart_failed and report.rejection_summary == {} and attempts == []
+    shared.observe("min_overdue", candidate=observed[0], origin="validated_warmstart", verified=True, elapsed_ms=0)
 
     # Shared ordering admission records one real action, before a decode request exists.
     shared_best = schedule_optimizer_steps._evaluate_ortools_candidate(
@@ -394,11 +400,11 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     search.phase = "graph_ig"
     unknown = archive_candidate([_result(1, 0), _result(2, 2)])
     clock.value = 0.1
-    search.observe("min_tardiness", candidate=unknown, origin="graph_ig", verified=True, elapsed_ms=100)
+    _observe_decoded(search, "min_tardiness", candidate=unknown, origin="graph_ig", verified=True, elapsed_ms=100)
     trial = archive_candidate([_result(1, 0), _result(2, 2), _result(3, 4)])
     clock.value = 0.2
-    search.observe("min_tardiness", candidate=trial, origin="graph_ig", verified=False, elapsed_ms=200)
-    assert "_shared_entry_id" not in trial
+    _observe_decoded(search, "min_tardiness", candidate=trial, origin="graph_ig", verified=False, elapsed_ms=200)
+    assert trial["_shared_entry_id"] not in archive.retained_entry_ids
     before_verified = build_shared_process(search, runtime_ms=200, stop_reason="completed", decode_stats={},
                                            budget_stats=budget.summary(finished_at=0.2))
     pending_points = before_verified["targets"]["min_tardiness"]["points"]
@@ -407,7 +413,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
                for scope in before_verified["scopes"].values())
     verified = archive_candidate([_result(1, 0), _result(2, 2), _result(3, 4)])
     clock.value = 0.3
-    search.observe("min_tardiness", candidate=verified, origin="graph_ig", verified=True, elapsed_ms=300)
+    _observe_decoded(search, "min_tardiness", candidate=verified, origin="graph_ig", verified=True, elapsed_ms=300)
     evidence = build_shared_process(search, runtime_ms=400, stop_reason="completed", decode_stats={},
                                      budget_stats=budget.summary(finished_at=0.4))
     assert len(evidence["events"]) == 3 and sum(event["verified"] is False for event in evidence["events"]) == 1
@@ -418,7 +424,8 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     assert first_scope["components_known"] is False and first_scope["is_complete"] is False
     assert first["score"] == [1.0, None, None, None, None, None]
     assert "first_valid" not in first["flags"] and "first_expected_complete" not in first["flags"]
-    assert evidence["events"][1]["entry_id"] is None and evidence["events"][1]["verified"] is False
+    assert evidence["events"][1]["entry_id"] == trial["_shared_entry_id"]
+    assert evidence["events"][1]["verified"] is False
     assert all(point.get("source_event_id") != 2 for point in points)
     milestones = [point for point in points if "first_valid" in point["flags"]]
     assert len(milestones) == 1 and milestones[0]["source_event_id"] == 3
@@ -536,3 +543,39 @@ def test_reuse_failure_skip_counts_and_persisted_source_reference_have_distinct_
     assert rows[failed_plan.candidate_key]["artifact"]["process_evidence"]["counts"]["evaluated"] is None
     assert rows[skipped_plan.candidate_key]["artifact"]["process_evidence"]["counts"]["evaluated"] == 0
     assert (own, reused, skipped, budget_stopped, failed) == original_evidence
+
+
+def test_report_uses_archive_identity_and_evaluation_without_scanning_schedule_rows():
+    from tests._support.shared_schedule_archive import _archive, _result
+    from tests._support.shared_schedule_archive import _candidate as archive_candidate
+
+    class RegisteredRows(list):
+        def __iter__(self):
+            raise AssertionError("the report must consume the archive identity, not walk the schedule")
+
+    archive = _archive()
+    candidate = archive_candidate([_result(1, 0), _result(2, 2), _result(3, 4)])
+    _register_decode(archive, candidate)
+    candidate["results"] = RegisteredRows(candidate["results"])
+    report = OptimizationSearchReportState(algorithm_profile="shared", seed=0, time_budget_seconds=1,
+        objective_name="min_tardiness", started_at=0.0)
+    initial = report.mark_candidate_evaluated(candidate, origin="baseline")
+    report.mark_candidate_accepted(candidate, origin="baseline", fingerprint=initial)
+    duplicate = dict(candidate, order=["B3", "B2", "B1"], params={"other_decision": True})
+    repeated = report.mark_candidate_evaluated(duplicate, origin="multi_start")
+    assert repeated.same_as_seen and repeated.same_as_parent
+    assert len(report.candidate_fingerprints) == 1
+    # Arrangement identity stays fixed while real completion and objective values remain comparison inputs.
+    different_evaluation = dict(candidate, metrics=replace(candidate["metrics"], total_tardiness_hours=5.0))
+    changed = report.mark_candidate_evaluated(different_evaluation, origin="validated_evidence")
+    assert changed.output_key != initial.output_key
+    other_objective = OptimizationSearchReportState(algorithm_profile="shared", seed=0, time_budget_seconds=1,
+        objective_name="min_changeover", started_at=0.0)
+    alternative = other_objective.mark_candidate_evaluated(candidate, origin="shared_reference")
+    assert alternative.output_key != initial.output_key
+    trial_rows = archive_candidate([_result(1, 7), _result(2, 9), _result(3, 11)])
+    _register_decode(archive, trial_rows, verified=False)
+    previous = set(report.candidate_fingerprints)
+    report.mark_candidate_evaluated(trial_rows, origin="checkpoint_trial", remember_fingerprint=False)
+    assert report.candidate_fingerprints == previous
+    assert trial_rows["_shared_entry_id"] not in archive.retained_entry_ids

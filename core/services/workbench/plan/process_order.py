@@ -10,7 +10,7 @@ from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaseline
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline_identity import _live_sources
-from .projection import check_payload_size, public_time, read_adopted_source, wire_positive_int64
+from .projection import public_time, read_adopted_source, wire_positive_int64
 from .read_context import PlanReadContext
 
 
@@ -18,7 +18,7 @@ def _unavailable(facts, code, gap):
     message = ("此计划未记录工序顺序。" if code == "process_order_not_recorded" else
                "工序顺序数据不完整。")
     facts.update(outcome=code, evidence_gap=gap)
-    return {"state": "unavailable", "basis": None, "items": [],
+    return {"state": "unavailable", "basis": None,
             "issues": [{"code": code, "message": message}]}, facts, unavailable_graph("full_plan", message)
 
 
@@ -76,19 +76,16 @@ def _acyclic(relations):
     require(len(ready) == len(relations), "process_order.frozen_cycle")
 
 
-def _project(conn, plan_ref, rows, relations, refs, *, context=None):
+def _task_bindings(conn, plan_ref, rows, relations, refs, *, context=None):
     repository = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
     tasks = repository.get_task_refs(plan_ref, [dict(row, schedule_id=row["id"]) for row in rows])
     all_refs = context.all_task_refs(plan_ref) if context is not None else set(WorkbenchPlanBaselineRepository(conn).list_task_refs_by_plan(plan_ref))
     require(all_refs == set(tasks.values()) and len(tasks) == len(rows), "process_order.complete_task_membership")
-    items = []
     for row in rows:
         operation_ref = refs[row["op_id"]]
         require(operation_ref in relations, "process_order.missing_frozen_relation")
-        items.append({"task_ref": tasks[row["id"]], "operation_ref": operation_ref,
-                      "predecessor_operation_refs": list(relations[operation_ref])})
-    require(len({item["task_ref"] for item in items}) == len(items), "process_order.unique_task_refs")
-    return items
+    require(len(set(tasks.values())) == len(rows), "process_order.unique_task_refs")
+    return tasks
 
 
 def project_process_order(conn, *, plan_ref, context=None):
@@ -114,12 +111,11 @@ def _process_order(conn, *, plan_ref, context):
         else:
             relations = _trial_relations(conn, audit, refs)
         _acyclic(relations)
-        items = _project(conn, plan_ref, selected, relations, refs, context=context)
+        task_refs = _task_bindings(conn, plan_ref, selected, relations, refs, context=context)
         data = {"state": "available", "basis": "run_admission" if basis == "candidate_adoption" else "trial_creation",
-                "items": items, "issues": []}
-        check_payload_size(data)
-        facts.update(relations=relations, items=items)
-        tasks = _graph_tasks(selected, items, operations, refs)
+                "issues": []}
+        facts.update(relations=relations)
+        tasks = _graph_tasks(selected, task_refs, operations, refs)
         return data, facts, build_gantt_graph(tasks, relations, scope="full_plan")
     except AdoptionBaselineUnavailable as exc:
         return _unavailable(facts, "process_order_unavailable", exc.code + ":" + exc.gap)
@@ -133,9 +129,8 @@ def _process_order(conn, *, plan_ref, context):
         return _unavailable(facts, "process_order_unavailable", "frozen_shape:" + type(exc).__name__)
 
 
-def _graph_tasks(rows, items, operations, refs):
-    task_refs = {item["operation_ref"]: item["task_ref"] for item in items}
-    return [{"task_ref": task_refs[refs[row["op_id"]]], "operation_ref": refs[row["op_id"]],
+def _graph_tasks(rows, task_refs, operations, refs):
+    return [{"task_ref": task_refs[row["id"]], "operation_ref": refs[row["op_id"]],
              "batch_id": operations[row["op_id"]]["batch_id"], "piece_id": operations[row["op_id"]]["piece_id"],
              "sequence": wire_positive_int64(operations[row["op_id"]]["seq"]),
              "process_label": operations[row["op_id"]]["op_type_name"],

@@ -330,7 +330,7 @@ class _IteratedGreedySearch:
         decode_started = self.clock()
         try:
             candidate = self.evaluate(profile=self.profile, order=batch_order, repair_order=batch_order,
-                                      repair_decision=decision, before_decode=self._before_decode, **decode_kwargs)
+                                      repair_decision=decision, repair_parent=self.parent.prepared, before_decode=self._before_decode, **decode_kwargs)
         except ValidationError as exc:
             if checkpoints is not None and is_capture_failure(exc, resumed=resume is not None):
                 # Capture refused or lost before the decode finished: degrade to plain full decodes, report why.

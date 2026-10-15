@@ -1,44 +1,28 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, List, Optional
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorMachine
-from core.models.enums import YesNo
-from core.services.common.excel_service import (
-    ImportMode,
-    ImportPreviewRow,
-    RowStatus,
-    resolve_source_row_num,
-    resolve_source_sheet_name,
-    strip_source_metadata,
-)
-from core.services.common.normalize import to_str_or_blank
 from data.repositories import MachineRepository, OperatorMachineRepository, OperatorRepository
 
 from . import operator_machine_normalizers as om_normalizers
-from .operator_machine_import_helpers import (
-    detect_optional_columns,
-    detect_optional_columns_from_preview,
-    enforce_primary_unique_in_file,
-)
+from .operator_machine_changes import prepare_operator_machine_changes
 
 
 class OperatorMachineService:
-    """人员-设备关联服务（OperatorMachine）。"""
+    """人员-设备关联；所有入口先准备最终关系，再应用实际差异。"""
 
     def __init__(self, conn, logger=None, op_logger=None):
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
-
         self.operator_repo = OperatorRepository(conn, logger=logger)
         self.machine_repo = MachineRepository(conn, logger=logger)
         self.repo = OperatorMachineRepository(conn, logger=logger)
 
-    # 校验与工具方法
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
         return om_normalizers.normalize_operator_machine_text(value)
@@ -52,236 +36,33 @@ class OperatorMachineService:
         return om_normalizers.normalize_yes_no_optional(value, field)
 
     @staticmethod
-    def _normalize_skill_level_stored(value: Any) -> str:
-        return om_normalizers.normalize_skill_level_stored(value)
-
-    @staticmethod
     def _normalize_yes_no_stored(value: Any) -> str:
         return om_normalizers.normalize_yes_no_stored(value)
 
-    def _ensure_operator_exists(self, operator_id: str) -> None:
-        if not self.operator_repo.exists(operator_id):
-            raise BusinessError(ErrorCode.OPERATOR_NOT_FOUND, f"人员“{operator_id}”不存在")
-
-    def _ensure_machine_exists(self, machine_id: str) -> None:
-        if not self.machine_repo.get(machine_id):
-            raise BusinessError(ErrorCode.MACHINE_NOT_FOUND, f"设备“{machine_id}”不存在")
-
-    def _build_existing_link_map(self) -> Dict[str, Dict[str, str]]:
-        existing_links = self.repo.list_simple_rows()
-        existing_map: Dict[str, Dict[str, str]] = {}
-        for r in existing_links or []:
-            op_id = to_str_or_blank(r.get("operator_id"))
-            mc_id = to_str_or_blank(r.get("machine_id"))
-            if not op_id or not mc_id:
-                continue
-            existing_map[f"{op_id}|{mc_id}"] = {
-                "skill_level": self._normalize_skill_level_stored(r.get("skill_level")),
-                "is_primary": self._normalize_yes_no_stored(r.get("is_primary")),
-            }
-        return existing_map
-
-    def _validate_required_ids_for_preview_row(self, row: Dict[str, Any], row_num: int) -> Tuple[Optional[str], Optional[str], Optional[ImportPreviewRow]]:
-        op_id = self._normalize_text((row or {}).get("工号"))
-        if not op_id:
-            return None, None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message="“工号”不能为空")
-
-        mc_id = self._normalize_text((row or {}).get("设备编号"))
-        if not mc_id:
-            return None, None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message="“设备编号”不能为空")
-
-        row["工号"] = op_id
-        row["设备编号"] = mc_id
-        return op_id, mc_id, None
-
-    @staticmethod
-    def _check_duplicate_key_in_file(key: str, *, row: Dict[str, Any], row_num: int, seen_in_file: Set[str]) -> Optional[ImportPreviewRow]:
-        if key in seen_in_file:
-            return ImportPreviewRow(
-                row_num=row_num,
-                status=RowStatus.ERROR,
-                data=row,
-                message="Excel 中存在重复的“工号+设备编号”行，请去重后再导入。",
-            )
-        seen_in_file.add(key)
-        return None
-
-    def _check_fk_exists(self, op_id: str, mc_id: str, *, row: Dict[str, Any], row_num: int, existing_operator_ids: Set[str], existing_machine_ids: Set[str]) -> Optional[ImportPreviewRow]:
-        # 预建集合替代逐行 operator_repo.exists/machine_repo.get（消除 2 查询/行 N+1，口径同 _normalize_text）
-        if op_id not in existing_operator_ids:
-            return ImportPreviewRow(
-                row_num=row_num,
-                status=RowStatus.ERROR,
-                data=row,
-                message=f"人员“{op_id}”不存在，请先在人员管理中新增该人员。",
-            )
-        if mc_id not in existing_machine_ids:
-            return ImportPreviewRow(
-                row_num=row_num,
-                status=RowStatus.ERROR,
-                data=row,
-                message=f"设备“{mc_id}”不存在，请先在设备管理中新增该设备。",
-            )
-        return None
-
-    def _parse_skill_optional_for_preview(self, row: Dict[str, Any], row_num: int, *, has_skill_col: bool) -> Tuple[Optional[str], Optional[ImportPreviewRow]]:
-        if not has_skill_col:
-            return None, None
-        skill_raw = row.get("技能等级") if "技能等级" in row else row.get("skill_level")
-        try:
-            skill_norm = self._normalize_skill_level_optional(skill_raw)
-            if skill_norm is not None:
-                row["技能等级"] = skill_norm
-            return skill_norm, None
-        except ValidationError as e:
-            return None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message=e.message)
-
-    def _parse_primary_optional_for_preview(self, row: Dict[str, Any], row_num: int, *, has_primary_col: bool) -> Tuple[Optional[str], Optional[ImportPreviewRow]]:
-        if not has_primary_col:
-            return None, None
-        primary_raw = row.get("主操设备") if "主操设备" in row else row.get("is_primary")
-        try:
-            primary_norm = self._normalize_yes_no_optional(primary_raw, field="主操设备")
-            if primary_norm is not None:
-                row["主操设备"] = primary_norm
-            return primary_norm, None
-        except ValidationError as e:
-            return None, ImportPreviewRow(row_num=row_num, status=RowStatus.ERROR, data=row, message=e.message)
-
-    def _build_overwrite_preview_for_existing(self, *, row: Dict[str, Any], row_num: int, key: str, existing_map: Dict[str, Dict[str, str]], has_skill_col: bool, has_primary_col: bool, skill_norm: Optional[str], primary_norm: Optional[str]) -> ImportPreviewRow:
-        old = existing_map.get(key) or {"skill_level": "normal", "is_primary": YesNo.NO.value}
-        new_skill = old["skill_level"] if skill_norm is None else skill_norm
-        new_primary = old["is_primary"] if primary_norm is None else primary_norm
-        changes: Dict[str, Tuple[Any, Any]] = {}
-        if has_skill_col and skill_norm is not None and new_skill != old["skill_level"]:
-            changes["技能等级"] = (old["skill_level"], new_skill)
-        if has_primary_col and primary_norm is not None and new_primary != old["is_primary"]:
-            changes["主操设备"] = (old["is_primary"], new_primary)
-
-        if changes:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.UPDATE, data=row, message="将更新关联字段", changes=changes)
-        return ImportPreviewRow(row_num=row_num, status=RowStatus.UNCHANGED, data=row, message="已存在（无变更）")
-
-    def _decide_preview_row(self, *, row: Dict[str, Any], row_num: int, mode: ImportMode, key: str, existing_map: Dict[str, Dict[str, str]], has_skill_col: bool, has_primary_col: bool, skill_norm: Optional[str], primary_norm: Optional[str]) -> ImportPreviewRow:
-        exists = key in existing_map
-        if mode == ImportMode.REPLACE:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.NEW, data=row, message="清空本类数据后重导：将写入关联")
-        if not exists:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.NEW, data=row, message="新增关联")
-        if mode == ImportMode.APPEND:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.SKIP, data=row, message="已存在，选择“只导入新编号”时会跳过")
-        if not has_skill_col and not has_primary_col:
-            return ImportPreviewRow(row_num=row_num, status=RowStatus.UNCHANGED, data=row, message="已存在，本次没有需要修改的字段")
-        return self._build_overwrite_preview_for_existing(row=row, row_num=row_num, key=key, existing_map=existing_map, has_skill_col=has_skill_col, has_primary_col=has_primary_col, skill_norm=skill_norm, primary_norm=primary_norm)
-
-    def _preview_one_row(self, *, row: Dict[str, Any], row_num: int, mode: ImportMode, has_skill_col: bool, has_primary_col: bool, existing_map: Dict[str, Dict[str, str]], seen_in_file: Set[str], existing_operator_ids: Set[str], existing_machine_ids: Set[str]) -> ImportPreviewRow:
-        op_id, mc_id, err = self._validate_required_ids_for_preview_row(row, row_num)
-        if err is not None:
-            return err
-        if op_id is None or mc_id is None:
-            return ImportPreviewRow(
-                row_num=row_num,
-                status=RowStatus.ERROR,
-                data=row,
-                message="内部解析异常：工号/设备编号意外为空",
-            )
-
-        key = f"{op_id}|{mc_id}"
-        dup = self._check_duplicate_key_in_file(key, row=row, row_num=row_num, seen_in_file=seen_in_file)
-        if dup is not None:
-            return dup
-
-        fk_err = self._check_fk_exists(op_id, mc_id, row=row, row_num=row_num, existing_operator_ids=existing_operator_ids, existing_machine_ids=existing_machine_ids)
-        if fk_err is not None:
-            return fk_err
-
-        skill_norm, skill_err = self._parse_skill_optional_for_preview(row, row_num, has_skill_col=has_skill_col)
-        if skill_err is not None:
-            return skill_err
-        primary_norm, prim_err = self._parse_primary_optional_for_preview(row, row_num, has_primary_col=has_primary_col)
-        if prim_err is not None:
-            return prim_err
-
-        return self._decide_preview_row(row=row, row_num=row_num, mode=mode, key=key, existing_map=existing_map, has_skill_col=has_skill_col, has_primary_col=has_primary_col, skill_norm=skill_norm, primary_norm=primary_norm)
-
-    def _resolve_write_values(
-        self,
-        pr: ImportPreviewRow,
-        *,
-        has_skill_col: bool,
-        has_primary_col: bool,
-        old: Optional[Dict[str, str]],
-    ) -> Tuple[str, str, Optional[str]]:
-        data = pr.data or {}
-        skill_raw = data.get("技能等级") if "技能等级" in data else data.get("skill_level")
-        primary_raw = data.get("主操设备") if "主操设备" in data else data.get("is_primary")
-        base_skill = (old.get("skill_level") if old else None) or "normal"
-        base_primary = (old.get("is_primary") if old else None) or YesNo.NO.value
-
-        try:
-            skill_norm = self._normalize_skill_level_optional(skill_raw) if has_skill_col else None
-            primary_norm = self._normalize_yes_no_optional(primary_raw, field="主操设备") if has_primary_col else None
-        except ValidationError as e:
-            return str(base_skill), str(base_primary), e.message
-
-        new_skill = base_skill if skill_norm is None else skill_norm
-        new_primary = base_primary if primary_norm is None else primary_norm
-        return str(new_skill), str(new_primary), None
-
-    # -------------------------
-    # 关联 CRUD
-    # -------------------------
-
-    @staticmethod
-    def _append_import_error_sample(
-        errors_sample: List[Dict[str, Any]],
-        pr: ImportPreviewRow,
-        message: str,
-        *,
-        limit: int = 10,
-    ) -> None:
-        if len(errors_sample) >= limit:
-            return
-        errors_sample.append(
-            {
-                "row": getattr(pr, "source_row_num", None) or pr.row_num,
-                "source_row_num": getattr(pr, "source_row_num", None),
-                "source_sheet_name": getattr(pr, "source_sheet_name", None),
-                "message": message,
-            }
-        )
-
-    def _apply_import_link_write(
-        self,
-        *,
-        op_id: str,
-        mc_id: str,
-        new_skill: str,
-        new_primary: str,
-        mode: ImportMode,
-        existing_map: Dict[str, Dict[str, str]],
-    ) -> str:
-        key = f"{op_id}|{mc_id}"
-        if self.repo.exists(op_id, mc_id):
-            if mode == ImportMode.APPEND:
-                return "skip"
-            if new_primary == YesNo.YES.value:
-                self.repo.clear_primary_for_operator(op_id, exclude_machine=mc_id)
-            self.repo.update_fields(op_id, mc_id, skill_level=new_skill, is_primary=new_primary)
-            existing_map[key] = {"skill_level": new_skill, "is_primary": new_primary}
-            return "update"
-
-        if new_primary == YesNo.YES.value:
-            self.repo.clear_primary_for_operator(op_id)
-        self.repo.add(op_id, mc_id, skill_level=new_skill, is_primary=new_primary)
-        existing_map[key] = {"skill_level": new_skill, "is_primary": new_primary}
-        return "new"
-
-    def list_by_operator(self, operator_id: str) -> List[OperatorMachine]:
+    def _link_ids(self, operator_id, machine_id):
         op_id = self._normalize_text(operator_id)
+        mc_id = self._normalize_text(machine_id)
         if not op_id:
             raise ValidationError("“工号”不能为空", field="工号")
-        return [om_normalizers.normalize_link_record(link) for link in self.repo.list_by_operator(op_id)]
+        if not mc_id:
+            raise ValidationError("“设备编号”不能为空", field="设备编号")
+        return op_id, mc_id
+
+    @staticmethod
+    def prepare_changes(current_rows, requested, *, removed=()):
+        return prepare_operator_machine_changes(current_rows, requested, removed=removed)
+
+    def apply_changes(self, changes):
+        if not self.conn.in_transaction:
+            raise RuntimeError("人员设备变更必须在写事务中应用。")
+        for operator_id, machine_id in changes.removed:
+            self.repo.remove(operator_id, machine_id)
+        for link in changes.updated:
+            self.repo.update_fields(link.operator_id, link.machine_id,
+                                    skill_level=link.skill_level, is_primary=link.is_primary)
+        return [self.repo.add(link.operator_id, link.machine_id,
+                             skill_level=link.skill_level, is_primary=link.is_primary)
+                for link in changes.added]
 
     def list_by_machine(self, machine_id: str) -> List[OperatorMachine]:
         mc_id = self._normalize_text(machine_id)
@@ -298,46 +79,25 @@ class OperatorMachineService:
         *,
         preserve_unchanged: bool = False,
     ) -> OperatorMachine:
-        op_id = self._normalize_text(operator_id)
-        mc_id = self._normalize_text(machine_id)
-        if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
-        if not mc_id:
-            raise ValidationError("“设备编号”不能为空", field="设备编号")
-
-        self._ensure_operator_exists(op_id)
-        self._ensure_machine_exists(mc_id)
-
-        if self.repo.exists(op_id, mc_id):
-            raise BusinessError(ErrorCode.DUPLICATE_ENTRY, "该人员与该设备已有关联，无需重复添加。")
-
-        # 规范化可选字段
-        skill_norm = self._normalize_skill_level_optional(skill_level) or "normal"
-        primary_norm = self._normalize_yes_no_optional(is_primary, field="主操设备") or YesNo.NO.value
-
+        op_id, mc_id = self._link_ids(operator_id, machine_id)
         with self.tx_manager.transaction():
-            if primary_norm == YesNo.YES.value:
-                # 主操设备约束：同一人员仅允许 1 台主操设备
-                self._clear_primary(op_id, preserve_unchanged)
-            return self.repo.add(op_id, mc_id, skill_level=skill_norm, is_primary=primary_norm)
-
-    def _clear_primary(self, operator_id, preserve_unchanged, *, exclude_machine=None, rows=None):
-        if not preserve_unchanged:
-            self.repo.clear_primary_for_operator(operator_id, exclude_machine=exclude_machine)
-            return
-        for row in rows if rows is not None else self.repo.list_simple_rows_for_operators([operator_id]):
-            if row["machine_id"] != exclude_machine and self._normalize_yes_no_stored(row["is_primary"]) == YesNo.YES.value:
-                self.repo.update_fields(operator_id, row["machine_id"], skill_level=row["skill_level"], is_primary=YesNo.NO.value)
+            if not self.operator_repo.exists(op_id):
+                raise BusinessError(ErrorCode.OPERATOR_NOT_FOUND, f"人员“{op_id}”不存在")
+            if not self.machine_repo.exists(mc_id):
+                raise BusinessError(ErrorCode.MACHINE_NOT_FOUND, f"设备“{mc_id}”不存在")
+            rows = self.repo.list_simple_rows_for_operators([op_id])
+            if any(row["machine_id"] == mc_id for row in rows):
+                raise BusinessError(ErrorCode.DUPLICATE_ENTRY, "该人员与该设备已有关联，无需重复添加。")
+            skill = self._normalize_skill_level_optional(skill_level) or "normal"
+            primary = self._normalize_yes_no_optional(is_primary, field="主操设备") or "no"
+            changes = self.prepare_changes(rows, [OperatorMachine(None, op_id, mc_id, skill, primary)])
+            return self.apply_changes(changes)[0]
 
     def remove_link(self, operator_id: Any, machine_id: Any) -> None:
-        op_id = self._normalize_text(operator_id)
-        mc_id = self._normalize_text(machine_id)
-        if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
-        if not mc_id:
-            raise ValidationError("“设备编号”不能为空", field="设备编号")
+        op_id, mc_id = self._link_ids(operator_id, machine_id)
         with self.tx_manager.transaction():
-            self.repo.remove(op_id, mc_id)
+            rows = self.repo.list_simple_rows_for_operators([op_id])
+            self.apply_changes(self.prepare_changes(rows, [], removed=[(op_id, mc_id)]))
 
     def update_link_fields(
         self,
@@ -348,150 +108,12 @@ class OperatorMachineService:
         is_primary: Any,
         preserve_unchanged: bool = False,
     ) -> None:
-        """
-        更新关联字段（技能等级/主操设备）。
-
-        约束：
-        - skill_level 允许：beginner/normal/expert（兼容中文）
-        - is_primary：yes/no
-        - 同一人员仅允许 1 台主操设备（is_primary=yes 会自动清空该人员其它关联的主操标记）
-        """
-        op_id = self._normalize_text(operator_id)
-        mc_id = self._normalize_text(machine_id)
-        if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
-        if not mc_id:
-            raise ValidationError("“设备编号”不能为空", field="设备编号")
+        op_id, mc_id = self._link_ids(operator_id, machine_id)
         with self.tx_manager.transaction():
-            rows, current = self._current_link_for_update(op_id, mc_id, preserve_unchanged)
-            skill_norm, primary_norm = om_normalizers.updated_link_values(current, skill_level, is_primary, preserve_unchanged)
-            if primary_norm == YesNo.YES.value:
-                self._clear_primary(op_id, preserve_unchanged, exclude_machine=mc_id, rows=rows)
-            self.repo.update_fields(op_id, mc_id, skill_level=skill_norm, is_primary=primary_norm)
-
-    def _current_link_for_update(self, op_id, mc_id, preserve_unchanged):
-        rows = self.repo.list_simple_rows_for_operators([op_id]) if preserve_unchanged else None
-        current = next((row for row in rows if row["machine_id"] == mc_id), None) if rows is not None else None
-        exists = current is not None if rows is not None else self.repo.exists(op_id, mc_id)
-        if not exists:
-            raise BusinessError(ErrorCode.NOT_FOUND, "未找到该人员与该设备的关联记录。")
-        return rows, current or {}
-
-    # -------------------------
-    # Excel 导入预览（复合键：工号|设备编号）
-    # -------------------------
-    def preview_import_links(
-        self,
-        rows: List[Dict[str, Any]],
-        mode: ImportMode = ImportMode.OVERWRITE,
-    ) -> List[ImportPreviewRow]:
-        """
-        输入 rows 的键名为中文列名：
-        - 工号
-        - 设备编号
-        """
-        has_skill_col, has_primary_col = detect_optional_columns(rows)
-        existing_map = self._build_existing_link_map()
-        # 预建父表存在集合，替代 _check_fk_exists 逐行 exists/get（原 2 查询/行 N+1，与 existing_map 同为导入起点快照）。
-        # 等价前提：人员/设备主键经服务层 strip 归一化入库（无前后空格脏键），故集合归一化判定与原逐行查询一致。
-        existing_operator_ids = {oid for oid in (self._normalize_text(o.operator_id) for o in self.operator_repo.list()) if oid}
-        existing_machine_ids = {mid for mid in (self._normalize_text(m.machine_id) for m in self.machine_repo.list()) if mid}
-
-        preview: List[ImportPreviewRow] = []
-        seen_in_file: Set[str] = set()
-
-        for idx, row in enumerate(rows or []):
-            source_row_num = resolve_source_row_num(row or {}, fallback=idx + 2)
-            source_sheet_name = resolve_source_sheet_name(row or {})
-            pr = self._preview_one_row(
-                row=strip_source_metadata(dict(row or {})),
-                row_num=source_row_num,
-                mode=mode,
-                has_skill_col=has_skill_col,
-                has_primary_col=has_primary_col,
-                existing_map=existing_map,
-                seen_in_file=seen_in_file,
-                existing_operator_ids=existing_operator_ids,
-                existing_machine_ids=existing_machine_ids,
-            )
-            pr.row_num = int(source_row_num)
-            pr.source_row_num = int(source_row_num)
-            pr.source_sheet_name = source_sheet_name
-            preview.append(pr)
-
-        if has_primary_col:
-            enforce_primary_unique_in_file(preview)
-
-        return preview
-
-    def apply_import_links(self, preview_rows: List[ImportPreviewRow], mode: ImportMode) -> Dict[str, Any]:
-        """
-        按预览结果落库（忽略 ERROR 行），返回统计字段（用于页面提示与留痕）。
-        """
-        new_count = update_count = skip_count = error_count = 0
-        errors_sample: List[Dict[str, Any]] = []
-
-        has_skill_col, has_primary_col = detect_optional_columns_from_preview(preview_rows)
-        existing_map = self._build_existing_link_map()
-
-        with self.tx_manager.transaction():
-            if mode == ImportMode.REPLACE:
-                self.repo.delete_all()
-                existing_map = {}
-
-            for pr in preview_rows or []:
-                if pr.status == RowStatus.ERROR:
-                    error_count += 1
-                    if pr.message:
-                        self._append_import_error_sample(errors_sample, pr, pr.message)
-                    continue
-
-                if pr.status == RowStatus.SKIP:
-                    skip_count += 1
-                    continue
-
-                if pr.status == RowStatus.UNCHANGED:
-                    skip_count += 1
-                    continue
-
-                op_id = to_str_or_blank(pr.data.get("工号"))
-                mc_id = to_str_or_blank(pr.data.get("设备编号"))
-                if not op_id or not mc_id:
-                    error_count += 1
-                    self._append_import_error_sample(errors_sample, pr, "缺少“工号/设备编号”，无法写入。")
-                    continue
-
-                key = f"{op_id}|{mc_id}"
-                old = existing_map.get(key)
-
-                new_skill, new_primary, err = self._resolve_write_values(
-                    pr, has_skill_col=has_skill_col, has_primary_col=has_primary_col, old=old
-                )
-                if err:
-                    error_count += 1
-                    self._append_import_error_sample(errors_sample, pr, err)
-                    continue
-
-                write_action = self._apply_import_link_write(
-                    op_id=op_id,
-                    mc_id=mc_id,
-                    new_skill=new_skill,
-                    new_primary=new_primary,
-                    mode=mode,
-                    existing_map=existing_map,
-                )
-                if write_action == "skip":
-                    skip_count += 1
-                elif write_action == "update":
-                    update_count += 1
-                else:
-                    new_count += 1
-
-        return {
-            "total_rows": len(preview_rows),
-            "new_count": new_count,
-            "update_count": update_count,
-            "skip_count": skip_count,
-            "error_count": error_count,
-            "errors_sample": errors_sample,
-        }
+            rows = self.repo.list_simple_rows_for_operators([op_id])
+            current = next((row for row in rows if row["machine_id"] == mc_id), None)
+            if current is None:
+                raise BusinessError(ErrorCode.NOT_FOUND, "未找到该人员与该设备的关联记录。")
+            skill, primary = om_normalizers.updated_link_values(current, skill_level, is_primary, preserve_unchanged)
+            changes = self.prepare_changes(rows, [OperatorMachine(None, op_id, mc_id, skill, primary)])
+            self.apply_changes(changes)

@@ -3,22 +3,31 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from core.errors import AppError, ErrorCode
+from core.errors import AppError, BusinessError, ErrorCode
+from core.models import Material
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material import normalize_material_input
-from core.services.material.material_service import MaterialService
+from data.repositories.material_repo import MaterialRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
+
+
+@dataclass
+class PreparedMaterialChange:
+    action: str
+    identity: Optional[WorkbenchEntityIdentity]
+    business_code: str
+    values: Dict[str, Any]
 
 
 class WorkbenchMaterialService:
     def __init__(self, conn, logger=None):
         self.conn = conn
-        self._materials = MaterialService(conn, logger=logger)
+        self._materials = MaterialRepository(conn, logger=logger)
         self._identities = WorkbenchIdentityRepository(conn, logger=logger)
         self._query = WorkbenchMaterialQueryRepository(conn, logger=logger)
 
@@ -43,11 +52,6 @@ class WorkbenchMaterialService:
                 current.entity_key, current.ref, current.revision):
             raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
         return current, material
-
-    def snapshot(self, identity: WorkbenchEntityIdentity, *, material=None) -> Dict[str, Any]:
-        """Internal full model state for a guard, not a public DTO or a ref repair."""
-        current, material = self._current_material(identity, material)
-        return {"identity": asdict(current), "material": material}
 
     @staticmethod
     def _snapshot_from_current(identity, material):
@@ -74,41 +78,44 @@ class WorkbenchMaterialService:
         else:
             current, material = self._current_material(identity)
             checked = {"identity": asdict(current), "material": material}
-        return self._apply_checked(action, payload, checked)
+        return self.apply_prepared(self.prepare_checked(action, payload, checked))
 
-    def _apply_checked(self, action, payload, checked):
-        """Consume facts checked in this command transaction, before this row was written."""
+    def prepare_checked(self, action, payload, checked):
+        """Turn normalized input and this transaction's facts into the actual write."""
+        if action == "create":
+            code = payload["business_code"]
+            material = self._query.get_raw(code) if checked is None else checked["material"]
+            if material is not None:
+                raise BusinessError(ErrorCode.DUPLICATE_ENTRY, f"物料“{code}”已存在")
+            values = {"material_id": code, "name": payload["label"], "spec": None, "unit": None,
+                      "stock_qty": 0.0, "status": "active", "remark": None, **payload["fields"]}
+            return PreparedMaterialChange(action, None, code, values)
+        current = WorkbenchEntityIdentity(**checked["identity"])
+        if current.entity_key != current.entity_key.strip():
+            raise WorkbenchCommandRejected("constraint_conflict", "这个物料编号首尾有空格，现在改不了。请先核对原记录。")
+        changes = dict(payload.get("fields", {}))
+        if "label" in payload:
+            changes["name"] = payload["label"]
+        changes = {key: value for key, value in changes.items() if checked["material"][key] != value}
+        return PreparedMaterialChange(action, current, current.entity_key, changes)
+
+    def apply_prepared(self, prepared):
         if not self.conn.in_transaction:
             raise RuntimeError("物料操作必须在外层工作台命令事务中执行。")
-        if action == "create":
-            created = self._materials.create(payload["business_code"], payload["label"], **payload["fields"])
+        current = prepared.identity
+        if prepared.action == "create":
+            created = self._materials.create(Material(**prepared.values))
             current = self._identities.find_active("material", created.material_id)
             if current is None:
                 raise RuntimeError("新增物料缺少永久引用，不能确认保存。")
         else:
-            current = WorkbenchEntityIdentity(**checked["identity"])
-            material = checked["material"]
-            # Legacy keys must not be redirected by MaterialService's text trimming.
-            if current.entity_key != current.entity_key.strip():
-                raise WorkbenchCommandRejected("constraint_conflict", "这个物料编号首尾有空格，现在改不了。请先核对原记录。")
-            if action == "delete":
-                self._delete(current.entity_key)
-            elif not self._update(material, payload):
+            if prepared.action == "delete":
+                self._delete(prepared.business_code)
+            elif prepared.values:
+                self._materials.update(prepared.business_code, prepared.values)
+            else:
                 return self._outcome("unchanged", current)
         return self._outcome("committed", current)
-
-    def _update(self, material: Dict[str, Any], payload: Dict[str, Any]) -> bool:
-        changes = dict(payload["fields"])
-        if "label" in payload:
-            changes["name"] = payload["label"]
-        changes = {key: value for key, value in changes.items() if material[key] != value}
-        if not changes:
-            return False
-        # MaterialService treats None as omission; only clearable fields can reach None here.
-        self._materials.update(material["material_id"], **{
-            key: "" if value is None else value for key, value in changes.items()
-        })
-        return True
 
     def _delete(self, material_id: str) -> None:
         try:

@@ -4,15 +4,14 @@ from types import SimpleNamespace
 
 from core.errors import AppError
 from core.models.workbench_trial import issue
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
-from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     MERGED_EXECUTION_GROUP_SOURCE,
     merged_actual_group_intervals,
     merged_external_group_identity,
 )
-from core.services.scheduler.schedule_service import ScheduleService
-from core.services.workbench.facts.run_input_codec import restore_execution_projections
+from core.services.workbench.run.input_external import execution_groups
 
 
 def _selected_has_actuals(rows, live):
@@ -24,11 +23,11 @@ def _selected_has_actuals(rows, live):
 
 def _prior_plan_projections(svc, version, live):
     """Restore execution facts only for operations the official plan already placed."""
-    prior_ids = set(_latest_plan_rows(svc, version))
+    prior_ids = set(live["preflight_facts"].latest_plan_rows(version))
     tables = live["facts"]["tables"]
     prior_refs = {row["ref"] for row in tables["WorkbenchPlanSourceRefs"]
                   if row["kind"] == "operation" and row["active"] == 1 and int(row["source_key"]) in prior_ids}
-    return restore_execution_projections([live["execution"][ref] for ref in sorted(prior_refs)])
+    return [live["preflight_facts"].execution_projections[ref] for ref in sorted(prior_refs)]
 
 
 def _active_entity_refs(tables):
@@ -63,11 +62,14 @@ def execution_anchors(conn, rows, live):
     version = live["baseline"]["version"]
     if version is None:
         raise ValueError("Actual production has no official plan")
-    svc = ScheduleService(conn)
+    svc = build_schedule_repository_bundle(conn)
     projections = _prior_plan_projections(svc, version, live)
     operations = [SimpleNamespace(**row["original"]["operation"]) for row in rows]
+    facts = live["preflight_facts"]
+    batches = {row["batch_id"]: SimpleNamespace(**row) for row in facts.tables["Batches"]}
     _, fixed, completed, seeds, _, _ = build_execution_guardrails_from_projections(
-        svc, operations, prev_version=version, execution_projections=projections)
+        svc, operations, prev_version=version, execution_projections=projections, facts=facts,
+        external_groups=execution_groups(facts, batches, operations))
     refs = _active_entity_refs(live["facts"]["tables"])
     result = _merged_group_anchors(rows, seeds, fixed | completed, refs)
     for seed in seeds:

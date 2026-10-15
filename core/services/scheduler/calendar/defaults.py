@@ -14,5 +14,7 @@ def default_periods_from_row(row):
     return periods
 
 
-def read_default_periods(conn):
-    return default_periods_from_row(CalendarDefaultsRepository(conn).get() if conn is not None else None)
+def read_default_periods(conn, *, capture=None):
+    row = (capture.index("WorkbenchCalendarDefaults", "singleton").get(1) if capture is not None
+           else CalendarDefaultsRepository(conn).get() if conn is not None else None)
+    return default_periods_from_row(row)

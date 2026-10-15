@@ -122,10 +122,14 @@ def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None, co
     if recorded is None:
         return None
     basis, audit, receipt = recorded
+    prepared_candidate = prepared_trial = None
     if basis == "candidate_adoption":
-        baseline, tables, arranged, generation, origin = candidate_source_evidence(conn, audit)
+        prepared_candidate = candidate_source_evidence(conn, audit)
+        baseline, tables, arranged, generation, origin = (prepared_candidate[key] for key in
+            ("baseline", "tables", "arranged", "generation_facts", "provenance"))
     else:
-        baseline, tables, arranged, origin = trial_source_evidence(conn, audit)
+        evidence, prepared_trial = trial_source_evidence(conn, audit)
+        baseline, tables, arranged, origin = evidence
         generation = None
     baseline = decoded_baseline(baseline)
     require(same((baseline["plan_ref"], baseline["version"]), (audit["baseline_ref"], audit["baseline_version"])),
@@ -135,6 +139,7 @@ def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None, co
     current = verify_arranged(conn, plan_ref, version, tables, arranged, context=context)
     return {"basis": basis, "audit": audit, "receipt": receipt, "baseline": baseline,
             "tables": tables, "arranged": arranged, "selected": current, "generation_facts": generation,
+            "candidate_source": prepared_candidate, "trial_source": prepared_trial,
             "provenance": {"state": "available", "reason": None, **origin, "adopted_at": audit.get("adopted_at")}}
 
 

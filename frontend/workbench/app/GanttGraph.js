@@ -4,12 +4,12 @@
   const ref = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
   const edgeKey = edge => edge.from_task_ref + ':' + edge.to_task_ref + ':' + edge.edge_type;
   const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
-  // Both workspaces validate this shared graph once, at their existing API boundary.
+  // Workspaces validate this shared graph once, at their existing API boundary.
   function validate(graph, { scope, tasks, taskRef, time, sequence, processLabel, completeCount }) {
-    if (!object(graph) || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state)
-      || !['nodes', 'edges', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))) return false;
+    if (!object(graph) || Reflect.ownKeys(graph).length !== 6 || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state)
+      || !['nodes', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))) return false;
     if (graph.state === 'unavailable') return typeof graph.reason === 'string' && !!graph.reason.trim()
-      && !graph.nodes.length && !graph.edges.length && !graph.critical_task_refs.length && !graph.critical_edges.length;
+      && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length;
     if (graph.reason !== null || completeCount !== undefined && graph.nodes.length !== completeCount) return false;
     const nodes = new Map();
     for (const node of graph.nodes) {
@@ -17,7 +17,10 @@
         || typeof node.batch_id !== 'string' || !node.batch_id.trim()
         || !(node.piece_id === null || typeof node.piece_id === 'string' && !!node.piece_id.trim())
         || !sequence(node.sequence) || !processLabel(node.process_label)
-        || !time(node.start) || !time(node.end) || node.end < node.start) return false;
+        || !time(node.start) || !time(node.end) || node.end < node.start
+        || !Array.isArray(node.predecessor_operation_refs) || !node.predecessor_operation_refs.every(ref)
+        || new Set(node.predecessor_operation_refs).size !== node.predecessor_operation_refs.length
+        || node.predecessor_operation_refs.includes(node.operation_ref)) return false;
       nodes.set(node.task_ref, node);
     }
     if (!tasks.every(task => {
@@ -35,12 +38,12 @@
         const key = edgeKey(edge); if (seen.has(key)) return false; seen.add(key); return true;
       });
     }
-    return edgesValid(graph.edges, ['process']) && edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
+    return edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
   }
   function create(graph) {
-    const nodes = new Map(), batches = new Map(), batchFacts = new Map();
+    const nodes = new Map(), operations = new Map(), batches = new Map(), batchFacts = new Map(), missingPredecessors = new Map();
     for (const [order, node] of graph.nodes.entries()) {
-      nodes.set(node.task_ref, node);
+      nodes.set(node.task_ref, node); operations.set(node.operation_ref, node);
       if (!batchFacts.has(node.batch_id)) {
         const facts = { nodes: [], pieces: new Map(), edges: [], commonEdges: [], pieceEdges: new Map(),
           previous: new Map(), route: null };
@@ -51,21 +54,28 @@
       if (!facts.pieces.has(node.piece_id)) facts.pieces.set(node.piece_id, []);
       facts.pieces.get(node.piece_id).push({ node, order });
     }
-    for (const [order, edge] of graph.edges.entries()) {
-      const from = nodes.get(edge.from_task_ref), to = nodes.get(edge.to_task_ref), facts = batchFacts.get(to.batch_id);
-      facts.previous.get(to.task_ref).push(from);
-      if (from.batch_id !== to.batch_id) continue;
-      const record = { edge, order }; facts.edges.push(record);
-      if (from.piece_id === null && to.piece_id === null) facts.commonEdges.push(record);
-      else if (from.piece_id === null || to.piece_id === null || from.piece_id === to.piece_id) {
-        const piece = from.piece_id === null ? to.piece_id : from.piece_id;
-        if (!facts.pieceEdges.has(piece)) facts.pieceEdges.set(piece, []);
-        facts.pieceEdges.get(piece).push(record);
+    let order = 0;
+    for (const to of graph.nodes) {
+      const facts = batchFacts.get(to.batch_id); let missing = 0;
+      for (const parent of to.predecessor_operation_refs) {
+        const from = operations.get(parent);
+        if (!from) { missing++; continue; }
+        facts.previous.get(to.task_ref).push(from);
+        const edge = { from_task_ref: from.task_ref, to_task_ref: to.task_ref, edge_type: 'process' };
+        if (from.batch_id !== to.batch_id) continue;
+        const record = { edge, order: order++ }; facts.edges.push(record);
+        if (from.piece_id === null && to.piece_id === null) facts.commonEdges.push(record);
+        else if (from.piece_id === null || to.piece_id === null || from.piece_id === to.piece_id) {
+          const piece = from.piece_id === null ? to.piece_id : from.piece_id;
+          if (!facts.pieceEdges.has(piece)) facts.pieceEdges.set(piece, []);
+          facts.pieceEdges.get(piece).push(record);
+        }
       }
+      missingPredecessors.set(to.task_ref, missing);
     }
     const criticalEdges = new Map();
     graph.critical_edges.forEach(edge => criticalEdges.set(connection(edge), { ...edge, kind: 'critical' }));
-    return { graph, nodes, batches, batchFacts, critical: new Set(graph.critical_task_refs),
+    return { graph, nodes, batches, batchFacts, missingPredecessors, critical: new Set(graph.critical_task_refs),
       global: edgeFacts(Array.from(criticalEdges.values())), empty: edgeFacts([]), selected: null };
   }
   function edgeFacts(edges) {

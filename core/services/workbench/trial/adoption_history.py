@@ -1,8 +1,7 @@
 """Readonly scenario adoption directory; every page binds live identity state."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.content import content_text
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_trial import reference, reject
 from core.services.common.bounded_plan_query import _PagePlanQueryService
@@ -12,7 +11,7 @@ from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
 from .adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
-from .adoption_history_policy import MAX_DIRECTORY_BYTES, adoption_receipts, bound
+from .adoption_history_policy import adoption_receipts
 
 
 def history_scope(scenario_ref, status="all", size=20):
@@ -77,9 +76,15 @@ class WorkbenchTrialAdoptionHistoryService:
         source = {"base": saved["base"], "base_identity": saved["base_identity"], "baseline": saved["baseline"],
                   "name": saved["name"], "saved_at": header["saved_at"], "saved_by": header["local_operator"],
                   "save_request_key": header["request_key"], "draft_ref": saved["draft_ref"], "scenario_ref": saved["scenario_ref"]}
-        bound(len(canonical_json({"source": source, "items": all_items}).encode("utf-8")), MAX_DIRECTORY_BYTES)
-        content = content_text({"scope": scope, "source": source, "items": all_items,
-                                "identity_revision": revision, "current_version": current_version})
+        content = {"scenario_ref": saved["scenario_ref"], "draft_ref": saved["draft_ref"],
+                   "scenario_revision": header["revision"], "draft_revision": draft["revision"],
+                   "save_request_key": header["request_key"],
+                   "adoptions": [{"receipt_ref": item["receipt_ref"], "request_key": item["request_key"],
+                                  "plan_ref": item["committed_plan"]["plan_ref"],
+                                  "version": item["committed_plan"]["version"],
+                                  "current_state": item["current_state"], "source_issue": item["evidence_gaps"]}
+                                 for item in all_items],
+                   "identity_revision": revision, "current_version": current_version}
         offset = (page - 1) * scope["size"]
         return {"scope": scope, "source": source, "items": items[offset:offset + scope["size"]],
                 "page": {"number": page, "size": scope["size"], "total": len(items), "pages": pages},

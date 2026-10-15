@@ -3,7 +3,7 @@
 import json
 from io import BytesIO
 
-from flask import current_app, g, jsonify, request, send_file
+from flask import current_app, g, request, send_file
 
 from core.models.workbench_batch import object_fields, public_ref
 from core.models.workbench_batch_file import MAX_BYTES, MAX_ROWS, MIME
@@ -13,7 +13,7 @@ from core.services.workbench.batch.file_codec import write_batch_file
 from core.services.workbench.batch.files import WorkbenchBatchFileService
 from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.commands import WorkbenchCommandService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .batch_context import command_body, json_body, load_preview, retry_message, save_preview
@@ -85,7 +85,7 @@ def batch_import_confirm():
         return binding["input"]
 
     with reader.command_snapshot():
-        return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch.import_confirm",
+        return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch.import_confirm",
             context_ref=token, normalized_input=normalized, guard=guard,
             mutate=lambda document: WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).apply(document)))
 

@@ -58,7 +58,7 @@ def confirm(client, preview, key="calendar-file-request-00001"):
         "input": {"preview_ref": preview["preview_ref"]}})
 
 
-def test_preview_does_not_write_and_confirm_commits_once(client):
+def test_preview_does_not_write_and_confirm_commits_once(client, monkeypatch):
     preview = preview_ok(client, [(DAY, "工作日", "8", "100", "是", "是", "调休"),
                                   (OTHER, "假期", "0", "", "否", "否", "")])
     # 只比日历表：应用启动后还会陆续补建与本功能无关的表和触发器，整库快照在首几次请求间本来就会变。
@@ -69,7 +69,23 @@ def test_preview_does_not_write_and_confirm_commits_once(client):
     assert [item["label"] for item in preview["columns"]] == list(HEADERS) + ["班次开始", "班次结束"] + PERIOD_HEADERS
     assert "entity_key" not in json.dumps(preview) and "revision" not in json.dumps(preview)
 
+    from core.services.scheduler.calendar.admin import CalendarAdmin
+    from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
+
+    built, build = [], CalendarAdmin._build_work_calendar
+
+    def build_once(self, **kwargs):
+        model = build(self, **kwargs)
+        built.append(model)
+        return model
+
+    def no_receipt_refs(*args):
+        raise AssertionError("File receipts do not consume permanent calendar refs")
+
+    monkeypatch.setattr(CalendarAdmin, "_build_work_calendar", build_once)
+    monkeypatch.setattr(WorkbenchCalendarQueryRepository, "created_refs", no_receipt_refs)
     first = confirm(client, preview)
+    assert len(built) == 2
     assert first.status_code == 200, first.get_data(as_text=True)
     assert first.get_json()["result"] == "committed"
     assert days(client) == {DAY: ("workday", 8.0), OTHER: ("holiday", 0.0)}

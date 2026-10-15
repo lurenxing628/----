@@ -4,18 +4,18 @@
 区间的读快照要现算（`range_snapshot`），月视图的快照绑的是一个月，覆盖不了任意区间。
 """
 
-import json
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.content import content_text
 from core.models.workbench_calendar_file import (
     INSTRUCTIONS,
     TEMPLATE_VERSION,
     calendar_kind,
     public_columns,
 )
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendar_files.files import WorkbenchCalendarFileService
 from core.services.workbench.resource.calendar_files.operator_files import (
@@ -24,11 +24,11 @@ from core.services.workbench.resource.calendar_files.operator_files import (
 from core.services.workbench.resource.calendar_files.operator_files import (
     WorkbenchOperatorCalendarFileService,
 )
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .calendars_preview import calendar_now
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .resource_action_context import (
     EXPORT_SCOPE,
     confirm_body,
@@ -101,7 +101,7 @@ def calendar_import_confirm(kind):
         request_key=body["request_key"], action=operation, context_ref=ref, normalized_input={"preview_ref": ref},
         guard=lambda: resolve_import_preview(ref, operation, body["write_token"]),
         mutate=lambda checked: _apply(kind, checked))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 @read_endpoint
@@ -115,11 +115,15 @@ def calendar_export_preview(kind):
     with TransactionManager(g.db).transaction():
         fingerprint = service.range_snapshot(start_date, end_date, **extra)
         query_scope = {"kind": kind, "start_date": start_date, "end_date": end_date, **extra}
-        snapshot = bind_read_snapshot(query_scope, fingerprint, provided)
+        read_binding = resolve_read_snapshot(provided) if provided is not None else None
+        snapshot = bind_read_snapshot(query_scope, fingerprint, provided, binding=read_binding)
+        if read_binding is None:
+            read_binding = resolve_read_snapshot(snapshot["snapshot_ref"])
         arguments, count = service.preview_export(start_date=start_date, end_date=end_date, **extra)
-        document = canonical_json({"kind": kind, "query_scope": query_scope,
-                                   "snapshot_ref": snapshot["snapshot_ref"], "arguments": arguments})
-        ref, expires_at = retain_context(EXPORT_SCOPE, document)
+        document = {"kind": kind, "query_scope": query_scope,
+                    "snapshot_ref": snapshot["snapshot_ref"], "arguments": arguments}
+        ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
+                                         key=(kind, read_binding.scope, document["snapshot_ref"], content_text(arguments)))
     return query_success({"export_ref": ref, "expires_at": expires_at, "range": arguments,
                           "row_count": count, "formats": ["csv", "xlsx"]}, snapshot)
 
@@ -129,14 +133,13 @@ def calendar_export(kind):
     calendar_kind(kind)
     fmt = download_args({"export_ref", "format"})
     ref = opaque_ref(request.args["export_ref"], "export_ref")
-    document, _ = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
-    binding = json.loads(document)
+    binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     service = _service(kind)
     with TransactionManager(g.db).transaction():
         fingerprint = service.range_snapshot(**binding["arguments"])
-        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])
+        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
         download = service.export(fmt, **binding["arguments"])
     response = file_response(download)
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]

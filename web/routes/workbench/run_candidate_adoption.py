@@ -1,9 +1,9 @@
 """Explicit coordinator registration only; ordinary candidate GETs stay read-only."""
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -41,7 +41,7 @@ def run_candidate_adopt(candidate_ref):
     value = _body(("write_token", "request_key", "input"))
     g.workbench_request_key = value["request_key"]
     result = _service().adopt(candidate_ref, value["write_token"], value["request_key"], value["input"])
-    response = jsonify(result)
+    response = json_response(result)
     response.headers["Cache-Control"] = "no-store"
     return response
 

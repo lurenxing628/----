@@ -91,3 +91,29 @@ def test_blank_legacy_columns_read_the_way_scheduling_does(client):
     assert data["stats"] == {"configured": 1, "work_days": 1}
     assert (shown["shift_start"], shown["shift_hours"], shown["efficiency"]) == ("08:00", 8.0, 1.0)
     assert stored(client, "OP001", DAY)["shift_hours"] is None
+
+
+@pytest.mark.parametrize("operator_code", ["OP:1", "OP%1"])
+def test_new_day_receipt_uses_escaped_operator_identity(client, operator_code):
+    from core.infrastructure.workbench_metadata_schema import entity_key
+
+    day = "2026-10-15"
+    with database(client) as conn:
+        conn.execute("INSERT INTO Operators(operator_id,name,status) VALUES (?,?,'active')",
+                     (operator_code, "特殊工号"))
+        conn.commit()
+    ref = ref_of(client, operator_code)
+    token = month(client, ref)["write_context"]["write_token"]
+    saved = command(client, ref, "upsert", {"date": day, "fields": WORK}, token)
+    assert saved.status_code == 200, saved.get_data(as_text=True)
+    receipt = saved.get_json()
+    assert receipt["result"] == "committed"
+    with database(client) as conn:
+        identity = conn.execute(
+            "SELECT ref FROM WorkbenchEntityRefs WHERE kind='operator_calendar' AND entity_key=? AND active=1",
+            (entity_key(operator_code, day),)).fetchone()
+    assert identity is not None and receipt["data"]["calendar_ref"] == identity["ref"]
+    row = stored(client, operator_code, day)
+    assert row is not None and row["shift_hours"] == 8.5
+    shown = next(item for item in month(client, ref)["days"] if item["date"] == day)
+    assert shown["calendar_ref"] == identity["ref"] and shown["explicit"]

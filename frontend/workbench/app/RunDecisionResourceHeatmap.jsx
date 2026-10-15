@@ -45,9 +45,35 @@
   function Heatmap({ data, definitions, mode = 'after', focus, onMode, onCursor, onFocus, onPage, onSize }) {
     const heatmap = data.heatmap, host = React.useRef(null), grain = heatmap.grain;
     const pressureLabel = R.metricDefinition('high_pressure_count', data.filters.resource_kind, definitions).label;
-    const selectedRow = focus ? heatmap.items.findIndex(row => row.resource_ref === focus.resource_ref) : -1;
-    const selectedCell = selectedRow >= 0 ? heatmap.items[selectedRow].cells.findIndex(cell => cell.bucket_key === focus.bucket_key) : -1;
-    const cursorRow = selectedRow >= 0 ? selectedRow : heatmap.items.findIndex(row => row.cells.length), cursorCell = selectedCell >= 0 ? selectedCell : 0;
+    const prepared = React.useMemo(() => {
+      const resources = new Map(data.items.map(item => [item.resource_ref, item])), rowIndex = new Map();
+      const rows = heatmap.items.map((row, index) => {
+        rowIndex.set(row.resource_ref, index);
+        const groups = new Map(), columns = new Map();
+        row.cells.forEach((cell, column) => {
+          columns.set(cell.bucket_key, column);
+          if (!groups.has(cell.group_key)) groups.set(cell.group_key, { cells: [], continuations: [], byStart: new Map() });
+          const group = groups.get(cell.group_key); group.cells.push({ cell, column }); if (!group.byStart.has(cell.start)) group.byStart.set(cell.start, column);
+        });
+        row.continuations.forEach(item => {
+          if (!groups.has(item.group_key)) groups.set(item.group_key, { cells: [], continuations: [], byStart: new Map() });
+          groups.get(item.group_key).continuations.push(item);
+        });
+        return { row, groups, columns, resource: resources.get(row.resource_ref) };
+      });
+      return { rows, rowIndex, first: rows.findIndex(value => value.row.cells.length) };
+    }, [heatmap, data.items]);
+    const presentations = React.useMemo(() => {
+      const values = new Map(); let unknown = false;
+      for (const { row } of prepared.rows) for (const cell of row.cells) {
+        const value = cellPresentation(row, cell, mode, pressureLabel, data.baseline.state);
+        values.set(cell, value); if (value.valueState === 'unknown') unknown = true;
+      }
+      return { values, unknown };
+    }, [prepared, mode, pressureLabel, data.baseline.state]);
+    const selectedRow = focus && prepared.rowIndex.has(focus.resource_ref) ? prepared.rowIndex.get(focus.resource_ref) : -1;
+    const selectedCell = selectedRow >= 0 ? prepared.rows[selectedRow].columns.get(focus.bucket_key) : undefined;
+    const cursorRow = selectedRow >= 0 ? selectedRow : prepared.first, cursorCell = selectedCell === undefined ? 0 : selectedCell;
     const shown = heatmap.display_scope, scopeLabel = grain === 'hour' ? '当前显示时段' : '所选日期范围';
     const peakLabel = grain === 'hour' ? '小时峰值' : grain === 'shift' ? '班段峰值' : '日峰值';
     function keyboard(event, row, column) {
@@ -63,8 +89,8 @@
       event.preventDefault();
       if (nextRow !== row && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
         const origin = heatmap.items[row].cells[column], group = origin.group_key;
-        const sameGroup = heatmap.items[nextRow].cells.filter(cell => cell.group_key === group);
-        if (sameGroup.length) nextColumn = heatmap.items[nextRow].cells.indexOf(sameGroup.find(cell => cell.start === origin.start) || sameGroup[0]);
+        const sameGroup = prepared.rows[nextRow].groups.get(group);
+        if (sameGroup && sameGroup.cells.length) nextColumn = sameGroup.byStart.has(origin.start) ? sameGroup.byStart.get(origin.start) : sameGroup.cells[0].column;
       }
       nextColumn = Math.min(nextColumn, heatmap.items[nextRow].cells.length - 1);
       const target = host.current.querySelector('[data-heatmap-row="' + nextRow + '"][data-heatmap-column="' + nextColumn + '"]');
@@ -81,14 +107,13 @@
     return <section className="rres-heatmap" aria-label="资源时段热力图"><div className="rc-heading rres-display-controls"><span className="rres-window-note">{shown && shown.start && shown.end && <>显示 {F.compactRange(shown.start, shown.end)}{grain === 'hour' && ' · 筛选当前时段'}</>}</span><details className="rres-filter-details"><summary>显示设置</summary><div className="rc-tools"><label>显示<select aria-label="资源热力图指标" value={mode} onChange={event => onMode(event.target.value)}>{modes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>每页<select aria-label="资源热力图日期每页" value={heatmap.page.size} onChange={event => onSize(Number(event.target.value))}>{[7, 14, 31].map(size => <option key={size} value={size}>{size} {grain === 'shift' ? '天' : grains[grain]}</option>)}</select></label></div></details></div>
       {heatmap.items.length && heatmap.buckets.length ? <div ref={host} className="wb-table-frame rres-heatmap-frame" data-sticky-head data-sticky-actions><table className="wb-table rres-heatmap-table" role="grid" aria-label={T.resource_kinds[data.filters.resource_kind] + '时段占用比例与安排'} style={{ '--rres-day-columns': heatmap.buckets.length }}><caption className="wb-visually-hidden">方向键移动，Home / End 到行首尾，Ctrl + Home / End 到图首尾；Enter 查看所选资源的真实时段安排</caption>
         <thead><tr><th scope="col" className="wb-col-key">{T.resource_kinds[data.filters.resource_kind]}</th>{heatmap.buckets.map(bucket => <th key={bucket.key} scope="col" title={exactRange(bucket)}>{bucket.label}</th>)}<th scope="col" className="rres-total-column wb-col-actions">{mode === 'delta' ? '范围占用差值' : mode === 'before' ? '对照范围平均' : '范围平均'}<small>{mode === 'before' ? '当前方案高负荷' : '高负荷时段'}</small></th></tr></thead>
-        <tbody>{heatmap.items.map((row, rowIndex) => { const resource = data.items.find(item => item.resource_ref === row.resource_ref), summary = resource.filter_summary;
+        <tbody>{prepared.rows.map(({ row, groups, resource }, rowIndex) => { const summary = resource.filter_summary;
           return <tr key={row.resource_ref}><th scope="row" className="wb-col-key" data-current={focus && focus.resource_ref === row.resource_ref || undefined}><C.Button className="btn link" data-resource-entry={row.resource_ref} onClick={() => onFocus(row)}>{row.label || T.name_missing}</C.Button></th>{heatmap.buckets.map(bucket => {
-            const cells = row.cells.filter(cell => cell.group_key === bucket.key);
-            const continuations = row.continuations.filter(item => item.group_key === bucket.key);
-            return <td key={bucket.key} role="gridcell" aria-selected={cells.some(cell => focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key)}><div className="rres-period-cells">{continuations.map(item => <C.Button key={item.bucket_key} className="btn link rres-continuation" data-resource-continuation={item.bucket_key}
+            const { cells, continuations } = groups.get(bucket.key) || { cells: [], continuations: [] };
+            return <td key={bucket.key} role="gridcell" aria-selected={cells.some(({ cell }) => focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key)}><div className="rres-period-cells">{continuations.map(item => <C.Button key={item.bucket_key} className="btn link rres-continuation" data-resource-continuation={item.bucket_key}
               aria-label={(row.label || T.name_missing) + '，班段延续 ' + F.compactRange(item.continuation_start, item.continuation_end) + '；查看原完整班段 ' + exactRange(item)} title={'原完整班段：' + exactRange(item)}
-              onFocus={() => onCursor(cursor(row, item))} onClick={() => onFocus(row, item)}><span>班段延续</span><small>{F.compactRange(item.continuation_start, item.continuation_end)}</small></C.Button>)}{cells.map(cell => {
-              const columnIndex = row.cells.indexOf(cell), presentation = cellPresentation(row, cell, mode, pressureLabel, data.baseline.state), { value, side } = presentation, selected = focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key;
+              onFocus={() => onCursor(cursor(row, item))} onClick={() => onFocus(row, item)}><span>班段延续</span><small>{F.compactRange(item.continuation_start, item.continuation_end)}</small></C.Button>)}{cells.map(({ cell, column: columnIndex }) => {
+              const presentation = presentations.values.get(cell), { value, side } = presentation, selected = focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key;
               return <button key={cell.bucket_key} type="button" className="rres-day-cell" data-heatmap-row={rowIndex} data-heatmap-column={columnIndex} data-resource-ref={row.resource_ref} data-resource-date={cell.date} data-resource-bucket={cell.bucket_key}
                 data-value-state={presentation.valueState} data-pressure={presentation.pressure || undefined} data-zero-capacity={presentation.zeroCapacity || undefined} data-conflict={presentation.conflict || undefined} data-change={mode === 'delta' && value !== null ? value > 0 ? 'increase' : value < 0 ? 'decrease' : 'equal' : undefined}
                 style={{ '--rres-intensity': value === null ? 0 : 0.03 + Math.min(Math.abs(value), 1) * 0.22 }} aria-label={presentation.name} title={presentation.name} aria-pressed={!!selected} tabIndex={rowIndex === cursorRow && columnIndex === cursorCell ? 0 : -1}
@@ -100,7 +125,7 @@
             })}</div></td>;
           })}<td className="rres-resource-total wb-col-actions"><strong>{mode === 'delta' ? R.deltaText(resource.deltas.utilization_ratio, 'utilization_ratio') : mode === 'before' && data.baseline.state !== 'available' ? '对照未记录' : R.metricText(resource[mode], 'utilization_ratio')}</strong><small>{summary.high_pressure_period_count === 0 ? '暂无高负荷' : '高负荷 ' + R.scalar(summary.high_pressure_period_count) + ' ' + (grain === 'week' ? '天' : grains[grain])}</small>{grain === 'week' && <small>{peakLabel} {R.scalar(summary.daily_peak_utilization, 'utilization_ratio')}</small>}</td></tr>;
         })}</tbody></table></div> : <p className="rc-empty">{scopeLabel}没有符合筛选的资源记录。</p>}
-      <div className="rc-heading"><div className="rres-heatmap-legend"><span><i className="rres-swatch" />班内占用</span><span><i className="rres-swatch rres-swatch-pressure" />高负荷 / 满载</span><span><i className="rres-swatch rres-swatch-conflict" />班内冲突</span><span><i className="rres-swatch rres-swatch-rest" />休息</span>{heatmap.items.some(row => row.cells.some(cell => cellPresentation(row, cell, mode, pressureLabel, data.baseline.state).valueState === 'unknown')) && <span>待确认</span>}</div><C.Pager label="热力图日期" page={heatmap.page.number} pages={Math.max(1, Math.ceil(heatmap.page.total / heatmap.page.size))} onPage={onPage} /></div>
+      <div className="rc-heading"><div className="rres-heatmap-legend"><span><i className="rres-swatch" />班内占用</span><span><i className="rres-swatch rres-swatch-pressure" />高负荷 / 满载</span><span><i className="rres-swatch rres-swatch-conflict" />班内冲突</span><span><i className="rres-swatch rres-swatch-rest" />休息</span>{presentations.unknown && <span>待确认</span>}</div><C.Pager label="热力图日期" page={heatmap.page.number} pages={Math.max(1, Math.ceil(heatmap.page.total / heatmap.page.size))} onPage={onPage} /></div>
     </section>;
   }
   window.RunDecisionResourceHeatmap = { Heatmap, cellValue, cellText, cellName, cellPresentation, cursor };

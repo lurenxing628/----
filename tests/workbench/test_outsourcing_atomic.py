@@ -57,3 +57,35 @@ def test_failure_rolls_back_header_group_facts_and_receipt(outsourcing_case, sta
     case.conn.execute("DROP TRIGGER injected_outsourcing_failure")
     case.conn.commit()
     assert case.confirm(preview, key="outsourcing-fault-rollback-key")["result"] == "committed"
+
+
+def test_internal_source_size_is_checked_only_when_its_document_is_saved(outsourcing_case, monkeypatch):
+    from core.models import workbench_outsourcing
+
+    case = outsourcing_case
+    monkeypatch.setattr(workbench_outsourcing, "MAX_BYTES", 1024)
+    case.conn.execute("UPDATE Parts SET remark=? WHERE part_no='XP1'", ("x" * 2048,))
+    case.conn.commit()
+    with case.reader.read_snapshot():
+        targets = case.reader.targets(size=1)
+    assert len(targets["items"]) == 1 and targets["page"]["total"] == 3
+    preview = case.preview(case.payload())
+    with pytest.raises(WorkbenchCommandRejected) as oversized:
+        case.confirm(preview, key="outsourcing-real-document-limit")
+    assert oversized.value.code == "query_too_large" and oversized.value.status == 413
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchOutsourcingReceipts").fetchone()[0] == 0
+    assert WorkbenchCommandService(case.conn).lookup("outsourcing-real-document-limit") is None
+
+
+def test_http_preview_enforces_its_actual_utf8_envelope_limit(outsourcing_case, monkeypatch):
+    from core.models.workbench_outsourcing import MAX_BYTES
+    from tests.workbench.outsourcing_support import ROOT, api
+
+    case = outsourcing_case
+    case.conn.execute("UPDATE BatchOperations SET op_type_name=? WHERE op_code='XO1'", ("工" * (MAX_BYTES // 3 + 1),))
+    case.conn.commit()
+    before = original_rows(case.conn)
+    response = api(case, monkeypatch).post(ROOT + "/receipts/preview", json={"input": case.payload()})
+    assert response.status_code == 413 and response.get_json()["error"]["code"] == "query_too_large"
+    assert original_rows(case.conn) == before
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchCommandReceipts").fetchone()[0] == 0

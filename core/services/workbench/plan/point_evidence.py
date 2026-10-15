@@ -2,9 +2,8 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.workbench.facts.adoption_baseline_sources import trial_adoption_facts
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
-from core.services.workbench.facts.candidate_archive import load_adoption_candidate
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.facts.zero_duration import PointEventError
 from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, trial_point_evidence
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
@@ -24,11 +23,14 @@ def official_point_work(conn, version, *, evidence=None, context=None):
             raise PointEventError("point_evidence_missing", "这一版正式计划没有可核对的采用记录，证明不了这道零工时工序。")
         basis, audit = evidence["basis"], evidence["audit"]
         if basis == "candidate_adoption":
-            candidate, _, tasks, _ = load_adoption_candidate(conn, audit["candidate_ref"])
-            reader = CandidatePointReader(candidate, evidence["generation_facts"])
+            source = evidence["candidate_source"]
+            reader = CandidatePointReader(source["candidate"], source["generation_facts"])
             return {row["payload"]["op_id"]: reader.work(row["operation_ref"], row["payload"])
-                    for row in tasks if row["payload"]["start_time"] == row["payload"]["end_time"]}
-        _, _, rows = load_saved_scenario(conn, audit["scenario_ref"])
+                    for row in source["tasks"] if row["payload"]["start_time"] == row["payload"]["end_time"]}
+        prepared = evidence.get("trial_source")
+        if prepared is None:
+            prepared = trial_adoption_facts(conn, audit["scenario_ref"])
+        _, _, rows = prepared.source
         return {row["original"]["operation"]["id"]: {"witness": trial_point_evidence(row["original"], row["current"]),
                  **{key: row["original"][key] for key in ("operation", "batch", "execution")}}
                 for row in rows if row["current"]["start"] == row["current"]["end"]}

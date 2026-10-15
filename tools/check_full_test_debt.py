@@ -107,11 +107,12 @@ def _require_int(value: Any, field_name: str) -> int:
     return int(value)
 
 
-def _registered_entries_by_mode(ledger: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _registered_entries_by_mode(ledger: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     entries = registered_test_debt_entries(ledger)
     active = [entry for entry in entries if str(entry["mode"]) == "xfail"]
     fixed = [entry for entry in entries if str(entry["mode"]) == "fixed"]
-    return active, fixed
+    retired = [entry for entry in entries if str(entry["mode"]) == "retired"]
+    return active, fixed, retired
 
 
 def _max_registered_xfail(ledger: Dict[str, Any]) -> int:
@@ -349,9 +350,10 @@ def _validate_historical_debt_entries_present(
     *,
     active_entries: Sequence[Dict[str, Any]],
     fixed_entries: Sequence[Dict[str, Any]],
+    retired_entries: Sequence[Dict[str, Any]] = (),
     require_all_historical: bool = False,
 ) -> List[str]:
-    registered_nodeids = {str(entry["nodeid"]) for entry in list(active_entries) + list(fixed_entries)}
+    registered_nodeids = {str(entry["nodeid"]) for entry in list(active_entries) + list(fixed_entries) + list(retired_entries)}
     historical_nodeids = {str(nodeid) for nodeid in FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS}
     if require_all_historical:
         missing = sorted(historical_nodeids - registered_nodeids)
@@ -359,7 +361,7 @@ def _validate_historical_debt_entries_present(
         missing = sorted(({str(nodeid) for nodeid in collected_nodeids} & historical_nodeids) - registered_nodeids)
     if not missing:
         return []
-    return ["历史 full pytest 测试债务缺少 xfail/fixed 登记：" + _format_nodeid_list(missing)]
+    return ["历史 full pytest 测试债务缺少 xfail/fixed/retired 登记：" + _format_nodeid_list(missing)]
 
 
 def build_full_test_debt_summary(
@@ -382,7 +384,7 @@ def build_full_test_debt_summary(
     if not collected_nodeids:
         raise QualityGateError("collected_nodeids 不能为空")
 
-    active_entries, fixed_entries = _registered_entries_by_mode(ledger)
+    active_entries, fixed_entries, retired_entries = _registered_entries_by_mode(ledger)
     max_registered_xfail = _max_registered_xfail(ledger)
     reports = _reports(payload)
     call_reports = _call_reports(reports)
@@ -402,6 +404,7 @@ def build_full_test_debt_summary(
             collected_nodeids,
             active_entries=active_entries,
             fixed_entries=fixed_entries,
+            retired_entries=retired_entries,
             require_all_historical=bool(require_historical_registry),
         )
     )
@@ -445,6 +448,7 @@ def build_full_test_debt_summary(
         "collected_count": len(collected_nodeids),
         "collection_error_count": 0,
         "fixed_count": len(fixed_entries),
+        "retired_count": len(retired_entries),
         "max_registered_xfail": max_registered_xfail,
         "unexpected_failure_count": 0,
         "active_xfail_entries": active_summary,

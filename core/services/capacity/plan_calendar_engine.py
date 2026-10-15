@@ -92,8 +92,10 @@ class SnapshotCalendarEngine(CalendarEngine):
         personal = self.personal_rows.get((op_id, date_str))
         if personal is not None:
             return _calendar_row(personal, OperatorCalendar)
-        row = self.global_rows.get(date_str)
-        return _calendar_row(row, WorkCalendar) if row is not None else self._default_for_date(date_str)
+        if date_str not in self._public_calendar_rows:
+            row = self.global_rows.get(date_str)
+            self._public_calendar_rows[date_str] = _calendar_row(row, WorkCalendar) if row is not None else self._default_for_date(date_str)
+        return self._public_calendar_rows[date_str]
 
     def provenance(self, day, operator_id):
         if (operator_id, day) in self.personal_rows:

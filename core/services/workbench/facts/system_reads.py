@@ -10,6 +10,7 @@ from core.models.workbench_command import canonical_json
 from core.models.workbench_system import normalize_log_level
 from core.services.system.operation_log_service import OperationLogService
 from core.services.system.runtime_log_reader import LOG_FILE_CHOICES, NO_ANCHOR_HEAD, read_log_entries_tail
+from core.services.workbench.messages import stored_utc_text
 
 from .system_redaction import public_system_text
 
@@ -45,10 +46,9 @@ def backup_records(directory):
 def _runtime_rows(log_dir, name):
     path = os.path.join(log_dir, name)
     try:
-        stat_regular_file(path)
+        entries = read_log_entries_tail(path, max_entries=201, include_origin=True, missing_ok=False)
     except FileNotFoundError:
         return [], {"source": name, "state": "missing", "window": 200, "count": None, "truncated": False}
-    entries = read_log_entries_tail(path, max_entries=201, include_origin=True)
     rows = []
     for item in entries[:200]:
         time = item["head"][:19]
@@ -84,7 +84,7 @@ def log_records(conn, log_dir, logger):
             summary = public_system_text(operation_log_summary(item.module, item.action), 1000)
             body = public_system_text(public_operation_log_detail_text(item.detail) + "\n" + str(item.error_message or ""))
             rows.append({"key": canonical_json(["OperationLogs", str(item.id)]),
-                         "time": str(item.log_time or "").replace(" ", "T") or None,
+                         "time": stored_utc_text(item.log_time).replace(" ", "T") if item.log_time else None,
                          "type": "operation", "status": "recorded", "level": normalize_log_level(item.log_level),
                          "file": "OperationLogs", "summary": summary, "body": body,
                          "content_truncated": "展示长度已截断" in body})

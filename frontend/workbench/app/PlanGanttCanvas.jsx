@@ -1,32 +1,10 @@
 (function () {
   'use strict';
   const M = window.PlanGanttModel, V = window.GanttPresentation;
-  function usePaint(ref, paint, deps) {
-    React.useLayoutEffect(() => {
-      const draw = () => {
-        const node = ref.current, scale = window.devicePixelRatio || 1;
-        const { width, height } = node.getBoundingClientRect();
-        node.width = Math.max(1, Math.round(width * scale)); node.height = Math.max(1, Math.round(height * scale));
-        const ctx = node.getContext('2d'); ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        paint(ctx, width, height, V.palette(node));
-      };
-      draw();
-      const theme = new MutationObserver(draw); theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
-      const resize = new ResizeObserver(draw); resize.observe(ref.current);
-      const media = window.matchMedia('print');
-      if (typeof media.addEventListener === 'function') media.addEventListener('change', draw); else media.addListener(draw);
-      return () => {
-        theme.disconnect(); resize.disconnect();
-        if (typeof media.removeEventListener === 'function') media.removeEventListener('change', draw); else media.removeListener(draw);
-      };
-    }, deps);
-  }
-  function DenseRow({ row, model, width, viewport, left, printing, printNumbers, selectedRef, selectedBefore, active, risks, onSelect, onHover }) {
+  function DenseRow({ row, items, model, width, viewport, left, printing, printNumbers, selectedRef, selectedBefore, active, risks, onSelect, onHover }) {
     const ref = React.useRef(null), scale = width / (model.end - model.start);
     const G = window.PointGanttModel;
-    const items = row.point ? G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale)
-      : M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
-    usePaint(ref, (ctx, w, h, colors) => {
+    V.useCanvasPaint(ref, (ctx, w, h, colors) => {
       const paintScale = (printing ? w : width) / (model.end - model.start);
       for (const item of items) {
         const x = (item.start - model.start) * paintScale - left, barWidth = (item.end - item.start) * paintScale;
@@ -49,11 +27,11 @@
           critical, criticalColor: colors.gold, muted: !row.before && !!active.target && !related && !critical,
           onTime: !row.before && risks.get(task.batch_id) === 'on_time', statusColor: colors.success.edge });
       }
-    }, [items, selectedRef, selectedBefore, active, width, left, viewport, printing, risks]);
+    }, V.palette, [items, selectedRef, selectedBefore, active, width, left, viewport, printing, risks], printing);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(), at = model.start + (event.clientX - box.left + left) / scale;
-      if (row.point) return G.hit(row.items, event.clientX - box.left, event.clientY - box.top, model, width, left, row.before ? 13 : 27);
-      return M.visibleItems(row.items, at, at + 0.001)[0];
+      if (row.point) return G.hit(items, event.clientX - box.left, event.clientY - box.top, model, width, left, row.before ? 13 : 27);
+      return M.visibleItems(items, at, at + 0.001)[0];
     }
     return <canvas ref={ref} className="plan-row-canvas" data-plan-dense-row data-point-row={row.point || undefined} role="button" tabIndex={0}
       style={{ left, width: viewport }} aria-label={row.label + '，' + row.items.length + ' 道' + (row.before ? '原安排' : '安排')}
@@ -66,18 +44,18 @@
         onSelect(row.items[next].task, row.before);
       }} />;
   }
-  function Overview({ model, tasks, cache, width, viewport, left, onPan }) {
+  function Overview({ model, tasks, prepared: facts, cache, width, viewport, left, onPan }) {
     const ref = React.useRef(null);
     if (!cache.current || cache.current.tasks !== tasks) {
       const intervals = [], points = [];
-      for (const task of tasks) {
-        if (window.PointContract.isPoint(task)) points.push(M.instant(task.start));
-        else intervals.push({ start: M.instant(task.start), end: M.instant(task.end) });
+      for (const item of facts.items) {
+        if (item.point) points.push(item.start);
+        else intervals.push(item);
       }
       cache.current = { tasks, intervals, points, histogram: null };
     }
     const prepared = cache.current;
-    usePaint(ref, (ctx, w, h, colors) => {
+    V.useCanvasPaint(ref, (ctx, w, h, colors) => {
       let facts = prepared.histogram;
       if (!facts || facts.start !== model.start || facts.end !== model.end || facts.cssWidth !== w) {
         const bins = new Float64Array(Math.max(1, Math.ceil(w)) + 1), bars = [];
@@ -97,7 +75,7 @@
       for (const x of facts.points) window.PointGanttModel.paint(ctx, x, 8, colors.plan.fill, colors.plan.edge, false);
       ctx.strokeStyle = colors.gold; ctx.lineWidth = 2;
       ctx.strokeRect(left / width * w + 1, 1, Math.max(1, Math.min(w - 2, viewport / width * w - 2)), h - 2);
-    }, [model.start, model.end, prepared, width, left, viewport]);
+    }, V.palette, [model.start, model.end, prepared, width, left, viewport]);
     return <div className="plan-global">
       <div className="plan-global-labels"><span>全局时间轴</span></div>
       <canvas ref={ref} role="img" aria-label="真实安排时间分布" onClick={event => {

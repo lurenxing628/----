@@ -25,13 +25,6 @@ class OperatorMachineRepository(BaseRepository):
             )
         )
 
-    def list_by_operator(self, operator_id: str) -> List[OperatorMachine]:
-        rows = self.fetchall(
-            "SELECT id, operator_id, machine_id, skill_level, is_primary, created_at FROM OperatorMachine WHERE operator_id = ? ORDER BY id",
-            (operator_id,),
-        )
-        return [OperatorMachine.from_row(r) for r in rows]
-
     def list_by_machine(self, machine_id: str) -> List[OperatorMachine]:
         rows = self.fetchall(
             "SELECT id, operator_id, machine_id, skill_level, is_primary, created_at FROM OperatorMachine WHERE machine_id = ? ORDER BY id",
@@ -147,11 +140,6 @@ class OperatorMachineRepository(BaseRepository):
             (operator_id, machine_id),
         )
 
-    def delete_all(self) -> int:
-        """清空全部关联（用于 Excel REPLACE 导入）。"""
-        cur = self.execute("DELETE FROM OperatorMachine", None)
-        return int(getattr(cur, "rowcount", 0) or 0)
-
     def delete(self, link_id: int) -> None:
         self.execute("DELETE FROM OperatorMachine WHERE id = ?", (link_id,))
 
@@ -164,13 +152,4 @@ class OperatorMachineRepository(BaseRepository):
             """,
             (skill_level, is_primary, operator_id, machine_id),
         )
-        return int(getattr(cur, "rowcount", 0) or 0)
-
-    def clear_primary_for_operator(self, operator_id: str, *, exclude_machine=None) -> int:
-        sql = "UPDATE OperatorMachine SET is_primary = 'no' WHERE operator_id = ?"
-        params = (operator_id,)
-        if exclude_machine is not None:
-            sql += " AND machine_id<>?"
-            params += (exclude_machine,)
-        cur = self.execute(sql, params)
         return int(getattr(cur, "rowcount", 0) or 0)

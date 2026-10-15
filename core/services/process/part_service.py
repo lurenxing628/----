@@ -420,7 +420,7 @@ class PartService:
                 raise BusinessError(ErrorCode.NOT_FOUND, "这道模板工序已经变了，同工序号现在是另一条记录，这次没有更新工时。请刷新后重新核对再保存。")
             fields = {key: value for key, value in {"setup_hours": float(sh), "unit_hours": float(uh)}.items()
                       if current[key] != value}
-            hours.revise(ref, fields, expected_revision=current["revision"])
+            hours.revise_current(current, fields, expected_revision=current["revision"])
 
     def delete_external_group(self, part_no: str, group_id: str) -> Dict[str, Any]:
         pn = self._normalize_text(part_no)

@@ -212,7 +212,6 @@ _OPERATION_EXECUTION_REQUIRED_FOREIGN_GROUPS = {
 
 _OPERATION_EXECUTION_REQUIRED_INDEXES = {
     "idx_operation_execution_events_op": ["op_id", "event_time"],
-    "idx_operation_execution_events_schedule": ["schedule_id"],
     "idx_operation_execution_events_schedule_op": ["schedule_id", "op_id"],
     "idx_operation_execution_events_batch": ["batch_id"],
     "idx_operation_execution_events_latest_exception": ["op_id", "event_type", "id"],
@@ -228,7 +227,7 @@ def has_operation_execution_event_contract(conn: sqlite3.Connection) -> bool:
     return not operation_execution_event_contract_issues(conn)
 
 
-def operation_execution_event_contract_issues(conn: sqlite3.Connection, *, structure=None) -> List[str]:
+def operation_execution_event_contract_issues(conn: sqlite3.Connection, *, structure=None, full_data=True) -> List[str]:
     structure = structure if structure is not None else SchemaStructure(conn)
     if not structure.has_table("OperationExecutionEvents"):
         return ["missing_table: OperationExecutionEvents"]
@@ -238,8 +237,9 @@ def operation_execution_event_contract_issues(conn: sqlite3.Connection, *, struc
     issues.extend(_operation_execution_column_contract_issues(conn, normalized_sql, structure=structure))
     issues.extend(_operation_execution_foreign_key_contract_issues(conn, structure=structure))
     issues.extend(_operation_execution_index_contract_issues(conn, structure=structure))
-    issues.extend(_operation_execution_probe_issues(conn))
-    issues.extend(operation_execution_event_data_issues(conn))
+    if full_data:
+        issues.extend(_operation_execution_probe_issues(conn))
+        issues.extend(operation_execution_event_data_issues(conn))
     return issues
 
 

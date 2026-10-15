@@ -592,7 +592,6 @@
       "critical_task_refs": [
         "c776413f57559a17900be5fc0d8148e7162f59b7c006f9ff"
       ],
-      "edges": [],
       "nodes": [
         {
           "batch_id": "B1",
@@ -602,7 +601,8 @@
           "process_label": "Turning",
           "sequence": 1,
           "start": "2026-09-09T08:00:00",
-          "task_ref": "c776413f57559a17900be5fc0d8148e7162f59b7c006f9ff"
+          "task_ref": "c776413f57559a17900be5fc0d8148e7162f59b7c006f9ff",
+          "predecessor_operation_refs": []
         }
       ],
       "reason": null,
@@ -857,7 +857,6 @@
       "critical_task_refs": [
         "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
       ],
-      "edges": [],
       "nodes": [
         {
           "batch_id": "B1",
@@ -867,7 +866,8 @@
           "process_label": "Turning",
           "sequence": 1,
           "start": "2026-09-09T08:00:00",
-          "task_ref": "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
+          "task_ref": "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993",
+          "predecessor_operation_refs": []
         }
       ],
       "reason": null,
@@ -1165,13 +1165,6 @@
       "process_order": {
         "basis": "run_admission",
         "issues": [],
-        "items": [
-          {
-            "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
-            "predecessor_operation_refs": [],
-            "task_ref": "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
-          }
-        ],
         "state": "available"
       }
     },

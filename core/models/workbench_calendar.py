@@ -160,8 +160,8 @@ class CalendarRangePreview:
 
     HTTP assembly must retain it by preview_ref with its edit context, return only
     a display projection, and pass the original object to confirm inside the outer
-    WorkbenchCommandService transaction. Fingerprinting also detects accidental
-    mutation of its nested dictionaries. No write_token is stored here.
+    WorkbenchCommandService transaction. Prepared models belong to that operation;
+    confirmation prepares current models under the write lock. No write_token is stored here.
     """
 
     preview_ref: str
@@ -170,8 +170,4 @@ class CalendarRangePreview:
     request: Dict[str, Any]
     dates: List[str]
     days: List[Dict[str, Any]]
-    fingerprint: str
-
-    def facts(self) -> Dict[str, Any]:
-        return {"preview_ref": self.preview_ref, "created_at": self.created_at, "expires_at": self.expires_at,
-                "request": self.request, "dates": self.dates, "days": self.days}
+    calendars: List[Any]

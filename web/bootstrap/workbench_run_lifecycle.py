@@ -26,7 +26,9 @@ def install_run_lifecycle(deps, app, lock_state):
     installer = deps.install_run_runtime
     if installer is None:
         return None
-    if app.extensions.get(RECOVERY) or prepare_system_restore_startup(app):
+    if app.extensions.get(RECOVERY) or (
+        "workbench_startup_maintenance_records" not in app.extensions and prepare_system_restore_startup(app)
+    ):
         return _install_recovery_lifecycle(deps, app, lock_state)
     runtime = installer(app, runtime_lock=lock_state.get("payload"))
     lock_state["runtime"] = runtime

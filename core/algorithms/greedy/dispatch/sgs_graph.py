@@ -25,39 +25,12 @@ class PreparedGraphReadyTopology:
     sort_keys: Mapping[int, Tuple[int, int, int]]
     fixed_sources: Optional[Mapping[int, str]]
 
-    def matches(self, context: Any, op_ids: Any) -> bool:
-        if type(context) is not dict or set(op_ids) != self.schedulable_ids:
-            return False
-        for name in ("schedulable_op_ids", "fixed_op_ids"):
-            value = context.get(name)
-            if type(value) not in (set, frozenset):
-                return False
-            if any(type(item) is not int for item in cast(AbstractSet[Any], value)):
-                return False
-        for name in ("predecessor_op_ids_by_op_id", "successor_op_ids_by_op_id"):
-            value = context.get(name)
-            if (type(value) is not dict or any(type(key) is not int or type(links) not in (set, frozenset)
-                    or any(type(item) is not int for item in links) for key, links in value.items())):
-                return False
-        keys = context.get("sort_key_by_op_id")
-        if (type(keys) is not dict or any(type(key) is not int or type(value) is not tuple
-                or any(type(item) is not int for item in value) for key, value in keys.items())):
-            return False
-        sources = context.get("fixed_op_sources_by_op_id")
-        if sources is not None and (type(sources) is not dict or any(type(key) is not int or type(value) is not str
-                                                                  for key, value in sources.items())):
-            return False
-        fields = (("schedulable_op_ids", self.schedulable_ids), ("fixed_op_ids", self.fixed_ids),
-                  ("predecessor_op_ids_by_op_id", self.predecessors),
-                  ("successor_op_ids_by_op_id", self.successors), ("sort_key_by_op_id", self.sort_keys),
-                  ("fixed_op_sources_by_op_id", self.fixed_sources))
-        # Compare contents, not object identity: mutating a raw input returns to its full validation path.
-        return all(context.get(name) == value for name, value in fields)
 
 
 def prepare_graph_ready_topology(context, operations) -> PreparedGraphReadyTopology:
     raw = dict(context)
     raw.pop(_TOPOLOGY_FIELD, None)
+    raw["score_enabled"] = False
     grouped: Dict[str, List[Any]] = {}
     for op in operations:
         grouped.setdefault(str(op.batch_id), []).append(op)
@@ -116,7 +89,7 @@ def _prepare_graph_ready_state(
     topology: Any = graph_ready_context.get(_TOPOLOGY_FIELD)
     prepared: Optional[PreparedGraphReadyTopology] = (
         cast(PreparedGraphReadyTopology, topology)
-        if type(topology) is PreparedGraphReadyTopology and topology.matches(graph_ready_context, op_by_id) else None
+        if type(topology) is PreparedGraphReadyTopology else None
     )
     if prepared is not None:
         schedulable_ids, fixed_op_ids = set(prepared.schedulable_ids), set(prepared.fixed_ids)
@@ -150,10 +123,9 @@ def _prepare_graph_ready_state(
     score_enabled = _graph_score_enabled(graph_ready_context.get("score_enabled", False))
     graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]] = {}
     if score_enabled:
-        graph_priority_key_by_op_id = _graph_priority_key_map(
-            graph_ready_context.get("graph_priority_key_by_op_id"),
-            schedulable_ids=set(op_by_id),
-        )
+        graph_priority_key_by_op_id = (graph_ready_context["graph_priority_key_by_op_id"] if prepared is not None
+            else _graph_priority_key_map(graph_ready_context.get("graph_priority_key_by_op_id"),
+                                         schedulable_ids=set(op_by_id)))
     sort_key_by_op_id = prepared.sort_keys if prepared is not None else _graph_sort_key_map(
         graph_ready_context.get("sort_key_by_op_id"),
         schedulable_ids=set(op_by_id),

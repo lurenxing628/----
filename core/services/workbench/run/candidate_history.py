@@ -1,7 +1,7 @@
 """Read only the original candidate's persisted adoption receipts and audits."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_run_adoption import ADOPT_ACTION
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
@@ -113,7 +113,6 @@ def _read_candidate_history(conn, candidate_ref, store, receipts, context):
     data = {"candidate_ref": candidate_ref, "run_ref": run_ref, "items": items,
             "total": len(items), "state": "available" if items else "empty",
             "basis": "original_candidate_receipts_and_official_adoption_audits"}
-    bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
     state = {"read_contract_version": 1, "candidate_ref": candidate_ref, "run_ref": run_ref,
              "receipts": [{"receipt_ref": item["receipt_ref"], "can_open": item["can_open"],
                            "issue_codes": sorted(issue["code"] for issue in item["evidence_gaps"])}

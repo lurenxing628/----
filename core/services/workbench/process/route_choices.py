@@ -1,6 +1,7 @@
 """Preview the choices that route confirmation will actually persist."""
 
 from copy import deepcopy
+from types import SimpleNamespace
 
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
@@ -22,7 +23,21 @@ def _group_members(repo, operations):
     return group_rows, members
 
 
-def route_choice_context(conn, operations):
+def route_choice_context(conn, operations, facts=None):
+    if facts is not None:
+        references = facts["references"]
+        refs = {kind: {row["entity_key"]: SimpleNamespace(ref=row["ref"]) for row in facts["identities"]
+                       if row["kind"] == kind and row["active"]} for kind in ("op_type", "supplier")}
+        group_keys = {row["ext_group_id"] for row in operations if row["ext_group_id"]}
+        groups = {row["group_id"]: row for row in facts["groups"] if row["group_id"] in group_keys}
+        members = {}
+        for row in facts["operations"]:
+            if row["status"] == "active" and row["ext_group_id"] in groups:
+                members.setdefault(row["ext_group_id"], []).append(row)
+        return {"type_refs": refs["op_type"], "supplier_refs": refs["supplier"],
+                "types": {row["op_type_id"]: row["name"] for row in references["OpTypes"]},
+                "suppliers": {row["supplier_id"]: row["name"] for row in references["Suppliers"]},
+                "group_rows": groups, "groups": {key: project_group(row, members.get(key, [])) for key, row in groups.items()}}
     identities = WorkbenchIdentityRepository(conn)
     type_refs = identities.active_map("op_type", {row["op_type_id"] for row in operations if row["op_type_id"]})
     supplier_refs = identities.active_map("supplier", {row["supplier_id"] for row in operations if row["supplier_id"]})
@@ -111,6 +126,8 @@ def _preview_existing_operation(row, old, result, context, discarded):
 
 
 def preview_existing_route(conn, preview, operations, context=None):
+    if preview.get("_choices_projected"):
+        return preview
     result = deepcopy(preview)
     result["_choices_projected"] = True
     existing = {row["seq"]: row for row in operations}

@@ -26,18 +26,17 @@ from data.repositories.workbench_resource_file_repo import WorkbenchResourceFile
 
 from .entities import WorkbenchResourceService
 from .file_input import ResourceFileInput, proposed_fields, same_value
-from .file_projection import flat_resource, reference_count, resource_file_state
+from .file_projection import flat_resource, reference_count
 from .queries import WorkbenchResourceQueryService
 from .suppliers import WorkbenchSupplierService
 
 
 class WorkbenchResourceFileService:
-    def __init__(self, conn, kind, logger=None):
+    def __init__(self, conn, kind, logger=None, reader=None):
         self.conn, self.kind = conn, action_kind(kind)
-        self.reader = WorkbenchResourceQueryService(conn, kind, logger)
+        self.reader = reader if reader is not None else WorkbenchResourceQueryService(conn, kind, logger)
         self.adapter = cast(Union[WorkbenchResourceService, WorkbenchSupplierService], self.reader.domain)
         self.repo = WorkbenchResourceFileRepository(conn, logger)
-        self.inputs = ResourceFileInput(self.reader, self.repo)
         self.tx = TransactionManager(conn)
 
     def prepare_import(self, content, *, file_format, scope, mode="upsert"):
@@ -46,16 +45,29 @@ class WorkbenchResourceFileService:
         return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
+        return self._prepare_import(content, file_format=file_format, scope=scope, mode=mode)[0]
+
+    def _prepare_import(self, content, *, file_format, scope, mode="upsert"):
         prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
             content, file_format=file_format, scope=scope, mode=mode)
         request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
         source, notices = prepared.parsed()
         with self.tx.transaction():
-            rows = [self._import_row(item, request["scope"]) for item in source]
+            preparation = self.reader.preparation()
+            codes = sorted({item["values"]["business_code"].strip() for item in source
+                            if isinstance(item["values"].get("business_code"), str)})
+            existing = [code for code in codes if preparation.find_identity(self.kind, code) is not None]
+            references = preparation.capture_references(self.repo, self.kind, existing)
+            states = preparation.states(self.kind, existing)
+            histories = self.repo.identity_histories(self.kind, [code for code in codes if code not in states])
+            inputs = ResourceFileInput(self.reader, preparation)
+            planned = [self._import_row(item, request["scope"], preparation, states, references, histories, inputs) for item in source]
+            rows = [row for row, _change in planned]
             self._duplicates(rows, "business_code")
             if self.kind == "op_type":
                 self._duplicates(rows, "label")
-            return ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
+            preview = ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
+            return preview, [change for _row, change in planned]
 
     @staticmethod
     def _duplicates(rows, field):
@@ -70,33 +82,36 @@ class WorkbenchResourceFileService:
                 for row in repeated:
                     reject_action_row(row, "文件里有重复的编号或名称，这些行都没有导入：第 " + numbers + " 行。请去掉重复项后重新上传。", field=field, code="duplicate_entry")
 
-    def _import_row(self, source, scope):
+    def _import_row(self, source, scope, preparation, states, references, histories, inputs):
         row = action_row(source["row"])
         row["errors"] = list(source["errors"])
         values = source["values"]
+        change = None
         row["reference_fields"] = [key for key in READONLY[self.kind] if key in values]
         try:
             code = cast(str, resource_text(values.get("business_code"), "business_code"))
             row["business_code"] = code
-            if values["business_code"] != code and self.repo.raw(self.kind, values["business_code"]) is not None:
+            if values["business_code"] != code and preparation.raw(self.kind, values["business_code"]) is not None:
                 raise ValidationError("编号不能有首尾空格，请修正后重新导入。", field="business_code")
-            identity = self.reader.identities.find_active(self.kind, code)
+            identity = preparation.find_identity(self.kind, code)
             if identity is None:
-                raw = self.repo.raw(self.kind, code)
+                raw = preparation.raw(self.kind, code)
                 if raw is not None:
                     raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，这一行没有导入，资料也没有被改动。请到资料总览核对后重试。", 500)
                 row["action"] = "create"
-                row["expected"] = {"state": None, "history": self.repo.identity_history(self.kind, code)}
+                row["expected"] = {"state": None, "history": histories[code]}
             else:
                 row["action"] = "update"
-                state = self.adapter._snapshot_from_current(identity)
+                state = states[code]
                 raw = state["supplier"] if self.kind == "supplier" else state["record"]
-                expected = {"state": state, "references": self.repo.references(self.kind, code)}
+                expected = {"state": state, "references": references[code]}
+                authorizations = preparation.authorizations(self.kind, code) if self.kind in ("machine", "operator") else ()
                 row.update(entity_ref=identity.ref, expected=expected,
-                           before=flat_resource(self.kind, identity, expected, self.repo), reference_count=reference_count(expected))
+                           before=flat_resource(self.kind, identity, state, authorizations), reference_count=reference_count(expected))
                 check_category(self.kind, raw, scope)
             if not row["errors"]:
-                row["input"], row["related"] = self.inputs.normalize(row["action"], code, values, row["before"], scope)
+                row["input"], row["related"] = inputs.normalize(row["action"], code, values, row["before"], scope)
+                change = self.adapter.prepare(row["action"], row["input"], row["expected"]["state"], preparation)
                 self._classify(row)
         except ValidationError as exc:
             reject_action_row(row, exc.message, field=exc.field or "input")
@@ -104,7 +119,7 @@ class WorkbenchResourceFileService:
             if exc.status >= 500:
                 raise
             reject_action_row(row, str(exc), code=exc.code)
-        return row
+        return row, change
 
     def _classify(self, row):
         before, payload = row["before"], row["input"]
@@ -125,16 +140,17 @@ class WorkbenchResourceFileService:
             raise RuntimeError("资源导入确认必须在外层工作台写事务中执行。")
         with self.tx.transaction():
             try:
-                current = self.preview_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, scope=scope, mode=mode)
+                current, changes = self._prepare_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, scope=scope, mode=mode)
             except ValidationError as exc:
                 raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             results = []
-            for row in current.as_dict()["rows"]:
-                outcome = self.adapter._apply_checked(row["action"], row["input"], row["expected"]["state"])
+            document = current.as_dict()
+            for row, change in zip(document["rows"], changes):
+                outcome = self.adapter.apply_prepared(change)
                 results.append({"row": row["row"], "result": outcome.result, **outcome.data})
             result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
-            return WorkbenchCommandOutcome(result, {"rows": results, "summary": current.as_dict()["summary"]})
+            return WorkbenchCommandOutcome(result, {"rows": results, "summary": document["summary"]})
 
     def preview_export(self, selection, *, scope, selected_refs=None):
         if not self.conn.in_transaction:
@@ -144,9 +160,10 @@ class WorkbenchResourceFileService:
         scope = resource_scope(self.kind, scope)
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
+            preparation = self.reader.preparation()
             for ref in refs:
-                identity = self.reader.resolve(ref)
-                check_category(self.kind, self.repo.raw(self.kind, identity.entity_key), scope)
+                identity = preparation.identity(self.kind, ref)
+                check_category(self.kind, preparation.facts.raw_record(self.kind, identity.entity_key), scope)
             return {"scope": scope, "selected_refs": refs}, len(refs)
         effective = resource_scope(self.kind, {"category": scope["category"]}) if selection == "all" else scope
         count = len(self.reader.matching_keys(ResourcePageRequest(kind=self.kind, **effective)))
@@ -157,27 +174,31 @@ class WorkbenchResourceFileService:
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出必须在已验证的查询快照事务中执行。")
         scope = resource_scope(self.kind, scope)
+        preparation = self.reader.preparation()
         if selected_refs is None:
-            matching = self.reader.matching_rows(ResourcePageRequest(kind=self.kind, **scope))
-            rows, count = (row for row in matching), len(matching)
+            query = ResourcePageRequest(kind=self.kind, **scope)
+            index = preparation.facts.index(query, self.reader.repo.toolbar_keys(query))
+            matching = index.matching_keys(query)
+            rows, count = (index.rows[code] for code in matching), len(matching)
         else:
             refs = resource_refs(selected_refs, allow_empty=True)
             rows, count = ({"ref": ref} for ref in refs), len(refs)
         with closing(rows):
             check_capacity(count, file_format)
-            return list(self._export_rows(rows, scope))
+            return list(self._export_rows(rows, scope, preparation))
 
     def write_export(self, rows, file_format, *, scope):
         """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
         return write_resource_file(self.kind, rows, file_format, category=resource_scope(self.kind, scope)["category"])
 
-    def _export_rows(self, rows, scope):
+    def _export_rows(self, rows, scope, preparation):
         for row in rows:
             if row["ref"] is None:
-                raise WorkbenchCommandRejected("storage_failure", "有资源在资料里查不到编号，没有开始下载，资料也没有被改动。请到资料总览核对后重试。", 500)
-            identity = self.reader.resolve(row["ref"])
-            state = resource_file_state(self.reader, self.repo, identity)
-            flat = flat_resource(self.kind, identity, state, self.repo)
+                raise WorkbenchCommandRejected("storage_failure", "有资源在资料里查不到编号，请到资料总览核对后重试。", 500)
+            identity = preparation.identity(self.kind, row["ref"])
+            state = preparation.export_state(self.kind, identity.entity_key)
+            authorizations = preparation.authorizations(self.kind, identity.entity_key) if self.kind in ("machine", "operator") else ()
+            flat = flat_resource(self.kind, identity, state, authorizations)
             check_category(self.kind, flat, scope)
             yield flat
 

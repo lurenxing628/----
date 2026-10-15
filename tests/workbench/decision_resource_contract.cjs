@@ -18,7 +18,7 @@ function hooks() {
     useMemo(make, deps) { const i = cursor++; if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { deps, value: make() }; return slots[i].value; },
     useEffect(effect, deps) { const i = cursor++, prior = slots[i]; if (!prior || !same(prior.deps, deps)) { slots[i] = { deps, cleanup: prior && prior.cleanup }; effects.push(() => { if (slots[i].cleanup) slots[i].cleanup(); slots[i].cleanup = effect(); }); } },
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
-    render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); } };
+    render(fn) { cursor = 0; return fn(); }, reset() { slots.length = 0; effects.length = 0; }, flush() { while (effects.length) effects.shift()(); } };
 }
 const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'WorkbenchDatePickerModel.js', 'ResourceProjectionContract.js', 'EffortProjectionContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionResources.jsx', 'RunDecisionResourceHeatmap.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
@@ -120,7 +120,7 @@ function presentationContracts() {
   const segmented = payload({ resource_ref: machines[0] }, 'resource-days'); segmented.data.items[0].after.tasks.push({ ...segmented.data.items[0].after.tasks[0], row_ref: ref(506) });
   const dailyTree = expand(h(R.Days, { result: segmented, query: common, adapter: {}, onQuery() {}, onClose() {} }));
   assert(nodes(dailyTree).some(node => node.type === 'summary' && text(node).replace(/\s/g, '').includes('当前方案：2段安排记录')), '同工序多段列表按实际安排记录段数展示');
-  const data = payload().data; data.heatmap.items[0].cells[0].after = zero;
+  const data = payload().data; let presentationReads = 0; Object.defineProperty(data.heatmap.items[0].cells[0], 'after', { get() { presentationReads++; return zero; } });
   const selection = [], focus = [], { state, window: local } = runtime();
   let tree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data, focus: { resource_ref: machines[0], date: dates[0], bucket_key: dates[0] }, mode: 'after', onCursor: value => selection.push(value), onFocus: (...args) => focus.push(args) }));
   const buttons = nodes(tree).filter(node => node.props['data-heatmap-row'] !== undefined);
@@ -133,11 +133,16 @@ function presentationContracts() {
   assert.equal(frame.props.ref.current.scrollTop, 3, '实际首格被28px固定表头遮挡时，热图滚动使其完整可见');
   assert.equal(selection.find(value => value && value.preventScroll === true).preventScroll, true, '先定位焦点再由热图职责处理滚动');
   buttons[0].props.onClick(); assert.equal(focus[0][0].resource_ref, machines[0]); assert.equal(focus[0][1].date, dates[0]);
+  const preparedPresentationReads = presentationReads;
+  state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data, focus: { resource_ref: machines[0], bucket_key: dates[1] }, mode: 'after', onCursor() {}, onFocus() {} }));
+  assert.equal(presentationReads, preparedPresentationReads, 'Moving the heatmap cursor reuses bucket presentation facts');
+  state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data, mode: 'after', definitions: [{ key: 'machine_high_pressure_count', label: '新的负荷定义' }], onCursor() {}, onFocus() {} }));
+  assert(presentationReads > preparedPresentationReads, 'A changed metric definition rebuilds its affected presentation');
   const sideData = payload().data, compared = sideData.heatmap.items[0].cells[0];
   compared.after = metricWindow({ utilization_ratio: 1, occupied_hours: 8, high_pressure: true, zero_capacity_task: true, demand_overload: true, conflict: true });
   compared.before = metricWindow({ utilization_ratio: 0.852, occupied_hours: 6.816, high_pressure: false, zero_capacity_task: null, demand_overload: false, conflict: false }); compared.deltas.utilization_ratio = 0.148;
   for (const mode of ['after', 'before', 'delta']) {
-    const modeTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: sideData, mode, onCursor() {}, onFocus() {} })), cell = nodes(modeTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
+    const modeTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: { ...sideData, heatmap: { ...sideData.heatmap } }, mode, onCursor() {}, onFocus() {} })), cell = nodes(modeTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
     assert.equal(cell.props['aria-label'], cell.props.title, '提示与读屏共享当前侧的数值和告警');
     for (const flag of ['data-pressure', 'data-zero-capacity', 'data-conflict']) assert.equal(cell.props[flag], mode === 'after' ? true : undefined, '颜色标记沿显示侧使用明确为真的告警');
     if (mode === 'before') {
@@ -158,7 +163,7 @@ function presentationContracts() {
   const preservedRest = { ...zero, calendar_state: 'complete', actual_work_state: 'not_recorded', occupied_hours: 0, zero_capacity_task: null, outside_calendar_hours: 24, span_occupied_hours: 24, overlap_hours: 0 }, savedRest = clone(preservedRest);
   compared.before = clone(preservedRest); compared.after = clone(preservedRest);
   for (const mode of ['before', 'after']) {
-    const restTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: sideData, mode, onCursor() {}, onFocus() {} })), restCell = nodes(restTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
+    const restTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: { ...sideData, heatmap: { ...sideData.heatmap } }, mode, onCursor() {}, onFocus() {} })), restCell = nodes(restTree).find(node => node.props['data-heatmap-row'] === 0 && node.props['data-heatmap-column'] === 0);
     assert.equal(text(restCell), '休息'); assert.equal(restCell.props['data-value-state'], 'not_applicable'); assert.equal(restCell.props['data-zero-capacity'], undefined); assert.equal(restCell.props['data-conflict'], undefined);
     assert(restCell.props['aria-label'].includes('无可排时段工作是否发生待确认'), '已确认休息的24小时保留跨度不升级成未知班表，实际工作缺项继续保留读屏提示');
     assert.equal(compared[mode].utilization_ratio, null, '无容量不补成0%'); assert.deepEqual(clone(compared[mode]), savedRest, '两侧原始未知工作信号及保留跨度全部保持');
@@ -181,6 +186,7 @@ function presentationContracts() {
   continuation.props.onClick(); assert.equal(nightFocus[0][1].start, dates[0] + 'T18:30:00'); assert.equal(nightFocus[0][1].end, dates[1] + 'T02:30:00', '延续链接读取原完整班段');
   const preciseQuery = { ...common, resource_ref: machines[0], grain: 'hour', bucket_start: dates[0] + 'T08:00:00', bucket_end: dates[0] + 'T09:00:00' }, preciseResult = payload(preciseQuery, 'resource-days');
   preciseResult.data.items[0].after.tasks[0].occupied_hours = 0.125;
+  state.reset();
   const preciseTree = state.render(() => expand(h(local.RunDecisionResources.SelectedWindow, { result: preciseResult, query: preciseQuery, adapter: {}, onClose() {}, onWhole() {} })));
   assert(text(preciseTree).includes('0.125'), '时段贡献使用共同接口保存数值，页面不以安排跨度重算工时');
   const revealState = hooks(), { window: revealWindow } = runtime(revealState), revealed = [], revealProps = { result: preciseResult, query: preciseQuery, adapter: {}, onClose() {}, onWhole() {} };

@@ -37,12 +37,10 @@ def project_saved_decision_delivery(facts, tasks, batch_refs, *, intervals, defe
 
 
 def _delivery_batches(facts, schedules, batch_refs, *, deferred_ids, candidate, available, issues, intervals):
-    operations = defaultdict(list)
-    for operation in facts.tables["BatchOperations"].values():
-        operations[operation["batch_id"]].append(dict(operation, op_id=operation["id"]))
+    operations = facts.operations_by_batch
     completion = ((candidate or {}).get("artifact", {}).get("metrics") or {}).get("completion")
     incomplete = set(completion.get("incomplete_batch_ids", [])) if type(completion) is dict else set()
-    keys = {ref: key for (kind, key), ref in facts.entity_refs.items() if kind == "batch"}
+    keys = facts.batch_ids_by_ref
     result = []
     for ref in batch_refs:
         key = keys.get(ref)
@@ -51,7 +49,7 @@ def _delivery_batches(facts, schedules, batch_refs, *, deferred_ids, candidate, 
             corrupt()
         rows = schedules[key]
         uncertain = list(issues) + ([] if available else ["candidate_result_unavailable" if candidate is not None else "no_admission_baseline"])
-        item = project_delivery_batch(batch, ref, rows, operations[key], task_intervals(rows) if intervals is None else intervals, key in incomplete,
+        item = project_delivery_batch(batch, ref, rows, operations.get(key, ()), task_intervals(rows) if intervals is None else intervals, key in incomplete,
                                       uncertain, deferred_operation_ids=deferred_ids)
         if not available:
             item.update(completion_state="unknown", completeness="unknown", scheduled_operation_count=None,

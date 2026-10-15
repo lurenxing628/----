@@ -1,0 +1,228 @@
+doc_type: refactor-checklist
+refactor: 2026-10-15-single-pass-workflow
+status: approved
+created: 2026-10-15
+baseline: 8096bdbbf3c04ef17ec24fa2cd19bfc71fa678b8
+source_plan: .codestable/refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md
+scope: 现有职责归口与重复工作删除，包含方案列明的公开读行为调整
+implementation_status: complete
+validation_status: platform_deferred
+reviewed: 2026-10-15
+review_status: independent_review_revisions_incorporated
+working_rules:
+  - 同一份事实由一次操作的拥有者读取、规范化、校验和派生，下游直接消费。
+  - 迁移全部实际调用方后删除旧入口和旁路；不增加trusted标记、证明层、通用缓存或第二个快照登记表。
+  - 复用已通过且输入未变的验证；只为真实业务缺口补测试，不按审计编号各造测试。
+  - 产品实施前使用symbol_locator及当前源码核对调用者；过期索引的空结果不作无调用证据。
+  - 新子代理不继承对话上下文，使用定稿方案和明确文件职责，不并发写同一文件。
+  - 保留已有README修改和历史evidence；本方案不授权修改业务数据库、重排产、发布或安装。
+steps:
+  - id: P1
+    title: 退出旧入口和无人消费产物
+    status: done
+    depends_on: []
+    areas:
+      - core/services/scheduler/run/schedule_orchestrator.py
+      - core/services/scheduler/schedule_service.py
+      - core/services/scheduler/run/schedule_input_collector.py
+      - core/services/scheduler/run/schedule_persistence.py
+      - core/services/scheduler/config
+      - core/services/scheduler/gantt
+      - core/services/scheduler/resource_dispatch
+      - core/services/report
+      - tools/wufenchang_demo/builder.py
+      - desktop/gantt
+    actions:
+      - 迁移真实输入DTO、payload合同、仓储bundle和有效工具；编排器只保留计算职责。
+      - 退役旧保存/配置装配/报表甘特PoC入口；保留当前计算、导出和历史数据读取。
+      - 删除result_summary_json、locked_seed_range和已确认无消费者调用。
+    exit_signal: 当前产品和有效工具直接依赖真实职责，旧入口、回调分支、懒导出及专用测试接线实际退出。
+  - id: P2
+    title: 统一事务事实与派生结果
+    status: done
+    depends_on: [P1]
+    areas:
+      - core/services/workbench/facts
+      - core/services/workbench/run
+      - core/services/workbench/batch
+      - core/services/workbench/process
+      - core/services/workbench/report
+      - core/services/execution
+      - core/services/scheduler/run/schedule_execution_resource_facts.py
+      - core/services/scheduler/resource_pool_builder.py
+    actions:
+      - 接通采用与worker的已有capture，不重复改已完成的受理链。
+      - latest、执行、预约、资源、配置、source、外协组在现有输入准备内一次产生。
+      - 停机保留实际坏记录拒绝，整体读取失败按真实存储失败表达，退出逐设备查询失败计数。
+      - 批次引用聚合，ledger依赖批量读取，GenerationFacts/DecisionSource/PlanReadContext共用已解码事实。
+      - trial来源resolver一次准备场景及来源，metadata/资源/点事件共用，保留原来源与当前分配资源差别。
+      - 归档读保留必需结构/引用/归属规则，公式重演归落档/采用，source_verification消费同步迁移。
+      - 工艺变更准备供预览和执行共同消费，退出整页展示依赖。
+    exit_signal: 同事务原始事实及相同派生只生成一次，下游不自行补取已有内容。
+  - id: P3
+    title: 候选只表达变化，搜索内部结果只保留一份
+    status: done
+    depends_on: [P1, P2]
+    areas:
+      - core/algorithms/greedy/schedule_preparation.py
+      - core/algorithms/greedy/scheduler.py
+      - core/algorithms/greedy/dispatch
+      - core/services/scheduler/run/optimizer
+      - core/services/scheduler/run/schedule_shared_optimizer.py
+      - core/services/scheduler/run/schedule_candidate_runner.py
+      - core/services/scheduler/run/schedule_graph_report.py
+      - core/services/scheduler/run/schedule_graph_cached_projection.py
+    actions:
+      - 会话拥有固定准备，原始入口/共享入口进入同一解码核心，注入适配只在创建时选择。
+      - 固定DTO在准备/会话入口适配，删内部逐候选认证，保留proof_oracle的真实原始输入支持。
+      - graph_prepare直接执行一次，删除多候选缓存factory、core_cache贯穿参数/命中保存分支与缓存专用复制。
+      - 请求key删除固定大字段，repair与IG共用父代，资格/工时/种子/断点准备直接交接。
+      - 删除archive.origins与重复结果指纹扫描；报告使用安排身份加真实目标评价。
+      - 共同解码出口先取得身份；未知未验证trial仅分配临时编号，不长期存identity key或payload，沿用verified准入和IG结果生命周期。
+      - 迁移全部阶段为档案结果小视图，删除命中和目标切换的大副本，最终发布一次物化。
+    exit_signal: 所有解码阶段、报告和发布进入同一准备/档案路径；没有遗留平行父代、来源全集或固定内容哈希。
+  - id: P4
+    title: token直接保存共享内存绑定
+    status: done
+    depends_on: [P2]
+    areas:
+      - web/public_token_registry.py
+      - web/routes/workbench/read_context.py
+      - web/routes/workbench/write_context.py
+      - web/routes/workbench/preflight.py
+      - web/routes/workbench/scheduling_jobs.py
+      - web/routes/workbench/resource_action_context.py
+      - web/routes/workbench/material_actions_previews.py
+      - web/routes/workbench/execution_files.py
+      - core/services/workbench/history
+      - core/services/workbench/master
+      - frontend/workbench/app/MasterOverviewAPI.js
+      - frontend/workbench/app/MasterOverviewWorkspace.jsx
+    actions:
+      - 原登记表持不可变绑定值；同次签发定位共享事实一次，小键完成逐行幂等复用。
+      - 删除binding JSON与同时点重复resolve；锁外准备后保留写锁内实际存活/到期检查。
+      - 预览/导出对象与文件source直接由原登记表持有，删除context_key嵌套包装、旁路store与TTL同步。
+      - 删除额外预检/轮询DTO登记和开始排产的第二份整库指纹。
+      - 历史锚点用既有永久引用/时钟；资料总览统一当前读取并迁移导出count/零条禁用。
+    exit_signal: N行token共享一份事实且保留各自有效期；没有第二登记表，普通读没有无人消费的大快照。
+  - id: P5
+    title: 规范化一次，写入和编码结果直接使用
+    status: done
+    depends_on: [P1, P2, P4]
+    areas:
+      - core/services/workbench/commands.py
+      - core/services/workbench/resource
+      - core/services/workbench/material
+      - core/services/workbench/execution
+      - core/services/workbench/trial
+      - core/services/workbench/plan/queries.py
+      - core/models/workbench_trial_scenario_archive.py
+      - core/services/scheduler/calendar/admin.py
+      - data/repositories/workbench_command_repo.py
+      - data/repositories/operation_execution_state_builder.py
+      - web/api_responses.py
+    actions:
+      - 单条/批量/导入共同准备领域变更并apply；返回实际所需落库值，删写后自证。
+      - 新零件一次写入全部初始字段，使用真实revision；外协仅在实际输出/写入时量大小，明确页外拒绝时机调整。
+      - 日历一次构造模型，报工一次规范/验序/聚合，source接管私有输入，只复制真实变更容器。
+      - HTTP统一最终UTF-8信封编码计量，CSV不预演JSON；删除内部execution_workspace的8MiB门槛，实际端点各量一次。
+      - trial codec交接header/task文本与逻辑字节数；逻辑大小排除物理format/task_row_refs包装，删除新格式自比较和重复dump。
+    exit_signal: 每份落库文本/响应字节有实际消费者；领域规则、回执、日历、报工不再下游重验或回读自证。
+  - id: P6
+    title: 统一数据准备、布局与绘制生命周期
+    status: done
+    depends_on: [P1, P4, P5]
+    parallel_note: 纯模型与canvas部分可在P4/P5完成前按不重叠文件并行；公开DTO接线随后同批完成。
+    areas:
+      - frontend/workbench/app/PlanGanttModel.js
+      - frontend/workbench/app/PlanGantt.jsx
+      - frontend/workbench/app/PlanGanttCanvas.jsx
+      - frontend/workbench/app/ActualGanttModel.js
+      - frontend/workbench/app/ActualGanttCanvas.jsx
+      - frontend/workbench/app/DashboardTimelineModel.js
+      - frontend/workbench/app/ResourceTableFilter.jsx
+      - frontend/workbench/app/RunDecisionResourceHeatmap.jsx
+      - frontend/workbench/app/ReportAPI.js
+    actions:
+      - 工作区一次prepare固定时间/搜索串/索引/marks/每成员计数，筛选后更新可见组汇总，折叠后更新位置/连线/键盘顺序。
+      - width只布局，可见项与冲突共用准备结果；热图索引已有后端桶，展示值随mode/definitions变化。
+      - canvas观察器一次挂载，实际变化才重画，hover独立；退出旧G.layout入口。
+      - 列筛选用草稿加Enter/已有按钮提交；报表详情窄DTO；经办人挂载读取和写入结果更新。
+    exit_signal: 搜索与滚动不再重做固定数据准备，组件没有逐处新增缓存或另一套请求控制。
+  - id: P7
+    title: 收拢启动维护、时间查询和索引迁移
+    status: done
+    depends_on: [P1, P2]
+    areas:
+      - web/bootstrap/workbench_system_restore.py
+      - web/bootstrap/workbench_system_restore_status.py
+      - web/bootstrap/factory.py
+      - core/infrastructure/database.py
+      - core/infrastructure/backup.py
+      - core/infrastructure/migration_state.py
+      - core/infrastructure/migrations
+      - core/services/system/backup_restore.py
+      - core/services/workbench/facts/schema_compat.py
+      - data/repositories/schedule_time_sql.py
+      - schema.sql
+    actions:
+      - journal启动一次捕获，普通请求读内存状态，开库前维护检查一次。
+      - 普通启动查结构，迁移/恢复承担事件数据和缺历史头检查；删除复制期间反复身份自证。
+      - backup_restore实际恢复接线显式调用完整合同，保持失败回滚路径。
+      - 实际SQL使用已解析区间或一次区间判定，退出重复展开与无效MATERIALIZED方案。
+      - 下一迁移补三个单列索引，删两项无用索引，其余按真实reader退役/排序用途执行。
+      - 同次扩展现有schema_compat版本与已声明索引表示兼容，原归档不改，真实业务变化仍参与比较。
+    exit_signal: 所有正常启动/维护/恢复入口职责明确；实际保留SQL无多次区间解析，升级与新库合同一致。
+  - id: P8
+    title: 整体验证、清理迁移残留和同步当前说明
+    status: done
+    depends_on: [P1, P2, P3, P4, P5, P6, P7]
+    actions:
+      - 检查全部72项映射、N1-N14及8个附带口径，删除退出后的参数、导出、调用、临时分支。
+      - 合并运行受影响现有用例和必要新增场景，按当前质量治理入口完成适用门禁。
+      - 用既有独立数据副本做受影响代表流程比较，复用未变结果，记录真实平台延期。
+      - 同步当前架构、接口/数据库说明、测试登记与完成状态；提交推送按当时明确授权执行。
+    exit_signal: 共同路径完整接线、旧路径实际退出、必要验证有真实结果，未完成事项和平台边界如实记录。
+checks:
+  - id: V1
+    title: 当前产品与有效工具不依赖已退役服务壳
+    status: passed
+    for_steps: [P1]
+    method: 当前源码与跨语言引用核对，加已有应用启动/工作台排产/有效工具配置用例。
+  - id: V2
+    title: 同一事务事实一次准备，跨事务真实变化仍被识别
+    status: passed
+    for_steps: [P2, P5]
+    method: 复用run jobs、采用、试调来源、批量与报工事务用例，必要时增加一次共同入口调用计数。
+  - id: V3
+    title: 搜索行为、预算、证据及内部所有权一致
+    status: passed
+    for_steps: [P3]
+    method: 复用shared optimizer/archive、repair、checkpoint、process evidence；验证trial身份比较及verified准入、真实决策变化和一次准备，避免为人工改类造防御矩阵。
+  - id: V4
+    title: 内存token共享内容且原scope、幂等和独立TTL保持
+    status: passed
+    for_steps: [P4]
+    method: 复用token/读写/预览上下文用例，覆盖新旧签发、读token到期后的有效写token，以及等待写锁期间preview真实到期。
+  - id: V5
+    title: 真实落库值、规范化规则和实际输出大小正确
+    status: passed
+    for_steps: [P5]
+    method: 复用回执/日历/报工/试调/导出用例；按最终字节测边界，内部8MiB门槛用例迁为实际输出约束，逻辑场景大小排除物理引用包装。
+  - id: V6
+    title: 页面交互完整，准备和绘制次数随真实变化发生
+    status: passed
+    for_steps: [P6]
+    method: 复用Node契约与当前宿主实际浏览器，覆盖搜索提交、筛选后组汇总、折叠定位、滚动hover、缩放、点事件、键盘、主题打印与最新导出。
+    result: 原171条候选索引中124项选定实测、13项共同入口复用、34项风险未选，另5个独立文件入口及批次/工艺空白模板下载实测完成；IAB-UI-001至006均修复回验关闭。Actual关键链节点索引复用已有真实包及实页回验，stage与非空不重排时段共一次14道真实计算通过，公共日历恢复默认通过。原warm页面丢失后按新增明确授权在empty恢复当前新备份重入维护页，手填request/job各查询同一旧成功记录并均GET200；随后正常重启、同DB健康及业务配置可操作已核实。独立UI待验0；完整分类与原始产物引用保留在output/iab/single-pass-20261015/coverage.json及coverage.md。
+  - id: V7
+    title: 启动维护与Schema查询职责各执行一次
+    status: passed
+    for_steps: [P7]
+    method: 现有启动/维护/恢复/迁移用例，扩现有v41事实兼容用例至本次索引版本并识别真实业务变化；保留查询EXPLAIN及解析次数，不建新追踪系统。
+  - id: V8
+    title: 完成适用整合门禁与文档同步
+    status: deferred_platform
+    for_steps: [P8]
+    method: 按开发文档README质量治理入口执行；复用未变证据，Windows延期按既有约定保持真实状态。
+    result: Actual关键链最终索引接线后的903节点整合为867通过、0失败、36跳过、0收集错误；第1–16步通过，第17步因其中15项必需Windows/PowerShell启动器setupskip失败，正式manifest保持failed、runner返回2，平台延期。dirty内容前后相等且tracked_drift_detected为false；后续补验只改变隔离实例及记录，产品源码和正式包保持。此前902节点866通过与899节点860通过3失败均保留历史；该次验证HEAD为baseline，未形成clean-worktree proof。后续按明确授权形成本轮本地提交，用户原README增补10行、删除0行留在工作区，推送暂缓。

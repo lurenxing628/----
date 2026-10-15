@@ -16,23 +16,27 @@ class WorkbenchResourceFileRepository(BaseRepository):
         table, key = TABLES[kind]
         return self.fetchone(f'SELECT * FROM "{table}" WHERE "{key}"=?', (code,))
 
-    def identity_history(self, kind, code):
-        return self.fetchall("SELECT ref,revision,active FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=? ORDER BY ref", (kind, code))
-
-    def references(self, kind, code):
-        """Referencing rows per fixed (table, column) of the kind; identifiers come only from DEPENDENCIES."""
-        result = {}
-        for table, key in DEPENDENCIES[kind]:
-            rows = self.fetchall(f"SELECT * FROM {table} WHERE {key}=?", (code,))
-            # Production connections decode DATE. Keep every column; never truncate datetime.
-            values = [{name: value.isoformat() if type(value) is date else value for name, value in row.items()} for row in rows]
-            result[table + "." + key] = sorted(values, key=canonical_json)
+    def identity_histories(self, kind, codes):
+        result = {code: [] for code in codes}
+        for offset in range(0, len(codes), 400):
+            chunk = codes[offset:offset + 400]
+            marks = ",".join("?" for _ in chunk)
+            for row in self.fetchall("SELECT entity_key,ref,revision,active FROM WorkbenchEntityRefs "
+                    f"WHERE kind=? AND entity_key IN ({marks}) ORDER BY ref", [kind] + chunk):
+                code = row.pop("entity_key")
+                result[code].append(row)
         return result
 
-    def authorizations(self, kind, code):
-        key = "machine_id" if kind == "machine" else "operator_id"
-        return self.fetchall(f"SELECT * FROM OperatorMachine WHERE {key}=? ORDER BY operator_id,machine_id", (code,))
-
-    def name_owner(self, kind, name):
-        table, key = TABLES[kind]
-        return self.fetchone(f"SELECT {key} AS business_code FROM {table} WHERE name=?", (name,))
+    def references_many(self, kind, codes):
+        result = {code: {table + "." + key: [] for table, key in DEPENDENCIES[kind]} for code in codes}
+        for offset in range(0, len(codes), 400):
+            chunk = codes[offset:offset + 400]
+            marks = ",".join("?" for _ in chunk)
+            for table, key in DEPENDENCIES[kind]:
+                for row in self.fetchall(f"SELECT * FROM {table} WHERE {key} IN ({marks})", chunk):
+                    values = {name: value.isoformat() if type(value) is date else value for name, value in row.items()}
+                    result[row[key]][table + "." + key].append(values)
+        for references in result.values():
+            for rows in references.values():
+                rows.sort(key=canonical_json)
+        return result

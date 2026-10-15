@@ -1,5 +1,8 @@
 """Interpret acceptance-time facts only; current replacement entities are irrelevant."""
 
+from collections import defaultdict
+from functools import cached_property
+
 from core.models.workbench_run_candidate import reference
 
 from .candidate_values import corrupt, gap, stored_json
@@ -50,8 +53,12 @@ def _index(rows, key):
 
 
 def _entity_refs(facts):
+    return _entity_ref_rows(_table(facts, "WorkbenchEntityRefs"))
+
+
+def _entity_ref_rows(rows):
     result = {}
-    for row in _table(facts, "WorkbenchEntityRefs") or []:
+    for row in rows or []:
         if row.get("active") != 1:
             continue
         key = (row.get("kind"), row.get("entity_key"))
@@ -61,9 +68,9 @@ def _entity_refs(facts):
     return result
 
 
-def _operation_refs(facts):
+def _operation_ref_rows(rows):
     result = {}
-    for row in _table(facts, "WorkbenchPlanSourceRefs") or []:
+    for row in rows or []:
         if row.get("kind") != "operation" or row.get("active") != 1:
             continue
         ref, key = reference(row.get("ref"), stored=True), row.get("source_key")
@@ -78,13 +85,31 @@ class GenerationFacts:
         value = capture["facts_text"]
         facts = stored_json(value)
         self.archive = facts
-        self.tables = {name: _index(_table(facts, name), key) for name, key in _TABLES.items()}
-        self.entity_refs = _entity_refs(facts)
-        self.operations = _operation_refs(facts)
+        self._decoded_tables = {}
+        self.tables = {name: _index(self.table(name), key) for name, key in _TABLES.items()}
+        self.entity_refs = _entity_ref_rows(self.table("WorkbenchEntityRefs"))
+        self.operations = _operation_ref_rows(self.table("WorkbenchPlanSourceRefs"))
         self.execution = _index(capture["execution"], "operation_ref")
         self._operation_labels = {}
         for ref in self.execution:
             reference(ref, stored=True)
+
+    def table(self, name):
+        """Decode an immutable saved table once for all consumers of this source."""
+        if name not in self._decoded_tables:
+            self._decoded_tables[name] = _table(self.archive, name)
+        return self._decoded_tables[name]
+
+    @cached_property
+    def operations_by_batch(self):
+        result = defaultdict(list)
+        for operation in self.tables["BatchOperations"].values():
+            result[operation["batch_id"]].append(dict(operation, op_id=operation["id"]))
+        return dict(result)
+
+    @cached_property
+    def batch_ids_by_ref(self):
+        return {ref: key for (kind, key), ref in self.entity_refs.items() if kind == "batch"}
 
     def operation(self, ref, payload, gaps):
         key = self.operations.get(ref)

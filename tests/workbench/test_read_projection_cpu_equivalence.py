@@ -6,9 +6,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.capacity.plan_calendar_intervals import instant
-from core.services.execution.ledger_reader import ExecutionLedgerReader
 from core.services.workbench.dashboard.facts import typed
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
@@ -50,7 +48,7 @@ def _task_reads(monkeypatch):
     return calls
 
 
-def test_same_plan_load_keeps_partial_report_and_independent_current_comparison_rows(ledger_case, monkeypatch):
+def test_same_plan_load_keeps_partial_report_and_shared_current_comparison_rows(ledger_case, monkeypatch):
     case = ledger_case
     case.install()
     plan_ref = case.plan_ref(1)
@@ -62,15 +60,12 @@ def test_same_plan_load_keeps_partial_report_and_independent_current_comparison_
         assert calls == [plan_ref]
         current, comparison = facts["current_tasks"], facts["comparison_tasks"]
         assert canonical_json(current) == canonical_json(comparison)
-        assert current is not comparison
+        assert current is comparison
         ref = next(iter(current))
-        assert current[ref] is not comparison[ref]
+        assert current[ref] is comparison[ref]
         row = case.ledger.project_loaded(facts, contexts=False)[0]
         assert row.current_task_ref == row.comparison_task_ref == case.task(1, case.op_id)
         assert (row.known_completed_quantity, row.remaining_quantity, row.execution_state) == (4, 6, "partial")
-        original = current[ref]["lock_status"]
-        comparison[ref]["lock_status"] = "private probe"
-        assert current[ref]["lock_status"] == original
     assert all_rows(case.conn) == before
 
 
@@ -92,16 +87,17 @@ def test_different_plan_load_keeps_both_historical_task_mappings(ledger_case, mo
     assert all_rows(case.conn) == before
 
 
-def test_same_claimed_plan_still_resolves_its_permanent_identity_before_task_read(ledger_case, monkeypatch):
+def test_current_plan_owner_rejects_inactive_permanent_identity_before_task_read(ledger_case, monkeypatch):
     case = ledger_case
     case.install()
-    nonexistent = "f" * 48
-    reader = ExecutionLedgerReader(case.conn, current_plan_provider=lambda conn: {"plan_ref": nonexistent})
+    plan_ref = case.plan_ref(1)
+    corrupt_update(case.conn, "WorkbenchPlanSourceRefs", "UPDATE WorkbenchPlanSourceRefs SET active=0 WHERE ref=?", (plan_ref,))
     calls = _task_reads(monkeypatch)
     before = all_rows(case.conn)
-    with reader.read_snapshot():
-        with pytest.raises(WorkbenchPlanReferenceError):
-            reader.load([_operation_ref(case)], comparison_plan_ref=nonexistent)
+    with case.ledger.read_snapshot():
+        with pytest.raises(WorkbenchCommandRejected) as error:
+            case.ledger.load([_operation_ref(case)], comparison_plan_ref=plan_ref)
+    assert error.value.code == "execution_ledger_unavailable"
     assert calls == []
     assert all_rows(case.conn) == before
 
@@ -128,26 +124,45 @@ def test_same_plan_duplicate_operation_mapping_is_still_rejected_without_writes(
 
 def _admission(case):
     _, candidates = compute(case)
-    candidate, scope, _, capture = load_adoption_candidate(case.conn, candidates[0])
-    run = CandidateStore(case.conn).run(candidate["run_ref"])
+    run, _, scope, _, capture, _ = load_adoption_candidate(case.conn, candidates[0])
     return scope, capture, run["accepted_at"]
 
 
-@pytest.mark.parametrize("different", [1.0, True, "1"])
-def test_admission_canonical_comparison_keeps_nested_storage_type_differences(candidate_case, different):
-    case = candidate_case
-    scope, capture, accepted_at = _admission(case)
+def test_admission_decodes_saved_execution_once_without_replaying_disposition_or_history(candidate_case, monkeypatch):
+    from collections import Counter
+
+    from core.services.workbench.facts import candidate_facts, execution_projection
+    from core.services.workbench.facts.archived_calendar import ArchivedCalendar
+
+    scope, capture, accepted_at = _admission(candidate_case)
     ref = capture["execution"][0]["operation_ref"]
-    # Both are otherwise valid complete persisted DTOs. Python equality would
-    # equate the float/bool values with 1; canonical evidence must reject them.
-    capture["execution"][0]["data_gaps"] = [{"storage_probe": 1}]
-    scope[ref]["execution"]["data_gaps"] = [{"storage_probe": different}]
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        AdmissionBaseline(capture, GenerationFacts(capture), scope, accepted_at)
-    assert error.value.code == "candidate_baseline_invalid"
+    scope[ref]["execution"]["data_gaps"] = [{"earlier_disposition_copy": True}]
+    calls = Counter()
+    decode = candidate_facts._table
+
+    def table(archive, name):
+        calls[name] += 1
+        return decode(archive, name)
+
+    def formula(*args, **kwargs):
+        raise AssertionError("Archived admission must consume its saved execution")
+
+    monkeypatch.setattr(candidate_facts, "_table", table)
+    monkeypatch.setattr(execution_projection, "project_execution", formula)
+    facts = GenerationFacts(capture)
+    first = AdmissionBaseline(capture, facts, scope, accepted_at)
+    second = AdmissionBaseline(capture, facts, scope, accepted_at)
+    calendar = ArchivedCalendar(facts.archive, facts=facts)
+    assert calendar.table("Machines") is facts.table("Machines")
+    assert first.selected == second.selected == set(scope)
+    assert first.facts.execution[ref] is capture["execution"][0]
+    assert calls and max(calls.values()) == 1
+    assert not set(calls) & {"WorkbenchProductionReports", "WorkbenchProductionReportRevisions", "WorkbenchExecutionLegacyFacts"}
 
 
-def test_admission_still_checks_agreeing_dtos_against_original_archived_work(candidate_case, monkeypatch):
+def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay(candidate_case, monkeypatch):
+    from core.services.workbench.facts import candidate_projection
+
     case = candidate_case
     scope, capture, accepted_at = _admission(case)
     original = GenerationFacts(capture)
@@ -180,11 +195,12 @@ def test_admission_still_checks_agreeing_dtos_against_original_archived_work(can
 
     with monkeypatch.context() as task_probe:
         task_probe.setattr(GenerationFacts, "operation", read_operation)
-        projected, intervals = tasks_projection_with_intervals(rows, candidate, original)
+        projected, intervals, scheduled_ids = tasks_projection_with_intervals(rows, candidate, original)
     assert operation_calls == [row["operation_ref"] for row in rows]
     repeated = tasks_projection(rows, candidate, original)
     assert projected == repeated
-    validated, saved_intervals = validate_saved_tasks(rows, candidate, original)
+    validated, saved_intervals, validated_ids = validate_saved_tasks(rows, candidate, original)
+    assert validated_ids == scheduled_ids
     assert validated is rows and saved_intervals == intervals
     assert project_validated_tasks(validated, candidate, original, saved_intervals) == repeated
     delivery = project_decision_delivery(original, repeated, capture["input"]["batch_refs"], candidate=candidate)
@@ -194,7 +210,21 @@ def test_admission_still_checks_agreeing_dtos_against_original_archived_work(can
     assert not source._projected
     assert source.resource_cohort["resources"] == resource_cohort([repeated], task_intervals=[intervals])
     assert source.delivery(candidate["candidate_ref"]) == delivery
-    rich = source.tasks(candidate["candidate_ref"])
+    scheduled_checks, check_scheduled = [], candidate_projection._check_scheduled_rows
+
+    def check_rows(scheduled, ids):
+        scheduled_checks.append(ids)
+        return check_scheduled(scheduled, ids)
+
+    with monkeypatch.context() as task_probe:
+        task_probe.setattr(candidate_projection, "_check_scheduled_rows", check_rows)
+        rich = source.tasks(candidate["candidate_ref"])
+        ready_source = source.candidate_source(candidate["candidate_ref"])
+        summary = candidate_projection.candidate_summary(candidate, scope,
+            scheduled_op_ids=ready_source.scheduled_op_ids)
+        assert summary["completeness"] == "complete"
+        assert len(scheduled_checks) == 1
+        assert ready_source.scheduled_op_ids is source._scheduled_op_ids[candidate["candidate_ref"]]
     assert rich == repeated and candidate["candidate_ref"] not in source._verified
     assert source.core_tasks(candidate["candidate_ref"]) is rich
     assert source.delivery(candidate["candidate_ref"]) == delivery
@@ -210,11 +240,11 @@ def test_admission_still_checks_agreeing_dtos_against_original_archived_work(can
     quantity = capture["execution"][0]["target_quantity"] + 1
     capture["execution"][0]["target_quantity"] = quantity
     scope[ref]["execution"]["target_quantity"] = quantity
-    # The two redundant DTOs agree; the independently reconstructed archive
-    # still disagrees. Reusing serialization must not remove that second proof.
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        AdmissionBaseline(capture, GenerationFacts(capture), scope, accepted_at)
-    assert error.value.code == "candidate_baseline_invalid"
+    # Historical interpretation retains the saved value; generation owns the
+    # formula and adoption validates against its current facts.
+    saved = GenerationFacts(capture)
+    AdmissionBaseline(capture, saved, scope, accepted_at)
+    assert saved.execution[ref]["target_quantity"] == quantity
 
 
 def test_admission_duplicate_operation_dtos_with_distinct_values_are_still_rejected(candidate_case):

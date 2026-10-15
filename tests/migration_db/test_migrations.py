@@ -196,8 +196,12 @@ def _v36_review_case(path):
         assert statement in schema
         schema = schema.replace(statement, "")
     schema += "\n" + "\n".join(_schema_statement(sql) for sql in legacy_adoption_objects().values())
+    from core.infrastructure.single_pass_indexes_schema import ADDED, REMOVED
+    schema += "\n" + "\n".join(sql + ";" for sql in REMOVED.values())
     conn = get_connection(str(path))
     conn.executescript(schema)
+    for name in ADDED:
+        conn.execute("DROP INDEX IF EXISTS " + name)
     set_schema_version(conn, 36)
     conn.executescript("""INSERT INTO Parts(part_no,part_name) VALUES ('P','Part');
         INSERT INTO Batches(batch_id,part_no,quantity,ready_status)

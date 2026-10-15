@@ -1,21 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 from core.errors import AppError, ErrorCode
-from core.models.enums import SourceType
-from core.models.operation_execution_scope import OperationExecutionScope
-from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
-from core.services.scheduler.execution.execution_snapshot import build_execution_snapshot
 
-from .schedule_execution_reservations import build_execution_resource_reservations
-from .schedule_execution_resource_facts import RESOURCE_SNAPSHOT_PREFIX, collect_resource_execution_facts
 from .schedule_input_contracts import _op_seq
 from .schedule_input_seed_metadata import merged_external_group_identity, protected_interval_problem
 from .schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
-from .schedule_template_lookup import lookup_template_group_context_for_op
 
 
 def _execution_guard_conflict(message: str, *, reason: str, op_id: Optional[int] = None) -> AppError:
@@ -51,118 +45,6 @@ def _ops_by_id(operations: Optional[List[Any]]) -> Dict[int, Any]:
 
 def _op_batch_id(op: Any) -> str:
     return str(getattr(op, "batch_id", "") or "").strip()
-
-
-def _scope_from_fact(fact: ExecutionFact) -> Optional[OperationExecutionScope]:
-    if not getattr(fact, "schedule_version", None) or not getattr(fact, "schedule_id", None):
-        return None
-    if not getattr(fact, "batch_id", None):
-        return None
-    return OperationExecutionScope.from_values(
-        schedule_version=fact.schedule_version,
-        schedule_id=fact.schedule_id,
-        op_id=fact.op_id,
-        batch_id=fact.batch_id,
-        source_table=fact.source_table,
-        effective_plan_role=fact.effective_plan_role,
-        scenario_id=fact.scenario_id,
-    )
-
-
-def _scopes_from_facts(
-    facts: Dict[int, ExecutionFact],
-    op_ids: List[int],
-) -> List[OperationExecutionScope]:
-    scopes: List[OperationExecutionScope] = []
-    missing: List[int] = []
-    for op_id in op_ids:
-        op_id_int = int(op_id)
-        fact = facts.get(op_id_int)
-        scope = _scope_from_fact(fact) if fact is not None else None
-        if scope is None:
-            missing.append(op_id_int)
-            continue
-        scopes.append(scope)
-    if missing:
-        raise _execution_guard_conflict(
-            "现场状态快照缺少排程版本身份，本次没有写入新排程。请刷新后重新排。",
-            reason="execution_scope_missing",
-            op_id=missing[0],
-        )
-    return scopes
-
-
-def _current_facts_for_expected(
-    svc: Any,
-    *,
-    expected_op_ids: List[int],
-    execution_facts: Dict[int, ExecutionFact],
-) -> Dict[int, ExecutionFact]:
-    scopes = _scopes_from_facts(execution_facts, expected_op_ids)
-    return ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None)).facts_by_op_id_for_scopes(
-        scopes,
-        include_op_ids=expected_op_ids,
-    )
-
-
-def _validate_execution_revisions(
-    svc: Any,
-    *,
-    expected_revisions: Dict[int, str],
-    execution_facts: Dict[int, ExecutionFact],
-    current_facts: Optional[Dict[int, ExecutionFact]] = None,
-) -> None:
-    if not expected_revisions:
-        return
-    expected_op_ids = sorted(int(op_id) for op_id in expected_revisions)
-    current = current_facts
-    missing_ids = expected_op_ids if current is None else [op_id for op_id in expected_op_ids if op_id not in current]
-    if missing_ids:
-        loaded = _current_facts_for_expected(svc, expected_op_ids=missing_ids, execution_facts=execution_facts)
-        current = {**(current or {}), **loaded}
-    current = current or {}
-    for op_id, expected_revision in expected_revisions.items():
-        fact = current.get(int(op_id))
-        current_revision = "" if fact is None else str(fact.state_revision or "")
-        if current_revision != str(expected_revision or ""):
-            raise _execution_guard_conflict(
-                "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。",
-                reason="execution_state_changed",
-                op_id=int(op_id),
-            )
-
-
-def _validate_execution_snapshot(
-    svc: Any,
-    *,
-    expected_revision: Optional[str],
-    expected_op_ids: Optional[List[int]],
-    execution_facts: Dict[int, ExecutionFact],
-) -> Optional[Dict[int, ExecutionFact]]:
-    if str(expected_revision or "").startswith(RESOURCE_SNAPSHOT_PREFIX):
-        current_facts, _, current = collect_resource_execution_facts(
-            svc, prev_version=int(svc.history_repo.get_latest_version() or 0),
-        )
-        if current.revision != expected_revision:
-            raise _execution_guard_conflict(
-                "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。", reason="execution_state_changed",
-            )
-        return current_facts
-    op_ids = [int(op_id) for op_id in list(expected_op_ids or []) if int(op_id) > 0]
-    if not expected_revision or not op_ids:
-        return
-    current_facts = _current_facts_for_expected(
-        svc,
-        expected_op_ids=op_ids,
-        execution_facts=execution_facts,
-    )
-    current = build_execution_snapshot(current_facts, op_ids)
-    if current.revision != str(expected_revision or ""):
-        raise _execution_guard_conflict(
-            "现场状态刚刚变了，这次重排没有写入。请刷新后重新排。",
-            reason="execution_state_changed",
-        )
-    return current_facts
 
 
 def _validate_processing_seed_row(
@@ -215,31 +97,6 @@ def _validate_completed_seed_row(
         )
 
 
-def _completed_downstream_rows(
-    *,
-    rows: Dict[int, ValidatedScheduleRow],
-    operations: Optional[List[Any]],
-    completed_op: Any,
-    completed_op_id: int,
-    groups: Dict[int, Any],
-) -> List[Tuple[int, ValidatedScheduleRow]]:
-    out = []
-    completed_batch_id = _op_batch_id(completed_op)
-    completed_seq = _op_seq(completed_op)
-    if not completed_batch_id or completed_seq <= 0:
-        return out
-    for op_id, op in _ops_by_id(operations).items():
-        if int(op_id) == int(completed_op_id):
-            continue
-        same_cycle = groups.get(completed_op_id) is not None and groups.get(op_id) == groups[completed_op_id]
-        if not same_cycle and (_op_batch_id(op) != completed_batch_id or _op_seq(op) <= completed_seq):
-            continue
-        row = rows.get(int(op_id))
-        if row is not None:
-            out.append((int(op_id), row))
-    return out
-
-
 def _raise_completed_downstream_conflict(*, op_id: int, completed_op_id: int) -> None:
     raise AppError(
         ErrorCode.SCHEDULE_CONFLICT,
@@ -251,128 +108,73 @@ def _raise_completed_downstream_conflict(*, op_id: int, completed_op_id: int) ->
         },
     )
 
-def _validate_completed_downstream_constraints(
-    *,
-    svc: Any,
-    rows: Dict[int, ValidatedScheduleRow],
-    operations: Optional[List[Any]],
-    execution_facts: Dict[int, ExecutionFact],
-    execution_completed_op_ids: Set[int],
-) -> None:
-    if not execution_completed_op_ids or not operations:
-        return
-    op_by_id = _ops_by_id(operations)
-    groups = _execution_group_identities(svc, op_by_id, rows, execution_completed_op_ids)
-    for completed_op_id in sorted(set(execution_completed_op_ids or set())):
-        completed_op = op_by_id.get(int(completed_op_id))
-        fact = execution_facts.get(int(completed_op_id))
+def _validate_completed_downstream_constraints(*, rows, prepared):
+    operations = _ops_by_id(prepared.operations)
+    groups = {op.id: merged_external_group_identity(op) for op in prepared.algo_ops}
+    by_batch, by_group = {}, {}
+    for op_id, op in operations.items():
+        if op_id not in rows:
+            continue
+        by_batch.setdefault(_op_batch_id(op), []).append((op_id, _op_seq(op)))
+        group = groups.get(op_id)
+        if group is not None:
+            by_group.setdefault(group, set()).add(op_id)
+    for completed_op_id in sorted(prepared.execution_completed_op_ids):
+        completed_op = operations.get(completed_op_id)
+        fact = prepared.execution_facts.get(completed_op_id)
         if completed_op is None or fact is None or fact.actual_end_time is None:
             continue
-        for op_id, row in _completed_downstream_rows(
-            rows=rows,
-            operations=operations,
-            completed_op=completed_op,
-            completed_op_id=int(completed_op_id),
-            groups=groups,
-        ):
-            completed_row = rows[int(completed_op_id)]
+        batch, sequence = _op_batch_id(completed_op), _op_seq(completed_op)
+        if not batch or sequence <= 0:
+            continue
+        downstream = {op_id for op_id, seq in by_batch.get(batch, ()) if seq > sequence}
+        group = groups.get(completed_op_id)
+        if group is not None:
+            downstream.update(by_group.get(group, ()))
+        downstream.discard(completed_op_id)
+        completed_row = rows[completed_op_id]
+        for op_id in sorted(downstream):
+            row = rows[op_id]
             problem = protected_interval_problem(
                 {"start_time": completed_row.start_time, "end_time": fact.actual_end_time},
                 {"start_time": row.start_time, "end_time": row.end_time},
-                previous_group=groups.get(completed_op_id), current_group=groups.get(op_id))
+                previous_group=group, current_group=groups.get(op_id))
             if problem == "merged_group_split":
                 raise _execution_guard_conflict("同一个合并外协组的工序必须保持相同起止，本次没有写入新排程。",
                     reason="execution_merged_group_split", op_id=op_id)
             if problem == "precedence_violation":
-                _raise_completed_downstream_conflict(op_id=int(op_id), completed_op_id=int(completed_op_id))
+                _raise_completed_downstream_conflict(op_id=op_id, completed_op_id=completed_op_id)
 
 
-def _execution_group_identities(svc, operations, rows, completed_op_ids):
-    if not any(str(getattr(operations.get(op_id), "source", None) or "").strip().lower() == SourceType.EXTERNAL.value
-               for op_id in completed_op_ids):
-        return {}
-    groups = {}
-    for op_id, op in operations.items():
-        if op_id not in rows or str(getattr(op, "source", None) or "").strip().lower() != SourceType.EXTERNAL.value:
-            continue
-        lookup = lookup_template_group_context_for_op(svc, op, strict_mode=True)
-        groups[op_id] = merged_external_group_identity(op, group=lookup.group)
-    return groups
-
-
-def validate_execution_guard_before_persist(
-    svc: Any,
-    *,
-    validated_schedule_payload: ValidatedSchedulePayload,
-    execution_guard_state_revisions: Dict[int, str],
-    execution_facts: Dict[int, ExecutionFact],
-    execution_fixed_op_ids: Set[int],
-    execution_completed_op_ids: Set[int],
-    execution_snapshot_revision: Optional[str] = None,
-    execution_snapshot_op_ids: Optional[List[int]] = None,
-    payload_validation_operations: Optional[List[Any]] = None,
-) -> None:
-    current_facts = _validate_execution_snapshot(
-        svc,
-        expected_revision=execution_snapshot_revision,
-        expected_op_ids=execution_snapshot_op_ids,
-        execution_facts=execution_facts,
-    )
-    ensure_ledger_execution_schedulable(execution_facts)
-    if not execution_guard_state_revisions:
-        return
-    _validate_unselected_resource_overlap(
-        svc, payload=validated_schedule_payload, execution_facts=execution_facts,
-        operations=payload_validation_operations,
-    )
-    _validate_execution_revisions(
-        svc,
-        expected_revisions=execution_guard_state_revisions,
-        execution_facts=execution_facts,
-        current_facts=current_facts,
-    )
+def validate_execution_guard_before_persist(prepared, *, validated_schedule_payload):
+    """Validate a payload against facts prepared in this transaction's snapshot."""
+    facts = prepared.execution_facts
+    ensure_ledger_execution_schedulable(facts)
+    _validate_unselected_resource_overlap(payload=validated_schedule_payload,
+                                          reservations=prepared.execution_reservations)
     rows = _rows_by_op_id(validated_schedule_payload)
-    for op_id in sorted(set(execution_fixed_op_ids or set())):
-        fact = execution_facts.get(int(op_id))
-        row = rows.get(int(op_id))
+    for op_id in sorted(prepared.execution_fixed_op_ids):
+        fact, row = facts.get(op_id), rows.get(op_id)
         if fact is None or row is None:
             raise _execution_guard_conflict(
                 "生产中的工序必须保留在新排程里，本次没有写入新排程。请刷新后重新排。",
-                reason="execution_fixed_row_missing",
-                op_id=int(op_id),
-            )
+                reason="execution_fixed_row_missing", op_id=op_id)
         _validate_processing_seed_row(row=row, fact=fact)
-    for op_id in sorted(set(execution_completed_op_ids or set())):
-        fact = execution_facts.get(int(op_id))
-        row = rows.get(int(op_id))
+    for op_id in sorted(prepared.execution_completed_op_ids):
+        fact, row = facts.get(op_id), rows.get(op_id)
         if fact is None or row is None:
             raise _execution_guard_conflict(
                 "已完工的工序必须保留真实完工约束，本次没有写入新排程。请刷新后重新排。",
-                reason="execution_completed_row_missing",
-                op_id=int(op_id),
-            )
+                reason="execution_completed_row_missing", op_id=op_id)
         _validate_completed_seed_row(row=row, fact=fact)
-    _validate_completed_downstream_constraints(
-        svc=svc,
-        rows=rows,
-        operations=payload_validation_operations,
-        execution_facts=execution_facts,
-        execution_completed_op_ids=execution_completed_op_ids,
-    )
+    _validate_completed_downstream_constraints(rows=rows, prepared=prepared)
 
 
-def _validate_unselected_resource_overlap(
-    svc: Any, *, payload: ValidatedSchedulePayload, execution_facts: Dict[int, ExecutionFact],
-    operations: Optional[List[Any]],
-) -> None:
-    reservations = build_execution_resource_reservations(
-        svc, facts=execution_facts, selected_op_ids=set(_ops_by_id(operations)),
-    )
+def _validate_unselected_resource_overlap(*, payload, reservations):
     for reservation in reservations:
         for row in payload.schedule_rows:
             if ((row.machine_id == reservation.machine_id or row.operator_id == reservation.operator_id)
                     and row.start_time < reservation.end_time and row.end_time > reservation.start_time):
                 raise _execution_guard_conflict(
                     "新排程与未选中的在制工序占用冲突，本次没有写入新排程。请刷新后重新排。",
-                    reason="unselected_execution_resource_overlap", op_id=reservation.op_id,
-                )
+                    reason="unselected_execution_resource_overlap", op_id=reservation.op_id)

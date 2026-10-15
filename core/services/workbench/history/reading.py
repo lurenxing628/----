@@ -1,7 +1,6 @@
 """Request-local reads of original history sources inside one read snapshot."""
 
-from copy import deepcopy
-
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -105,7 +104,6 @@ class HistoryReader:
         self._candidates = {}
         self._scenarios = {}
         self._entries = {}
-        self._source_states = {}
         self._sources = {}
         self._decisions = {}
         self._condition_sources = {}
@@ -130,7 +128,7 @@ class HistoryReader:
 
     def _require_run_schema(self):
         if not self._run_schema_checked:
-            if workbench_run_contract_issues(self.conn):
+            if schema_contract_memo(self.conn).get_schema(workbench_run_contract_issues):
                 raise WorkbenchCommandRejected("candidate_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
             self._run_schema_checked = True
 
@@ -162,8 +160,8 @@ class HistoryReader:
                 if self.store.candidate_run(candidate_ref) != run_ref:
                     raise WorkbenchCommandRejected("history_source_invalid", "历史候选与原排产编号不一致。", 500)
                 corrupt()
-            candidate_summary(candidate, saved["disposition"])
             source = read_candidate_source(self.store, candidate_ref, prepared={**saved, "candidate": candidate})
+            candidate_summary(candidate, saved["disposition"], scheduled_op_ids=source.scheduled_op_ids)
             saved["candidate_sources"][candidate_ref] = source
             return source
 
@@ -247,18 +245,11 @@ class HistoryReader:
             return saved, None, []
 
     def source_state(self, descriptor):
-        """Original JSON contents for selected/reference snapshot anchors only."""
-        entry_ref = descriptor["entry_ref"]
-        if entry_ref not in self._source_states:
-            packet = self.read(descriptor)
-            keys = {"run": ("capture", "candidate", "receipt", "raw_tasks"),
-                    "trial": ("saved", "head", "rows"), "legacy": ("parsed_summary",)}[packet["kind"]]
-            state = {"kind": packet["kind"], "ref": packet["ref"], "entry_ref": entry_ref,
-                     **{key: packet[key] for key in keys}}
-            if "source_issue" in packet:
-                state["source_issue"] = packet["source_issue"]
-            self._source_states[entry_ref] = deepcopy(state)
-        return self._source_states[entry_ref]
+        """Saved sources bind their permanent references, state and known gaps."""
+        packet = self.read(descriptor)
+        return {"kind": packet["kind"], "ref": packet["ref"], "entry_ref": descriptor["entry_ref"],
+                "source": descriptor["source"], "state": descriptor["state"],
+                "source_issue": packet.get("source_issue")}
 
     def run_source(self, run_ref, candidate_ref=None, *, range_start=None, range_end=None):
         """Reuse the existing decision source for the actual candidate and window."""

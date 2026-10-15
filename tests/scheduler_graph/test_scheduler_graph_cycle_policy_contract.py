@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -184,14 +183,14 @@ def _cycle_graph_payload() -> Dict[str, Any]:
     }
 
 
-def _summary_from_ctx(_svc: Any, *, ctx: Any) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], str, int]:
+def _summary_from_ctx(*, ctx: Any, logger: Any = None) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], int]:
     algo: Dict[str, Any] = {"ok": 1, "used_params": dict(ctx.used_params)}
     result_summary_obj: Dict[str, Any] = {"algo": algo, "warnings": [], "errors": []}
     if ctx.graph_analysis_public is not None:
         algo["graph_analysis"] = dict(ctx.graph_analysis_public)
     if ctx.graph_analysis_diagnostics is not None:
         result_summary_obj["diagnostics"] = {"graph_analysis": dict(ctx.graph_analysis_diagnostics)}
-    return [], "success", result_summary_obj, json.dumps(result_summary_obj, ensure_ascii=False), 12
+    return [], "success", result_summary_obj, 12
 
 
 def _run_orchestrator(schedule_input: Any, svc: _Svc) -> Any:
@@ -216,9 +215,9 @@ def _run_orchestrator_with_decoder(schedule_input: Any, svc: _Svc, *, decode_fn:
         optimize_shared_schedule_fn=partial(optimize_shared_schedule,
             _runtime=replace(_default_runtime(), scheduler_factory=ContractScheduler)))
     return orchestrate_schedule_run(
-        svc,
         schedule_input=schedule_input,
-        simulate=True,
+        version=7,
+        logger=svc.logger,
         strict_mode=True,
         candidate_comparison_fn=compare,
         build_result_summary_fn=_summary_from_ctx,
@@ -249,8 +248,8 @@ def test_report_mode_cycle_only_reports_warning_and_keeps_scheduling(cycle_graph
     assert graph_analysis["is_dag"] is False
     assert graph_analysis["cycle_edge_count"] == 2
     assert outcome.candidate_comparison.selection.selected_plan.dispatch_mode == "batch_order"
-    assert json.loads(outcome.result_summary_json)["algo"]["used_params"]["dispatch_mode"] == "batch_order"
-    assert svc.history_repo.allocate_calls == 1
+    assert outcome.result_summary_obj["algo"]["used_params"]["dispatch_mode"] == "batch_order"
+    assert svc.history_repo.allocate_calls == 0
 
 
 def test_on_mode_cycle_with_block_yes_stops_before_version_allocation(cycle_graph: None) -> None:
@@ -295,8 +294,8 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
     selected = outcome.candidate_comparison.selection.selected_plan
     assert selected.dispatch_mode == "sgs"
     assert "graph_ready_profile" not in selected.origin
-    assert json.loads(outcome.result_summary_json)["algo"]["used_params"]["dispatch_mode"] == "sgs"
-    assert svc.history_repo.allocate_calls == 1
+    assert outcome.result_summary_obj["algo"]["used_params"]["dispatch_mode"] == "sgs"
+    assert svc.history_repo.allocate_calls == 0
 
 
 @pytest.mark.parametrize(

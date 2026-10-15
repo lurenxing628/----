@@ -14,13 +14,13 @@ the first actual save allocates a permanent reference through existing triggers.
 
 import re
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
-from web.api_responses import failure, query_success
+from web.api_responses import failure, json_response, query_success
 
 from .api_responses import api_endpoint
 from .calendar_defaults import register_calendar_defaults_routes
@@ -89,7 +89,7 @@ def calendar_day_command(action):
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=payload,
         guard=guard, mutate=lambda state: domain._apply_checked(action, payload, state))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 def _preview_input():
@@ -118,7 +118,7 @@ def _build_preview(domain, payload):
     context = preview_write_context(preview.preview_ref, preview.expires_at, ["calendar.confirm"])
     data = calendar_preview(preview)
     data["write_context"] = context
-    snapshot = bind_read_snapshot({"kind": "calendar_preview", "preview_ref": preview.preview_ref}, preview.fingerprint)
+    snapshot = bind_read_snapshot({"kind": "calendar_preview", "preview_ref": preview.preview_ref}, preview.preview_ref)
     retain_preview(preview)
     return query_success(data, snapshot)
 
@@ -139,7 +139,7 @@ def calendar_range_confirm():
         request_key=body["request_key"], action="calendar.confirm", context_ref=ref, normalized_input=payload,
         guard=guard, mutate=lambda preview: domain.apply("confirm", payload, preview))
     release_preview(ref)
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 def register_calendar_routes(bp):

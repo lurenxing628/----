@@ -11,6 +11,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+from core.services.workbench.facts.candidate_facts import _table
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_baseline import (
@@ -126,12 +127,16 @@ def test_partial_latest_version_preserves_other_operations_last_official_version
     assert read_decision_baseline_members(current.capture, current.facts) == {
         "identity": data["identity"],
         "operation_refs": sorted({row["operation_ref"] for row in data["tasks"]})}
-    damaged_facts = deepcopy(current.facts)
-    ddl = next(row[3] for row in damaged_facts.archive["schema"] if row[0:2] == ["table", "WorkbenchTaskRefs"])
+    damaged_capture = deepcopy(current.capture)
+    damaged_archive = json.loads(damaged_capture["facts_text"])
+    ddl = next(row[3] for row in damaged_archive["schema"] if row[0:2] == ["table", "WorkbenchTaskRefs"])
     columns = ddl_columns(ddl, "WorkbenchTaskRefs", restricted=True)
-    retained_task = next(row for row in damaged_facts.archive["tables"]["WorkbenchTaskRefs"]
+    retained_task = next(row for row in damaged_archive["tables"]["WorkbenchTaskRefs"]
                          if row[columns.index("ref")] == tasks["B2"]["task_ref"])
     retained_task[columns.index("plan_ref")] = second_ref
+    from core.services.workbench.facts.candidate_facts import GenerationFacts
+    damaged_capture["facts_text"] = json.dumps(damaged_archive)
+    damaged_facts = GenerationFacts(damaged_capture)
     with pytest.raises(WorkbenchCommandRejected) as exc:
         read_decision_baseline_members(current.capture, damaged_facts)
     assert exc.value.code == "candidate_baseline_invalid"
@@ -281,7 +286,7 @@ def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation
                "tables": {"OpTypes": [["TURN", "车削工种"], ["MILL", "铣削工种"]]}}
     facts = SimpleNamespace(operations={op_ref: 7}, tables={"BatchOperations": {7: operation}},
                             entity_refs={("op_type", "TURN"): type_ref, ("op_type", "MILL"): runtime_type_ref},
-                            archive=archive, execution={op_ref: {"target_quantity": 5, "remaining_quantity": 2}})
+                            archive=archive, table=lambda name: _table(archive, name), execution={op_ref: {"target_quantity": 5, "remaining_quantity": 2}})
     candidate = SimpleNamespace(receipt={"operation_effort": ledger}, facts=facts,
                                 candidate={"artifact": {"results": [{"op_id": 7, "op_type_id": "MILL", "op_type_name": "精车"}]}})
     effort, types, standards = _operation_metadata(candidate, {"basis": "candidate_adoption"})
@@ -310,3 +315,75 @@ def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation
     assert _operation_metadata((saved, head, rows), {"basis": "trial_adoption"})[1] == types
     head["admission"]["source"].pop("operation_types")
     assert _operation_metadata(({}, head, rows), {"basis": "trial_adoption"})[1] == {op_ref: {"ref": None, "label": None}}
+
+
+@pytest.mark.parametrize("captured", [False, True])
+def test_trial_resolver_prepares_each_scenario_once_and_keeps_original_resource_context(monkeypatch, captured):
+    import sqlite3
+
+    from core.services.workbench.facts import adoption_baseline_sources as sources
+
+    scenario_ref, draft_ref, baseline_ref = "1" * 48, "2" * 48, "3" * 48
+    operation_ref, supplier_ref, machine_ref, operator_ref = (str(index) * 48 for index in range(4, 8))
+
+    def archive(label):
+        return {"tables": {
+            "Machines": [{"machine_id": "M", "name": label + " machine"}],
+            "Operators": [{"operator_id": "O", "name": label + " operator"}],
+            "Suppliers": [{"supplier_id": "S", "name": label + " supplier"}],
+            "OpTypes": [], "WorkbenchEntityRefs": [
+                {"kind": kind, "entity_key": key, "ref": ref, "active": 1}
+                for kind, key, ref in (("supplier", "S", supplier_ref), ("machine", "M", machine_ref),
+                                      ("operator", "O", operator_ref))]}}
+
+    original = sources._TrialResourceFacts(archive("original"))
+    saved = {"scenario_ref": scenario_ref, "baseline": {"plan_ref": baseline_ref, "version": 1}}
+    source = {"deferred_operation_ids": [], "deferred_operation_issues": []}
+    if captured:
+        source["capture"] = {"original": True}
+    head = {"draft_ref": draft_ref, "scenario_revision": 2,
+            "admission": {"source": source, "facts": archive("assigned")}}
+    rows = [{"operation_ref": operation_ref,
+             "original": {"operation": {"id": 9, "source": "external", "supplier_id": "S"}, "execution": {}},
+             "current": {"machine_id": "M", "operator_id": "O",
+                         "start": "2026-09-09T08:00:00", "end": "2026-09-09T09:00:00"}}]
+    calls = {"scenario": 0, "generation": 0, "assigned": 0}
+    resource_facts = sources._TrialResourceFacts
+
+    def load(conn, ref):
+        assert ref == scenario_ref
+        calls["scenario"] += 1
+        return saved, head, rows
+
+    def generation(capture):
+        assert capture is source["capture"]
+        calls["generation"] += 1
+        return original
+
+    def assigned(facts):
+        assert facts is head["admission"]["facts"]
+        calls["assigned"] += 1
+        return resource_facts(facts)
+
+    monkeypatch.setattr(sources, "load_saved_scenario", load)
+    monkeypatch.setattr(sources, "GenerationFacts", generation)
+    monkeypatch.setattr(sources, "_TrialResourceFacts", assigned)
+    with sqlite3.connect(":memory:") as conn:
+        resolve = decision_baseline_source_resolver(conn)
+        for version in (2, 3):
+            audit = {"source": "workbench_trial_adoption", "scenario_ref": scenario_ref, "draft_ref": draft_ref,
+                     "baseline_ref": baseline_ref, "baseline_version": 1, "version": version,
+                     "proof": {"proof_version": "content_refs_v1", "scenario_ref": scenario_ref,
+                               "draft_ref": draft_ref, "scenario_revision": 2,
+                               "baseline_ref": baseline_ref, "baseline_version": 1}}
+            from core.models.workbench_command import canonical_json
+
+            value = resolve(plan_ref="8" * 48, version=version,
+                            history={"version": version, "result_summary": canonical_json(audit)})
+            prepared = value["evidence"]["trial_source"]
+            assert (prepared.resources is prepared.assigned_resources) is (not captured)
+            assert value["origins"][9]["supplier"]["label"] == ("original" if captured else "assigned") + " supplier"
+            assert value["origins"][9]["machine"]["label"] == "assigned machine"
+            assert value["point_work"]() == {}
+            assert sources.read_adoption_operation_facts(conn, value["evidence"]) == value["origins"]
+    assert calls == {"scenario": 1, "generation": int(captured), "assigned": 1}

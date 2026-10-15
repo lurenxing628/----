@@ -6,11 +6,12 @@ from .decision_metrics import candidate_metrics
 from .decision_selection import selection_roles
 
 
-def project_candidate_summary(row, tasks, facts, capture, disposition, batch_refs, basis, rows, delivery_items):
+def project_candidate_summary(row, tasks, facts, capture, disposition, batch_refs, basis, rows, delivery_items, *, operation_scope=None):
     artifact = row["artifact"]
     if artifact.get("status") != row["status"] or artifact.get("sequence") != row["sequence"]:
         corrupt()
-    coverage, values = candidate_metrics(row, tasks, facts, capture["input"], disposition, batch_refs, delivery_items=delivery_items)
+    coverage, values = candidate_metrics(row, tasks, facts, capture["input"], disposition, batch_refs,
+                                         delivery_items=delivery_items, operation_scope=operation_scope)
     completed = sum(candidate["status"] == "completed" for candidate in rows)
     coverage["search"] = {"state": "complete" if completed == len(rows) else "partial", "completed_count": completed,
                           "failed_count": sum(candidate["status"] == "failed" for candidate in rows),

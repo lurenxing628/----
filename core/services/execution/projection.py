@@ -1,10 +1,8 @@
 """The only execution aggregation, shared by reads, previews and command guards."""
 
-from core.models.operation_execution_event import parse_operation_event_time
 from core.models.workbench_execution import ExecutionProjection, ProductionReport
 from core.models.workbench_execution_input import closed_write_context
 
-from .legacy import legacy_evidence
 from .quality import classify_quality, gap, operation_target
 from .totals import merge_legacy_totals, quantity_consistency, report_totals
 
@@ -37,24 +35,23 @@ def _execution_state(reports, totals, evidence, complete_reports):
 
 
 def _completion(reports, evidence, complete_reports):
-    times = [parse_operation_event_time(row["event_time"]).isoformat(timespec="seconds") for row in evidence.finishes]
+    times = list(evidence.finish_times)
     if complete_reports:
         times.extend(report.actual_end for report in reports if report.actual_end)
     basis = "legacy_finish_event" if evidence.finishes else "complete_reports" if complete_reports else None
     return max(times) if times else None, basis
 
 
-def project_execution(operation, reports, legacy, *, current_task, comparison_task, plan_identity, now, unresolved=False):
+def project_execution(operation, reports, evidence, *, current_task, comparison_task, plan_identity, unresolved=False):
     """No writes, synthesized reports, time-derived hours or scheduler invocations."""
     target, basis, gaps = operation_target(operation, unresolved)
-    evidence = legacy_evidence(legacy, now)
     totals = report_totals(reports, operation.get("source"))
     merge_legacy_totals(totals, evidence)
     gaps.extend(evidence.gaps + totals.gaps + quantity_consistency(totals, target, evidence.finishes))
     quantity_complete = target is not None and totals.known == target and totals.unknown == 0
     complete_reports = quantity_complete and totals.records_complete
     state = _execution_state(reports, totals, evidence, complete_reports)
-    quality = classify_quality(gaps, legacy_uncovered=totals.legacy_uncovered, has_records=bool(reports or legacy))
+    quality = classify_quality(gaps, legacy_uncovered=totals.legacy_uncovered, has_records=bool(reports or evidence.records))
     finish, completion_basis = _completion(reports, evidence, complete_reports)
     remaining = None if target is None or totals.unknown or quality == "invalid" else target - totals.known
     if state not in ("complete", "unreported"):

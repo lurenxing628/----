@@ -4,6 +4,8 @@ Judgement (missing identities, drift, membership rules, row caps) belongs to
 core.services.workbench.outsourcing.source; this module only returns what is stored.
 """
 
+from core.infrastructure.connection_guards import schema_contract_memo
+
 # Fixed legacy source tables per identity kind; never derived from caller input.
 SOURCE_TABLES = {"batch": ("Batches", "batch_id"), "supplier": ("Suppliers", "supplier_id"),
                  "part": ("Parts", "part_no"), "operation": ("BatchOperations", "id")}
@@ -81,7 +83,7 @@ class WorkbenchOutsourcingSourceRepository:
         if kind not in SOURCE_TABLES:
             raise ValueError("Unknown outsourcing source kind: " + repr(kind))
         table, column = SOURCE_TABLES[kind]
-        columns = [row[1] for row in self.conn.execute('PRAGMA table_info("' + table + '")')]
+        columns = [row[1] for row in schema_contract_memo(self.conn).structure.table_info(table)]
         selected = ",".join('CASE WHEN 1 THEN "' + key + '" END AS "' + key + '"' for key in columns)
         row = self.conn.execute('SELECT ' + selected + ' FROM "' + table + '" WHERE "' + column + '"=?', (value,)).fetchone()
         return dict(row) if row is not None else None
@@ -158,7 +160,7 @@ class WorkbenchOutsourcingSourceRepository:
         if not keys:
             return
         table, column = SOURCE_TABLES[kind]
-        columns = [row[1] for row in self.conn.execute('PRAGMA table_info("' + table + '")')]
+        columns = [row[1] for row in schema_contract_memo(self.conn).structure.table_info(table)]
         selected = ",".join('CASE WHEN 1 THEN source."' + key.replace('"', '""') + '" END' for key in columns)
         for chunk in _chunks(keys, size=400):
             values = [key[2] for key in chunk]

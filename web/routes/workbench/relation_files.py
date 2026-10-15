@@ -1,18 +1,18 @@
 """可操作设备关系的文件路由。形状与资源文件家族一致，只是列目录和服务不同。"""
 
-import json
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_relation_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns, relation_kind
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from core.services.workbench.resource.relation_files.files import WorkbenchRelationFileService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .resource_action_context import (
     EXPORT_SCOPE,
     confirm_body,
@@ -71,7 +71,7 @@ def relation_import_confirm(kind):
         request_key=body["request_key"], action=operation, context_ref=ref, normalized_input={"preview_ref": ref},
         guard=lambda: resolve_import_preview(ref, operation, body["write_token"]),
         mutate=lambda checked: _apply(kind, checked))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 @read_endpoint
@@ -83,11 +83,13 @@ def relation_export_preview(kind):
     scope, query_scope, snapshot_ref = scope_input("operator", body)
     reader = _reader()
     with reader.read_snapshot() as fingerprint:
-        snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref)
+        read_binding = resolve_read_snapshot(snapshot_ref)
+        snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
         arguments, count = _service(kind).preview_export(body["selection"], scope=scope, selected_refs=body.get("refs"))
-        document = canonical_json({"kind": kind, "query_scope": query_scope,
-                                   "snapshot_ref": snapshot_ref, "arguments": arguments})
-        ref, expires_at = retain_context(EXPORT_SCOPE, document)
+        document = {"kind": kind, "query_scope": query_scope,
+                    "snapshot_ref": snapshot_ref, "arguments": arguments}
+        ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
+                                         key=(kind, read_binding.scope, document["snapshot_ref"], content_text(arguments)))
     return query_success({"export_ref": ref, "expires_at": expires_at, "selection": body["selection"],
                           "row_count": count, "scope": arguments["scope"], "formats": ["csv", "xlsx"]}, snapshot)
 
@@ -97,13 +99,12 @@ def relation_export(kind):
     relation_kind(kind)
     fmt = download_args({"export_ref", "format"})
     ref = opaque_ref(request.args["export_ref"], "export_ref")
-    document, _ = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
-    binding = json.loads(document)
+    binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     reader, service = _reader(), _service(kind)
     with reader.read_snapshot() as fingerprint:
-        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])
+        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
         rows = service.export_rows(fmt, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
     response = file_response(service.write_export(rows, fmt))

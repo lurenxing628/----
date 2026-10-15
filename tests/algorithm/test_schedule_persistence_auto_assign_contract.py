@@ -1,4 +1,4 @@
-"""回归测试：排产落库（build_validated_schedule_payload + persist_schedule）的校验与 auto_assign 持久化契约——落库前按固定优先级拒绝越界/非法/无可执行行/重复 op_id/source 与原工序不一致的 payload 并给出 reason 与样本，且校验失败时 Schedule/ScheduleHistory 零写入；simulate 不改真实 status 与资源、auto_assign_persist=no 只置 scheduled 不填资源、=yes 仅补 internal 缺失的 machine/operator 而不覆盖已有值也不动 external/范围外工序；并验证 Schedule(version,op_id) 唯一索引及从 v6 旧库迁移时拒绝既有重复行、否则建索引并保序保留数据。"""
+"""共同排产 payload 校验与 Schedule 唯一索引迁移合同。"""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
-from core.services.scheduler.run.schedule_persistence import (
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
+from core.services.scheduler.run.schedule_payload_contract import (
     ValidatedSchedulePayload,
     ValidatedScheduleRow,
     build_validated_schedule_payload,
-    persist_schedule,
+    validate_payload_before_persist,
 )
-from core.services.scheduler.schedule_service import ScheduleService
 from tests._support.migration_schema_helpers import load_legacy_migration_schema
 from tests._support.paths import REPO_ROOT
 
@@ -254,96 +254,6 @@ def _seed_common(conn: sqlite3.Connection, rows: Iterable[tuple]) -> None:
     conn.commit()
 
 
-def _base_persist_kwargs(
-    svc: ScheduleService,
-    *,
-    cfg: Any,
-    version: int,
-    payload: Any,
-    operations: List[Any],
-    simulate: bool,
-    missing_internal_resource_op_ids: Set[int],
-    result_status: str = "success",
-) -> Dict[str, Any]:
-    return {
-        "cfg": cfg,
-        "version": version,
-        "validated_schedule_payload": payload,
-        "summary": SimpleNamespace(
-            total_ops=len(operations), scheduled_ops=len(payload.scheduled_op_ids), failed_ops=0
-        ),
-        "used_strategy": SimpleNamespace(value="priority_first"),
-        "used_params": {},
-        "batches": {"B001": svc.batch_repo.get("B001")},
-        "reschedulable_operations": operations,
-        "normalized_batch_ids": ["B001"],
-        "created_by": "regression",
-        "simulate": simulate,
-        "frozen_op_ids": set(),
-        "result_status": result_status,
-        "result_summary_json": "{}",
-        "result_summary_obj": {"algo": {}},
-        "missing_internal_resource_op_ids": missing_internal_resource_op_ids,
-        "overdue_items": [],
-        "time_cost_ms": 0,
-    }
-
-
-def _resource_snapshot(conn: sqlite3.Connection) -> Dict[int, Dict[str, str]]:
-    rows = conn.execute("SELECT id, status, machine_id, operator_id FROM BatchOperations ORDER BY id").fetchall()
-    return {
-        int(row["id"]): {
-            "status": str(row["status"] or ""),
-            "machine_id": str(row["machine_id"] or ""),
-            "operator_id": str(row["operator_id"] or ""),
-        }
-        for row in rows
-    }
-
-
-def _batch_status(conn: sqlite3.Connection, batch_id: str = "B001") -> str:
-    row = conn.execute("SELECT status FROM Batches WHERE batch_id=?", (batch_id,)).fetchone()
-    assert row is not None
-    return str(row["status"] or "")
-
-
-def test_simulate_keeps_real_status_and_auto_assign_resources_unchanged() -> None:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    _load_schema(conn)
-    try:
-        _seed_common(conn, [(1, "internal", "missing", None, None)])
-        svc = ScheduleService(conn, logger=None, op_logger=None)
-        operations = [svc.op_repo.get(1)]
-        payload = build_validated_schedule_payload(
-            [_result(1, machine_id="MC_A", operator_id="OP_A")], allowed_op_ids={1}
-        )
-
-        persist_schedule(
-            svc,
-            **_base_persist_kwargs(
-                svc,
-                cfg=SimpleNamespace(auto_assign_persist="yes"),
-                version=11,
-                payload=payload,
-                operations=operations,
-                simulate=True,
-                missing_internal_resource_op_ids={1},
-                result_status="simulated",
-            ),
-        )
-
-        snap = _resource_snapshot(conn)
-        assert snap[1] == {"status": "pending", "machine_id": "", "operator_id": ""}
-        assert _batch_status(conn) == "pending"
-        assert int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule WHERE version=11").fetchone()["cnt"] or 0) == 1
-        hist = conn.execute("SELECT result_status FROM ScheduleHistory WHERE version=11").fetchone()
-        assert hist is not None and hist["result_status"] == "simulated"
-    finally:
-        conn.close()
-
-
 def test_persist_schedule_revalidates_manual_payload_before_writing() -> None:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -351,7 +261,7 @@ def test_persist_schedule_revalidates_manual_payload_before_writing() -> None:
     _load_schema(conn)
     try:
         _seed_common(conn, [(1, "internal", "ready", "MC_A", "OP_A")])
-        svc = ScheduleService(conn, logger=None, op_logger=None)
+        svc = build_schedule_repository_bundle(conn)
         operations = [svc.op_repo.get(1)]
         payload = ValidatedSchedulePayload(
             schedule_rows=[
@@ -369,18 +279,7 @@ def test_persist_schedule_revalidates_manual_payload_before_writing() -> None:
         )
 
         with pytest.raises(ValidationError) as exc_info:
-            persist_schedule(
-                svc,
-                **_base_persist_kwargs(
-                    svc,
-                    cfg=SimpleNamespace(auto_assign_persist="no"),
-                    version=31,
-                    payload=payload,
-                    operations=operations,
-                    simulate=False,
-                    missing_internal_resource_op_ids=set(),
-                ),
-            )
+            validate_payload_before_persist(payload, reschedulable_operations=operations)
 
         details = dict(getattr(exc_info.value, "details", {}) or {})
         assert details.get("reason") == "invalid_schedule_rows", details
@@ -456,21 +355,9 @@ def test_persist_schedule_revalidates_manual_payload_scope_source_and_ids(payloa
     _load_schema(conn)
     try:
         _seed_common(conn, [(1, "internal", "ready", "MC_A", "OP_A")])
-        svc = ScheduleService(conn, logger=None, op_logger=None)
 
         with pytest.raises(ValidationError) as exc_info:
-            persist_schedule(
-                svc,
-                **_base_persist_kwargs(
-                    svc,
-                    cfg=SimpleNamespace(auto_assign_persist="no"),
-                    version=32,
-                    payload=payload,
-                    operations=operations,
-                    simulate=False,
-                    missing_internal_resource_op_ids=set(),
-                ),
-            )
+            validate_payload_before_persist(payload, reschedulable_operations=operations)
 
         details = dict(getattr(exc_info.value, "details", {}) or {})
         assert details.get("reason") == "invalid_schedule_rows", details
@@ -538,7 +425,6 @@ def test_schedule_unique_migration_rejects_existing_duplicate_rows(tmp_path: Pat
         ensure_schema(str(db_path), logger=None, schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=None)
 
 
-
 def test_schedule_unique_migration_creates_index_and_preserves_rows(tmp_path: Path) -> None:
     db_path = tmp_path / "legacy_v6_schedule_unique.db"
     backup_dir = tmp_path / "backups"
@@ -570,6 +456,10 @@ def test_schedule_unique_migration_creates_index_and_preserves_rows(tmp_path: Pa
         assert conn.execute(
             "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_schedule_version_op_unique'"
         ).fetchone() is None
+        conn.executemany(
+            "INSERT INTO ScheduleHistory(version,strategy,batch_count,op_count,result_status,result_summary) "
+            "VALUES (?,'priority_first',1,2,'success','{}')", [(31,), (32,)],
+        )
         before_rows = [tuple(row) for row in conn.execute("SELECT * FROM Schedule ORDER BY id")]
         conn.commit()
     finally:
@@ -621,87 +511,5 @@ def test_schedule_unique_migration_creates_index_and_preserves_rows(tmp_path: Pa
                     31,
                 ),
             )
-    finally:
-        conn.close()
-
-
-def test_auto_assign_persist_no_keeps_resources_empty_but_updates_status() -> None:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    _load_schema(conn)
-    try:
-        _seed_common(conn, [(1, "internal", "missing", None, None)])
-        svc = ScheduleService(conn, logger=None, op_logger=None)
-        operations = [svc.op_repo.get(1)]
-        payload = build_validated_schedule_payload(
-            [_result(1, machine_id="MC_A", operator_id="OP_A")], allowed_op_ids={1}
-        )
-
-        persist_schedule(
-            svc,
-            **_base_persist_kwargs(
-                svc,
-                cfg=SimpleNamespace(auto_assign_persist="no"),
-                version=12,
-                payload=payload,
-                operations=operations,
-                simulate=False,
-                missing_internal_resource_op_ids={1},
-            ),
-        )
-
-        snap = _resource_snapshot(conn)
-        assert snap[1] == {"status": "scheduled", "machine_id": "", "operator_id": ""}
-    finally:
-        conn.close()
-
-
-def test_auto_assign_persist_only_fills_internal_missing_fields_without_overwrite() -> None:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    _load_schema(conn)
-    try:
-        _seed_common(
-            conn,
-            [
-                (1, "internal", "missing_both", None, None),
-                (2, "internal", "missing_operator", "MC_KEEP", None),
-                (3, "internal", "missing_machine", None, "OP_KEEP"),
-                (4, "external", "external_missing", None, None),
-                (5, "internal", "not_in_missing_set", None, None),
-            ],
-        )
-        svc = ScheduleService(conn, logger=None, op_logger=None)
-        operations = [svc.op_repo.get(op_id) for op_id in range(1, 6)]
-        results = [
-            _result(1, machine_id="MC_A", operator_id="OP_A"),
-            _result(2, machine_id="MC_B", operator_id="OP_B"),
-            _result(3, machine_id="MC_C", operator_id="OP_C"),
-            _result(4, machine_id="MC_D", operator_id="OP_D", source="external"),
-            _result(5, machine_id="MC_A", operator_id="OP_A"),
-        ]
-        payload = build_validated_schedule_payload(results, allowed_op_ids={1, 2, 3, 4, 5})
-
-        persist_schedule(
-            svc,
-            **_base_persist_kwargs(
-                svc,
-                cfg=SimpleNamespace(auto_assign_persist="yes"),
-                version=13,
-                payload=payload,
-                operations=operations,
-                simulate=False,
-                missing_internal_resource_op_ids={1, 2, 3, 4},
-            ),
-        )
-
-        snap = _resource_snapshot(conn)
-        assert snap[1] == {"status": "scheduled", "machine_id": "MC_A", "operator_id": "OP_A"}
-        assert snap[2] == {"status": "scheduled", "machine_id": "MC_KEEP", "operator_id": "OP_B"}
-        assert snap[3] == {"status": "scheduled", "machine_id": "MC_C", "operator_id": "OP_KEEP"}
-        assert snap[4] == {"status": "scheduled", "machine_id": "", "operator_id": ""}
-        assert snap[5] == {"status": "scheduled", "machine_id": "", "operator_id": ""}
     finally:
         conn.close()

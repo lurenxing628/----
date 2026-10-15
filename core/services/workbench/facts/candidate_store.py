@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_run_candidate import (
     MAX_ARTIFACT_BYTES,
@@ -36,7 +37,7 @@ class CandidateStore:
     @contextmanager
     def snapshot(self):
         with candidate_read_snapshot(self.conn):
-            if workbench_run_contract_issues(self.conn):
+            if schema_contract_memo(self.conn).get_schema(workbench_run_contract_issues):
                 reject("candidate_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
             yield
 

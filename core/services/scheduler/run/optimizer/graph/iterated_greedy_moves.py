@@ -6,9 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import ValidationError
 
-from .candidate_payload import decoded_batch_order
-from .operation_neighbors import decoded_topological_order
-from .repair_decisions import decoded_resource_overrides
+from .repair_decisions import RepairParentPreparation, prepare_repair_parent
 
 
 @dataclass(frozen=True)
@@ -16,35 +14,35 @@ class _Parent:
     order: Tuple[int, ...]
     batch_order: Tuple[str, ...]
     inherited: Tuple[Tuple[int, str, str], ...]
-    predecessors: Dict[int, Set[int]]
-    successors: Dict[int, Set[int]]
+    prepared: RepairParentPreparation
+
+    @property
+    def predecessors(self) -> Dict[int, Set[int]]:
+        return self.prepared.predecessors
+
+    @property
+    def successors(self) -> Dict[int, Set[int]]:
+        return self.prepared.successors
 
 
 def _parent_from_candidate(candidate: Optional[Dict[str, Any]], *, operations: List[Any],
                            graph_context: Dict[str, Any],
-                           resource_pool: Optional[Dict[str, Any]] = None) -> Optional[_Parent]:
+                           resource_pool: Optional[Dict[str, Any]] = None,
+                           prepared_parent: Optional[RepairParentPreparation] = None) -> Optional[_Parent]:
     if candidate is None or candidate["summary"].failed_ops or not candidate["summary"].success:
         return None
-    mutable = {int(op.id) for op in operations}
-    rows = {int(row.op_id): row for row in candidate["results"] if int(row.op_id) in mutable}
-    if not mutable or set(rows) != mutable:
+    prepared = (prepared_parent if prepared_parent is not None else
+                prepare_repair_parent(candidate, operations, resource_pool, graph_context, resource_moves=True))
+    mutable = prepared.mutable_operation_ids
+    if not mutable or set(prepared.decoded_rows) != mutable:
         return None
     if mutable.intersection(graph_context.get("fixed_op_ids", ())):
         raise ValidationError("GraphReady 迭代贪心的可变范围不能包含固定工序。", field="graph_ready_iterated_greedy",
                               details={"reason": "graph_ready_ig_scope_mismatch"})
-    predecessors = _mutable_links(graph_context, mutable, "predecessor_op_ids_by_op_id")
-    successors = _mutable_links(graph_context, mutable, "successor_op_ids_by_op_id")
-    mutable_batches = {str(op.batch_id) for op in operations}
-    batch_order = tuple(batch for batch in decoded_batch_order(candidate["results"]) if batch in mutable_batches)
-    if set(batch_order) != mutable_batches:
+    batch_order = tuple(batch for batch in prepared.decoded_batch_order if batch in prepared.mutable_batch_ids)
+    if set(batch_order) != prepared.mutable_batch_ids:
         return None
-    inherited = decoded_resource_overrides(candidate, operations, resource_pool)
-    return _Parent(decoded_topological_order(rows, predecessors), batch_order, inherited, predecessors, successors)
-
-
-def _mutable_links(graph_context: Dict[str, Any], mutable: Set[int], field: str) -> Dict[int, Set[int]]:
-    """Keep only links whose two endpoints belong to this mutable operation scope."""
-    return {op_id: set(graph_context[field].get(op_id, ())) & mutable for op_id in mutable}
+    return _Parent(prepared.operation_order, batch_order, prepared.inherited_resources, prepared)
 
 
 def _park(order: Tuple[int, ...], removed: Set[int], *, successors: Dict[int, Set[int]]) -> List[int]:

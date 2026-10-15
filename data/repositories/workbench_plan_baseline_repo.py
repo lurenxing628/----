@@ -44,13 +44,13 @@ class WorkbenchPlanBaselineRepository(BaseRepository):
     def _raw_rows(self, columns: List[str], sql: str, params: Sequence[Any]) -> List[Dict[str, Any]]:
         return [dict(zip(columns, row)) for row in self.execute(sql, params)]
 
-    def raw_schedule_rows_by_version(self, version: Any, *, limit: int) -> Optional[List[Dict[str, Any]]]:
-        """Whole Schedule rows of one version in rowid order, at most ``limit`` rows; None if the table is absent."""
+    def raw_schedule_rows_by_version(self, version: Any) -> Optional[List[Dict[str, Any]]]:
+        """Whole Schedule rows of one version in rowid order; None if the table is absent."""
         selected = self._raw_select("Schedule")
         if selected is None:
             return None
         columns, select = selected
-        return self._raw_rows(columns, select + " WHERE version=? ORDER BY rowid LIMIT ?", (version, limit))
+        return self._raw_rows(columns, select + " WHERE version=? ORDER BY rowid", (version,))
 
     def raw_source_refs_by_refs(self, refs: Sequence[str]) -> Optional[List[Dict[str, Any]]]:
         """Whole WorkbenchPlanSourceRefs rows whose ref is in ``refs``; None if the table is absent."""

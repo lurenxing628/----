@@ -5,9 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from flask import Blueprint, current_app, g, get_flashed_messages, jsonify, render_template, request, url_for
+from flask import Blueprint, current_app, g, get_flashed_messages, render_template, request, url_for
 
 from core.services.workbench import messages
+from web.api_responses import json_response
 
 from .assets import WorkbenchAssetsUnavailable, read_asset_manifest
 from .navigation_boot import WorkbenchNavigationInvalid, read_navigation
@@ -110,13 +111,13 @@ def system_overview():
         )
     except Exception:
         current_app.logger.exception("工作台系统概况读取失败 request_ref=%s", request_ref)
-        response = jsonify({"ok": False, "committed": False, "error": {
+        response = json_response({"ok": False, "committed": False, "error": {
             "code": "system_read_failed", "message": "系统概况没有读出来，页面数据没有变化。请刷新重试；仍不行请联系维护人员，并告知下方编号。",
             "fields": [], "retryable": True, "request_ref": request_ref,
         }})
         response.status_code = 500
     else:
-        response = jsonify({"ok": True, "schema_version": 1, "data": data, "meta": {
+        response = json_response({"ok": True, "schema_version": 1, "data": data, "meta": {
             "request_ref": request_ref, "source": "production",
             "as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
             "time_basis": "factory_local", "snapshot_ref": uuid.uuid4().hex,

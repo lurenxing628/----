@@ -1,10 +1,11 @@
 """Bounded SELECTs with original SQLite storage types, including legacy dates; no rulings here."""
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.models.enums import SOURCE_TYPE_VALUES, SourceType, read_source_type
 from core.models.workbench_dashboard import MAX_BYTES, MAX_FACT_ROWS, bounded
 
 from .calendar_facts_repo import DOWNTIME_STATUS_SQL
-from .schedule_time_sql import register_schedule_time_sql_functions, time_dt, valid_time_range_sql
+from .schedule_time_sql import parse_dt_for_sql
 
 TABLES = {"SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
           "WorkbenchDashboardDowntimeRefs", "ScheduleHistory", "Schedule", "BatchOperations"}
@@ -51,7 +52,7 @@ def source_gap_rows(conn, limit):
 class DashboardSourceRepository:
     def __init__(self, conn):
         self.conn = conn
-        self.present = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.present = {name for name, (kind, _table, _sql) in schema_contract_memo(conn).structure.objects.items() if kind == "table"}
 
     def _select_list(self, name):
         columns = [row[1] for row in self.conn.execute("PRAGMA table_info(" + _QUOTED[name] + ")")]
@@ -68,15 +69,14 @@ class DashboardSourceRepository:
         """Keep raw rowid order and SQLite's time/status/order facts from one SELECT."""
         if "MachineDowntimes" not in self.present:
             return None, None
-        register_schedule_time_sql_functions(self.conn)
         wanted = None if machine_ids is None else frozenset(machine_ids)
         self.conn.create_function("aps_calendar_machine_selected", 1,
                                   lambda key: int(wanted is None or key in wanted))
         selected = "aps_calendar_machine_selected(md.machine_id) AND " + DOWNTIME_STATUS_SQL
         private = [DOWNTIME_STATUS_SQL + " AS __calendar_admitted",
-                   "CASE WHEN " + selected + " THEN " + valid_time_range_sql("md") + " END AS __calendar_valid",
-                   "CASE WHEN " + selected + " THEN " + time_dt("md", "start_time") + " END AS __calendar_start",
-                   "CASE WHEN " + selected + " THEN " + time_dt("md", "end_time") + " END AS __calendar_end"]
+                   selected + " AS __calendar_selected",
+                   "CASE WHEN " + selected + " THEN TRIM(CAST(md.start_time AS TEXT)) END AS __calendar_start",
+                   "CASE WHEN " + selected + " THEN TRIM(CAST(md.end_time AS TEXT)) END AS __calendar_end"]
         for field in ("start_time", "end_time"):
             stem = "__calendar_" + field
             private.extend(("CASE typeof(md." + field + ") WHEN 'null' THEN 0 WHEN 'integer' THEN 1 "
@@ -96,7 +96,14 @@ class DashboardSourceRepository:
                             for value in row[:boundary])
                 bounded(range(size), MAX_BYTES)
                 captured.append(raw)
-                prepared.append((raw, dict(zip(names[boundary:], row[boundary:]))))
+                interval = dict(zip(names[boundary:], row[boundary:]))
+                if interval.pop("__calendar_selected"):
+                    start, end = parse_dt_for_sql(interval["__calendar_start"]), parse_dt_for_sql(interval["__calendar_end"])
+                    interval.update(__calendar_start=start, __calendar_end=end,
+                                    __calendar_valid=int(start is not None and end is not None and end > start))
+                else:
+                    interval["__calendar_valid"] = None
+                prepared.append((raw, interval))
             bounded(captured, limit)
             return captured, prepared
         finally:

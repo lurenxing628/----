@@ -9,8 +9,8 @@ from core.services.scheduler.contracts.schedule_summary_types import SummaryBuil
 
 from .schedule_candidate_runner import run_candidate_comparison
 from .schedule_candidate_summary import candidate_comparison_public_summary
-from .schedule_input_collector import ScheduleRunInput
-from .schedule_persistence import ValidatedSchedulePayload, build_validated_schedule_payload
+from .schedule_input_contracts import ScheduleRunInput
+from .schedule_payload_contract import ValidatedSchedulePayload, build_validated_schedule_payload
 from .schedule_summary_contract import ScheduleSummaryContract
 from .schedule_summary_contract import build_summary_contract as _build_summary_contract
 
@@ -55,8 +55,6 @@ class ScheduleOrchestrationOutcome:
     overdue_items: List[Any]
     result_status: str
     result_summary_obj: Dict[str, Any]
-    # Persisted text freezes the complete unified formal result before the display size guard.
-    result_summary_json: str
     time_cost_ms: int
     candidate_comparison: Any
 
@@ -149,16 +147,16 @@ def _merge_summary_warnings(summary: Any, algo_warnings: List[str]) -> Dict[str,
 
 
 def _run_plan_selection(
-    svc: Any,
     *,
     schedule_input: ScheduleRunInput,
     strict_mode: bool,
+    logger: Any = None,
     candidate_comparison_fn: Any = None,
 ) -> Tuple[_NormalizedCandidatePlan, Optional[Dict[str, Any]], Optional[Dict[str, Any]], Any]:
     candidate_comparison = (candidate_comparison_fn or run_candidate_comparison)(
         schedule_input=schedule_input,
         run_time_budget_seconds=getattr(schedule_input, "run_time_budget_seconds", None),
-        strict_mode=bool(strict_mode), logger=svc.logger,
+        strict_mode=bool(strict_mode), logger=logger,
     )
     adopted_plan = candidate_comparison.selection.selected_plan
     graph_public, graph_diagnostics = _graph_analysis_for_summary(candidate_comparison, adopted_plan)
@@ -182,24 +180,19 @@ def _payload_validation_operations(schedule_input: ScheduleRunInput) -> List[Any
 
 
 def orchestrate_schedule_run(
-    svc: Any,
     *,
     schedule_input: ScheduleRunInput,
-    simulate: bool,
+    version: int,
     strict_mode: bool,
     build_result_summary_fn: Any,
-    before_version_allocate_fn: Any = None,
-    allocate_version: bool = True,
-    version_override: Any = None,
-    persist_schedule_fn: Any = None,
+    logger: Any = None,
     point_validator: Any = None,
     candidate_comparison_fn: Any = None,
 ) -> ScheduleOrchestrationOutcome:
-    if callable(persist_schedule_fn) and not allocate_version:
-        raise ValueError("持久化排产必须分配新版本号，不能在 allocate_version=False 时传入 persist_schedule_fn。")
+    """Compute candidates and their summary using an already prepared run input."""
     optimizer_outcome, graph_analysis_public, graph_analysis_diagnostics, candidate_comparison = _run_plan_selection(
-        svc,
         schedule_input=schedule_input,
+        logger=logger,
         strict_mode=bool(strict_mode),
         candidate_comparison_fn=candidate_comparison_fn,
     )
@@ -208,6 +201,7 @@ def orchestrate_schedule_run(
         optimizer_outcome.results,
         allowed_op_ids=set(allowed_op_ids_raw) if allowed_op_ids_raw is not None else None,
         operations=_payload_validation_operations(schedule_input),
+        operation_sources=getattr(schedule_input, "operation_sources", None),
         missing_internal_resource_op_ids=set(getattr(schedule_input, "missing_internal_resource_op_ids", None) or set()),
         schedule_errors=list(getattr(optimizer_outcome.summary, "errors", None) or []),
         point_validator=point_validator,
@@ -218,104 +212,83 @@ def orchestrate_schedule_run(
         list(schedule_input.algo_warnings or []),
     )
 
-    def _build_outcome(version: int) -> ScheduleOrchestrationOutcome:
-        summary_ctx = SummaryBuildContext(
-            cfg=schedule_input.cfg,
-            version=int(version),
-            normalized_batch_ids=schedule_input.normalized_batch_ids,
-            start_dt=schedule_input.start_dt_norm,
-            end_date=schedule_input.end_date_norm,
-            batches=schedule_input.batches,
-            operations=schedule_input.operations,
-            results=optimizer_outcome.results,
-            summary=optimizer_outcome.summary,
-            used_strategy=optimizer_outcome.used_strategy,
-            used_params=optimizer_outcome.used_params,
-            algo_mode=optimizer_outcome.algo_mode,
-            objective_name=optimizer_outcome.objective_name,
-            time_budget_seconds=int(optimizer_outcome.time_budget_seconds),
-            best_score=optimizer_outcome.best_score,
-            best_metrics=optimizer_outcome.best_metrics,
-            best_order=optimizer_outcome.best_order,
-            attempts=optimizer_outcome.attempts,
-            improvement_trace=optimizer_outcome.improvement_trace,
-            frozen_op_ids=set(schedule_input.frozen_op_ids),
-            search_report=optimizer_outcome.search_report,
-            missing_internal_resource_op_ids=set(schedule_input.missing_internal_resource_op_ids or set()),
-            scheduled_op_ids=set(validated_schedule_payload.scheduled_op_ids),
-            freeze_meta=schedule_input.freeze_meta,
-            input_build_outcome=schedule_input.algo_input_outcome,
-            downtime_meta=schedule_input.downtime_meta,
-            resource_pool_meta=schedule_input.resource_pool_meta,
-            readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
-            algo_stats=optimizer_outcome.algo_stats,
-            algo_warnings=list(schedule_input.algo_warnings or []),
-            warning_merge_status=warning_merge_status,
-            graph_analysis_public=graph_analysis_public,
-            graph_analysis_diagnostics=graph_analysis_diagnostics,
-            candidate_comparison_public=(
-                candidate_comparison_public_summary(candidate_comparison)
-                if candidate_comparison is not None
-                else None
-            ),
-            execution_snapshot_revision=getattr(schedule_input, "execution_snapshot_revision", None),
-            execution_snapshot_op_ids=list(getattr(schedule_input, "execution_snapshot_op_ids", None) or []),
-            execution_snapshot_op_count=int(getattr(schedule_input, "execution_snapshot_op_count", 0) or 0),
-            simulate=simulate,
-            t0=schedule_input.t0,
-        )
+    summary_ctx = SummaryBuildContext(
+        cfg=schedule_input.cfg,
+        version=int(version),
+        normalized_batch_ids=schedule_input.normalized_batch_ids,
+        start_dt=schedule_input.start_dt_norm,
+        end_date=schedule_input.end_date_norm,
+        batches=schedule_input.batches,
+        operations=schedule_input.operations,
+        results=optimizer_outcome.results,
+        summary=optimizer_outcome.summary,
+        used_strategy=optimizer_outcome.used_strategy,
+        used_params=optimizer_outcome.used_params,
+        algo_mode=optimizer_outcome.algo_mode,
+        objective_name=optimizer_outcome.objective_name,
+        time_budget_seconds=int(optimizer_outcome.time_budget_seconds),
+        best_score=optimizer_outcome.best_score,
+        best_metrics=optimizer_outcome.best_metrics,
+        best_order=optimizer_outcome.best_order,
+        attempts=optimizer_outcome.attempts,
+        improvement_trace=optimizer_outcome.improvement_trace,
+        frozen_op_ids=set(schedule_input.frozen_op_ids),
+        search_report=optimizer_outcome.search_report,
+        missing_internal_resource_op_ids=set(schedule_input.missing_internal_resource_op_ids or set()),
+        scheduled_op_ids=set(validated_schedule_payload.scheduled_op_ids),
+        freeze_meta=schedule_input.freeze_meta,
+        input_build_outcome=schedule_input.algo_input_outcome,
+        downtime_meta=schedule_input.downtime_meta,
+        resource_pool_meta=schedule_input.resource_pool_meta,
+        readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
+        algo_stats=optimizer_outcome.algo_stats,
+        algo_warnings=list(schedule_input.algo_warnings or []),
+        warning_merge_status=warning_merge_status,
+        graph_analysis_public=graph_analysis_public,
+        graph_analysis_diagnostics=graph_analysis_diagnostics,
+        candidate_comparison_public=(
+            candidate_comparison_public_summary(candidate_comparison)
+            if candidate_comparison is not None
+            else None
+        ),
+        execution_snapshot_revision=getattr(schedule_input, "execution_snapshot_revision", None),
+        execution_snapshot_op_ids=list(getattr(schedule_input, "execution_snapshot_op_ids", None) or []),
+        execution_snapshot_op_count=int(getattr(schedule_input, "execution_snapshot_op_count", 0) or 0),
+        simulate=True,
+        t0=schedule_input.t0,
+    )
 
-        overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms = build_result_summary_fn(
-            svc,
-            ctx=summary_ctx,
-        )
+    overdue_items, result_status, result_summary_obj, time_cost_ms = build_result_summary_fn(
+        ctx=summary_ctx,
+        logger=logger,
+    )
 
-        return ScheduleOrchestrationOutcome(
-            version=int(version),
-            results=optimizer_outcome.results,
-            summary=optimizer_outcome.summary,
-            summary_contract=_build_summary_contract(
-                optimizer_outcome.summary,
-                result_summary_obj=result_summary_obj,
-            ),
-            validated_schedule_payload=validated_schedule_payload,
-            used_strategy=optimizer_outcome.used_strategy,
-            used_params=optimizer_outcome.used_params,
-            best_metrics=optimizer_outcome.best_metrics,
-            best_score=optimizer_outcome.best_score,
-            best_order=optimizer_outcome.best_order,
-            attempts=optimizer_outcome.attempts,
-            improvement_trace=optimizer_outcome.improvement_trace,
-            algo_mode=optimizer_outcome.algo_mode,
-            objective_name=optimizer_outcome.objective_name,
-            algo_stats=optimizer_outcome.algo_stats,
-            time_budget_seconds=optimizer_outcome.time_budget_seconds,
-            search_report=optimizer_outcome.search_report,
-            warning_merge_status=warning_merge_status,
-            algo_warnings=list(schedule_input.algo_warnings or []),
-            overdue_items=overdue_items,
-            result_status=result_status,
+    return ScheduleOrchestrationOutcome(
+        version=int(version),
+        results=optimizer_outcome.results,
+        summary=optimizer_outcome.summary,
+        summary_contract=_build_summary_contract(
+            optimizer_outcome.summary,
             result_summary_obj=result_summary_obj,
-            result_summary_json=result_summary_json,
-            time_cost_ms=int(time_cost_ms),
-            candidate_comparison=candidate_comparison,
-        )
-
-    if callable(persist_schedule_fn) and allocate_version:
-        with svc.tx_manager.transaction():
-            if callable(before_version_allocate_fn):
-                before_version_allocate_fn(validated_schedule_payload)
-            outcome = _build_outcome(int(svc.history_repo.allocate_next_version()))
-            persist_schedule_fn(outcome)
-        return outcome
-
-    if callable(before_version_allocate_fn):
-        before_version_allocate_fn(validated_schedule_payload)
-
-    if not allocate_version:
-        version = int(version_override or getattr(schedule_input, "prev_version", 0) or 0)
-    else:
-        with svc.tx_manager.transaction():
-            version = int(svc.history_repo.allocate_next_version())
-
-    return _build_outcome(version)
+        ),
+        validated_schedule_payload=validated_schedule_payload,
+        used_strategy=optimizer_outcome.used_strategy,
+        used_params=optimizer_outcome.used_params,
+        best_metrics=optimizer_outcome.best_metrics,
+        best_score=optimizer_outcome.best_score,
+        best_order=optimizer_outcome.best_order,
+        attempts=optimizer_outcome.attempts,
+        improvement_trace=optimizer_outcome.improvement_trace,
+        algo_mode=optimizer_outcome.algo_mode,
+        objective_name=optimizer_outcome.objective_name,
+        algo_stats=optimizer_outcome.algo_stats,
+        time_budget_seconds=optimizer_outcome.time_budget_seconds,
+        search_report=optimizer_outcome.search_report,
+        warning_merge_status=warning_merge_status,
+        algo_warnings=list(schedule_input.algo_warnings or []),
+        overdue_items=overdue_items,
+        result_status=result_status,
+        result_summary_obj=result_summary_obj,
+        time_cost_ms=int(time_cost_ms),
+        candidate_comparison=candidate_comparison,
+    )

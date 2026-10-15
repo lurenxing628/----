@@ -1,39 +1,48 @@
-"""A page or download can only reuse its original, still-current read scope."""
+"""Read bindings retain one canonical fact value and their original clock."""
 
-from __future__ import annotations
-
-import json
+from dataclasses import dataclass
 from datetime import datetime
 from datetime import datetime as DateTimeValue
 
 from core.errors import ValidationError
-from core.models.content import content_text, same, unpacked
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
 from web.public_token_registry import issue_public_token, resolve_public_token
 
 _SCOPE = "workbench-read-v1"
 
 
-def _matches_scope(payload, scope):
-    return type(payload.get("version")) is int and payload["version"] == 1 and same(payload.get("scope"), scope)
+def fact_value(value):
+    """Canonical facts already produced by their owner stay the same object."""
+    return ("text", value) if isinstance(value, str) else ("content", content_text(value))
 
 
-def bind_read_snapshot(scope, fingerprint, token=None, *, as_of=None):
+@dataclass(frozen=True)
+class ReadBinding:
+    scope: str
+    fingerprint: tuple
+    as_of: str
+
+
+def resolve_read_snapshot(token):
+    try:
+        return resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")
+    except ValidationError as exc:
+        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
+
+
+def bind_read_snapshot(scope, fingerprint, token=None, *, as_of=None, binding=None):
+    scope_value, facts = content_text(scope), fact_value(fingerprint)
     if token is not None:
-        try:
-            payload = unpacked(json.loads(resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")))
-        except (ValidationError, ValueError, TypeError) as exc:
-            raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
-        if (not isinstance(payload, dict) or payload.get("source") != "production"
-                or not _matches_scope(payload, scope) or not same(payload.get("fingerprint"), fingerprint)
-                or not isinstance(payload.get("as_of"), str)):
+        payload = resolve_read_snapshot(token) if binding is None else binding
+        if payload.scope != scope_value or payload.fingerprint != facts:
             raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-        return {"snapshot_ref": token, "as_of": payload["as_of"]}
+        return {"snapshot_ref": token, "as_of": payload.as_of}
     if as_of is None:
         as_of = datetime.now()
     if isinstance(as_of, DateTimeValue):
         as_of = as_of.isoformat(timespec="seconds")
-    payload = {"version": 1, "source": "production", "scope": scope, "fingerprint": fingerprint, "as_of": as_of}
-    reference = issue_public_token(_SCOPE, content_text(payload), ttl_seconds=900)
+    payload = ReadBinding(scope_value, facts, as_of)
+    reference = issue_public_token(_SCOPE, payload, key=(scope_value, as_of), group=facts, ttl_seconds=900)
     return {"snapshot_ref": reference, "as_of": as_of}

@@ -167,19 +167,32 @@ def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any]
                            params: Any, machine_downtimes: Any, resource_pool: Any, seed_results: Any,
                            graph_ready_context: Any, readiness_gate_enabled: bool, strict_mode: bool,
                            calendar_signature: Any, warnings: Sequence[str] = (),
-                           prepared_calendar_signature: Optional[Tuple[Any, ...]] = None) -> Tuple[Any, ...]:
+                           prepared_calendar_signature: Optional[Tuple[Any, ...]] = None,
+                           prepared_inputs: Any = None) -> Tuple[Any, ...]:
     """Frozen decode inputs, except the graph priority keys a checkpoint reuse may change."""
+    fixed = prepared_inputs.checkpoint_fixed_parts() if prepared_inputs is not None else None
+    operation_parts = (fixed["operations"] if fixed is not None else {})
+    encoded_operations = tuple(operation_parts[id(op)] if id(op) in operation_parts
+                               else input_record(op, field="operations") for op in operations)
+    context_key = (graph_ready_context is not None, bool(graph_ready_context and graph_ready_context.get("score_enabled")))
+    if fixed is not None:
+        if context_key not in fixed["contexts"]:
+            fixed["contexts"][context_key] = _context_signature(graph_ready_context)
+        context_part = fixed["contexts"][context_key]
+    else:
+        context_part = _context_signature(graph_ready_context)
     parts: List[Any] = [
-        tuple(input_record(op, field="operations") for op in operations),
-        tuple((key, input_record(batch, field="batches")) for key, batch in batches.items()),
+        encoded_operations,
+        fixed["batches"] if fixed is not None else tuple((key, input_record(batch, field="batches")) for key, batch in batches.items()),
         input_value(batch_order, field="batch_order"),
         input_value((params.dispatch_mode_key, params.dispatch_rule_spec.token, params.base_time,
                      params.end_dt_exclusive, params.strategy.value, params.auto_assign_enabled,
                      params.used_params), field="params"),
-        input_value(machine_downtimes, field="machine_downtimes"),
-        input_value(resource_pool, field="resource_pool"),
-        tuple(_seed_signature(result) for result in list(seed_results or [])),
-        _context_signature(graph_ready_context),
+        fixed["downtimes"] if fixed is not None else input_value(machine_downtimes, field="machine_downtimes"),
+        (fixed["resources"] if fixed is not None and resource_pool is prepared_inputs.resource_pool
+         else input_value(resource_pool, field="resource_pool")),
+        fixed["seeds"] if fixed is not None else tuple(_seed_signature(result) for result in seed_results or ()),
+        context_part,
         bool(readiness_gate_enabled), bool(strict_mode),
         (prepared_calendar_signature if prepared_calendar_signature is not None
          else input_value(calendar_signature, field="calendar_signature")), tuple(warnings),

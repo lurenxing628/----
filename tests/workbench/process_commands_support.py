@@ -18,6 +18,7 @@ from core.infrastructure.workbench_process_workflow_schema import install_proces
 from core.models.content import content_text
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.mutations import WorkbenchProcessMutationService
+from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.process_query_support import ref_for, seed_process
 from tests.workbench.process_route_support import all_table_snapshot
@@ -302,7 +303,14 @@ def profile_stage_scale(count, output):
         source, hours = measure("fixture_payload", lambda: scale_inputs(conn))
         _profile_route(conn, output, count, measure)
         normalized_source = measure("normalize_source", lambda: WorkbenchProcessMutationService.normalize("source_confirm", source))
-        measure("source_preview", lambda: WorkbenchProcessMutationService(conn).affected_groups("source_confirm", normalized_source, identity_for(conn, "SCALE")))
+
+        def source_preview():
+            service, reader = WorkbenchProcessMutationService(conn), WorkbenchProcessQueryService(conn)
+            with reader.read_snapshot():
+                checked = service.checked_facts(reader.resolve(identity_for(conn, "SCALE").ref), reader.facts())
+                return service.prepare_review("source_confirm", normalized_source, checked, facts=reader.facts()).affected
+
+        measure("source_preview", source_preview)
         measure("source_transaction", lambda: _profile_command(conn, "source_confirm", normalized_source))
         measure("source_unchanged_transaction", lambda: _profile_command(conn, "source_confirm", normalized_source, "-unchanged"))
         normalized_hours = measure("normalize_hours", lambda: WorkbenchProcessMutationService.normalize("hours_confirm", hours))

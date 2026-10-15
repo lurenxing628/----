@@ -1,8 +1,8 @@
 """Batch request shapes and signed previews, using common contexts and receipts."""
 
-import json
 import re
 from datetime import datetime
+from types import MappingProxyType
 from typing import Dict, Union
 
 from flask import g, request
@@ -10,8 +10,10 @@ from flask import g, request
 from core.errors import ValidationError
 from core.models.workbench_batch import object_fields
 from core.models.workbench_batch_query import batch_scope
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
+
+from .read_context import fact_value
 
 PREVIEW_SCOPE = "workbench-batch-preview-v1"
 
@@ -46,8 +48,8 @@ def command_body():
 
 def save_preview(action, ref, payload, fingerprint, *, with_expiry=False):
     token, expiry = issue_public_token_with_expiry(
-        PREVIEW_SCOPE, canonical_json({"action": action, "ref": ref, "input": payload, "fingerprint": fingerprint}),
-        ttl_seconds=900)
+        PREVIEW_SCOPE, MappingProxyType({"action": action, "ref": ref, "input": payload, "fingerprint": fingerprint}),
+        key=(action, ref, fact_value(payload)), group=fact_value(fingerprint), ttl_seconds=900)
     return (token, datetime.fromtimestamp(expiry).isoformat(timespec="seconds")) if with_expiry else token
 
 
@@ -78,9 +80,9 @@ def load_preview(token, action, ref):
     noun = _RETRY[action][0]
     expired = retry_message(action, noun + "已过期，系统没有自动重做")
     try:
-        binding = json.loads(resolve_public_token(PREVIEW_SCOPE, token, message=expired, field="preview_ref"))
+        binding = resolve_public_token(PREVIEW_SCOPE, token, message=expired, field="preview_ref")
     except (ValidationError, ValueError, TypeError) as exc:
         raise WorkbenchCommandRejected("stale_write", expired) from exc
-    if not isinstance(binding, dict) or binding.get("action") != action or binding.get("ref") != ref:
+    if binding.get("action") != action or binding.get("ref") != ref:
         raise WorkbenchCommandRejected("stale_write", retry_message(action, noun + "和当前批次操作对不上"))
     return binding

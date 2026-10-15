@@ -7,8 +7,8 @@ from core.models._helpers import parse_int
 from core.models.operation_execution_event import (
     EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_PAUSE,
+    OperationExecutionEvent,
     normalize_operation_event_time,
-    normalize_operation_execution_event_values,
     validate_operation_execution_event_sequence,
 )
 
@@ -18,8 +18,6 @@ def operation_execution_event_data_issues(conn: sqlite3.Connection, *, limit: in
         return []
     issues: List[str] = []
     issues.extend(_event_value_issues(conn, limit=limit))
-    if len(issues) < limit:
-        issues.extend(operation_execution_event_sequence_issues(conn, limit=limit - len(issues)))
     if len(issues) < limit:
         issues.extend(_foreign_key_data_issues(conn, limit=limit - len(issues)))
     return issues[:limit]
@@ -73,7 +71,7 @@ def _optional_value(value: Any, allowed_values: Tuple[str, ...], field_name: str
     return text
 
 
-def _validate_event_contract_row(row: Any) -> None:
+def _validate_event_contract_row(row: Any) -> OperationExecutionEvent:
     _positive_int(_row_value(row, "schedule_version", 1), "schedule_version")
     _positive_int(_row_value(row, "schedule_id", 2), "schedule_id")
     _positive_int(_row_value(row, "op_id", 3), "op_id")
@@ -84,11 +82,8 @@ def _validate_event_contract_row(row: Any) -> None:
         raise ValueError("effective_plan_role must be 'adopted'")
     if _row_value(row, "scenario_id", 7) is not None:
         raise ValueError("scenario_id must be NULL")
-    event_type, _status, _event_time = normalize_operation_execution_event_values(
-        event_type=_row_value(row, "event_type", 8),
-        reported_status=_row_value(row, "reported_status", 9),
-        event_time=_row_value(row, "event_time", 10),
-    )
+    event = OperationExecutionEvent.from_row(row)
+    event_type = event.event_type
     _optional_non_negative_int(_row_value(row, "quantity_done", 11), "quantity_done")
     _optional_non_negative_int(_row_value(row, "quantity_scrapped", 12), "quantity_scrapped")
     reason_code = _optional_value(
@@ -120,10 +115,12 @@ def _validate_event_contract_row(row: Any) -> None:
         _required_text(fingerprint, "request_fingerprint")
     _required_text(_row_value(row, "previous_state_revision", 21), "previous_state_revision")
     normalize_operation_event_time(_row_value(row, "created_at", 22))
+    return event
 
 
 def _event_value_issues(conn: sqlite3.Connection, *, limit: int) -> List[str]:
     issues: List[str] = []
+    current_key, current_rows = None, []
     try:
         rows = conn.execute(
             """
@@ -136,17 +133,31 @@ def _event_value_issues(conn: sqlite3.Connection, *, limit: int) -> List[str]:
                 created_by, idempotency_key, request_fingerprint,
                 previous_state_revision, created_at
             FROM OperationExecutionEvents
-            ORDER BY id ASC
+            ORDER BY schedule_version, schedule_id, op_id, batch_id,
+                     source_table, effective_plan_role, scenario_id, id
             """
         )
         for row in rows:
+            key = _sequence_key(row)
+            if current_key is not None and key != current_key:
+                issue = _sequence_issue(current_rows)
+                if issue:
+                    issues.append(issue)
+                    if len(issues) >= limit:
+                        return issues[:limit]
+                current_rows = []
+            current_key = key
             event_id = _row_value(row, "id", 0)
             try:
-                _validate_event_contract_row(row)
+                current_rows.append(_validate_event_contract_row(row))
             except ValueError as exc:
                 issues.append(f"bad_data: OperationExecutionEvents.id={event_id} {exc}")
                 if len(issues) >= limit:
                     break
+        if current_rows and len(issues) < limit:
+            issue = _sequence_issue(current_rows)
+            if issue:
+                issues.append(issue)
     except sqlite3.Error as exc:
         issues.append(f"bad_data_check_error: OperationExecutionEvents {exc}")
     return issues
@@ -165,9 +176,11 @@ def _sequence_key(row: Any) -> Tuple[str, str, str, str, str, str, str]:
 
 
 def _sequence_issue(rows: List[Any]) -> str:
-    ids = ", ".join(str(_row_value(row, "id", 0)) for row in rows[:8])
+    ids = ", ".join(str(row.id if isinstance(row, OperationExecutionEvent) else _row_value(row, "id", 0))
+                    for row in rows[:8])
     try:
-        validate_operation_execution_event_sequence(rows)
+        events = [row if isinstance(row, OperationExecutionEvent) else OperationExecutionEvent.from_row(row) for row in rows]
+        validate_operation_execution_event_sequence(events)
     except ValueError as exc:
         return f"bad_sequence: OperationExecutionEvents.ids={ids} {exc}"
     return ""

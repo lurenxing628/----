@@ -8,7 +8,7 @@
       <p className="ta-note">将完整试调方案采用为新一版正式计划，保留历史版本。恢复旧安排需重新排产并采用。</p></>;
   }
   function Fields({ session: s }) {
-    const id = React.useId(), frozen = !!s.saved, memoryHint = window.WorkbenchHandlerMemory.hint(s.draft.declared_operator);
+    const id = React.useId(), frozen = !!s.saved, memoryHint = window.WorkbenchHandlerMemory.useHint(s.draft.declared_operator);
     return <div className="ta-fields"><div className="field"><label htmlFor={id + '-reason'}>采用原因</label>
       <textarea id={id + '-reason'} rows={3} maxLength={1000} value={s.draft.reason} readOnly={frozen} disabled={s.busy}
         onChange={e => s.change({ ...s.draft, reason: e.target.value })} /></div>

@@ -244,7 +244,7 @@ def _held(facts, svc, settings, version, operations, held_ids):
     except ValidationError:
         cfg = _FREEZE_OFF
     seeds, meta = held_arrangements(
-        svc, cfg=cfg, prev_version=version,
+        svc, cfg=cfg, prev_version=version, facts=facts,
         start_dt=datetime.combine(local_date(settings["start_date"]), datetime.min.time()),
         operations=models, reschedulable_operations=[op for op in models if op.id in held_ids],
         hold_window=(None if getattr(facts, "config_error", None) is not None
@@ -275,7 +275,7 @@ def held_arrangement_reasons(facts, svc, checks, settings, version, batches, ope
     except AppError:
         return [_unreadable()], [], {}
     contexts = {row["operation_id"]: row for row in facts.tables.get("BatchExternalContexts", [])}
-    context = _Context(checks, CalendarService(facts.conn), held_machine_downtimes(svc, seeds), settings, batches, operations,
+    context = _Context(checks, CalendarService(facts.conn), held_machine_downtimes(svc, seeds, facts=facts), settings, batches, operations,
                        contexts, _completed(facts, operations, projections))
     blockers = _seed_blockers(facts, context, seeds, by_id, meta.get("hold_window"), cycles)
     # 合并外协组成员只在不在保留安排里时才由排产按实际周期派生、排产照常出结果；全都在保留安排里排产会直接停下。

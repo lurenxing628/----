@@ -13,7 +13,6 @@ from core.services.scheduler.execution.execution_snapshot import (
     ExecutionSnapshot,
     build_execution_snapshot,
 )
-from data.repositories.schedule_execution_facts_repo import ScheduleExecutionFactsRepository
 
 
 def _conflict(reason: str) -> AppError:
@@ -24,20 +23,18 @@ def _conflict(reason: str) -> AppError:
     )
 
 
-def _latest_plan_rows(svc: Any, version: int) -> Dict[int, Dict[str, Any]]:
-    # Each operation's last official identity; a duplicate per op_id is a plan-identity conflict.
-    rows: Dict[int, Dict[str, Any]] = {}
-    for row in ScheduleExecutionFactsRepository(svc.conn).latest_plan_rows(version):
-        op_id = int(row["op_id"])
-        if op_id in rows:
-            raise _conflict("duplicate_previous_schedule_rows")
-        rows[op_id] = row
-    return rows
-
-
-def _validate_event_plan_identities(svc: Any) -> None:
-    if ScheduleExecutionFactsRepository(svc.conn).has_event_without_plan_identity(SOURCE_SCHEDULE, ROLE_ADOPTED):
-        raise _conflict("execution_scope_missing")
+def _validate_event_plan_identities(capture) -> None:
+    schedules = capture.index("Schedule", "id")
+    operations = capture.index("BatchOperations", "id")
+    for event in capture.table("OperationExecutionEvents"):
+        if (event["source_table"] != SOURCE_SCHEDULE or event["effective_plan_role"] != ROLE_ADOPTED
+                or event["scenario_id"] is not None):
+            continue
+        row, op = schedules.get(event["schedule_id"]), operations.get(event["op_id"])
+        if (row is None or op is None or event["schedule_version"] != row["version"]
+                or event["op_id"] != row["op_id"] or event["batch_id"] != op["batch_id"]):
+            raise _conflict("execution_scope_missing")
+    return
 
 
 def resource_execution_snapshot(
@@ -49,11 +46,12 @@ def resource_execution_snapshot(
 def collect_resource_execution_facts(
     svc: Any, *, prev_version: int,
     execution_projections: Optional[Sequence[ExecutionProjection]] = None,
+    capture, ledger=None,
 ) -> Tuple[Dict[int, ExecutionFact], Dict[int, Dict[str, Any]], ExecutionSnapshot]:
     try:
-        _validate_event_plan_identities(svc)
-        plan_rows = _latest_plan_rows(svc, prev_version)
-        facts = ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None)).facts_by_op_id_for_plan_rows(
+        _validate_event_plan_identities(capture)
+        plan_rows = capture.latest_plan_rows(prev_version)
+        facts = ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None), capture=capture, ledger=ledger).facts_by_op_id_for_plan_rows(
             list(plan_rows.values()),
             {"source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED, "scenario_id": None},
             include_op_ids=sorted(plan_rows),

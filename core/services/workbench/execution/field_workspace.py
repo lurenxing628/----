@@ -137,10 +137,14 @@ class FieldWorkspaceService:
         if factory is None or self._loaded is None:
             return tasks
         facts, loaded = self._loaded
-        result = []
+        result, snapshots, attached_operations = [], {}, {}
         for task in tasks:
             ref = task['operation_ref']
-            attached = attach_context(loaded[ref], factory, self.ledger.fact_snapshot(facts, ref))
+            if ref not in snapshots:
+                snapshots[ref] = content_text(self.ledger.fact_snapshot(facts, ref))
+            if ref not in attached_operations:
+                attached_operations[ref] = attach_context(loaded[ref], factory, snapshots[ref])
+            attached = attached_operations[ref]
             if attached is loaded[ref]:
                 result.append(task)
                 continue

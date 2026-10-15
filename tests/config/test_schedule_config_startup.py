@@ -4,7 +4,8 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import get_connection
-from core.services.scheduler.config.config_service import ConfigService
+from core.services.scheduler.config.config_constants import ACTIVE_PRESET_KEY, BUILTIN_PRESET_DEFAULT
+from core.services.scheduler.config.config_field_spec import default_for, list_config_fields
 from core.services.workbench.run.input_config import configuration_snapshot
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.config_repo import ConfigRepository
@@ -26,8 +27,9 @@ def test_fresh_application_first_real_worker_run_needs_no_config_page(db_env):
     try:
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == 0
         app = create_application()
-        assert configuration_snapshot(conn).sort_strategy == ConfigService.DEFAULT_SORT_STRATEGY
-        assert ConfigService(conn).get_active_preset() == ConfigService.BUILTIN_PRESET_DEFAULT
+        assert configuration_snapshot(conn).sort_strategy == default_for("sort_strategy")
+        assert ConfigRepository(conn).get_value(ACTIVE_PRESET_KEY) == BUILTIN_PRESET_DEFAULT
+        assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == len(list_config_fields()) + 3
         initialized = config_rows(conn)
         conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T1','Turning')")
         conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M1','Lathe','T1')")
@@ -72,11 +74,14 @@ def test_restart_preserves_existing_missing_or_invalid_configuration(db_env, dam
 
 
 def test_failed_startup_bootstrap_rolls_back_defaults_and_provenance(db_env, monkeypatch):
-    def fail_preset_write(*_args, **_kwargs):
-        raise RuntimeError("startup preset write failed")
+    original_set_batch = ConfigRepository.set_batch
 
-    monkeypatch.setattr(ConfigRepository, "set", fail_preset_write)
-    with pytest.raises(RuntimeError, match="startup preset write failed"):
+    def fail_configuration_write(repo, rows):
+        original_set_batch(repo, rows)
+        raise RuntimeError("startup configuration write failed")
+
+    monkeypatch.setattr(ConfigRepository, "set_batch", fail_configuration_write)
+    with pytest.raises(RuntimeError, match="startup configuration write failed"):
         create_application()
     conn = get_connection(db_env)
     try:

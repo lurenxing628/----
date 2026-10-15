@@ -6,29 +6,26 @@ from types import SimpleNamespace
 from core.errors import AppError
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked, CandidateAdoptionEvidence
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import durable_value
 from core.services.scheduler.run.schedule_execution_persistence_guard import validate_execution_guard_before_persist
-from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
-from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate, require_adoption_schema
-from core.services.workbench.facts.candidate_projection import scheduled_ids, uses_task_rows
+from core.services.workbench.facts.candidate_projection import uses_task_rows
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 
 from .candidate_adoption_constraints import validate_adoption_constraints
 from .candidate_adoption_storage import check_admission_current
 from .compute_validation import validate_candidate
 from .input import prepare_candidate_run_input
 from .piece_adoption import validate_piece_adoption
+from .preflight_facts import PreflightFacts
 
 
-def _rows(tasks, candidate, prepared):
+def _rows(tasks, candidate, prepared, expected_ids):
     from_tasks = uses_task_rows(candidate["artifact"])
-    expected_ids = scheduled_ids(candidate)
     if expected_ids is None:
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "候选验证范围缺失，不能采用。请重新排产后再试。")
     legacy_rows = None if from_tasks else {row["op_id"]: row for row in candidate["artifact"]["validated_payload"]["schedule_rows"]}
@@ -63,27 +60,30 @@ def validate_adoption(conn, candidate_ref):
     try:
         with CandidateStore(conn).snapshot():
             require_adoption_schema(conn)
-            candidate, scope, tasks, capture = load_adoption_candidate(conn, candidate_ref)
-            baseline, projections = check_admission_current(conn, capture)
-            prepared = prepare_candidate_run_input(conn, capture["input"], projections, capture_fingerprint=False)
-            if not same({row["operation_ref"]: row for row in prepared.dispositions}, scope):
-                raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "排产时的工序范围或前后顺序和现在的记录对不上，不能采用。请重新做排产检查。")
-            rows = _rows(tasks, candidate, prepared)
-            payload = validate_candidate(prepared, rows, [])
-            _check_artifact_payload(candidate, payload)
-            if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
-                raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全选中的工序，不能采用。请重新排产后再试。")
-            svc = ScheduleService(conn)
-            _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)
-            validate_adoption_payload(conn, prepared, payload)
-            proof = {"proof_version": "content_refs_v1", "candidate_ref": candidate_ref,
-                     "run_ref": candidate["run_ref"], "baseline_ref": baseline["plan_ref"],
-                     "baseline_version": baseline["version"]}
-            # The candidate and task ledger are permanent. Current production facts,
-            # actual rows and constraints are re-read by this same guarded transaction.
-            snapshot = proof
-            return CandidateAdoptionEvidence(candidate_ref, candidate["run_ref"], baseline, snapshot,
-                                             prepared, payload, proof)
+            _run, candidate, scope, tasks, capture, ids = load_adoption_candidate(conn, candidate_ref)
+            current_capture = ProductionFactsCapture(conn)
+            facts = PreflightFacts(conn, capture=current_capture)
+            with facts.snapshot(fingerprint=False):
+                baseline, projections = check_admission_current(conn, capture, current_capture=current_capture)
+                prepared = prepare_candidate_run_input(conn, capture["input"], projections, capture_fingerprint=False,
+                                                       facts=facts, baseline=baseline)
+                if not same({row["operation_ref"]: row for row in prepared.dispositions}, scope):
+                    raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "排产时的工序范围或前后顺序和现在的记录对不上，不能采用。请重新做排产检查。")
+                rows = _rows(tasks, candidate, prepared, ids)
+                payload = validate_candidate(prepared, rows, [])
+                _check_artifact_payload(candidate, payload)
+                if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
+                    raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全选中的工序，不能采用。请重新排产后再试。")
+                _require_official_scope(prepared.latest_plan_rows, payload.scheduled_op_ids)
+                validate_adoption_payload(conn, prepared, payload)
+                proof = {"proof_version": "content_refs_v1", "candidate_ref": candidate_ref,
+                         "run_ref": candidate["run_ref"], "baseline_ref": baseline["plan_ref"],
+                         "baseline_version": baseline["version"]}
+                # The candidate and task ledger are permanent. Current production facts,
+                # actual rows and constraints are re-read by this same guarded transaction.
+                snapshot = proof
+                return CandidateAdoptionEvidence(candidate_ref, candidate["run_ref"], baseline, snapshot,
+                                                 prepared, payload, proof)
     except CandidateAdoptionBlocked:
         raise
     except WorkbenchCommandRejected as exc:
@@ -94,19 +94,10 @@ def validate_adoption(conn, candidate_ref):
         raise CandidateAdoptionBlocked("candidate_constraint_unproven", "这个候选方案没有通过完整复核，不能采用，正式计划没有改动。请重新排产后再试。") from exc
 
 
-def _require_official_scope(svc, version, scheduled_ids):
-    from collections import defaultdict
-
-    latest = _latest_plan_rows(svc, version)
+def _require_official_scope(latest, scheduled_ids):
+    # Resource execution preparation has already bound every official row to its permanent task.
     if not official_scope_coverage(latest, scheduled_ids)["covers_official_scope"]:
         raise CandidateAdoptionBlocked("official_scope_not_covered", "候选未覆盖已有正式安排的完整工序范围，请选全相关批次后重新排产。")
-    by_version = defaultdict(list)
-    for row in latest.values():
-        by_version[row["version"]].append(row)
-    identities = WorkbenchPlanIdentityRepository(svc.conn)
-    for old_version, rows in by_version.items():
-        plan_ref = identities.get_plan_ref(WorkbenchPlanLocator(old_version, "adopted"))
-        identities.get_task_refs(plan_ref, rows)
 
 
 def validate_adoption_payload(conn, prepared, payload):
@@ -114,13 +105,7 @@ def validate_adoption_payload(conn, prepared, payload):
         validate_piece_adoption(conn, prepared=prepared, payload=payload)
         return
     validate_adoption_constraints(conn, prepared, payload)
-    validate_execution_guard_before_persist(ScheduleService(conn), validated_schedule_payload=payload,
-        execution_guard_state_revisions=prepared.execution_guard_state_revisions,
-        execution_facts=prepared.execution_facts, execution_fixed_op_ids=prepared.execution_fixed_op_ids,
-        execution_completed_op_ids=prepared.execution_completed_op_ids,
-        execution_snapshot_revision=prepared.execution_snapshot_revision,
-        execution_snapshot_op_ids=prepared.execution_snapshot_op_ids,
-        payload_validation_operations=prepared.operations)
+    validate_execution_guard_before_persist(prepared, validated_schedule_payload=payload)
 
 
 def _check_artifact_payload(candidate, payload):

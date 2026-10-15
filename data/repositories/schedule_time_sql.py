@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import sqlite3
-from typing import Any, Optional
+from typing import Any, Callable, Optional, Protocol, cast
 
 from core.shared.local_datetime import format_local_datetime, parse_local_datetime
 
@@ -34,32 +35,62 @@ def require_dt_for_sql(value: Any, error_message: str) -> str:
     return parsed
 
 
+def _interval_values(start, end):
+    # SQL callers retain TRIM(CAST(... AS TEXT)); the local parser owns the rules.
+    return parse_dt_for_sql(start), parse_dt_for_sql(end)
+
+
+def _interval_admitted(start, end, window_end, window_start):
+    start, end = _interval_values(start, end)
+    if start is None or end is None or end <= start:
+        return 1
+    return int(window_end is not None and window_start is not None and start < window_end and end > window_start)
+
+
+class _IntervalSummary:
+    def __init__(self):
+        self.first, self.last, self.invalid = None, None, 0
+
+    def step(self, row_id: Any, start: Any, end: Any) -> None:
+        if row_id is None:
+            return
+        start, end = _interval_values(start, end)
+        if start is None or end is None or end <= start:
+            self.invalid += 1
+            return
+        self.first = start if self.first is None else min(self.first, start)
+        self.last = end if self.last is None else max(self.last, end)
+
+    def finalize(self) -> str:
+        return json.dumps((self.first, self.last, self.invalid), separators=(",", ":"))
+
+
+class _IntervalAggregateConnection(Protocol):
+    """SQLite accepts this three-input aggregate and its TEXT final value."""
+
+    def create_aggregate(self, name: str, num_params: int,
+                         aggregate_class: Callable[[], _IntervalSummary]) -> None: ...
+
+
+def interval_summary_sql(alias=None):
+    return "aps_interval_summary(" + _time_column(alias, "id") + "," + _time_text(alias, "start_time") + "," + _time_text(alias, "end_time") + ")"
+
+
+def decode_interval_summary(value):
+    return json.loads(value) if value is not None else (None, None, 0)
+
+
 def register_schedule_time_sql_functions(conn: sqlite3.Connection) -> None:
-    # 只有真实 sqlite 连接支持自定义函数。测试里大量使用只答 pragma 的占位/替身连接
-    # （_DummyConn 等），它们既不支持 create_function、也不会执行真正的 aps_parse_dt SQL，
-    # 故直接跳过注册。生产连接全部来自 get_connection()（真 sqlite3.Connection，必有
-    # create_function），此守卫在生产路径恒为真、绝不静默跳过真实注册。
     register = getattr(conn, "create_function", None)
     if not callable(register):
         return
-    try:
-        register(_SQL_PARSE_FUNCTION, 1, parse_dt_for_sql, deterministic=True)
-    except sqlite3.NotSupportedError:
-        register(_SQL_PARSE_FUNCTION, 1, parse_dt_for_sql)
-
-
-def valid_time_range_sql(alias: Optional[str]) -> str:
-    start_text = _time_text(alias, "start_time")
-    end_text = _time_text(alias, "end_time")
-    start_dt = time_dt(alias, "start_time")
-    end_dt = time_dt(alias, "end_time")
-    return (
-        f"{start_text} <> '' "
-        f"AND {end_text} <> '' "
-        f"AND {start_dt} IS NOT NULL "
-        f"AND {end_dt} IS NOT NULL "
-        f"AND {end_dt} > {start_dt}"
-    )
+    for name, count, function in ((_SQL_PARSE_FUNCTION, 1, parse_dt_for_sql),
+                                  ("aps_interval_admitted", 4, _interval_admitted)):
+        try:
+            register(name, count, function, deterministic=True)
+        except sqlite3.NotSupportedError:
+            register(name, count, function)
+    cast(_IntervalAggregateConnection, conn).create_aggregate("aps_interval_summary", 3, _IntervalSummary)
 
 
 def overlap_or_bad_time_sql(alias: Optional[str]) -> str:
@@ -68,15 +99,7 @@ def overlap_or_bad_time_sql(alias: Optional[str]) -> str:
     用于"既捞回与查询窗重叠的有效区间、也把坏时间行兜回上层做降级提示"的查询，
     让 schedule 计划明细与设备停机明细对"坏时间/重叠"的判定来自同一处定义，避免漂移。
     """
-    valid = valid_time_range_sql(alias)
-    start_dt = time_dt(alias, "start_time")
-    end_dt = time_dt(alias, "end_time")
-    return (
-        "(\n"
-        f"    ({valid} AND {start_dt} < {_SQL_PARSE_FUNCTION}(?) AND {end_dt} > {_SQL_PARSE_FUNCTION}(?))\n"
-        f"    OR NOT ({valid})\n"
-        ")"
-    )
+    return "aps_interval_admitted(" + _time_text(alias, "start_time") + "," + _time_text(alias, "end_time") + ",?,?)"
 
 
 DETAIL_OVERLAP_OR_BAD_TIME_SQL = overlap_or_bad_time_sql("s")
@@ -84,10 +107,11 @@ DETAIL_OVERLAP_OR_BAD_TIME_SQL = overlap_or_bad_time_sql("s")
 
 __all__ = [
     "DETAIL_OVERLAP_OR_BAD_TIME_SQL",
+    "interval_summary_sql",
+    "decode_interval_summary",
     "overlap_or_bad_time_sql",
     "parse_dt_for_sql",
     "require_dt_for_sql",
     "register_schedule_time_sql_functions",
     "time_dt",
-    "valid_time_range_sql",
 ]

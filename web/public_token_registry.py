@@ -23,7 +23,7 @@ import heapq
 import secrets
 import threading
 import time
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from flask import current_app
 
@@ -54,11 +54,11 @@ def _registry() -> Dict[str, Dict[str, Any]]:
 
 
 def _scope_state(scope: str) -> Dict[str, Any]:
-    """scope 内部结构：tokens(token→entry) + by_value(value→最新 token 的反向索引)
-    + next_expiry(不晚于 tokens 中最早 expires_at 的时刻，供摊销清理判断)。
+    """Scope owns tokens and a grouped reverse index: shared facts → small key → token.
 
-    by_value 只指向该 value 最新签发的 token；改签后旧 token 仍留在 tokens 里按原
-    expires_at 存活。所有删除必须走 _drop_token 以保持两个映射同步。
+    Each key points to its latest token. Superseded tokens keep their original
+    expiry. _drop_token removes an empty index group together with its last key.
+    next_expiry amortizes cleanup without changing expiry checks on resolve.
     """
     registry = _registry()
     state = registry.get(scope)
@@ -68,13 +68,25 @@ def _scope_state(scope: str) -> Dict[str, Any]:
     return state
 
 
+class _ValueIndex(dict):
+    """The existing reverse-index group, including its canonical group key."""
+
+    def __init__(self, group):
+        super().__init__()
+        self.group = group
+        self.attached = True
+
+
 def _drop_token(state: Dict[str, Any], token: str) -> None:
     entry = state["tokens"].pop(token, None)
     if entry is None:
         return
-    value = entry.get("value")
-    if state["by_value"].get(value) == token:
-        state["by_value"].pop(value, None)
+    index = entry["index"]
+    if index.get(entry["index_key"]) == token:
+        index.pop(entry["index_key"], None)
+        if not index:
+            state["by_value"].pop(index.group, None)
+            index.attached = False
 
 
 def _expires_at(entry: Dict[str, Any]) -> float:
@@ -105,51 +117,74 @@ def _cleanup_scope(state: Dict[str, Any], now: float) -> None:
         _drop_token(state, token)
 
 
-def issue_public_token(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TTL_SECONDS) -> str:
-    value_text = _text(value)
-    if not value_text:
+class PublicTokenIssuer:
+    """One operation owns one lookup of its shared facts in the original index.
+
+    Each issue still performs the real clock/cleanup under the registry lock.
+    An index removed by expiry or LRU is detached by _drop_token; a later issue
+    then joins the current group again instead of retaining an orphan index.
+    """
+
+    def __init__(self, scope: str, *, group: Any = None, ttl_seconds: int = _DEFAULT_TTL_SECONDS):
+        scope_text = _text(scope)
+        if not scope_text:
+            raise ValueError("公开 token scope 不能为空。")
+        with _LOCK:
+            self._state = _scope_state(scope_text)
+        self._group = group
+        self._index: Optional[_ValueIndex] = None
+        self._ttl = max(60, int(ttl_seconds))
+
+    def issue_with_expiry(self, value: Any, *, key: Any = None) -> Tuple[str, float]:
+        """Retain the value directly; only the per-subject key varies in a batch."""
+        if value is None or isinstance(value, str) and not value.strip():
+            raise ValueError("公开 token 的内容不能为空。")
+        index_key = value if key is None else key
+        with _LOCK:
+            now = time.time()
+            state = self._state
+            _cleanup_scope(state, now)
+            index = self._index
+            if index is None or not index.attached:
+                index = state["by_value"].get(self._group)
+                if index is None:
+                    index = _ValueIndex(self._group)
+                    state["by_value"][self._group] = index
+                self._index = index
+            tokens = state["tokens"]
+            existing_token = index.get(index_key)
+            if existing_token:
+                entry = tokens.get(existing_token)
+                if entry is not None and _expires_at(entry) - now >= self._ttl * _REUSE_MIN_REMAINING_RATIO:
+                    entry["last_used_at"] = now
+                    return existing_token, _expires_at(entry)
+            for _attempt in range(16):
+                token = secrets.token_urlsafe(_TOKEN_BYTES)
+                if token not in tokens:
+                    expires = now + self._ttl
+                    tokens[token] = {
+                        "value": value, "index": index, "index_key": index_key,
+                        "created_at": now, "last_used_at": now, "expires_at": expires,
+                    }
+                    index[index_key] = token
+                    state["next_expiry"] = min(float(state.get("next_expiry", float("inf"))), expires)
+                    return token, expires
+        raise RuntimeError("无法生成唯一公开 token。")
+
+
+def issue_public_token(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TTL_SECONDS,
+                       key: Any = None, group: Any = None) -> str:
+    if value is None or isinstance(value, str) and not value.strip():
         return ""
-    scope_text = _text(scope)
-    if not scope_text:
-        raise ValueError("公开 token scope 不能为空。")
-    now = time.time()
-    effective_ttl = max(60, int(ttl_seconds))
-    with _LOCK:
-        state = _scope_state(scope_text)
-        _cleanup_scope(state, now)
-        tokens = state["tokens"]
-        by_value = state["by_value"]
-        existing_token = by_value.get(value_text)
-        if existing_token:
-            entry = tokens.get(existing_token)
-            if entry is not None and float(entry.get("expires_at") or 0) - now >= effective_ttl * _REUSE_MIN_REMAINING_RATIO:
-                # 幂等复用:不延长 expires_at(TTL 语义保持“过期即拒”),
-                # 只刷新使用时间供上限淘汰的 LRU 排序参考。
-                entry["last_used_at"] = now
-                return existing_token
-            # 剩余寿命不足复用门槛:改签新 token,by_value 指向新 token;
-            # 旧 token 保留至其原 expires_at,旧页面入口不因改签提前失效。
-        for _attempt in range(16):
-            token = secrets.token_urlsafe(_TOKEN_BYTES)
-            if token not in tokens:
-                tokens[token] = {
-                    "value": value_text,
-                    "created_at": now,
-                    "last_used_at": now,
-                    "expires_at": now + effective_ttl,
-                }
-                by_value[value_text] = token
-                state["next_expiry"] = min(float(state.get("next_expiry", float("inf"))), now + effective_ttl)
-                return token
-    raise RuntimeError("无法生成唯一公开 token。")
+    return PublicTokenIssuer(scope, group=group, ttl_seconds=ttl_seconds).issue_with_expiry(value, key=key)[0]
 
 
-def resolve_public_token(scope: str, token: Any, *, message: str, field: str) -> str:
+def resolve_public_token(scope: str, token: Any, *, message: str, field: str) -> Any:
     token_text = _text(token)
     if not token_text:
         raise ValidationError(message, field=field)
-    now = time.time()
     with _LOCK:
+        now = time.time()
         state = _scope_state(_text(scope))
         entry = state["tokens"].get(token_text)
         if not entry:
@@ -157,22 +192,14 @@ def resolve_public_token(scope: str, token: Any, *, message: str, field: str) ->
         if float(entry.get("expires_at") or 0) <= now:
             _drop_token(state, token_text)
             raise ValidationError(message, field=field)
-        value = _text(entry.get("value"))
-        if not value:
-            _drop_token(state, token_text)
-            raise ValidationError(message, field=field)
         entry["last_used_at"] = now
-        return value
+        return entry["value"]
 
 
-def issue_public_token_with_expiry(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TTL_SECONDS) -> Tuple[str, float]:
+def issue_public_token_with_expiry(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TTL_SECONDS,
+                                   key: Any = None, group: Any = None) -> Tuple[str, float]:
     """Return the actual expiry, including when idempotent issuance reuses a token."""
-    if not _text(scope) or not _text(value):
-        raise ValueError("公开 token 的 scope 和内容不能为空。")
-    with _LOCK:
-        token = issue_public_token(scope, value, ttl_seconds=ttl_seconds)
-        entry = _scope_state(_text(scope))["tokens"][token]
-        return token, float(entry["expires_at"])
+    return PublicTokenIssuer(scope, group=group, ttl_seconds=ttl_seconds).issue_with_expiry(value, key=key)
 
 
-__all__ = ["issue_public_token", "resolve_public_token", "issue_public_token_with_expiry"]
+__all__ = ["PublicTokenIssuer", "issue_public_token", "resolve_public_token", "issue_public_token_with_expiry"]

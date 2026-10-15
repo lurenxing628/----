@@ -1,6 +1,8 @@
 """Exact remembered scheduling input, ordinary command receipts and shared input freshness."""
 
 import json
+import subprocess
+from pathlib import Path
 
 import pytest
 from flask import Blueprint, g
@@ -13,6 +15,7 @@ from core.services.workbench.run.preflight_facts import full_facts_content
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
+from tests.workbench.node_runtime_support import node_runtime
 from tests.workbench.preflight_support import payload, read_only_snapshot
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
 from tests.workbench.run_jobs_support import job_case as job_case_fixture  # noqa: F401
@@ -32,6 +35,30 @@ def read(pf):
 
 def save(pf, value, token, key="scheduling-preferences-0001"):
     return pf.post(ROOT, json={"request_key": key, "write_token": token, "input": value})
+
+
+def assert_frontend_run_queries(preview, run, lookup, *, input_ref, run_ref):
+    documents = {"input_ref": input_ref, "run_ref": run_ref}
+    for name, response in (("preview", preview), ("run", run), ("lookup", lookup)):
+        assert response.status_code == 200, response.get_json()
+        assert response.headers["Cache-Control"] == "no-store"
+        documents[name] = response.get_json()
+    script = r"""
+const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
+const input = JSON.parse(fs.readFileSync(0, 'utf8')), window = {}, context = vm.createContext({window});
+for (const name of ['WorkbenchTerms.js', 'RunGenerationContract.js', 'RunJobAPI.js']) {
+  vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context, {filename: name});
+}
+window.RunJobAPI.preview(input.preview, input.input_ref);
+window.RunJobAPI.run(window.RunJobAPI.envelope(input.run), input.run_ref);
+const found = window.RunJobAPI.lookup(input.lookup, input.run_ref);
+assert.equal(found.found, true);
+assert.equal(found.run.state, input.run.data.state);
+assert.equal(new Set([input.preview, input.run, input.lookup].map(value => value.meta.snapshot_ref)).size, 3);
+"""
+    result = subprocess.run([node_runtime(), "-e", script], input=json.dumps(documents),
+        text=True, encoding="utf-8", capture_output=True, cwd=str(Path(__file__).resolve().parents[2]), timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_default_save_reload_replay_and_unchanged_use_ordinary_command(pf):
@@ -161,7 +188,7 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
 
     persist = WorkbenchRunWorker._persist
 
-    def after_real_compute(worker, row, prepared):
+    def after_real_compute(worker, row, prepared, admission):
         assert row["run_ref"] == ref and 1 <= len(prepared.candidates) <= 3
         selection = json.loads(prepared.result["result_json"])["selection"]
         candidate_refs = {candidate["candidate_ref"] for candidate in prepared.candidates}
@@ -175,7 +202,7 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
         saved.append(response.get_json())
         if business_change:
             case.config(objective="min_tardiness")
-        return persist(worker, row, prepared)
+        return persist(worker, row, prepared, admission)
 
     # Preference changes happen after actual computation and before the real atomic write.
     monkeypatch.setattr(WorkbenchRunWorker, "_persist", after_real_compute)
@@ -189,7 +216,10 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
     assert len(saved) == 1 and client.get(ROOT).get_json()["data"]["input"] == changed
     stored_input = case.conn.execute("SELECT normalized_input_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0]
     assert json.loads(stored_input) == admitted_input
-    final = client.get("/api/workbench/v1/scheduling/runs/" + ref).get_json()["data"]
+    final_response = client.get("/api/workbench/v1/scheduling/runs/" + ref)
+    lookup = client.get("/api/workbench/v1/scheduling/requests/preferences-real-worker-run")
+    assert_frontend_run_queries(preview, final_response, lookup, input_ref=input_ref, run_ref=ref)
+    final = final_response.get_json()["data"]
     if business_change:
         assert final["state"] == "failed" and final["error"]["code"] == "snapshot_stale"
         assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0] == 0

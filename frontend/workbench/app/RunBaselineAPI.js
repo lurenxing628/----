@@ -90,10 +90,10 @@
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
       && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input)
       && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k]))
-      && shape(g.source_verification, ['facts_content_verified', 'baseline_matches_archived_schedule', 'execution_matches_archived_evidence',
+      && shape(g.source_verification, ['facts_content_verified', 'baseline_matches_archived_schedule', 'execution_verified_at',
         'input_source_verified', 'candidate_content_verified'])
       && g.source_verification.facts_content_verified === true && typeof g.source_verification.input_source_verified === 'boolean'
-      && g.source_verification.baseline_matches_archived_schedule === true && g.source_verification.execution_matches_archived_evidence === true
+      && g.source_verification.baseline_matches_archived_schedule === true && g.source_verification.execution_verified_at === 'run_admission'
       && g.source_verification.candidate_content_verified === true);
     const b = d.baseline, seen = new Set(), segments = new Set(), candidateRefs = new Set();
     check(shape(b, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])

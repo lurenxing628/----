@@ -126,7 +126,7 @@ class DashboardFacts:
             self.plan_state = "unavailable"
             self.plan_issues = [source_issue("source_not_read", "正式计划的数据还没读全，不能得出零风险的结论。")]
             return
-        context = PlanReadContext(self.conn, entities=_EntityRefs(self))
+        context = PlanReadContext(self.conn, entities=_EntityRefs(self), captured_machines=self.raw["Machines"])
         with context.read_scope():
             self._captured_plan(context)
 

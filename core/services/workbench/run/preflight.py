@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING, Optional, cast
 from core.errors import AppError, ValidationError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_preflight import issue, normalize_preflight_input
-from core.services.scheduler.schedule_service import ScheduleService
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
-from core.services.workbench.facts.preflight_checks import PreflightChecks, stored_date
+from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import link_predecessors, piece_scope_problem
 
-from .input_config import configuration_snapshot, hold_window, run_options
+from .input_config import hold_window, run_options
 from .input_external import external_resource_issues, preflight_external_cycles
 from .preflight_execution import execution_projections, is_protected
 from .preflight_facts import PreflightFacts
@@ -120,8 +120,9 @@ def batch_dependencies(batch, operations, rows, settings):
 
 
 class PreflightService:
-    def __init__(self, conn):
-        self.facts = PreflightFacts(conn)
+    def __init__(self, conn, *, facts=None):
+        self._provided_facts = facts
+        self.facts = facts if facts is not None else PreflightFacts(conn)
 
     def evaluate(self, value):
         prepared = self.evaluate_prepared(value)
@@ -129,11 +130,11 @@ class PreflightService:
 
     def evaluate_prepared(self, value) -> PreparedPreflight:
         settings = normalize_preflight_input(value)
-        self.facts = PreflightFacts(self.facts.conn)
+        self.facts = self._provided_facts if self._provided_facts is not None else PreflightFacts(self.facts.conn)
         with self.facts.snapshot() as fingerprint:
             config, config_error = None, None
             try:
-                config = configuration_snapshot(self.facts.conn, rows=self.facts.tables["ScheduleConfig"])
+                config = self.facts.configuration()
             except ValidationError as exc:
                 config_error = exc
             self.facts.config_snapshot, self.facts.config_error = config, config_error
@@ -146,7 +147,7 @@ class PreflightService:
             prepared_projections = []
             projections, ledger_reasons = execution_projections(self.facts, operations, prepared=prepared_projections)
             cycles, arrangement_reasons = self._external_cycles(batches, operations, projections)
-            checks = PreflightChecks(self.facts.tables)
+            checks = self.facts.checks()
             grouped = defaultdict(list)
             for op in operations:
                 grouped[op["batch_id"]].append(op)
@@ -192,7 +193,7 @@ class PreflightService:
     def _arrangement_reasons(self, settings, batches, operations, rows, projections, ledger_reasons, checks, cycles):
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
         不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记})。"""
-        svc = ScheduleService(self.facts.conn)
+        svc = build_schedule_repository_bundle(self.facts.conn)
         capture = cast("ProductionFactsCapture", self.facts.capture)
         version = max((row["version"] for row in capture.table("ScheduleHistory")), default=0)
         ledger_ready = not any(item["code"] == "execution_ledger_unavailable" for item in ledger_reasons)

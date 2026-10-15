@@ -75,27 +75,27 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     profile = replace(profile, candidate_origin="graph_ready_v2_repaired", candidate_policy="elite_repair")
 
     sessions, seed_results = [], [seed]
+    targets = target_objectives_for("min_overdue")
+    archive = SharedScheduleArchive("min_overdue", targets, [op.id for op in operations] + [seed.op_id], batches)
 
     def decode(machine, operator, *, decision=None, decoder_operations=None):
         decision = decision or RepairDecision(tuple(BASE_BATCH_ORDER), (1, 3, 4, 2), ((3, machine, operator),))
         decoder_operations = decoder_operations or operations
         scheduler = _scheduler()
-        targets = target_objectives_for("min_overdue")
-        archive = SharedScheduleArchive("min_overdue", targets, (op.id for op in decoder_operations), batches)
         budget = SharedSearchBudget(clock=lambda: 0.0, started_at=0.0, deadline=10.0,
                                     target_objectives=targets, configured_seconds=10)
         session = SharedDecodeSession(
             archive=archive, budget=budget, scheduler=scheduler, operations=decoder_operations, batches=batches,
-            seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context,
+            seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context, schedule_fn=_schedule_with_scheduler, start_dt=START_DT,
             clock=lambda: 0.0, started_at=0.0, deadline=10.0,
         )
         sessions.append(session)
         return evaluate_graph_ready_candidate(
-            profile=profile, graph_ready_context=context, metrics_by_op_id=metrics, scheduler=scheduler, strict_mode=True,
-            algo_ops_to_schedule=decoder_operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST, params={},
-            start_dt=START_DT, end_date=None, downtime_map=downtime, order=list(decision.batch_order), seed_sr_list=seed_results,
+            profile=profile, graph_ready_context=context, metrics_by_op_id=metrics, strict_mode=True,
+            algo_ops_to_schedule=decoder_operations, strategy=SortStrategy.PRIORITY_FIRST, params={},
+            start_dt=START_DT, end_date=None, order=list(decision.batch_order), seed_sr_list=seed_results,
             dispatch_rule="slack", resource_pool=pool, objective_name="min_overdue", optimizer_algo_stats=None,
-            schedule_fn=_schedule_with_scheduler, readiness_gate_enabled=False, version=0, clock=lambda: 0.0,
+            readiness_gate_enabled=False, version=0, clock=lambda: 0.0,
             repair_decision=decision, decode_session=session,
         )
 
@@ -162,6 +162,11 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
             raise AssertionError("Prepared basis variants must reuse the machine projection")
 
         patch.setattr(repair_neighbors, "_add_changeover_signals", repeated_changeover_scan)
+
+        def repeated_qualification(*args, **kwargs):
+            raise AssertionError("A decoded parent's inherited selections must not be qualified again")
+
+        patch.setattr(repair_decisions, "_validated_overrides", repeated_qualification)
         profiles = graph_ready_v2_profiles(max_candidate_profiles=60)[0]
         successor = next(item for item in profiles if item.feature_basis == SUCCESSOR_WORKLOAD_BASIS
                          and item.formula_version.startswith("graph_ready_v2"))
@@ -177,7 +182,18 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         elite_pool.add_basis_variant(elite, baseline)
         assert elite["prepared_parent"] is prepared_parent
         assert len(elite["neighborhood"].variants) == 2
-        assert all(value == 1 for value in counts.values()) and len(counts) == 6
+        ig_parent = _parent_from_candidate(
+            stale_parent, operations=mutable_operations, graph_context=context, resource_pool=pool,
+            prepared_parent=elite_pool.prepare_parent(stale_parent))
+        assert ig_parent.prepared is prepared_parent
+        assert ig_parent.predecessors is prepared_parent.predecessors
+        assert ig_parent.successors is prepared_parent.successors
+        _, internal_overrides = repair_decisions.repair_decision_inputs(
+            context, mutable_operations, RepairDecision(parent.batch_order, parent.order, inherited), pool,
+            prepared_parent=prepared_parent)
+        assert internal_overrides == {3: ("MC-ALT", "OP-ALT"), 4: ("MC-BENCH", "OP-BENCH")}
+        assert counts == {"_operations_by_id": 1, "_decoded_rows": 1,
+                          "decoded_topological_order": 1, "resource_timeline_groups": 1}
         assert prepared_parent.inherited_resources == inherited
         assert prepared_parent.operation_order == parent.order
         assert all(portfolio.inherited_resources is prepared_parent.inherited_resources
@@ -262,7 +278,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
         limits=EliteRepairLimits(), objective_name="min_overdue", operations=[], metrics_by_op_id={},
         start_dt=START_DT, seed=0, best=None, report_state=None, decode_session=session,
     )
-    elite = {"neighborhood": parent, "candidate": {}, "decision_offset": 0, "stream_offsets": {}, "portfolio_id": 1}
+    elite = {"neighborhood": parent, "candidate": {}, "prepared_parent": None, "decision_offset": 0, "stream_offsets": {}, "portfolio_id": 1}
     visit_kwargs = dict(
         elite=elite, elite_index=0, state=SimpleNamespace(best=None), evaluate=None,
         clock=lambda: 0,

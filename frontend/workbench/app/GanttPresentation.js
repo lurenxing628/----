@@ -32,6 +32,42 @@
       fill: value('--wb-gantt-' + tone + '-fill'), edge: value('--wb-gantt-' + tone + '-edge'), ink: value('--wb-gantt-' + tone + '-ink') };
     return { ...colors, gold: value('--wb-gantt-gold'), text: value('--ui-text'), font: value('--wb-gantt-font') };
   }
+  function useCanvasPaint(ref, paint, colors, deps, printing = false) {
+    const current = React.useRef(paint), printState = React.useRef(printing), request = React.useRef(null); current.current = paint; printState.current = printing;
+    React.useLayoutEffect(() => {
+      let frame = null, live = true;
+      function draw() {
+        if (frame !== null) cancelAnimationFrame(frame); frame = null;
+        const node = ref.current; if (!live || !node) return;
+        // Layout dimensions remain in the same CSS coordinates as the marks when paginated print scales the visual rectangle.
+        const width = node.clientWidth, height = node.clientHeight, dpr = window.devicePixelRatio || 1;
+        const bufferWidth = Math.max(1, Math.round(width * dpr)), bufferHeight = Math.max(1, Math.round(height * dpr));
+        if (node.width !== bufferWidth) node.width = bufferWidth;
+        if (node.height !== bufferHeight) node.height = bufferHeight;
+        const ctx = node.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
+        current.current(ctx, width, height, colors(node));
+      }
+      function schedule() {
+        if (!live) return;
+        if (printState.current) { draw(); return; }
+        if (frame !== null) return;
+        frame = -1;
+        const id = requestAnimationFrame(draw); if (frame === -1) frame = id;
+      }
+      request.current = schedule;
+      const theme = new MutationObserver(schedule), resize = new ResizeObserver(schedule);
+      theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] }); resize.observe(ref.current);
+      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+      if (media) { if (typeof media.addEventListener === 'function') media.addEventListener('change', schedule); else media.addListener(schedule); }
+      window.addEventListener('beforeprint', draw); window.addEventListener('afterprint', schedule); window.addEventListener('resize', schedule);
+      return () => {
+        live = false; request.current = null; if (frame !== null) cancelAnimationFrame(frame);
+        theme.disconnect(); resize.disconnect(); window.removeEventListener('beforeprint', draw); window.removeEventListener('afterprint', schedule); window.removeEventListener('resize', schedule);
+        if (media) { if (typeof media.removeEventListener === 'function') media.removeEventListener('change', schedule); else media.removeListener(schedule); }
+      };
+    }, []);
+    React.useLayoutEffect(() => { if (request.current) request.current(); }, [printing, ...deps]);
+  }
   function rounded(ctx, x, y, width, height) {
     const radius = Math.min(4, width / 2, height / 2);
     ctx.beginPath(); ctx.moveTo(x + radius, y); ctx.lineTo(x + width - radius, y); ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
@@ -75,5 +111,5 @@
     }
     ctx.restore();
   }
-  window.GanttPresentation = { axis, taskLines, palette, paintBar };
+  window.GanttPresentation = { axis, taskLines, palette, paintBar, useCanvasPaint };
 })();

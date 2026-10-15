@@ -5,13 +5,14 @@ from typing import Any, Dict, List, Set
 
 from core.algorithm_contracts.schedule_point_evidence import verified_point
 from core.algorithms.value_domains import INTERNAL
+from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 
 def cache_seed_for_prefix(svc, *, prefix, schedule_map, seed_tmp, point_validator=None):
     for oid in prefix:
         row = schedule_map.get(int(oid)) or {}
-        start = svc._normalize_datetime(row.get("start_time"))
-        end = svc._normalize_datetime(row.get("end_time"))
+        start = parse_dt(row.get("start_time"))
+        end = parse_dt(row.get("end_time"))
         if not start or not end or end < start:
             return int(oid)
         if start == end:

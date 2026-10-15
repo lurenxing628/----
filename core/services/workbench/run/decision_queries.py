@@ -3,10 +3,8 @@
 from typing import Union
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
+from core.models.workbench_run_candidate import reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 
 from .decision_impact import (
@@ -153,5 +151,4 @@ def read_decision_details(conn, run_ref, section, *, selected_candidate_ref=None
         source = DecisionSource(store, run_ref, selected_candidate_ref=selected_candidate_ref, comparison_mode=comparison_mode,
                                 reference_candidate_ref=reference_candidate_ref, range_start=range_start, range_end=range_end, resource_view=resource_view)
         data = decision_details(source, section, filters, page=page, size=size)
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, source.state()

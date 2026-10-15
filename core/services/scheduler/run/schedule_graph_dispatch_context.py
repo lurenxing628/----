@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .schedule_input_collector import ScheduleRunInput
+from .schedule_input_contracts import ScheduleRunInput
 
 GRAPH_CYCLE_DISABLED_REASON = "schedule_graph_cycle"
 _GRAPH_INPUT_SCOPE = "all_algo_ops_with_frozen_markers"

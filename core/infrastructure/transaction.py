@@ -5,6 +5,8 @@ import threading
 from contextlib import contextmanager
 from typing import Dict, Optional
 
+from .connection_guards import schema_contract_scope
+
 logger = logging.getLogger(__name__)
 
 _TX_LOCAL = threading.local()
@@ -192,7 +194,8 @@ def _transaction_scope(conn, begin_sql: str = "BEGIN"):
         sp_name = _begin_scope(conn, depth, owns_tx, begin_sql=begin_sql)
 
         try:
-            yield conn
+            with schema_contract_scope(conn):
+                yield conn
         except Exception as e:
             try:
                 _rollback_scope(conn, depth, owns_tx, sp_name)

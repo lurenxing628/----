@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Callable, Dict, Optional, Tuple, TypeVar
 
-from .connection_guards import query_only
+from .connection_guards import query_only, schema_contract_scope
 
 T = TypeVar("T")
 _Scope = Tuple[Any, Dict[Any, Any], int]
@@ -25,7 +25,7 @@ def read_evidence_scope(conn):
     cache: Dict[Any, Any] = {}
     token = _CURRENT.set(_CURRENT.get() + ((conn, cache, conn.total_changes),))
     try:
-        with query_only(conn):
+        with query_only(conn), schema_contract_scope(conn):
             yield
     finally:
         _CURRENT.reset(token)

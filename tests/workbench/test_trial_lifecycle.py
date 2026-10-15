@@ -28,11 +28,16 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     case = trial_case
     intent = official(case) if kind == "official" else candidate(case)
     before = snapshot(case.conn)
-    from core.services.workbench.trial import projection
+    from core.services.workbench.trial import projection, validation
     from core.services.workbench.trial import service as trial_service
     from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
     calls, table_reads, statements = Counter(), Counter(), []
+    original_compare = validation.facts_unchanged
+    def compared(*args, **kwargs):
+        calls["facts_unchanged"] += 1
+        return original_compare(*args, **kwargs)
+    monkeypatch.setattr(validation, "facts_unchanged", compared)
     for method in ("draft_header", "draft_rows", "changes"):
         original = getattr(WorkbenchTrialRepository, method)
         def tracked(repo, *args, _method=method, _original=original, **kwargs):
@@ -58,7 +63,7 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     draft = create(case, intent)
     case.conn.set_trace_callback(None)
     assert table_reads and set(table_reads.values()) == {2}  # preview and command own separate facts.
-    assert calls["draft_header"] == calls["draft_rows"] == calls["changes"] == 0
+    assert calls["draft_header"] == calls["draft_rows"] == calls["changes"] == calls["facts_unchanged"] == 0
     assert not any(sql.upper().startswith("SELECT") and "COUNT(" in sql.upper() and "FROM WORKBENCHTRIALROWS" in sql.upper() for sql in statements)
     assert draft["validation"]["constraints_status"] == "valid", draft["validation"]
     assert draft["validation"]["can_adopt"] is False
@@ -67,7 +72,7 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     case.conn.set_trace_callback(statements.append)
     updated = change(case, draft)["data"]
     case.conn.set_trace_callback(None)
-    assert calls["draft_header"] == calls["draft_rows"] == calls["changes"] == 1
+    assert calls["draft_header"] == calls["draft_rows"] == calls["changes"] == calls["facts_unchanged"] == 1
     assert not any(sql.upper().startswith("SELECT") and "COUNT(" in sql.upper() and "FROM WORKBENCHTRIALROWS" in sql.upper() for sql in statements)
     task = updated["tasks"][0]
     assert task["start"] == "2026-09-09T13:00:00"
@@ -120,3 +125,62 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
             "SELECT admission_json FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft["draft_ref"],)).fetchone()[0])
         assert "artifact" not in admission["source"]
         assert {"capture", "dispositions", "identity"} <= set(admission["source"])
+
+
+def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_row_refs(monkeypatch):
+    from datetime import date
+
+    from core.models import workbench_trial_scenario_archive as codec
+    from core.services.workbench.facts import trial_policy
+
+    tasks = [{"row_ref": format(index, "048x"), "description": "保存任务正文" * 40, "ordinal": index}
+             for index in range(1, 5)]
+    snapshot = {"name": "中文试调", "saved_date": date(2026, 10, 15), "binary": b"\x00\xff", "tasks": tasks}
+    encoded = codec.encode_scenario(snapshot)
+    expected_bytes = len(dump(snapshot).encode("utf-8"))
+    assert encoded.logical_bytes == expected_bytes
+    assert len(encoded.header.encode("utf-8")) + sum(len(text.encode("utf-8")) for text in encoded.tasks) > expected_bytes
+    repo = SimpleNamespace(schema_issues=lambda: [],
+        scenario_header=lambda _ref: {"snapshot_json": encoded.header},
+        scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": text}
+                                  for row, text in zip(tasks, encoded.tasks)])
+    # Historical pretty-printed wrappers still decode through their own layout.
+    import json
+
+    old_repo = SimpleNamespace(schema_issues=lambda: [],
+        scenario_header=lambda _ref: {"snapshot_json": json.dumps(json.loads(encoded.header), ensure_ascii=False, indent=2)},
+        scenario_rows=lambda _ref: [{"row_ref": row["row_ref"],
+                                    "payload_json": json.dumps(json.loads(text), ensure_ascii=False, indent=2)}
+                                  for row, text in zip(tasks, encoded.tasks)])
+    assert load_scenario_record(old_repo, "saved")[1] == snapshot
+    monkeypatch.setattr(codec, "MAX_TRIAL_BYTES", expected_bytes)
+    assert load_scenario_record(old_repo, "saved")[1] == snapshot
+
+    def redundant(*args, **kwargs):
+        raise AssertionError("Canonical stored fragments already own their text and task bodies")
+
+    with monkeypatch.context() as read:
+        read.setattr(codec, "_encoded", redundant)
+        read.setattr(trial_policy, "_encoded", redundant)
+        read.setattr(trial_policy, "same", redundant)
+        assert load_scenario_record(repo, "saved")[1] == snapshot
+    assert codec.encode_scenario(snapshot).logical_bytes == expected_bytes
+    monkeypatch.setattr(codec, "MAX_TRIAL_BYTES", expected_bytes - 1)
+    for operation in (lambda: codec.encode_scenario(snapshot), lambda: load_scenario_record(repo, "saved"),
+                      lambda: load_scenario_record(old_repo, "saved")):
+        with pytest.raises(WorkbenchCommandRejected) as error:
+            operation()
+        assert (error.value.code, error.value.status) == ("query_too_large", 413)
+
+
+def test_scenario_row_binding_is_checked_when_assembling_the_saved_rows():
+    from core.models.workbench_trial_scenario_archive import encode_scenario
+
+    row = {"row_ref": "1" * 48, "content": "保存工序"}
+    encoded = encode_scenario({"name": "试调", "tasks": [row]})
+    repo = SimpleNamespace(schema_issues=lambda: [],
+        scenario_header=lambda _ref: {"snapshot_json": encoded.header},
+        scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": dump(dict(row, row_ref="2" * 48))}])
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        load_scenario_record(repo, "saved")
+    assert error.value.code == "trial_snapshot_invalid"

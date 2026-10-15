@@ -2,12 +2,14 @@
 
 from copy import deepcopy
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar, archived_resource_calendars
-from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from core.services.workbench.plan.occupancy import _resource_occupancy
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 
 MACHINE, OPERATOR = "a" * 48, "b" * 48
@@ -82,6 +84,38 @@ def test_night_tail_priority_overlay_and_downtime_use_exact_half_open_window():
         {"machine_id": "M1", "start_time": "2026-10-14T01:00:00", "end_time": "2026-10-14T00:00:00", "status": "active"}]
     invalid = project(saved, "2026-10-13T04:00:00", "2026-10-13T06:00:00")[MACHINE]
     assert invalid["state"] == "unavailable" and invalid["issues"][0]["code"] == "downtime_invalid"
+
+
+def test_microsecond_calendar_and_occupancy_preserve_device_and_person_hours():
+    saved = archive()
+    saved["tables"]["WorkCalendar"] = [day("2026-10-12", efficiency=0.5)]
+    start, pause, resume, end = ["2026-10-12T08:00:00." + str(value).zfill(6) for value in range(4)]
+    saved["tables"]["MachineDowntimes"] = [
+        {"machine_id": "M1", "start_time": pause, "end_time": resume, "status": "active"}]
+    calendars = project(saved, start, end)
+    unit = 1e-6 / 3600.0
+    low, first, last, high = (datetime.fromisoformat(value) for value in (start, pause, resume, end))
+    operations = {"one": [(low, high)], "two": [(first, last)]}
+    refs = {"machine": {"M1": SimpleNamespace(ref=MACHINE)}, "operator": {"O1": SimpleNamespace(ref=OPERATOR)}}
+    for kind, key, ref, duration in (("machine", "M1", MACHINE, 2), ("operator", "O1", OPERATOR, 3)):
+        calendar = calendars[ref]
+        for mode in ("", "normal_", "urgent_"):
+            for measure, factor in (("available_hours", 1), ("effective_hours", 0.5)):
+                field = mode + measure
+                assert calendar[field] == calendar["days"][0][field]
+                assert calendar[field] == pytest.approx(duration * unit * factor, rel=1e-12, abs=0)
+        resource = _resource_occupancy(kind, key, operations, {**calendar, "label": kind}, refs, kind)
+        assert resource["available_hours"] == calendar["available_hours"]
+        expected = {"arranged_hours": 4 * unit, "occupied_hours": 3 * unit, "overlap_hours": unit,
+                    "excess_arranged_hours": unit, "available_occupied_hours": duration * unit,
+                    "outside_available_hours": (3 - duration) * unit,
+                    "capacity_shortfall_hours": unit if kind == "operator" else 0,
+                    "available_overlap_hours": unit if kind == "operator" else 0}
+        for field, value in expected.items():
+            assert resource[field] == pytest.approx(value, rel=1e-12, abs=0)
+        assert resource["utilization"] == 1
+        for field in ("downtime_scope_hours", "downtime_available_hours"):
+            assert calendar["days"][0][field] == pytest.approx(unit if kind == "machine" else 0, rel=1e-12, abs=0)
 
 
 def test_saved_personal_override_and_rotating_rest_keep_operator_capacity():
@@ -173,9 +207,7 @@ def test_declared_bounded_coverage_is_not_extended_with_implicit_defaults():
 
 def test_real_run_table_archive_and_trial_dictionary_archive_never_read_live_calendars(candidate_case):
     case = candidate_case
-    schema, tables = WorkbenchRunFactsRepository(case.conn).admission_facts()
-    saved = {"schema": [list(row) for row in schema], "tables": {
-        name: [list(row) for row in rows] for name, rows in tables.items()}}
+    saved = ProductionFactsCapture(case.conn).archive()
     resources = [{"kind": kind, "ref": case.ref(kind, key), "saved_id": key}
                  for kind, key in (("machine", "M1"), ("operator", "O1"))]
     case.conn.execute("UPDATE Machines SET status='inactive' WHERE machine_id='M1'")
@@ -183,9 +215,7 @@ def test_real_run_table_archive_and_trial_dictionary_archive_never_read_live_cal
                       ('[{"start":"09:00","end":"12:00","day_offset":0}]',))
     case.conn.commit()
     case.conn.execute("BEGIN")
-    current_schema, current_tables = WorkbenchRunFactsRepository(case.conn).admission_facts()
-    current_snapshot = {"schema": [list(row) for row in current_schema], "tables": {
-        name: [list(row) for row in rows] for name, rows in current_tables.items()}}
+    current_snapshot = ProductionFactsCapture(case.conn).archive()
     statements = []
     case.conn.set_trace_callback(statements.append)
     try:
@@ -227,8 +257,6 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
                                     "2026-10-12T08:00:00", "2026-10-14T17:00:00")
     _, first = next(stream)
     assert first["state"] == "available" and "O1" in engine._policy_operator_keys
-    keys = tuple(engine._policy_operator_keys["O1"])
-    engine._sgs_policy_content_tokens.update(dict.fromkeys(keys, ()))
     engine.working_hours_between(datetime.fromisoformat("2026-10-12T08:00:00"),
                                  datetime.fromisoformat("2026-10-13T17:00:00"), operator_id="O1")
     _, second = next(stream)
@@ -236,13 +264,13 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
     assert "O1" not in engine._policy_operator_keys and "O1" not in engine._segment_cache
     assert "O1" not in engine.operator_shift_calendar._profiles
     assert all(key[0] != "O1" for key in engine._policy_cache)
-    assert all(key[0] != "O1" for key in engine._sgs_policy_content_tokens)
     assert all(key[0] != "O1" for key in engine._working_hours_prefix)
     assert "O2" in engine._policy_operator_keys
     assert engine._public_calendar_rows and len(reads) == 1
     assert engine.operator_shift_calendar._patterns
     assert list(stream) == []
-    assert engine._policy_operator_keys == {"": {global_key: None}}
-    assert engine._policy_cache == {global_key: global_policy}
+    assert set(engine._policy_operator_keys) == {""}
+    assert all(key[0] == "" for key in engine._policy_cache)
+    assert engine._policy_cache[global_key] is global_policy
     engine.clear_policy_cache()
     assert engine._policy_for_date("2026-10-12", "O1").shift_hours == pytest.approx(22 / 3)

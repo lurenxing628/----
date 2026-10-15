@@ -17,6 +17,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from core.services.common.normalize import normalize_text
+from core.shared.local_datetime import format_local_datetime as fmt_dt
+
 # 临期窗口：排程完工时间卡在「交期前 NEAR_DUE_WINDOW_DAYS 天内、且未超期」即临期。
 # Python 侧单点定义（契约 4.11 时间窗单点），模板只消费冻结进 summary 的结论。
 NEAR_DUE_WINDOW_DAYS = 3
@@ -72,7 +75,6 @@ def _failure_stats_by_batch(
 
 
 def build_incomplete_batch_items(
-    svc,
     *,
     incomplete_batch_ids: Set[str],
     batches: Dict[str, Any],
@@ -93,7 +95,7 @@ def build_incomplete_batch_items(
     items: List[Dict[str, Any]] = []
     for batch_id in sorted(incomplete_batch_ids):
         batch = batches.get(batch_id)
-        due_text = svc._normalize_text(getattr(batch, "due_date", None)) if batch is not None else None
+        due_text = normalize_text(getattr(batch, "due_date", None)) if batch is not None else None
         finish_time = finish_by_batch.get(batch_id)
         items.append(
             {
@@ -102,14 +104,13 @@ def build_incomplete_batch_items(
                 "scheduled_op_count": int(scheduled_count_by_batch.get(batch_id, 0)),
                 "failed_op_count": int(failed_count_by_batch.get(batch_id, 0)),
                 "due_date": due_text or None,
-                "partial_finish_time": svc._format_dt(finish_time) if finish_time is not None else None,
+                "partial_finish_time": fmt_dt(finish_time) if finish_time is not None else None,
             }
         )
     return items
 
 
 def incomplete_batches_payload(
-    svc,
     *,
     failure_details: Any,
     finish_by_batch: Dict[str, datetime],
@@ -123,7 +124,6 @@ def incomplete_batches_payload(
     """
     details = [item for item in list(failure_details or []) if isinstance(item, dict)]
     items = build_incomplete_batch_items(
-        svc,
         incomplete_batch_ids=incomplete_batch_ids_from_failure_details(details, finish_by_batch),
         batches=batches,
         finish_by_batch=finish_by_batch,
@@ -147,7 +147,6 @@ def _record_invalid_due(
 
 
 def _build_overdue_items(
-    svc,
     *,
     batches: Dict[str, Any],
     finish_by_batch: Dict[str, datetime],
@@ -155,6 +154,7 @@ def _build_overdue_items(
     due_exclusive_fn: Callable[[Any], datetime],
     append_summary_warning_fn: Callable[[Any, str], bool],
     incomplete_batch_ids: Optional[Set[str]] = None,
+    logger: Any = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     overdue_items: List[Dict[str, Any]] = []
     near_due_items: List[Dict[str, Any]] = []
@@ -164,7 +164,7 @@ def _build_overdue_items(
     excluded_incomplete = incomplete_batch_ids or set()
 
     for batch_id, batch in batches.items():
-        due_text = svc._normalize_text(getattr(batch, "due_date", None))
+        due_text = normalize_text(getattr(batch, "due_date", None))
         if not due_text:
             continue
         try:
@@ -199,7 +199,7 @@ def _build_overdue_items(
             {
                 "batch_id": batch_id,
                 "due_date": due_text,
-                "finish_time": svc._format_dt(finish_time),
+                "finish_time": fmt_dt(finish_time),
             }
         )
 
@@ -207,7 +207,6 @@ def _build_overdue_items(
         sample_ids = "，".join(invalid_due_ids_sample[:10])
         message = f"存在 {invalid_due_count} 个批次交期写法不对，已忽略超期与临期判断（示例批次：{sample_ids}）"
         warning_appended = append_summary_warning_fn(summary, message)
-        logger = getattr(svc, "logger", None)
         if logger is not None:
             raw_sample = "；".join(invalid_due_raw_sample[:5])
             detail = f"{message}；示例原始交期：{raw_sample}"

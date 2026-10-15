@@ -7,6 +7,7 @@ import pytest
 from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.run.compute import compute_candidate_run
 from core.services.workbench.run.input import prepare_candidate_run_input
@@ -34,6 +35,52 @@ def test_resources_and_start_one_change_and_conflict_remains_editable(trial_case
     assert len(rows) == 2
 
 
+def test_captured_qualifications_match_live_rules_across_work_types_without_sql(trial_case, monkeypatch):
+    from data.repositories.operator_machine_repo import OperatorMachineRepository
+    from data.repositories.operator_qualification_repo import OperatorQualificationRepository
+
+    case = trial_case
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
+    case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T2')")
+    other = case.operation(seq=2, op_type_id="T2", op_type_name="Milling", unit_hours=1)
+    case.plan(1, [case.op_id, other], start="2026-09-09T08:00:00", end="2026-09-09T11:00:00")
+    case.conn.execute("UPDATE Schedule SET start_time='2026-09-09T11:00:00',end_time='2026-09-09T14:00:00' WHERE op_id=?",
+                      (other,))
+    case.conn.commit()
+    draft = None
+    qualification = OperatorQualificationService(case.conn)
+
+    def unexpected_sql(*args, **kwargs):
+        raise AssertionError("Trial qualification must consume the current capture")
+
+    for state in ("undeclared", "T1", "T1_T2", "unauthorized"):
+        if state == "T1":
+            case.conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,skills_declared) VALUES ('O1',1)")
+            case.conn.execute("INSERT INTO OperatorSkill(operator_id,op_type_id) VALUES ('O1','T1')")
+        elif state == "T1_T2":
+            case.conn.execute("INSERT INTO OperatorSkill(operator_id,op_type_id) VALUES ('O1','T2')")
+        elif state == "unauthorized":
+            case.conn.execute("DELETE FROM OperatorMachine WHERE operator_id='O1' AND machine_id='M1'")
+        case.conn.commit()
+        expected = {}
+        for sequence, work_type in ((1, "T1"), (2, "T2")):
+            try:
+                qualification.require(operator_id="O1", machine_id="M1", op_type_id=work_type)
+                expected[sequence] = False
+            except OperatorQualificationError:
+                expected[sequence] = True
+        with monkeypatch.context() as captured:
+            captured.setattr(OperatorQualificationRepository, "read_skill_facts", unexpected_sql)
+            captured.setattr(OperatorMachineRepository, "exists", unexpected_sql)
+            draft = (create(case, {"base": {"plan_ref": case.plan_ref(1)}}) if draft is None
+                     else service(case.conn).get(draft["draft_ref"]))
+        for task in draft["tasks"]:
+            task_codes = {item["code"] for item in draft["validation"]["issues"] if item.get("task_ref") == task["task_ref"]}
+            assert ("operator_qualification_invalid" in task_codes) is expected[task["sequence"]], state
+            assert ("operator_skill_missing" in task_codes) is (state == "T1" and task["sequence"] == 2)
+            assert ("machine_authorization_missing" in task_codes) is (state == "unauthorized")
+
+
 def test_old_lock_mark_no_longer_blocks_trial_changes(trial_case):
     """正式计划里的锁定标记（旧版「锁定近期排程」顺带打上的）不再起作用：没报工、不在不重排时段里的工序试调照常能改。"""
     case = trial_case
@@ -57,11 +104,17 @@ def test_fixed_and_unique_execution_projection_protect_changes(trial_case, state
         values = case.values(quantity=3 if state == "new_complete" else 1,
                              effective_processing_hours=1, actual_end="2026-09-09T10:00:00" if state == "new_complete" else None)
         case.command("create", case.task(1, case.op_id), values)
+    case.conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,skills_declared) VALUES ('O1',1)")
+    case.conn.execute("DELETE FROM OperatorMachine WHERE operator_id='O1' AND machine_id='M1'")
+    case.conn.commit()
     refreshed = service(case.conn).get(draft["draft_ref"])
     assert refreshed["tasks"][0]["edit_context"]["can_change"] is False
+    assert refreshed["tasks"][0]["execution"]["execution_state"] == "complete"
+    assert not codes(refreshed) & {"operator_skill_missing", "machine_authorization_missing", "operator_qualification_invalid"}
     before = snapshot(case.conn)
-    with pytest.raises(WorkbenchCommandRejected):
+    with pytest.raises(WorkbenchCommandRejected) as error:
         change(case, refreshed)
+    assert error.value.code == "execution_protected"
     assert snapshot(case.conn) == before
 
 

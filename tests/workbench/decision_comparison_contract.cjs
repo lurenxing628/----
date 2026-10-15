@@ -213,6 +213,7 @@ function referenceFixture(query = {}) {
   return { ...clone(payload), data: { plan_ref: planRef, candidate: { candidate_ref: third, run_ref: runRef, label: officialBaseline.label,
     status: 'completed', capabilities: { ...readOnly } }, reference: { ...officialBaseline }, capabilities: { ...readOnly },
     scope: { resource_view: query.resource_view || 'selected_batches' }, tasks: [], task_count: 0, candidate_task_count: 0, unplanned_operations: [], unplanned_operation_count: 0,
+    gantt_graph: { state: 'unavailable', reason: 'No captured process order', scope: 'full_candidate', nodes: [], critical_task_refs: [], critical_edges: [] },
     batch_ref: query.batch_ref || null, time_scope: { range_start: query.range_start || null, range_end: query.range_end || null,
       interval: 'half_open_overlap', time_basis: 'factory_local', unplanned_policy: 'included_without_time_interval' }, blocked_reasons: [] } };
 }
@@ -525,25 +526,27 @@ function comparisonHeaderContracts({ navigation, runHistoryReturn }) {
   }
 }
 const turns = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
-async function candidateWorkspace(context, value) {
+async function candidateWorkspace(context, value, loadWorkspace = () => value) {
   const state = hooks(), calls = [], recalled = [], links = [], captions = [], controls = { ...window.RunCandidateControls, Catalog: 'catalog', Generation: 'generation', Detail: 'candidate-detail' };
   const gantt = 'candidate-gantt', ganttComponent = props => h(gantt, props); ganttComponent.TaskList = 'candidate-task-list';
   const local = { ...window, RunCandidateControls: controls, RunCandidateModel: { ...window.RunCandidateModel, matching: values => values },
     RunCandidateGantt: ganttComponent, WorkbenchControls: { usePrintLayout: () => false }, WorkbenchListControls: { EmptyState: 'empty-state' }, RunCandidateAnalysisAPI: { adapter: adapter => adapter }, RunDecisionAPI: { adapter: adapter => adapter },
     WorkbenchPageContext: { useSnapshot: current => recalled.push(current) }, WorkbenchCaption: { useCaption: current => captions.push(current) }, RunCandidateAnalysis: {} };
-  const sources = ['resource-session.js', 'WorkbenchFormat.js', 'PointContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }));
+  const sources = ['resource-session.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'PointGanttModel.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunBaselineControls.jsx', 'RunCandidateGantt.jsx', 'RunCandidateWorkspace.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }));
   for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources }).outputs)
     vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
+  const createGraph = local.GanttGraph.create; let graphBuilds = 0;
+  local.GanttGraph.create = graph => { graphBuilds++; return createGraph(graph); };
   ganttComponent.TaskList = local.RunCandidateGantt.TaskList; local.RunCandidateGantt = ganttComponent;
   const adapter = Object.fromEntries(['catalog', 'workspace', 'referenceWorkspace', 'analysis', 'adoptions'].map(name => [name, async (...args) => {
-    calls.push({ name, args }); return ['workspace', 'referenceWorkspace'].includes(name) ? value : null;
+    calls.push({ name, args }); return ['workspace', 'referenceWorkspace'].includes(name) ? loadWorkspace(...args) : null;
   }]));
   const props = { view: 'gantt', initialContext: context, adapter, onNavigate: (page, current) => links.push({ page, context: current }),
     renderAdoption: () => h('adoption'), renderTrial: () => h('trial') };
   let tree;
   const render = async () => { for (let i = 0; i < 4; i++) { tree = state.render(() => expand(h(local.RunCandidateWorkspace, props))); state.flush(); await turns(); } return tree; };
   await render();
-  return { get tree() { return tree; }, render, calls, recalled, links, captions, baselineSource: local.RunBaselineControls.Source, chosen: nodes(tree).find(node => node.type === gantt).props.selected };
+  return { get tree() { return tree; }, get graphBuilds() { return graphBuilds; }, render, calls, recalled, links, captions, baselineSource: local.RunBaselineControls.Source, chosen: nodes(tree).find(node => node.type === gantt)?.props.selected };
 }
 async function workspaceContracts() {
   {
@@ -649,7 +652,35 @@ async function workspaceContracts() {
   const task = (ref, op) => ({ row_ref: ref, operation_ref: op, batch_ref: batchRef, batch_label: 'B-001', process_label: '车削', sequence: 1, start: range_start, end: range_end, source: 'internal', machine: null, operator: null, data_gaps: [] });
   const value = referenceFixture(); value.data.tasks = [task(otherRowRef, missingOperationRef), task(rowRef, operationRef), task(secondSegmentRef, operationRef)];
   value.data.task_count = value.data.candidate_task_count = 3;
+  const capacityError = Object.assign(new Error('候选方案超过 32 MB，请缩小读取范围。'), { code: 'candidate_capacity_exceeded', status: 413 });
+  const capacity = await candidateWorkspace({ candidate_ref: third }, value, (_ref, scope) => {
+    if (!scope.range_start) throw capacityError;
+    return value;
+  });
+  const workspaceReads = () => capacity.calls.filter(call => call.name === 'workspace');
+  assert.equal(workspaceReads().length, 1);
+  assert.equal(capacity.graphBuilds, 0, 'A failed workspace read does not prepare a graph');
+  assert(nodes(capacity.tree).some(node => node.type === 'error-box' && node.props.error === capacityError));
+  assert(!nodes(capacity.tree).some(node => node.type === 'candidate-gantt' || node.props.transfer === 'export'));
+  const rangeButton = nodes(capacity.tree).find(node => node.type === 'button' && text(node) === '读取范围');
+  assert(rangeButton, '首次容量错误后仍可从同一候选直接调整读取范围');
+  rangeButton.props.onClick(); await capacity.render();
+  nodes(capacity.tree).find(node => node.type === 'form' && node.props.className === 'rc-range').props.onSubmit({ preventDefault() {} }); await capacity.render();
+  assert(nodes(capacity.tree).some(node => node.type === 'error-box' && node.props.error && /读取范围需要成对时间/.test(node.props.error.message)), '失败外壳继续呈现同一范围表单的校验错误');
+  nodes(capacity.tree).find(node => node.props['aria-label'] === '候选读取开始').props.onChange({ target: { value: '2026-10-01 00:00:00' } }); await capacity.render();
+  nodes(capacity.tree).find(node => node.props['aria-label'] === '候选读取结束').props.onChange({ target: { value: '2026-10-02 00:00:00' } }); await capacity.render();
+  assert.equal(workspaceReads().length, 1, '打开范围与填写日期均保持本地状态，不提前读取或自动重试');
+  nodes(capacity.tree).find(node => node.type === 'form' && node.props.className === 'rc-range').props.onSubmit({ preventDefault() {} }); await capacity.render();
+  assert.equal(workspaceReads().length, 2, '应用手动范围仅重新读取一次');
+  assert.equal(capacity.graphBuilds, 1, 'The candidate workspace prepares its graph once after the successful read');
+  assert.equal(workspaceReads()[1].args[0], third, '缩窗保留同一候选编号');
+  assert.deepEqual(clone(workspaceReads()[1].args[1]), { sort: 'sequence', order: 'asc', range_start, range_end: '2026-10-02T00:00:00' });
+  assert(nodes(capacity.tree).some(node => node.type === 'candidate-gantt'));
+  assert(nodes(capacity.tree).some(node => node.props.transfer === 'export'));
+  assert(!nodes(capacity.tree).some(node => node.type === 'error-box' && node.props.error));
+  assert(text(capacity.tree).includes('当前显示 3 道安排'));
   const candidateOnly = await candidateWorkspace({ candidate_ref: third }, value);
+  assert.equal(candidateOnly.graphBuilds, 1);
   assert.equal(candidateOnly.calls.filter(call => call.name === 'workspace').length, 1, '只有候选编号时发现排产编号仍只读一次workspace');
   assert.equal(candidateOnly.calls.filter(call => call.name === 'catalog').length, 1, '发现排产编号只启动一次目录读取');
   nodes(candidateOnly.tree).find(row => row.props.id === 'rc-detail-tab-history').props.onClick(); await candidateOnly.render();
@@ -657,6 +688,7 @@ async function workspaceContracts() {
   nodes(candidateOnly.tree).find(row => row.props.id === 'rc-detail-tab-tasks').props.onClick(); await candidateOnly.render();
   nodes(candidateOnly.tree).find(row => row.props.id === 'rc-detail-tab-history').props.onClick(); await candidateOnly.render();
   assert.equal(candidateOnly.calls.filter(call => call.name === 'adoptions').length, 1, '候选采用记录同workspace快照重开不重复读取');
+  assert.equal(candidateOnly.graphBuilds, 1, 'Local tabs reuse the graph prepared by the workspace');
   nodes(candidateOnly.tree).find(row => row.props['aria-label'] === '刷新候选方案').props.onClick(); await candidateOnly.render();
   assert.equal(candidateOnly.calls.filter(call => call.name === 'workspace').length, 2);
   assert.equal(candidateOnly.calls.filter(call => call.name === 'adoptions').length, 2, '显式刷新候选后重读当前采用记录');
@@ -1421,7 +1453,7 @@ async function unifiedGenerationContracts() {
   const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_generation_http.json'), 'utf8'));
   const local = { ...window }, savedRun = raw.candidate_catalog.run_ref, savedCandidate = raw.candidate_workspace.candidate.candidate_ref;
   const names = ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js',
-    'DeliveryProjectionContract.js', 'EffortProjectionContract.js', 'PlanProcessOrder.js', 'GanttGraph.js', 'RunCandidateAPI.js', 'RunJobAPI.js',
+    'DeliveryProjectionContract.js', 'EffortProjectionContract.js', 'GanttGraph.js', 'RunCandidateAPI.js', 'RunJobAPI.js',
     'PlanContract.js', 'RunCandidateControls.jsx', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx'];
   const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
     sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;

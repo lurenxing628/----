@@ -100,7 +100,7 @@ class ConditionSource:
         self.raw_tasks = packet["raw_tasks"]
         self.entity_refs = dict(facts.entity_refs)
         self.original_entity_refs = dict(facts.entity_refs)
-        self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref)
+        self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref, facts=facts)
         self.original_archive, self._original_calendar = self.archive, self.calendar
         self._work_indexes(facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations,
                            self._origins["original"])
@@ -137,12 +137,13 @@ class ConditionSource:
     def _trial_unplanned(self, admission):
         source = admission["source"]
         capture = source.get("capture")
+        facts = None
         if capture is not None and type(capture) is not dict:
             corrupt()
         if capture is not None and capture.get("facts_text") is not None:
             facts = GenerationFacts(capture)
             self.original_archive = facts.archive
-            self._original_calendar = ArchivedCalendar(self.original_archive, source_ref=self.ref)
+            self._original_calendar = ArchivedCalendar(self.original_archive, source_ref=self.ref, facts=facts)
             operations, batches, refs = facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations
             entity_refs = facts.entity_refs
             prefix = "head.admission.source.capture.facts_text"
@@ -155,7 +156,7 @@ class ConditionSource:
         self._origins["original"] = prefix
         op_paths = _table_paths(operations.values(), "id", prefix + ".tables.BatchOperations")
         batch_paths = _table_paths(batches.values(), "batch_id", prefix + ".tables.Batches")
-        for ref in operation_contexts(self.trial_rows, admission):
+        for ref in operation_contexts(self.trial_rows, admission, facts):
             key = refs.get(ref)
             if key not in operations or ref in self.operations:
                 continue

@@ -13,7 +13,6 @@ from core.models.workbench_dashboard import (
     bounded,
     empty_handling,
     page,
-    payload_size,
     reference,
 )
 from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
@@ -108,8 +107,6 @@ class WorkbenchDashboardService:
         if item["category"] == "external":
             repo = self.external_handling.repo
             require_external_schema(repo)
-        source = {key: item[key] for key in ("item_ref", "category", "subject", "source", "risk", "navigation")}
-        payload_size({"source": source, "facts": facts, "before": before, "after": after})
         return repo.append(item=item, before=before, after=after, facts=facts, actor=actor, action=action,
                            reason=reason, request_key=request_key, now=now)
 

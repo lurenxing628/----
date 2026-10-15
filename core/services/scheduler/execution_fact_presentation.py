@@ -17,8 +17,8 @@ from typing import Any, Dict
 
 from core.models.operation_execution_event import EXECUTION_STATUS_NOT_STARTED
 from core.models.operation_execution_labels import execution_status_label
-
-from ._sched_display_utils import fmt_dt, parse_dt
+from core.shared.local_datetime import format_local_datetime as fmt_dt
+from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 
 def _fmt_fact_dt(value: Any) -> str:

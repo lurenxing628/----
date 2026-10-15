@@ -12,7 +12,6 @@ from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import ProcessTablePageRequest, unique_process_table_object
 from core.services.workbench.process.projection import capabilities
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
-from core.services.workbench.process.route_preview import ProcessRoutePreviewService
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
@@ -86,8 +85,6 @@ def _body():
 
 @api_endpoint
 def process_route_preview(ref):
-    from core.services.workbench.process.mutations import WorkbenchProcessMutationService
-
     try:
         body = _body()
         token = body.pop("snapshot_ref", None)
@@ -96,17 +93,16 @@ def process_route_preview(ref):
             raise WorkbenchCommandRejected("invalid_input", "工序号太大，页面上填不准，路线没有保存；系统没有替你四舍五入。请改用整段路线文字录入。", 422)
         reader = WorkbenchProcessQueryService(g.db, current_app.logger)
         with reader.read_snapshot() as state:
-            reader.resolve(ref)
             if token is not None:
                 bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token)
-            preview = ProcessRoutePreviewService(g.db, current_app.logger).preview(body)
-            data = reader.route_difference(ref, preview)
+            data, _, affected = reader.prepare_route(ref, body)
             data["affected_groups"] = []
             if data["can_confirm_route"]:
-                domain = WorkbenchProcessMutationService(g.db, current_app.logger)
-                normalized = domain.normalize("route_confirm", {"route": body, "discard_group_refs": []})
-                affected = set(domain.affected_groups("route_confirm", normalized, reader.resolve(ref)))
-                data["affected_groups"] = [row for row in reader.detail(ref)["external_groups"] if row["ref"] in affected]
+                from core.models.workbench_process_commands import normalize_process_input
+
+                normalized = normalize_process_input("route_confirm", {"route": body, "discard_group_refs": []})
+                affected_refs = {row["ref"] for row in affected}
+                data["affected_groups"] = [row for row in reader.detail(ref)["external_groups"] if row["ref"] in affected_refs]
                 data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": normalized["route"]})
             snapshot = bind_read_snapshot({"kind": "process_route_preview", "entity_ref": ref,
                                            "input_content": body}, state)

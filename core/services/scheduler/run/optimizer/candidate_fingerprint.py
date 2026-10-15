@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.objective_specs import objective_metric_keys
@@ -90,7 +90,7 @@ def build_candidate_fingerprint(
         fingerprint_scope=DISTINCT_FINGERPRINT_SCOPE,
         objective_name=str(objective_name),
         candidate_id=int(candidate_id),
-        output_key=_output_payload(candidate, objective_name=objective_name),
+        output_key=_evaluation_key(candidate, objective_name=objective_name),
         parent_candidate_id=None,
         same_as_parent=False,
         same_as_seen=False,
@@ -113,17 +113,24 @@ def _validate_candidate(candidate: Dict[str, Any]) -> None:
         raise ValidationError("候选内容缺少正式解码结果。", field="candidate_fingerprint")
 
 
-def _output_payload(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[Any, ...]:
-    results = list(candidate.get("results") or [])
+def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[Any, ...]:
     metrics = _objective_metric_signature(candidate.get("metrics"), objective_name=objective_name)
     summary = candidate.get("summary")
-    return (str(objective_name), len(results),
+    completion = getattr(candidate.get("metrics"), "completion", None)
+    completion_summary = (None if completion is None else (
+        completion.expected_operation_count, completion.missing_operation_count,
+        completion.unexpected_result_count, completion.complete_batch_count,
+        completion.objective_scope, completion.components_known,
+    ))
+    entry_id = candidate.get("_shared_entry_id")
+    if type(entry_id) is not int:
+        raise ValidationError("候选结果须先取得共享档案身份。", field="candidate_fingerprint")
+    return (entry_id, str(objective_name),
             (bool(getattr(summary, "success", False)),
              _non_negative_int(getattr(summary, "total_ops", 0)),
              _non_negative_int(getattr(summary, "scheduled_ops", 0)),
              _non_negative_int(getattr(summary, "failed_ops", 0))),
-            tuple(tuple(row.values()) for row in _result_signature(results)),
-            tuple(metrics.items()), _score_tuple(candidate.get("score")))
+            completion_summary, tuple(metrics.items()), _score_tuple(candidate.get("score")))
 
 
 def _objective_metric_signature(metrics: Any, *, objective_name: str) -> Dict[str, Any]:
@@ -132,37 +139,6 @@ def _objective_metric_signature(metrics: Any, *, objective_name: str) -> Dict[st
         if hasattr(metrics, key):
             out[str(key)] = _finite_float(getattr(metrics, key), field_name=str(key))
     return out
-
-
-def _result_signature(results: List[Any]) -> List[Dict[str, Any]]:
-    rows = [_result_row(result) for result in results]
-    return sorted(
-        rows,
-        key=lambda row: (
-            row.get("op_id"),
-            row.get("batch_id"),
-            row.get("seq"),
-            row.get("start_time"),
-            row.get("end_time"),
-            row.get("machine_id"),
-            row.get("operator_id"),
-        ),
-    )
-
-
-def _result_row(result: Any) -> Dict[str, Any]:
-    return {
-        "op_id": str(getattr(result, "op_id", "") or ""),
-        "op_code": str(getattr(result, "op_code", "") or ""),
-        "batch_id": str(getattr(result, "batch_id", "") or ""),
-        "seq": _non_negative_int(getattr(result, "seq", 0)),
-        "machine_id": str(getattr(result, "machine_id", "") or ""),
-        "operator_id": str(getattr(result, "operator_id", "") or ""),
-        "start_time": _time_text(getattr(result, "start_time", None)),
-        "end_time": _time_text(getattr(result, "end_time", None)),
-        "source": str(getattr(result, "source", "") or ""),
-        "op_type_name": str(getattr(result, "op_type_name", "") or ""),
-    }
 
 
 def _non_negative_int(value: Any) -> int:

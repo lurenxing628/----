@@ -226,4 +226,7 @@ class SystemMaintenanceJournal:
 
 def assert_system_maintenance_ready(database_path, journal_dir):
     """Host hook: call BEFORE opening/migrating/writing the DB; never auto-resume."""
-    SystemMaintenanceJournal(journal_dir, database_path).assert_ready()
+    journal = SystemMaintenanceJournal(journal_dir, database_path)
+    records = journal.records()
+    journal.assert_ready(records)
+    return records

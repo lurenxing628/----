@@ -2,7 +2,7 @@
 
 from core.algorithm_runtime.piece_input import operation_batch
 from core.services.scheduler.graph.exporter import graph_summary_to_dict
-from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
+from core.services.scheduler.graph.input_adapter import GraphResourcePreparation, build_operation_nodes_from_rows
 from core.services.scheduler.graph.metrics import build_node_metrics, get_critical_path, get_topological_generations
 from core.services.scheduler.graph.precedence_builder import build_precedence_graph
 from core.services.scheduler.graph.types import GraphAnalysisSummary, OperationGraphEdge
@@ -27,10 +27,11 @@ from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 def _piece_graph_data(prepared):
     scope = build_piece_adoption_scope(prepared.operations, prepared.batches)
     nodes = []
+    resources = GraphResourcePreparation(prepared.resource_pool)
     for op in prepared.algo_ops:
         nodes.extend(build_operation_nodes_from_rows([op],
             batches={op.batch_id: operation_batch(op, prepared.batches[op.batch_id])},
-            resource_pool=prepared.resource_pool, frozen_op_ids=prepared.frozen_op_ids))
+            resource_preparation=resources, frozen_op_ids=prepared.frozen_op_ids))
     by_id = {node.raw["id"]: node.node_id for node in nodes}
     edges = [OperationGraphEdge(by_id[previous], by_id[work.op_id], "precedence")
              for work in scope.operations if work.op_id in by_id for previous in work.predecessor_op_ids]
@@ -46,13 +47,8 @@ def _piece_graph_data(prepared):
 
 
 def piece_graph_preparer(prepared):
-    graph_data = None
-
     def prepare(candidate_input):
-        nonlocal graph_data
-        if graph_data is None:
-            graph_data = _piece_graph_data(prepared)
-        nodes, edges, order, metrics, payload = graph_data
+        nodes, edges, order, metrics, payload = _piece_graph_data(prepared)
         weights = graph_score_weights(candidate_input.cfg)
         score, score_public, score_diagnostics = build_available_graph_score_projection(
             score_weights=weights, nodes=nodes, node_metrics=metrics,

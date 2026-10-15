@@ -1,9 +1,10 @@
-"""Compare the declared v39-v42 representation without rewriting saved facts."""
+"""Compare the declared v39-v43 representation without rewriting saved facts."""
 
 import base64
 from functools import lru_cache
 
 from core.infrastructure.schedule_business_roles_schema import objects as business_role_objects
+from core.infrastructure.single_pass_indexes_schema import ADDED, REMOVED
 from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.workbench_content_schema import CONTENT_TABLES, content_objects
 from core.infrastructure.workbench_metadata_schema import canonical_ddl_parts, canonical_sql
@@ -131,6 +132,16 @@ def _business_role_schema():
     return {name: (canonical_sql(sql), canonical_sql(legacy[name])) for name, sql in current.items()}
 
 
+_PERFORMANCE_INDEXES = {name: canonical_sql(sql) for name, sql in {**ADDED, **REMOVED}.items()}
+
+
+def _performance_index(row):
+    kind, name, table, sql = row
+    expected = _PERFORMANCE_INDEXES.get(name)
+    return (kind == "index" and expected is not None and canonical_sql(sql or "") == expected
+            and table == expected.partition(" ON ")[2].split("(", 1)[0])
+
+
 def project_facts(value):
     """Pure comparison value; preserve other fields, old digests and unknown DDL."""
     current, legacy = _definitions(), _definitions(True)
@@ -140,13 +151,13 @@ def project_facts(value):
     result = {key: item for key, item in value.items()
               if key != "columns" and not (key == "version" and item == "production-facts-v2")}
     result.update(schema=list(value["schema"]), tables=tables)
-    if _version(value) not in (39, 40, 41, 42):
+    if _version(value) not in (39, 40, 41, 42, 43):
         return result
     for name in READ_MODEL_TABLES:
         tables.pop(name, None)
     schema, roles = [], _business_role_schema()
     for row in value["schema"]:
-        if _derived_schema(row):
+        if _derived_schema(row) or _performance_index(row):
             continue
         kind, name, table, sql = row
         if kind == "table" and table == name and name in roles and canonical_sql(sql) in roles[name]:

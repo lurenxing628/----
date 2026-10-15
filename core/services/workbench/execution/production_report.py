@@ -22,11 +22,11 @@ class WorkbenchProductionReportService:
         self.commands = WorkbenchCommandService(conn)
 
     def _prepare(self, items):
-        actor = self.actor_provider()
-        if not isinstance(actor, str) or not actor.strip():
-            raise ValueError("Local application operator must be supplied by the server.")
-        self.ledger.require_schema()
-        return ReportBatchPreparation(self.ledger, items, actor).prepare()
+        with self.ledger.read_snapshot():
+            actor = self.actor_provider()
+            if not isinstance(actor, str) or not actor.strip():
+                raise ValueError("Local application operator must be supplied by the server.")
+            return ReportBatchPreparation(self.ledger, items, actor).prepare()
 
     def preview(self, action, ref, payload):
         if action == "report_void":

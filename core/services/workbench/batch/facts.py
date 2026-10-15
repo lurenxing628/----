@@ -15,8 +15,6 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 
 from .execution import load_execution, old_event_bindings, project_execution_snapshot, protects_execution
 
-PLAN_TABLES = ("Schedule", "ScheduleCandidateRows", "ScheduleAdjustmentChange", "ScheduleAdjustmentScenarioRow")
-
 
 class BatchFacts:
     def __init__(self, conn, logger=None):
@@ -48,11 +46,14 @@ class BatchFacts:
         if facts is not None:
             return facts
         with TransactionManager(self.conn).transaction():
-            tables = self.repo.whole_tables()
+            tables: Dict[str, Any] = self.repo.whole_tables()
             tables.update(self._versioned_tables())
+            tables["plan_reference_counts"] = self.repo.plan_reference_counts()
             workflow = load_workflow_snapshot(self.conn)
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
             execution = load_execution(self.conn, operation_refs.values())
+            if not execution["available"]:
+                tables.update(self.repo.legacy_execution_facts())
         facts = {**tables, "workflow": project_workflow_snapshot(workflow), "operation_refs": operation_refs,
                  "execution": project_execution_snapshot(execution)}
         if self._command and self.conn.in_transaction:
@@ -190,7 +191,7 @@ def require_unreferenced(facts, batch, relations=None):
 
 
 def group_protected(group, batch):
-    return bool(group["plans"] or group["events"] or group["execution_protected"] or group["outsourcing_receipts"]
+    return bool(group["plan_reference_count"] or group["events"] or group["execution_protected"] or group["outsourcing_receipts"]
                 or batch["status"] in ("scheduled", "processing", "completed")
                 or any(row["status"] != "pending" for row in group["operations"]))
 
@@ -213,20 +214,19 @@ def _index_outsourcing_receipts(facts, result):
 
 
 def index_relations(facts):
-    result = {row["batch_id"]: {"operations": [], "plans": [], "events": [], "reports": [], "materials": [],
+    result = {row["batch_id"]: {"operations": [], "plan_reference_count": 0, "events": [], "reports": [], "materials": [],
                               "outsourcing_receipts": [], "quantity_splits": [], "execution_protected": False} for row in facts["Batches"]}
     _index_outsourcing_receipts(facts, result)
     for row in facts["BatchQuantitySplits"]:
         for owner in {row["source_batch_id"], row["child_batch_id"]}:
             if owner in result:
                 result[owner]["quantity_splits"].append(row)
-    owners = {}
     execution = facts["execution"]
     legacy = {} if execution["available"] else old_event_bindings(facts)
     for row in facts["BatchOperations"]:
-        owners[row["id"]] = row["batch_id"]
         group = result[row["batch_id"]]
         group["operations"].append(row)
+        group["plan_reference_count"] += facts["plan_reference_counts"].get(row["id"], 0)
         ref = facts["operation_refs"][row["id"]]
         if execution["available"]:
             projected = execution["projections"][ref]
@@ -235,11 +235,6 @@ def index_relations(facts):
             group["execution_protected"] |= protects_execution(projected)
         else:
             group["events"].extend(legacy.get(ref, []))
-    for table in PLAN_TABLES:
-        for row in facts[table]:
-            owner = owners.get(row["op_id"])
-            if owner in result:
-                result[owner]["plans"].append(row)
     for row in facts["BatchMaterials"]:
         if row["batch_id"] in result:
             result[row["batch_id"]]["materials"].append(row)

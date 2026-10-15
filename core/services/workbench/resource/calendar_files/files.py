@@ -7,11 +7,13 @@
 所以界面拒绝的组合文件也拒绝。唯一的例外是假期带工时：界面的输入模型禁止，文件放行，见 4.5 的裁决。
 """
 
+from dataclasses import replace
 from datetime import date
 from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models.calendar import WorkCalendar
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
@@ -22,6 +24,7 @@ from core.models.workbench_calendar_file import (
     REQUIRED,
     UI_FIELDS,
     CalendarFileDownload,
+    CalendarFilePreview,
     calendar_kind,
     file_columns,
     import_request,
@@ -33,7 +36,6 @@ from core.models.workbench_command import (
 )
 from core.models.workbench_operator_calendar import operator_clock
 from core.models.workbench_resource_action import (
-    ResourceActionPreview,
     action_row,
     check_resource_preview,
     reject_action_row,
@@ -86,6 +88,9 @@ class WorkbenchCalendarFileService:
                          else WorkbenchCalendarService(conn, logger))
         self.tx = TransactionManager(conn)
 
+    def _normalization_operation(self):
+        return self.calendar._calendar._admin.normalization_operation(self.calendar._calendar._engine.default_periods)
+
     # ---------- 导入 ----------
 
     def prepare_import(self, content, *, file_format, mode="upsert"):
@@ -98,8 +103,11 @@ class WorkbenchCalendarFileService:
             content, file_format=file_format, mode=mode)
         request = prepared.request_for(self.kind + ".import", file_format, mode)
         source, notices = prepared.parsed()
-        with self.tx.transaction():
-            return ResourceActionPreview.build(self.kind + ".import", request, self._build_rows(source), notices, source=prepared)
+        with self.tx.transaction(), self._normalization_operation():
+            rows = self._build_rows(source)
+            calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
+            return replace(CalendarFilePreview.build(self.kind + ".import", request, rows, notices, source=prepared),
+                           calendars=calendars)
 
     def _build_rows(self, source) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
@@ -192,14 +200,15 @@ class WorkbenchCalendarFileService:
             # 这一天的现状也可能算不出来（例如 9999-12-31 的班次跨到次日），只拒这一行。
             before = self.calendar.day_state(day, states)
             fields.update(parse_period_columns(row["values"]))
-            after = self.calendar.proposed_row(fields, before)
+            model = self.calendar.proposed_row(fields, before)
+            after = model.to_dict() if isinstance(model, WorkCalendar) else model
         except WorkbenchCommandRejected as exc:
             reject_action_row(row, str(exc), code=exc.code, field="date")
             return
         except ValidationError as exc:
             reject_action_row(row, exc.message, field=exc.field or "date")
             return
-        row["expected"], row["input"] = before, after
+        row["expected"], row["input"], row["calendar"] = before, after, model
         row["before"] = self._public(before["row"])
         row["after"] = self._public(after)
         row["action"] = "create" if before["row"] is None else "update"
@@ -267,18 +276,12 @@ class WorkbenchCalendarFileService:
                     "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
             check_resource_preview(preview, current)
             body = current.as_dict()
-            results = []
-            for row in body["rows"]:
-                if row["result"] == "unchanged":
-                    results.append({"row": row["row"], "business_code": row["business_code"], "result": "unchanged"})
-                    continue
-                outcome = self.calendar.write_day(row["expected"], row["input"])
-                # 回执必须照实说。原来这里丢掉了 write_day 的结果一律记 committed，
-                # 于是"预检说要写、领域层判定无事可写"这种不一致会被包装成成功回执。
-                if outcome.result != "committed":
-                    raise RuntimeError(
-                        f"预检判这一行要写入，日历领域层却判定无事可写，不能确认保存：第 {row['row']} 行 {row['business_code']}")
-                results.append({"row": row["row"], "business_code": row["business_code"], "result": "committed"})
+            changes = [(row["expected"], current.calendars[row["row"]]) for row in body["rows"]
+                       if row["result"] != "unchanged"]
+            self.calendar.write_days(changes, include_refs=False)
+            results = [{"row": row["row"], "business_code": row["business_code"],
+                        "result": "unchanged" if row["result"] == "unchanged" else "committed"}
+                       for row in body["rows"]]
             changed = any(item["result"] == "committed" for item in results)
             return WorkbenchCommandOutcome("committed" if changed else "unchanged",
                                            {"rows": results, "summary": body["summary"]})

@@ -65,3 +65,39 @@ def test_exit_backup_maintenance(db_path, tmp_path) -> None:
         raise RuntimeError(f"_run_exit_backup 预期 fail-fast，不应长时间等待；实际耗时 {elapsed:.3f}s")
     if _list_exit_backups(backup_dir):
         raise RuntimeError("维护窗口期间不应生成 *_exit.db")
+
+
+def test_operation_log_cleanup_uses_utc_boundary_and_keeps_limits(schema_conn, tmp_path, monkeypatch):
+    from datetime import datetime
+
+    from core.services.system.maintenance import cleanup_task
+    from core.services.system.system_maintenance_service import _fmt_db_dt
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 16, 0, 30)
+
+        @classmethod
+        def utcnow(cls):
+            return cls(2026, 10, 15, 16, 30)
+
+    monkeypatch.setattr(cleanup_task, "datetime", Clock)
+    times = ("2026-10-14 16:29:58", "2026-10-14 16:29:59", "2026-10-14 16:30:00",
+             "2026-10-14 16:30:01", "2026-10-14 23:59:59", "2026-10-15 16:30:00")
+    schema_conn.executemany("INSERT INTO OperationLogs(log_time,log_level,module,action) VALUES (?,'INFO','system','test')",
+                            [(value,) for value in times])
+    deleted, meta = cleanup_task.cleanup_operation_logs_with_limit(schema_conn, keep_days=1,
+        min_keep_logs=4, max_delete=1, fmt_db_dt_fn=_fmt_db_dt)
+    assert deleted == 1 and meta["cutoff"] == "2026-10-14 16:30:00" and meta["candidates"] == 2
+    assert [row[0] for row in schema_conn.execute("SELECT log_time FROM OperationLogs ORDER BY id")] == list(times[1:])
+    deleted, meta = cleanup_task.cleanup_operation_logs_with_limit(schema_conn, keep_days=1,
+        min_keep_logs=4, max_delete=10, fmt_db_dt_fn=_fmt_db_dt)
+    assert deleted == 1 and meta["allow"] == 1
+    assert [row[0] for row in schema_conn.execute("SELECT log_time FROM OperationLogs ORDER BY id")] == list(times[2:])
+    deleted, meta = cleanup_task.cleanup_operation_logs_with_limit(schema_conn, keep_days=1,
+        min_keep_logs=4, max_delete=10, fmt_db_dt_fn=_fmt_db_dt)
+    assert deleted == 0 and meta["reason"] == "total_le_min_keep"
+    _, backup_meta = cleanup_task.cleanup_backups_with_limit(str(tmp_path / "missing-backups"),
+        keep_days=1, max_delete=10, fmt_db_dt_fn=_fmt_db_dt)
+    assert backup_meta["cutoff"] == "2026-10-15 00:30:00"

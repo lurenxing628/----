@@ -61,11 +61,19 @@ def serve_database(database, workspace, with_worker=False):
 
 def _configure(database, values):
     from core.infrastructure.database import get_connection
-    from core.services.scheduler.config.config_service import ConfigService
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.scheduler.config.config_field_spec import coerce_config_field, get_field_spec
+    from data.repositories.config_repo import ConfigRepository
 
+    updates = [
+        (key, str(coerce_config_field(key, value, strict_mode=True, source="wufenchang_demo")),
+         get_field_spec(key).description)
+        for key, value in values.items()
+    ]
     conn = get_connection(str(database))
     try:
-        ConfigService(conn).save_page_config(values)
+        with TransactionManager(conn).transaction():
+            ConfigRepository(conn).set_batch(updates)
     finally:
         conn.close()
 

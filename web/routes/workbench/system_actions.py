@@ -1,6 +1,6 @@
 """Restore retains the legacy independent flow and requires an explicit host guard."""
 
-from flask import current_app, g, jsonify
+from flask import current_app, g
 
 from core.infrastructure.backup import maintenance_window
 from core.infrastructure.database import ensure_schema, get_connection
@@ -11,6 +11,7 @@ from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.system.config import SystemConfigWorkspace
 from core.services.workbench.system.files import SystemFileWorkspace
+from web.api_responses import json_response
 from web.runtime_host import restore_host
 
 from .system_context import command_body, journal, query_payload, resolve_context, system_endpoint
@@ -27,7 +28,7 @@ def system_config_save():
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_config"):
         if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") and journal().lookup(body["request_key"]):
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在文件维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
-        return jsonify(service.save(request_key=body["request_key"], values=body["input"], guard=guard))
+        return json_response(service.save(request_key=body["request_key"], values=body["input"], guard=guard))
 
 
 @system_endpoint

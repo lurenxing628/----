@@ -100,3 +100,60 @@ def test_real_create_read_update_clear_delete_and_replay_keep_hidden_fields(app_
     with _database(app_client) as conn:
         assert conn.execute("SELECT COUNT(*) FROM Materials").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchCommandReceipts").fetchone()[0] == 3
+
+
+def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapshot(app_client, monkeypatch):
+    import pytest
+
+    from core.models.workbench_command import WorkbenchCommandUncertain
+    from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
+    from core.services.workbench.material.files import WorkbenchMaterialFileService
+    from core.services.workbench.material.service import WorkbenchMaterialService
+    from data.repositories.material_repo import MaterialRepository
+    from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
+    from tests.workbench.material_file_support import confirm_delete, confirm_import
+
+    calls, writes = [], []
+    capture, update = WorkbenchMaterialFileRepository.capture, MaterialRepository.update
+
+    def captured(repo, **selection):
+        calls.append(selection)
+        return capture(repo, **selection)
+
+    def fail_second(repo, code, fields):
+        writes.append(code)
+        if len(writes) == 2:
+            raise OSError("injected second material write failure")
+        return update(repo, code, fields)
+
+    def reread(*args, **kwargs):
+        pytest.fail("prepared material operations must not reread a write snapshot")
+
+    with _database(app_client) as conn:
+        conn.executemany("INSERT INTO Materials(material_id,name,stock_qty) VALUES (?, ?, ?)",
+                         [("M1", "first", 1), ("M2", "second", 2)])
+        conn.commit()
+        content = file_bytes([("M1", 10), ("M2", 20)], "csv", ("business_code", "stock_qty"))
+        service = WorkbenchMaterialFileService(conn)
+        preview = service.preview_import(content, file_format="csv", scope={})
+        monkeypatch.setattr(WorkbenchMaterialFileRepository, "capture", captured)
+        monkeypatch.setattr(WorkbenchMaterialService, "_current_material", reread)
+        monkeypatch.setattr(MaterialRepository, "exists", reread)
+        with monkeypatch.context() as patch:
+            patch.setattr(MaterialRepository, "update", fail_second)
+            with pytest.raises(WorkbenchCommandUncertain):
+                confirm_import(conn, preview, content, "csv", key="material-prepared-rollback")
+        assert len(calls) == 1 and writes == ["M1", "M2"]
+        assert [row[0] for row in conn.execute("SELECT stock_qty FROM Materials ORDER BY material_id")] == [1, 2]
+        calls.clear()
+        result = confirm_import(conn, preview, content, "csv", key="material-prepared-rollback")
+        assert len(calls) == 1 and result["result"] == "committed"
+        conn.execute("BEGIN")
+        exported = service.export_rows("csv", scope={})
+        conn.rollback()
+        assert [row["stock_qty"] for row in exported] == [10, 20]
+        refs = [row[0] for row in conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='material' AND active=1 ORDER BY entity_key")]
+        delete = WorkbenchMaterialBulkService(conn).preview_delete(refs, scope={})
+        calls.clear()
+        assert confirm_delete(conn, delete, refs, key="material-prepared-delete")["data"]["deleted_count"] == 2
+        assert len(calls) == 1 and conn.execute("SELECT COUNT(*) FROM Materials").fetchone()[0] == 0

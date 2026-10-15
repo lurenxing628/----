@@ -298,29 +298,6 @@ def candidate_comparison_minimal_summary(raw: Any) -> Dict[str, Any]:
     return out
 
 
-def candidate_comparison_log_summary(raw: Any) -> Dict[str, Any]:
-    if not isinstance(raw, dict):
-        return {}
-    if is_unified_generation(raw):
-        return _unified_comparison_small_summary(raw)
-    keys = (
-        "enabled",
-        "planned_candidate_count",
-        "completed_candidate_count",
-        "time_budget_reached",
-        "run_time_budget_seconds",
-        "skipped_candidate_labels",
-        "baseline_missing_or_failed",
-        "selection_policy",
-        "selection_reason_code",
-    )
-    out: Dict[str, Any] = {}
-    for key in keys:
-        if key in raw:
-            out[key] = raw.get(key)
-    return out
-
-
 def _unified_comparison_small_summary(raw: Dict[str, Any]) -> Dict[str, Any]:
     keys = (
         "enabled", "generation_policy_version", "primary_objective", "target_objectives",
@@ -335,7 +312,6 @@ __all__ = [
     "ROLE_ADOPTED",
     "ROLE_BASELINE_BEST",
     "ROLE_CRITICAL_BEST",
-    "candidate_comparison_log_summary",
     "candidate_comparison_minimal_summary",
     "candidate_comparison_public_summary",
     "candidate_detail_saved",

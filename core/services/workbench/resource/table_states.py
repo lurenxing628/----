@@ -5,15 +5,15 @@ from dataclasses import asdict
 from .state_projection import machine_write_state, operator_write_state, supplier_write_state
 
 
-def resource_table_states(facts, kind, codes):
+def resource_table_states(facts, kind, codes, *, dependencies=None, supplier_references=None):
     if kind == "supplier":
-        references = facts.repo.page_relations(kind, codes)
+        references = facts.repo.page_relations(kind, codes) if supplier_references is None else supplier_references
         return {code: _supplier_state(facts, code, references) for code in codes}
     if kind in ("machine_group", "shift_profile"):
         return _catalog_states(facts, kind, codes)
     if kind not in ("machine", "operator"):
         raise ValueError("Unsupported resource batch state")
-    counts = facts.assigned_counts(kind, codes)
+    counts = facts.assigned_counts(kind, codes) if dependencies is None else dependencies
     patterns = {}
     if kind == "operator":
         profiles = facts.raw_lookup("operator_profiles", "operator_id")

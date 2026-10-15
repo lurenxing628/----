@@ -7,7 +7,6 @@ its own savepoint, and never records or refreshes process-stage confirmations.
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_commands import process_number
 from core.services.process.template_hours import ProcessTemplateHours
 from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 
@@ -19,8 +18,10 @@ class ProcessHoursFileOperations:
     def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
         self.repo = WorkbenchProcessHoursRepository(conn, logger)
+        self.facts = None
 
     def preview_rows(self, decoded_rows, facts, target_ref=None):
+        self.facts = facts
         rows, extra = HoursFilePreview(facts, target_ref).build(decoded_rows)
         extra["zero_review_required"] = any(row["requires_confirmation"] for row in rows)
         return rows, extra
@@ -31,10 +32,12 @@ class ProcessHoursFileOperations:
         with TransactionManager(self.conn).transaction():
             self._check_rows(rows, discard_group_refs, confirm_zero_unit_hours)
             hours = ProcessTemplateHours(self.conn)
-            current = hours.current([row["expected"]["operation_ref"] for row in rows])
+            current = (hours.current([row["expected"]["operation_ref"] for row in rows]) if self.facts is None else
+                       {row["ref"]: row for row in self.facts["operations"]})
             self._check_current(rows, current)
             require_zero_confirmation(self.conn, [(current[row["expected"]["operation_ref"]], row["after"])
-                                                 for row in rows], confirm_zero_unit_hours)
+                                                 for row in rows], confirm_zero_unit_hours,
+                                      states={code: value["operations"] for code, value in self.facts["workflow"].items()} if self.facts else None)
             groups = self._group_updates(rows)
             results, affected = [], set()
             for row in rows:
@@ -76,7 +79,7 @@ class ProcessHoursFileOperations:
             group = row["expected"]["group"]
             if group is None or group["merge_mode"] != "merged":
                 raise WorkbenchCommandRejected("group_invalid", "只能编辑已有合并外协组的周期。", 422)
-            total = process_number(row["input"]["hours"]["group_total_days"], positive=True)
+            total = row["input"]["hours"]["group_total_days"]
             ref = group["ref"]
             if ref in groups and groups[ref] != (group, total):
                 raise WorkbenchCommandRejected("group_value_conflict", "同一个合并组填了不一样的周期，这批没有写入。请统一后重新导入。", 422)

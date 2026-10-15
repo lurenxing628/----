@@ -252,7 +252,7 @@ FALLBACK_KIND_VALUES = {
     "cleanup_best_effort",
 }
 ENTRY_STATUS_VALUES = {"open", "in_progress", "blocked", "fixed"}
-TEST_DEBT_MODE_VALUES = {"xfail", "fixed"}
+TEST_DEBT_MODE_VALUES = {"xfail", "fixed", "retired"}
 FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS = (
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_list_by_operator_propagates_unexpected_readside_normalization_errors",
     "tests/excel_data_io/test_operator_machine_exception_paths.py::test_normalize_skill_level_optional_only_converts_value_error",

@@ -1,7 +1,6 @@
 """Admission owns a short transaction. Query and restart recovery never rerun work."""
 
 from datetime import datetime
-from sqlite3 import Connection
 from typing import Any, Callable, Dict, Optional, Tuple, cast
 
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
@@ -27,6 +26,7 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from .input_admission import candidate_admission_issues
 from .jobs_facts import capture_run_facts
 from .preflight import PreflightService, PreparedPreflight
+from .preflight_facts import PreflightFacts
 from .progress import read_progress
 
 
@@ -57,19 +57,20 @@ class WorkbenchRunService:
     def _resolve(self, input_ref):
         if not callable(self.input_resolver):
             raise WorkbenchCommandRejected("run_worker_not_connected", messages.UNAVAILABLE, 503)
-        with read_evidence_scope(self.conn):
+        facts = PreflightFacts(self.conn)
+        with read_evidence_scope(self.conn), facts.snapshot(fingerprint=False):
             continuation = getattr(self.input_resolver, "prepared", None)
             if callable(continuation):
-                prepared = cast(Callable[[Connection, str], PreparedPreflight], continuation)(self.conn, input_ref)
+                prepared = cast(Callable[..., PreparedPreflight], continuation)(self.conn, input_ref, facts=facts)
             else:
                 data, fingerprint = self.input_resolver(self.conn, input_ref)
-                prepared = PreflightService(self.conn).evaluate_prepared(data["normalized_input"])
+                prepared = PreflightService(self.conn, facts=facts).evaluate_prepared(data["normalized_input"])
                 prepared.data, prepared.fingerprint = data, fingerprint
             if not prepared.data["blockers"]:
                 _, issues = candidate_admission_issues(self.conn, prepared.settings, prepared=prepared)
                 prepared.data["blockers"].extend(issues)
             snapshot = {"input_ref": input_ref, "normalized_input": prepared.settings,
-                        "fingerprint": prepared.fingerprint, "data_context_ref": self.data_context.ref()}
+                        "data_context_ref": self.data_context.ref()}
             return prepared, snapshot
 
     @staticmethod

@@ -45,17 +45,23 @@ class WorkbenchProcessFileService:
         request = prepared.request_for(file_operation(kind), file_format, mode)
         if request["target_ref"] != target_ref:
             raise WorkbenchCommandRejected("stale_write", "原文件的零件范围已变化，请重新预检。")
+        preview, extra, _, _ = self._prepare_import(kind, prepared, request)
+        return preview, extra
+
+    def _prepare_import(self, kind, prepared, request):
         decoded, notices = prepared.parsed()
         with self.reader.read_snapshot() as state:
+            target_ref = request["target_ref"]
             if target_ref is not None:
                 self.reader.resolve(target_ref)
-            rows, extra = self._domain(kind).preview_rows(decoded, self.reader.facts(), target_ref)
+            domain = self._domain(kind)
+            rows, extra = domain.preview_rows(decoded, self.reader.facts(), target_ref)
             for row in rows:
                 row.setdefault("route_summary", None)
             request.update(state=state, acknowledgements={
                 "discard_group_refs": sorted(group["ref"] for group in extra["affected_groups"]),
                 "zero_review_required": extra["zero_review_required"]})
-            return ResourceActionPreview.build(file_operation(kind), request, rows, notices, source=prepared), extra
+            return ResourceActionPreview.build(file_operation(kind), request, rows, notices, source=prepared), extra, domain, rows
 
     def confirm_import(self, preview, content, *, discard_group_refs, confirm_zero_unit_hours):
         if not self.conn.in_transaction:
@@ -67,21 +73,23 @@ class WorkbenchProcessFileService:
             raise WorkbenchCommandRejected("invalid_input", "请明确是否已复核零工时。", 400)
         original = preview.as_dict()["request"]
         with TransactionManager(self.conn).transaction():
-            current, extra = self.preview_import(original["kind"], PreparedImportSource.confirmation(preview, content), file_format=original["format"],
-                                                 mode=original["mode"], target_ref=original["target_ref"])
+            source = PreparedImportSource.confirmation(preview, content)
+            request = source.request_for(file_operation(original["kind"]), original["format"], original["mode"])
+            current, extra, domain, prepared_rows = self._prepare_import(original["kind"], source, request)
             check_resource_preview(preview, current)
             if set(refs) != {group["ref"] for group in extra["affected_groups"]}:
                 raise WorkbenchCommandRejected("group_discard_required", "请逐项核对全部受影响外协组，不能漏选或多选。")
             if extra["zero_review_required"] and not confirm_zero_unit_hours:
                 raise WorkbenchCommandRejected("zero_review_required", "单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。请按 0 导入。")
-            body = current.as_dict()
-            rows, affected_refs = self._domain(original["kind"]).apply_rows(
-                body["rows"], discard_group_refs=refs, confirm_zero_unit_hours=confirm_zero_unit_hours)
-            data = {"kind": original["kind"], "rows": rows, "summary": body["summary"], "affected_refs": affected_refs}
+            rows, affected_refs = domain.apply_rows(
+                prepared_rows, discard_group_refs=refs, confirm_zero_unit_hours=confirm_zero_unit_hours)
+            summary = {key: sum(row["result"] == key for row in prepared_rows)
+                       for key in ("new", "update", "unchanged", "delete", "rejected")}
+            data = {"kind": original["kind"], "rows": rows, "summary": summary, "affected_refs": affected_refs}
             if original["kind"] == "hours":
                 # This is the existing refresh set, not a count of business changes.
                 data["affected_refs"] = sorted({row["entity_ref"] for row in rows})
-                data["summary"] = {**body["summary"], "update": sum(row["result"] == "committed" for row in rows),
+                data["summary"] = {**summary, "update": sum(row["result"] == "committed" for row in rows),
                                    "unchanged": sum(row["result"] == "unchanged" for row in rows)}
             unchanged = all(row["result"] == "unchanged" for row in rows)
             return WorkbenchCommandOutcome("unchanged" if unchanged else "committed", data)

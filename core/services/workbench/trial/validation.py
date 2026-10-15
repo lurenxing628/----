@@ -1,14 +1,14 @@
 """Live constraints over saved original work, using the unique execution ledger."""
 
 from datetime import datetime
+from types import SimpleNamespace
 
 from core.errors import AppError
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_trial import issue, reject, validation
 from core.models.workbench_trial_codec import packed, same
-from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
-from core.services.workbench.facts.preflight_checks import PreflightChecks
+from core.services.personnel.operator_qualification import OperatorQualificationError
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 
@@ -25,14 +25,14 @@ class TrialValidator:
     def __init__(self, conn, admission, rows, live):
         self.conn, self.admission, self.rows, self.live = conn, admission, rows, live
         self.tables = live["facts"]["tables"]
-        self.checks = PreflightChecks(self.tables)
+        self.checks = live["preflight_facts"].checks()
         self.calendar_issue = None
         try:
             self.engine = calendar_engine(self.tables)
         except (AppError, ValueError, TypeError, OverflowError):
             self.engine = None
             self.calendar_issue = issue("calendar_unproven", "日历数据无效，请核对工作日历。")
-        self.qualification = OperatorQualificationService(conn)
+        self.qualification = live["resource_facts"]
         self.qualification_cache = {}
         self.ops = {row["id"]: row for row in self.tables["BatchOperations"]}
         self._protect()
@@ -60,9 +60,21 @@ class TrialValidator:
                                       "但正式计划里这段时间的安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。")
         self.protection = TrialProtection(self.live, self.frozen)
 
-    def evaluate(self):
+    def evaluate_saved(self):
+        issues = []
+        if not facts_unchanged(self.admission, self.live):
+            issues.append(issue("trial_facts_changed", "建草稿之后现场数据变了；草稿里的工序和对比基准没变，不能按旧数据正式采用。"))
+        if not same(self.admission["baseline"], self.live["baseline"]):
+            issues.append(issue("trial_baseline_changed", "建草稿时的正式计划已经变了，草稿没有自动切到最新计划。"))
+        return self._evaluate(issues)
+
+    def evaluate_current(self):
+        """The caller just captured this admission from the same live context."""
+        return self._evaluate([])
+
+    def _evaluate(self, admission_issues):
         self._protect()
-        issues = list(self.admission["base_issues"])
+        issues = list(self.admission["base_issues"]) + admission_issues
         if self.calendar_issue:
             issues.append(self.calendar_issue)
         if self.frozen_issue:
@@ -72,10 +84,6 @@ class TrialValidator:
         if any(row["operation_ref"] is None or row["recorded_against_task_ref"] is None
                for row in self.tables["WorkbenchExecutionLegacyFacts"]):
             issues.append(issue("execution_scope_unproven", "保留的历史报工记录里有对不上工序的记录，这里没有忽略它们。"))
-        if not facts_unchanged(self.admission, self.live):
-            issues.append(issue("trial_facts_changed", "建草稿之后现场数据变了；草稿里的工序和对比基准没变，不能按旧数据正式采用。"))
-        if not same(self.admission["baseline"], self.live["baseline"]):
-            issues.append(issue("trial_baseline_changed", "建草稿时的正式计划已经变了，草稿没有自动切到最新计划。"))
         for row in self.rows:
             issues.extend(self._row(row))
         issues.extend(relation_issues(self.rows, self.live))
@@ -171,7 +179,7 @@ class TrialValidator:
         key = op["operator_id"], op["machine_id"], op["op_type_id"]
         if key not in self.qualification_cache:
             try:
-                self.qualification.require(operator_id=key[0], machine_id=key[1], op_type_id=key[2])
+                self.qualification.validate_fixed(self.conn, [SimpleNamespace(**op)])
                 result = None
             except OperatorQualificationError:
                 result = issue("operator_qualification_invalid", "人员工种资格或设备操作授权不符合真实登记。")

@@ -53,7 +53,7 @@ def _command(client, kind, ref, action, payload, *, context=None, key="resource-
                        json={"request_key": key, "write_token": context["write_token"], "input": payload})
 
 
-@pytest.mark.parametrize('kind', ['machine'])
+@pytest.mark.parametrize('kind', ['op_type', 'machine', 'operator', 'supplier', 'machine_group', 'shift_profile'])
 def test_update_delete_and_replay_are_real_for_each_kind(app_client, kind):
     fields = {"default_days": 3} if kind == "supplier" else {}
     if kind == "shift_profile":
@@ -202,3 +202,96 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
                 assert batched.value.code == "storage_failure" and batched.value.status == 500
     finally:
         memory.close()
+
+
+@pytest.mark.parametrize('kind,code,table,key', [
+    ('op_type', 'OT1', 'OpTypes', 'op_type_id'), ('machine', 'M1', 'Machines', 'machine_id'),
+    ('operator', 'O1', 'Operators', 'operator_id'), ('supplier', 'S1', 'Suppliers', 'supplier_id'),
+])
+def test_resource_import_captures_one_batch_and_applies_without_current_row_rereads(resource_conn, monkeypatch, kind, code, table, key):
+    from collections import Counter
+
+    from core.services.workbench.resource.files import WorkbenchResourceFileService
+    from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
+    from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
+    from data.repositories.workbench_supplier_state_repo import WorkbenchSupplierStateRepository
+    from tests.workbench.resource_file_support import confirm, file_bytes
+
+    conn = resource_conn
+    other = code + '-SECOND'
+    extra = {'default_days': 2.0} if kind == 'supplier' else {}
+    insert_row(conn, table, {key: other, 'name': other, **extra})
+    conn.commit()
+    content = file_bytes([(code, 'prepared-first'), (other, 'prepared-second')], headers=('business_code', 'label'))
+    service = WorkbenchResourceFileService(conn, kind)
+    scope = {'category': 'internal'} if kind == 'op_type' else {}
+    preview = service.preview_import(content, file_format='csv', scope=scope)
+    assert preview.as_dict()['summary']['rejected'] == 0, preview.as_dict()
+    fact_reads, reference_reads = [], []
+    original_facts = WorkbenchResourceMetricsRepository.facts
+    original_references = WorkbenchResourceFileRepository.references_many
+
+    def captured(repo, names):
+        fact_reads.extend(names)
+        return original_facts(repo, names)
+
+    def references(repo, selected_kind, codes):
+        reference_reads.append((selected_kind, tuple(codes)))
+        return original_references(repo, selected_kind, codes)
+
+    def old_row_read(*_args, **_kwargs):
+        raise AssertionError('Current resource rows and relations were already captured.')
+
+    monkeypatch.setattr(WorkbenchResourceMetricsRepository, 'facts', captured)
+    monkeypatch.setattr(WorkbenchResourceFileRepository, 'references_many', references)
+    for name in ('get_raw', 'get_profile', 'skills', 'machine_capabilities'):
+        monkeypatch.setattr(WorkbenchResourceStateRepository, name, old_row_read)
+    monkeypatch.setattr(WorkbenchSupplierStateRepository, 'get_by_ref', old_row_read)
+    result = confirm(conn, kind, preview, content)
+    assert result['result'] == 'committed'
+    assert reference_reads == [(kind, tuple(sorted([code, other])))]
+    assert all(amount == 1 for amount in Counter(fact_reads).values())
+    rows = {row[key]: row['name'] for row in conn.execute('SELECT * FROM ' + table)}
+    assert (rows[code], rows[other]) == ('prepared-first', 'prepared-second')
+
+
+@pytest.mark.parametrize('kind,special', [('operator', 'leave'), ('supplier', 'pending_review')])
+def test_reasoned_status_changes_preserve_explicit_reason_then_become_unchanged(app_client, kind, special):
+    fields = {'default_days': 2.5} if kind == 'supplier' else {}
+    ref, _body = _create(app_client, kind, 'REASONED', fields=fields)
+    response = _command(app_client, kind, ref, 'update', {'fields': {'status': special}}, key='resource-reason-special-' + kind)
+    assert response.status_code == 200, response.get_json()
+    assert _detail(app_client, kind, ref)['status'] == special
+    response = _command(app_client, kind, ref, 'update', {'fields': {'status': 'inactive'}}, key='resource-reason-inactive-' + kind)
+    assert response.status_code == 200 and response.get_json()['result'] == 'committed'
+    entity = _detail(app_client, kind, ref)
+    assert entity['status'] == 'inactive'
+    response = _command(app_client, kind, ref, 'update', {'fields': {'status': 'inactive'}}, key='resource-reason-unchanged-' + kind)
+    assert response.status_code == 200 and response.get_json()['result'] == 'unchanged'
+
+
+def test_resource_bulk_delete_prepares_one_current_set_and_keeps_rejected_selection_rows(resource_conn, monkeypatch):
+    from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
+    from core.services.workbench.resource.entities import WorkbenchResourceService
+    from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
+    from tests.workbench.resource_file_support import confirm, ref
+
+    conn = resource_conn
+    for code in ('DELETE-ONE', 'DELETE-TWO'):
+        insert_row(conn, 'Machines', {'machine_id': code, 'name': code})
+    conn.commit()
+    service = WorkbenchResourceBulkService(conn, 'machine')
+    rejected = service.preview_delete(['f' * 48], scope={}).as_dict()
+    assert rejected['summary']['rejected'] == 1 and rejected['rows'][0]['entity_ref'] == 'f' * 48
+    refs = [ref(conn, 'machine', code) for code in ('DELETE-ONE', 'DELETE-TWO')]
+    preview = service.preview_delete(refs, scope={})
+    assert preview.as_dict()['summary']['rejected'] == 0
+
+    def old_row_read(*_args, **_kwargs):
+        raise AssertionError('Bulk apply must use its prepared current set.')
+
+    monkeypatch.setattr(WorkbenchResourceService, 'apply', old_row_read)
+    monkeypatch.setattr(WorkbenchResourceStateRepository, 'get_raw', old_row_read)
+    result = confirm(conn, 'machine', preview)
+    assert result['result'] == 'committed' and result['data']['deleted_count'] == 2
+    assert conn.execute("SELECT COUNT(*) FROM Machines WHERE machine_id IN ('DELETE-ONE','DELETE-TWO')").fetchone()[0] == 0

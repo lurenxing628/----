@@ -5,27 +5,30 @@ from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_job import durable_value
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_codec import execution_snapshots_match
-from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
 from .jobs_facts import production_facts_match, run_baseline, run_execution_projections
 
 
-def check_admission_current(conn, capture):
+def check_admission_current(conn, capture, *, current_capture=None):
+    current_capture = ProductionFactsCapture(conn) if current_capture is None else current_capture
     text = capture["facts_text"]
     if type(text) is not str:
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "排产时记下的数据校验不通过，不能采用，正式计划没有改动。请重新排产后再试。")
-    baseline = run_baseline(conn)
+    baseline = run_baseline(conn, capture=current_capture)
     if not same(baseline, capture["baseline"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产时的正式计划已经变了，这次没有采用，正式计划没有改动。请重新做排产检查。")
-    facts = WorkbenchRunFactsRepository(conn)
-    if baseline["version"] is None and facts.schedule_has_rows():
+    schedule = current_capture.table("Schedule")
+    if baseline["version"] is None and schedule:
         raise CandidateAdoptionBlocked("empty_baseline_inconsistent", "系统里还有找不到所属版本的正式安排，不能采用。请联系维护人员核对。")
-    if facts.schedule_has_rows_without_history():
+    versions = {row["version"] for row in current_capture.table("ScheduleHistory")}
+    if any(row["version"] not in versions for row in schedule):
         raise CandidateAdoptionBlocked("official_history_inconsistent", "有正式安排找不到所属的版本记录，不能采用。请联系维护人员核对。")
-    if not production_facts_match(conn, text):
+    if not production_facts_match(conn, text, capture=current_capture):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")
-    projections = run_execution_projections(conn, capture["input"])
+    projections = run_execution_projections(conn, capture["input"], capture=current_capture,
+        service=getattr(current_capture, "execution_service", None))
     _require_official_baseline(baseline, projections)
     if not execution_snapshots_match(durable_value(projections), capture["execution"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产时记下的报工记录已经变了，这次没有采用，正式计划没有改动。请重新排产后再试。")

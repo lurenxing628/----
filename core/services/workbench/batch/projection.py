@@ -1,14 +1,11 @@
 """Public batch facts, never guessed scheduling or execution state."""
 
 import math
-from collections import defaultdict
 from datetime import date, datetime
 
-from core.models.resource_capabilities import machine_type_index
 from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.material.stage_availability import MaterialAvailability
-from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     context_problem,
@@ -21,6 +18,7 @@ from core.services.workbench.process.projection import public_sequence
 
 from .execution import batch_progress, operation_execution_fields
 from .facts import index_relations
+from .resource_choices import BatchResourceFacts
 
 
 def issue(message, code="data_gap"):
@@ -59,27 +57,12 @@ class BatchProjection:
         self.relations = index_relations(facts)
         self.refs = {(row["kind"], row["entity_key"]): row["ref"] for row in facts["WorkbenchEntityRefs"] if row["active"]}
         self.parts = {row["part_no"]: row for row in facts["Parts"]}
-        self.catalogs = {kind: {row[key]: row for row in facts[table]} for kind, table, key in (
-            ("machine", "Machines", "machine_id"), ("operator", "Operators", "operator_id"),
-            ("supplier", "Suppliers", "supplier_id"), ("op_type", "OpTypes", "op_type_id"), ("material", "Materials", "material_id"))}
+        self.resources = BatchResourceFacts(facts)
+        self.catalogs = self.resources.catalogs
         self.external_contexts = {row["operation_id"]: row for row in facts.get("BatchExternalContexts", [])}
         self.external_members = member_index(self.external_contexts, facts["BatchOperations"])
-        self.machine_types = machine_type_index(facts["Machines"], facts.get("MachineOpTypes", []))
-        self.links = {(row["operator_id"], row["machine_id"]) for row in facts["OperatorMachine"]}
-        profiles, skills = defaultdict(list), defaultdict(list)
-        for row in facts["WorkbenchOperatorProfiles"]:
-            profiles[row["operator_id"]].append(dict(row, profile_operator_id=row["operator_id"]))
-        for row in facts["OperatorSkill"]:
-            category = self.catalogs["op_type"].get(row["op_type_id"], {}).get("category")
-            skills[row["operator_id"]].append(dict(row, category=category))
-        self.qualifications, self.qualification_issues = {}, {}
-        for code in self.catalogs["operator"]:
-            profile_rows = profiles[code] or [{"operator_id": code, "profile_operator_id": None, "skills_declared": None}]
-            try:
-                self.qualifications[code] = OperatorQualificationService.project_facts([code], profile_rows, skills[code])[code]
-            except OperatorQualificationError as exc:
-                # Display the invalid source without claiming qualification or blocking unrelated records.
-                self.qualification_issues[code] = issue(str(exc), "operator_qualification_invalid")
+        self.machine_types = self.resources.machine_types
+        self.links = self.resources.links
 
     def ref(self, kind, key):
         if key is None:
@@ -116,13 +99,7 @@ class BatchProjection:
         machine = self.catalogs["machine"].get(row["machine_id"])
         if machine and row["op_type_id"] not in self.machine_types.get(row["machine_id"], set()):
             issues.append(issue("设备与工序工种不匹配。"))
-        if row["operator_id"] and row["machine_id"] and (row["operator_id"], row["machine_id"]) not in self.links:
-            issues.append(issue("所选人员未获设备操作授权。"))
-        if row["operator_id"] in self.qualification_issues:
-            issues.append(dict(self.qualification_issues[row["operator_id"]]))
-        skills = self.qualifications.get(row["operator_id"])
-        if skills is not None and row["op_type_id"] not in skills:
-            issues.append(issue("所选人员未登记本工种资格。"))
+        issues.extend(self.resources.operator_issues(row["operator_id"], row["op_type_id"], row["machine_id"]))
 
     def operation_issues(self, row, resources, group, numbers):
         issues = []
@@ -131,6 +108,8 @@ class BatchProjection:
         elif row["source"] == "external":
             if resources["supplier"] is None or resources["supplier"]["status"] != "active":
                 issues.append(issue("供应商未补齐或已停用。"))
+            elif not self.resources.supplier_capable(row["supplier_id"], row["op_type_id"]):
+                issues.append(issue("这家供应商没有登记这道外协工序的能力。"))
             if group and group["merge_mode"] == "merged":
                 group["total_days"] = numeric(group["total_days"], issues, "整组周期", positive=True)
             else:
@@ -193,7 +172,7 @@ class BatchProjection:
                 "status": status, "stored_status": row["status"], "execution_available": self.facts["execution"]["available"],
                 "fields": fields, "display_ready_status": display_ready, "relationships": {"part_ref": self.ref("part", row["part_no"]),
                     "part_no": row["part_no"], "part_name": part["part_name"], "operation_count": len(ops), "completed_count": done,
-                    "gap_count": sum(bool(op["issues"]) for op in ops), "plan_reference_count": len(facts["plans"]),
+                    "gap_count": sum(bool(op["issues"]) for op in ops), "plan_reference_count": facts["plan_reference_count"],
                     "outsourcing_reference_count": len(facts.get("outsourcing_receipts", [])),
                     "quantity_split_reference_count": len(facts["quantity_splits"]),
                     "execution_reference_count": len(facts["events"]) + len(facts["reports"]),

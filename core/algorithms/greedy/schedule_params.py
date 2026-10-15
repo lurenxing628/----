@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date, parse_datetime
 from core.algorithm_contracts.dispatch_rules import DispatchRule, DispatchRuleSpec, parse_dispatch_rule_token
 from core.algorithm_contracts.sort_strategies import SortStrategy
-from core.algorithm_runtime.algo_stats import increment_counter
+from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter
 from core.errors import ValidationError
 from core.models.scheduler_degradation_messages import public_degradation_event_message
 from core.shared.degradation import DegradationCollector
@@ -54,6 +54,7 @@ class ScheduleParams:
     dispatch_rule_spec: DispatchRuleSpec
     auto_assign_enabled: bool
     warnings: List[str]
+    param_fallbacks: Dict[str, int] = field(default_factory=dict)
 
 
 def _snapshot_attr(snapshot: Any, key: str) -> Any:
@@ -375,6 +376,7 @@ def resolve_schedule_params(
     algo_stats: Any = None,
     strict_mode: bool = False,
 ) -> ScheduleParams:
+    algo_stats = ensure_algo_stats(algo_stats)
     warnings: List[str] = []
     runtime_snapshot = None
     snapshot_degradation_seen = set()
@@ -469,4 +471,5 @@ def resolve_schedule_params(
         dispatch_rule_spec=dispatch_rule_spec,
         auto_assign_enabled=auto_assign_enabled,
         warnings=warnings,
+        param_fallbacks=dict(algo_stats["param_fallbacks"]),
     )

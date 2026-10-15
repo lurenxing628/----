@@ -3,17 +3,16 @@
 from collections import Counter
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason, elapsed_hours
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reject
+from core.models.workbench_run_candidate import local_time, reject
 from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
 from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, invalid_baseline
 from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_summary
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_tasks import operation_labels
-from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.plan.adoption_baseline import read_adoption_source
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
@@ -150,9 +149,9 @@ class WorkbenchRunCandidateBaselineQueryService:
 
     def _baseline(self, source, admission, all_rows, scope):
         rows = _scope_rows(all_rows, scope)
-        data = self._dto(source.run, candidate_summary(source.candidate, source.disposition),
+        data = self._dto(source.run, candidate_summary(source.candidate, source.disposition,
+                                                       scheduled_op_ids=source.scheduled_op_ids),
                          admission, rows, len(all_rows), scope)
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, {**source.snapshot_identity, "baseline_source": admission.source_state}
 
     @staticmethod
@@ -165,7 +164,7 @@ class WorkbenchRunCandidateBaselineQueryService:
                     "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
                     "current_entities_consulted": False, "formal_version_allocated": False, "input": admission.settings,
                     "source_verification": {"facts_content_verified": True, "baseline_matches_archived_schedule": True,
-                                            "execution_matches_archived_evidence": True, "input_source_verified": True, "candidate_content_verified": True}},
+                                            "execution_verified_at": "run_admission", "input_source_verified": True, "candidate_content_verified": True}},
                 "baseline": {**baseline_capture(admission.baseline, run["accepted_at"]), "available": captured,
                              "comparison_available": available, "reason": reason},
                 "comparisons": rows, "operation_count": len(rows), "full_operation_count": count, "rows_complete": True,

@@ -138,53 +138,6 @@
         "04c48eb9676e3e75971cd3db665ea3496ade713131493a57",
         "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7"
       ],
-      "edges": [
-        {
-          "edge_type": "process",
-          "from_task_ref": "a74d86c15141b7ca851ac6ad8ac67b3edaf0876fd6e938fb",
-          "to_task_ref": "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "9904f12b5bc06d406833bab9fe79f3c8de3b6431092901e0",
-          "to_task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "226a17a2ebcf0c13844c52aed4cb1f99b0f541588bef2545",
-          "to_task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "42ae73bb7ddede32d61ae01c120047d7b50f598be500a22f",
-          "to_task_ref": "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "4722080e8689b6f607e14d792029bf3f439e055cc5b5cd21",
-          "to_task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "16d5d673fe405b50a743f47983991d105e06e339e07f22ba",
-          "to_task_ref": "04c48eb9676e3e75971cd3db665ea3496ade713131493a57"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559",
-          "to_task_ref": "8e92def268425473de6f22c411fe58508d263f719f3d8648"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a",
-          "to_task_ref": "0b44148e1c2915bbc2c45d371c9e851d7ec5f5a46d46ae71"
-        },
-        {
-          "edge_type": "process",
-          "from_task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9",
-          "to_task_ref": "efd6bb9e70e6e0aa85f868d0844bb1a0f9f469f52b9ca5b2"
-        }
-      ],
       "nodes": [
         {
           "batch_id": "DC-02",
@@ -194,7 +147,10 @@
           "process_label": "铣削",
           "sequence": 2,
           "start": "2026-10-16T11:52:30",
-          "task_ref": "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7"
+          "task_ref": "1a2b008c0bc18c1bb08a69e1142fd45df6bce996861fe8c7",
+          "predecessor_operation_refs": [
+            "889e1c4d5a408651097088d86b7a8037be82b29f2658e714"
+          ]
         },
         {
           "batch_id": "DC-04",
@@ -204,7 +160,8 @@
           "process_label": "车削",
           "sequence": 1,
           "start": "2026-10-15T08:59:24",
-          "task_ref": "42ae73bb7ddede32d61ae01c120047d7b50f598be500a22f"
+          "task_ref": "42ae73bb7ddede32d61ae01c120047d7b50f598be500a22f",
+          "predecessor_operation_refs": []
         },
         {
           "batch_id": "DC-03",
@@ -214,7 +171,10 @@
           "process_label": "铣削",
           "sequence": 2,
           "start": "2026-10-15T10:18:00",
-          "task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559"
+          "task_ref": "ad7b737b3d96e54dcede0a9a280b65177ef46a3873746559",
+          "predecessor_operation_refs": [
+            "78fc4cac8f249756fa8cba857a2d4d9cd44ba14d42b286d8"
+          ]
         },
         {
           "batch_id": "DC-05",
@@ -224,7 +184,10 @@
           "process_label": "铣削",
           "sequence": 2,
           "start": "2026-10-13T13:30:00",
-          "task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a"
+          "task_ref": "cc32254e883740bd91ef41badc0f87fb1ddae2bd8c342d9a",
+          "predecessor_operation_refs": [
+            "e7b5ff4b65955f02a5c73c3e68614bb203b6d3f38da3fbaf"
+          ]
         },
         {
           "batch_id": "DC-04",
@@ -234,7 +197,10 @@
           "process_label": "铣削",
           "sequence": 2,
           "start": "2026-10-15T14:39:00",
-          "task_ref": "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7"
+          "task_ref": "1d83c80dcf4a24f2d8d82c96119d1072f438418a45dbade7",
+          "predecessor_operation_refs": [
+            "33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7"
+          ]
         },
         {
           "batch_id": "DC-03",
@@ -244,7 +210,8 @@
           "process_label": "车削",
           "sequence": 1,
           "start": "2026-10-14T09:03:36",
-          "task_ref": "9904f12b5bc06d406833bab9fe79f3c8de3b6431092901e0"
+          "task_ref": "9904f12b5bc06d406833bab9fe79f3c8de3b6431092901e0",
+          "predecessor_operation_refs": []
         },
         {
           "batch_id": "DC-01",
@@ -254,7 +221,10 @@
           "process_label": "铣削",
           "sequence": 2,
           "start": "2026-10-14T11:15:00",
-          "task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9"
+          "task_ref": "b864b2dbc33bb23803fd75788a45ee5e69b9565bd36375a9",
+          "predecessor_operation_refs": [
+            "8b885af19a1a6a5b4893cf088526e48616e687aa8abdd42b"
+          ]
         },
         {
           "batch_id": "DC-06",
@@ -264,7 +234,10 @@
           "process_label": "铣削",
           "sequence": 2,
           "start": "2026-10-16T09:19:30",
-          "task_ref": "04c48eb9676e3e75971cd3db665ea3496ade713131493a57"
+          "task_ref": "04c48eb9676e3e75971cd3db665ea3496ade713131493a57",
+          "predecessor_operation_refs": [
+            "ce56cbba6e1845ac34ed2e081a6967882f45367794c264b2"
+          ]
         },
         {
           "batch_id": "DC-02",
@@ -274,7 +247,8 @@
           "process_label": "车削",
           "sequence": 1,
           "start": "2026-10-15T11:06:00",
-          "task_ref": "a74d86c15141b7ca851ac6ad8ac67b3edaf0876fd6e938fb"
+          "task_ref": "a74d86c15141b7ca851ac6ad8ac67b3edaf0876fd6e938fb",
+          "predecessor_operation_refs": []
         },
         {
           "batch_id": "DC-03",
@@ -284,7 +258,10 @@
           "process_label": "精车",
           "sequence": 3,
           "start": "2026-10-15T14:39:00",
-          "task_ref": "8e92def268425473de6f22c411fe58508d263f719f3d8648"
+          "task_ref": "8e92def268425473de6f22c411fe58508d263f719f3d8648",
+          "predecessor_operation_refs": [
+            "44ad48c5ad2d58c7d7bdcff51eef41fd12147641531c1369"
+          ]
         },
         {
           "batch_id": "DC-01",
@@ -294,7 +271,8 @@
           "process_label": "车削",
           "sequence": 1,
           "start": "2026-10-13T13:30:00",
-          "task_ref": "4722080e8689b6f607e14d792029bf3f439e055cc5b5cd21"
+          "task_ref": "4722080e8689b6f607e14d792029bf3f439e055cc5b5cd21",
+          "predecessor_operation_refs": []
         },
         {
           "batch_id": "DC-05",
@@ -304,7 +282,10 @@
           "process_label": "精车",
           "sequence": 3,
           "start": "2026-10-14T12:04:48",
-          "task_ref": "0b44148e1c2915bbc2c45d371c9e851d7ec5f5a46d46ae71"
+          "task_ref": "0b44148e1c2915bbc2c45d371c9e851d7ec5f5a46d46ae71",
+          "predecessor_operation_refs": [
+            "452af8dbde1cd473f12db3b9fdc983963f5b80d608bc6a3b"
+          ]
         },
         {
           "batch_id": "DC-06",
@@ -314,7 +295,8 @@
           "process_label": "车削",
           "sequence": 1,
           "start": "2026-10-14T14:19:48",
-          "task_ref": "16d5d673fe405b50a743f47983991d105e06e339e07f22ba"
+          "task_ref": "16d5d673fe405b50a743f47983991d105e06e339e07f22ba",
+          "predecessor_operation_refs": []
         },
         {
           "batch_id": "DC-01",
@@ -324,7 +306,10 @@
           "process_label": "精车",
           "sequence": 3,
           "start": "2026-10-15T12:33:00",
-          "task_ref": "efd6bb9e70e6e0aa85f868d0844bb1a0f9f469f52b9ca5b2"
+          "task_ref": "efd6bb9e70e6e0aa85f868d0844bb1a0f9f469f52b9ca5b2",
+          "predecessor_operation_refs": [
+            "7f765e07b62ae8625bbf4138d83e42788974df102e0df1d3"
+          ]
         },
         {
           "batch_id": "DC-05",
@@ -334,7 +319,8 @@
           "process_label": "车削",
           "sequence": 1,
           "start": "2026-10-13T08:00:00",
-          "task_ref": "226a17a2ebcf0c13844c52aed4cb1f99b0f541588bef2545"
+          "task_ref": "226a17a2ebcf0c13844c52aed4cb1f99b0f541588bef2545",
+          "predecessor_operation_refs": []
         }
       ],
       "reason": null,

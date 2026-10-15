@@ -13,6 +13,7 @@ class LocalSearchState:
     best: Dict[str, Any]
     current_order: List[str]
     current_resource_pool: Optional[Dict[str, Any]]
+    current_resource_pair_rank: Dict[Tuple[str, str], int]
 
     @classmethod
     def from_best(cls, best: Dict[str, Any], *, resource_pool: Optional[Dict[str, Any]]) -> LocalSearchState:
@@ -20,15 +21,17 @@ class LocalSearchState:
             current=best,
             best=best,
             current_order=list(best.get("order") or []),
-            current_resource_pool=dict(resource_pool or best.get("resource_pool") or {}),
+            current_resource_pool=resource_pool or best.get("resource_pool") or {},
+            current_resource_pair_rank=best.get("resource_pair_rank") or {},
         )
 
     def accept_current(self, candidate: Dict[str, Any]) -> None:
         self.current = candidate
+        self.current_resource_pair_rank = candidate.get("resource_pair_rank") or {}
         self.current_order = list(candidate.get("order") or self.current_order)
         candidate_resource_pool = candidate.get("resource_pool")
         if isinstance(candidate_resource_pool, dict):
-            self.current_resource_pool = dict(candidate_resource_pool)
+            self.current_resource_pool = candidate_resource_pool
 
     def improve_best(self, candidate: Dict[str, Any]) -> None:
         self.best = candidate
@@ -42,9 +45,10 @@ class LocalSearchState:
         先经 schedule_fn 真实评估成候选，再走 accept_current 对齐三元组。
         """
         self.current = self.best
+        self.current_resource_pair_rank = self.best.get("resource_pair_rank") or {}
         self.current_order = list(self.best.get("order") or [])
         best_resource_pool = self.best.get("resource_pool")
-        self.current_resource_pool = dict(best_resource_pool) if isinstance(best_resource_pool, dict) else {}
+        self.current_resource_pool = best_resource_pool if isinstance(best_resource_pool, dict) else {}
 
 
 def candidate_can_update_best(

@@ -11,7 +11,8 @@ from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, validate_run_ref
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_read_model import build_failure_read_models
-from core.services.workbench.facts.decision_read_models import decode_model, public_job_status
+from core.services.workbench.facts.decision_read_models import decode_model, public_job_head
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_history_projection import (
     COMPUTATION_FAILED,
     failure_message,
@@ -56,8 +57,8 @@ class WorkbenchRunWorker:
     def _now(self):
         return self.clock().isoformat(timespec="microseconds")
 
-    def _check_facts(self, row, conn=None):
-        if not run_facts_unchanged(self.conn if conn is None else conn, row["facts_json"], row["facts_hash"]):
+    def _check_facts(self, row, conn=None, *, capture=None):
+        if not run_facts_unchanged(self.conn if conn is None else conn, row["facts_json"], row["facts_hash"], capture=capture):
             raise WorkbenchCommandRejected("snapshot_stale", "排产之后现场数据有变化，这次的候选方案没有保存。请重新做一次排产检查。")
 
     def execute(self, run_ref, *, retry_original=None):
@@ -71,40 +72,40 @@ class WorkbenchRunWorker:
             row, existing = claim_run(self.conn, run_ref, self._now, retry_original)
             if existing is not None:
                 return existing
+            admission = decode_model(self.repo.admission_read_model(run_ref, fields=("scope", "decision")), ("scope", "decision"))
             try:
-                prepared_result = self._compute(row)
+                prepared_result = self._compute(row, admission["decision"])
             except Exception as exc:
-                self._record_failure(row, exc)
+                self._record_failure(row, exc, admission["decision"])
                 raise
-            self._persist(row, prepared_result)
-            return public_job_status(self.repo.status(run_ref))
+            written = self._persist(row, prepared_result, admission["decision"])
+            return public_job_head({**row, **written}, admission["scope"], prepared_result.status_header)
         finally:
             # The run is terminal (or failed to claim) here; the receipt is the record from now on.
             clear_progress(run_ref)
             lock.release()
 
-    def _compute(self, row):
+    def _compute(self, row, admission):
         progress = self.progress_sink or (lambda done, total: report_progress(row["run_ref"], done, total, self._now()))
         if self.compute_runner is not None:
-            return self.compute_runner(self.conn, row, on_progress=progress)
+            return self.compute_runner(self.conn, row, admission=admission, on_progress=progress)
         with computation_database(self.conn) as snapshot, candidate_read_snapshot(snapshot):
-            self._check_facts(row, snapshot)
+            current_capture = ProductionFactsCapture(snapshot)
+            self._check_facts(row, snapshot, capture=current_capture)
             raw_execution = json.loads(row["execution_json"])
             normalized_input = json.loads(row["normalized_input_json"])
             projections = restore_execution_projections(raw_execution)
             computation = compute_candidate_run(
                 snapshot, normalized_input, projections,
-                on_progress=progress)
+                on_progress=progress, capture=current_capture)
             capture = {"input": normalized_input, "execution": raw_execution,
                        "baseline": json.loads(row["baseline_json"]), "facts_text": row["facts_json"],
                        "facts_hash": row["facts_hash"]}
             facts = GenerationFacts(capture)
             identities = {op_id: ref for ref, op_id in facts.operations.items()}
-            admission_row = WorkbenchRunRepository(snapshot).admission_read_model(row["run_ref"], fields=("decision",))
-            admission = decode_model(admission_row, ("decision",))["decision"]
             return prepare_run_result(computation, identities, run=row, capture=capture, admission=admission, facts=facts)
 
-    def _persist(self, row, prepared):
+    def _persist(self, row, prepared, admission):
         candidates, result = prepared.candidates, prepared.result
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
@@ -115,9 +116,10 @@ class WorkbenchRunWorker:
                 self.results.save(row["run_ref"], candidates)
                 self.repo.insert_prepared_decision_read_models(row["run_ref"], prepared.read_models["run_model"],
                                                      prepared.read_models["candidate_models"])
-                self.repo.finish_prepared(row["run_ref"], result, self._now())
+                written = self.repo.finish_prepared(row["run_ref"], result, self._now())
+            return written
         except WorkbenchCommandRejected as exc:
-            self._record_failure(row, exc)
+            self._record_failure(row, exc, admission)
             raise
         except Exception as exc:
             # A COMMIT acknowledgement can fail after persistence. Recovery decides.
@@ -136,13 +138,11 @@ class WorkbenchRunWorker:
             return {"code": "candidate_input_invalid", "message": self.app_error_message(exc)}
         return {"code": "candidate_computation_failed", "message": COMPUTATION_FAILED}
 
-    def _record_failure(self, row, exc):
+    def _record_failure(self, row, exc, admission):
         result = {"state": "failed", "result_persisted": False, "candidates": [], "error": self._public_error(exc),
                   "diagnostic": failure_diagnostic(exc)}
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
-                admission_row = self.repo.admission_read_model(row["run_ref"], fields=("decision",))
-                admission = decode_model(admission_row, ("decision",))["decision"]
                 models = build_failure_read_models(row, admission, result)
                 self.repo.insert_decision_read_models(row["run_ref"], models["run_model"], models["candidate_models"])
                 self.repo.finish(row["run_ref"], "failed", result, self._now())

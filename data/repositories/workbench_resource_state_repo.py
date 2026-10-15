@@ -37,8 +37,11 @@ class WorkbenchResourceStateRepository(BaseRepository):
     def machine_capabilities(self, code):
         return MachineCapabilityRepository(self.conn).by_machines([code])[code]
 
-    def set_machine_capabilities(self, code, types, primary):
-        return MachineCapabilityRepository(self.conn).replace(code, types, primary=primary)
+    def replace_machine_capabilities(self, code, existing, desired):
+        for op_type in sorted(set(existing) - set(desired)):
+            self.execute("DELETE FROM MachineOpTypes WHERE machine_id=? AND op_type_id=?", (code, op_type))
+        for op_type in sorted(set(desired) - set(existing)):
+            self.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,?)", (code, op_type))
 
     def op_type_dependencies(self, code):
         tables = {"machine_capabilities": "MachineOpTypes", "machines": "Machines", "legacy_suppliers": "Suppliers", "supplier_capabilities": "WorkbenchSupplierOpTypes",
@@ -71,11 +74,10 @@ class WorkbenchResourceStateRepository(BaseRepository):
             skills_declared=excluded.skills_declared,inactive_reason=excluded.inactive_reason""",
                      (operator_id, shift_profile_id, skills_declared, inactive_reason))
 
-    def set_skills(self, operator_id, codes):
-        existing = {row["op_type_id"] for row in self.skills(operator_id)}
-        for code in sorted(existing - set(codes)):
+    def replace_skills(self, operator_id, existing, desired):
+        for code in sorted(set(existing) - set(desired)):
             self.execute("DELETE FROM OperatorSkill WHERE operator_id=? AND op_type_id=?", (operator_id, code))
-        for code in sorted(set(codes) - existing):
+        for code in sorted(set(desired) - set(existing)):
             self.execute("INSERT INTO OperatorSkill(operator_id,op_type_id) VALUES (?,?)", (operator_id, code))
 
     def set_op_type_policy(self, code, mode):

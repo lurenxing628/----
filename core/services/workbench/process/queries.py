@@ -8,6 +8,7 @@ from datetime import date, datetime
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.process.workflow_state import workflow_snapshot
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
@@ -53,6 +54,7 @@ class WorkbenchProcessQueryService:
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self._facts = None
         self._table = None
+        self._details = {}
 
     def facts(self):
         if self._facts is not None:
@@ -72,13 +74,16 @@ class WorkbenchProcessQueryService:
         with TransactionManager(self.conn).transaction():
             previous = self._facts
             previous_table = self._table
+            previous_details = self._details
             self._facts = self.facts()
             self._table = None
+            self._details = {}
             try:
                 yield content_text(self._facts)
             finally:
                 self._facts = previous
                 self._table = previous_table
+                self._details = previous_details
 
     def table(self):
         from .table import ProcessTable
@@ -99,7 +104,11 @@ class WorkbenchProcessQueryService:
     def resolve(self, ref):
         if not isinstance(ref, str) or len(ref) != 48 or any(c not in "0123456789abcdef" for c in ref):
             raise WorkbenchCommandRejected("entity_not_found", "零件记录不存在，请返回列表重新选择。", 404)
-        identity = self.identities.get(ref)
+        if self._facts is None:
+            identity = self.identities.get(ref)
+        else:
+            row = next((row for row in self._facts["identities"] if row["ref"] == ref), None)
+            identity = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"])) if row else None
         if identity is None or identity.kind != "part" or not identity.active:
             raise WorkbenchCommandRejected("entity_not_found", "这个零件已经不在了。请刷新列表后重新选择。", 404)
         return identity
@@ -134,6 +143,8 @@ class WorkbenchProcessQueryService:
             "metrics": {"scope": "filtered", "counts": counts}, "capabilities": capabilities(), "create_context": None}
 
     def detail(self, ref):
+        if ref in self._details:
+            return self._details[ref]
         identity = self.resolve(ref)
         facts = self.facts()
         row = next((row for row in facts["parts"] if row["ref"] == identity.ref), None)
@@ -153,12 +164,18 @@ class WorkbenchProcessQueryService:
                                                        groups.get(row["ext_group_id"])) for row in operations],
                        "external_groups": list(groups.values()),
                        "capabilities": capabilities()})
+        if self._facts is not None:
+            self._details[ref] = entity
         return entity
 
     def route_difference(self, ref, preview):
         entity = self.detail(ref)
-        preview = preview_existing_route(self.conn, preview, [row for row in self.facts()["operations"]
-                                                              if row["part_no"] == entity["business_code"]])
+        from .route_choices import route_choice_context
+
+        operations = [row for row in self.facts()["operations"] if row["part_no"] == entity["business_code"]]
+        if not preview.get("_choices_projected"):
+            preview = preview_existing_route(self.conn, preview, operations,
+                                             route_choice_context(self.conn, operations, self.facts()))
         active = [row for row in entity["operations"] if row["status"] == "active"]
         changes, invalid = _route_changes(active, preview["operations"])
         result = {**preview, "part_ref": ref, "baseline": {"operation_count": len(active),
@@ -174,3 +191,26 @@ class WorkbenchProcessQueryService:
                                           "message": "现有模板里有不合法的工序号。请到基础资料核对工序号。"})
         result["changes"] = {key: [public_sequence(seq) for seq in values] for key, values in result["changes"].items()}
         return result
+
+    def prepare_route(self, ref, body):
+        """Parse and prepare the current route once, then project its review."""
+        from .part_actions_facts import checked_process_facts
+        from .route_apply import affected_group_rows, prepare_route
+        from .route_preview import ProcessRoutePreviewService
+
+        facts = self.facts()
+        checked = checked_process_facts(self.resolve(ref), facts)
+        _, _, operations, groups, _ = checked
+        parser = ProcessRoutePreviewService(self.conn, facts=facts)
+        with parser.reference_snapshot():
+            preview = parser.preview(body)
+        # Invalid routes are still useful review results; preparation must not
+        # reject them before the complete diagnostics reach the page.
+        from .route_choices import route_choice_context
+        preview = preview_existing_route(self.conn, preview, operations,
+                                         route_choice_context(self.conn, operations, facts))
+        affected = []
+        if preview["can_confirm_route"]:
+            preview, sequences = prepare_route(self.conn, None, {"route": body}, operations, facts=facts, preview=preview)
+            affected = affected_group_rows(groups, operations, sequences)
+        return self.route_difference(ref, preview), checked, affected

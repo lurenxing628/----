@@ -8,8 +8,9 @@ from collections import defaultdict
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-from core.models.resource_capabilities import supports_source
+from core.models.resource_capabilities import supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_route import (
     append_duplicate_diagnostics,
     check_route_capacity,
@@ -174,9 +175,10 @@ def _append_operation_diagnostics(operations, diagnostics):
 
 
 class ProcessRoutePreviewService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, facts=None):
         self.conn, self.logger = conn, logger
         self._batch = None
+        self._facts = facts
 
     @contextmanager
     def reference_snapshot(self):
@@ -187,15 +189,27 @@ class ProcessRoutePreviewService:
         facts = self._reference_facts()
         types, capabilities, context, _ = facts
         identities = WorkbenchIdentityRepository(self.conn, self.logger)
+        def refs(kind, keys):
+            if self._facts is None:
+                return identities.active_map(kind, keys)
+            return {row["entity_key"]: WorkbenchEntityIdentity(
+                row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
+                    for row in self._facts["identities"] if row["kind"] == kind and row["active"]}
         self._batch = {"facts": facts, "candidates": self._candidates(types, capabilities),
-                       "op_refs": identities.active_map("op_type", [row.op_type_id for row in context.op_types.values()]),
-                       "supplier_refs": identities.active_map("supplier", [value[0] for value in context.suppliers.values()])}
+                       "op_refs": refs("op_type", [row.op_type_id for row in context.op_types.values()]),
+                       "supplier_refs": refs("supplier", [value[0] for value in context.suppliers.values()])}
         try:
             yield self
         finally:
             self._batch = previous
 
     def _reference_facts(self):
+        if self._facts is not None:
+            references = self._facts["references"]
+            types = _OpTypeSnapshot(references["OpTypes"])
+            capabilities = supplier_capability_rows(references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
+            parser = RouteParser(types, _CapabilitySnapshot(capabilities), logger=self.logger)
+            return types, capabilities, parser.build_parse_context(), {row["supplier_id"]: row for row in references["Suppliers"]}
         repo = WorkbenchProcessQueryRepository(self.conn, self.logger)
         types = _OpTypeSnapshot(repo.op_type_reference_rows())
         capabilities = SupplierRepository(self.conn, self.logger).list_capabilities(status="active")

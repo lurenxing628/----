@@ -59,7 +59,8 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
         self.verify()
         if not runtime.ready or self.gate.status["state"] != "accepting":
             raise RuntimeError("Restore requires a ready managed runtime and accepting HTTP lifecycle")
-        self.journal.assert_ready()
+        records = app.extensions.pop("workbench_startup_maintenance_records", None)
+        self.journal.assert_ready(records)
 
     def __call__(self):
         """Capability presentation only; execution requires this concrete controller."""
@@ -73,7 +74,10 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
         """Static files need the host's stop state, not database lock-file reads."""
         with self._lock:
             return {"state": self._state, "request_key": self._request_key,
-                    "restart_required": self._state != "ready"}
+                    "restart_required": self._state != "ready", "automatic_resume": False,
+                    "operations_available": False, "result_source": "external_maintenance_journal",
+                    "references": "reload_from_database_after_process_restart",
+                    "receipt_policy": "file_results_from_journal_database_receipts_from_current_database"}
 
     def _status(self):
         with self._lock:

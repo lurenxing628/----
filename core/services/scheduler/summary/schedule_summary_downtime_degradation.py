@@ -7,7 +7,6 @@ from core.models.scheduler_degradation_messages import (
     DOWNTIME_EXTEND_FAILED_MESSAGE,
     DOWNTIME_LOAD_FAILED_MESSAGE,
 )
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.contracts.summary_count_parse import _meta_bool_state
 
 _DOWNTIME_META_KEYS = {
@@ -133,11 +132,7 @@ def _downtime_degraded_flags(state: Dict[str, Any], *, auto_assign_enabled: bool
 
 
 def compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=False,
-        source="scheduler.summary.downtime_degradation",
-    )
+    snapshot = cfg
     auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
     meta = downtime_meta if isinstance(downtime_meta, dict) else {}
     state = _downtime_meta_state(meta)

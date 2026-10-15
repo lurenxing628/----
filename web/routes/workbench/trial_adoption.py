@@ -2,12 +2,12 @@
 
 import uuid
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandUncertain, validate_request_key
 from core.models.workbench_trial import fields, reject
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -52,13 +52,13 @@ def trial_adopt(scenario_ref):
         result = _service().adopt(scenario_ref, value["write_token"], value["request_key"], value["input"])
     except WorkbenchCommandUncertain as exc:
         current_app.logger.exception("场景采用提交结果待核实 request_key=%s", exc.request_key)
-        response = jsonify({"ok": False, "committed": "unknown", "error": {
+        response = json_response({"ok": False, "committed": "unknown", "error": {
             "code": "storage_failure", "message": str(exc), "fields": [], "retryable": False,
             "request_ref": uuid.uuid4().hex, "request_key": exc.request_key,
             "result_target": "/api/workbench/v1/trial/scenarios/" + scenario_ref + "/adoption-commands/" + exc.request_key}})
         response.status_code = 500
     else:
-        response = jsonify(result)
+        response = json_response(result)
     response.headers["Cache-Control"] = "no-store"
     return response
 

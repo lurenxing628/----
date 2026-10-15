@@ -56,5 +56,16 @@ def _archive(primary="min_tardiness", *, limit=64):
     )
 
 
+def _register_decode(archive, candidate, *, verified=True, elapsed_ms=0):
+    observed = archive.register_decode(candidate, verified=verified, elapsed_ms=elapsed_ms)
+    candidate.update(_shared_entry_id=observed.entry_id, _archive_observation=observed)
+    return candidate
+
+
+def _observe_decoded(search, objective, *, candidate, origin, verified, elapsed_ms):
+    _register_decode(search.archive, candidate, verified=verified, elapsed_ms=elapsed_ms)
+    search.observe(objective, candidate=candidate, origin=origin, verified=verified, elapsed_ms=elapsed_ms)
+
+
 def _failure(op_id):
     return {"code": "dispatch_operation_failed", "op_id": op_id, "batch_id": f"B{op_id}"}

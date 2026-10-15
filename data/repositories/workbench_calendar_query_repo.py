@@ -42,3 +42,15 @@ class WorkbenchCalendarQueryRepository(BaseRepository):
             "WHERE kind = 'operator_calendar' AND entity_key >= ? AND entity_key <= ? ORDER BY entity_key, ref",
             (low, high),
         )]
+
+    def created_refs(self, kind: str, keys) -> Dict[str, str]:
+        result = {}
+        keys = list(keys)
+        for offset in range(0, len(keys), 500):
+            chunk = keys[offset:offset + 500]
+            marks = ",".join("?" for _ in chunk)
+            for row in self.fetchall(
+                    "SELECT entity_key, ref FROM WorkbenchEntityRefs WHERE kind = ? AND active = 1 "
+                    "AND entity_key IN (" + marks + ")", [kind] + chunk):
+                result[row["entity_key"]] = row["ref"]
+        return result

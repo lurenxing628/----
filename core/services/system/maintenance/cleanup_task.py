@@ -146,7 +146,7 @@ def cleanup_operation_logs_with_limit(
     if int(total) <= int(min_keep_logs):
         return 0, {"total": int(total), "skipped": True, "reason": "total_le_min_keep"}
 
-    cutoff_dt = datetime.now() - timedelta(days=int(keep_days))
+    cutoff_dt = datetime.utcnow() - timedelta(days=int(keep_days))
     cutoff = fmt_db_dt_fn(cutoff_dt)
 
     cand = int(log_repo.count_before(cutoff))

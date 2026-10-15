@@ -1,10 +1,9 @@
 """Coordinate the saved resource view and summary in one archived read scope."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reject
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_run_candidate import local_time, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size
 
 from .decision import decision_summary
 from .decision_queries import _page
@@ -56,7 +55,6 @@ def read_resource_workspace(conn, run_ref, *, resource_query=None, **summary_que
         if source.selected is not None and source.selected["status"] == "completed":
             try:
                 result = resource_details(source, filters, **{key: effective[key] for key in ("page", "size", "heatmap_page", "heatmap_size")})
-                bounded_size(len(canonical_json(result).encode("utf-8")), MAX_RESPONSE_BYTES)
             except WorkbenchCommandRejected as exc:
                 error = exc
         return summary, result, effective, error, source.state()

@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch as _NATIVE_LINEAR_EDGES
 
-from .schedule_graph_cached_projection import build_graph_dispatch_projections
 from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON as _GRAPH_CYCLE_DISABLED_REASON,
 )
@@ -29,6 +28,7 @@ from .schedule_graph_projection_helpers import (
 from .schedule_graph_projection_helpers import (
     project_graph_warning as _project_graph_warning,
 )
+from .schedule_graph_projections import build_graph_dispatch_projections
 from .schedule_graph_score_projection import (
     graph_score_requested as _graph_score_requested,
 )
@@ -38,7 +38,7 @@ from .schedule_graph_score_projection import (
 from .schedule_graph_score_projection import (
     score_disabled_public_fields as _score_disabled_public_fields,
 )
-from .schedule_input_collector import ScheduleRunInput
+from .schedule_input_contracts import ScheduleRunInput
 
 _GRAPH_ANALYSIS_MODES = {"off", "report", "on"}
 _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT = 20
@@ -82,31 +82,10 @@ def maybe_analyze_schedule_graph(
     return preparation.graph_analysis_public, preparation.graph_analysis_diagnostics
 
 
-def make_cached_graph_preparation_fn() -> Callable[[Any], ScheduleGraphDispatchPreparation]:
-    """返回带 per-comparison 核心缓存的 prepare_graph 闭包。
-
-    多个 graph-on 候选复用权重无关图核心 (nodes/edges/payload)，以及健康、ready、
-    首波资源匹配的私有模板；每个候选获得独立可变容器并重新计算评分。
-    缓存随本次对比闭包销毁，不跨对比泄漏；调用方只替换 cfg，其他输入保持不变。
-    """
-    core_cache: Dict[str, Any] = {}
-
-    def _prepare(schedule_input: Any) -> ScheduleGraphDispatchPreparation:
-        return prepare_schedule_graph_for_dispatch(schedule_input, core_cache=core_cache)
-
-    return _prepare
-
-
 def prepare_schedule_graph_for_dispatch(
     schedule_input: ScheduleRunInput,
-    *,
-    core_cache: Optional[Dict[str, Any]] = None,
 ) -> ScheduleGraphDispatchPreparation:
-    """构建排产图增强的派工准备。
-
-    core_cache：仅供同一次候选对比复用权重无关图核心与投影模板，调用方只替换 cfg。
-    单次排产不传缓存；错误仍按原合同显式报告，候选评分始终重新校验。
-    """
+    """为本次搜索构建一次图分析、派工和资源投影。"""
     mode = _graph_analysis_mode(schedule_input.cfg)
     if mode == "off":
         return ScheduleGraphDispatchPreparation(
@@ -121,7 +100,6 @@ def prepare_schedule_graph_for_dispatch(
         schedule_input,
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
-        core_cache=core_cache,
     )
     _enforce_graph_dispatch_policy(
         mode=mode,
@@ -143,7 +121,6 @@ def _build_schedule_graph_analysis_projection(
     *,
     mode: str,
     graph_block_on_cycle: str,
-    core_cache: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
@@ -157,41 +134,29 @@ def _build_schedule_graph_analysis_projection(
     score_requested = bool(score_weights is not None and _graph_score_requested(score_weights))
     metrics_mode = "full" if score_requested else "basic"
     try:
-        cached_core = core_cache.get(metrics_mode) if core_cache is not None else None
-        if cached_core is not None:
-            # 候选对比复用权重无关核心：nodes/edges 为 frozen dataclass、payload 仅被下游以 dict()/list()
-            # 拷贝读取（已实证全只读），跨候选共享同一份只读安全；analyze_linear_batches 只吃 nodes+
-            # metrics_mode（不吃打分权重），graph-on 候选 metrics_mode 恒 full，故核心逐候选逐字相同。
-            nodes, edges, payload = cached_core
-            scope = _graph_input_scope(schedule_input, nodes=nodes)
+        nodes = build_operation_nodes_from_rows(
+            schedule_input.algo_ops,
+            batches=schedule_input.batches,
+            resource_pool=schedule_input.resource_pool,
+            frozen_op_ids=schedule_input.frozen_op_ids,
+        )
+        scope = _graph_input_scope(schedule_input, nodes=nodes)
+        edges = build_linear_edges_by_batch(nodes)
+        analyzer = ScheduleGraphAnalysisService()
+        if build_linear_edges_by_batch is _NATIVE_LINEAR_EDGES:
+            summary = analyzer.analyze_precedence(nodes, edges, metrics_mode=metrics_mode)
         else:
-            nodes = build_operation_nodes_from_rows(
-                schedule_input.algo_ops,
-                batches=schedule_input.batches,
-                resource_pool=schedule_input.resource_pool,
-                frozen_op_ids=schedule_input.frozen_op_ids,
-            )
-            scope = _graph_input_scope(schedule_input, nodes=nodes)
-            edges = build_linear_edges_by_batch(nodes)
-            analyzer = ScheduleGraphAnalysisService()
-            if build_linear_edges_by_batch is _NATIVE_LINEAR_EDGES:
-                summary = analyzer.analyze_precedence(nodes, edges, metrics_mode=metrics_mode)
-            else:
-                # Unknown edge producers retain the legacy analysis/dispatch contract boundaries.
-                summary = analyzer.analyze_precedence(nodes, _NATIVE_LINEAR_EDGES(nodes), metrics_mode=metrics_mode)
-            payload = graph_summary_to_dict(summary)
-            if core_cache is not None:
-                core_cache[metrics_mode] = (nodes, edges, payload)
+            # Unknown edge producers retain the legacy analysis/dispatch contract boundaries.
+            summary = analyzer.analyze_precedence(nodes, _NATIVE_LINEAR_EDGES(nodes), metrics_mode=metrics_mode)
+        payload = graph_summary_to_dict(summary)
         projections = build_graph_dispatch_projections(
             schedule_input,
             mode=mode,
-            metrics_mode=metrics_mode,
             score_requested=score_requested,
             score_weights=score_weights,
             nodes=nodes,
             edges=edges,
             payload=payload,
-            core_cache=core_cache,
         )
     except NetworkXUnavailable as exc:
         public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)

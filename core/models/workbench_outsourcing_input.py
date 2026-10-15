@@ -1,6 +1,7 @@
 """Strict sparse patches and explicit shipment membership."""
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional
 
@@ -77,18 +78,37 @@ def _validate_timeline(sent: datetime, planned: datetime, returned: Optional[dat
         reject("实际发出和实际回厂不能晚于当前时间。")
 
 
-def next_values(before, payload, now):
+@dataclass
+class PreparedReceiptValues:
+    values: dict
+    sent: datetime
+    returned: Optional[datetime]
+
+    def check_recording_time(self, now):
+        if not isinstance(now, datetime) or now.tzinfo is not None:
+            raise ValueError("Outsourcing clock must return factory-local naive datetime")
+        if self.sent > now or self.returned is not None and self.returned > now:
+            reject("实际发出和实际回厂不能晚于当前时间。")
+
+
+def prepare_values(before, payload, now):
     if not isinstance(now, datetime) or now.tzinfo is not None:
         raise ValueError("Outsourcing clock must return factory-local naive datetime")
     values = dict(before or {})
     values.update({key: payload[key] for key in FACT_FIELDS if key in payload})
     if set(values) != set(FACT_FIELDS):
         reject("新增登记要填写发出时间、计划回厂、实际回厂和确认状态。")
-    # Revalidate preserved facts too; a sparse correction must not bless invalid history.
-    values = _fact_patch(values)
+    # Preserved facts are parsed here together with the patch; later recording
+    # only compares the already parsed actual times with its new clock value.
+    if type(values["confirmedState"]) is not str or values["confirmedState"] not in STATES:
+        reject("确认状态必须是在途、已回厂或待确认。")
     sent, planned = factory_time(values["sent"]), factory_time(values["planned"])
     returned = factory_time(values["returned"]) if values["returned"] is not None else None
     _validate_timeline(sent, planned, returned, now)
     if (values["confirmedState"] == "returned") != (returned is not None):
         reject("已回厂状态与实际回厂时间必须同时填写；未回厂时实际回厂必须为空。")
-    return values
+    return PreparedReceiptValues(values, sent, returned)
+
+
+def next_values(before, payload, now):
+    return prepare_values(before, payload, now).values

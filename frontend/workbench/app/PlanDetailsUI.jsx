@@ -34,22 +34,19 @@
     return collapsible ? <details className="wb-gantt-detail-section"><summary>{title}</summary><div className="wb-gantt-detail-section-body">{children}</div></details>
       : <section><h3>{title}</h3>{children}</section>;
   }
-  function Route({ data, selected, onRelated, disabled, collapsible }) {
+  function Route({ data, prepared, selected, onRelated, disabled, collapsible }) {
     const loadedRefs = React.useMemo(() => new Set(data.tasks.map(task => task.task_ref)), [data.tasks]);
     if (selected.before) return <section><h3>完整工艺路线</h3><p className="plan-muted">切换到当前安排查看完整工艺路线。</p></section>;
-    const missing = window.PlanProcessOrder.missingPredecessors(data.projections.process_order, selected.task.task_ref);
-    return <window.GanttRouteList graph={data.gantt_graph} targetRef={selected.task.task_ref} loadedRefs={loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible}>
-      {missing > 0 && <p className="plan-muted">所选工序有 {missing} 道前序未在本计划安排。</p>}
-    </window.GanttRouteList>;
+    return <window.GanttRouteList index={prepared.graph} targetRef={selected.task.task_ref} loadedRefs={loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
   }
-  function TaskDetail({ data, selected, onSelect, onRelated, onCollapse, renderTrial, scope = {}, query = '', disabled = false }) {
-    const task = selected && selected.task, labels = React.useMemo(() => M.names(data), [data]);
+  function TaskDetail({ data, prepared, selected, onSelect, onRelated, onCollapse, renderTrial, scope = {}, query = '', disabled = false }) {
+    const task = selected && selected.task, labels = prepared.labels;
     const baseline = data.projections.baseline;
-    const comparison = task && baseline.state === 'available' && baseline.items.find(item => item.operation_ref === task.operation_ref);
+    const comparison = task && baseline.state === 'available' && prepared.comparisons.get(task.operation_ref);
     const changes = [];
     if (comparison && comparison.before && comparison.after) {
       for (const [field, label] of [['start', '开始'], ['end', '结束']]) {
-        const delta = M.instant(comparison.after[field]) - M.instant(comparison.before[field]);
+        const delta = comparison.afterTime[field] - comparison.beforeTime[field];
         if (delta) {
           const minutes = Math.abs(delta) >= 60000, value = Math.abs(delta) / (minutes ? 60000 : 1000);
           changes.push([label + '变化', (delta < 0 ? '提前 ' : '延后 ') + window.WorkbenchFormat.number(value, { digits: minutes ? 2 : 6, trim: true }) + (minutes ? ' 分钟' : ' 秒')]);
@@ -59,7 +56,8 @@
         changes.push([label + '变化', M.resourceLabel(comparison.before, kind, labels) + ' → ' + M.resourceLabel(comparison.after, kind, labels)]);
     }
     const risk = task && data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id);
-    const resources = task ? data.projections.occupancy.resources.filter(row => [task.machine_ref, task.operator_ref].includes(row.resource_ref)) : [];
+    const taskFact = task && (comparison ? comparison[selected.before ? 'beforeTime' : 'afterTime'] : prepared.taskIndex.get(task.task_ref));
+    const resources = task ? [task.machine_ref, task.operator_ref].map(ref => prepared.occupancy.get(ref)).filter(Boolean).map(value => value.resource) : [];
     const compact = !!onCollapse, panel = React.useRef(null);
     React.useEffect(() => { if (compact && window.matchMedia('(max-width:1050px)').matches) panel.current.scrollIntoView({ block: 'nearest' }); }, [compact]);
     return <aside ref={panel} className={'plan-inspector' + (compact ? ' wb-gantt-detail-panel' : '')} id={compact ? 'plan-gantt-detail' : undefined} aria-label="工序详情" data-plan-inspector data-plan-inspector-empty={!task || undefined} data-wb-scroll-key={compact ? undefined : 'plan-inspector'}>
@@ -73,7 +71,7 @@
           ['本工序目标量', M.quantityLabel(task.quantity, task.quantity_reason)], ...(!compact ? [['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)],
             ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']] : []),
           ...(window.PointContract.isPoint(task) ? [['安排类型', '零工时工序'], ['本工序占用', '0 小时 · 不占设备人员']] : []),
-          ['预计开始', <TimeValue value={task.start} />], ['预计结束', <TimeValue value={task.end} />], ['安排时长', F.hours((M.instant(task.end) - M.instant(task.start)) / 3600000, 2)],
+          ['预计开始', <TimeValue value={task.start} />], ['预计结束', <TimeValue value={task.end} />], ['安排时长', F.hours((taskFact.end - taskFact.start) / 3600000, 2)],
           ...(!task.supplier_ref ? [['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)]] : []),
           ...(task.supplier_ref || !task.machine_ref && !task.operator_ref && !window.PointContract.isPoint(task) ? [['供应商', task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' :
             data.provenance.state === 'unavailable' ? data.provenance.reason : '未记录']] : [])
@@ -83,7 +81,7 @@
           disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' }) :
           <Button icon="square-pen" reason={window.WorkbenchTerms.outcomes.unavailable}>调整此工序</Button>}</div>
       </>}</section>
-      {task && <><Route data={data} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} />
+      {task && <><Route data={data} prepared={prepared} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} />
       {compact && <DetailSection title="计划来源" collapsible><Facts items={[
         ['计划来源整批量', M.quantityLabel(task.batch_quantity, task.quantity_reason)],
         ['数量依据', task.quantity_reason ? M.quantityReasons[task.quantity_reason] : task.quantity_basis === 'run_admission' ? '来自上次排产候选方案的数据，已核对采用记录' : '来自新增试调草稿时的数据，已核对采用记录']
@@ -135,12 +133,12 @@
       .flatMap(resource => resource.conflict_segments.map(segment => ({ kind: resource.kind, resource_ref: resource.resource_ref, label: resource.label, ...segment })));
     return { rows, projection };
   }
-  function Conflicts({ data }) {
+  function Conflicts({ data, prepared }) {
     const [page, setPage] = React.useState(0), read = React.useMemo(() => {
       try { return conflictRows(data); } catch (error) { return { error }; }
     }, [data]);
     if (read.error) return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3><window.ResourceControls.ErrorBox error={read.error} /></section>;
-    const { rows, projection } = read, current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1)), labels = M.names(data);
+    const { rows, projection } = read, current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1)), labels = prepared.labels;
     const legacy = projection.resources.some(resource => resource.metric_version !== 'decision-resource-v4');
     const known = projection.state === 'available' && !legacy;
     const empty = !known ? '班表内重叠资料未记录，暂无法完整核对。'
@@ -152,14 +150,14 @@
         {['资源', '同时安排的工序', '重叠时段'].map((label, index) => <th scope="col" className={index === 0 ? 'wb-col-key' : undefined} key={label}>{label}</th>)}
       </tr></thead><tbody>{rows.slice(current * 20, current * 20 + 20).map(row => <tr key={row.resource_ref + ':' + row.start + ':' + row.end}>
         <td className="wb-col-key">{row.label || labels.get(row.resource_ref) || '资源名称未填写'}<div className="plan-muted">{M.kindLabels[row.kind]}</div></td>
-        <td>{data.tasks.filter(task => task[row.kind + '_ref'] === row.resource_ref && M.instant(task.start) < M.instant(row.end) && M.instant(task.end) > M.instant(row.start))
+        <td>{prepared.conflictMembers.get(row.resource_ref + ':' + row.start + ':' + row.end).map(item => item.task)
           .map(task => <div key={task.task_ref}>{task.batch_id} · {task.sequence} {task.process_label}</div>)}</td>
         <td title={M.timeLabel(row.start) + ' 至 ' + M.timeLabel(row.end) + '（不含结束时刻）'}>{F.compactRange(row.start, row.end)}</td>
       </tr>)}</tbody></table></div><window.WorkbenchControls.Pager label="重叠明细" page={current + 1} pages={Math.ceil(rows.length / 20)} total={rows.length} size={20} sizes={[20]} unit="段" onPage={next => setPage(next - 1)} /></> : <window.WorkbenchControls.EmptyState kind="empty" title={empty} />}
     </section>;
   }
-  function ProjectionTables({ data, onBatch, onResource, tab = 'risk', onTab, page = 0, onPage }) {
-    const projections = data.projections, labels = React.useMemo(() => M.names(data), [data]);
+  function ProjectionTables({ data, prepared, onBatch, onResource, tab = 'risk', onTab, page = 0, onPage }) {
+    const projections = data.projections, labels = prepared.labels;
     const rows = tab === 'risk' ? projections.delivery_risks.items : tab === 'load' ? projections.occupancy.resources : projections.calendar.resources || [];
     const pages = Math.max(1, Math.ceil(rows.length / 20)), current = Math.min(page, pages - 1);
     const visible = rows.slice(current * 20, current * 20 + 20);

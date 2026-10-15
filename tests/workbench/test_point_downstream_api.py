@@ -1,6 +1,7 @@
 """Actual and field consume only persisted, adopted point witnesses."""
 
 import csv
+from datetime import datetime, timedelta
 from io import StringIO
 
 import pytest
@@ -9,14 +10,30 @@ from core.models.workbench_run_baseline import RunCandidateBaselineScope
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from tests.workbench.plan_transport_support import run_probe
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, adopted, app_for, read, report
 from tests.workbench.run_candidate_support import compute
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 
-def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_case):
+def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_case, monkeypatch):
+    from core.services.workbench.facts import candidate_archive
+
     identity = adopted(trial_case)
     client = app_for(trial_case).test_client()
+    scope_reads, require_scope = [], candidate_archive.require_candidate_scope
+
+    def scope_once(run, candidate, *args, **kwargs):
+        scope_reads.append(candidate['candidate_ref'])
+        return require_scope(run, candidate, *args, **kwargs)
+
+    with monkeypatch.context() as point_read:
+        point_read.setattr(candidate_archive, 'require_candidate_scope', scope_once)
+        plan = read(client, '/api/workbench/v1/plans/' + identity['plan']['plan_ref'] + '/workspace')
+    assert scope_reads == [identity['candidate_ref']]
+    task, = plan['data']['tasks']
+    assert task['event_kind'] == 'point' and task['start'] == task['end']
+    assert task['task_ref'] == identity['task']['task_ref']
     known = report(client, identity)
     instant = report(client, identity, quantity=0, start='2026-09-09T09:10:00', end='2026-09-09T09:10:00', hours=None)
     unknown = report(client, identity, quantity=None, start='2026-09-09T09:20:00', end=None, hours=None)
@@ -43,6 +60,40 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
     assert len(rows) == 3 and all(row['计划事件类型'] == 'point' for row in rows)
     assert next(row for row in rows if row['报工编号'] == unknown['report_ref'])['本次数量'] == ''
     assert next(row for row in rows if row['报工编号'] == known['report_ref'])['有效加工工时（小时）'] == '1.25'
+
+
+def test_real_point_one_microsecond_http_preserves_capacity_and_full_dto(trial_case, tmp_path):
+    identity = adopted(trial_case)
+    task = identity['task']
+    scope = {'range_start': task['start'],
+             'range_end': (datetime.fromisoformat(task['start']) + timedelta(microseconds=1)).isoformat()}
+    plan_ref = identity['plan']['plan_ref']
+    response = read(app_for(trial_case).test_client(),
+                    '/api/workbench/v1/plans/' + plan_ref + '/workspace', **scope)
+    data = response['data']
+    point, = data['tasks']
+    assert point['task_ref'] == task['task_ref'] and point['event_kind'] == 'point'
+    assert point['start'] == point['end'] == scope['range_start']
+    assert {key: data['time_scope'][key] for key in scope} == scope
+    calendar = data['projections']['calendar']
+    capacity = 1e-6 / 3600.0
+    hours_fields = ('available_hours', 'effective_hours', 'normal_available_hours', 'normal_effective_hours',
+                    'urgent_available_hours', 'urgent_effective_hours')
+    assert {row['kind'] for row in calendar['resources']} == {'machine', 'operator'}
+    for row in [calendar['global']] + calendar['resources']:
+        assert all(row[field] == capacity for field in hours_fields)
+    capacities = {row['resource_ref']: row['available_hours'] for row in calendar['resources']}
+    occupancy = data['projections']['occupancy']['resources']
+    assert {row['kind'] for row in occupancy} == {'machine', 'operator'}
+    for row in occupancy:
+        assert row['available_hours'] == capacities[row['resource_ref']] == capacity
+        assert row['utilization'] == 0
+        assert all(row[field] == 0 for field in ('arranged_hours', 'occupied_hours', 'overlap_hours',
+                   'excess_arranged_hours', 'available_occupied_hours', 'outside_available_hours',
+                   'capacity_shortfall_hours', 'available_overlap_hours'))
+    fixture = {'name': 'real adopted point one-microsecond scope', 'kind': 'workspace',
+               'plan_ref': plan_ref, 'scope': scope, 'payload': response}
+    assert run_probe(tmp_path, [fixture])['checks'] == 1
 
 
 @pytest.mark.parametrize('current_unit_hours', [0, 0.5])

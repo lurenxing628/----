@@ -17,12 +17,11 @@ fixed-resource proof (decode tail reuse) whether every operation names its machi
 
 import math
 from datetime import datetime
-from types import GetSetDescriptorType, MemberDescriptorType, SimpleNamespace
+from types import SimpleNamespace
 
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
-from core.algorithm_runtime.native_snapshot import UNSUPPORTED, make_class_guard, scalar_snapshot
+from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.algorithm_runtime.static_attribute import static_attribute, static_class_attribute
 from core.errors import ValidationError
 
 from .sgs_score_cache import plain_record_class
@@ -31,6 +30,11 @@ from .sgs_scoring import _external_candidate_window, _parse_due_date
 _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_name",
            "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status",
            "ext_merge_mode", "ext_group_id", "ext_group_total_days", "ext_days")
+
+
+def prepare_pruning_record(record, plain_classes):
+    kind = type(record)
+    return plain_classes.get(kind, False) and all(scalar_snapshot(getattr(record, name, None)) is not UNSUPPORTED for name in _FIELDS)
 
 
 def _blank_or_text(value):
@@ -45,12 +49,21 @@ class GraphPriorityPruning:
         # The cache already certified the pool and the native probe; auto-assign operations
         # are admitted only through that same certification.
         return cls(graph_state, batches, hours, strict_mode=strict_mode,
-                   resource_pool=cache._pool, eligible_resources=cache._probe.eligible_resources,
-                   calendar=cache._timing.calendar)
+                   resource_pool=cache._pool, eligible_resources=cache.eligible_resources,
+                   calendar=cache._timing.calendar, calendar_days=cache.calendar_days, preparation=cache.preparation)
 
-    def __init__(self, graph_state, batches, hours, *, strict_mode, resource_pool=None, eligible_resources=None, calendar=None):
-        self.examples = {}
-        self.guards = {}
+    def __init__(self, graph_state, batches, hours, *, strict_mode, resource_pool=None, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
+        if preparation is None:
+            records = list(batches.values()) + [op for _batch_id, op in (graph_state or {}).get("op_by_id", {}).values()]
+            self._plain_classes = {kind: plain_record_class(kind) for kind in {type(record) for record in records}}
+            self._calendar_days = (calendar.add_calendar_days if calendar is not None
+                                   and native_timing_calendar(calendar, include_calendar_days=True) else None)
+        else:
+            self._plain_classes = preparation.plain_classes
+            self._calendar_days = calendar_days
+        self._records = preparation.pruning_records if preparation is not None else {}
+        self._candidate_records = {}
+        self._preparation = preparation
         self.key_width = 0
         # True only when every schedulable operation names both resources; tail reuse requires it.
         self.fixed_resources = True
@@ -61,19 +74,12 @@ class GraphPriorityPruning:
         self.supported = self._prepare(graph_state, batches, hours, strict_mode)
 
     def _record(self, record):
-        kind = type(record)
-        if kind not in self.guards:
-            if (not plain_record_class(kind)
-                    or type(static_class_attribute(kind, "__dict__")) not in
-                    (GetSetDescriptorType, MemberDescriptorType)):
-                return False
-            self.guards[kind] = make_class_guard(kind)
-        if not self.guards[kind](record):
-            return False
-        self.examples[kind] = record
-        # Production uses the normalized OpForScheduleAlgo DTO, which also carries an
-        # unrelated merge-audit list. Certify scoring fields, not unused metadata.
-        return all(scalar_snapshot(static_attribute(record, name)) is not UNSUPPORTED for name in _FIELDS)
+        token = id(record)
+        records = (self._records if self._preparation is None or token in self._preparation.records_by_token
+                   else self._candidate_records)
+        if token not in records:
+            records[token] = prepare_pruning_record(record, self._plain_classes)
+        return records[token]
 
     def _prepare(self, graph, batches, hours, strict):
         if graph is None or not graph.get("score_enabled"):
@@ -116,7 +122,7 @@ class GraphPriorityPruning:
         return True
 
     def _certified_external(self, op, strict):
-        if not native_timing_calendar(self._calendar, include_calendar_days=True):
+        if self._calendar_days is None:
             return False
         # Run the normal duration/merge/calendar validation with an empty group cache.
         # A native natural-day call is pure arithmetic; the earliest datetime leaves room
@@ -164,8 +170,7 @@ class GraphPriorityPruning:
         """Both ready-set narrowing paths require the same current input and timing proof."""
         if not self.supported:
             return False
-        if ((self._has_external and not native_timing_calendar(self._calendar, include_calendar_days=True))
-                or any(not self.guards[kind](record) for kind, record in self.examples.items())):
+        if self._preparation is None and self._has_external and not native_timing_calendar(self._calendar, include_calendar_days=True):
             self.supported = False
         return self.supported
 

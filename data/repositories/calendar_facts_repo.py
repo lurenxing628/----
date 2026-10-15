@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Sequence
 
 from .base_repo import BaseRepository
-from .schedule_time_sql import overlap_or_bad_time_sql, register_schedule_time_sql_functions
+from .schedule_time_sql import overlap_or_bad_time_sql, parse_dt_for_sql, register_schedule_time_sql_functions
 
 DOWNTIME_STATUS_SQL = "(md.status='active' OR md.status IS NULL OR md.status NOT IN ('active','cancelled'))"
 
@@ -104,4 +104,4 @@ class CalendarFactsRepository(BaseRepository):
 
     def downtimes(self, machine_ids: Sequence[str], end: Any, start: Any, *, limit: int) -> List[Dict[str, Any]]:
         """Active or bad-time downtimes overlapping [start, end); bound order is (end, start)."""
-        return self._keyed(_DOWNTIMES_SQL, machine_ids, (end, start), limit)
+        return self._keyed(_DOWNTIMES_SQL, machine_ids, (parse_dt_for_sql(end), parse_dt_for_sql(start)), limit)

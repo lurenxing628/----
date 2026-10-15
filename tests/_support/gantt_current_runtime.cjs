@@ -107,7 +107,7 @@ function fixture(specs) {
       machine_ref:reference(200), operator_ref:reference(201), supplier_ref:null}));
   return {plan:{plan_ref:reference(100),kind:'official',version:5}, tasks, task_count:tasks.length, tasks_complete:true,
     provenance:{state:'unavailable',reason:'No generation evidence',source_kind:null,source_ref:null,source_label:null,run_ref:null,accepted_at:null,finished_at:null,adopted_at:null,algorithm:null,baseline:null},
-    gantt_graph:{state:'unavailable',reason:'Frozen process order unavailable',scope:'full_plan',nodes:[],edges:[],critical_task_refs:[],critical_edges:[]},
+    gantt_graph:{state:'unavailable',reason:'Frozen process order unavailable',scope:'full_plan',nodes:[],critical_task_refs:[],critical_edges:[]},
     scope:{plan_ref:reference(100),range_start:null,range_end:null},
     plan_span:{start:tasks[0].start,end:tasks[tasks.length-1].end},
     time_scope:{range_start:tasks[0].start,range_end:tasks[tasks.length-1].end,selection:'overlap',boundary:'half_open',time_basis:'factory_local'},
@@ -115,29 +115,31 @@ function fixture(specs) {
     projections:{baseline:{state:'unavailable',items:[],reason:'Initial plan not recorded'},
       calendar:{state:'unavailable',resources:[],issues:[]}, occupancy:{state:'available',resources:[],issues:[]},
       delivery_risks:{state:'unavailable',items:[],issues:[]},
-      process_order:{state:'unavailable',basis:null,items:[],issues:[{code:'process_order_unavailable',message:'Frozen process order unavailable'}]}}};
+      process_order:{state:'unavailable',basis:null,issues:[{code:'process_order_unavailable',message:'Frozen process order unavailable'}]}}};
+}
+function prepare(model, data, ...args) {
+  const facts = model.prepare(data, ...args); facts.graph = runtime.GanttGraph.create(data.gantt_graph); return facts;
 }
 function gantt(data, options = {}) {
   const selections = [], queries = [];
   const states = Object.assign({}, options.states || {});
   // The product receives meta.as_of from its workspace response. Synthetic fixtures use a fixed local clock.
   const asOf = options.asOf === undefined ? input.data && input.data.meta && input.data.meta.as_of || fixtureAsOf : options.asOf;
-  const tree = render(runtime.PlanGantt, {data,asOf,query:options.query || '',selected:options.selected || null,
+  const tree = render(runtime.PlanGantt, {data,prepared:prepare(runtime.PlanGanttModel,data),asOf,query:options.query || '',selected:options.selected || null,
     onSelect:(task,before) => selections.push({task,before}),onQuery:value => queries.push(value),disabled:!!options.disabled}, states);
   return {tree, nodes:walk(tree), selections, queries};
 }
 function processFixture() {
   const data = fixture(['A1','A2','A3'].map((label,index) => [label,'2026-05-11T'+String(8+index).padStart(2,'0')+':00:00','2026-05-11T'+String(9+index).padStart(2,'0')+':00:00']));
-  data.projections.process_order = {state:'available',basis:'run_admission',issues:[],items:data.tasks.map((task,index) => ({
-    task_ref:task.task_ref,operation_ref:task.operation_ref,predecessor_operation_refs:index ? [data.tasks[index-1].operation_ref] : []}))};
+  data.projections.process_order = {state:'available',basis:'run_admission',issues:[]};
   const edges = data.tasks.slice(1).map((task,index) => ({from_task_ref:data.tasks[index].task_ref,to_task_ref:task.task_ref,edge_type:'process'}));
   data.gantt_graph = {state:'available',reason:null,scope:'full_plan',
-    nodes:data.tasks.map(task => Object.fromEntries(['task_ref','operation_ref','batch_id','piece_id','sequence','process_label','start','end'].map(key => [key,task[key]]))),
-    edges,critical_task_refs:data.tasks.map(task => task.task_ref),critical_edges:edges};
-  assert(runtime.PlanProcessOrder.validate(data.projections.process_order,data));
+    nodes:data.tasks.map((task,index) => ({...Object.fromEntries(['task_ref','operation_ref','batch_id','piece_id','sequence','process_label','start','end'].map(key => [key,task[key]])),
+      predecessor_operation_refs:index ? [data.tasks[index-1].operation_ref] : []})),
+    critical_task_refs:data.tasks.map(task => task.task_ref),critical_edges:edges};
   return data;
 }
-const h = {runtime,load,loaded,render,walk,text,styles,fixture,processFixture,gantt,reference,clone:value => JSON.parse(JSON.stringify(value)),
+const h = {runtime,load,loaded,render,walk,text,styles,fixture,processFixture,prepare,gantt,reference,clone:value => JSON.parse(JSON.stringify(value)),
   updates:() => updates.slice(), equal:(left,right) => assert.strictEqual(JSON.stringify(left),JSON.stringify(right))};
 Promise.resolve(new Function('h','assert','sourceData',input.program)(h,assert,input.data))
   .then(result => process.stdout.write(JSON.stringify({result:result === undefined ? true : result,loaded})))

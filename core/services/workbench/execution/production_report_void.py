@@ -1,7 +1,5 @@
 """Explicit report withdrawal through the same preview, receipt and ledger lock."""
 
-import copy
-
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_execution_input import closed_write_context, normalize_report_void_input, reject
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
@@ -80,7 +78,7 @@ class WorkbenchReportVoidService:
             raise ValueError("Local application operator must be supplied by the server.")
         fact = dict(payload, void_fact_ref=new_ref(), local_operator=actor,
                     recorded_at=self.ledger.clock().isoformat(timespec="seconds"), receipt_ref=None)
-        changed = copy.deepcopy(facts)
+        changed = dict(facts, voids=dict(facts["voids"]))
         changed["voids"][payload["report_ref"]] = fact
         after = self.ledger.project_loaded(changed, contexts=False)[0]
         validate_projection_change(before, after)
@@ -88,6 +86,7 @@ class WorkbenchReportVoidService:
         impacts, warnings = [], []
         if execution_facts_changed(before, after):
             dependencies = ReportDependencies(self.ledger, [after])
+            dependencies.prepare([facts["operations"][header["operation_ref"]]])
             impacts = _downstream_impacts(self.ledger, facts, before, after, original, dependencies)
             warnings = _cycle_warnings(dependencies, facts["operations"][header["operation_ref"]], before, after)
         impacts += adopted_quota_impacts(self.conn, payload["report_ref"], header["operation_ref"])
@@ -116,7 +115,8 @@ class WorkbenchReportVoidService:
         normalized = normalize_report_void_input(report_ref, payload)
 
         def guard():
-            prepared = self._prepare(normalized)
+            with self.ledger.read_snapshot():
+                prepared = self._prepare(normalized)
             validate_context(report_ref, "report_void", prepared["snapshot"])
             if prepared["impacts"]:
                 raise ReportBatchRejected("constraint_conflict", "这次撤销会影响已有的后道执行或正式计划，请先处理列出的关联记录。",

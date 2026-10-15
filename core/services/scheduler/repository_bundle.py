@@ -18,8 +18,10 @@ from data.repositories import (
 )
 
 
-@dataclass(frozen=True)
+@dataclass
 class ScheduleRepositoryBundle:
+    conn: Any
+    logger: Any
     batch_repo: BatchRepository
     op_repo: BatchOperationRepository
     part_op_repo: PartOperationRepository
@@ -35,6 +37,8 @@ class ScheduleRepositoryBundle:
 
 def build_schedule_repository_bundle(conn: Any, *, logger: Any = None) -> ScheduleRepositoryBundle:
     return ScheduleRepositoryBundle(
+        conn=conn,
+        logger=logger,
         batch_repo=BatchRepository(conn, logger=logger),
         op_repo=BatchOperationRepository(conn, logger=logger),
         part_op_repo=PartOperationRepository(conn, logger=logger),

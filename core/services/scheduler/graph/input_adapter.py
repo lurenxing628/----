@@ -19,28 +19,43 @@ def build_operation_nodes_from_rows(
     batches: Mapping[str, Any],
     resource_pool: Optional[Mapping[str, Any]] = None,
     frozen_op_ids: Optional[Iterable[int]] = None,
+    resource_preparation: Optional[GraphResourcePreparation] = None,
 ) -> List[OperationGraphNode]:
     nodes: List[OperationGraphNode] = []
-    pool = _ResourcePoolView(resource_pool)
+    pool = resource_preparation if resource_preparation is not None else GraphResourcePreparation(resource_pool)
     frozen_ids = _positive_int_set(frozen_op_ids or ())
     for row in rows:
         nodes.append(_build_operation_node(row, batches=batches, resource_pool=pool, frozen_op_ids=frozen_ids))
     return nodes
 
 
-class _ResourcePoolView:
+class GraphResourcePreparation:
+    """Resource candidates shared by equal work types and fixed assignments in one graph."""
+
     def __init__(self, resource_pool: Optional[Mapping[str, Any]]) -> None:
         self.skills_pool = resource_pool
         self.machines_by_op_type = _mapping_part(resource_pool, "machines_by_op_type")
         self.operators_by_machine = _mapping_part(resource_pool, "operators_by_machine")
         self.machines_by_operator = _mapping_part(resource_pool, "machines_by_operator")
+        self._candidates: Dict[Tuple[Optional[str], Optional[str], Optional[str]],
+                               Tuple[Tuple[str, ...], Tuple[str, ...]]] = {}
+
+    def candidates_for(self, row: Any) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+        key = (_optional_text(_read_field(row, "machine_id")),
+               _optional_text(_read_field(row, "operator_id")),
+               _optional_text(_read_field(row, "op_type_id")))
+        if key not in self._candidates:
+            machines = _candidate_machine_ids(row, resource_pool=self)
+            operators = _candidate_operator_ids(row, candidate_machine_ids=machines, resource_pool=self)
+            self._candidates[key] = machines, operators
+        return self._candidates[key]
 
 
 def _build_operation_node(
     row: Any,
     *,
     batches: Mapping[str, Any],
-    resource_pool: _ResourcePoolView,
+    resource_pool: GraphResourcePreparation,
     frozen_op_ids: Set[int],
 ) -> OperationGraphNode:
     scope = _operation_scope(row)
@@ -62,12 +77,7 @@ def _build_operation_node(
         ext_group_total_days=ext_group_total_days,
         scope=scope,
     )
-    candidate_machine_ids = _candidate_machine_ids(row, resource_pool=resource_pool)
-    candidate_operator_ids = _candidate_operator_ids(
-        row,
-        candidate_machine_ids=candidate_machine_ids,
-        resource_pool=resource_pool,
-    )
+    candidate_machine_ids, candidate_operator_ids = resource_pool.candidates_for(row)
     node_data: Dict[str, Any] = {
         "node_id": _operation_node_id(row, batch_id=batch_id, op_code=op_code, scope=scope),
         "batch_id": batch_id,
@@ -258,7 +268,7 @@ def _operation_node_id(row: Any, *, batch_id: str, op_code: str, scope: str) -> 
         raise GraphInputContractError(f"{scope} 节点 ID 无法生成：{exc}") from exc
 
 
-def _candidate_machine_ids(row: Any, *, resource_pool: _ResourcePoolView) -> Tuple[str, ...]:
+def _candidate_machine_ids(row: Any, *, resource_pool: GraphResourcePreparation) -> Tuple[str, ...]:
     fixed_machine = _optional_text(_read_field(row, "machine_id"))
     fixed_operator = _optional_text(_read_field(row, "operator_id"))
     op_type_id = _optional_text(_read_field(row, "op_type_id"))
@@ -276,7 +286,7 @@ def _candidate_machine_ids(row: Any, *, resource_pool: _ResourcePoolView) -> Tup
     return _unique_text_tuple(candidates)
 
 
-def _machines_for_fixed_operator(fixed_operator: str, *, resource_pool: _ResourcePoolView) -> List[str]:
+def _machines_for_fixed_operator(fixed_operator: str, *, resource_pool: GraphResourcePreparation) -> List[str]:
     candidates = _text_list(resource_pool.machines_by_operator.get(fixed_operator))
     if candidates:
         return candidates
@@ -292,7 +302,7 @@ def _candidate_operator_ids(
     row: Any,
     *,
     candidate_machine_ids: Tuple[str, ...],
-    resource_pool: _ResourcePoolView,
+    resource_pool: GraphResourcePreparation,
 ) -> Tuple[str, ...]:
     fixed_operator = _optional_text(_read_field(row, "operator_id"))
     if fixed_operator:
@@ -367,4 +377,4 @@ def _json_snapshot_value(value: Any) -> Any:
     return str(value)
 
 
-__all__ = ["GraphInputContractError", "build_operation_nodes_from_rows"]
+__all__ = ["GraphInputContractError", "GraphResourcePreparation", "build_operation_nodes_from_rows"]

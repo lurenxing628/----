@@ -2,9 +2,11 @@
 
 import json
 import re
+from datetime import datetime
 from functools import wraps
+from uuid import uuid4
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
 
 from core.models.workbench_command import (
@@ -14,10 +16,9 @@ from core.models.workbench_command import (
 )
 from core.models.workbench_run_job import valid_data_context_ref
 from core.services.workbench.facts.run_data_context import RunDataContext
-from web.api_responses import failure, query_success
+from web.api_responses import failure, json_response, query_success
 
 from .preflight import evaluate_preflight_input
-from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -66,14 +67,15 @@ def _input(keys):
     return value
 
 
-def _query(data, scope):
-    return query_success(data, bind_read_snapshot({"source": "production", **scope}, data))
+def _query(data):
+    return query_success(data, {"snapshot_ref": uuid4().hex,
+                                "as_of": datetime.now().isoformat(timespec="seconds")})
 
 
 @_boundary
 def preview_scheduling_run():
     value = _input(("input_ref",))
-    return _query(_service().preview(value["input_ref"]), {"kind": "scheduling-run-preview", **value})
+    return _query(_service().preview(value["input_ref"]))
 
 
 @_boundary
@@ -87,7 +89,7 @@ def accept_scheduling_run():
         except Exception:
             current_app.logger.exception("排产已受理，但交给本机worker失败；不得重新受理")
             result["dispatch_pending"] = True
-    response = jsonify(result)
+    response = json_response(result)
     response.status_code = 202
     return response
 
@@ -96,7 +98,7 @@ def accept_scheduling_run():
 def get_scheduling_run(run_ref):
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "查询这次排产不需要其他条件。请直接点「刷新」。", 400)
-    return _query(_service().get(run_ref), {"kind": "scheduling-run", "run_ref": run_ref})
+    return _query(_service().get(run_ref))
 
 
 @_boundary
@@ -110,8 +112,7 @@ def get_scheduling_request(request_key):
     records = service.data_context.capture()
     resolution = "found" if data is not None else service.data_context.resolve_missing(request_key, previous, records=records)
     return _query({"found": data is not None, "run": data, "resolution": resolution,
-                   "data_context_ref": service.data_context.ref(records=records)},
-                  {"kind": "scheduling-request", "request_key": request_key})
+                   "data_context_ref": service.data_context.ref(records=records)})
 
 
 def register_scheduling_job_routes(bp):

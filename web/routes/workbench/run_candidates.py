@@ -41,9 +41,8 @@ def _scope(candidate_ref):
 
 
 def _response(data, snapshot):
-    response = query_success(data, snapshot)
-    if len(response.get_data()) > MAX_RESPONSE_BYTES:
-        reject("candidate_capacity_exceeded", "这次要读的候选方案数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。", 413)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded",
+        too_large_message="这次要读的候选方案数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -85,8 +84,9 @@ def run_candidate_export(candidate_ref):
     scope = _scope(candidate_ref)
     data, state = WorkbenchRunCandidateQueryService(g.db).workspace(scope)
     snapshot = bind_read_snapshot(scope.scope(), state, token)
-    _response(data, snapshot)
     download = write_run_candidate_export(data, snapshot, fmt)
+    if len(download.content) > MAX_RESPONSE_BYTES:
+        reject("candidate_capacity_exceeded", "候选方案导出文件超过 32 MB，请缩小范围后重新导出。", 413)
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
     response.headers["Cache-Control"] = "no-store"

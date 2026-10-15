@@ -36,7 +36,7 @@ def _prepare_group(conn, row, members, old, replaced, identities, catalog):
     return {"old": old, "members": members, "supplier_id": supplier.entity_key, "total_days": row["total_days"]}
 
 
-def prepare_groups(conn, payload, operations, groups, identities):
+def prepare_groups(conn, payload, operations, groups, identities, *, catalog=None):
     active = {row["ref"]: row for row in operations if row["status"] == "active"}
     positions = {row["ref"]: index for index, row in enumerate(sorted(active.values(), key=lambda op: op["seq"]))}
     stored = {row["ref"]: row for row in groups}
@@ -44,15 +44,15 @@ def prepare_groups(conn, payload, operations, groups, identities):
     if touched - set(stored):
         raise WorkbenchCommandRejected("group_invalid", "要修改或解除的外协段已删除或属于其他零件。请刷新后重新选择。", 422)
     replaced = {stored[ref]["group_id"] for ref in touched}
-    prepared, catalog = [], source_catalog(conn)
+    prepared, catalog = [], source_catalog(conn) if catalog is None else catalog
     for row in payload["groups"]:
         members = _members(row, active, positions)
         prepared.append(_prepare_group(conn, row, members, stored.get(row["ref"]), replaced, identities, catalog))
     return prepared, [stored[ref] for ref in payload["discard_group_refs"]]
 
 
-def group_changes(conn, prepared, discarded, operations):
-    names = {row["supplier_id"]: row["name"] for row in WorkbenchProcessQueryRepository(conn).supplier_reference_rows()}
+def group_changes(conn, prepared, discarded, operations, *, names=None):
+    names = {row["supplier_id"]: row["name"] for row in WorkbenchProcessQueryRepository(conn).supplier_reference_rows()} if names is None else names
     by_group = {}
     for op in operations:
         if op["status"] == "active" and op["ext_group_id"] is not None:
@@ -80,8 +80,8 @@ def group_changes(conn, prepared, discarded, operations):
     return changes
 
 
-def apply_groups(conn, part_no, prepared, discarded, operations):
-    changes = group_changes(conn, prepared, discarded, operations)
+def apply_groups(conn, part_no, prepared, discarded, operations, *, changes=None):
+    changes = group_changes(conn, prepared, discarded, operations) if changes is None else changes
     if not changes:
         return False
     op_repo, group_repo = PartOperationRepository(conn), ExternalGroupRepository(conn)

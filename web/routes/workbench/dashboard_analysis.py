@@ -3,7 +3,7 @@
 from flask import g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_dashboard import payload_size
+from core.models.workbench_dashboard import MAX_BYTES
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
@@ -15,8 +15,7 @@ from .read_context import bind_read_snapshot
 
 
 def _response(data, snapshot):
-    response = query_success(data, snapshot)
-    payload_size(response.get_json())
+    response = query_success(data, snapshot, byte_limit=MAX_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response
 

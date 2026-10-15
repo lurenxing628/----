@@ -6,13 +6,13 @@
 
 import re
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.operator_calendars import WorkbenchOperatorCalendarService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .calendars_preview import calendar_now
@@ -112,7 +112,7 @@ def operator_calendar_command(ref, action):
         normalized_input={"operator_ref": ref, **payload},
         guard=lambda: _guarded_day(ref, action, body["write_token"], service, payload["date"]),
         mutate=lambda checked: service._apply_checked(action, payload, checked))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 @read_endpoint
@@ -142,7 +142,7 @@ def operator_calendar_range_clear(ref):
         normalized_input={"operator_ref": ref, **payload},
         guard=lambda: _guarded_range(ref, body["write_token"], service, payload),
         mutate=lambda checked: service._apply_checked("range_clear", payload, checked))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 def register_operator_calendar_routes(bp):

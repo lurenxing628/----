@@ -1,38 +1,87 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from collections import defaultdict
+from typing import Any, List
 
-from core.errors import ValidationError
+from core.models import Machine
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
 from core.models.resource_capabilities import machine_types
 from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
-from core.services.common.safe_logging import safe_warning
-from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
-from core.shared.boolean_normalize import to_yes_no
-from data.repositories import MachineDowntimeRepository
-
-from .degradation_messages import (
-    DOWNTIME_EXTEND_ABORTED_MESSAGE,
-    DOWNTIME_LOAD_ABORTED_MESSAGE,
-    RESOURCE_POOL_BUILD_FAILED_MESSAGE,
+from core.services.personnel.operator_qualification import (
+    OperatorQualificationError,
+    OperatorQualificationService,
+    require_machine_authorization,
 )
+from core.shared.boolean_normalize import to_yes_no
+
+
+class CapturedResourceFacts:
+    """Resources derived from this operation's captured rows, with demand-scoped qualifications."""
+
+    def __init__(self, tables, downtimes):
+        capabilities = defaultdict(list)
+        for row in tables.get("MachineOpTypes", ()):
+            capabilities[row["machine_id"]].append(row["op_type_id"])
+        self.machines = [Machine.from_row(dict(row, op_type_ids=tuple(capabilities[row["machine_id"]])))
+                         for row in sorted(tables["Machines"], key=lambda row: row["machine_id"])
+                         if row["status"] == MachineStatus.ACTIVE.value]
+        self.operators = {row["operator_id"]: row for row in tables["Operators"]}
+        self.links = tables["OperatorMachine"]
+        self._authorized_pairs = {(row["operator_id"], row["machine_id"]) for row in self.links}
+        self._profiles = defaultdict(list)
+        self._skills = defaultdict(list)
+        for row in tables["WorkbenchOperatorProfiles"]:
+            self._profiles[row["operator_id"]].append(row)
+        op_types = {row["op_type_id"]: row for row in tables["OpTypes"]}
+        for row in tables["OperatorSkill"]:
+            self._skills[row["operator_id"]].append(
+                dict(row, category=op_types.get(row["op_type_id"], {}).get("category")))
+        self._qualifications = {}
+        self.downtimes = downtimes
+
+    def qualifications_for(self, operator_ids):
+        ids = set(operator_ids)
+        missing = ids - self._qualifications.keys()
+        if missing:
+            profiles, skills = [], []
+            for oid in sorted(missing):
+                if oid in self.operators:
+                    stored = self._profiles.get(oid, ())
+                    if stored:
+                        profiles.extend({"operator_id": oid, "profile_operator_id": row["operator_id"],
+                                         "skills_declared": row["skills_declared"]} for row in stored)
+                    else:
+                        profiles.append({"operator_id": oid, "profile_operator_id": None, "skills_declared": None})
+                skills.extend(self._skills.get(oid, ()))
+            self._qualifications.update(OperatorQualificationService.project_facts(sorted(missing), profiles, skills))
+        return {oid: self._qualifications[oid] for oid in sorted(ids)}
+
+    def exists(self, operator_id, machine_id):
+        """Use the same authorization predicate as the editing/planning qualification service."""
+        return (operator_id, machine_id) in self._authorized_pairs
+
+    def validate_fixed(self, conn, operations, logger=None):
+        selected = [op for op in operations if str(getattr(op, "source", "") or "").strip().lower() == "internal"
+                    and getattr(op, "operator_id", None)]
+        if not selected:
+            return
+        qualifications = self.qualifications_for(op.operator_id for op in selected)
+        service = OperatorQualificationService(conn, logger=logger)
+        checked_pairs, checked_work_types = set(), set()
+        for op in selected:
+            pair = op.operator_id, getattr(op, "machine_id", None)
+            if pair not in checked_pairs:
+                require_machine_authorization(self, *pair)
+                checked_pairs.add(pair)
+            work_type = op.operator_id, getattr(op, "op_type_id", None)
+            if work_type not in checked_work_types:
+                service.require(operator_id=work_type[0], op_type_id=work_type[1],
+                                machine_id=None, qualifications=qualifications)
+                checked_work_types.add(work_type)
 
 
 def _skill_rank(v: Any) -> int:
-    """
-    技能等级排序（数值越小越优）。
-
-    兼容：
-    - 新口径：beginner/normal/expert（见 OperatorMachineService）
-    - 旧口径：low/normal/high（历史数据/脚本）
-    - 常见中文：初级/普通/熟练（以及 高级/专家/一般/中级/新手）
-    """
     return int(_skill_rank_common(v))
-
-
-def _active_machine_ids(machines: List[Any]) -> set:
-    return {str(m.machine_id or "").strip() for m in machines if m and str(m.machine_id or "").strip()}
 
 
 def _op_type_ids_for_ops(algo_ops: List[Any]) -> set:
@@ -44,380 +93,126 @@ def _op_type_ids_for_ops(algo_ops: List[Any]) -> set:
     }
 
 
-def _machines_by_op_type(
-    machines: List[Any],
-    *,
-    active_machines: set,
-    op_type_ids: set,
-) -> Dict[str, List[str]]:
-    machines_by_op_type: Dict[str, List[str]] = {}
-    for m in machines:
-        mid = str(m.machine_id or "").strip()
-        if not mid or mid not in active_machines:
-            continue
-        for ot in machine_types(m) or ("",):
-            if op_type_ids and ot and ot not in op_type_ids:
+def _machines_by_op_type(machines, *, op_type_ids):
+    result = {}
+    for machine in machines:
+        for op_type_id in machine_types(machine) or ("",):
+            if op_type_ids and op_type_id and op_type_id not in op_type_ids:
                 continue
-            machines_by_op_type.setdefault(ot, []).append(mid)
-    return machines_by_op_type
+            result.setdefault(op_type_id, []).append(machine.machine_id)
+    for op_type_id in sorted(op_type_ids):
+        result.setdefault(op_type_id, [])
+    return result
 
 
-def _active_operator_ids(svc) -> set:
-    return {
-        str(o.operator_id or "").strip()
-        for o in svc.operator_repo.list(status=OperatorStatus.ACTIVE.value)
-        if o and str(o.operator_id or "").strip()
-    }
-
-
-def _build_operator_machine_maps(
-    rows: List[Dict[str, Any]],
-    *,
-    active_machines: set,
-    active_ops: set,
-) -> Tuple[Dict[str, List[Tuple[int, str]]], Dict[str, List[str]], Dict[Tuple[str, str], int]]:
-    operators_by_machine: Dict[str, List[Tuple[int, str]]] = {}  # machine_id -> [(rank, operator_id)]
-    machines_by_operator: Dict[str, List[str]] = {}
-    pair_rank: Dict[Tuple[str, str], int] = {}
-
-    for r in rows:
-        oid = str(r["operator_id"] or "").strip()
-        mid = str(r["machine_id"] or "").strip()
-        if not oid or not mid:
+def _build_operator_machine_maps(rows, *, active_machines, active_ops):
+    operators_by_machine, machines_by_operator, pair_rank = {}, {}, {}
+    for row in rows:
+        oid, mid = str(row["operator_id"] or "").strip(), str(row["machine_id"] or "").strip()
+        if not oid or not mid or mid not in active_machines or oid not in active_ops:
             continue
-        if mid not in active_machines:
-            continue
-        if oid not in active_ops:
-            continue
-        is_primary_yes = to_yes_no(r.get("is_primary"), default=YesNo.NO.value) == YesNo.YES.value
-        sr = _skill_rank(r.get("skill_level"))
-        rank = (0 if is_primary_yes else 1) * 10 + sr
-        operators_by_machine.setdefault(mid, []).append((int(rank), oid))
+        primary = to_yes_no(row.get("is_primary"), default=YesNo.NO.value) == YesNo.YES.value
+        rank = (0 if primary else 1) * 10 + _skill_rank(row.get("skill_level"))
+        operators_by_machine.setdefault(mid, []).append((rank, oid))
         machines_by_operator.setdefault(oid, []).append(mid)
-        pair_rank[(oid, mid)] = int(rank)
-
-    return operators_by_machine, machines_by_operator, pair_rank
-
-
-def _sort_operators_by_machine(operators_by_machine: Dict[str, List[Tuple[int, str]]]) -> Dict[str, List[str]]:
-    # 排序：rank 越小越优（主操优先，其次高技能）
-    out: Dict[str, List[str]] = {}
-    for mid, items in operators_by_machine.items():
-        items.sort(key=lambda x: (x[0], x[1]))
-        out[mid] = [oid for _, oid in items]
-    return out
+        pair_rank[oid, mid] = rank
+    ordered = {mid: [oid for _, oid in sorted(items)] for mid, items in operators_by_machine.items()}
+    return ordered, machines_by_operator, pair_rank
 
 
-def _append_warning(warnings: Optional[List[str]], message: str) -> None:
-    if warnings is not None:
-        warnings.append(message)
+def _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, active_machines):
+    """A fixed pair consumes only itself; free fields consume their real candidate set."""
+    open_types, fixed_machines, fixed_pairs = set(), set(), set()
+    operators_by_type = defaultdict(set)
+    for op in algo_ops:
+        if str(getattr(op, "source", "") or "").strip().lower() != "internal":
+            continue
+        mid, oid = getattr(op, "machine_id", None), getattr(op, "operator_id", None)
+        op_type = getattr(op, "op_type_id", None)
+        if mid and oid:
+            fixed_pairs.add((oid, mid))
+        elif mid:
+            fixed_machines.add(mid)
+        elif oid:
+            operators_by_type[op_type].add(oid)
+        else:
+            open_types.add(op_type)
+    open_machines = {mid for op_type in open_types for mid in machines_by_op_type.get(op_type, ())}
+    operators_by_machine = defaultdict(set)
+    for op_type, operator_ids in operators_by_type.items():
+        for mid in machines_by_op_type.get(op_type, ()):
+            operators_by_machine[mid].update(operator_ids)
+    active_ops = {oid for oid, row in resource_facts.operators.items()
+                  if row["status"] == OperatorStatus.ACTIVE.value}
+    return [row for row in resource_facts.links
+            if row["machine_id"] in active_machines and row["operator_id"] in active_ops
+            and (row["machine_id"] in open_machines or row["machine_id"] in fixed_machines
+                 or (row["operator_id"], row["machine_id"]) in fixed_pairs
+                 or row["operator_id"] in operators_by_machine.get(row["machine_id"], ()))]
 
 
-def _warn_service_logger(svc: Any, message: str, *, exc_info: bool = False) -> None:
-    safe_warning(getattr(svc, "logger", None), message, exc_info=exc_info)
+def _machine_ids_for_downtime_load(algo_ops):
+    return sorted({str(op.machine_id).strip() for op in algo_ops
+                   if (op.source or "").strip().lower() == SourceType.INTERNAL.value
+                   and (op.machine_id or "").strip()})
 
 
-def _normalize_downtime_intervals(svc: Any, rows: List[Any]) -> List[Tuple[datetime, datetime]]:
-    intervals: List[Tuple[datetime, datetime]] = []
-    for d in rows:
-        st = svc._normalize_datetime(d.start_time)
-        et = svc._normalize_datetime(d.end_time)
-        if st and et and et > st:
-            intervals.append((st, et))
-    intervals.sort(key=lambda x: x[0])
-    return intervals
-
-
-def _load_downtime_intervals_for_machines(
-    svc: Any,
-    *,
-    dt_repo: MachineDowntimeRepository,
-    machine_ids: List[str],
-    start_str: str,
-    failure_log_template: str,
-) -> Tuple[Dict[str, List[Tuple[datetime, datetime]]], List[str]]:
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]] = {}
-    partial_fail_mids: List[str] = []
-    for mid in machine_ids:
-        try:
-            intervals = _normalize_downtime_intervals(svc, dt_repo.list_active_after(mid, start_str))
-            downtime_map[mid] = intervals
-        except Exception as e:
-            partial_fail_mids.append(str(mid))
-            _warn_service_logger(svc, failure_log_template.format(mid=mid, error=e), exc_info=True)
-    return downtime_map, partial_fail_mids
-
-
-def _partial_failure_message(*, label: str, failed_mids: List[str], suffix: str) -> Tuple[str, List[str]]:
-    sample = failed_mids[:5]
-    sample_text = "、".join(sample)
-    msg = f"{label}（{len(failed_mids)} 台"
-    if sample_text:
-        msg += f"，如：{sample_text}"
-    msg += f"），{suffix}"
-    return msg, sample
-
-
-def _raise_downtime_load_error(message: str, *, field: str = "downtime", reason: str = "downtime_load_failed") -> None:
-    raise ValidationError(
-        f"{message} 本次没有生成新排程，请检查停机记录后再试。",
-        field=field,
-        details={"reason": reason},
-    )
-
-
-def _raise_downtime_extend_error(message: str, *, field: str = "downtime", reason: str = "downtime_extend_failed") -> None:
-    raise ValidationError(
-        f"{message} 本次没有生成新排程，请检查自动安排设备的停机记录后再试。",
-        field=field,
-        details={"reason": reason},
-    )
-
-
-def _record_load_meta_success(meta: Optional[Dict[str, Any]]) -> None:
+def load_machine_downtimes(svc, *, algo_ops, start_dt, downtimes, warnings=None, meta=None):
+    """Select relevant intervals from the capture's already checked, grouped downtime."""
     if meta is not None:
         meta["downtime_load_ok"] = True
         meta["downtime_load_error"] = None
+    return {mid: [(start, end) for start, end in downtimes.get(mid, ()) if end > start_dt]
+            for mid in _machine_ids_for_downtime_load(algo_ops)}
 
 
-def _record_load_meta_partial(meta: Optional[Dict[str, Any]], *, msg: str, sample: List[str], count: int) -> None:
+def build_resource_pool(svc, *, cfg, algo_ops, resource_facts, meta=None):
+    """Build automatic assignment inputs from this operation's captured resources."""
     if meta is not None:
-        meta["downtime_load_ok"] = False
-        meta["downtime_load_error"] = msg
-        meta["downtime_partial_fail_count"] = int(count)
-        meta["downtime_partial_fail_machines_sample"] = list(sample)
-
-
-def _record_extend_meta_partial(meta: Optional[Dict[str, Any]], *, msg: str, sample: List[str], count: int) -> None:
-    if meta is not None:
-        meta["downtime_extend_ok"] = False
-        meta["downtime_extend_error"] = msg
-        meta["downtime_extend_partial_fail_count"] = int(count)
-        meta["downtime_extend_partial_fail_machines_sample"] = list(sample)
-
-
-def _machine_ids_for_downtime_load(algo_ops: List[Any]) -> List[str]:
-    return sorted(
-        {
-            (op.machine_id or "").strip()
-            for op in algo_ops
-            if (op.source or "").strip().lower() == SourceType.INTERNAL.value and (op.machine_id or "").strip()
-        }
-    )
-
-
-def _extra_resource_pool_machine_ids(
-    resource_pool: Dict[str, Any],
-    *,
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-) -> List[str]:
-    return sorted(
-        {
-            str(mid).strip()
-            for mid in (resource_pool.get("operators_by_machine") or {}).keys()
-            if str(mid).strip() and str(mid).strip() not in downtime_map
-        }
-    )
-
-
-
-def load_machine_downtimes(
-    svc,
-    *,
-    algo_ops: List[Any],
-    start_dt: datetime,
-    warnings: Optional[List[str]] = None,
-    meta: Optional[Dict[str, Any]] = None,
-) -> Dict[str, List[Tuple[datetime, datetime]]]:
-    """
-    预加载停机区间（按设备维度展开后的记录），用于算法避让。
-    """
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]] = {}
-    if meta is not None:
-        # 约定：即使 downtime_map 为空，只要加载流程未抛异常，也认为“加载成功但无停机”
-        meta["downtime_load_ok"] = False
-        meta["downtime_load_error"] = None
-        meta["downtime_partial_fail_count"] = 0
-        meta["downtime_partial_fail_machines_sample"] = []
-
-    try:
-        dt_repo = MachineDowntimeRepository(svc.conn, logger=svc.logger)
-        start_str = svc._format_dt(start_dt)
-        machine_ids = _machine_ids_for_downtime_load(algo_ops)
-    except Exception as e:
-        downtime_map = {}
-        if meta is not None:
-            meta["downtime_load_ok"] = False
-            meta["downtime_load_error"] = DOWNTIME_LOAD_ABORTED_MESSAGE
-        _append_warning(warnings, f"【停机】{DOWNTIME_LOAD_ABORTED_MESSAGE}")
-        _warn_service_logger(svc, f"停机区间加载失败，本次排产已中止：{e}", exc_info=True)
-        _raise_downtime_load_error(DOWNTIME_LOAD_ABORTED_MESSAGE)
-
-    downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
-        svc,
-        dt_repo=dt_repo,
-        machine_ids=machine_ids,
-        start_str=start_str,
-        failure_log_template="停机区间加载失败，设备 {mid} 无法读取停机记录：{error}",
-    )
-
-    if partial_fail_mids:
-        # 区分“全挂/个别挂”：失败设备覆盖了全部被查设备 = 全挂，否则 = 个别挂。
-        all_failed = len(partial_fail_mids) >= len(machine_ids)
-        msg, sample = _partial_failure_message(
-            label="全部设备停机区间加载失败" if all_failed else "部分设备停机区间加载失败",
-            failed_mids=partial_fail_mids,
-            suffix="无法读取这些设备的停机记录",
-        )
-        _record_load_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
-        _append_warning(warnings, f"【停机】{msg}")
-        _raise_downtime_load_error(msg, reason="downtime_load_failed" if all_failed else "downtime_load_partial_failed")
-    else:
-        _record_load_meta_success(meta)
-
-    return downtime_map
-
-
-def build_resource_pool(
-    svc,
-    *,
-    cfg: Any,
-    algo_ops: List[Any],
-    meta: Optional[Dict[str, Any]] = None,
-) -> Tuple[Optional[Dict[str, Any]], List[str]]:
-    """
-    构建算法自动分配资源池（可选）。
-
-    Returns:
-        (resource_pool, warnings)
-    """
-    warnings: List[str] = []
-    resource_pool: Optional[Dict[str, Any]] = None
-    if meta is not None:
-        meta["resource_pool_attempted"] = False
-        meta["resource_pool_build_ok"] = None
-        meta["resource_pool_build_error"] = None
-
-    auto_assign_enabled = to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) == YesNo.YES.value
-    if not auto_assign_enabled:
-        return None, warnings
-
+        meta.update(resource_pool_attempted=False, resource_pool_build_ok=None, resource_pool_build_error=None)
+    if to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value:
+        return None, []
     if meta is not None:
         meta["resource_pool_attempted"] = True
-
     try:
-        # 仅考虑 active 资源
-        machines = svc.machine_repo.list(status=MachineStatus.ACTIVE.value)
-        active_machines = _active_machine_ids(machines)
-
-        # 仅对本次排产涉及的 op_type_id 构建映射（缺省/为空则退化为全量）
         op_type_ids = _op_type_ids_for_ops(algo_ops)
-        machines_by_op_type = _machines_by_op_type(machines, active_machines=active_machines, op_type_ids=op_type_ids)
-        # A known work type with no matching equipment is not an absent type constraint.
-        for op_type_id in sorted(op_type_ids):
-            machines_by_op_type.setdefault(op_type_id, [])
-
-        active_ops = _active_operator_ids(svc)
-
-        # OperatorMachine：一次性取出，按设备聚合（并按“主操/技能”做轻量排序）
-        rows = svc.operator_machine_repo.list_simple_rows()
-        qualification_service = OperatorQualificationService(svc.conn, logger=svc.logger)
-        qualifications = qualification_service.load(sorted(active_ops))
-        rows = qualification_service.eligible_links(
-            rows, machines, active_ops, algo_ops, qualifications=qualifications,
-        )
+        machines_by_op_type = _machines_by_op_type(resource_facts.machines, op_type_ids=op_type_ids)
+        relevant_machines = {mid for mids in machines_by_op_type.values() for mid in mids}
+        relevant_machines.update(str(op.machine_id).strip() for op in algo_ops
+                                 if str(getattr(op, "source", "") or "").strip().lower() == "internal"
+                                 and getattr(op, "machine_id", None))
+        machines = [machine for machine in resource_facts.machines if machine.machine_id in relevant_machines]
+        active_machines = {machine.machine_id for machine in machines}
+        rows = _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, active_machines)
+        consumed_ops = {row["operator_id"] for row in rows}
+        qualifications = resource_facts.qualifications_for(consumed_ops)
+        service = OperatorQualificationService(svc.conn, logger=svc.logger)
+        rows = service.eligible_links(rows, machines, consumed_ops, algo_ops, qualifications=qualifications)
         operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(
-            rows,
-            active_machines=active_machines,
-            active_ops=active_ops,
-        )
-        operators_by_machine_sorted = _sort_operators_by_machine(operators_by_machine)
-
-        resource_pool = {
-            "machines_by_op_type": machines_by_op_type,
-            "operators_by_machine": operators_by_machine_sorted,
-            "machines_by_operator": machines_by_operator,
-            "pair_rank": pair_rank,
-        }
+            rows, active_machines=active_machines, active_ops=consumed_ops)
+        pool = {"machines_by_op_type": machines_by_op_type, "operators_by_machine": operators_by_machine,
+                "machines_by_operator": machines_by_operator, "pair_rank": pair_rank}
         if any(len(machine_types(machine)) > 1 for machine in machines):
-            resource_pool["operator_skills"] = {key: sorted(value) if value is not None else None
-                                                for key, value in qualifications.items()}
+            pool["operator_skills"] = {oid: sorted(skills) if skills is not None else None
+                                       for oid, skills in qualifications.items()}
         if meta is not None:
             meta["resource_pool_build_ok"] = True
+        return pool, []
     except OperatorQualificationError as exc:
         if meta is not None:
-            meta["resource_pool_build_ok"] = False
-            meta["resource_pool_build_error"] = exc.message
+            meta.update(resource_pool_build_ok=False, resource_pool_build_error=exc.message)
         raise
-    except Exception as e:
-        resource_pool = None
-        if meta is not None:
-            meta["resource_pool_build_ok"] = False
-            meta["resource_pool_build_error"] = RESOURCE_POOL_BUILD_FAILED_MESSAGE
-        # 不阻断排产：本次先不自动分配，但要让用户/日志可观测。
-        warnings.append("自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。")
-        _warn_service_logger(svc, f"自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员：{e}")
-
-    return resource_pool, warnings
 
 
-def extend_downtime_map_for_resource_pool(
-    svc,
-    *,
-    cfg: Any,
-    resource_pool: Optional[Dict[str, Any]],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    start_dt: datetime,
-    warnings: Optional[List[str]] = None,
-    meta: Optional[Dict[str, Any]] = None,
-) -> Dict[str, List[Tuple[datetime, datetime]]]:
-    """
-    auto-assign 启用时：停机区间需要覆盖可自动安排的设备，否则算法可能误排到停机段内。
-    """
-    auto_assign_enabled = to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) == YesNo.YES.value
-    if not auto_assign_enabled or not resource_pool or not isinstance(resource_pool.get("operators_by_machine"), dict):
+def extend_downtime_map_for_resource_pool(svc, *, cfg, resource_pool, downtime_map, start_dt, downtimes,
+                                        warnings=None, meta=None):
+    """Include automatic assignment equipment using the same captured downtime groups."""
+    if (to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value or not resource_pool
+            or not isinstance(resource_pool.get("operators_by_machine"), dict)):
         return downtime_map
-
     if meta is not None:
-        meta["downtime_extend_attempted"] = True
-        meta["downtime_extend_ok"] = True
-        meta["downtime_extend_error"] = None
-        meta["downtime_extend_partial_fail_count"] = 0
-        meta["downtime_extend_partial_fail_machines_sample"] = []
-
-    try:
-        dt_repo = MachineDowntimeRepository(svc.conn, logger=svc.logger)
-        start_str = svc._format_dt(start_dt)
-        extra_mids = _extra_resource_pool_machine_ids(resource_pool, downtime_map=downtime_map)
-    except Exception as e:
-        if meta is not None:
-            meta["downtime_extend_ok"] = False
-            meta["downtime_extend_error"] = DOWNTIME_EXTEND_ABORTED_MESSAGE
-        _append_warning(warnings, f"【停机】{DOWNTIME_EXTEND_ABORTED_MESSAGE}")
-        _warn_service_logger(svc, f"停机区间扩展加载失败，本次排产已中止：{e}", exc_info=True)
-        _raise_downtime_extend_error(DOWNTIME_EXTEND_ABORTED_MESSAGE)
-
-    extra_downtime_map, partial_fail_mids = _load_downtime_intervals_for_machines(
-        svc,
-        dt_repo=dt_repo,
-        machine_ids=extra_mids,
-        start_str=start_str,
-        failure_log_template="停机区间扩展失败，自动安排设备 {mid} 无法读取停机记录：{error}",
-    )
-    downtime_map.update(extra_downtime_map)
-
-    if partial_fail_mids:
-        # 区分“全挂/个别挂”：失败设备覆盖了全部待扩展设备 = 全挂，否则 = 个别挂。
-        all_failed = len(partial_fail_mids) >= len(extra_mids)
-        msg, sample = _partial_failure_message(
-            label="全部自动安排设备停机区间扩展加载失败" if all_failed else "部分自动安排设备停机区间扩展加载失败",
-            failed_mids=partial_fail_mids,
-            suffix="无法读取这些设备的停机记录",
-        )
-        _record_extend_meta_partial(meta, msg=msg, sample=sample, count=len(partial_fail_mids))
-        _append_warning(warnings, f"【停机】{msg}")
-        _raise_downtime_extend_error(
-            msg, reason="downtime_extend_failed" if all_failed else "downtime_extend_partial_failed"
-        )
-
+        meta.update(downtime_extend_attempted=True, downtime_extend_ok=True, downtime_extend_error=None)
+    for mid in resource_pool["operators_by_machine"]:
+        if mid not in downtime_map:
+            downtime_map[mid] = [(start, end) for start, end in downtimes.get(mid, ()) if end > start_dt]
     return downtime_map

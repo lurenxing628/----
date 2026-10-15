@@ -321,8 +321,10 @@ def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies
     """Check final actual neighbours; corrections also retain adopted-plan protection."""
     if not execution_facts_changed(before, after):
         return []
-    dependencies = dependencies or ReportDependencies(ledger, [after])
     operation = facts["operations"][before.operation_ref]
+    if dependencies is None:
+        dependencies = ReportDependencies(ledger, [after])
+        dependencies.prepare([operation])
     refs = dependencies.relatives(operation)
     upstream = dependencies.projections(dependencies.relatives(operation, predecessors=True))
     downstream = dependencies.projections(refs)

@@ -64,19 +64,21 @@ class ResourceTableFacts:
         return {"identity": asdict(self.identity(kind, code)), "record": self.raw_record(kind, code)}
 
     def mapped(self, name, key):
-        if name not in self._maps:
+        lookup_key = (name, key)
+        if lookup_key not in self._maps:
             self.metrics._load([name])
-            self._maps[name] = _index(self.metrics.facts[name], key)
-        return self._maps[name]
+            self._maps[lookup_key] = _index(self.metrics.facts[name], key)
+        return self._maps[lookup_key]
 
     def grouped(self, name, key):
-        if name not in self._groups:
+        lookup_key = (name, key)
+        if lookup_key not in self._groups:
             self.metrics._load([name])
             grouped = defaultdict(list)
             for row in self.metrics.facts[name]:
                 grouped[row[key]].append(row)
-            self._groups[name] = grouped
-        return self._groups[name]
+            self._groups[lookup_key] = grouped
+        return self._groups[lookup_key]
 
     def _project_dependency_counts(self, codes, names):
         dependency_counts = cast(Mapping[str, Mapping[str, int]], self._dependency_counts)
@@ -84,7 +86,8 @@ class ResourceTableFacts:
                 for code in codes}
 
     def assigned_counts(self, kind, codes):
-        if self._dependency_counts is None:
+        sources = [table + "." + column for table, column in DEPENDENCIES[kind]]
+        if self._dependency_counts is None or any(source not in self._dependency_counts for source in sources):
             return self.repo.assigned_counts(kind, codes)
         aliases = {"BatchOperations": "batch_operations", "Schedule": "schedule"}
         names = {aliases.get(table, table + "." + column): table + "." + column

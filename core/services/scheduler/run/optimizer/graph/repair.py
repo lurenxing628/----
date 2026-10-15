@@ -117,9 +117,17 @@ class EliteRepairPool:
         self.profile_parent_sizes[elite["portfolio_id"]] = elite["neighborhood"].candidate_count
         self._select_parent_elites()
 
+    def prepare_parent(self, candidate: Dict[str, Any]) -> RepairParentPreparation:
+        prepared = candidate.get("_repair_parent_preparation")
+        if prepared is None:
+            prepared = prepare_repair_parent(candidate, self.operations, self.resource_pool, self.graph_context,
+                                             resource_moves=self.graph_context is not None,
+                                             resource_pairs_for=self.decode_session.native_preparation.qualified_resource_pairs)
+            candidate["_repair_parent_preparation"] = prepared
+        return prepared
+
     def make_elite(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile, *, fingerprint: Any = None) -> Dict[str, Any]:
-        prepared = prepare_repair_parent(candidate, self.operations, self.resource_pool, self.graph_context,
-                                         resource_moves=self.graph_context is not None)
+        prepared = self.prepare_parent(candidate)
         neighborhood = ParentRepairPortfolio(((profile, self._build_variant(candidate, profile, prepared)),))
         elite = {"candidate": candidate, "profile": profile, "fingerprint": self.fingerprint(candidate, identity=fingerprint),
                  "neighborhood": neighborhood, "decision_offset": 0, "stream_offsets": {}, "prepared_parent": prepared}
@@ -377,7 +385,7 @@ def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], elite_ind
         try:
             candidate = _evaluate_neighbor(evaluate, decision=decision, profile=profile, strict_mode=strict_mode,
                                            attempts=attempts, report_state=report_state, pruning=pruning,
-                                           parent=elite["candidate"], before_decode=before_decode)
+                                           parent=elite["candidate"], prepared_parent=elite["prepared_parent"], before_decode=before_decode)
         except SharedSearchSkip as exc:
             counts = pruning.setdefault("shared_skip_by_reason", {})
             counts[exc.reason] = counts.get(exc.reason, 0) + 1
@@ -417,10 +425,11 @@ def _set_active_repair_parents(pool: EliteRepairPool, groups: Sequence[List[Dict
 
 def _evaluate_neighbor(evaluate: Callable[..., Dict[str, Any]], *, decision: RepairDecision, profile: GraphReadyWeightProfile,
                        strict_mode: bool, attempts: List[Dict[str, Any]], report_state: Any,
-                       pruning: Dict[str, Any], parent: Dict[str, Any], before_decode: Callable[[], None]) -> Optional[Dict[str, Any]]:
+                       pruning: Dict[str, Any], parent: Dict[str, Any], prepared_parent: RepairParentPreparation,
+                       before_decode: Callable[[], None]) -> Optional[Dict[str, Any]]:
     try:
         order = list(decision.batch_order)
-        return evaluate(profile=profile, order=order, repair_order=order, repair_decision=decision, before_decode=before_decode)
+        return evaluate(profile=profile, order=order, repair_order=order, repair_decision=decision, repair_parent=prepared_parent, before_decode=before_decode)
     except ValidationError as exc:
         if strict_mode or is_graph_ready_v2_contract_error(exc) or exc.field == "graph_ready_elite_repair":
             raise

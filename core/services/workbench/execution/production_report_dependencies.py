@@ -3,7 +3,7 @@
 from collections import defaultdict
 from types import SimpleNamespace
 
-from core.models.workbench_execution_input import reject
+from core.models.workbench_execution_input import MAX_OPERATIONS, reject
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.services.scheduler.contracts.external_context import context_group_key, require_context
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
@@ -97,11 +97,19 @@ class ReportDependencies:
         reachable = _reachable(parents if predecessors else children, ref)
         return [other for other in reachable if not self.same_merged_cycle(ref, other)]
 
+    def prepare(self, operations):
+        refs = set()
+        for operation in operations:
+            refs.update(self.relatives(operation))
+            refs.update(self.relatives(operation, predecessors=True))
+            refs.update(self.cycle_peers(operation))
+        self.projections(sorted(refs))
+
     def projections(self, refs):
-        missing = [ref for ref in refs if ref not in self.projected]
-        if missing:
+        missing = list(dict.fromkeys(ref for ref in refs if ref not in self.projected))
+        for start in range(0, len(missing), MAX_OPERATIONS):
             # Preview/command already owns the snapshot; dependency reads do not issue edit tokens.
-            rows = self.ledger.project_loaded(self.ledger.load(missing), contexts=False)
+            rows = self.ledger.project_loaded(self.ledger.load(missing[start:start + MAX_OPERATIONS]), contexts=False)
             self.projected.update((row.operation_ref, row) for row in rows)
         return [self.projected[ref] for ref in refs]
 

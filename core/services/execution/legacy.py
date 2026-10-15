@@ -7,7 +7,6 @@ from typing import Any, Iterable, Mapping, Optional, Set
 
 from core.models.operation_execution_event import (
     OperationExecutionEvent,
-    parse_operation_event_time,
     validate_operation_execution_event_sequence,
 )
 
@@ -18,6 +17,7 @@ from .quality import gap
 class LegacyEvidence:
     starts: list = field(default_factory=list)
     finishes: list = field(default_factory=list)
+    finish_times: list = field(default_factory=list)
     state: str = ""
     records: list = field(default_factory=list)
     gaps: list = field(default_factory=list)
@@ -47,8 +47,9 @@ def _validate_group(group, now):
         raise ValueError("unbound legacy task")
     events = [OperationExecutionEvent.from_row(row) for row in group]
     validate_operation_execution_event_sequence(events)
-    if any(parse_operation_event_time(row["event_time"]) > now for row in group):
+    if any(event.event_time > now.isoformat(sep=" ", timespec="seconds") for event in events):
         raise ValueError("future legacy event")
+    return events
 
 
 def _public_legacy(row):
@@ -97,14 +98,15 @@ def legacy_evidence(rows, now):
     status = None
     for group in groups.values():
         try:
-            _validate_group(group, now)
+            events = _validate_group(group, now)
         except ValueError:
             evidence.gaps.append(gap("invalid_legacy_sequence", "这些旧现场记录的归属、先后顺序或时间不对，系统没有采用它们，请核对原始记录。"))
             continue
-        evidence.starts.extend(parse_operation_event_time(row["event_time"]).isoformat(timespec="seconds") for row in group if row["event_type"] == "start")
-        evidence.finishes.extend(row for row in group if row["event_type"] == "finish")
-        latest = group[-1]
-        key = (parse_operation_event_time(latest["event_time"]), latest["id"])
+        evidence.starts.extend(event.event_time.replace(" ", "T") for event in events if event.event_type == "start")
+        evidence.finishes.extend(row for row, event in zip(group, events) if event.event_type == "finish")
+        evidence.finish_times.extend(event.event_time.replace(" ", "T") for event in events if event.event_type == "finish")
+        latest = events[-1]
+        key = (latest.event_time, latest.id)
         if status is None or key > status:
-            status, evidence.state = key, latest["event_type"]
+            status, evidence.state = key, latest.event_type
     return evidence

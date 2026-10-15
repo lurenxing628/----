@@ -2,10 +2,11 @@
 
 import secrets
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
 from core.models.workbench_trial import MAX_TRIAL_TASKS
 from core.models.workbench_trial_codec import dump, dump_document, load_object
-from core.models.workbench_trial_scenario_archive import scenario_archive
+from core.models.workbench_trial_scenario_archive import EncodedScenario
 
 
 def new_ref():
@@ -18,7 +19,7 @@ class WorkbenchTrialRepository:
 
     def schema_issues(self):
         """Trial contract issues as reported by the schema probe; [] when the schema is complete."""
-        return workbench_trial_contract_issues(self.conn)
+        return schema_contract_memo(self.conn).get_schema(workbench_trial_contract_issues)
 
     def draft_header(self, draft_ref):
         """The whole WorkbenchTrialDrafts row (JSON columns undecoded), or None."""
@@ -81,19 +82,18 @@ class WorkbenchTrialRepository:
             (status, checked_json, now, head["draft_ref"], head["revision"]))
         return cur.rowcount == 1
 
-    def save(self, head, snapshot, request_key, actor, now):
+    def save(self, head, snapshot, encoded: EncodedScenario, request_key, actor, now):
         """Persist ordered metadata and permanent task bodies under the full document size limit."""
         self._transaction()
         ref = snapshot["scenario_ref"]
-        _, snapshot_hash = dump_document(snapshot)
-        snapshot_json = dump(scenario_archive(snapshot))
         self.conn.execute("""INSERT INTO WorkbenchTrialScenarios
             (scenario_ref,draft_ref,name,revision,snapshot_json,snapshot_hash,saved_at,local_operator,request_key)
             VALUES (?,?,?,?,?,?,?,?,?)""", (ref, head["draft_ref"], snapshot["name"], head["revision"],
-            snapshot_json, snapshot_hash, now, actor, request_key))
+            encoded.header, None, now, actor, request_key))
         self.conn.executemany("""INSERT INTO WorkbenchTrialScenarioRows
             (row_ref,task_ref,scenario_ref,source_row_ref,payload_json) VALUES (?,?,?,?,?)""",
-            [(row["row_ref"], row["task_ref"], ref, row["source_row_ref"], dump(row)) for row in snapshot["tasks"]])
+            [(row["row_ref"], row["task_ref"], ref, row["source_row_ref"], text)
+             for row, text in zip(snapshot["tasks"], encoded.tasks)])
         return self.transition(head, "saved", snapshot["validation"], now)
 
     def scenario_header(self, ref):

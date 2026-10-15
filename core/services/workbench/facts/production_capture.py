@@ -1,8 +1,9 @@
 """One transaction owns lossless production originals and their business views."""
 
 import json
+from typing import Any
 
-from core.infrastructure.schema_probe import schema_objects
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_read_model_schema import READ_MODEL_TABLES
 from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
@@ -47,7 +48,9 @@ class ProductionFactsCapture:
 
     def __init__(self, conn):
         self.conn = conn
-        self.schema = schema_objects(conn)
+        self.execution_service: Any = None
+        self.schema = sorted((kind, name, table, sql)
+                             for name, (kind, table, sql) in schema_contract_memo(conn).structure.objects.items())
         self.table_names = {name for kind, name, _, _ in self.schema if kind == "table"}
         self.repo = WorkbenchPreflightFactsRepository(conn, present_tables=self.table_names,
             non_input_receipt_actions=NON_INPUT_RECEIPT_ACTIONS,
@@ -55,6 +58,7 @@ class ProductionFactsCapture:
         self.columns, self.tables, self._raw_tables, self._indexes = {}, {}, {}, {}
         self.column_types, self._business_tables = {}, {}
         self._archives = {}
+        self._latest_plans = {}
         self._content = None
 
     def table(self, name):
@@ -85,6 +89,30 @@ class ProductionFactsCapture:
     def rows_for_ids(self, name, ids):
         indexed = self.index(name, "id")
         return {key: indexed[key] for key in ids if key in indexed}
+
+    def latest_plan_rows(self, version):
+        """One last-official projection; preserve duplicate identities as conflicts."""
+        if version not in self._latest_plans:
+            from core.services.scheduler.run.schedule_execution_resource_facts import _conflict
+
+            operations = self.index("BatchOperations", "id")
+            latest, duplicates = {}, set()
+            for row in self.business_table("Schedule"):
+                if row["version"] > version:
+                    continue
+                op_id = row["op_id"]
+                previous = latest.get(op_id)
+                if previous is None or row["version"] > previous["version"]:
+                    operation = operations.get(op_id, {})
+                    latest[op_id] = {**row, "schedule_id": row["id"],
+                                     "batch_id": operation.get("batch_id"), "source": operation.get("source")}
+                    duplicates.discard(op_id)
+                elif row["version"] == previous["version"]:
+                    duplicates.add(op_id)
+            if duplicates:
+                raise _conflict("duplicate_previous_schedule_rows")
+            self._latest_plans[version] = {op_id: latest[op_id] for op_id in sorted(latest)}
+        return self._latest_plans[version]
 
     def archive(self, *, named=False):
         if named not in self._archives:

@@ -17,7 +17,7 @@ from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot
+from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .reports import arguments, bind_report_snapshot, download_response, report_read_time
 
 
@@ -26,12 +26,13 @@ def _official(export):
     if topic != "delivery":
         raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只能按工序完成专题看，报表没有变化。请选择工序完成专题后重试。", 400)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
-    as_of = report_read_time(token)
+    binding = resolve_read_snapshot(token) if token is not None else None
+    as_of = report_read_time(token, binding)
     # 与现场分析是同一份“整份正式计划 + 台账”重建，和看板、现场页一起排读额度。
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = reader.read(scope, as_of=as_of)
-            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of)
+            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of, binding)
             data, ordered, labels = report_workspace(reader, facts, snapshot, topic, page)
     if not export:
         response = query_success(data, snapshot)

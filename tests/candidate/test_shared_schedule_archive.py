@@ -24,10 +24,10 @@ FIELD_ORDERS = {
 
 
 def _observe(archive, candidate, elapsed, *, phase="baseline", direction="min_tardiness"):
-    return archive.observe(
-        candidate, validation_state="valid", decode_completed=True,
-        origin={"phase": phase, "direction": direction}, elapsed_ms=elapsed,
-    )
+    observed = archive.register_decode(candidate, verified=True, elapsed_ms=elapsed)
+    if observed.entry_id in archive.retained_entry_ids:
+        archive.finish_observation(observed, candidate, origin={"phase": phase, "direction": direction})
+    return observed
 
 
 def _assert_evaluations(archive, entry_id, candidate):
@@ -47,7 +47,8 @@ def test_content_identity_owns_mutable_payload_and_retains_live_references():
     pool = object()
     candidate["resource_pool"] = pool
     origin = {"phase": "baseline", "direction": "min_tardiness", "profile": {"weights": [1]}}
-    first = archive.observe(candidate, validation_state="valid", decode_completed=True, origin=origin, elapsed_ms=17)
+    first = archive.register_decode(candidate, verified=True, elapsed_ms=17)
+    archive.finish_observation(first, candidate, origin=origin)
     assert first.entry_id is not None and not first.reused and not first.restored
     assert first.initialized_objectives == target_objectives_for("min_tardiness")
     assert first.improved_objectives == ()
@@ -64,18 +65,9 @@ def test_content_identity_owns_mutable_payload_and_retains_live_references():
     assert entry.score_scope.complete_batch_ids == frozenset(BATCHES)
     assert entry.score_scope.is_complete and entry.score_scope.components_known
     assert entry.score_scope.objective_scope == "all_batches"
-    assert {item["phase"] for item in entry.origins} == {"baseline", "multi_start"}
     assert not hasattr(entry, "results")
 
     original = deepcopy(candidate)
-    candidate["results"][1].machine_id = "mutated-input"
-    candidate["summary"].failed_ops = 99
-    candidate["summary"].warnings[0] = "mutated warning"
-    candidate["metrics"].total_tardiness_hours = 999.0
-    candidate["order"].clear()
-    candidate["params"]["tie_breaker"].clear()
-    candidate["algo_stats"]["visited"].append(99)
-    origin["profile"]["weights"].append(99)
     stage = archive.materialize(first.entry_id, objective="min_changeover")
     assert stage["resource_pool"] is pool
     assert stage["results"] == original["results"]
@@ -84,7 +76,7 @@ def test_content_identity_owns_mutable_payload_and_retains_live_references():
     assert len(stage["seed_results"]) == 1 and stage["seed_results"][0].op_id == 1
     assert stage["seed_results"][0].seed_source == "execution_fact"
     assert stage["seed_results"] is candidate["seed_results"]
-    assert archive.entry(first.entry_id).origins[0]["profile"]["weights"] == [1]
+    assert archive.entry(first.entry_id).evidence_origin["profile"]["weights"] == [1]
     stage["results"][1].end_time += timedelta(hours=100)
     stage["summary"].warnings.append("stage warning")
     stage["metrics"].total_tardiness_hours = 500.0
@@ -183,7 +175,7 @@ def test_all_target_scores_separate_bests_strict_improvements_and_exploration():
     assert improved.improved_objectives == targets
     assert archive.best_by_objective == {objective: improved.entry_id for objective in targets}
     assert archive.improvement_counts == {"min_tardiness": 1, "min_overdue": 1, "min_changeover": 2}
-    assert archive.entry(improved.entry_id).origins[0]["direction"] == "min_changeover"
+    assert archive.entry(improved.entry_id).evidence_origin["direction"] == "min_changeover"
     tied = _candidate([replace(row, machine_id="M2") for row in on_time["results"]])
     equal = _observe(archive, tied, 31, phase="multi_start")
     assert equal.entry_id != improved.entry_id and equal.improved_objectives == ()
@@ -269,10 +261,9 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
 
     complete = _candidate([_result(1, 7), _result(2, 9), _result(3, 11)])
     before = archive.retained_entry_ids
-    for validation_state, decode_completed in (("unknown", True), ("invalid", True), ("valid", False)):
-        rejected = archive.observe(complete, validation_state=validation_state, decode_completed=decode_completed,
-                                   origin={"phase": "trial"}, elapsed_ms=50)
-        assert rejected.entry_id is None and rejected.reason and not rejected.reused and not rejected.restored
+    for _ in range(3):
+        rejected = archive.register_decode(complete, verified=False, elapsed_ms=50)
+        assert rejected.entry_id not in before and rejected.reason and not rejected.reused and not rejected.restored
         assert archive.retained_entry_ids == before
         assert archive.best_by_objective == {}
     valid = _observe(archive, complete, 60)
@@ -364,8 +355,8 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     adopted_candidate = deepcopy(successful)
     adopted_origin = {"phase": "completed_decode", "direction": "min_changeover", "profile": {"weights": [2]}}
     expected_origin = deepcopy(adopted_origin)
-    upgraded = upgrading.observe(successful, validation_state="valid", decode_completed=True,
-                                 origin=adopted_origin, elapsed_ms=320)
+    upgraded = upgrading.register_decode(successful, verified=True, elapsed_ms=320)
+    upgrading.finish_observation(upgraded, successful, origin=adopted_origin)
     assert upgraded.entry_id == initial.entry_id and upgraded.reused and upgraded.evidence_updated
     assert upgraded.initialized_objectives == targets and upgraded.improved_objectives == ()
     upgraded_entry = upgrading.entry(initial.entry_id)
@@ -375,11 +366,6 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     assert old_group_key not in upgrading.partial_groups
     assert upgrading.best_by_objective == {objective: initial.entry_id for objective in targets}
     _assert_evaluations(upgrading, initial.entry_id, adopted_candidate)
-    adopted_origin["profile"]["weights"].append(99)
-    successful["summary"].success = False
-    successful["summary"].warnings.append("caller change")
-    successful["metrics"].total_tardiness_hours = 999.0
-    successful["params"]["tie_breaker"].clear()
     materialized = upgrading.materialize(initial.entry_id)
     for key in ("results", "summary", "metrics", "order", "params", "algo_stats"):
         assert materialized[key] == adopted_candidate[key]
@@ -388,9 +374,6 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     materialized["params"]["tie_breaker"].append("stage change")
     for key in ("summary", "metrics", "params"):
         assert upgrading.materialize(initial.entry_id)[key] == adopted_candidate[key]
-    snapshot_origin = upgrading.entry(initial.entry_id).evidence_origin
-    snapshot_origin["profile"]["weights"].append(999)
-    assert upgrading.entry(initial.entry_id).evidence_origin == expected_origin
     weaker = _observe(upgrading, unsuccessful, 330, phase="weaker_decode")
     equal_candidate = _candidate(deepcopy(unsuccessful["results"]))
     equal_candidate["params"]["tie_breaker"] = ["equal strength"]
@@ -399,9 +382,6 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
         assert observed.entry_id == initial.entry_id and observed.reused and not observed.evidence_updated
         assert observed.initialized_objectives == observed.improved_objectives == ()
     assert upgrading.entry(initial.entry_id).evidence_origin == expected_origin
-    assert {origin["phase"] for origin in upgrading.entry(initial.entry_id).origins} == {
-        "decode_without_success", "completed_decode", "weaker_decode", "equal_decode",
-    }
     assert upgrading.materialize(initial.entry_id)["params"] == adopted_candidate["params"]
     assert upgrading.improvement_counts == {objective: 0 for objective in targets}
 
@@ -415,8 +395,8 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     adopted_partial = deepcopy(explained)
     explanation_origin = {"phase": "explained_decode", "direction": "min_tardiness", "profile": {"weights": [3]}}
     expected_explanation_origin = deepcopy(explanation_origin)
-    explained_result = partial_upgrading.observe(explained, validation_state="valid", decode_completed=True,
-                                                 origin=explanation_origin, elapsed_ms=420)
+    explained_result = partial_upgrading.register_decode(explained, verified=True, elapsed_ms=420)
+    partial_upgrading.finish_observation(explained_result, explained, origin=explanation_origin)
     assert explained_result.entry_id == old_partial.entry_id and explained_result.reused and explained_result.evidence_updated
     assert explained_result.initialized_objectives == targets and explained_result.improved_objectives == ()
     explained_entry = partial_upgrading.entry(old_partial.entry_id)
@@ -426,10 +406,6 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     assert partial_upgrading.partial_groups[partial_key].entry_ids == (old_partial.entry_id,)
     assert partial_upgrading.partial_groups[partial_key].best_by_objective == {objective: old_partial.entry_id for objective in targets}
     _assert_evaluations(partial_upgrading, old_partial.entry_id, adopted_partial)
-    explained["summary"].failure_details[0]["code"] = "caller mutation"
-    explained["metrics"].total_tardiness_hours = 999.0
-    explained["params"]["tie_breaker"].clear()
-    explanation_origin["profile"]["weights"].append(99)
     weak_partial = _observe(partial_upgrading, unexplained, 430, phase="weak_partial_decode")
     equal_partial_candidate = _candidate(deepcopy(unexplained["results"]), failures=(_failure(3),))
     equal_partial_candidate["params"]["tie_breaker"] = ["equal partial strength"]
@@ -440,9 +416,45 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     for key in ("results", "summary", "metrics", "params"):
         assert partial_upgrading.materialize(old_partial.entry_id)[key] == adopted_partial[key]
     assert partial_upgrading.entry(old_partial.entry_id).evidence_origin == expected_explanation_origin
-    assert {origin["phase"] for origin in partial_upgrading.entry(old_partial.entry_id).origins} == {
-        "unexplained_decode", "explained_decode", "weak_partial_decode", "equal_partial_decode",
-    }
     assert partial_upgrading.partial_groups[partial_key].entry_ids == (old_partial.entry_id,)
     assert partial_upgrading.best_by_objective == {}
     assert partial_upgrading.improvement_counts == {objective: 0 for objective in targets}
+
+
+def test_decode_registration_owns_one_payload_and_trials_keep_only_temporary_numbers():
+    from unittest.mock import patch
+
+    from core.services.scheduler.run.optimizer.candidate_fingerprint import schedule_content_key
+
+    archive = _archive()
+    candidate = _candidate([_result(1, 0), _result(2, 2), _result(3, 4)])
+    with patch("core.services.scheduler.run.optimizer.shared_archive.schedule_content_key",
+               wraps=schedule_content_key) as content_key:
+        observed = archive.register_decode(candidate, verified=True, elapsed_ms=10)
+        archive.finish_observation(observed, candidate, origin={"phase": "baseline"})
+        first = archive.view(observed.entry_id)
+        second = archive.view(observed.entry_id, objective="min_changeover")
+        assert first is not second
+        assert first["results"] is second["results"] is candidate["results"]
+        assert first["metrics"] is second["metrics"] is candidate["metrics"]
+        assert first["summary"] is second["summary"] is candidate["summary"]
+        first["order"] = ["B3", "B1", "B2"]
+        assert second["order"] == candidate["order"]
+        assert content_key.call_count == 1
+
+        known = archive.register_decode(candidate, verified=False, elapsed_ms=20)
+        assert known.entry_id == observed.entry_id and known.reused
+        unknown = _candidate([_result(1, 7), _result(2, 9), _result(3, 11)])
+        before = dict(archive._identities)
+        trial = archive.register_decode(unknown, verified=False, elapsed_ms=30)
+        retry = archive.register_decode(unknown, verified=False, elapsed_ms=40)
+        assert trial.entry_id != retry.entry_id
+        assert trial.entry_id not in archive.retained_entry_ids
+        assert archive._identities == before
+        assert archive.best_by_objective == dict.fromkeys(archive.target_objectives, observed.entry_id)
+
+    public = archive.materialize(observed.entry_id)
+    public["results"][0].machine_id = "published caller change"
+    public["summary"].warnings.append("published caller change")
+    assert archive.view(observed.entry_id)["results"][0].machine_id == "M1"
+    assert archive.view(observed.entry_id)["summary"].warnings == ["original warning"]

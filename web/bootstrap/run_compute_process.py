@@ -60,7 +60,7 @@ def _raise_remote(error):
     raise RuntimeError("Candidate child failed: " + error[1] + ": " + error[2])
 
 
-def _compute_child(snapshot_path, row, sender, control):
+def _compute_child(snapshot_path, row, admission, sender, control):
     threading.Thread(target=_parent_watchdog, args=(control,), daemon=True).start()
     try:
         from core.services.workbench.run.worker import WorkbenchRunWorker
@@ -70,7 +70,7 @@ def _compute_child(snapshot_path, row, sender, control):
         with open_readonly_immutable(snapshot_path) as snapshot, query_only(snapshot):
             worker = WorkbenchRunWorker(snapshot,
                 progress_sink=lambda done, total: sender.send(("progress", done, total)))
-            result = worker._compute(row)
+            result = worker._compute(row, admission)
         sender.send(("result", result))
     except Exception as exc:
         sender.send(("error", _error_message(exc)))
@@ -104,7 +104,7 @@ def _receive(process, receiver, on_progress):
         return message[1]
 
 
-def run_compute_in_process(source, row, *, on_progress):
+def run_compute_in_process(source, row, *, admission, on_progress):
     if source.in_transaction:
         raise RuntimeError("Candidate process snapshot requires no active transaction")
     # TemporaryDirectory owns this fresh directory; nothing supplied by HTTP is
@@ -116,7 +116,7 @@ def run_compute_in_process(source, row, *, on_progress):
         receiver, sender = context.Pipe(duplex=False)
         child_control, parent_control = context.Pipe(duplex=False)
         process = context.Process(target=_compute_child,
-            args=(path, dict(row), sender, child_control), name="aps-candidate-compute", daemon=True)
+            args=(path, dict(row), admission, sender, child_control), name="aps-candidate-compute", daemon=True)
         try:
             process.start()
             safe_log(_LOGGER, "info", "Candidate read-only computation started: run_ref=%s child_pid=%s", row["run_ref"], process.pid)

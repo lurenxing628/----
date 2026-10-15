@@ -16,6 +16,7 @@ from .api_responses import api_endpoint
 from .calibration_read_context import as_of as _as_of
 from .calibration_read_context import bind as _bind
 from .calibration_read_context import page_integer as _page_integer
+from .read_context import resolve_read_snapshot
 
 
 def _arguments(*, export, detail):
@@ -40,10 +41,11 @@ def _arguments(*, export, detail):
 
 def _read(*, export=False, suggestion_ref=None):
     query, token = _arguments(export=export, detail=suggestion_ref is not None)
-    as_of = _as_of(token)
+    binding = resolve_read_snapshot(token) if token is not None else None
+    as_of = _as_of(token, binding)
     service = WorkbenchCalibrationService(g.db, as_of=as_of)
     with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:
-        facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of))
+        facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of, binding=binding))
         snapshot = facts["snapshot"]
         data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref)
         if export:
@@ -54,9 +56,8 @@ def _read(*, export=False, suggestion_ref=None):
         response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
         response.headers["X-Workbench-Row-Count"] = str(file.estimated_rows)
     else:
-        response = query_success(data, snapshot)
-        if len(response.get_data()) > MAX_RESPONSE_BYTES:
-            raise WorkbenchCommandRejected("query_too_large", "这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。", 413)
+        response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES,
+            too_large_message="这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。")
     response.headers["Cache-Control"] = "no-store"
     return response
 

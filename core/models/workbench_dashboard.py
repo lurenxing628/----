@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 
 MAX_ROWS = 10000
 MAX_FACT_ROWS = 50000
@@ -25,11 +25,6 @@ def reference(value):
 def bounded(value, limit=MAX_ROWS):
     if len(value) > limit:
         raise WorkbenchCommandRejected("query_too_large", "值班台完整来源超过读取上限，未截断或改报零风险。", 413)
-    return value
-
-
-def payload_size(value):
-    bounded(canonical_json(value).encode("utf-8"), MAX_BYTES)
     return value
 
 

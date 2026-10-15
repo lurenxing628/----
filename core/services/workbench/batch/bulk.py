@@ -96,61 +96,51 @@ class WorkbenchBatchBulkService:
                 return candidate
         raise WorkbenchCommandRejected("constraint_conflict", "无法为复制批次分配有效编号，请手工新增。")
 
-    def _delete(self, payload, plan, relations):
-        # 逐批走 apply 会在每删一批后重读整本批次数据；一次删完，写锁不随批数成倍拉长。
-        self.domain.delete_many([row["entity_ref"] for row in plan["rows"]], relations_index=relations)
-        outcomes = [{"entity_ref": row["entity_ref"], "result": "committed", "business_code": row["before"]["business_code"]}
-                    for row in plan["rows"]]
-        return WorkbenchCommandOutcome("committed", {"items": outcomes, "count": len(outcomes), "commit_policy": "atomic",
-                                                     "action": "delete", "deleted_refs": payload["refs"]})
-
     def apply(self, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("批量保存必须由工作台命令事务持有。")
         payload = normalize_bulk(payload)
-        # 预检和第一次写入之间没有写入，预检用的那份数据和它的关联索引就是写入前的原样。
-        plan, projection = self._plan(payload)
-        if payload["action"] == "delete":
-            return self._delete(payload, plan, projection.relations)
-        if payload["action"] == "update":
-            return self._update(payload, plan)
-        return self._copy(payload, plan, projection)
-
-    def _update(self, payload, plan):
+        facts = self.reader.load()
+        preparation = self.domain.preparation(facts)
+        prepared = []
+        for ref in payload["refs"]:
+            batch = preparation.batch(ref)
+            if payload["action"] == "copy":
+                code = self._copy_code(batch["batch_id"], preparation.used_codes)
+                change = preparation.copy(batch, code)
+            else:
+                change = preparation.prepare(payload["action"], {"fields": payload["patch"]}, ref)
+            prepared.append((ref, batch, change))
+        if payload["action"] == "copy":
+            return self._copy(payload, facts, preparation.relations, prepared)
         outcomes = []
-        for row in plan["rows"]:
-            ref = row["entity_ref"]
-            result = self.domain.apply("update", {"fields": payload["patch"]}, ref)
-            outcomes.append({"entity_ref": ref, "result": result.result, "business_code": row["before"]["business_code"]})
-        return self._outcome(payload, outcomes)
+        for _ref, _batch, change in prepared:
+            result = self.domain.apply_prepared(change)
+            outcomes.append({**result.data, "result": result.result})
+        result = self._outcome(payload, outcomes)
+        if payload["action"] == "delete":
+            result.data["deleted_refs"] = payload["refs"]
+        return result
 
-    def _copy(self, payload, plan, projection):
-        source_batches = {row["batch_id"]: row for row in projection.facts["Batches"]}
-        source_relations = projection.relations
+    def _copy(self, payload, facts, source_relations, changes):
         requirements = defaultdict(list)
-        bindings = {row["requirement_id"]: row["operation_id"] for row in projection.facts["BatchMaterialStages"]}
-        for row in projection.facts["BatchMaterials"]:
+        bindings = {row["requirement_id"]: row["operation_id"] for row in facts["BatchMaterialStages"]}
+        for row in facts["BatchMaterials"]:
             requirements[row["batch_id"]].append(dict(row, operation_id=bindings.get(row["id"])))
         writer = TemplateLineageWriter(self.conn)
-        source_operations = [op for row in plan["rows"]
-                             for op in source_relations[row["before"]["business_code"]]["operations"]]
-        prepared_rows = writer.prepare_instances(source_operations, facts=projection.facts)
+        source_operations = [op for _ref, batch, _change in changes
+                             for op in source_relations[batch["batch_id"]]["operations"]]
+        prepared_rows = writer.prepare_instances(source_operations, facts=facts)
         prepared = {op["id"]: ready for op, ready in zip(source_operations, prepared_rows)}
         outcomes = []
-        for row in plan["rows"]:
-            ref = row["entity_ref"]
-            batch = source_batches[row["before"]["business_code"]]
-            code = row["after"]["business_code"]
-            fields = {key: batch[key] for key in ("quantity", "due_date", "priority", "remark", "part_name")}
-            self.domain.domain.create(code, batch["part_no"], **fields, ready_status="no", ready_date=None)
+        for ref, batch, change in changes:
+            code = change.business_code
+            result = self.domain.apply_prepared(change)
             mapping = {op["id"]: writer.copy_prepared_instance(code, prepared[op["id"]])
                        for op in source_relations[batch["batch_id"]]["operations"]}
             BatchMaterialRepository(self.conn).copy_requirements(batch["batch_id"], code, mapping,
                                                                requirements=requirements[batch["batch_id"]])
-            identity = self.reader.identities.find_active("batch", code)
-            if identity is None:
-                raise RuntimeError("复制批次缺少永久引用。")
-            outcomes.append({"entity_ref": identity.ref, "source_ref": ref, "business_code": code, "result": "committed"})
+            outcomes.append({**result.data, "source_ref": ref, "result": "committed"})
         return self._outcome(payload, outcomes)
 
     @staticmethod

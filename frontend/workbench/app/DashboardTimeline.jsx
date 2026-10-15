@@ -26,7 +26,9 @@
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 900, height: 330 });
     const pendingCenter = React.useRef(null), labelWidth = position.width < 550 ? 140 : 170;
     const viewport = Math.max(80, position.width - labelWidth), width = viewport * zoom;
-    const model = React.useMemo(() => M.layout(data, mode, width), [data, mode, width]);
+    const prepared = React.useMemo(() => M.prepare(data), [data]);
+    const grouped = React.useMemo(() => M.groupPrepared(prepared, mode), [prepared, mode]);
+    const model = React.useMemo(() => M.layoutPrepared(grouped, width), [grouped, width]);
     const measure = () => { const node = board.current; if (node) setPosition({ left: node.scrollLeft, top: node.scrollTop, width: node.clientWidth, height: node.clientHeight }); };
     React.useLayoutEffect(() => { measure(); const observer = new ResizeObserver(measure); observer.observe(board.current); return () => observer.disconnect(); }, []);
     React.useLayoutEffect(() => {
@@ -78,7 +80,7 @@
               <div className="dy-timeline-label"><b>{row.label}</b><small>{row.items.length} 道{row.point ? '零工时工序' : '安排'}{!row.point && row.overlap > 0 ? ' · 时间重叠分行' : ''}</small></div>
               <div className="dy-timeline-track" style={{ width }}>{axis.ticks.map(tick => <i className="dy-timeline-grid" key={tick.at} style={{ left: tick.x }} />)}
                 {mode === 'downtime' && (model.windows.get(row.id) || []).map(stop => {
-                  const low = Math.max(model.start, M.instant(stop.start)), high = Math.min(model.end, M.instant(stop.end));
+                  const low = Math.max(model.start, stop.startAt), high = Math.min(model.end, stop.endAt);
                   const text = ['停机：' + (stop.reason || '原因未填写'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间：' + M.timeLabel(stop.recorded_at)].join('\n');
                   return high > low ? <span key={stop.downtime_ref} role="img" tabIndex={0} aria-label={text} title={text} data-downtime-ref={stop.downtime_ref}
                     className="dy-downtime-window" style={{ left: (low - model.start) / (model.end - model.start) * width, width: (high - low) / (model.end - model.start) * width }}

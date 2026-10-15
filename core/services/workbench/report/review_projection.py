@@ -69,27 +69,46 @@ def _selected(scope, operation, projection):
     return selected and (not scope.resource_ref or _resource_selected(scope, operation, projection))
 
 
+def _project_entry(row, label, projection, facts, directory, as_of):
+    operation = project_operation(row, projection, label, facts, as_of)
+    events = project_records(projection, operation, directory, as_of)
+    operation.update(hour_totals(events))
+    operation.update({"event_count": len(projection["legacy_facts"]), "record_count": len(events),
+                      "production_report_count": len(projection["reports"])})
+    for kind in ("machine", "operator"):
+        refs = list(dict.fromkeys(event[kind + "_ref"] for event in events if event[kind + "_ref"] is not None))
+        actual = actual_resource(directory, kind, refs[0] if len(refs) == 1 else None)
+        operation.update({"actual_" + kind + "_ref": actual["ref"], "actual_" + kind + "_refs": refs,
+            "actual_" + kind + "_label": " / ".join(actual_resource(directory, kind, ref)["label"] for ref in refs) or actual["label"]})
+    return operation, events
+
+
 def project_cohort(facts, as_of):
     projections = {row["operation_ref"]: row for row in facts["ledger"]["projections"]}
     directory = resource_directory(facts)
     operations, records, labels = [], [], {}
     for row, label in zip(facts["rows"], facts["labels"]):
         projection = projections[facts["operation_refs"][row["op_id"]]]
-        operation = project_operation(row, projection, label, facts, as_of)
-        events = project_records(projection, operation, directory, as_of)
-        operation.update(hour_totals(events))
-        operation.update({"event_count": len(projection["legacy_facts"]), "record_count": len(events),
-                          "production_report_count": len(projection["reports"])})
-        for kind in ("machine", "operator"):
-            refs = list(dict.fromkeys(event[kind + "_ref"] for event in events if event[kind + "_ref"] is not None))
-            actual = actual_resource(directory, kind, refs[0] if len(refs) == 1 else None)
-            operation.update({"actual_" + kind + "_ref": actual["ref"], "actual_" + kind + "_refs": refs,
-                "actual_" + kind + "_label": " / ".join(actual_resource(directory, kind, ref)["label"] for ref in refs) or actual["label"]})
+        operation, events = _project_entry(row, label, projection, facts, directory, as_of)
         if _selected(facts["scope"], operation, projection):
             operations.append(operation)
             records.extend(events)
             labels[operation["operation_ref"]] = export_labels(label, operation, directory)
     return operations, records, labels
+
+
+def project_detail(facts, as_of, operation_ref):
+    projection = next((row for row in facts["ledger"]["projections"] if row["operation_ref"] == operation_ref), None)
+    if projection is not None:
+        directory = resource_directory(facts)
+        for row, label in zip(facts["rows"], facts["labels"]):
+            if facts["operation_refs"][row["op_id"]] != operation_ref:
+                continue
+            operation, records = _project_entry(row, label, projection, facts, directory, as_of)
+            if _selected(facts["scope"], operation, projection):
+                return {"operation": operation, "records": records}
+            break
+    raise WorkbenchCommandRejected("entity_not_found", "这道工序不在当前筛选结果里，详情没有打开。请调整筛选条件后重新点这一行。", 404)
 
 
 def validate_selected_refs(scope, facts):

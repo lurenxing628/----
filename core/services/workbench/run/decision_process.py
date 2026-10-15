@@ -3,12 +3,11 @@
 from typing import Union
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
+from core.models.workbench_run_candidate import reference, reject
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.workbench.facts.candidate_process import PROCESS_VERSION
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size, corrupt
+from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.unified_process import PROCESS_CANDIDATE_FIELDS, project_unified_process
 
 from .decision_queries import _page
@@ -136,5 +135,4 @@ def read_process_details(conn, run_ref, *, process_candidate_ref=None, objective
     with store.snapshot(), read_evidence_scope(conn):
         source = DecisionSource(store, run_ref, **query)
         data = process_details(source, filters, page=page, size=size)
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, source.state()

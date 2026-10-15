@@ -58,6 +58,46 @@ def test_static_files_observe_stop_state_without_rereading_database_locks(system
     assert not calls
 
 
+def test_utc_operation_logs_use_one_local_time_for_lists_details_filters_and_export(tmp_path):
+    import csv
+    import io
+
+    api = SystemTestAPI(tmp_path)
+    with closing(api.connect()) as conn:
+        conn.executemany("INSERT INTO OperationLogs(id,log_time,log_level,module,action,detail) VALUES (?,?,?,'system','logs_cleanup',?)", [
+            (1, "2026-10-15 15:59:59", "INFO", '{"deleted_count":1}'),
+            (2, "2026-10-15 16:00:01", "INFO", '{"deleted_count":2}'),
+        ])
+        conn.execute("INSERT INTO SystemJobState(job_key,last_run_time,last_run_detail) VALUES (?,?,?)",
+                     ("auto_backup_cleanup", "2026-10-16 00:00:02", '{"removed_count":0}'))
+        conn.commit()
+    (api.logs / "aps.log").write_text("2026-10-16 00:00:00 [INFO] fixture: local runtime log\n", encoding="utf-8")
+
+    window = {"start": "2026-10-16", "end": "2026-10-16"}
+    page = api.read("/logs", **window)
+    rows = page["data"]["rows"]
+    assert [(row["file"], row["time"]) for row in rows] == [
+        ("OperationLogs", "2026-10-16T00:00:01"), ("aps.log", "2026-10-16T00:00:00")]
+    assert json.loads(rows[0]["body"].strip()) == {"deleted_count": 2}
+    previous = api.read("/logs", file="OperationLogs", start="2026-10-15", end="2026-10-15")
+    assert [row["time"] for row in previous["data"]["rows"]] == ["2026-10-15T23:59:59"]
+    # The detail pane keeps this same captured row; paging and export reuse it.
+    query = {**window, "snapshot_ref": page["meta"]["snapshot_ref"]}
+    assert api.read("/logs", **query)["data"]["rows"] == rows
+    exported = api.get("/logs/export/csv", **query)
+    assert exported.status_code == 200
+    csv_rows = list(csv.DictReader(io.StringIO(exported.data.decode("utf-8-sig"))))
+    assert [row["时间"] for row in csv_rows] == [row["time"] for row in rows]
+    assert csv_rows[0]["详情"] == rows[0]["body"]
+
+    events = api.read("/backups", type="cleanup", **window)["data"]["rows"]
+    assert [(row["event_source"], row["time"]) for row in events] == [
+        ("latest_job_state_only", "2026-10-16T00:00:02"), ("operation_audit", "2026-10-16T00:00:01")]
+    with closing(api.connect()) as conn:
+        assert [row[0] for row in conn.execute("SELECT log_time FROM OperationLogs ORDER BY id")] == [
+            "2026-10-15 15:59:59", "2026-10-15 16:00:01"]
+
+
 def test_due_backup_runs_after_response_on_owned_worker_and_shutdown_joins_it(system_api, monkeypatch):
     from core.services.system.system_config_service import SystemConfigService
     from core.services.system.system_maintenance_service import SystemMaintenanceService
@@ -326,7 +366,7 @@ def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, 
         tokens.extend((row["backup_ref"], row["write_context"]["write_token"]))
     with api.app.app_context():
         assert len(tokens) == 21
-        assert all(json.loads(resolve_public_token(SCOPE, token, message="stale fixture token", field="write_token"))["database"] == original_scope
+        assert all(resolve_public_token(SCOPE, token, message="stale fixture token", field="write_token")["database"] == original_scope
                    for token in tokens)
     with closing(api.connect()) as conn:
         context = RunDataContext(conn, str(api.journal_dir))

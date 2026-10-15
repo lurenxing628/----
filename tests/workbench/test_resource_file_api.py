@@ -1,7 +1,10 @@
 """Actual Flask registration, frozen scope, no-write previews and receipt replay."""
 
+import csv
 import json
-from io import BytesIO
+import re
+from contextlib import contextmanager
+from io import BytesIO, StringIO
 
 import pytest
 from flask import Blueprint
@@ -138,3 +141,61 @@ def test_export_file_is_written_after_the_read_snapshot_is_released(client, monk
     result = client.get(BASE + "/exports/material", query_string={"export_ref": approved["data"]["export_ref"], "format": fmt})
     assert result.status_code == 200, result.get_json()
     assert seen == [("read", True), ("write", False)]
+
+
+@pytest.mark.parametrize("selection", ("all", "filtered", "selected"))
+def test_resource_export_shares_captured_facts_for_preview_and_csv(client, monkeypatch, selection):
+    from core.services.workbench.resource.queries import WorkbenchResourceQueryService
+
+    with database(client) as conn:
+        conn.executemany("INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,'internal')",
+                         [("EXPORT-T1", "Turning"), ("EXPORT-T2", "Milling")])
+        conn.executemany("INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES (?,?,'EXPORT-T1','active')",
+                         [("EXPORT-M1", "Lathe"), ("EXPORT-M2", "Second")])
+        conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('EXPORT-M1','EXPORT-T2')")
+        conn.execute("INSERT INTO WorkbenchMachineGroups(group_id,name) VALUES ('EXPORT-G1','Group')")
+        conn.execute("INSERT INTO WorkbenchMachineGroupMembers(machine_id,group_id) VALUES ('EXPORT-M1','EXPORT-G1')")
+        conn.commit()
+    scope = {"query": "EXPORT-M1"}
+    listed = client.get(BASE + "/entities/machine", query_string={**scope, "size": 200})
+    assert listed.status_code == 200, listed.get_json()
+    body = {"selection": selection, "scope": scope, "page_size": 200,
+            "snapshot_ref": listed.get_json()["meta"]["snapshot_ref"]}
+    if selection == "selected":
+        body["refs"] = [listed.get_json()["data"]["entities"][0]["ref"]]
+    queries = []
+    read_snapshot = WorkbenchResourceQueryService.read_snapshot
+
+    @contextmanager
+    def observed(reader, *args, **kwargs):
+        reader.conn.set_trace_callback(queries.append)
+        try:
+            with read_snapshot(reader, *args, **kwargs) as fingerprint:
+                yield fingerprint
+        finally:
+            reader.conn.set_trace_callback(None)
+
+    def assert_single_capture():
+        tables = ("Machines", "MachineOpTypes", "OpTypes", "WorkbenchMachineGroupMembers")
+        counts = {table: sum(bool(re.match(r"\s*SELECT\s+\*\s+FROM\s+" + table + r"\b", sql, re.IGNORECASE))
+                             for sql in queries) for table in tables}
+        assert counts == dict.fromkeys(tables, 1), queries
+
+    monkeypatch.setattr(WorkbenchResourceQueryService, "read_snapshot", observed)
+    approved = client.post(BASE + "/exports/machine/preview", json=body)
+    assert approved.status_code == 200, approved.get_json()
+    assert_single_capture()
+    queries.clear()
+    result = client.get(BASE + "/exports/machine", query_string={
+        "export_ref": approved.get_json()["data"]["export_ref"], "format": "csv"})
+    assert result.status_code == 200, result.get_json()
+    assert_single_capture()
+    rows = list(csv.reader(StringIO(result.data.decode("utf-8-sig"))))
+    headers = rows[0]
+    assert not any("ref" in field for field in headers)
+    data = [dict(zip(headers, (value[1:] if value.startswith("'") else value for value in row))) for row in rows[1:]]
+    expected = ["EXPORT-M1", "EXPORT-M2"] if selection == "all" else ["EXPORT-M1"]
+    assert [row["编号"] for row in data] == expected
+    assert int(result.headers["X-Workbench-Row-Count"]) == approved.get_json()["data"]["row_count"] == len(expected)
+    assert {key: data[0][key] for key in ("名称", "自制工种编号", "设备组编号", "可做工种编号")} == {
+        "名称": "Lathe", "自制工种编号": "EXPORT-T1", "设备组编号": "EXPORT-G1", "可做工种编号": "EXPORT-T1、EXPORT-T2"}

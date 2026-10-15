@@ -77,7 +77,8 @@ def normalize_seed_results(
     if not seed_results:
         return [], seed_op_ids, warnings
 
-    lookup = _build_operation_lookup(operations)
+    lookup = (_build_operation_lookup(operations)
+              if any(_identity_int(getattr(result, "op_id", 0)) <= 0 for result in seed_results) else {})
     counters = {
         "backfilled": 0,
         "dropped_invalid": 0,

@@ -2,21 +2,15 @@ from __future__ import annotations
 
 import heapq
 from collections import defaultdict
-from copy import copy
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
 
-from core.algorithm_contracts.operator_eligibility import qualified_operators
-from core.algorithm_runtime.native_snapshot import make_class_guard
+from core.algorithms.greedy.auto_assign import qualified_resource_pairs
 from core.errors import ValidationError
-from core.models.batch_operation import BatchOperation
-from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo
 
 from .candidate_payload import decoded_batch_order
 from .repair_neighbors import repair_priority_context
-
-_READONLY_OPERATION_GUARDS = {kind: make_class_guard(kind) for kind in (BatchOperation, OpForScheduleAlgo)}
 
 
 @dataclass(frozen=True)
@@ -51,6 +45,7 @@ class RepairParentPreparation:
     decoded_rows: Dict[int, Any]
     current_resources: Dict[int, Tuple[str, str]]
     predecessors: Dict[int, set]
+    successors: Dict[int, set]
     operation_order: Tuple[int, ...]
     operation_ranks: Dict[int, int]
     resource_timelines: List[List[Any]]
@@ -60,11 +55,13 @@ class RepairParentPreparation:
     inherited_resources: Tuple[Tuple[int, str, str], ...]
     decoded_batch_order: Tuple[str, ...]
     pool_maps: Optional[Dict[str, Any]]
+    resource_pairs_for: Optional[Callable[[Any], Tuple[Tuple[str, str], ...]]]
 
 
 def prepare_repair_parent(
     candidate: Dict[str, Any], operations: List[Any], resource_pool: Optional[Dict[str, Any]],
     graph_context: Optional[Dict[str, Any]] = None, *, resource_moves: bool = False,
+    resource_pairs_for: Optional[Callable[[Any], Tuple[Tuple[str, str], ...]]] = None,
 ) -> RepairParentPreparation:
     """Prepare the decoded parent's static facts once; basis-specific signals remain separate."""
     by_id = _operations_by_id(operations)
@@ -72,7 +69,8 @@ def prepare_repair_parent(
     mutable_batches = frozenset(str(op.batch_id) for op in operations)
     rows = _decoded_rows(candidate, by_id)
     current = {op_id: _fixed_resources(row) for op_id, row in rows.items()}
-    inherited, pool_maps = _decoded_resource_facts(current, by_id, resource_pool, resource_moves=resource_moves)
+    inherited = _inherited_resource_rows(current, by_id)
+    pool_maps = _pool_maps(resource_pool) if resource_moves and resource_pairs_for is None else None
     timelines_by_resource = resource_timeline_groups(candidate["results"])
     timelines = list(timelines_by_resource.values())
     batch_ends = {}
@@ -87,12 +85,15 @@ def prepare_repair_parent(
         order = decoded_topological_order(rows, predecessors)
     return RepairParentPreparation(
         operations_by_id=by_id, mutable_operation_ids=mutable, mutable_batch_ids=mutable_batches,
-        decoded_rows=rows, current_resources=current, predecessors=predecessors, operation_order=order,
+        decoded_rows=rows, current_resources=current, predecessors=predecessors,
+        successors={op_id: set(graph_context["successor_op_ids_by_op_id"].get(op_id, ())) & mutable
+                    for op_id in mutable} if graph_context is not None else {}, operation_order=order,
         operation_ranks={op_id: index for index, op_id in enumerate(order)}, resource_timelines=timelines,
         batch_end_times=batch_ends, changeovers_by_batch=changeovers,
         latest_end_time=max((row.end_time for row in rows.values()), default=None),
-        inherited_resources=inherited, decoded_batch_order=tuple(decoded_batch_order(candidate["results"])),
-        pool_maps=pool_maps,
+        inherited_resources=inherited, decoded_batch_order=tuple(candidate.get("decoded_batch_order")
+                                                               or decoded_batch_order(candidate["results"])),
+        pool_maps=pool_maps, resource_pairs_for=resource_pairs_for,
     )
 
 
@@ -152,58 +153,35 @@ def _batch_changeovers(timelines: Dict[Tuple[str, str], List[Any]], batches: Fro
     return counts
 
 
-def apply_repair_decision(
+def repair_decision_inputs(
     context: Dict[str, Any], operations: List[Any], decision: RepairDecision,
-    resource_pool: Optional[Dict[str, Any]], *, share_unchanged: bool = False,
-) -> Tuple[Dict[str, Any], List[Any]]:
-    """Copy a decision into decoder inputs; precedence and fixed results stay intact."""
-    if not isinstance(decision, RepairDecision):
-        _invalid("decision")
-    by_id = _operations_by_id(operations)
-    out = repair_priority_context(context, operations=operations, order=list(decision.batch_order))
-    if set(by_id).intersection(context.get("fixed_op_ids", ())):
-        _invalid("fixed_op_ids", reason="graph_ready_repair_scope_mismatch")
-    if decision.operation_order:
-        if set(decision.operation_order) != set(by_id):
+    resource_pool: Optional[Dict[str, Any]], *, prepared_parent: Optional[RepairParentPreparation] = None,
+) -> Tuple[Dict[str, Any], Dict[int, Tuple[str, str]]]:
+    """Admit raw decisions once; generated decisions consume their prepared parent's facts."""
+    if prepared_parent is None:
+        if not isinstance(decision, RepairDecision):
+            _invalid("decision")
+        by_id = _operations_by_id(operations)
+        if set(by_id).intersection(context.get("fixed_op_ids", ())):
+            _invalid("fixed_op_ids", reason="graph_ready_repair_scope_mismatch")
+        if decision.operation_order and set(decision.operation_order) != set(by_id):
             _invalid("operation_order", reason="graph_ready_repair_scope_mismatch")
+        overrides = _validated_overrides(decision.resource_overrides, by_id, resource_pool)
+        out = repair_priority_context(context, operations=operations, order=list(decision.batch_order))
+    else:
+        overrides = {op_id: (machine, operator) for op_id, machine, operator in decision.resource_overrides}
+        ranks = {batch: float(index) for index, batch in enumerate(decision.batch_order)}
+        out = dict(context)
+        out["graph_priority_key_by_op_id"] = {
+            op_id: (ranks[str(op.batch_id)],) for op_id, op in prepared_parent.operations_by_id.items()
+        }
+    if decision.operation_order:
         batch_keys = out["graph_priority_key_by_op_id"]
-        # This is ready-queue priority, not a forced topological execution order.
         out["graph_priority_key_by_op_id"] = {
             op_id: (float(rank),) + batch_keys[op_id]
             for rank, op_id in enumerate(decision.operation_order)
         }
-    overrides = _validated_overrides(decision.resource_overrides, by_id, resource_pool)
-    # Standalone/injected decoders retain independent input records. A certified native
-    # decoder only reads them, so its unchanged records belong to the common run input.
-    copied = [op if share_unchanged and op.id not in overrides else copy(op) for op in operations]
-    for op in copied:
-        if op.id in overrides:
-            machine_id, operator_id = overrides[op.id]
-            fixed_machine, fixed_operator = _fixed_resources(op)
-            if not fixed_machine:
-                op.machine_id = machine_id
-            if not fixed_operator:
-                op.operator_id = operator_id
-    return out, copied
-
-
-def native_readonly_inputs(schedule_fn: Any, scheduler: Any, operations: List[Any]) -> bool:
-    from core.algorithms.greedy.scheduler import native_scheduler_inputs_unchanged
-    from core.services.scheduler.run.optimizer.signature_support import schedule_with_optional_strict_mode
-
-    return (
-        schedule_fn is schedule_with_optional_strict_mode
-        and native_scheduler_inputs_unchanged(scheduler)
-        and type(operations) is list
-        and _native_operation_classes(operations)
-    )
-
-
-def _native_operation_classes(operations):
-    representatives = {type(op): op for op in operations}
-    # Record methods are never called by SGS; certify each class once, including its accessors.
-    return all(kind in _READONLY_OPERATION_GUARDS and _READONLY_OPERATION_GUARDS[kind](op)
-               for kind, op in representatives.items())
+    return out, overrides
 
 
 def iter_resource_decisions(
@@ -227,7 +205,10 @@ def iter_resource_decisions(
     if base.operation_order and set(base.operation_order) != set(by_id):
         _invalid("operation_order", reason="graph_ready_repair_scope_mismatch")
     inherited = {op_id: (machine, operator) for op_id, machine, operator in prior}
-    pool = prepared_pool if prepared_pool is not None else _pool_maps(resource_pool)
+    resource_pairs_for = prepared_parent.resource_pairs_for if prepared_parent is not None else None
+    pool = prepared_pool
+    if pool is None and resource_pairs_for is None:
+        pool = _pool_maps(resource_pool)
     generated = 0
     for op in operations:
         if not _can_change_resources(op):
@@ -236,7 +217,8 @@ def iter_resource_decisions(
             _invalid("results", reason="graph_ready_repair_scope_mismatch")
         if not all(current[op.id]):
             continue  # A point event without a selected pair does not introduce resources.
-        for pair in _qualified_pairs(op, pool):
+        pairs = resource_pairs_for(op) if resource_pairs_for is not None else qualified_resource_pairs(op, pool)
+        for pair in sorted(pairs):
             if pair == current[op.id]:
                 continue
             overrides = dict(inherited)
@@ -277,19 +259,20 @@ def _decoded_resource_facts(
     current: Dict[int, Tuple[str, str]], by_id: Dict[int, Any], resource_pool: Optional[Dict[str, Any]],
     *, resource_moves: bool = False,
 ) -> Tuple[Tuple[Tuple[int, str, str], ...], Optional[Dict[str, Any]]]:
-    rows = []
-    for op_id, (machine, operator) in sorted(current.items()):
-        op = by_id[op_id]
-        fixed_machine, fixed_operator = _fixed_resources(op)
+    for op_id, (machine, operator) in current.items():
+        fixed_machine, fixed_operator = _fixed_resources(by_id[op_id])
         if ((fixed_machine and machine and machine != fixed_machine)
                 or (fixed_operator and operator and operator != fixed_operator)):
             _invalid("resource_overrides", reason="graph_ready_repair_fixed_resource")
-        if _can_change_resources(op) and machine and operator:
-            rows.append((op_id, machine, operator))
-    overrides = tuple(rows)
+    overrides = _inherited_resource_rows(current, by_id)
     pool = _pool_maps(resource_pool) if overrides or resource_moves else None
     _validated_overrides(overrides, by_id, resource_pool, prepared_pool=pool)
     return overrides, pool
+
+
+def _inherited_resource_rows(current, by_id):
+    return tuple((op_id, machine, operator) for op_id, (machine, operator) in sorted(current.items())
+                 if _can_change_resources(by_id[op_id]) and machine and operator)
 
 
 def _validated_overrides(
@@ -308,7 +291,7 @@ def _validated_overrides(
         if (not _can_change_resources(op) or (fixed_machine and machine_id != fixed_machine)
                 or (fixed_operator and operator_id != fixed_operator)):
             _invalid("resource_overrides", reason="graph_ready_repair_fixed_resource")
-        if not _pair_is_qualified(op, machine_id, operator_id, pool):
+        if (machine_id, operator_id) not in qualified_resource_pairs(op, pool):
             _invalid("resource_overrides", reason="graph_ready_repair_resource_qualification")
         out[op_id] = (machine_id, operator_id)
     return out
@@ -330,14 +313,6 @@ def _pool_maps(resource_pool: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return out
 
 
-def _resource_ids(value: Any) -> Tuple[str, ...]:
-    if not isinstance(value, (list, tuple, set, frozenset)):
-        _invalid("resource_pool")
-    if any(not isinstance(v, str) or not v.strip() for v in value):
-        _invalid("resource_pool")
-    return tuple(sorted({v.strip() for v in value}))
-
-
 def _fixed_resources(op: Any) -> Tuple[str, str]:
     return str(getattr(op, "machine_id", None) or "").strip(), str(getattr(op, "operator_id", None) or "").strip()
 
@@ -345,37 +320,6 @@ def _fixed_resources(op: Any) -> Tuple[str, str]:
 def _can_change_resources(op: Any) -> bool:
     machine, operator = _fixed_resources(op)
     return str(getattr(op, "source", "") or "").strip().lower() == "internal" and not (machine and operator)
-
-
-def _qualified_pairs(op: Any, pool: Dict[str, Any]) -> Iterator[Tuple[str, str]]:
-    fixed_machine, fixed_operator = _fixed_resources(op)
-    op_type = str(getattr(op, "op_type_id", None) or "").strip()
-    machines = (fixed_machine,) if fixed_machine else _resource_ids(pool["machines_by_op_type"].get(op_type, ()))
-    for machine_id in machines:
-        operators = _resource_ids(pool["operators_by_machine"].get(machine_id, ()))
-        for operator_id in qualified_operators(pool, operators, op_type):
-            if fixed_operator and operator_id != fixed_operator:
-                continue
-            if _pair_is_qualified(op, machine_id, operator_id, pool):
-                yield machine_id, operator_id
-
-
-def _pair_is_qualified(op: Any, machine_id: str, operator_id: str, pool: Dict[str, Any]) -> bool:
-    fixed_machine, fixed_operator = _fixed_resources(op)
-    op_type = str(getattr(op, "op_type_id", None) or "").strip()
-    if not qualified_operators(pool, [operator_id], op_type):
-        return False
-    machines_by_type = pool["machines_by_op_type"]
-    # The original fixed machine is an input constraint, as in auto_assign.py.
-    # A newly selected machine always needs explicit operation-type evidence.
-    if not fixed_machine or (op_type and op_type in machines_by_type):
-        if not op_type or machine_id not in _resource_ids(machines_by_type.get(op_type, ())):
-            return False
-    if fixed_operator and not fixed_machine:
-        operator_machines = _resource_ids(pool["machines_by_operator"].get(fixed_operator, ()))
-        if operator_machines and machine_id not in operator_machines:
-            return False
-    return operator_id in _resource_ids(pool["operators_by_machine"].get(machine_id, ()))
 
 
 def _current_resources(candidate: Dict[str, Any], by_id: Dict[int, Any]) -> Dict[int, Tuple[str, str]]:

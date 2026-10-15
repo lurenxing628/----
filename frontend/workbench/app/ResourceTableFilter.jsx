@@ -10,6 +10,7 @@
     const current = React.useMemo(() => initialRule(filter), [filter]), panel = React.useRef(null), search = React.useRef(null), service = React.useRef(adapter);
     service.current = adapter;
     const close = React.useRef(onClose); close.current = onClose;
+    const [draftQuery, setDraftQuery] = React.useState('');
     const [request, setRequest] = React.useState({ query: '', page: 1, size: pageSize });
     const [version, setVersion] = React.useState(0), [reading, setReading] = React.useState({ loading: true, result: null, error: null });
     const [keysState, setKeysState] = React.useState({}), cache = React.useRef(null);
@@ -117,7 +118,7 @@
         document.removeEventListener('pointerdown', outside, true); document.removeEventListener('scroll', scroll, true); document.removeEventListener('focusin', focus);
       };
     }, [owner]);
-    function readFirst() { cache.current = null; setRequest({ query: request.query, page: 1, size: pageSize }); setVersion(value => value + 1); }
+    function readFirst() { cache.current = null; setRequest({ query: draftQuery, page: 1, size: pageSize }); setVersion(value => value + 1); }
     function changePage(number) { setRequest({ ...request, page: number, snapshot_ref: result.meta.snapshot_ref }); }
     function commitChange(makeRule, dismiss) {
       try {
@@ -135,8 +136,12 @@
       <div className="wb-popup-header wb-filter-pop-head"><strong id={id}>筛选 · {column.title}</strong>
         <Button className="mini" icon="x" aria-label="关闭列筛选" onClick={() => close.current(true)} /></div>
       <div className="wb-filter-pop-search">
-        <input ref={search} type="text" aria-label={'搜索' + column.title + '列值'} value={request.query} placeholder="搜索列值"
-          onChange={event => setRequest({ query: event.target.value, page: 1, size: pageSize })} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); } }} />
+        <input ref={search} type="text" aria-label={'搜索' + column.title + '列值'} value={draftQuery} placeholder="搜索列值"
+          onChange={event => setDraftQuery(event.target.value)} onKeyDown={event => {
+            const nativeEvent = event.nativeEvent || event;
+            if (event.key !== 'Enter' || event.isComposing || nativeEvent.isComposing || event.keyCode === 229 || nativeEvent.keyCode === 229) return;
+            event.preventDefault(); event.stopPropagation(); readFirst();
+          }} />
         <Button className="mini" icon="search" aria-label="搜索列值" onClick={readFirst} /></div>
       <div className="wb-filter-pop-all">
         <label><input type="checkbox" aria-label="全选" checked={group.all} disabled={blocked || !!keyError || !data || !data.page.total}

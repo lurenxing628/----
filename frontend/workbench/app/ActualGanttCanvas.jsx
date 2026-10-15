@@ -1,31 +1,21 @@
 (function () {
   'use strict';
   const M = window.ActualGanttModel;
-  function usePaint(ref, paint, deps) {
-    React.useLayoutEffect(() => {
-      const draw = () => {
-        const node = ref.current, { width, height } = node.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-        node.width = Math.max(1, Math.round(width * dpr)); node.height = Math.max(1, Math.round(height * dpr));
-        const ctx = node.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const style = getComputedStyle(node), colors = {};
-        for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']])
-          colors[kind] = { fill: style.getPropertyValue('--wb-gantt-' + tone + '-fill').trim(), edge: style.getPropertyValue('--wb-gantt-' + tone + '-edge').trim() };
-        colors.remaining.fill = style.getPropertyValue('--wb-gantt-reference-fill').trim();
-        colors.selected = style.getPropertyValue('--wb-gantt-gold').trim(); paint(ctx, width, height, colors);
-      };
-      draw(); const theme = new MutationObserver(draw), resize = new ResizeObserver(draw);
-      theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] }); resize.observe(ref.current);
-      return () => { theme.disconnect(); resize.disconnect(); };
-    }, deps);
+  function palette(node) {
+    const style = getComputedStyle(node), colors = {};
+    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']])
+      colors[kind] = { fill: style.getPropertyValue('--wb-gantt-' + tone + '-fill').trim(), edge: style.getPropertyValue('--wb-gantt-' + tone + '-edge').trim() };
+    colors.remaining.fill = style.getPropertyValue('--wb-gantt-reference-fill').trim();
+    colors.selected = style.getPropertyValue('--wb-gantt-gold').trim(); return colors;
   }
-  function DenseRow({ row, model, width, viewport, left, selected, graphActive, onSelect, onHover, renderMark }) {
-    const ref = React.useRef(null), marks = M.marks(row), scale = width / (model.end - model.start);
+  function DenseRow({ row, marks, visibleMarks, model, width, viewport, left, selected, graphActive, onSelect, onHover, renderMark }) {
+    const ref = React.useRef(null), scale = width / (model.end - model.start);
     const pointerFocus = React.useRef(false), [activeKey, setActiveKey] = React.useState(null), [focused, setFocused] = React.useState(false);
     const activeIndex = Math.max(0, marks.findIndex(mark => mark.key === activeKey)), active = marks[activeIndex];
-    usePaint(ref, (ctx, w, h, colors) => {
+    window.GanttPresentation.useCanvasPaint(ref, (ctx, w, h, colors) => {
       const critical = graphActive.critical.has(row.item.task.task_ref), related = graphActive.related.has(row.item.task.task_ref);
       const chosen = selected === row.item.task.task_ref;
-      for (const mark of marks) {
+      for (const mark of visibleMarks) {
         const x = (mark.start - model.start) * scale - left, size = (mark.end - mark.start) * scale;
         if (x > w + 12 || x + size < -12) continue;
         ctx.save();
@@ -44,7 +34,7 @@
         }
         ctx.restore();
       }
-    }, [row, width, viewport, left, selected, graphActive, focused, active && active.key]);
+    }, palette, [row, width, viewport, left, selected, graphActive, focused, active && active.key]);
     function reveal(mark) {
       if (!mark) return;
       const board = ref.current.closest('[data-actual-scroll]'); if (!board) return;
@@ -68,7 +58,7 @@
     }
     function hit(event) {
       const rect = ref.current.getBoundingClientRect(), x = event.clientX - rect.left, y = event.clientY - rect.top;
-      return window.ActualGanttWindow.hitMark(marks, model, width, left, x, y);
+      return window.ActualGanttWindow.hitMark(visibleMarks, model, width, left, x, y);
     }
     const label = active ? '第 ' + (activeIndex + 1) + ' / ' + marks.length + ' 个色块；' + M.markTitle(active, row.item, model.labels) + '；方向键切换色块，Home/End 跳到首末，Enter/空格查看详情'
       : M.describe(row.item, model.labels).join('；') + '；无可选择的时间色块';
@@ -78,7 +68,7 @@
       onClick={e => { const mark = hit(e); if (mark) { setActiveKey(mark.key); onSelect(row.item, mark.report); } }}
       onMouseMove={e => { const mark = hit(e); onHover(mark ? { item: row.item, report: mark.report, title: M.markTitle(mark, row.item, model.labels), x: e.clientX, y: e.clientY } : null); }} onMouseLeave={() => onHover(null)}
       onKeyDown={keyDown} />
-      {marks.filter(mark => (mark.kind === 'point' || mark.kind === 'plan-point') && (mark.start - model.start) * scale >= left - 12 && (mark.start - model.start) * scale <= left + viewport + 12)
+      {visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point')
         .map(mark => renderMark(mark, true))}</>;
   }
   window.ActualGanttCanvas = { DenseRow };

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from core.errors import ValidationError
 from core.models.workbench_trial import issue
-from core.services.scheduler.schedule_service import ScheduleService
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.workbench.run.input_config import candidate_config, hold_window, window_label
 from core.services.workbench.run.input_runtime import held_arrangements
 
@@ -23,8 +23,10 @@ def frozen_arrangements(conn, admission, rows, live, checks):
         return {}
     settings = adoption_settings(admission, rows, checks, live["execution"])
     anchor = hold_settings(admission, settings)
+    facts = live["preflight_facts"]
     try:
-        cfg = candidate_config(conn, settings)
+        config = facts.configuration()
+        cfg = candidate_config(conn, settings, snapshot=config)
     except ValidationError:
         # 排产参数本身读不出来时，正式采用会直接拦下并说明是哪项参数；这里不替它判冻结。
         return {}
@@ -33,10 +35,10 @@ def frozen_arrangements(conn, admission, rows, live, checks):
     operations = [SimpleNamespace(**op) for op in tables["BatchOperations"] if op["batch_id"] in batch_ids]
     moving = _rescheduled_ids(rows, live)
     seeds, meta = held_arrangements(
-        ScheduleService(conn), cfg=cfg, prev_version=version,
+        build_schedule_repository_bundle(conn), facts=facts, cfg=cfg, prev_version=version,
         start_dt=datetime.combine(date.fromisoformat(anchor["start_date"]), time.min),
         operations=operations, reschedulable_operations=[op for op in operations if op.id in moving],
-        hold_window=hold_window(conn, anchor)[0])
+        hold_window=hold_window(conn, anchor, snapshot=config)[0])
     return {seed["op_id"]: dict(seed, hold_window=meta.get("hold_window")) for seed in seeds}
 
 

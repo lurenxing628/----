@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import replace
@@ -61,7 +60,6 @@ __all__ = [
     "apply_summary_size_guard",
     "best_score_schema",
     "build_overdue_items",
-    "cfg_value",
     "comparison_metric",
     "config_snapshot_dict",
     "due_exclusive",
@@ -69,21 +67,6 @@ __all__ = [
     "serialize_end_date",
     "build_result_summary",
 ]
-
-def cfg_value(cfg: Any, key: str, default: Any = None) -> Any:
-    value = _config_snapshot_value(cfg, key)
-    return default if value is None else value
-
-
-def _config_snapshot_value(cfg: Any, key: str) -> Any:
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=False,
-        source="scheduler.summary.cfg_value",
-    )
-    return snapshot.to_dict().get(str(key or "").strip())
-
-
 
 def serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
     if end_date is None:
@@ -102,23 +85,10 @@ def serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
 
 
 def build_result_summary(
-    svc=None,
     *,
-    ctx: Optional[SummaryBuildContext] = None,
-    **kwargs,
-) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], str, int]:
-    ctx_kwargs = dict(kwargs)
-    if svc is None:
-        svc = ctx_kwargs.pop("svc", None)
-    else:
-        ctx_kwargs.pop("svc", None)
-    if ctx is None:
-        ctx = SummaryBuildContext(**ctx_kwargs)
-    else:
-        if ctx_kwargs:
-            ctx = replace(ctx, **ctx_kwargs)
-    if svc is None:
-        raise TypeError("build_result_summary() 缺少必需参数：svc")
+    ctx: SummaryBuildContext,
+    logger: Any = None,
+) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], int]:
     ctx = replace(
         ctx,
         cfg=ensure_schedule_config_snapshot(
@@ -129,7 +99,7 @@ def build_result_summary(
     )
 
     runtime_state = _build_runtime_state(
-        svc=svc,
+        logger=logger,
         batches=ctx.batches,
         results=ctx.results,
         summary=ctx.summary,
@@ -203,7 +173,6 @@ def build_result_summary(
         fallback_state=fallback_state,
     )
     result_summary_obj = _build_result_summary_obj(
-        svc,
         ctx=ctx,
         runtime_state=runtime_state,
         freeze_state=freeze_state,
@@ -216,9 +185,5 @@ def build_result_summary(
         time_cost_ms=time_cost_ms,
         serialize_end_date_fn=serialize_end_date,
     )
-    preserve_full_result = (not ctx.simulate and isinstance(ctx.candidate_comparison_public, dict)
-                            and ctx.candidate_comparison_public.get("generation_policy_version") == "unified_search_v1")
-    full_json = json.dumps(result_summary_obj, ensure_ascii=False) if preserve_full_result else None
     result_summary_obj = apply_summary_size_guard(result_summary_obj)
-    result_summary_json = full_json if full_json is not None else json.dumps(result_summary_obj, ensure_ascii=False)
-    return runtime_state.overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms
+    return runtime_state.overdue_items, result_status, result_summary_obj, time_cost_ms

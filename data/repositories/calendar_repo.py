@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Iterable, List, Optional
 
 from core.models import WorkCalendar
 
@@ -30,9 +30,12 @@ class CalendarRepository(BaseRepository):
         )
         return [WorkCalendar.from_row(r) for r in rows]
 
-    def upsert(self, calendar: Union[WorkCalendar, Dict[str, Any]]) -> WorkCalendar:
-        c = calendar if isinstance(calendar, WorkCalendar) else WorkCalendar.from_row(calendar)
-        self.execute(
+    def upsert(self, calendar: WorkCalendar) -> WorkCalendar:
+        self.upsert_many((calendar,))
+        return calendar
+
+    def upsert_many(self, calendars: Iterable[WorkCalendar]) -> None:
+        self.executemany(
             """
             INSERT INTO WorkCalendar (date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -47,20 +50,11 @@ class CalendarRepository(BaseRepository):
               remark=excluded.remark,
               periods_json=excluded.periods_json
             """,
-            (
-                c.date,
-                c.day_type,
-                c.shift_start,
-                c.shift_end,
-                c.shift_hours,
-                c.efficiency,
-                c.allow_normal,
-                c.allow_urgent,
-                c.remark,
-                c.periods_json,
-            ),
+            ((c.date, c.day_type, c.shift_start, c.shift_end, c.shift_hours, c.efficiency, c.allow_normal, c.allow_urgent, c.remark, c.periods_json) for c in calendars),
         )
-        return c
+
+    def delete_many(self, keys) -> None:
+        self.executemany("DELETE FROM WorkCalendar WHERE date = ?", ((day,) for day in keys))
 
     def delete(self, date: str) -> None:
         self.execute("DELETE FROM WorkCalendar WHERE date = ?", (date,))

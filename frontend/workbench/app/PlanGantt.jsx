@@ -68,7 +68,7 @@
         : <div>原安排：{baseline.reason}</div>}
     </div>;
   }
-  function PlanGantt({ data, asOf, selected, onSelect, query, onQuery, disabled = false, toolbarActions, initialMode, initialBaseline = false }) {
+  function PlanGantt({ data, prepared: facts, asOf, selected, onSelect, query, onQuery, disabled = false, toolbarActions, initialMode, initialBaseline = false }) {
     const [mode, setMode] = React.useState(initialMode === 'operator' ? 'operator' : 'machine'), [baseline, setBaseline] = React.useState(initialBaseline), [zoom, setZoom] = React.useState(1);
     const [changedOnly, setChangedOnly] = React.useState(false), { expanded, toggle } = window.GanttPresentationUI.useExpanded();
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
@@ -86,9 +86,10 @@
     // It must not inherit a wide screen or expanded board's pixel width.
     const width = printing ? 640 : viewport * zoom, selectedRef = selected && selected.task.task_ref;
     const renderLeft = printing ? 0 : position.left, renderViewport = printing ? width : viewport;
-    const prepared = React.useMemo(() => M.prepare(data, mode, query, displayBaseline, displayChangedOnly), [data, mode, query, displayBaseline, displayChangedOnly]);
+    const grouped = React.useMemo(() => M.groupPrepared(facts, mode), [facts, mode]);
+    const prepared = React.useMemo(() => M.selectPrepared(grouped, query, displayChangedOnly, displayBaseline), [grouped, query, displayChangedOnly, displayBaseline]);
     const model = React.useMemo(() => M.layoutPrepared(prepared, width), [prepared, width]);
-    const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
+    const graph = facts.graph;
     const targetRef = hover && !hover.before ? hover.task.task_ref : selected && !selected.before ? selectedRef : null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, { enabled: chainEnabled, targetRef }), [graph, chainEnabled, targetRef]);
     const graphLocations = React.useMemo(() => window.GanttGraph.locations(model), [model]);
@@ -100,12 +101,15 @@
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
     const axis = V.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport }), ticks = axis.ticks;
-    const refreshedAt = M.instant(asOf);
+    const refreshedAt = React.useMemo(() => M.instant(asOf), [asOf]);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
     const axisLeft = at => printing ? timeX(at) / width * 100 + '%' : timeX(at);
-    const visibleRows = printing ? model.rows : M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
+    const visibleRows = React.useMemo(() => printing ? model.rows : M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90), [model, printing, position.top, position.height]);
     const rangeStart = model.start + renderLeft / width * (model.end - model.start);
     const rangeEnd = model.start + (renderLeft + renderViewport) / width * (model.end - model.start);
+    const visible = React.useMemo(() => visibleRows.map(row => ({ row, items: row.point
+      ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start))
+      : M.visibleItems(row.items, rangeStart, rangeEnd) })), [visibleRows, rangeStart, rangeEnd, width, model.start, model.end]);
     const measure = () => {
       const el = board.current;
       if (printState.current || typeof window.matchMedia === 'function' && window.matchMedia('print').matches) return;
@@ -186,15 +190,14 @@
       </div>
       <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} onClear={() => { setHover(null); onSelect(null); }} disabled={disabled} />
       <div className="plan-board-frame">
-        {!printing && width > viewport && <Overview model={model} tasks={data.tasks} cache={overviewCache} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />}
+        {!printing && width > viewport && <Overview model={model} tasks={data.tasks} prepared={facts} cache={overviewCache} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />}
         <div ref={board} className="plan-board" data-plan-scroll data-wb-scroll-key="plan-board" tabIndex={0} aria-label={M.kindLabels[mode] + '甘特时间轴'} onScroll={() => {
           if (frame.current) cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure);
         }} style={{ '--plan-label': labelWidth + 'px' }}>
           <div className="plan-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}>
             <div className="plan-axis"><div className="plan-corner">{M.kindLabels[mode]} / 工序<small className="plan-muted plan-corner-count">{model.groupCount} 组</small></div>
               <div className="plan-ticks" style={{ width }}><window.GanttPresentationUI.Axis axis={axis} width={width} printing={printing} /></div></div>
-            {visibleRows.map(row => {
-              const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
+            {visible.map(({ row, items }) => {
               const meta = row.before ? '原安排' : [row.code, row.tasks.length + ' 道工序', row.point ? '零工时节点 · 不占资源' : row.trackCount > 1 ? '重叠子行 ' + row.subrow + '/' + row.trackCount : null].filter(Boolean).join(' · ');
               const summary = row.occupancy ? '全时段已占 ' + F.hours(row.occupancy.occupied_hours, { digits: 1, trim: true })
                 + (row.occupancy.utilization === null ? '' : ' · 班内占用 ' + F.percent(row.occupancy.utilization, { digits: 0 })) : '';
@@ -203,7 +206,7 @@
                   ? <small className="plan-resource-meta">{row.tasks.length ? '原安排' : row.label + ' · 原安排'}</small>
                   : <><strong>{row.label}{!row.point && row.trackCount > 1 && <em className="wb-gantt-subrow-badge">{row.subrow}/{row.trackCount}</em>}</strong><small className="plan-resource-meta">{meta}</small>{summary && <small className="plan-resource-summary">{summary}</small>}</>}</div>
                 <div className="plan-track" style={{ width }}>{ticks.map(tick => <i key={tick.at} className="plan-gridline" style={{ left: axisLeft(tick.at) }} />)}
-                  {items.length > 70 ? <DenseRow row={row} model={model} width={width} printing={printing} printNumbers={printNumbers} viewport={renderViewport} left={renderLeft} selectedRef={selectedRef} selectedBefore={selected && selected.before} active={active} risks={risks} onSelect={select} onHover={setHover} /> :
+                  {items.length > 70 ? <DenseRow row={row} items={items} model={model} width={width} printing={printing} printNumbers={printNumbers} viewport={renderViewport} left={renderLeft} selectedRef={selectedRef} selectedBefore={selected && selected.before} active={active} risks={risks} onSelect={select} onHover={setHover} /> :
                     items.map(item => <Bar key={item.task.task_ref} item={item} model={model} width={width} printing={printing} printNumbers={printNumbers} selectedRef={selectedRef} selectedBefore={selected && selected.before} active={active} risks={risks} onSelect={select} onHover={setHover} />)}
                 </div>
                 {printing && <window.GanttGraphLayer.Lines geometry={geometry} width={width} height={row.height} labelWidth={labelWidth} rowTop={row.top} />}

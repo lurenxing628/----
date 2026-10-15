@@ -9,7 +9,7 @@ from core.models.workbench_preflight import preflight_window
 
 from .admission_scope import project_admitted_scope
 from .candidate_delivery import project_legacy_delivery_detail
-from .candidate_facts import GenerationFacts, _table
+from .candidate_facts import GenerationFacts
 from .candidate_process import PROCESS_VERSION, candidate_process
 from .candidate_projection import candidate_summary, dispositions
 from .candidate_tasks import project_validated_tasks
@@ -27,6 +27,7 @@ from .decision_preparation import (
 from .decision_read_models import PROJECTION_VERSION, Memberships
 from .decision_selection import selection_basis
 from .operation_effort_evidence import saved_operation_efforts
+from .preflight_dependencies import material_deferred_ids
 from .preparation_projection import _ALLOCATIONS
 from .resource_intervals import resource_cohort, task_interval
 from .run_history_projection import _failure, scope_summary
@@ -114,7 +115,7 @@ def _configuration(facts, receipt):
     saved = ((receipt or {}).get("summary") or {}).get("algo", {}).get("config_snapshot")
     if type(saved) is dict:
         return saved
-    return {row["config_key"]: row.get("config_value") for row in _table(facts.archive, "ScheduleConfig") or []}
+    return {row["config_key"]: row.get("config_value") for row in facts.table("ScheduleConfig") or []}
 
 
 def _stored_number(value):
@@ -351,6 +352,10 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
     refs = expanded.refs(context["admission_operation_refs"], "operation")
     deferred = set(expanded.refs(context["deferred_operation_refs"], "operation"))
     batch_refs, disposition = sorted(capture["input"]["batch_refs"]), dispositions(receipt)
+    skipped = {ref for ref in refs if (disposition or {}).get(ref, {}).get("status") == "skipped"} - deferred
+    operation_scope = set(refs), deferred, skipped
+    deferred_ids = {facts.operations[ref] for ref in deferred}
+    legacy_deferred_ids = material_deferred_ids((disposition or {}).values(), capture["input"])
     efforts = saved_operation_efforts((receipt or {}).get("operation_effort"), identities=facts.operations)
     standards = admission_operation_standards(facts, refs, run["run_ref"])
     basis, candidate_models = selection_basis(receipt, candidates), []
@@ -373,9 +378,11 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
                                             prepared_tasks=packet.get("prepared_tasks"))
         available = candidate["status"] == "completed"
         delivery = project_decision_delivery(facts, tasks, batch_refs, candidate=candidate, available=available,
-            deferred_ids={facts.operations[value] for value in deferred}, intervals=intervals)
-        summary = project_candidate_summary(candidate, tasks, facts, capture, disposition, batch_refs, basis, candidates, delivery)
-        summary.update(run_ref=run["run_ref"], catalog=candidate_summary(candidate, disposition),
+            deferred_ids=deferred_ids, intervals=intervals)
+        summary = project_candidate_summary(candidate, tasks, facts, capture, disposition, batch_refs, basis, candidates, delivery,
+                                            operation_scope=operation_scope)
+        summary.update(run_ref=run["run_ref"],
+                       catalog=candidate_summary(candidate, disposition, scheduled_op_ids=packet["scheduled_op_ids"]),
                        scheduled_operation_refs=sorted({row["operation_ref"] for row in tasks}),
                        resource_views=_resource_views(tasks, refs, intervals))
         prepared = project_decision_preparation(facts, refs, efforts, tasks, run_ref=run["run_ref"], available=available,
@@ -383,7 +390,8 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
             requirements_available=(receipt or {}).get("operation_effort") is not None or available)
         work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
         completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=summary["coverage"]["schedulable"])
-        detail = project_legacy_delivery_detail(candidate, facts, tasks, disposition, capture["input"], intervals=intervals)
+        detail = project_legacy_delivery_detail(candidate, facts, tasks, disposition, capture["input"], intervals=intervals,
+                                                deferred_ids=legacy_deferred_ids)
         candidate_models.append({"candidate_ref": ref, "run_ref": run["run_ref"], "projection_version": PROJECTION_VERSION,
             "summary": members.encode(summary), "preparation": members.encode(prepared["summary"]),
             "completion": members.encode(completion), "delivery": delivery, "delivery_detail": detail,

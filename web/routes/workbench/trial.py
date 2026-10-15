@@ -3,7 +3,7 @@
 import re
 import uuid
 
-from flask import g, jsonify, request
+from flask import g, request
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandUncertain
@@ -11,7 +11,7 @@ from core.models.workbench_trial import fields
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
 from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -54,13 +54,13 @@ def _command(call):
     try:
         result = call()
     except WorkbenchCommandUncertain as exc:
-        response = jsonify({"ok": False, "committed": "unknown", "error": {
+        response = json_response({"ok": False, "committed": "unknown", "error": {
             "code": "storage_failure", "message": str(exc), "fields": [], "retryable": False,
             "request_ref": uuid.uuid4().hex,
             "request_key": exc.request_key, "result_target": "/api/workbench/v1/trial/commands/" + exc.request_key}})
         response.status_code = 500
     else:
-        response = jsonify(result)
+        response = json_response(result)
     response.headers["Cache-Control"] = "no-store"
     return response
 

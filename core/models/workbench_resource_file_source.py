@@ -16,14 +16,15 @@ class PreparedImportSource:
     request_document: str
     content: bytes
     source_ref: str
-    _rows: tuple
-    _notices: tuple
+    _rows: list
+    _notices: list
 
     @classmethod
     def build(cls, operation, request, rows, notices, *, content):
+        """Take ownership of the decoder's private rows and notices."""
         source_ref = uuid.uuid4().hex
         document = canonical_json({**request, "actual_source_ref": source_ref})
-        return cls(operation, document, bytes(content), source_ref, tuple(deepcopy(rows)), tuple(deepcopy(notices)))
+        return cls(operation, document, bytes(content), source_ref, rows, notices)
 
     @classmethod
     def confirmation(cls, preview, content):
@@ -43,4 +44,4 @@ class PreparedImportSource:
 
     def parsed(self):
         # Each proposal owns its mutable row diagnostics; the retained file facts never change.
-        return list(deepcopy(self._rows)), list(deepcopy(self._notices))
+        return deepcopy(self._rows), deepcopy(self._notices)

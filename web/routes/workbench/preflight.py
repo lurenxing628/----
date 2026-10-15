@@ -1,10 +1,10 @@
 """Scheduling input checks and remembered form input; host owns worker integration."""
 
-import json
 from datetime import datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
 
 from core.errors import ValidationError
@@ -18,7 +18,7 @@ from core.models.workbench_preflight import (
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.preflight_facts import full_facts_content
-from web.api_responses import failure, query_success
+from web.api_responses import failure, json_response, query_success
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
@@ -35,7 +35,7 @@ def _preflight_binding(conn, input_ref):
     if not conn.in_transaction:
         raise RuntimeError("Preflight input revalidation requires the caller's transaction")
     try:
-        bound = json.loads(resolve_public_token(INPUT_SCOPE, input_ref, message="排产检查结果已过期，这次排产没有开始。请重新点「开始排产检查」。", field="input_ref"))
+        bound = resolve_public_token(INPUT_SCOPE, input_ref, message="排产检查结果已过期，这次排产没有开始。请重新点「开始排产检查」。", field="input_ref")
     except (ValidationError, ValueError, TypeError) as exc:
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查结果已过期或读不出来，这次排产没有开始。请重新点「开始排产检查」。") from exc
     normalized = normalize_preflight_input(bound["input"])
@@ -62,12 +62,12 @@ def evaluate_preflight_input(conn, input_ref):
     return prepared.data, prepared.fingerprint
 
 
-def evaluate_preflight_input_prepared(conn, input_ref) -> "PreparedPreflight":
+def evaluate_preflight_input_prepared(conn, input_ref, *, facts=None) -> "PreparedPreflight":
     """Private same-transaction continuation; it never enters the public token."""
     from core.services.workbench.run.preflight import PreflightService
 
     normalized, original = _preflight_binding(conn, input_ref)
-    prepared = PreflightService(conn).evaluate_prepared(normalized)
+    prepared = PreflightService(conn, facts=facts).evaluate_prepared(normalized)
     _require_current(original, prepared.fingerprint)
     return prepared
 
@@ -84,12 +84,13 @@ def scheduling_preflight():
         data, fingerprint = PreflightService(g.db).evaluate(request.get_json())
         binding = {"input": data["normalized_input"], "scope": data["scope"], "fingerprint": fingerprint,
                    "check_ref": new_run_ref()}
-        token, expires = issue_public_token_with_expiry(INPUT_SCOPE, canonical_json(binding), ttl_seconds=900)
+        token, expires = issue_public_token_with_expiry(INPUT_SCOPE, MappingProxyType(binding), key=binding["check_ref"],
+                                                       group=fingerprint, ttl_seconds=900)
         data.update(input_ref=token, input_expires_at=datetime.fromtimestamp(expires).strftime("%Y-%m-%dT%H:%M:%S"),
                     write_context={"write_token": None, "expires_at": None,
                                    "capabilities": {"scheduling.preflight": True, "scheduling.run": False},
                                    "blocked_reasons": data["run_blocked_reasons"]})
-        response = query_success(data, bind_read_snapshot({"kind": "preflight", **binding["scope"], "input": binding["input"]}, fingerprint))
+        response = query_success(data, {"snapshot_ref": token, "as_of": datetime.now().isoformat(timespec="seconds")})
     except WorkbenchCommandRejected as exc:
         response = failure(exc.code, str(exc), exc.status)
     except HTTPException as exc:
@@ -126,7 +127,7 @@ def scheduling_preferences_write():
     result = SchedulingPreferencesService(g.db, current_app.logger).save(
         body["input"], request_key=body["request_key"],
         validate_context=lambda subject, action, state: validate_write_context(body["write_token"], subject, action, state))
-    response = jsonify(result)
+    response = json_response(result)
     response.headers["Cache-Control"] = "no-store"
     return response
 

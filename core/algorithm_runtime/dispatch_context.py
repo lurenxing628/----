@@ -58,8 +58,8 @@ def _dispatch_callback_binding(callback: Any, *, slot: str) -> _CallbackBinding:
     return binding
 
 
-def check_dispatch_callback_binding(callback: Any, args: Tuple[Any, ...], kwargs: Dict[str, Any], *, slot: str) -> None:
-    binding = _dispatch_callback_binding(callback, slot=slot)
+def check_dispatch_callback_binding(callback: Any, args: Tuple[Any, ...], kwargs: Dict[str, Any], *, slot: str, prepared_binding: Any = None) -> None:
+    binding = prepared_binding if prepared_binding is not None else _dispatch_callback_binding(callback, slot=slot)
     shape = (len(args), frozenset(kwargs))
     if shape in binding.shapes:
         return

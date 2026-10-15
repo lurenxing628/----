@@ -1,5 +1,6 @@
 """Connection-bound run journal. No implicit transaction, commit, schema repair or ruling."""
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import TERMINAL_STATES, new_run_ref
@@ -38,7 +39,7 @@ class WorkbenchRunRepository:
 
     def schema_issues(self):
         """Run contract issues as reported by the schema probe; [] when the schema is complete."""
-        return workbench_run_contract_issues(self.conn)
+        return schema_contract_memo(self.conn).get_schema(workbench_run_contract_issues)
 
     def get(self, run_ref):
         row = self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()
@@ -171,12 +172,13 @@ class WorkbenchRunRepository:
     def claim(self, run_ref, executor_ref, now):
         cursor = self.conn.execute("""UPDATE WorkbenchRunJobs SET state='running',stage='computing',executor_ref=?,started_at=?
             WHERE run_ref=? AND state='queued' AND stage='queued'""", (executor_ref, now, run_ref))
-        return cursor.rowcount == 1
+        return ({"state": "running", "stage": "computing", "executor_ref": executor_ref,
+                 "started_at": now} if cursor.rowcount == 1 else None)
 
     def finish(self, run_ref, state, result, now):
         prepared = encode_result(result)
         prepared["state"] = state
-        self.finish_prepared(run_ref, prepared, now)
+        return self.finish_prepared(run_ref, prepared, now)
 
     def finish_prepared(self, run_ref, result, now):
         state = result["state"]
@@ -190,6 +192,8 @@ class WorkbenchRunRepository:
             (state, now, result["error_json"], run_ref))
         if cursor.rowcount != 1:
             raise ValueError("Run terminal update did not affect exactly one admission")
+        return {"state": state, "stage": "finished", "finished_at": now,
+                "error_json": result["error_json"], "receipt_ref": receipt_ref}
 
     def record_reconciled_finish(self, run_ref, state, finished_at, error_json):
         """按已存在的回执把作业行补写成 finished；对账场景不再校验 running/queued 前态。"""

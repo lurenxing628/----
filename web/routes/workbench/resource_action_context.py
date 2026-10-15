@@ -1,17 +1,15 @@
-"""Server-owned immutable action/export contexts; public tokens hold short keys."""
+"""Server-owned action/export values held directly by public token bindings."""
 
-import json
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
-from threading import RLock
+from types import MappingProxyType
 
 from flask import current_app
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import public_action_row, resource_scope
 from core.models.workbench_resource_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns
 from core.models.workbench_resource_query import ResourcePageRequest
@@ -23,15 +21,12 @@ from .write_context import preview_write_context, validate_preview_confirmation
 
 PREVIEW_SCOPE = "workbench-resource-preview-v1"
 EXPORT_SCOPE = "workbench-resource-export-v1"
-EXTENSION = "workbench_resource_action_contexts_v1"
-LOCK = RLock()
 
 
 @dataclass(frozen=True)
 class RetainedContext:
-    document: str
+    document: object
     content: object
-    expires_at: float
 
 
 def read_endpoint(function):
@@ -52,47 +47,22 @@ def scope_input(kind, body):
     return scope, query.scope(), opaque_ref(body["snapshot_ref"], "snapshot_ref")
 
 
-def _store():
-    store = current_app.extensions.setdefault(EXTENSION, {})
-    now = time.time()
-    for key in list(store):
-        if store[key].expires_at <= now:
-            del store[key]
-    return store
+def retain_context(namespace, document, content=None, *, key=None):
+    from .read_context import fact_value
 
-
-def _context_key(namespace, document):
-    """以私有完整原文复用上下文，公开入口仍由既有登记表生成随机令牌。"""
-    return canonical_json({"namespace": namespace, "document": document})
-
-
-def retain_context(namespace, document, content=None):
-    key = _context_key(namespace, document)
-    binding = canonical_json({"version": 1, "source": "production", "context_key": key})
-    token, expiry = issue_public_token_with_expiry(namespace, binding, ttl_seconds=900)
-    with LOCK:
-        store = _store()
-        previous = store.get(key)
-        if previous:
-            if previous.document != document or previous.content != content:
-                raise RuntimeError("操作引用对应不同原始内容，未覆盖预览。")
-            expiry = max(expiry, previous.expires_at)
-        store[key] = RetainedContext(document, content, expiry)
+    identity = fact_value(document) if key is None else key
+    retained = MappingProxyType(document) if isinstance(document, dict) else document
+    token, expiry = issue_public_token_with_expiry(namespace, RetainedContext(retained, content),
+                                                  key=identity, ttl_seconds=900)
     return token, datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
 
 
 def resolve_context(namespace, ref, code):
     try:
-        binding = json.loads(resolve_public_token(namespace, ref, message="预检结果已过期，数据没有改动。请重新预检。", field="preview_ref"))
-    except (ValidationError, ValueError) as exc:
+        value = resolve_public_token(namespace, ref, message="预检结果已过期，数据没有改动。请重新预检。", field="preview_ref")
+    except ValidationError as exc:
         raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动，范围也没有自动更换。请重新预检。") from exc
-    if binding.get("version") != 1 or binding.get("source") != "production":
-        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，数据没有改动。请重新预检。")
-    with LOCK:
-        value = _store().get(binding["context_key"])
-        if value is None:
-            raise WorkbenchCommandRejected(code, "预检结果已过期，数据没有改动；系统没有拿页面上的内容凑一份。请重新预检。")
-        return value.document, value.content
+    return value.document, value.content
 
 
 def issue_preview(kind, preview, content=None):

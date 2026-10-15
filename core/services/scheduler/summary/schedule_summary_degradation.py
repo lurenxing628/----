@@ -9,7 +9,6 @@ from core.models.scheduler_degradation_messages import (
 )
 from core.services.common.build_outcome import BuildOutcome
 from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.contracts.summary_count_parse import _meta_bool_state
 
 from .schedule_summary_downtime_degradation import compute_downtime_degradation as _compute_downtime_degradation
@@ -340,11 +339,7 @@ def _summary_degradation_state(
 
 
 def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, Optional[str], bool]:
-    snapshot = ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=False,
-        source="scheduler.summary.resource_pool_degradation",
-    )
+    snapshot = cfg
     auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
     meta = resource_pool_meta if isinstance(resource_pool_meta, dict) else {}
     attempted, attempted_parse_failed = _meta_bool_state(meta, "resource_pool_attempted", default=False)

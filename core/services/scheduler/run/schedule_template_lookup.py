@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, List, Mapping, Optional
 
-from core.errors import ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import ExternalGroup, PartOperation
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
@@ -48,7 +48,9 @@ def verified_external_context_for_op(svc, op: Any) -> FrozenExternalContext:
     batches = cache.setdefault("batch", {})
     batch = batches.get(op.batch_id)
     if batch is None:
-        batch = svc._get_batch_or_raise(op.batch_id)
+        batch = svc.batch_repo.get(op.batch_id)
+        if batch is None:
+            raise BusinessError(ErrorCode.BATCH_NOT_FOUND, f"批次“{op.batch_id}”不存在")
         batches[op.batch_id] = batch
     row = require_context(_stored_context(svc, op.id), operation_id=op.id,
                           part_no=batch.part_no, sequence=op.seq)

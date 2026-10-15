@@ -49,7 +49,7 @@ def _overlay(windows):
 def measures(windows):
     result: Dict[str, float] = dict.fromkeys(_MEASURES, 0.0)
     for row in windows:
-        duration = (instant(row["end"]) - instant(row["start"])).total_seconds() / 3600.0
+        duration = (instant(row["end"]) - instant(row["start"])).total_seconds()
         for mode in ("", "normal_", "urgent_"):
             allowed = row["allow_normal"] or row["allow_urgent"] if not mode else row["allow_" + mode[:-1]]
             if allowed:
@@ -57,7 +57,7 @@ def measures(windows):
                 result[mode + "effective_hours"] += duration * row["efficiency"]
     if any(not math.isfinite(value) for value in result.values()):
         raise ValueError("Nonfinite calendar capacity")
-    return {key: round(value, 6) for key, value in result.items()}
+    return {key: value / 3600.0 for key, value in result.items()}
 
 
 def policy_projection(engine, first_day, last_day, start, end, operator_id=None) -> Dict[str, Any]:
@@ -140,8 +140,8 @@ def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -
     remaining_measures = measures(remaining)
     windows = remaining if raw["status"] == "active" else []
     result.update(windows=windows, **(remaining_measures if raw["status"] == "active" else measures([])))
-    result["downtime_scope_hours"] = round(hours(downtime), 6)
-    result["downtime_available_hours"] = round(base["available_hours"] - remaining_measures["available_hours"], 6)
+    result["downtime_scope_hours"] = hours(downtime)
+    result["downtime_available_hours"] = base["available_hours"] - remaining_measures["available_hours"]
     return result
 
 

@@ -7,6 +7,7 @@ from datetime import datetime
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.workbench.facts.system_reads import backup_records
 from core.services.workbench.facts.system_redaction import public_system_text
+from core.services.workbench.messages import stored_utc_text
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 from data.repositories.workbench_system_maintenance_repo import WorkbenchSystemMaintenanceRepository
 
@@ -86,7 +87,8 @@ def _cleanup_audits(conn):
         detail = {"audit_id": record["id"], "action": record["action"], "level": record["log_level"],
                   "detail": _detail(record["detail"]), "error_message": record["error_message"],
                   "basis": "persisted_operation_audit_not_file_existence"}
-        rows.append(_event("cleanup", "operation_audit", record["id"], record["log_time"], state, label, detail))
+        time = stored_utc_text(record["log_time"]) if record["log_time"] else None
+        rows.append(_event("cleanup", "operation_audit", record["id"], time, state, label, detail))
     return rows, present, len(records) > _AUDIT_LIMIT
 
 

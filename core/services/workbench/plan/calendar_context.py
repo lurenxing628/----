@@ -3,7 +3,6 @@
 from collections import namedtuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.capacity.plan_calendar_issues import issue  # noqa: F401  公开词汇表已下沉到共享内核，这里保留原入口
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
@@ -21,8 +20,6 @@ def require_snapshot(conn):
 
 def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_context=None):
     require_snapshot(conn)
-    if len(rows) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected("query_too_large", "这个计划超过 10000 条安排上限。请缩小时间范围后重试。", 413)
     if not entry.can_view or entry.plan_identity is None:
         raise WorkbenchCommandRejected("plan_unavailable", "所选计划暂不可用，请刷新列表后重新选择。")
     time_scope = scope.time_scope(plan_span)

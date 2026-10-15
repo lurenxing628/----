@@ -110,10 +110,16 @@
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedFilter = view.onlySelected ? view.selected : null;
-    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null,
-      [data, result && result.meta.as_of, view.query, view.late, view.onlySelected, selectedFilter, view.mode, view.collapsed]);
+    const prepared = React.useMemo(() => {
+      if (!data) return null;
+      const facts = M.prepare(data, result.meta.as_of); facts.graph = window.GanttGraph.create(data.gantt_graph); return facts;
+    }, [data, result && result.meta.as_of]);
+    const grouped = React.useMemo(() => prepared ? M.groupPrepared(prepared, view.mode) : null, [prepared, view.mode]);
+    const visible = React.useMemo(() => grouped ? M.selectPrepared(grouped, view) : null,
+      [grouped, view.query, view.late, view.onlySelected, selectedFilter]);
+    const model = React.useMemo(() => visible ? M.layoutPrepared(visible, view.collapsed) : null, [visible, view.collapsed]);
     const stats = React.useMemo(() => data ? M.metrics(data) : null, [data]);
-    const taskIndex = React.useMemo(() => data ? new Map(data.items.map(item => [item.task.task_ref, item])) : null, [data]);
+    const taskIndex = prepared && prepared.taskIndex;
     const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
     window.WorkbenchPageContext.useSnapshot(data ? {
       plan_ref: data.plan.plan_ref, scope: data.scope, task_ref: view.selected,
@@ -139,7 +145,7 @@
       const node = board.current; if (!node || !model) return;
       if (!defaultWindowApplied.current) {
         defaultWindowApplied.current = true;
-        const next = W.initial(data, model);
+        const next = W.initial(model);
         if (!pending.current) pending.current = { center: next.center };
         setZoom(next.zoom);
         if (next.zoom !== zoom) return;
@@ -155,8 +161,8 @@
         if (pending.current.task) {
           const reportRow = model.reportLocations.get(view.report);
           const row = reportRow && reportRow.item.task.task_ref === pending.current.task ? reportRow : model.locations.get(pending.current.task);
-          if (row) { const report = row.item.execution && row.item.execution.reports.find(r => r.report_ref === view.report), at = report && report.actual_start || row.item.task.start;
-            node.scrollTop = Math.max(0, row.top - node.clientHeight / 3); node.scrollLeft = (M.instant(at) - model.start) / (model.end - model.start) * width - viewport / 3; }
+          if (row) { const fact = model.taskIndex.get(pending.current.task), report = fact.reportIndex.get(view.report), at = report && Number.isFinite(report.start) ? report.start : fact.baseline.start;
+            node.scrollTop = Math.max(0, row.top - node.clientHeight / 3); node.scrollLeft = (at - model.start) / (model.end - model.start) * width - viewport / 3; }
         } else node.scrollLeft = pending.current.center * width - viewport / 2;
         pending.current = null;
       }
@@ -164,7 +170,7 @@
     }, [width, model, restore, position.width]);
     React.useEffect(() => { if (snapshotPosition && !restore) remember(key, { scope, view, zoom, position: snapshotPosition }); }, [key, scope, view, zoom, position, model, restore]);
     React.useEffect(() => { setHover(null); setChainTarget(null); }, [view, position.top, position.left]);
-    function zoomTo(next) { pending.current = { center: W.anchor(data, model, view.selected, view.report) }; setZoom(Math.max(1, Math.min(1024, next))); }
+    function zoomTo(next) { pending.current = { center: W.anchor(model, view.selected, view.report) }; setZoom(Math.max(1, Math.min(1024, next))); }
     function fitView() { pending.current = { center: .5 }; setZoom(1); pan(0); }
     function zoomKeys(event) {
       const action = window.ResourceControls.timelineZoomKey(event);
@@ -198,9 +204,9 @@
       setResult(null); setLoading(true); setScope(next); setRefresh(n => n + 1); setExportNotice('');
     }
     function select(item, report) { setLocateNotice(''); patch({ selected: item.task.task_ref, report: report ? report.report_ref : null }); }
-    const selected = taskIndex && taskIndex.get(view.selected);
+    const selectedFact = taskIndex && taskIndex.get(view.selected), selected = selectedFact && selectedFact.item;
     const report = selected && selected.execution && selected.execution.reports.find(r => r.report_ref === view.report);
-    const graph = React.useMemo(() => data ? window.GanttGraph.create(data.gantt_graph) : null, [data]);
+    const graph = prepared && prepared.graph;
     const targetRef = chainTarget && chainTarget[0] || view.selected;
     const active = React.useMemo(() => graph ? window.GanttGraph.selection(graph, { enabled: view.chain, targetRef }) : null, [graph, view.chain, targetRef]);
     const graphLocations = React.useMemo(() => model ? M.graphLocations(model) : null, [model]);
@@ -243,11 +249,11 @@
           {onNavigate && <><Button icon="chart-gantt" onClick={() => navigate('gantt')}>计划甘特</Button><Button icon="arrow-right" onClick={() => navigate('field')}>现场记录</Button></>}
           {onNavigate && initialContext.return_to && <Button icon="chevron-left" onClick={() => { const target = initialContext.return_to; if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context || {}); }}>返回</Button>}</div></div>
       <ErrorBox error={error} />
+      {scope.plan_ref && <Range scope={scope} resources={data ? data.resources : null} onApply={apply} busy={loading} />}
       {!data && <window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : 'empty'} title={loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据'}
         action={error && !loading ? <Button icon="refresh-cw" onClick={reload}>刷新</Button> : undefined} />}
       {!data && !loading && onNavigate && <Button icon="chart-gantt" onClick={() => onNavigate('analysis', {})}>选择计划</Button>}
-      {data && <><Range scope={scope} resources={data.resources} onApply={apply} busy={loading} />
-        {data.availability.state !== 'available' && <div role="status" className="fg-note">{data.availability.reason}</div>}
+      {data && <>{data.availability.state !== 'available' && <div role="status" className="fg-note">{data.availability.reason}</div>}
         <dl className="fg-metrics" aria-label="当前范围概况"><div><dt>整道已完工</dt><dd>{stats.complete === null ? '报工数据不可用' : stats.complete}</dd></div>
           <div><dt>已报工 · 未整道完工</dt><dd>{stats.reported === null ? '报工数据不可用' : stats.reported}</dd></div>
           <div><dt>待报工</dt><dd>{stats.pending === null ? '报工数据不可用' : stats.pending}</dd></div>
@@ -284,11 +290,11 @@
               {onNavigate && <Button icon="arrow-right" onClick={() => navigate('field')}>到现场记录核对或补齐</Button>}
             </div></details>
             <details className="wb-gantt-detail-section" open><summary>完整工艺路线</summary><div className="wb-gantt-detail-section-body">
-              <window.GanttRouteList graph={data.gantt_graph} targetRef={selected.task.task_ref} loadedRefs={new Set(model.items.map(item => item.task.task_ref))}
+              <window.GanttRouteList index={graph} targetRef={selected.task.task_ref} loadedRefs={new Set(model.items.map(item => item.task.task_ref))}
                 onSelect={ref => { locate(ref); }} />
             </div></details>
             {data.gantt_graph.state === 'available' && data.gantt_graph.critical_task_refs.length > 0 && <details className="wb-gantt-detail-section"><summary>计划关键链</summary><div className="wb-gantt-detail-section-body">
-              <Chain graph={data.gantt_graph} model={model} onLocate={locate} /></div></details>}
+              <Chain index={graph} model={model} onLocate={locate} /></div></details>}
           </> : <p className="fg-muted">点击工序查看详情与完整工艺路线。</p>}</div>
         </aside>}</div></>}
       {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hover.title || describe(hover.item, model.labels, hover.report).join('\n')}</div>}

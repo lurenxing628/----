@@ -133,13 +133,18 @@ class CalendarEngine:
     - 读取日历数据（WorkCalendar/OperatorCalendar）但不负责 CRUD/导入
     """
 
-    def __init__(self, conn, logger=None, op_logger=None):
+    def __init__(self, conn, logger=None, op_logger=None, *, capture=None):
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
+        self.capture = capture
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
-        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger)
+        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger, capture=capture)
+        self._captured_global_rows = (None if capture is None else {
+            str(row["date"]): row for row in capture.business_table("WorkCalendar")})
+        self._captured_personal_rows = (None if capture is None else {
+            (row["operator_id"], str(row["date"])): row for row in capture.business_table("OperatorCalendar")})
         # 本引擎拥有一次请求/排产快照的日期与班次事实；维护入口统一清空派生缓存。
         self._default_periods_json: Optional[str] = None
         self._default_periods = None
@@ -147,9 +152,9 @@ class CalendarEngine:
         self._period_facts: Dict[str, tuple] = {}
         self._public_calendar_rows: Dict[str, Any] = {}
         self._operator_calendar_rows: Dict[str, Dict[str, Any]] = {}
+        self._public_policy_cache: Dict[str, DayPolicy] = {}
         self._policy_cache: Dict[Tuple[str, str], DayPolicy] = {}
         self._policy_operator_keys: Dict[str, Dict[Tuple[str, str], None]] = {}
-        self._sgs_policy_content_tokens: dict = {}
         self._segment_cache: Dict[str, Dict[date, tuple]] = {}
         # 工作小时差按 (operator_id, 优先级类别) 维护逐日窗口前缀，与策略缓存同生命周期。
         self._working_hours_prefix: Dict[Tuple[str, str], WorkingHoursPrefix] = {}
@@ -167,9 +172,9 @@ class CalendarEngine:
         self._period_facts.clear()
         self._public_calendar_rows.clear()
         self._operator_calendar_rows.clear()
+        self._public_policy_cache.clear()
         self._policy_cache.clear()
         self._policy_operator_keys.clear()
-        self._sgs_policy_content_tokens.clear()
         self._segment_cache.clear()
         self._working_hours_prefix.clear()
         self.operator_shift_calendar.clear_cache()
@@ -181,7 +186,6 @@ class CalendarEngine:
             return
         for key in self._policy_operator_keys.pop(op_id, ()):
             self._policy_cache.pop(key, None)
-            self._sgs_policy_content_tokens.pop(key, None)
         self._operator_calendar_rows.pop(op_id, None)
         self._segment_cache.pop(op_id, None)
         for priority in (_NORMAL_PRIORITY, "urgent"):
@@ -198,7 +202,7 @@ class CalendarEngine:
     def default_periods(self):
         """The engine owns these parsed defaults; callers consume them read-only."""
         if self._default_periods is None:
-            periods = (read_default_periods(self.conn) if self._default_periods_json is None
+            periods = (read_default_periods(self.conn, capture=self.capture) if self._default_periods_json is None
                        else decode_periods(self._default_periods_json))
             if not periods:
                 raise ValidationError("默认工作时间至少需要一个工作时段。", field="periods")
@@ -249,12 +253,20 @@ class CalendarEngine:
         if op_id:
             rows = self._operator_calendar_rows.setdefault(op_id, {})
             if date_str not in rows:
-                rows[date_str] = self.operator_calendar_repo.get(op_id, date_str)
+                if self._captured_personal_rows is None:
+                    rows[date_str] = self.operator_calendar_repo.get(op_id, date_str)
+                else:
+                    raw = self._captured_personal_rows.get((op_id, date_str))
+                    rows[date_str] = OperatorCalendar.from_row(raw) if raw is not None else None
             row_op = rows[date_str]
             if row_op:
                 return row_op
         if date_str not in self._public_calendar_rows:
-            row = self.repo.get(date_str)
+            if self._captured_global_rows is None:
+                row = self.repo.get(date_str)
+            else:
+                raw = self._captured_global_rows.get(date_str)
+                row = WorkCalendar.from_row(raw) if raw is not None else None
             self._public_calendar_rows[date_str] = row if row else self._default_for_date(date_str)
         return self._public_calendar_rows[date_str]
 
@@ -302,8 +314,23 @@ class CalendarEngine:
         if cached is not None:
             return cached
 
+        # Resolve personal facts first: an explicit personal day never consumes global data.
         cal = self._resolve_calendar_row(date_str, op_id)
+        if isinstance(cal, OperatorCalendar):
+            p = self._policy_from_calendar(date_str, cal)
+        else:
+            p = self._public_policy_cache.get(date_str)
+            if p is None:
+                p = self._policy_from_calendar(date_str, cal)
+                self._public_policy_cache[date_str] = p
+            if op_id:
+                p = self.operator_shift_calendar.apply_policy(p, op_id, prepare_periods=self._period_facts_for_json)
+        self._policy_cache[cache_key] = p
+        self._policy_operator_keys.setdefault(cache_key[0], {})[cache_key] = None
+        return p
 
+    def _policy_from_calendar(self, date_str: str, cal: Any) -> DayPolicy:
+        """Normalize a public date once, or one explicit personal override."""
         raw_shift_hours = getattr(cal, "shift_hours", 0.0)
         if raw_shift_hours is None or (isinstance(raw_shift_hours, str) and raw_shift_hours.strip() == ""):
             raw_shift_hours = 0.0
@@ -338,10 +365,6 @@ class CalendarEngine:
             periods_json=periods_json,
             _period_offsets=offsets,
         )
-        if op_id and not isinstance(cal, OperatorCalendar):
-            p = self.operator_shift_calendar.apply_policy(p, op_id, prepare_periods=self._period_facts_for_json)
-        self._policy_cache[cache_key] = p
-        self._policy_operator_keys.setdefault(cache_key[0], {})[cache_key] = None
         return p
 
     def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:

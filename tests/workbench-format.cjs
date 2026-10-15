@@ -10,6 +10,15 @@ vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/Workbenc
 const F = context.window.WorkbenchFormat;
 const invalid = action => assert.throws(action, error => error.name === 'TypeError');
 
+let formatterBuilds = 0;
+const countedContext = vm.createContext({ window: {}, Intl: { NumberFormat: class { constructor(...args) { formatterBuilds++; return new Intl.NumberFormat(...args); } } } });
+vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app/WorkbenchFormat.js'), 'utf8'), countedContext);
+const counted = countedContext.window.WorkbenchFormat;
+counted.number(1.25, { digits: 2 }); counted.hours(1.25, { digits: 2 }); counted.number(2.5, { digits: 2 });
+assert.equal(formatterBuilds, 1, 'Number and hours with the same options share their Intl formatter');
+counted.percent(.25, { digits: 2 }); counted.percent(.5, { digits: 2 }); assert.equal(formatterBuilds, 2);
+counted.number(1.234567, { exact: true }); assert.equal(formatterBuilds, 2, 'Exact stored values do not build an Intl formatter');
+
 if (process.argv[2] === '--timezone') {
   assert.equal(F.dateTime('2026-09-12T08:03:09.123456'), '2026-09-12 08:03');
   assert.equal(F.dateTime('2026-09-12 08:03:09', { seconds: true }), '2026-09-12 08:03:09');
@@ -40,6 +49,11 @@ if (process.argv[2] === '--timezone') {
   assert.equal(picker.factoryTime('2026-09-12 08:03'), '2026-09-12T08:03:00');
   assert.equal(picker.factoryTime('2026-09-12 08:03:09.8'), '2026-09-12T08:03:09.800000');
   assert.equal(picker.factoryTime(precise), precise);
+  assert.equal(picker.nextInstant(precise), '2026-09-12T08:03:09.123457');
+  assert.equal(picker.nextInstant('2026-09-12T08:03:09'), '2026-09-12T08:03:09.000001');
+  assert.equal(picker.nextInstant('2026-09-12T08:03:09.999999'), '2026-09-12T08:03:10');
+  assert.equal(picker.nextInstant('2026-12-31T23:59:59.999999'), '2027-01-01T00:00:00');
+  assert.equal(picker.nextInstant('2028-02-28T23:59:59.999999'), '2028-02-29T00:00:00');
   assert.equal(picker.factoryTime('2026-09-12T08:03:09.000000'), '2026-09-12T08:03:09');
   invalid(() => picker.factoryTime('2026-09-12T08:03:09.1234567'));
   const units = picker.precision({ type: 'factory-local', value: ' ' + precise + ' ' }), clock = picker.readTime(' ' + precise + ' ', units);

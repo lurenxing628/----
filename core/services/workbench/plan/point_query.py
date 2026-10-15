@@ -2,7 +2,6 @@
 
 from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS, SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from data.repositories.schedule_rows import ScheduleTimeSpanRow
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
@@ -32,14 +31,11 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
     def source_rows(self, version, source_table, candidate_id, scenario_id=None):
         key = self._source_key(version, source_table, candidate_id, scenario_id)
         if key not in self._source_rows:
-            self._source_rows[key] = self.list_plan_storage_rows_bounded(
+            self._source_rows[key] = self.list_plan_storage_rows(
                 version=version, source_table=source_table, candidate_id=candidate_id,
-                scenario_id=scenario_id, limit=MAX_PLAN_TASKS + 1,
+                scenario_id=scenario_id,
             )
-        rows = self._source_rows[key]
-        if len(rows) > MAX_PLAN_TASKS:
-            raise WorkbenchCommandRejected("query_too_large", "整个计划超过 10000 条上限。请缩小时间范围后重试。", 413)
-        return rows
+        return self._source_rows[key]
 
     def prepared_rows(self, version, source_table, candidate_id, scenario_id=None):
         key = self._source_key(version, source_table, candidate_id, scenario_id)
@@ -114,20 +110,21 @@ class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
         key = (version, source_table, candidate_id, scenario_id)
         if key not in self._metadata_spans:
             sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
-            low, high, points = None, None, []
+            low, high, points, point_intervals = None, None, [], []
             for row in self.iter_rows(sql, [version] + extra):
                 start, end = _interval(row)
                 low = start if low is None else min(low, start)
                 high = end if high is None else max(high, end)
                 if start == end:
                     points.append(row)
+                    point_intervals.append((start, end))
             try:
-                annotated = annotate_plan_points(self.conn, points, source_table=source_table)
+                annotate_plan_points(self.conn, points, source_table=source_table, intervals=point_intervals)
             except WorkbenchCommandRejected as exc:
                 raise ValueError(str(exc)) from exc
             self._metadata_spans[key] = None if low is None else {
                 "version": version, "start_time": low, "end_time": high,
-                "end_includes_point": any(_interval(row)[1] == high for row in annotated),
+                "end_includes_point": any(end == high for _, end in point_intervals),
             }
         return self._metadata_spans[key]
 

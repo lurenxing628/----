@@ -42,7 +42,13 @@
   const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
   const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t),
     t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
-  const matching = (tasks, query) => { const needle = query.trim().toLocaleLowerCase(); return needle ? tasks.filter(t => searchText(t).includes(needle)) : tasks; };
+  function matches(item, needle, operationRefs, focus) {
+    return (!needle || item.search.includes(needle)) && (!operationRefs || operationRefs.has(item.task.operation_ref)) && resourceMatches(item.task, focus);
+  }
+  function matching(prepared, query, focus = null, unplanned = false) {
+    const needle = query.trim().toLocaleLowerCase();
+    return (unplanned ? prepared.unplanned : prepared.items).filter(item => matches(item, needle, null, focus)).map(item => item.task);
+  }
   const resource = (t, mode) => mode === 'batch' ? { ref: t.batch_ref, label: t.batch_label } : t[mode];
   const resourceMatches = (task, focus) => !focus || !!task[focus.kind] && task[focus.kind].ref === focus.ref;
   function resourceLabel(side, kind) {
@@ -105,36 +111,49 @@
     }
     return lanes;
   }
-  function prepare(data, mode, query, operationRefs = null) {
-    const groups = new Map();
-    const matched = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref)), tasks = [], unplottableTasks = [];
+  function prepare(data) {
     const P = window.PointContract, G = window.PointGanttModel;
-    const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, data.tasks.some(P.isPoint));
-    // Missing references never merge unrelated named resources into an invented identity.
-    for (const task of matched) {
-      const start = instant(task.start), end = instant(task.end);
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) { unplottableTasks.push(task); continue; }
-      tasks.push(task);
-      const r = resource(task, mode), id = r && r.ref || 'missing:' + task.row_ref;
+    const items = data.tasks.map(task => { const start = instant(task.start), end = instant(task.end);
+      return { task, start, end, search: searchText(task), point: P.isPoint(task), plottable: Number.isFinite(start) && Number.isFinite(end) && end >= start }; });
+    const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, items.some(item => item.point));
+    return { items, unplanned: (data.unplanned_operations || []).map(task => ({ task, search: searchText(task) })),
+      taskIndex: new Map(items.map(item => [item.task.row_ref, item])), start: bounds.start, end: bounds.end };
+  }
+  function groupPrepared(prepared, mode) {
+    const groups = new Map(), G = window.PointGanttModel;
+    for (const fact of prepared.items) {
+      if (!fact.plottable) continue;
+      // Overlap belongs to this resource grouping, while parsed time/search facts belong to the data.
+      const item = { ...fact }, task = item.task, r = resource(task, mode), id = r && r.ref || 'missing:' + task.row_ref;
       if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? r.label || '批次未记录' : resourceLabel(task, mode), items: [] });
-      groups.get(id).items.push({ task, start, end });
+      groups.get(id).items.push(item);
     }
     for (const group of groups.values()) {
-      group.normal = tracks(group.items.filter(i => !P.isPoint(i.task)));
-      group.points = G.prepareTracks(group.items.filter(i => P.isPoint(i.task)));
+      group.normal = tracks(group.items.filter(item => !item.point));
+      group.points = G.prepareTracks(group.items.filter(item => item.point));
     }
-    return { groups, tasks, unplottableTasks, groupCount: groups.size,
-      start: bounds.start, end: bounds.end };
+    return { ...prepared, groups };
+  }
+  function selectPrepared(prepared, query = '', operationRefs = null, focus = null) {
+    const needle = query.trim().toLocaleLowerCase(), groups = new Map(), tasks = [], unplottableTasks = [];
+    for (const fact of prepared.items) if (matches(fact, needle, operationRefs, focus)) (fact.plottable ? tasks : unplottableTasks).push(fact.task);
+    for (const [id, group] of prepared.groups) {
+      const items = group.items.filter(item => matches(item, needle, operationRefs, focus));
+      if (!items.length) continue;
+      const shown = new Set(items);
+      groups.set(id, { ...group, items, shown, normal: group.normal.map(lane => lane.filter(item => shown.has(item))) });
+    }
+    return { ...prepared, groups, tasks, unplottableTasks, groupCount: groups.size };
   }
   function groupRows(group, start, end, width, pointRows = false) {
-    const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width) : [];
+    const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
     const laneCount = group.normal.length + points.length, rows = [];
-    group.normal.forEach((items, lane) => rows.push({ id: group.id, key: group.id + ':' + lane, label: group.label,
-      items, height: 56, lane, laneCount, normalLaneCount: group.normal.length, point: false }));
-    points.forEach((items, lane) => rows.push({ id: group.id,
+    group.normal.forEach((items, lane) => { if (items.length) rows.push({ id: group.id, key: group.id + ':' + lane, label: group.label,
+      items, height: 56, lane, laneCount, normalLaneCount: group.normal.length, point: false }); });
+    points.forEach((items, lane) => { if (items.length) rows.push({ id: group.id,
       key: group.id + (pointRows ? ':point:' + lane : ':' + (group.normal.length + lane)), label: group.label,
       items, height: 56, lane: pointRows ? lane : group.normal.length + lane,
-      laneCount: pointRows ? points.length : laneCount, normalLaneCount: group.normal.length, point: true }));
+      laneCount: pointRows ? points.length : laneCount, normalLaneCount: group.normal.length, point: true }); });
     return rows;
   }
   function layoutPrepared(prepared, width = 1000) {
@@ -147,8 +166,5 @@
     return { rows, height: top, locations, tasks: prepared.tasks, unplottableTasks: prepared.unplottableTasks,
       groupCount: prepared.groupCount, start: prepared.start, end: prepared.end };
   }
-  function layout(data, mode, query, width = 1000, operationRefs = null) {
-    return layoutPrepared(prepare(data, mode, query, operationRefs), width);
-  }
-  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, prepare, groupRows, layoutPrepared, layout, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, metricLabels, executionLabels, executionValue, executionField };
+  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, prepare, groupPrepared, selectPrepared, groupRows, layoutPrepared, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, metricLabels, executionLabels, executionValue, executionField };
 })();

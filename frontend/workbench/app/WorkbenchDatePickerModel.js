@@ -50,6 +50,12 @@
     const text = window.WorkbenchFormat.dateTime(value.trim(), { seconds: true, fractions: true });
     return text.replace(' ', 'T').replace(/\.(\d+)$/, (_, fraction) => '.' + fraction.padEnd(6, '0'));
   }
+  function nextInstant(value) {
+    const canonical = factoryTime(value), seconds = canonical.slice(0, 19);
+    const fraction = Number((canonical.slice(20) || '').padEnd(6, '0')) + 1;
+    if (fraction < 1000000) return seconds + '.' + String(fraction).padStart(6, '0');
+    return new Date(Date.parse(seconds + 'Z') + 1000).toISOString().slice(0, 19);
+  }
   function hasShape(type, value, fractionDigits = 3) {
     if (type === 'date') return !!dateParts(value);
     if (type === 'month') return !!monthParts(value);
@@ -142,5 +148,5 @@
       : dateParts(minimum) ? minimum : monthParts(minimum) ? minimum + '-01' : today();
   }
   window.WorkbenchDatePickerModel = { types, pad, monthKey, dateKey, monthParts, dateParts, today, weekday,
-    moveDay, moveMonth, nativeField, factoryTime, hasShape, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed };
+    moveDay, moveMonth, nativeField, factoryTime, nextInstant, hasShape, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed };
 })();

@@ -23,10 +23,10 @@
           || !result.data.rows.some(row => row.ref === selected.entity_ref && row.domain === selected.domain)) C.fail('清单里没有定位到这条资料，页面内容没有变化。请刷新后重试。');
         return result;
       },
-      export: (scope, token, count, signal) => download(scope, token, count, signal)
+      export: (scope, token, signal) => download(scope, token, signal)
     };
   }
-  async function download(scope, token, count, signal) {
+  async function download(scope, token, signal) {
     const controller = new AbortController(), abort = () => controller.abort();
     let timedOut = false;
     if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) controller.abort(); }
@@ -38,8 +38,9 @@
         const payload = type.includes('application/json') ? await response.json() : null;
         C.fail(payload && payload.error && payload.error.message || '基础资料导出失败，没有开始下载。请刷新后重试。');
       }
+      const countText = response.headers.get('X-Workbench-Row-Count'), count = Number(countText);
       if (!type.startsWith('text/csv') || response.headers.get('X-Workbench-Snapshot-Ref') !== token
-        || response.headers.get('X-Workbench-Row-Count') !== String(count)) C.fail('导出范围或数据版本对不上，没有开始下载。请刷新后重试。');
+        || countText === null || !/^(0|[1-9][0-9]*)$/.test(countText) || !Number.isSafeInteger(count)) C.fail('导出范围或数据版本对不上，没有开始下载。请刷新后重试。');
       const filename = scope.view === 'issues' ? '基础资料待维护项.csv' : '基础资料清单.csv';
       return { blob: await response.blob(), filename, count };
     } catch (error) {

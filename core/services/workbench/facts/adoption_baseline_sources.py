@@ -1,12 +1,13 @@
 """Reuse RunBaseline verification and CQ's immutable saved-scenario contract."""
 
+from dataclasses import dataclass
+from typing import Tuple, Union
+
 from core.infrastructure.read_evidence import verified_read
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, _blob
-from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
+from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_origin
-from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import _resource
 from core.services.workbench.facts.candidate_values import gap
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
@@ -36,10 +37,6 @@ def _decode_rows(rows):
     return [{key: _blob(value) for key, value in row.items()} for row in rows]
 
 
-def candidate_source(conn, audit):
-    return candidate_source_evidence(conn, audit)[:3]
-
-
 def candidate_source_evidence(conn, audit):
     """Private complete proof and its parsed facts, including without reuse."""
     key = ("candidate_adoption_source", audit["candidate_ref"], audit["run_ref"])
@@ -64,39 +61,33 @@ def _candidate_source(conn, audit):
     _tables_exist(conn, ("WorkbenchRunJobs", "WorkbenchRunCandidates", "WorkbenchRunReceipts", "WorkbenchRunCandidateTasks"))
     _source_exists(conn, "WorkbenchRunJobs", "run_ref", run_ref)
     _source_exists(conn, "WorkbenchRunCandidates", "candidate_ref", candidate_ref)
-    candidate, scope, tasks, capture = load_adoption_candidate(conn, candidate_ref)
-    store = CandidateStore(conn)
-    run = store.run(run_ref)
+    run, candidate, scope, tasks, capture, _ = load_adoption_candidate(conn, candidate_ref)
     facts = GenerationFacts(capture)
-    # GenerationFacts parses the original immutable source and validates its shape.
-    # Keep the adoption reader's original byte limit without parsing it again.
-    if len(capture["facts_text"].encode("utf-8")) > 64 * 1024 * 1024:
-        raise WorkbenchCommandRejected("query_too_large", "完整采用凭据超过 64 MB 上限。请缩小查询范围后重试。", 413)
-    archive = facts.archive
-    tables = _candidate_tables(archive)
+    tables = _candidate_tables(facts)
     AdmissionBaseline(capture, facts, scope, run["accepted_at"])
-    evidence = capture["baseline"], tables, [row["payload"] for row in tasks], facts, candidate_origin(candidate, run, capture)
+    evidence = {"baseline": capture["baseline"], "tables": tables,
+                "arranged": [row["payload"] for row in tasks], "generation_facts": facts,
+                "provenance": candidate_origin(candidate, run, capture),
+                "candidate": candidate, "tasks": tasks}
     return candidate, capture, evidence
 
 
-def _candidate_tables(archive):
+def _candidate_tables(facts):
     tables = {}
     for name in _TABLES:
-        rows = _table(archive, name)
+        rows = facts.table(name)
         if rows is None:
             fail("adoption_evidence_missing", "run.facts." + name)
         tables[name] = _decode_rows(rows)
     return tables
 
 
-def trial_source(conn, audit):
-    return trial_source_evidence(conn, audit)[:3]
-
-
 def trial_source_evidence(conn, audit):
+    """Return adoption evidence and its once-prepared scenario resources."""
     key = ("trial_adoption_source", audit["scenario_ref"], audit["draft_ref"])
-    head, evidence = verified_read(
+    prepared, evidence = verified_read(
         conn, key, lambda: _trial_source(conn, audit))
+    head = prepared.source[1]
     admission, proof = head["admission"], audit["proof"]
     require(head["draft_ref"] == audit["draft_ref"], "trial.draft_ref")
     values = [("scenario_ref", audit["scenario_ref"]), ("draft_ref", audit["draft_ref"])]
@@ -109,7 +100,7 @@ def trial_source_evidence(conn, audit):
                        ("baseline_version", admission["baseline"]["version"])))
     for name, value in values:
         require(same(proof[name], value), "trial.proof." + name)
-    return evidence
+    return evidence, prepared
 
 
 def _trial_source(conn, audit):
@@ -117,7 +108,8 @@ def _trial_source(conn, audit):
     _tables_exist(conn, ("WorkbenchTrialScenarios", "WorkbenchTrialDrafts", "WorkbenchTrialRows", "WorkbenchTrialScenarioRows"))
     _source_exists(conn, "WorkbenchTrialScenarios", "scenario_ref", scenario_ref)
     _source_exists(conn, "WorkbenchTrialDrafts", "draft_ref", draft_ref)
-    saved, head, rows = load_saved_scenario(conn, scenario_ref)
+    prepared = trial_adoption_facts(conn, scenario_ref)
+    saved, head, rows = prepared.source
     admission = head["admission"]
     archive = admission["facts"]
     tables = {}
@@ -135,7 +127,7 @@ def _trial_source(conn, audit):
               "run_ref": None, "accepted_at": head["created_at"], "finished_at": saved["saved_at"],
               "algorithm": None, "baseline": baseline_capture(admission["baseline"], head["created_at"],
                                                                 kind="trial_creation_official")}
-    return head, (admission["baseline"], tables, arranged, origin)
+    return prepared, (admission["baseline"], tables, arranged, origin)
 
 
 def _scenario_row_bindings(conn, saved):
@@ -159,7 +151,7 @@ class _TrialResourceFacts:
     def __init__(self, archive):
         tables = archive["tables"]
         self.tables = {name: {row[key]: row for row in tables.get(name, [])} for name, key in (
-            ("Suppliers", "supplier_id"), ("Machines", "machine_id"), ("Operators", "operator_id"))}
+            ("Suppliers", "supplier_id"), ("Machines", "machine_id"), ("Operators", "operator_id"), ("OpTypes", "op_type_id"))}
         self.entity_refs = {(row["kind"], row["entity_key"]): row["ref"]
                             for row in tables.get("WorkbenchEntityRefs", []) if row["active"] == 1}
 
@@ -168,6 +160,30 @@ class _TrialResourceFacts:
         if row is None:
             gaps.append(gap(field, "source_missing"))
         return row or {}
+
+
+@dataclass(frozen=True)
+class TrialAdoptionFacts:
+    source: Tuple[dict, dict, list]
+    resources: Union[GenerationFacts, _TrialResourceFacts]
+    assigned_resources: _TrialResourceFacts
+    operations: dict
+
+
+def prepare_trial_adoption_facts(source):
+    """Preserve original supplier metadata and draft-time assigned resources."""
+    _saved, head, rows = source
+    admission = head["admission"]
+    assigned = _TrialResourceFacts(admission["facts"])
+    capture = admission["source"].get("capture")
+    resources = GenerationFacts(capture) if capture is not None else assigned
+    operations = {row["original"]["operation"]["id"]: row["original"]["operation"] for row in rows}
+    return TrialAdoptionFacts(source, resources, assigned, operations)
+
+
+def trial_adoption_facts(conn, scenario_ref):
+    return verified_read(conn, ("trial_adoption_facts", scenario_ref),
+        lambda: prepare_trial_adoption_facts(load_saved_scenario(conn, scenario_ref)))
 
 
 def read_adoption_operation_facts(conn, evidence):
@@ -184,12 +200,11 @@ def _adoption_operation_facts(conn, evidence):
         assigned_resources = resources
         operations = resources.tables["BatchOperations"]
     else:
-        _, head, rows = load_saved_scenario(conn, evidence["audit"]["scenario_ref"])
-        operations = {row["original"]["operation"]["id"]: row["original"]["operation"] for row in rows}
-        admission = head["admission"]
-        capture = admission["source"].get("capture")
-        resources = GenerationFacts(capture) if capture is not None else _TrialResourceFacts(admission["facts"])
-        assigned_resources = _TrialResourceFacts(admission["facts"])
+        prepared = evidence.get("trial_source")
+        if prepared is None:
+            prepared = trial_adoption_facts(conn, evidence["audit"]["scenario_ref"])
+        operations = prepared.operations
+        resources, assigned_resources = prepared.resources, prepared.assigned_resources
     result = {}
     for row in evidence["arranged"]:
         op = operations.get(row["op_id"], {})

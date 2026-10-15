@@ -2,12 +2,15 @@
 
 import json
 
+import pytest
 from flask import g, request
 
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 from tests.workbench.trial_adoption_support import BASE, INTENT, KEY, api, saved_scenario
 from tests.workbench.trial_adoption_support import trial_case as trial_case
 from tests.workbench.trial_support import CommitFailureConnection, snapshot
+from web.routes.workbench.read_context import bind_read_snapshot
 
 
 def test_real_http_preview_confirm_and_receipt(trial_case):
@@ -31,7 +34,7 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     before, changes = snapshot(case.conn), case.conn.total_changes
     case.conn.set_trace_callback(statements.append)
     try:
-        history, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+        history, history_state = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
     finally:
         case.conn.set_trace_callback(None)
     queries = [sql.upper() for sql in statements if sql.upper().startswith("SELECT")]
@@ -48,6 +51,8 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     selected_histories = [sql for sql in queries if "FROM SCHEDULEHISTORY WHERE VERSION=" in sql and "RESULT_SUMMARY" in sql]
     assert len(selected_histories) == 1 and "LIMIT 2" in selected_histories[0]
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
+    with case.app.app_context():
+        token = bind_read_snapshot(history["scope"], history_state)["snapshot_ref"]
     entry = history["items"][0]
     assert entry["adoption"]["reason"] == INTENT["reason"]
     assert entry["adoption"]["declared_operator"] == INTENT["declared_operator"]
@@ -63,7 +68,10 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) "
                       "VALUES (?, 'duplicate-history', 'success', NULL, '2026-09-10 13:00:00')", (version,))
     case.conn.commit()
-    duplicate, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    duplicate, changed_state = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    with case.app.app_context(), pytest.raises(WorkbenchCommandRejected) as stale:
+        bind_read_snapshot(history["scope"], changed_state, token)
+    assert stale.value.code == "snapshot_stale"
     entry = duplicate["items"][0]
     assert any(gap["code"] == "audit_missing" for gap in entry["evidence_gaps"])
     assert entry["adoption"] == dict.fromkeys(("reason", "declared_operator", "application_operator", "adopted_at"))

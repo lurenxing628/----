@@ -2,7 +2,7 @@
 
 import secrets
 
-from core.infrastructure.connection_guards import SchemaContractMemo
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
@@ -50,7 +50,10 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
     def __init__(self, conn, logger=None):
         super().__init__(conn, logger=logger)
         # 同一命令逐道复制共用结构事实；命令内不执行 DDL，下一请求新建仓储。
-        self.contracts = SchemaContractMemo(conn)
+
+    @property
+    def contracts(self):
+        return schema_contract_memo(self.conn)
 
     def schema_state(self):
         """'missing' (no lineage objects), 'invalid' (partial/altered DDL) or 'loaded'."""

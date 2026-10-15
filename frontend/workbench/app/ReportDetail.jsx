@@ -27,7 +27,7 @@
     const { useRead, Button, ErrorBox } = window.ReportControls;
     const { text, time, hoursText, Table } = window.ReportTable;
     const identity = operationRef + JSON.stringify(input);
-    const request = useRead(signal => api.detail(operationRef, { ...input, page: 1, topic: 'delivery', sort: 'batch_label' }, signal), identity);
+    const request = useRead(signal => api.detail(operationRef, input, signal), identity);
     const detail = request.result && request.result.data.detail;
     const [page, setPage] = React.useState(initialView ? initialView.page : 1), [size, setSize] = React.useState(initialView ? initialView.size : 10);
     React.useEffect(() => setPage(initialView ? initialView.page : 1), [operationRef, input.snapshot_ref]);

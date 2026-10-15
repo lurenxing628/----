@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any, Dict, List, Set, Tuple
 
 from core.errors import AppError, ErrorCode
@@ -14,11 +15,10 @@ from core.models.operation_execution_event import (
 )
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
-from core.services.scheduler.execution.execution_snapshot import ExecutionSnapshot
+from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 from .schedule_execution_resource_facts import collect_resource_execution_facts
-from .schedule_input_seed_metadata import merged_external_group_identity, with_confirmed_merged_group_periods
-from .schedule_template_lookup import lookup_template_group_context_for_op
+from .schedule_input_seed_metadata import with_confirmed_merged_group_periods
 
 
 def _op_id(op: Any) -> int:
@@ -37,8 +37,8 @@ def _execution_conflict(message: str, *, reason: str, op_id: int) -> AppError:
 
 
 def _planned_duration(schedule_row: Any, svc: Any, *, op_id: int) -> timedelta:
-    start_time = svc._normalize_datetime(getattr(schedule_row, "start_time", None))
-    end_time = svc._normalize_datetime(getattr(schedule_row, "end_time", None))
+    start_time = parse_dt(getattr(schedule_row, "start_time", None))
+    end_time = parse_dt(getattr(schedule_row, "end_time", None))
     if start_time is None or end_time is None or end_time <= start_time:
         raise _execution_conflict(
             "生产中的工序需要沿用上一版计划时长，但上一版排程时间不完整，本次没有写入新排程。请刷新排程数据后重试。",
@@ -136,11 +136,13 @@ def _build_execution_seed_results(
     op_by_id: Dict[int, BatchOperation],
     facts: Dict[int, ExecutionFact],
     guarded_op_ids: Set[int],
+    plan_rows,
+    group_identities,
 ) -> List[Dict[str, Any]]:
     execution_seed_results: List[Dict[str, Any]] = []
     for op_id in sorted(guarded_op_ids):
         op = op_by_id.get(int(op_id))
-        row = svc.schedule_repo.get(int(facts[op_id].schedule_id or 0))
+        row = SimpleNamespace(**plan_rows[op_id]) if op_id in plan_rows else None
         if op is None or row is None:
             raise _execution_conflict(
                 "现场已经有开工或完工记录，但上一版正式排程里找不到对应工序，本次没有写入新排程。请刷新后重新排。",
@@ -159,33 +161,24 @@ def _build_execution_seed_results(
     external = [op_by_id[seed["op_id"]] for seed in execution_seed_results if seed["source"] == SourceType.EXTERNAL.value]
     if not completed.intersection(op.id for op in external):
         return execution_seed_results
-    groups = {op.id: merged_external_group_identity(op, group=lookup_template_group_context_for_op(svc, op).group)
-              for op in external}
-    return with_confirmed_merged_group_periods(execution_seed_results, group_identities=groups,
+    return with_confirmed_merged_group_periods(execution_seed_results, group_identities=group_identities,
                                              completed_op_ids=completed)
 
 
-def _collect_execution_guardrails(
-    svc: Any,
-    operations: List[BatchOperation],
-    *,
-    prev_version: int,
-) -> Tuple[Dict[int, ExecutionFact], Set[int], Set[int], List[Dict[str, Any]], Dict[int, str], ExecutionSnapshot]:
-    facts, _, execution_snapshot = collect_resource_execution_facts(svc, prev_version=prev_version)
-    return _execution_guardrail_tuple(svc, operations, facts, execution_snapshot)
-
-
-def build_execution_guardrails_from_projections(svc, operations, *, prev_version, execution_projections):
+def build_execution_guardrails_from_projections(svc, operations, *, prev_version, execution_projections, facts, external_groups):
     """Consume an explicit AJ snapshot without reloading or reaggregating reports."""
     if execution_projections is None:
         raise ValueError("必须显式传入 AJ 执行投影；无事实时传空列表。")
-    facts, _, execution_snapshot = collect_resource_execution_facts(
-        svc, prev_version=prev_version, execution_projections=execution_projections,
-    )
-    return _execution_guardrail_tuple(svc, operations, facts, execution_snapshot)
+    if prev_version not in facts.resource_execution:
+        facts.resource_execution[prev_version] = collect_resource_execution_facts(
+            svc, prev_version=prev_version, execution_projections=execution_projections, capture=facts.capture,
+            ledger=getattr(facts, "execution_service", None))
+    execution_facts, plan_rows, execution_snapshot = facts.resource_execution[prev_version]
+    return _execution_guardrail_tuple(svc, operations, execution_facts, execution_snapshot,
+                                     plan_rows=plan_rows, group_identities=external_groups)
 
 
-def _execution_guardrail_tuple(svc, operations, facts, execution_snapshot):
+def _execution_guardrail_tuple(svc, operations, facts, execution_snapshot, *, plan_rows, group_identities):
     op_by_id: Dict[int, BatchOperation] = {_op_id(op): op for op in operations if _op_id(op) > 0}
     ensure_ledger_execution_schedulable(facts)
     fixed_op_ids = _execution_status_op_ids(facts, (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED)) & set(op_by_id)
@@ -204,5 +197,7 @@ def _execution_guardrail_tuple(svc, operations, facts, execution_snapshot):
         op_by_id=op_by_id,
         facts=facts,
         guarded_op_ids=guarded_op_ids,
+        plan_rows=plan_rows,
+        group_identities=group_identities,
     )
     return facts, fixed_op_ids, completed_op_ids, execution_seed_results, all_revisions, execution_snapshot

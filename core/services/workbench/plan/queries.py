@@ -3,23 +3,22 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Dict, Union
+from typing import Dict, Tuple, Union, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.infrastructure.transaction import TransactionManager
 from core.models.schedule_adjustment import ScheduleAdjustmentScenario
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
-    SOURCE_ADJUSTMENT_SCENARIO_ROWS,
-    SOURCE_CANDIDATE_ROWS,
-    SOURCE_SCHEDULE,
     plan_candidate_label,
     plan_role_label,
 )
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
-from core.services.scheduler.workbench_plan_catalog import _role_entry, _scenario_entry
+from core.services.common.plan_query import SchedulePlanResolution
+from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry, _scenario_entry
+from core.services.workbench.facts.candidate_tasks import task_span
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
@@ -27,51 +26,16 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 from .calendar import project_plan_calendar
 from .point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from .projection import (
-    check_payload_size,
-    project_capacity_blocked_plan,
     project_plan,
     project_unavailable_plan,
     public_time,
-    task_span,
 )
 from .read_context import PlanReadContext, PlanReadQuery
 from .workspace_dto import resource_directory, workspace_projections
 
 
-def _admit_rows(repo, version, source, candidate_id=None, scenario_id=None):
-    rows = repo.source_rows(version=version, source_table=source, candidate_id=candidate_id, scenario_id=scenario_id)
-    if len(rows) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected("query_too_large", "所选计划明细超过 10000 条上限。请缩小时间范围后重试。", 413)
-
-
-def _admit_version(repo, version, selected_role=None):
-    rows = repo.list_plan_role_options(version)
-    if selected_role is None or selected_role == "adopted":
-        _admit_rows(repo, version, SOURCE_SCHEDULE)
-    sources = {(row["source_table"], row["candidate_id"]) for row in rows
-               if selected_role is None or row["role"] == selected_role}
-    for source, candidate_id in sources:
-        if source == SOURCE_CANDIDATE_ROWS and candidate_id is not None:
-            _admit_rows(repo, version, source, candidate_id)
-        elif source == SOURCE_SCHEDULE and selected_role not in (None, "adopted"):
-            _admit_rows(repo, version, source)
-
-
-def _admit_scenario(repo, row):
-    if row["status"] == "active":
-        _admit_rows(repo, row["base_version"], SOURCE_ADJUSTMENT_SCENARIO_ROWS, scenario_id=row["scenario_id"])
-        _admit_version(repo, row["base_version"], row["base_plan_role"])
-
-
-def _selected_plan(context, plan_ref, locator, *, repo=None, metadata_only=False):
+def _selected_plan(context, plan_ref, locator, *, repo=None):
     repo = context.repo if repo is None else repo
-    if not metadata_only:
-        if locator.scenario_id is not None:
-            row = repo.get_scenario_context(locator.scenario_id)
-            if row is not None:
-                _admit_scenario(repo, row)
-        else:
-            _admit_version(repo, locator.version, locator.plan_role)
     query = PlanReadQuery(repo, repo.latest_version())
     history = repo.get_history_identity_row(locator.version)
     if locator.scenario_id is not None:
@@ -145,7 +109,7 @@ class WorkbenchPlanQueryService:
         next_seek = heads[-1]["version" if scope.collection == "history" else "scenario_id"] if has_more else None
         data = {"plans": plans, "page": {"collection": scope.collection, "size": scope.size,
                 "unit": "version" if scope.collection == "history" else "scenario", "has_more": has_more}}
-        return check_payload_size(data), next_seek
+        return data, next_seek
 
     def _catalog_history(self, query, history):
         options = query.repo.list_plan_role_options(history["version"])
@@ -159,12 +123,6 @@ class WorkbenchPlanQueryService:
         ref, blocked = self._catalog_reference(locator, name)
         if blocked is not None:
             return blocked
-        try:
-            _admit_version(query.repo, locator.version, role)
-        except WorkbenchCommandRejected as exc:
-            if exc.code != "query_too_large":
-                raise
-            return project_capacity_blocked_plan(locator, ref, name)
         return project_plan(_role_entry(query, history, query.latest, role, option), ref)
 
     def _catalog_scenario(self, query, row):
@@ -174,12 +132,6 @@ class WorkbenchPlanQueryService:
         ref, blocked = self._catalog_reference(locator, name)
         if blocked is not None:
             return blocked
-        try:
-            _admit_scenario(query.repo, row)
-        except WorkbenchCommandRejected as exc:
-            if exc.code != "query_too_large":
-                raise
-            return project_capacity_blocked_plan(locator, ref, name)
         history = query.repo.get_history_identity_row(scenario.base_version)
         return project_plan(_scenario_entry(query, scenario, history, query.latest), ref)
 
@@ -199,7 +151,9 @@ class WorkbenchPlanQueryService:
         with context.read_scope():
             return context.selected(plan_ref)
 
-    def _selected_metadata(self, plan_ref, *, repo=None, locator=None, context=None):
+    def _selected_metadata(
+        self, plan_ref, *, repo=None, locator=None, context=None,
+    ) -> Tuple[SchedulePlanResolution, PlanCatalogEntry, Dict[str, Union[str, bool]]]:
         if not self.conn.in_transaction:
             raise RuntimeError("Plan reads require read_snapshot() or an existing read transaction.")
         context = context if context is not None else PlanReadContext(
@@ -207,7 +161,8 @@ class WorkbenchPlanQueryService:
         repo = repo if repo is not None else PlanMetadataRepository(self.conn, logger=self.logger)
         with context.read_scope():
             locator = context.resolve(plan_ref) if locator is None else locator
-            return _selected_plan(context, plan_ref, locator, repo=repo, metadata_only=True)
+            _, entry, span = _selected_plan(context, plan_ref, locator, repo=repo)
+            return cast(SchedulePlanResolution, entry.resolution), entry, span
 
     def _task_rows(self, repo, entry, scope, *, context=None):
         context = context if context is not None else getattr(repo, "context", None)
@@ -231,7 +186,7 @@ class WorkbenchPlanQueryService:
         """Read complete scoped plan tasks without unrelated comparison/dashboard DTOs.
 
         Field reporting and actual Gantt use the same plan admission, identities,
-        captured quantities and payload bound as the plan workspace. Only actual
+        captured quantities as the plan workspace. Only actual
         Gantt needs the selected-plan calendar; its full-plan chain reads tasks.
         """
         context = context if context is not None else PlanReadContext(
@@ -242,6 +197,8 @@ class WorkbenchPlanQueryService:
     def _workspace(self, scope, *, execution_only=False, include_calendar=False, context):
         repo, entry, span = context.selected(scope.plan_ref)
         rows = context.scoped_rows(entry, scope)
+        if not execution_only and len(rows) > MAX_PLAN_TASKS:
+            raise WorkbenchCommandRejected("query_too_large", "本次范围的安排超过 10000 条，请缩小时间范围后重试。", 413)
         tasks, task_facts, resources, resource_state = context.scoped_tasks(scope.plan_ref, entry, scope)
         if execution_only:
             projections, facts = {}, {}
@@ -258,14 +215,13 @@ class WorkbenchPlanQueryService:
         source_resources = (task_facts["resource_directory"] + baseline_facts.get("resource_directory", [])
                             + baseline_facts.get("adoption", {}).get("resource_directory", []))
         data = {"plan": project_plan(entry, scope.plan_ref), "scope": scope.scope(),
-                "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(rows),
+                "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(tasks),
                 "tasks": tasks, "task_count": len(tasks), "tasks_complete": True,
                 "resources": resource_directory(rows, resources, tasks=tasks, baseline=projections.get("baseline"),
                                                 archived=source_resources), "projections": projections}
         if not execution_only:
             data["gantt_graph"] = gantt_graph
             data["provenance"] = provenance
-        check_payload_size(data)
         state = {"plan_revision": self.references.read_revision(), "data": data,
                  "resources": resource_state, "projection_facts": plain_plan_facts(facts)}
         return data, state

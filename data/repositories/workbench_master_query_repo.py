@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.infrastructure.schema_probe import table_names
+from core.infrastructure.connection_guards import schema_contract_memo
 
 from .base_repo import BaseRepository
 
@@ -39,7 +39,7 @@ class WorkbenchMasterQueryRepository(BaseRepository):
         返回 (表名 -> 行 dict 列表, sqlite_master 里实际存在的表名集合)；缺失的表不出现在结果里，
         由调用方按同一常量判断缺口。行 dict 按游标列名构造，不依赖连接的 row_factory。
         """
-        present = table_names(self.conn)
+        present = {name for name, (kind, _table, _sql) in schema_contract_memo(self.conn).structure.objects.items() if kind == "table"}
         tables: Dict[str, List[Dict[str, Any]]] = {}
         for name in MASTER_OVERVIEW_TABLES:
             if name not in present:

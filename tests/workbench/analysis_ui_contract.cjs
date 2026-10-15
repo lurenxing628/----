@@ -83,6 +83,14 @@ const item = { item_ref: 'b'.repeat(48), subject: '批次 B1', category: 'delive
 const detail = window.DashboardPanels.Detail({ item, onClose });
 assert.equal(detail.type, 'detail-panel'); assert.equal(detail.props.detailKey, item.item_ref); assert.equal(detail.props.onClose, onClose);
 assert.equal(window.MasterOverviewDetail({ selected: null }), null, '关闭后不遗留空详情列');
+// Detail owns the latest facts, while the selected list row can retain an older read.
+const staleSelection = { key: 'material-shortage', entity_ref: 'e'.repeat(48), title: '清单旧到料问题', evidence: '需求 10 件，已到料 2 件' };
+const currentIssue = { issue_ref: 'material-shortage', title: '当前到料问题', evidence: '需求 10 件，已到料 5 件', rule: 'arrival', action: '维护', target: {} };
+const currentDetail = expand(window.MasterOverviewDetail({ selected: staleSelection, section: 'issues', navigation: true,
+  result: { data: { entity: { business_code: 'M-001', label: '原料', domain: 'material', status: 'attention', filled_fields: 1, checked_fields: 1, checks_complete: true, target: {} },
+    counts: { issues: 1, relations: 0, fields: 1 }, rows: [currentIssue], page: { number: 1, pages: 1, total: 1, size: 10 } } }, onSection: noop, onPage: noop, onBack: noop }));
+assert(text(currentDetail).includes('需求 10 件，已到料 5 件'));
+assert(!text(currentDetail).includes(staleSelection.evidence) && !text(currentDetail).includes(staleSelection.title), 'An older selected issue cannot contradict the current detail facts');
 const missing = { issues: [{ code: 'no_official_plan', message: '当前没有正式计划' }], state: 'no_official_plan', evaluation_gaps: [], risk_count: null, known_risk_count: 0 };
 const gaps = expand(window.DashboardPanels.Gaps({ categories: { delivery: missing, actual: missing, downtime: missing }, selected: 'all' }));
 assert.equal(nodes(gaps).filter(node => node.type === 'issues').length, 1);
@@ -155,7 +163,7 @@ const timelineData = { time_scope: { range_start: stamp(12, '22'), range_end: st
     start: stamp(12, '23'), end: stamp(13, '00'), recorded_at: stamp(12, '20'), reason: '保养' }] };
 const timelineBefore = JSON.stringify(timelineData), selectedBatches = [];
 for (const mode of ['delivery', 'downtime']) {
-  const model = real.DashboardTimelineModel.layout(timelineData, mode, 800);
+  const model = real.DashboardTimelineModel.layoutPrepared(real.DashboardTimelineModel.groupPrepared(real.DashboardTimelineModel.prepare(timelineData), mode), 800);
   assert.equal(model.tasks.length, mode === 'delivery' ? 4 : 3);
   assert.equal(model.locations.get(reference(1)).item.end - model.locations.get(reference(1)).item.start, 7200000, '跨午夜不折叠夜间');
   assert(model.rows.some(row => row.point) && model.rows.filter(row => row.point).every(row => row.overlap === 0), '点轨不是重叠冲突');
@@ -174,3 +182,21 @@ for (const mode of ['delivery', 'downtime']) {
 assert.deepEqual(selectedBatches, [reference(300), reference(300)]);
 assert.equal(JSON.stringify(timelineData), timelineBefore, '展示和选择不改计划或停机数据');
 console.log('analysis UI source evidence contracts passed');
+
+async function currentMasterDownloadCount() {
+  let headerCount = '3';
+  const token = 'scope-token', transport = { saveBlob() {} };
+  const downloadWindow = { APSMasterOverviewContract: window.APSMasterOverviewContract, APSWorkbenchTransport: transport };
+  const response = { ok: true, headers: { get: name => ({ 'content-type': 'text/csv; charset=utf-8',
+    'X-Workbench-Snapshot-Ref': token, 'X-Workbench-Row-Count': headerCount })[name] || null }, blob: async () => ({ csv: true }) };
+  vm.runInNewContext(fs.readFileSync(path.join(app, 'MasterOverviewAPI.js'), 'utf8'), {
+    window: downloadWindow, AbortController, URLSearchParams, setTimeout, clearTimeout, fetch: async () => response
+  });
+  const api = downloadWindow.APSMasterOverviewAPI.create();
+  assert.equal((await api.export({}, token)).count, 3, '下载条数采用本次响应，不再依赖上次列表数量');
+  headerCount = '0';
+  assert.equal((await api.export({}, token)).count, 0, '当前筛选允许下载空清单');
+  headerCount = '-1';
+  await assert.rejects(api.export({}, token), /导出范围/);
+}
+currentMasterDownloadCount().catch(error => { console.error(error); process.exitCode = 1; });

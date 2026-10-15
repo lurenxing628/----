@@ -1,8 +1,8 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), assert = require('node:assert/strict');
-const window = { APSResourceContract: {}, PointContract: { isPoint: () => false } };
+const window = { APSResourceContract: {}, PointContract: { isPoint: () => false }, PointGanttModel: { bounds: (start, end) => ({ start, end }) } };
 const context = vm.createContext({ window, Date, Number, Map, Set });
-for (const file of ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'ResourceMaterialContract.js', 'FieldContract.js', 'PlanGanttModel.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', file), 'utf8'), context);
+for (const file of ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'ResourceMaterialContract.js', 'FieldContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'ActualGanttModel.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../../frontend/workbench/app', file), 'utf8'), context);
 const C = window.FieldContract, M = window.ActualGanttModel;
 const filePreview = { ok: true, schema_version: 1, meta: { source: 'production', time_basis: 'factory_local', snapshot_ref: 'snapshot', as_of: '2026-10-01T10:00:00' }, warnings: [],
   data: { preview_ref: 'p'.repeat(32), actual_source_ref: 'a'.repeat(32), operation: 'material.import', format: 'csv', mode: 'upsert', template_version: 1,
@@ -60,10 +60,15 @@ const boundary = { ...complete, deviation: { ...deviation, finish_deviation_minu
 assert.equal(M.finishDeviation(boundary), '延后 10 分钟');
 assert.equal(M.deadlines(boundary).finishLate, false, 'The shared rounded deviation controls the 10 minute boundary');
 const report = { report_ref: 'actual-on-other-resource', actual_start: '2026-09-09T08:10:00', actual_end: '2026-09-09T09:20:00' };
+function preparedRow(row) {
+  const item = { ...row.item, execution: { ...row.item.execution, reports: row.reports, legacy_facts: [] } };
+  const fact = M.prepare({ resources: [], items: [item], gantt_graph: { state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] }, axis_span: { start: item.task.start, end: item.task.end } }, item.task.end).facts[0];
+  return { ...row, marks: (row.baseline ? [fact.baseline] : []).concat(fact.reports.map(value => value.mark).filter(Boolean)) };
+}
 const located = M.graphLocations({ rows: [
   { kind: 'actual', top: 0, height: 88, item: complete, baseline: true, reports: [] },
   { kind: 'actual', top: 300, height: 88, item: complete, baseline: false, reports: [report] }
-] }).get(complete.task.task_ref);
+].map(preparedRow) }).get(complete.task.task_ref);
 assert.equal(located.start, M.instant(report.actual_start)); assert.equal(located.end, M.instant(report.actual_end));
 assert.equal(located.y, 333); assert.equal(located.reported, true);
 const equalEnd = { ...report, report_ref: 'same-end-second', actual_start: '2026-09-09T08:15:00' };
@@ -71,12 +76,12 @@ const sameEndLocation = M.graphLocations({ rows: [
   { kind: 'actual', top: 300, height: 88, item: complete, baseline: false, reports: [report, equalEnd] },
   { kind: 'actual', top: 500, height: 88, item: complete, baseline: false, reports: [equalEnd] },
   { kind: 'actual', top: 600, height: 88, item: complete, baseline: true, reports: [] }
-] }).get(complete.task.task_ref);
+].map(preparedRow) }).get(complete.task.task_ref);
 assert.equal(sameEndLocation.start, M.instant(report.actual_start)); assert.equal(sameEndLocation.y, 333);
 assert.equal(sameEndLocation.reported, true, 'Equal latest ends keep the first report and prior row; an unreported baseline cannot replace it');
-const fallback = M.graphLocations({ rows: [{ kind: 'actual', top: 0, height: 88, item: complete, baseline: true, reports: [] }] }).get(complete.task.task_ref);
+const fallback = M.graphLocations({ rows: [{ kind: 'actual', top: 0, height: 88, item: complete, baseline: true, reports: [] }].map(preparedRow) }).get(complete.task.task_ref);
 assert.equal(fallback.start, M.instant(complete.task.start)); assert.equal(fallback.reported, false);
 const shortReport = { ...report, actual_start: '2026-10-12T08:00:00.000001', actual_end: '2026-10-12T08:00:00.000002' };
-const shortMark = M.marks({ kind: 'actual', item: complete, baseline: false, reports: [shortReport] })[0];
+const shortMark = preparedRow({ kind: 'actual', item: complete, baseline: false, reports: [shortReport] }).marks[0];
 assert.equal(shortMark.kind, 'actual'); assert(shortMark.end > shortMark.start, 'A positive microsecond report is not collapsed to a point');
 console.log('FB field contract, original identity, null/zero and actual descriptions passed');

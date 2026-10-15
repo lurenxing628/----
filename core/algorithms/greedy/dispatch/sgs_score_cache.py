@@ -17,6 +17,8 @@ are monkeypatched, so instrumented runs still observe every estimate they hook.
 """
 from __future__ import annotations
 
+from functools import partial
+from types import GetSetDescriptorType, MemberDescriptorType
 from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple
 
 from core.algorithm_contracts.value_domains import INTERNAL
@@ -35,6 +37,7 @@ _UNCLASSIFIED = object()
 _RECORD_FIELDS = (
     "id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_id", "op_type_name",
     "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status", "created_at",
+    "ext_merge_mode", "ext_group_id", "ext_group_total_days", "ext_days",
 )
 _AUTO_ASSIGN_CALLBACKS = (
     ("auto_assign_callback", "_auto_assign_internal_resources"),
@@ -62,21 +65,21 @@ def native_auto_assign_context(ctx: Any, scheduler: Any, native_type: type) -> b
     return True
 
 
-def attach_sgs_score_cache(
-    ctx: Any, scheduler: Any, native_type: type, *, state: ScheduleRunState, params: Any, resource_pool: Any,
-    probe: AutoAssignProbeContract,
-) -> None:
-    """Give the SGS loop its per-decode cache through the context; batch-order dispatch never scores candidates."""
-    if params.dispatch_mode_key != "sgs":
-        return
-    ctx.sgs_score_cache = SgsScoreCache(
-        state,
-        auto_assign_enabled=bool(params.auto_assign_enabled),
-        resource_pool=resource_pool,
-        native_auto_assign=native_auto_assign_context(ctx, scheduler, native_type),
-        probe=probe,
-        calendar=ctx.calendar,
-    )
+def make_sgs_score_cache_factory(ctx: Any, scheduler: Any, native_type: type, *,
+                                 preparation: Any, probe: AutoAssignProbeContract) -> Any:
+    """Select the native input and calendar adapters at the preparation boundary."""
+    native_auto_assign = native_auto_assign_context(ctx, scheduler, native_type) and probe.natives_intact()
+    timing_calendar = ctx.calendar if native_timing_calendar(ctx.calendar) else None
+    calendar_days = ctx.calendar.add_calendar_days if native_timing_calendar(ctx.calendar, include_calendar_days=True) else None
+    return partial(SgsScoreCache, native_auto_assign=native_auto_assign, eligible_resources=preparation.eligible_auto_assign_resources,
+                   timing_calendar=timing_calendar, calendar_days=calendar_days, preparation=preparation)
+
+
+def attach_sgs_score_cache(ctx: Any, *, state: ScheduleRunState, params: Any, resource_pool: Any) -> None:
+    if params.dispatch_mode_key == "sgs":
+        ctx.sgs_score_cache = ctx.native_preparation.score_cache_factory(
+            state, auto_assign_enabled=bool(params.auto_assign_enabled), resource_pool=resource_pool,
+        )
 
 
 _STAT_NAMES = ("hits", "misses", "pair_hits", "pair_misses", "pair_revalidated", "calendar_hits", "calendar_misses",
@@ -90,6 +93,9 @@ def sgs_score_cache_stats(cache: Any) -> Dict[str, int]:
 def plain_record_class(cls: Any) -> bool:
     """Instance attribute reads on ``cls`` are the builtin path: no accessor hooks, no field descriptors."""
     if type(cls) is not type:
+        return False
+    from core.algorithm_runtime.static_attribute import static_class_attribute
+    if type(static_class_attribute(cls, "__dict__")) not in (GetSetDescriptorType, MemberDescriptorType):
         return False
     for klass in cls.__mro__[:-1]:
         if not klass.__flags__ & _HEAPTYPE:
@@ -152,16 +158,18 @@ class SgsScoreCache:
 
     def __init__(
         self, state: ScheduleRunState, *, auto_assign_enabled: bool, resource_pool: Any, native_auto_assign: bool,
-        probe: AutoAssignProbeContract, calendar: Any = None,
+        eligible_resources: Callable[[Any, Any], EligibleResources], timing_calendar: Any, calendar_days: Any, preparation: Any,
     ) -> None:
         self.state = state
+        self.preparation = preparation
+        self.calendar_days = calendar_days
         self.hits = 0
         self.misses = 0
         self._reuse_keys = True
         self._saw_auto = False
         self.graph_candidates_pruned = 0
-        self._probe = probe
-        self._timing = MemoizedTimingCalendar(calendar) if native_timing_calendar(calendar) else None
+        self.eligible_resources = eligible_resources
+        self._timing = MemoizedTimingCalendar(timing_calendar) if timing_calendar is not None else None
         self._shared_slots = SharedSlotEstimateCache() if self._timing is not None else None
         # Every timeline occupation performed inside this decode, per (timeline identity, resource): (seq, start, end).
         self._occupations: Dict[Tuple[int, str], list] = {}
@@ -173,7 +181,7 @@ class SgsScoreCache:
         # Per operation: False when it can never be cached (external, hooked record classes, no native
         # pool), else its eligible auto-assign resources or None for fixed resources.
         self._eligible: Dict[Tuple[int, str, str], Any] = {}
-        self._plain_classes: Dict[type, bool] = {}
+        self._plain_classes: Dict[type, bool] = preparation.plain_classes
         self.round = 0
         self.pair_hits = 0
         self.pair_misses = 0
@@ -321,7 +329,6 @@ class SgsScoreCache:
                 self._reuse_keys = False
                 self._pairs.clear()
             self._shared_slots.clear()
-        self._plain_classes.clear()
 
     def suspend_round(self) -> None:
         """The scoring loop is not running its own code this round: serve no memo, hand nothing to placement.
@@ -334,11 +341,6 @@ class SgsScoreCache:
     def begin_round(self) -> bool:
         """Auto-assign keys may only be reused while the probe still runs the module's own code."""
         self._suspended = False
-        if self._pool is not None and not self._probe.natives_intact():
-            self._pool = None
-            self._eligible = {}
-        if self._timing is not None and not native_timing_calendar(self._timing.calendar):
-            self._timing = None
         if self._timing is not None and self._shared_slots is not None:
             self._shared_slots.begin_round()
         return True
@@ -420,10 +422,7 @@ class SgsScoreCache:
         return None if demand is None else demand.revision
 
     def _plain(self, record: Any) -> bool:
-        cls = type(record)
-        if cls not in self._plain_classes:
-            self._plain_classes[cls] = plain_record_class(cls)
-        return self._plain_classes[cls]
+        return self._plain_classes.get(type(record), False)
 
     def _classify(self, op: Any, batch: Any, machine_id: str, operator_id: str) -> Any:
         if not self._plain(op) or not self._plain(batch):
@@ -434,7 +433,7 @@ class SgsScoreCache:
             return None
         if self._pool is None:
             return False
-        eligible = self._probe.eligible_resources(op, self._pool)
+        eligible = self.eligible_resources(op, self._pool)
         return False if eligible is None else eligible
 
     def _witness(self, op: Any, batch: Any, batch_id: str, graph_state: Optional[Dict[str, Any]]) -> Optional[Witness]:

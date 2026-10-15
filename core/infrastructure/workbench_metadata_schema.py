@@ -221,6 +221,7 @@ def canonical_ddl_parts(sql: str) -> List[str]:
     return _split_top_level(text[start:end]) if start >= 0 else []
 
 
+@lru_cache(maxsize=2048)
 def canonical_sql(sql: str) -> str:
     """DDL 文本规范化：去 SQL 注释与 IF NOT EXISTS、压空白与标点周围空白；CREATE TABLE 的列/约束按文本排序。
 

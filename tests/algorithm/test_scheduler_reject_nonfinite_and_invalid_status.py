@@ -1,4 +1,4 @@
-"""回归测试：调度相关 Service 拒绝非有限数值与非法状态——ConfigService.set_holiday_default_efficiency/set_weights、CalendarService.upsert(efficiency)、ScheduleService.update_internal/external_operation 对 NaN/Inf/负数工时与周期抛 ValidationError；空白工时清空保存为 0、设备/人员可清空为 None；工序 status 走白名单（archived/unknown 拒绝，scheduled/skipped 放行）。"""
+"""日历与工序编辑拒绝非有限数值和非法状态，支持清空资源与工时。"""
 
 
 def _expect_validation_error(fn, title: str) -> None:
@@ -16,7 +16,8 @@ def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
 
     from core.infrastructure.database import ensure_schema, get_connection
     from core.services.batch.service import BatchService
-    from core.services.scheduler import CalendarService, ConfigService, ScheduleService
+    from core.services.scheduler.calendar.service import CalendarService
+    from core.services.scheduler.schedule_service import ScheduleService
 
     conn = get_connection(db_path)
 
@@ -63,19 +64,8 @@ def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
         op_in = next(o for o in ops if (o.source or "").strip() == "internal")
         op_ex = next(o for o in ops if (o.source or "").strip() == "external")
 
-        cfg_svc = ConfigService(conn, logger=None, op_logger=None)
         cal_svc = CalendarService(conn, logger=None, op_logger=None)
         sch_svc = ScheduleService(conn, logger=None, op_logger=None)
-
-        # 1) ConfigService：拒绝非有限数值
-        _expect_validation_error(
-            lambda: cfg_svc.set_holiday_default_efficiency("NaN"),
-            "set_holiday_default_efficiency(NaN)",
-        )
-        _expect_validation_error(
-            lambda: cfg_svc.set_weights("inf", 0.2, 0.8, require_sum_1=False),
-            "set_weights(inf)",
-        )
 
         # 2) CalendarService：拒绝非有限效率
         _expect_validation_error(

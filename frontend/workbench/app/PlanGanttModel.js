@@ -71,53 +71,73 @@
     }
     return result;
   }
-  function prepare(data, mode, query, baseline, changedOnly = false) {
-    const labels = names(data), needle = query.trim().toLocaleLowerCase();
-    const directory = new Map(data.resources.map(row => [row.ref, row]));
-    const comparison = data.projections.baseline;
+  function prepare(data) {
+    const labels = names(data), directory = new Map(data.resources.map(row => [row.ref, row]));
+    const fact = (task, baseline) => ({ task, baseline, start: instant(task.start), end: instant(task.end), search: searchText(task, labels), point: window.PointContract.isPoint(task) });
+    const items = data.tasks.map(task => fact(task, false)), comparison = data.projections.baseline;
+    const before = comparison.state === 'available' ? comparison.items.filter(item => item.before).map(item => fact(item.before, true)) : [];
+    const taskIndex = new Map(items.map(item => [item.task.task_ref, item])), resourceMembers = new Map();
+    for (const item of items) for (const ref of [item.task.machine_ref, item.task.operator_ref]) {
+      if (!ref) continue;
+      if (!resourceMembers.has(ref)) resourceMembers.set(ref, []); resourceMembers.get(ref).push(item);
+    }
+    const beforeIndex = new Map(before.map(item => [item.task.task_ref, item]));
+    const times = (task, index) => task ? index.get(task.task_ref) || { start: instant(task.start), end: instant(task.end) } : null;
+    const comparisons = new Map(comparison.state === 'available' ? comparison.items.map(item => [item.operation_ref,
+      { ...item, beforeTime: times(item.before, beforeIndex), afterTime: times(item.after, taskIndex) }]) : []);
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
-    const matches = task => (!changedOnly || changed.has(task.operation_ref)) && (!needle || searchText(task, labels).includes(needle));
-    const selected = data.tasks.filter(matches), selectedTasks = new Set(selected), groups = new Map(), conflicts = new Set();
-    let start = instant(data.plan_span.start), end = instant(data.plan_span.end);
-    const add = (task, before) => {
-      const item = { task, start: instant(task.start), end: instant(task.end), baseline: before };
-      if (before) { start = Math.min(start, item.start); end = Math.max(end, item.end); }
-      const id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
+    const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, { resource: row,
+      segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({ start: instant(item.start), end: instant(item.end) })) }]));
+    const conflictMembers = new Map();
+    for (const row of data.projections.occupancy.resources) for (const segment of row.conflict_segments || []) {
+      const start = instant(segment.start), end = instant(segment.end);
+      conflictMembers.set(row.resource_ref + ':' + segment.start + ':' + segment.end,
+        (resourceMembers.get(row.resource_ref) || []).filter(item => item.start < end && item.end > start));
+    }
+    return { labels, directory, items, before, taskIndex, beforeIndex, comparisons, changed, occupancy, resourceMembers, conflictMembers,
+      start: instant(data.plan_span.start), end: instant(data.plan_span.end) };
+  }
+  function groupPrepared(prepared, mode) {
+    const { labels, directory, occupancy } = prepared, groups = new Map(), conflicts = new Set();
+    let start = prepared.start, end = prepared.end;
+    function add(item) {
+      const task = item.task, id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
       if (!groups.has(id)) {
         const label = resourceLabel(task, mode, labels), resource = directory.get(id);
         groups.set(id, { id, label, code: resource && resource.business_code !== label ? resource.business_code : null, tasks: [], before: [] });
       }
-      groups.get(id)[before ? 'before' : 'tasks'].push(item);
-    };
-    data.tasks.forEach(task => add(task, false));
-    if (baseline && data.projections.baseline.state === 'available') data.projections.baseline.items.forEach(item => { if (item.before) add(item.before, true); });
-    const P = window.PointContract, G = window.PointGanttModel;
-    const bounds = G.bounds(start, end, Array.from(groups.values()).some(g => [...g.tasks, ...g.before].some(i => P.isPoint(i.task))));
-    start = bounds.start; end = bounds.end;
-    const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref, row]));
-    const preparedGroups = [];
+      groups.get(id)[item.baseline ? 'before' : 'tasks'].push(item);
+      if (item.baseline) { start = Math.min(start, item.start); end = Math.max(end, item.end); }
+    }
+    prepared.items.forEach(add); prepared.before.forEach(add);
+    const G = window.PointGanttModel, bounds = G.bounds(prepared.start, prepared.end, prepared.items.some(item => item.point));
+    const comparisonBounds = G.bounds(start, end, prepared.items.some(item => item.point) || prepared.before.some(item => item.point));
+    const facts = [];
     for (const group of groups.values()) {
-      const overlap = new Set();
-      const shown = new Set(group.tasks.filter(item => selectedTasks.has(item.task)));
-      group.before.forEach(item => { if (matches(item.task)) shown.add(item); });
-      const currentNormal = tracks(group.tasks.filter(i => !P.isPoint(i.task)), overlap);
-      const oldNormal = tracks(group.before.filter(i => !P.isPoint(i.task)), new Set());
-      const currentPoints = G.prepareTracks(group.tasks.filter(i => P.isPoint(i.task)));
-      const oldPoints = G.prepareTracks(group.before.filter(i => P.isPoint(i.task)));
-      // Visual overlap splits tracks; actual conflict color comes from the same server occupancy snapshot.
-      const resourceOccupancy = occupancy.get(group.id);
-      const segments = resourceOccupancy ? resourceOccupancy.segments.filter(item => item.concurrent_operations > 1)
-        .map(item => ({ start: instant(item.start), end: instant(item.end) })) : [];
+      const overlap = new Set(), resource = occupancy.get(group.id), segments = resource ? resource.segments : [];
+      const currentNormal = tracks(group.tasks.filter(item => !item.point), overlap), oldNormal = tracks(group.before.filter(item => !item.point), new Set());
       for (const item of group.tasks) {
-        if (P.isPoint(item.task)) continue;
+        if (item.point) continue;
         const hit = firstIntersecting(segments, item.start);
         if (hit < segments.length && segments[hit].start < item.end) conflicts.add(item.task.task_ref);
       }
-      preparedGroups.push({ group, shown, currentNormal: currentNormal.map(lane => lane.filter(item => shown.has(item))),
-        oldNormal: oldNormal.map(lane => lane.filter(item => shown.has(item))), currentPoints, oldPoints,
-        overlap: overlap.size, occupancy: resourceOccupancy });
+      facts.push({ group, currentNormal, oldNormal, currentPoints: G.prepareTracks(group.tasks.filter(item => item.point)),
+        oldPoints: G.prepareTracks(group.before.filter(item => item.point)), overlap: overlap.size, occupancy: resource && resource.resource });
     }
-    return { mode, labels, groups: preparedGroups, start, end, conflicts, tasks: selected };
+    return { ...prepared, mode, groups: facts, start: bounds.start, end: bounds.end, baselineStart: comparisonBounds.start, baselineEnd: comparisonBounds.end, conflicts };
+  }
+  function matching(prepared, query = '', changedOnly = false) {
+    const needle = query.trim().toLocaleLowerCase();
+    return prepared.items.filter(item => (!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle)));
+  }
+  function selectPrepared(prepared, query = '', changedOnly = false, baseline = false) {
+    const needle = query.trim().toLocaleLowerCase(), selected = matching(prepared, query, changedOnly), shown = new Set(selected);
+    for (const item of baseline ? prepared.before : []) if ((!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle))) shown.add(item);
+    const groups = prepared.groups.map(fact => ({ ...fact, shown,
+      group: { ...fact.group, tasks: fact.group.tasks.filter(item => shown.has(item)), before: baseline ? fact.group.before.filter(item => shown.has(item)) : [] },
+      currentNormal: fact.currentNormal.map(lane => lane.filter(item => shown.has(item))),
+      oldNormal: baseline ? fact.oldNormal.map(lane => lane.filter(item => shown.has(item))) : [], oldPoints: baseline ? fact.oldPoints : [] }));
+    return { ...prepared, groups, tasks: selected.map(item => item.task), start: baseline ? prepared.baselineStart : prepared.start, end: baseline ? prepared.baselineEnd : prepared.end };
   }
   function layoutPrepared(prepared, width = 1000) {
     const { mode, labels, start, end, conflicts, tasks } = prepared;
@@ -145,9 +165,6 @@
       if (rows.length > firstRow) groupCount++;
     }
     return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks, groupCount };
-  }
-  function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
-    return layoutPrepared(prepare(data, mode, query, baseline, changedOnly), width);
   }
   function firstIntersecting(items, start) {
     let low = 0, high = items.length;
@@ -190,5 +207,5 @@
   function tone(task, risks) {
     return risks.get(task.batch_id) === 'overdue' ? 'critical' : 'primary';
   }
-  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, prepare, layoutPrepared, layout, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels, scopeCaption };
+  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, prepare, groupPrepared, matching, selectPrepared, layoutPrepared, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels, scopeCaption };
 })();

@@ -91,10 +91,10 @@ def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, sour
     assert dict(table_reads) == first_reads
     assert repeated["input_ref"] != data["input_ref"]
     with pf.application.app_context():
-        first_binding = json.loads(resolve_public_token(INPUT_SCOPE, data["input_ref"],
-            message="Preflight input is unavailable", field="input_ref"))
-        repeated_binding = json.loads(resolve_public_token(INPUT_SCOPE, repeated["input_ref"],
-            message="Preflight input is unavailable", field="input_ref"))
+        first_binding = resolve_public_token(INPUT_SCOPE, data["input_ref"],
+            message="Preflight input is unavailable", field="input_ref")
+        repeated_binding = resolve_public_token(INPUT_SCOPE, repeated["input_ref"],
+            message="Preflight input is unavailable", field="input_ref")
     assert repeated_binding["fingerprint"] == first_binding["fingerprint"]
     from core.services.workbench.facts.schema_compat import project_facts
 

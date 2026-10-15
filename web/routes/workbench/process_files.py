@@ -1,13 +1,13 @@
 """Process imports retain parsed file facts; confirmation rechecks current DB facts."""
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, check_format, file_columns
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.files import WorkbenchProcessFileService, file_operation
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .process_action_context import action_preview, checked_preview, confirmed_body
@@ -60,7 +60,7 @@ def process_file_confirm(kind):
         mutate=lambda checked: WorkbenchProcessFileService(g.db, current_app.logger).confirm_import(
             checked[0], checked[1], discard_group_refs=payload["discard_group_refs"],
             confirm_zero_unit_hours=payload["confirm_zero_unit_hours"]))
-    return jsonify(result)
+    return json_response(result)
 
 
 def register_process_file_routes(bp):

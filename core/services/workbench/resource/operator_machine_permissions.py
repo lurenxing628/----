@@ -2,11 +2,12 @@
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
+from core.models import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
 from core.services.personnel.operator_machine_service import OperatorMachineService
 
-from .states import WorkbenchResourceStateService
+from .queries import WorkbenchResourceQueryService
 
 OPERATION = "operator.machine_permissions"
 
@@ -39,35 +40,46 @@ def _permission_row(number, ref, machine, previous, target):
 class WorkbenchOperatorMachinePermissions:
     def __init__(self, conn, logger=None):
         self.conn = conn
-        self.state = WorkbenchResourceStateService(conn, logger)
+        self.reader = WorkbenchResourceQueryService(conn, "operator", logger)
         self.domain = OperatorMachineService(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
-    def preview(self, operator_ref, permissions):
+    def preview(self, operator_ref, permissions, *, preparation=None):
         with self.tx.transaction():
-            identity, raw = self.state.by_ref("operator", operator_ref)
-            if raw["operator_id"] != raw["operator_id"].strip():
-                raise WorkbenchCommandRejected("constraint_conflict", "工号前后含空格，请先修正工号。")
-            before = self.state.snapshot(identity)
-            old_rows = {row["machine_ref"]: row for row in permission_rows(before)}
-            requested = self._normalize(permissions, old_rows)
-            requested_by_ref = {row["machine_ref"]: row for row in requested}
-            machines = self._machine_snapshots(sorted(set(old_rows) | set(requested_by_ref)))
-            rows = [_permission_row(number, ref, machines[ref], old_rows.get(ref), requested_by_ref.get(ref))
-                    for number, ref in enumerate(sorted(machines), 1)]
-            # The full operator and machine facts fence rename/recreation, skill changes and hidden links.
-            request = {"operator_ref": operator_ref, "machine_permissions": requested,
-                       "expected_operator": before, "expected_machines": machines}
-            return ResourceActionPreview.build(OPERATION, request, rows)
+            return self._prepare(operator_ref, permissions, preparation=preparation)[0]
 
-    def _machine_snapshots(self, refs):
-        machines = {}
+    def _prepare(self, operator_ref, permissions, *, preparation=None):
+        preparation = preparation or self.reader.preparation()
+        identity = preparation.identity("operator", operator_ref)
+        raw = preparation.raw("operator", identity.entity_key)
+        if raw["operator_id"] != raw["operator_id"].strip():
+            raise WorkbenchCommandRejected("constraint_conflict", "工号前后含空格，请先修正工号。")
+        before = preparation.state("operator", identity.entity_key)
+        old_rows = {row["machine_ref"]: row for row in permission_rows(before)}
+        requested = self._normalize(permissions, old_rows)
+        requested_by_ref = {row["machine_ref"]: row for row in requested}
+        machines = self._machine_snapshots(preparation, sorted(set(old_rows) | set(requested_by_ref)))
+        rows = [_permission_row(number, ref, machines[ref], old_rows.get(ref), requested_by_ref.get(ref))
+                for number, ref in enumerate(sorted(machines), 1)]
+        request = {"operator_ref": operator_ref, "machine_permissions": requested,
+                   "expected_operator": before, "expected_machines": machines}
+        code = identity.entity_key
+        targets = [OperatorMachine(None, code, row["business_code"], row["after"]["skill_level"],
+                                   row["after"]["is_primary"])
+                   for row in rows if row["result"] in ("new", "update")]
+        removed = [(code, row["business_code"]) for row in rows if row["result"] == "delete"]
+        changes = self.domain.prepare_changes(preparation.authorizations("operator", code), targets, removed=removed)
+        return ResourceActionPreview.build(OPERATION, request, rows), changes
+
+    def _machine_snapshots(self, preparation, refs):
+        identities = {}
         for ref in refs:
-            machine, _ = self.state.by_ref("machine", ref)
+            machine = preparation.identity("machine", ref)
             if machine.entity_key != machine.entity_key.strip():
                 raise WorkbenchCommandRejected("constraint_conflict", "设备编号前后含空格，请先修正设备编号。")
-            machines[ref] = self.state.snapshot(machine)
-        return machines
+            identities[ref] = machine
+        snapshots = preparation.states("machine", [identity.entity_key for identity in identities.values()])
+        return {ref: snapshots[identity.entity_key] for ref, identity in identities.items()}
 
     def _normalize(self, permissions, old):
         if type(permissions) is not list:
@@ -91,26 +103,14 @@ class WorkbenchOperatorMachinePermissions:
             raise RuntimeError("设备授权保存必须由工作台命令事务负责。")
         request = preview.as_dict()["request"]
         try:
-            current = self.preview(request["operator_ref"], request["machine_permissions"])
+            current, changes = self._prepare(request["operator_ref"], request["machine_permissions"])
         except (ValidationError, WorkbenchCommandRejected) as exc:
             raise WorkbenchCommandRejected("stale_write", "人员、设备或关联已变化，请重新预检。") from exc
         check_resource_preview(preview, current)
         body = current.as_dict()
         code = body["request"]["expected_operator"]["record"]["operator_id"]
         rows = body["rows"]
-        for row in rows:
-            if row["result"] == "delete":
-                self.domain.remove_link(code, row["business_code"])
-        # Remove the old primary first; the final set has at most one primary.
-        changed = [row for row in rows if row["result"] in ("new", "update")]
-        changed.sort(key=lambda row: self.domain._normalize_yes_no_stored(row["after"]["is_primary"]) == "yes")
-        for row in changed:
-            target = row["after"]
-            values = {key: target[key] for key in ("skill_level", "is_primary")}
-            if row["result"] == "new":
-                self.domain.add_link(code, row["business_code"], **values, preserve_unchanged=True)
-            else:
-                self.domain.update_link_fields(code, row["business_code"], **values, preserve_unchanged=True)
+        self.domain.apply_changes(changes)
         count = sum(row["result"] != "unchanged" for row in rows)
         return WorkbenchCommandOutcome("committed" if count else "unchanged",
                                        {"entity_ref": request["operator_ref"], "business_code": code,

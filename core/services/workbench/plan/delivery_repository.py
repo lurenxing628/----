@@ -10,21 +10,12 @@ from core.models.schedule_plan_role import (
     SOURCE_SCHEDULE,
 )
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from data.repositories.workbench_plan_delivery_repo import WorkbenchPlanDeliveryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
 def _binding_error() -> NoReturn:
     raise WorkbenchCommandRejected("plan_binding_invalid", "交付风险数据与所选计划不一致，请重新选择计划。")
-
-
-def _bounded(rows):
-    if len(rows) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected(
-            "query_too_large", "整个计划或相关批次工序超过 10000 条上限。请缩小时间范围后重试。", 413,
-        )
-    return rows
 
 
 def _task_query(identity):
@@ -61,24 +52,21 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
             raise WorkbenchCommandRejected("plan_unavailable", "所选候选方案没有完整保存的明细，看不了。请回「选择排产方案」重新选一个。")
         return scenario
 
-    def task_rows(self, identity, *, context=None, entry=None):
+    def task_rows(self, identity, *, context, entry=None):
         query = _task_query(identity)
-        if context is None:
-            rows = self.list_task_rows_with_batch(**query)
-            _bounded(rows)
+        raw = context.source_rows(**query)
+        if entry is None:
+            # Standalone delivery keeps bad time rows visible for its own projection.
+            details = context.repo.enrich_arrangements(raw, version=identity.version)
         else:
-            raw = _bounded(context.source_rows(**query))
-            if entry is None:
-                # Standalone delivery keeps its permissive CAST-time and bad-point contract.
-                rows = self.list_task_rows_with_batch(**query)
-            else:
-                raw_by_id = {row["id"]: row for row in raw}
-                fields = ("schedule_id", "version", "op_id", "machine_id", "operator_id", "batch_id")
-                rows = [{**{key: row[key] for key in fields},
-                         "start_time": raw_by_id[row["schedule_id"]]["start_time"],
-                         "end_time": raw_by_id[row["schedule_id"]]["end_time"],
-                         **({"_point_work": row["_point_work"]} if row.get("_point_work") else {})}
-                        for row in sorted(context.detail_rows(entry), key=lambda row: row["schedule_id"])]
+            details = context.detail_rows(entry)
+        raw_by_id = {row["id"]: row for row in raw}
+        fields = ("schedule_id", "version", "op_id", "machine_id", "operator_id", "batch_id")
+        rows = [{**{key: row[key] for key in fields},
+                 "start_time": raw_by_id[row["schedule_id"]]["start_time"],
+                 "end_time": raw_by_id[row["schedule_id"]]["end_time"],
+                 **({"_point_work": row["_point_work"]} if row.get("_point_work") else {})}
+                for row in sorted(details, key=lambda row: row["schedule_id"])]
         if any(row["batch_id"] is None for row in rows):
             raise WorkbenchCommandRejected("plan_unavailable", "计划里有安排找不到对应的批次工序，交付风险算不完整。请到批次管理核对。")
         return rows
@@ -88,8 +76,7 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
         for start in range(0, len(keys), 400):
             chunk = keys[start:start + 400]
             batches.extend(self.list_batches_by_ids(chunk))
-            operations.extend(self.list_batch_operations_by_ids(chunk, limit=MAX_PLAN_TASKS + 1 - len(operations)))
-            _bounded(operations)
+            operations.extend(self.list_batch_operations_by_ids(chunk))
         if {row["batch_id"] for row in batches} != set(keys):
             raise WorkbenchCommandRejected("plan_unavailable", "计划涉及的批次已不存在，请到批次管理核对。")
         return batches, operations

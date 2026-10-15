@@ -3,10 +3,8 @@
 from typing import Union
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
+from core.models.workbench_run_candidate import reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.facts.decision_candidate import _candidate_reason
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 from core.services.workbench.facts.preparation_projection import preparation_summary, public_preparation_metrics
@@ -105,5 +103,4 @@ def read_completion_batches(conn, run_ref, *, completion_candidate_ref=None, com
     with store.snapshot(), read_evidence_scope(conn):
         source = DecisionSource(store, run_ref, **query)
         data = completion_batches(source, filters, page=page, size=size)
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, source.state()

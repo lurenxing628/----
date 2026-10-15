@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Protocol, Sequence, Set
 
 from core.errors import AppError, ValidationError
 from core.models.resource_capabilities import machine_types, supports_source
@@ -12,6 +12,10 @@ from data.repositories.operator_qualification_repo import OperatorQualificationR
 
 class OperatorQualificationError(ValidationError):
     """Qualification failures must not fall back to an unfiltered resource pool."""
+
+
+class MachineAuthorizations(Protocol):
+    def exists(self, operator_id: str, machine_id: str) -> bool: ...
 
 
 def _invalid_facts(message: str) -> OperatorQualificationError:
@@ -26,7 +30,7 @@ def _identifier(value: Any) -> str:
     return value
 
 
-def require_machine_authorization(authorizations: OperatorMachineRepository, operator_id: str, machine_id: Optional[str]) -> None:
+def require_machine_authorization(authorizations: MachineAuthorizations, operator_id: str, machine_id: Optional[str]) -> None:
     if machine_id and not authorizations.exists(operator_id, machine_id):
         raise OperatorQualificationError(
             f"人员“{operator_id}”未被配置为可操作设备“{machine_id}”。"
@@ -119,21 +123,3 @@ class OperatorQualificationService:
                 field="operator_qualification",
                 details={"reason": "operator_skill_not_qualified", "operator_id": oid, "op_type_id": op_type_id},
             )
-
-
-def validate_fixed_operator_qualifications(conn, operations: List[Any], logger=None) -> None:
-    selected = [op for op in operations if str(getattr(op, "source", "") or "").strip().lower() == "internal"
-                and getattr(op, "operator_id", None)]
-    if not selected:
-        return
-    service = OperatorQualificationService(conn, logger=logger)
-    facts = service.load([op.operator_id for op in selected])
-    checked_pairs = set()
-    for op in selected:
-        machine_id = getattr(op, "machine_id", None)
-        pair = (op.operator_id, machine_id)
-        if pair not in checked_pairs:
-            require_machine_authorization(service.authorizations, op.operator_id, machine_id)
-            checked_pairs.add(pair)
-        service.require(operator_id=op.operator_id, op_type_id=getattr(op, "op_type_id", None),
-                        machine_id=None, qualifications=facts)

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import re
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.material.queries import WorkbenchMaterialQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -106,15 +106,14 @@ def material_command(action, ref=None):
     command = "material." + action
 
     def guard():
-        identity = None if action == "create" else reader.resolve(ref)
-        state = None if identity is None else domain.snapshot(identity)
+        state = None if action == "create" else reader.detail(ref).state
         validate_write_context(body["write_token"], subject, command, state)
-        return state
+        return domain.prepare_checked(action, normalized, state)
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=normalized,
-        guard=guard, mutate=lambda checked: domain._apply_checked(action, normalized, checked))
-    return jsonify(outcome)
+        guard=guard, mutate=domain.apply_prepared)
+    return json_response(outcome)
 
 
 @api_endpoint
@@ -123,8 +122,8 @@ def command_receipt(request_key):
         raise WorkbenchCommandRejected("invalid_input", "查询保存结果时不需要其他筛选条件。请直接点「查询结果」。", 400)
     receipt = WorkbenchCommandService(g.db, current_app.logger).lookup(request_key)
     if receipt is not None:
-        return jsonify(receipt)
-    return jsonify({"ok": True, "state": "not_recorded", "receipt": None, "may_be_in_flight": True,
+        return json_response(receipt)
+    return json_response({"ok": True, "state": "not_recorded", "receipt": None, "may_be_in_flight": True,
                     "message": messages.pending("保存")})
 
 

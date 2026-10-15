@@ -6,7 +6,7 @@ core.services.execution.ledger_reader; this module only returns what is stored.
 
 import json
 
-from core.infrastructure.schema_structure import SchemaStructure
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.infrastructure.workbench_execution_void_schema import execution_void_contract_issues
 from data.repositories.base_repo import BaseRepository
@@ -20,7 +20,7 @@ def chunks(values, size=300):
 class WorkbenchExecutionRepository(BaseRepository):
     def schema_issues(self):
         """Ledger and void contract issues in storage order; empty when the schema is complete."""
-        structure = SchemaStructure(self.conn)
+        structure = schema_contract_memo(self.conn).structure
         return (list(execution_ledger_contract_issues(self.conn, structure=structure)) +
                 list(execution_void_contract_issues(self.conn, structure=structure)))
 
@@ -73,7 +73,9 @@ class WorkbenchExecutionRepository(BaseRepository):
         for chunk in chunks(list(operation_refs)):
             marks = ",".join("?" for _ in chunk)
             rows.extend(self.fetchall(f"""SELECT t.ref AS task_ref, t.plan_ref, r.operation_ref,
-                r.operation_id AS op_id, r.version, s.start_time, s.end_time, s.machine_id,
+                r.operation_id AS op_id, r.version, r.kind AS identity_kind,
+                r.source_table AS identity_source_table, r.source_key AS row_source_key, r.owner_key,
+                s.id AS schedule_id, s.start_time, s.end_time, s.machine_id,
                 s.operator_id, s.lock_status FROM WorkbenchPlanSourceRefs r
                 JOIN WorkbenchTaskRefs t ON t.row_ref=r.ref AND t.plan_ref=?
                 LEFT JOIN Schedule s ON r.kind='schedule_row' AND s.id=CAST(r.source_key AS INTEGER)

@@ -6,10 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.errors import ValidationError
+from core.infrastructure.database import get_connection
 from core.services.scheduler.calendar import engine as engine_module
+from core.services.scheduler.calendar.checkpoint_certificate import calendar_checkpoint_snapshot
 from core.services.scheduler.calendar.engine import CalendarEngine, DayPolicy
 from core.services.scheduler.calendar.service import CalendarService
-from core.services.scheduler.calendar.sgs_certificate import _NativePolicyReader
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 
 
 def dt(text):
@@ -59,6 +62,13 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
     service = CalendarService(conn)
     service.upsert("2026-10-12", shift_hours=8)
     cal, counts = service._engine, {}
+    built, build = [], service._engine._policy_from_calendar
+
+    def build_policy(day, row):
+        built.append((day, type(row)))
+        return build(day, row)
+
+    monkeypatch.setattr(cal, "_policy_from_calendar", build_policy)
     parsed, decode = [], engine_module.decode_periods
 
     def parse(raw):
@@ -76,12 +86,12 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
     days = ("2026-10-12", "2026-10-13", "2026-10-14")
     for who in ("O1", "O2"):
         assert [cal._policy_for_date(day, who).shift_hours for day in days] == [7, 7, 7]
+    assert len(built) == 3
     assert counts == {"public": 3, "personal": 6, "profile": 2, "pattern": 1}
     assert parsed == ['[{"start":"09:00","end":"12:00","day_offset":0},{"start":"13:00","end":"17:00","day_offset":0}]']
     defaults = cal.default_periods()
     assert cal.default_periods() is defaults
-    assert service.certified_sgs_policy_snapshot("O1") is not None
-    assert cal._sgs_policy_content_tokens
+    assert cal._public_policy_cache[days[0]].shift_hours == 8
 
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
                  ('[{"start":"09:00","end":"15:00","day_offset":0}]',))
@@ -90,53 +100,19 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
     conn.execute("UPDATE WorkbenchShiftDayPeriods SET periods_json=? WHERE profile_id='S'",
                  ('[{"start":"10:00","end":"12:00","day_offset":0},{"start":"13:00","end":"16:00","day_offset":0}]',))
     service.upsert("2026-10-12", shift_hours=4)
-    assert not cal._sgs_policy_content_tokens and not cal._policy_operator_keys
+    assert not cal._policy_operator_keys
     for who in ("O1", "O2"):
         policies = [cal._policy_for_date(day, who) for day in days]
         assert [policy.shift_hours for policy in policies] == [4, 5, 5]
         assert all(policy.shift_start.hour == 10 for policy in policies)
+    assert len(built) == 6
     assert counts == {"public": 6, "personal": 12, "profile": 4, "pattern": 2}
     assert len(parsed) == 2
     assert cal.default_periods() == [{"start": "09:00", "end": "15:00", "day_offset": 0}]
     assert cal.default_periods() is not defaults
     service.upsert_operator_calendar("O2", "2026-10-13", shift_start="11:00", shift_end="13:00")
     assert cal._policy_for_date("2026-10-13", "O2").shift_hours == 2
-
-
-def test_policy_snapshot_uses_person_keys_keeps_explicit_order_and_detects_content_change(schema_conn):
-    service = CalendarService(schema_conn)
-    cal = service._engine
-    for who in ("O1", "O2"):
-        for day in ("2026-10-12", "2026-10-13", "2026-10-14"):
-            cal._policy_for_date(day, who)
-
-    class PersonReads(dict):
-        def __init__(self, policies):
-            super().__init__(policies)
-            self.read_keys = []
-
-        def items(self):
-            raise AssertionError("person snapshot must consume its key group")
-
-        def get(self, key):
-            self.read_keys.append(key)
-            return super().get(key)
-
-    policies = PersonReads(cal._policy_cache)
-    reader = _NativePolicyReader(policies, cal._sgs_policy_content_tokens, cal._policy_operator_keys)
-    first = reader.snapshot("O1")
-    assert policies.read_keys == [("O1", day) for day in ("2026-10-12", "2026-10-13", "2026-10-14")]
-    keys = [("O1", "2026-10-14"), ("O2", "2026-10-12"), ("O1", "2026-10-12")]
-    assert [key for key, _ in reader.snapshot("O1", keys)] == [keys[0], keys[2]]
-    cal._policy_cache[("O1", "2026-10-12")].efficiency = 0.75
-    assert reader.snapshot("O1") != first
-    scalar_changed = reader.snapshot("O1")
-    policy = cal._policy_cache[("O1", "2026-10-12")]
-    policy._period_offsets = ((510, 700), (810, 1050))
-    offsets_changed = reader.snapshot("O1")
-    assert offsets_changed != scalar_changed
-    policy._period_offsets = ((510, 710), (810, 1050))
-    assert reader.snapshot("O1") != offsets_changed
+    assert len(built) == 7
 
 
 def test_independent_day_policy_prepares_once_and_keeps_legacy_stop_and_night(monkeypatch):
@@ -163,3 +139,41 @@ def test_independent_day_policy_prepares_once_and_keeps_legacy_stop_and_night(mo
         assert policy.work_windows() == expected and policy.work_windows() == expected
         assert not policy.is_priority_allowed("normal") and policy.is_priority_allowed("urgent")
     assert decoded == ["[]", raw]
+
+
+def test_captured_rows_keep_live_null_override_cycle_defaults_and_source_errors(db_path, request):
+    conn = get_connection(db_path)
+    request.addfinalizer(conn.close)
+    conn.executemany("INSERT INTO Operators(operator_id,name) VALUES (?,?)", [("O1", "甲"), ("O2", "乙"), ("O3", "丙")])
+    conn.execute("INSERT INTO WorkCalendar(date,shift_start,shift_end,shift_hours,efficiency) "
+                 "VALUES ('2026-10-12',NULL,NULL,NULL,NULL)")
+    conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
+                 ('[{"start":"09:00","end":"12:00","day_offset":0},{"start":"13:00","end":"18:00","day_offset":0}]',))
+    conn.execute("INSERT INTO WorkbenchShiftProfiles(profile_id,name,anchor_date,cycle_days) VALUES ('S','班次','2026-10-12',12)")
+    conn.executemany("INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,shift_start,shift_end) "
+                     "VALUES ('S',?,?, '22:00','06:00')", [(day, int(day == 11)) for day in range(12)])
+    conn.executemany("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES (?,'S')", [("O1",), ("O2",)])
+    conn.execute("INSERT INTO WorkbenchShiftDayPeriods(profile_id,day_offset,periods_json) VALUES ('S',0,?)",
+                 ('[{"start":"22:00","end":"06:00","day_offset":0}]',))
+    conn.execute("INSERT INTO OperatorCalendar(operator_id,date,shift_start,shift_end,shift_hours,efficiency) "
+                 "VALUES ('O2','2026-10-13','11:00','13:00',2,0.75)")
+    conn.commit()
+
+    def calendars():
+        return CalendarService(conn), CalendarService(conn, capture=ProductionFactsCapture(conn))
+
+    live, captured = calendars()
+    for who in (None, "O1", "O2", "O3"):
+        for day in ("2026-10-12", "2026-10-13", "2026-10-14", "2026-10-23"):
+            assert captured._engine._policy_for_date(day, who) == live._engine._policy_for_date(day, who)
+    assert captured._engine._policy_for_date("2026-10-12", "O3").shift_start.hour == 8
+    assert captured._engine._policy_for_date("2026-10-13", "O2").shift_hours == 2
+    assert captured._engine._policy_for_date("2026-10-23", "O1").shift_hours == 0
+    assert calendar_checkpoint_snapshot(captured) == calendar_checkpoint_snapshot(live)
+
+    conn.execute("UPDATE WorkbenchShiftProfiles SET anchor_date='damaged' WHERE profile_id='S'")
+    conn.commit()
+    for service in calendars():
+        with pytest.raises(ValidationError, match="轮换基准日期无效") as caught:
+            service._engine._policy_for_date("2026-10-12", "O1")
+        assert caught.value.field == "shift_profile"

@@ -16,6 +16,7 @@ def validate_candidate(schedule_input, results, errors, *, prepared_payload=None
         missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
         schedule_errors=errors,
         point_validator=candidate_point_validator(schedule_input),
+        operation_sources=schedule_input.operation_sources,
     )
     by_id = {row.op_id: row for row in payload.schedule_rows}
     seeds = {row["op_id"]: row for row in schedule_input.seed_results}

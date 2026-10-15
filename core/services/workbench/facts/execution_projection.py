@@ -1,7 +1,9 @@
 """Workbench write contexts; execution aggregation has one neutral owner."""
 
 from dataclasses import replace
+from typing import Any, Callable, Dict, Iterable, Optional, Protocol
 
+from core.models.content import content_text
 from core.services.execution.projection import project_execution as project_execution
 from core.services.execution.projection import report_dto as report_dto
 
@@ -13,11 +15,19 @@ COMPLETION_BASIS_TEXT = {"complete_reports": "完整逐次报工", "legacy_finis
 DATA_QUALITY_TEXT = {"complete": "完整", "incomplete": "不完整", "legacy_incomplete": "历史资料不完整", "invalid": "需复核"}
 
 
-def attach_context(projection, factory, snapshot):
+class ExecutionContextFactory(Protocol):
+    def __call__(self, subject_ref: str, actions: Iterable[str], snapshot: Any) -> Dict[str, Any]: ...
+
+    def for_snapshot(self, snapshot: Any) -> Callable[[str, Iterable[str]], Dict[str, Any]]: ...
+
+
+def attach_context(projection, factory: Optional[ExecutionContextFactory], snapshot):
     writable = bool(projection.current_task_ref and projection.plan_identity and
                     projection.plan_identity["capabilities"]["report_actual"] and projection.data_quality != "invalid")
     if factory is None or not writable:
         return projection
-    reports = [replace(report, write_context=factory(report.report_ref, ["supplement", "correct", "report_void"], snapshot))
+    snapshot = snapshot if isinstance(snapshot, str) else content_text(snapshot)
+    issue_context = factory.for_snapshot(snapshot)
+    reports = [replace(report, write_context=issue_context(report.report_ref, ["supplement", "correct", "report_void"]))
                for report in projection.reports]
-    return replace(projection, reports=reports, write_context=factory(projection.current_task_ref, ["create"], snapshot))
+    return replace(projection, reports=reports, write_context=issue_context(projection.current_task_ref, ["create"]))

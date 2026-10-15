@@ -1,6 +1,6 @@
 """Shared private resource facts and identity checks, without public token handling."""
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional, overload
 
 from core.models.resource_capabilities import supports_source
@@ -10,6 +10,152 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
 
 from .state_projection import machine_write_state, operator_write_state
+from .table_states import resource_table_states
+
+
+@dataclass
+class ResourceChange:
+    action: str
+    business_code: str
+    identity: Optional[WorkbenchEntityIdentity]
+    fields: dict
+    related: dict
+
+
+class ResourceChangePreparation:
+    """One operation's captured resource rows, identities and complete current states."""
+
+    def __init__(self, facts):
+        self.facts = facts
+        self._identities = {row["ref"]: row for row in facts.identities.values()}
+        self._states = {}
+        self._names = {}
+        self._references = {}
+
+    def identity(self, kind, ref):
+        identity = self.find_by_ref(kind, ref)
+        if identity is None:
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，请刷新后重新选择。", 404)
+        return identity
+
+    def find_by_ref(self, kind, ref):
+        row = self._identities.get(ref)
+        if row is None or row["kind"] != kind:
+            return None
+        return self.facts.identity(kind, row["entity_key"])
+
+    def identity_by_code(self, kind, code):
+        return self.facts.identity(kind, code)
+
+    def current(self, kind, identity):
+        if not isinstance(identity, WorkbenchEntityIdentity) or identity.kind != kind or not identity.active:
+            raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，请重新选择。", 404)
+        current = self.identity(kind, identity.ref)
+        if current != identity:
+            raise WorkbenchCommandRejected("stale_write", "资源或相关资料已经变了，请刷新后重新核对。")
+        return current
+
+    def find_identity(self, kind, code):
+        return self.identity_by_code(kind, code) if (kind, code) in self.facts.identities else None
+
+    def raw(self, kind, code):
+        from .metrics import _KEYS
+
+        return self.facts.raw_lookup(kind, _KEYS[kind]).get(code)
+
+    def states(self, kind, codes):
+        current = self._states.setdefault(kind, {})
+        pending = sorted(set(codes) - set(current))
+        for offset in range(0, len(pending), 200):
+            chunk = pending[offset:offset + 200]
+            references = self._references.get(kind)
+            if kind == "op_type":
+                if references is None:
+                    dependencies = self.facts.metrics.repo.op_type_dependencies(chunk)
+                else:
+                    from .table_facts import _OP_TYPE_DEPENDENCIES
+
+                    dependencies = {code: {name: len(references[code][source])
+                        for name, source in _OP_TYPE_DEPENDENCIES.items()} for code in chunk}
+                profiles = self.facts.raw_lookup("policies", "op_type_id")
+                current.update({code: {"identity": asdict(self.identity_by_code(kind, code)),
+                    "record": self.facts.raw_record(kind, code), "profile": profiles.get(code),
+                    "dependencies": dependencies[code]} for code in chunk})
+            else:
+                counts, supplier_refs = None, None
+                if references is not None:
+                    if kind == "supplier":
+                        supplier_refs = {name: {code: references[code][table] for code in chunk}
+                            for name, table in (("part_operations", "PartOperations.supplier_id"),
+                                                ("batch_operations", "BatchOperations.supplier_id"),
+                                                ("external_groups", "ExternalGroups.supplier_id"))}
+                    else:
+                        aliases = {"BatchOperations": "batch_operations", "Schedule": "schedule"}
+                        counts = {code: {aliases.get(table.split(".")[0], table): len(rows)
+                            for table, rows in references[code].items()} for code in chunk}
+                current.update(resource_table_states(self.facts, kind, chunk, dependencies=counts,
+                                                     supplier_references=supplier_refs))
+        return {code: current[code] for code in codes}
+
+    def capture_references(self, repo, kind, codes):
+        self._references[kind] = repo.references_many(kind, sorted(set(codes)))
+        return self._references[kind]
+
+    def state(self, kind, code):
+        return self.states(kind, [code])[code]
+
+    def selected_record(self, kind, identity, *, category=None):
+        current = self.identity(kind, identity.ref)
+        if current != identity:
+            raise WorkbenchCommandRejected("stale_write", "资源或相关资料已经变了，请刷新后重新核对。")
+        raw = self.facts.raw_record(kind, current.entity_key)
+        WorkbenchResourceStateService._require_selected(current, raw, category)
+        return current, raw
+
+    def selected(self, kind, ref, *, category=None):
+        if ref is None:
+            return None
+        identity = self.identity(kind, ref)
+        self.selected_record(kind, identity, category=category)
+        return identity.entity_key
+
+    def name_owner(self, kind, name):
+        if kind not in self._names:
+            self._names[kind] = {row["name"]: code for code, row in self.facts.raw_lookup(kind,
+                {"op_type": "op_type_id", "machine_group": "group_id", "shift_profile": "profile_id"}[kind]).items()}
+        return self._names[kind].get(name)
+
+    def authorizations(self, kind, code):
+        key = "machine_id" if kind == "machine" else "operator_id"
+        return self.facts.grouped("authorizations", key)[code]
+
+    def export_state(self, kind, code):
+        from .file_projection import resource_export_state
+
+        return resource_export_state(self.facts, kind, code)
+
+    def create_snapshot(self, kind):
+        relations = {"machine": ("op_type", "machine_group"), "operator": ("op_type", "shift_profile"),
+                     "supplier": ("op_type",)}.get(kind, ())
+        if not relations:
+            return None
+        from .metrics import _KEYS
+
+        result = {}
+        for target in relations:
+            records = self.facts.raw_lookup(target, _KEYS[target])
+            rows = []
+            for code in sorted(records):
+                raw = records[code]
+                if target == "op_type" and not supports_source(raw["category"], "external" if kind == "supplier" else "internal"):
+                    continue
+                identity = self.facts.identities.get((target, code))
+                rows.append(dict(raw, ref=identity["ref"] if identity else None, revision=identity["revision"] if identity else None))
+            result[target] = rows
+        if kind == "operator":
+            self.facts.metrics._load(["shift_pattern"])
+            result["shift_pattern"] = self.facts.metrics.facts["shift_pattern"]
+        return result
 
 
 class WorkbenchResourceStateService:

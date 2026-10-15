@@ -9,9 +9,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
-from core.services.scheduler.schedule_service import ScheduleService
+from core.services.scheduler.execution.execution_ledger_adapter import ledger_read_snapshot
 from core.services.workbench.facts.candidate_archive import require_adoption_schema
-from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
@@ -20,7 +19,6 @@ from core.services.workbench.run.candidate_adoption_storage import _require_offi
 from core.services.workbench.run.candidate_adoption_validation import _require_official_scope, validate_adoption_payload
 from core.services.workbench.run.compute_validation import validate_candidate
 from core.services.workbench.run.jobs_facts import run_execution_projections
-from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
 
 from .adoption_input import prepare_trial_adoption_input
 from .facts import live_context
@@ -40,20 +38,22 @@ _INPUT_PROBLEMS = {
 
 def validate_trial_adoption(conn, scenario_ref):
     try:
-        with candidate_read_snapshot(conn):
+        with candidate_read_snapshot(conn), ledger_read_snapshot(conn) as execution_service:
             require_adoption_schema(conn)
             saved, head, rows = load_saved_scenario(conn, scenario_ref)
             admission = head["admission"]
             capture, execution = ProductionFactsCapture(conn), []
-            live = live_context(conn, [row["operation_ref"] for row in rows], capture=capture, prepared_execution=execution)
+            live = live_context(conn, [row["operation_ref"] for row in rows], capture=capture,
+                execution_service=execution_service, prepared_execution=execution)
             _current_baseline(conn, admission, live)
             _original_work(rows, live)
             checked = _scenario_validation(conn, saved, admission, rows, live)
             issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
             if issues:
                 raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
-            settings = adoption_settings(admission, rows, PreflightChecks(live["facts"]["tables"]), live["execution"])
-            projections = run_execution_projections(conn, settings, capture=capture, existing=execution)
+            settings = adoption_settings(admission, rows, live["preflight_facts"].checks(), live["execution"])
+            projections = run_execution_projections(conn, settings, capture=capture, existing=execution,
+                                                    service=execution_service)
             _require_official_baseline(live["baseline"], projections)
             prepared = prepare_trial_adoption_input(conn, settings, projections, live, hold=hold_settings(admission, settings),
                 capture=capture, validated_projections={row.operation_ref: row for row in projections})
@@ -63,8 +63,7 @@ def validate_trial_adoption(conn, scenario_ref):
             payload = validate_candidate(prepared, schedule_rows(rows), [])
             if payload.scheduled_op_ids != prepared.schedule_output_allowed_op_ids:
                 raise TrialAdoptionBlocked("scenario_scope_incomplete", "试调方案没有覆盖所选批次的全部工序，正式计划没有改变。")
-            svc = ScheduleService(conn)
-            _require_official_scope(svc, prepared.prev_version, payload.scheduled_op_ids)
+            _require_official_scope(prepared.latest_plan_rows, payload.scheduled_op_ids)
             validate_adoption_payload(conn, prepared, payload)
             proof = {"proof_version": "content_refs_v1", "scenario_ref": scenario_ref,
                      "draft_ref": head["draft_ref"], "scenario_revision": head["scenario_revision"],
@@ -91,8 +90,6 @@ def validate_trial_adoption(conn, scenario_ref):
 def _current_baseline(conn, admission, live):
     if not same(admission["baseline"], live["baseline"]):
         raise TrialAdoptionBlocked("snapshot_stale", "正式计划已更新，请基于当前正式计划重新试调。")
-    if WorkbenchTrialQueryRepository(conn).official_rows_without_history_exist():
-        raise TrialAdoptionBlocked("official_history_inconsistent", "正式安排缺少所属历史版本，不能采用。")
     if not same(admission["execution"], live["execution"]):
         raise TrialAdoptionBlocked("snapshot_stale", "建草稿之后现场数据变了，请重新核对这份试调方案。")
 
@@ -106,7 +103,7 @@ def _scenario_validation(conn, saved, admission, rows, live):
             if item.get(key) in mapping:
                 item[key] = mapping[item[key]]
         issues.append(item)
-    return TrialValidator(conn, dict(admission, base_issues=issues), rows, live).evaluate()
+    return TrialValidator(conn, dict(admission, base_issues=issues), rows, live).evaluate_saved()
 
 
 def _original_work(rows, live):

@@ -3,9 +3,10 @@
 from io import BytesIO
 from typing import Dict
 
-from flask import current_app, g, jsonify, request, send_file
+from flask import current_app, g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES
 from core.services.workbench.run.decision import read_run_decision, read_run_decision_summary
 from core.services.workbench.run.decision_completion_queries import read_completion_batches
 from core.services.workbench.run.decision_export import read_decision_export, write_run_decision_export
@@ -15,7 +16,7 @@ from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.decision_resource_workspace import read_resource_workspace
 from core.services.workbench.run.decision_resources import read_resource_details
 from core.services.workbench.run.decision_workspace import read_reference_workspace
-from web.api_responses import failure_payload, query_payload, query_success
+from web.api_responses import failure_payload, json_response, query_payload, query_success
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
@@ -48,7 +49,7 @@ def _detail(run_ref, section):
     with PLAN_READ_SLOTS.slot():
         data, state = read_decision_details(g.db, run_ref, section, **values)
     snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -70,7 +71,7 @@ def run_decision_completion_batches(run_ref):
     with PLAN_READ_SLOTS.slot():
         data, state = read_completion_batches(g.db, run_ref, **values)
     snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -82,7 +83,7 @@ def run_decision_process(run_ref):
     with PLAN_READ_SLOTS.slot():
         data, state = read_process_details(g.db, run_ref, **values)
     snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -94,7 +95,7 @@ def _preparation_detail(run_ref, section):
     with PLAN_READ_SLOTS.slot():
         data, state = read_preparation_details(g.db, run_ref, section, **values)
     snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -118,7 +119,7 @@ def _resource_detail(run_ref, section):
     with PLAN_READ_SLOTS.slot():
         data, state = read_resource_details(g.db, run_ref, section, **values)
     snapshot = bind_read_snapshot({"kind": "run-decision", **data["scope"], "filters": data["filters"]}, state, token)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -140,7 +141,7 @@ def run_decision_reference_workspace(run_ref):
     with PLAN_READ_SLOTS.slot():
         data, state = read_reference_workspace(g.db, run_ref, **values)
     snapshot = bind_read_snapshot({"kind": "run-decision-reference", **data["scope"], "batch_ref": data["batch_ref"]}, state, token)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -148,7 +149,7 @@ def run_decision_reference_workspace(run_ref):
 @api_endpoint
 def run_decision(run_ref):
     data, snapshot = _read(run_ref, read_run_decision)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -156,7 +157,7 @@ def run_decision(run_ref):
 @api_endpoint
 def run_decision_summary(run_ref):
     data, snapshot = _read(run_ref, read_run_decision_summary)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -198,7 +199,8 @@ def run_decision_resource_workspace(run_ref):
             resource_result = _resource_error(exc)
     if snapshot is None:
         snapshot = bind_read_snapshot(scope, state)
-    response = jsonify({**query_payload(data, snapshot), "resource_result": resource_result, "resource_query": resource_query})
+    response = json_response({**query_payload(data, snapshot), "resource_result": resource_result, "resource_query": resource_query},
+        byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
     response.headers["Cache-Control"] = "no-store"
     return response
 

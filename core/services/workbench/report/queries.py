@@ -5,7 +5,7 @@ from __future__ import annotations
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_report import TOPICS
 
-from .review_projection import project_cohort, validate_selected_refs
+from .review_projection import project_cohort, project_detail, validate_selected_refs
 from .review_summary import charts, resource_rows, summary
 
 GAPS = ["执行状态与累计数量按报工记录统计，历史完工记录单独列示。",
@@ -18,7 +18,7 @@ SORTS = {"delivery": ("batch_label", "planned_end", "finish_deviation_minutes", 
          "people": ("resource_label", "events", "effective_processing_hours")}
 
 
-def report_workspace(reader, facts, snapshot, topic, page, operation_ref=None):
+def report_workspace(reader, facts, snapshot, topic, page):
     if topic not in TOPICS:
         raise WorkbenchCommandRejected("invalid_input", "没有这个报表专题，报表没有变化。请从上方专题里重新选择。", 400)
     facts["reader"] = reader
@@ -38,9 +38,10 @@ def report_workspace(reader, facts, snapshot, topic, page, operation_ref=None):
                              "effective_processing_hours": True, "detail": True, "export": True},
             "data_gaps": GAPS + scope_gaps, "choices": {kind: sorted(values.values(), key=lambda row: row["label"])
                                           for kind, values in choices.items()}}
-    if operation_ref is not None:
-        operation = next((row for row in operations if row["operation_ref"] == operation_ref), None)
-        if operation is None:
-            raise WorkbenchCommandRejected("entity_not_found", "这道工序不在当前筛选结果里，详情没有打开。请调整筛选条件后重新点这一行。", 404)
-        data["detail"] = {"operation": operation, "records": [row for row in records if row["operation_ref"] == operation_ref]}
     return data, ordered, labels
+
+
+def report_detail(reader, facts, snapshot, operation_ref):
+    facts["reader"] = reader
+    validate_selected_refs(facts["scope"], facts)
+    return {"plan": facts["plan"], "detail": project_detail(facts, snapshot["as_of"], operation_ref)}

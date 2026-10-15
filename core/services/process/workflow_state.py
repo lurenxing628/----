@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timezone
 
 from core.errors import BusinessError, ErrorCode, ValidationError
-from core.infrastructure.connection_guards import SchemaContractMemo
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
@@ -25,7 +25,7 @@ _STAGES = ("route", "source", "hours")
 
 def _schema(conn, contracts=None):
     # 逐行写入共用本命令的结构和叶子检查；独立读取使用本次请求的新实例。
-    contracts = contracts if contracts is not None else SchemaContractMemo(conn)
+    contracts = contracts if contracts is not None else schema_contract_memo(conn)
     issues = (contracts.get_schema(workbench_metadata_contract_issues)
               + contracts.get_schema(workbench_resource_contract_issues)
               + contracts.get_schema(workbench_process_contract_issues)

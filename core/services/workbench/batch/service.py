@@ -1,78 +1,140 @@
-"""Batch CRUD through BatchService, owned by the common command transaction."""
+"""Prepare batch changes from one capture, then apply them in the command transaction."""
 
-from core.models.workbench_batch import normalize_batch_input
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+from core.errors import BusinessError, ErrorCode, ValidationError
+from core.models.batch import Batch
+from core.models.workbench_batch import normalize_batch_input, public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.batch.service import BatchService
+from data.repositories.batch_repo import BatchRepository
 
-from .facts import BatchFacts, index_relations, related, require_deletable, require_unreferenced
+from .facts import BatchFacts, index_relations, require_deletable, require_unreferenced
+
+
+@dataclass
+class BatchChange:
+    action: str
+    business_code: str
+    entity_ref: Optional[str]
+    fields: Dict[str, Any]
+    created: Optional[Batch] = None
+
+
+class BatchChangePreparation:
+    """Current rows, identities and relations shared by every change before the first write."""
+
+    def __init__(self, facts, relations=None):
+        self.facts = facts
+        self.identities = {row["ref"]: row for row in facts["WorkbenchEntityRefs"] if row["active"]}
+        self.batches = {row["batch_id"]: row for row in facts["Batches"]}
+        self.parts = {row["part_no"]: row for row in facts["Parts"]}
+        self.used_codes = set(self.batches)
+        self._relations = relations
+
+    @property
+    def relations(self):
+        if self._relations is None:
+            self._relations = index_relations(self.facts)
+        return self._relations
+
+    def resolve(self, ref, kind):
+        public_ref(ref)
+        identity = self.identities.get(ref)
+        if identity is None or identity["kind"] != kind:
+            raise WorkbenchCommandRejected("entity_not_found", "这条记录已经不在了，请刷新后重新选择。", 404)
+        key = identity["entity_key"]
+        if key != key.strip():
+            raise WorkbenchCommandRejected("constraint_conflict", "批次号或图号存在首尾空格，请先核对原记录。")
+        return key
+
+    def batch(self, ref):
+        key = self.resolve(ref, "batch")
+        row = self.batches.get(key)
+        if row is None:
+            raise WorkbenchCommandRejected("storage_failure", "批次和系统编号对不上，请联系维护人员核对资料。", 500)
+        return row
+
+    def prepare(self, action, payload, ref=None):
+        """Consume the normalized command input; no further input conversion during apply."""
+        if action == "create":
+            part_no = self.resolve(payload["part_ref"], "part")
+            part = self.parts.get(part_no)
+            if part is None:
+                raise WorkbenchCommandRejected("storage_failure", "零件和系统编号对不上，请联系维护人员核对资料。", 500)
+            return self.create(Batch(batch_id=payload["business_code"], part_no=part_no,
+                                     part_name=part["part_name"], **payload["fields"]))
+        batch = self.batch(ref)
+        code = batch["batch_id"]
+        if action == "delete":
+            require_deletable(None, batch, self.relations[code])
+            self.used_codes.remove(code)
+            return BatchChange(action, code, ref, {})
+        changes = {key: value for key, value in payload["fields"].items() if batch[key] != value}
+        if "quantity" in changes or "ready_status" in changes:
+            relations = self.relations[code]
+            if "quantity" in changes:
+                require_unreferenced(None, batch, relations)
+            if relations["materials"]:
+                if "ready_status" in changes and ("quantity" not in changes or changes["ready_status"] != "no"):
+                    raise WorkbenchCommandRejected("constraint_conflict", "此批次的齐套按物料需求计算，请在物料需求中核对需求量和到料量。")
+                if "quantity" in changes:
+                    changes["ready_status"] = "no"
+        return BatchChange(action, code, ref, changes)
+
+    def create(self, batch):
+        if batch.batch_id in self.used_codes:
+            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS,
+                f"批次号“{batch.batch_id}”已存在，这次没有保存。请改用别的批次号，或去修改已有的那个批次。")
+        self.used_codes.add(batch.batch_id)
+        return BatchChange("create", batch.batch_id, None, {}, batch)
+
+    def copy(self, source, code, *, quantity=None, ready_status="no", ready_date=None):
+        """Copies keep the existing legacy date/text normalization, using the captured part."""
+        svc = BatchService
+        quantity = svc._normalize_int(source["quantity"] if quantity is None else quantity, field="数量", allow_none=False)
+        if quantity is None or quantity <= 0:
+            raise ValidationError("“数量”必须大于 0", field="数量")
+        part_name = svc._normalize_text(source["part_name"]) or self.parts[source["part_no"]]["part_name"]
+        priority = svc._normalize_text(source["priority"]) or "normal"
+        svc._validate_enum(priority, ("normal", "urgent", "critical"), "优先级")
+        return self.create(Batch(batch_id=code, part_no=source["part_no"], part_name=part_name,
+            quantity=quantity, due_date=svc._normalize_date(source["due_date"]),
+            priority=priority, ready_status=ready_status, ready_date=ready_date,
+            remark=svc._normalize_text(source["remark"])))
 
 
 class WorkbenchBatchService:
     def __init__(self, conn, logger=None, facts=None):
         self.conn = conn
-        # A command route passes its guard reader, so checks before the first write reuse that load.
         self.facts = facts if facts is not None else BatchFacts(conn, logger)
-        self.domain = BatchService(conn, logger=logger)
+        self.repo = BatchRepository(conn, logger=logger)
 
     @staticmethod
     def normalize(action, payload):
         return normalize_batch_input(action, payload)
 
-    def apply(self, action, payload, ref=None, relations_index=None):
-        """relations_index：调用方在本命令第一次写入前算好的 index_relations，逐行改数量时不再每行重读整本批次数据。"""
+    def preparation(self, facts=None, relations=None):
+        return BatchChangePreparation(self.facts.load() if facts is None else facts, relations)
+
+    def apply(self, action, payload, ref=None):
+        normalized = self.normalize(action, payload)
+        return self.apply_prepared(self.preparation().prepare(action, normalized, ref))
+
+    def apply_prepared(self, change):
         if not self.conn.in_transaction:
             raise RuntimeError("批次命令必须在 WorkbenchCommandService 最外层事务中执行。")
-        payload = self.normalize(action, payload)
-        if action == "create":
-            part = self.facts.resolve(payload["part_ref"], "part")
-            if part.entity_key != part.entity_key.strip():
-                raise WorkbenchCommandRejected("constraint_conflict", "原图号含首尾空格，请先核对。")
-            batch = self.domain.create(payload["business_code"], part.entity_key, **payload["fields"])
-            identity = self.facts.identities.find_active("batch", batch.batch_id)
+        ref = change.entity_ref
+        if change.action == "create":
+            self.repo.create(change.created)
+            identity = self.facts.identities.find_active("batch", change.business_code)
             if identity is None:
                 raise RuntimeError("新增批次没有永久引用。")
-            return WorkbenchCommandOutcome("committed", {"entity_ref": identity.ref, "business_code": batch.batch_id})
-        batch = self.facts.batch(ref)
-        if action == "delete":
-            require_deletable(self.facts.load(), batch)
-            self.domain.delete(batch["batch_id"])
-        else:
-            return self._update(ref, batch, payload, relations_index)
-        return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"]})
-
-    def delete_many(self, refs, relations_index=None):
-        """一条命令删多批：第一次写入前用同一份数据取齐并校验全部批次，删除过程中不再逐批重读整本批次数据。
-
-        删掉一批只会减少记录，不会给别的批次新增引用、物料需求或拆分记录，所以写入前的校验整条命令内都成立。
-        relations_index：调用方在本命令第一次写入前已算好的 index_relations（如批量预检的投影里那份），不再重建。
-        """
-        if not self.conn.in_transaction:
-            raise RuntimeError("批次命令必须在 WorkbenchCommandService 最外层事务中执行。")
-        if not refs:
-            return []
-        index = index_relations(self.facts.load()) if relations_index is None else relations_index
-        batches = [self.facts.batch(ref) for ref in refs]
-        for batch in batches:
-            require_deletable(None, batch, index[batch["batch_id"]])
-        for batch in batches:
-            self.domain.delete(batch["batch_id"])
-        return [WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"]})
-                for ref, batch in zip(refs, batches)]
-
-
-    def _update(self, ref, batch, payload, relations_index=None):
-        changes = {key: value for key, value in payload["fields"].items() if batch[key] != value}
-        if not changes:
-            return WorkbenchCommandOutcome("unchanged", {"entity_ref": ref, "business_code": batch["batch_id"]})
-        # Only quantity and readiness depend on related records; other field edits skip the whole-ledger read.
-        if "quantity" in changes or "ready_status" in changes:
-            relations = related(self.facts.load(), batch) if relations_index is None else relations_index[batch["batch_id"]]
-            if "quantity" in changes:
-                require_unreferenced(None, batch, relations)
-            materials = relations["materials"]
-            if materials and "ready_status" in changes and ("quantity" not in changes or changes["ready_status"] != "no"):
-                raise WorkbenchCommandRejected("constraint_conflict", "此批次的齐套按物料需求计算，请在物料需求中核对需求量和到料量。")
-            if materials and "quantity" in changes:
-                changes["ready_status"] = "no"
-        self.domain.update(batch["batch_id"], **changes)
-        return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"]})
+            ref = identity.ref
+        elif change.action == "delete":
+            self.repo.delete(change.business_code)
+        elif change.fields:
+            self.repo.update(change.business_code, change.fields)
+        result = "unchanged" if change.action == "update" and not change.fields else "committed"
+        return WorkbenchCommandOutcome(result, {"entity_ref": ref, "business_code": change.business_code})

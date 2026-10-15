@@ -65,7 +65,7 @@ class DecodeAcceleration:
         eligible = self.tail_eligible and native_dispatch and guard is not None
         # ``eligible`` already implies a guard; the explicit test only makes that visible to the type checker.
         if eligible and guard is not None and position in self.tail.checkpoints:
-            eligible = guard() and all(self.pruning.guards[kind](record) for kind, record in self.pruning.examples.items())
+            eligible = guard()
         return self.tail.try_complete(position, state=state, next_idx=next_idx, graph_state=graph, eligible=eligible)
 
 

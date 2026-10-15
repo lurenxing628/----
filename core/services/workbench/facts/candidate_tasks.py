@@ -97,9 +97,9 @@ def operation_type_labels(facts, type_id):
     return {"process_type_ref": ref, "process_type_label": label if type(label) is str else None}
 
 
-def _expected_task_rows(rows, candidate):
+def _expected_task_rows(rows, candidate, scheduled_op_ids):
     if uses_task_rows(candidate["artifact"]):
-        ids = scheduled_ids(candidate)
+        ids = scheduled_op_ids
         if ids is None or len(ids) != len(rows):
             corrupt()
         return dict.fromkeys(ids)
@@ -148,12 +148,13 @@ def tasks_projection(rows, candidate, facts):
 
 def tasks_projection_with_intervals(rows, candidate, facts):
     prepared_tasks = {}
-    rows, intervals = validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
-    return project_validated_tasks(rows, candidate, facts, intervals, prepared_tasks=prepared_tasks), intervals
+    rows, intervals, ids = validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
+    return project_validated_tasks(rows, candidate, facts, intervals, prepared_tasks=prepared_tasks), intervals, ids
 
 
 def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks=None):
-    expected = _expected_task_rows(rows, candidate)
+    ids = scheduled_ids(candidate)
+    expected = _expected_task_rows(rows, candidate, ids)
     intervals, seen, point_reader = {}, set(), None
     for row in rows:
         ref, payload = row["operation_ref"], row["payload"]
@@ -175,7 +176,7 @@ def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks=None):
         if prepared_tasks is not None:
             prepared_tasks[row["row_ref"]] = {"operation": operation, "operation_gaps": operation_gaps,
                                                "interval": (start, end), "point_work": point_work}
-    return rows, intervals
+    return rows, intervals, ids
 
 
 def project_validated_tasks(rows, candidate, facts, intervals, *, prepared_tasks=None):

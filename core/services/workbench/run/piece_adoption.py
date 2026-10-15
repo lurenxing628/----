@@ -13,17 +13,14 @@ from datetime import datetime, timedelta
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.errors import AppError
-from core.infrastructure.read_evidence import verified_read
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked, PieceAdoptionEvidence
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.services.scheduler.calendar.service import CalendarService
-from core.services.scheduler.run.schedule_input_builder import build_algo_operations
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.schedule_input_seed_metadata import MERGED_EXECUTION_GROUP_SOURCE
 from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
-from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.piece_scope import block
-from core.services.workbench.facts.preflight_checks import PreflightChecks, stored_date
+from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.zero_duration import (
@@ -33,11 +30,8 @@ from core.services.workbench.facts.zero_duration import (
     internal_duration_hours,
 )
 from core.services.workbench.messages import FAILURE
-from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
 
 from .candidate_adoption_constraints import _resource_overlaps, adoption_downtimes, adoption_external_intervals
-from .input_external import prime_template_cache
-from .input_runtime import _validate_stored_runtime
 from .piece_adoption_execution import validate_piece_execution
 from .piece_adoption_facts import current_piece_scope
 
@@ -78,18 +72,13 @@ def _validate_piece_in_snapshot(conn, prepared, payload, *, purpose):
             block("piece_connection_mismatch", FAILURE)
         scope, refs = current_piece_scope(conn, prepared)
         _payload(prepared, payload, scope, purpose=purpose)
-        svc = ScheduleService(conn)
+        svc = build_schedule_repository_bundle(conn)
         protected = validate_piece_execution(svc, prepared, payload, scope, refs, purpose=purpose)
-        algo_ops = verified_read(conn, ("piece_algorithm", id(prepared)), lambda: _algorithm_facts(svc, prepared))
+        algo_ops = {op.id: op for op in prepared.algo_ops}
         _precedence(payload, scope, algo_ops)
         _constraints(conn, prepared, payload, scope, algo_ops)
         return PieceAdoptionEvidence(scope, tuple(sorted(refs.items())), tuple(sorted(protected)),
                                      prepared.execution_snapshot_revision)
-
-
-def _algorithm_facts(svc, prepared):
-    prime_template_cache(svc, WorkbenchPieceAdoptionRepository(svc.conn).template_tables(), prepared.batches, prepared.operations)
-    return {op.id: op for op in build_algo_operations(svc, prepared.operations, strict_mode=True)}
 
 
 def _payload(prepared, payload, scope, *, purpose):
@@ -106,7 +95,8 @@ def _payload(prepared, payload, scope, *, purpose):
                 block("piece_time_unrepresentable", "排产结果的开始或结束时刻无效，写不进正式计划。请回「执行排产」重新排一次。")
     if purpose == "adoption":
         checked = build_validated_schedule_payload(list(payload.schedule_rows), allowed_op_ids=ids,
-            operations=prepared.operations, point_validator=candidate_point_validator(prepared))
+            operations=prepared.operations, point_validator=candidate_point_validator(prepared),
+            operation_sources=prepared.operation_sources)
         if checked != payload:
             block("piece_payload_inconsistent", "排产结果的工序行、设备人员分配和工序编号对不上，本次没有采用。请回「执行排产」重新排一次。")
 
@@ -132,7 +122,7 @@ def _precedence(payload, scope, ops):
 
 
 def _constraints(conn, prepared, payload, scope, algo_ops):
-    calendar, checks = verified_read(conn, ("piece_constraints", id(prepared)), lambda: _constraint_facts(conn))
+    calendar, checks = prepared.cal_svc, prepared.preflight_facts.checks()
     downtime = adoption_downtimes(conn, prepared, payload)
     actual_intervals = adoption_external_intervals(prepared, algo_ops=algo_ops.values())
     derived = {seed["op_id"] for seed in prepared.seed_results if seed.get("seed_source") == MERGED_EXECUTION_GROUP_SOURCE}
@@ -158,11 +148,6 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
         _mutable_work(prepared, checks, row, op, batch, quantities[row.op_id], seeds, high,
                       actual_cycle=row.op_id in actual_intervals)
         _duration(calendar, downtime, row, algo, batch, quantities[row.op_id], actual_intervals)
-
-
-def _constraint_facts(conn):
-    _validate_stored_runtime(conn)
-    return CalendarService(conn), PreflightChecks(WorkbenchPieceAdoptionRepository(conn).preflight_tables())
 
 
 def _material_deferrals(prepared, checks, ops):

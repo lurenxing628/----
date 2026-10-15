@@ -6,19 +6,21 @@ import json
 import re
 from datetime import datetime
 from functools import wraps
+from types import MappingProxyType
 
 from flask import request
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.content import content_text
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import normalize_scope
 from core.models.workbench_material_query import MaterialPageRequest
 from core.services.workbench.material.files import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
-from .material_actions_previews import preview_key, retain_preview, stored_preview
+from .material_actions_previews import RetainedPreview
 from .read_context import bind_read_snapshot
 from .write_context import preview_write_context, validate_preview_confirmation
 
@@ -74,26 +76,23 @@ def scope_input(body):
 
 
 def issue_binding(namespace, binding):
-    token, expiry = issue_public_token_with_expiry(namespace, canonical_json(binding), ttl_seconds=TTL_SECONDS)
+    value = MappingProxyType(binding)
+    key = (value["read_binding"].scope, value["snapshot_ref"], content_text(value["arguments"]))
+    token, expiry = issue_public_token_with_expiry(namespace, value, key=key, ttl_seconds=TTL_SECONDS)
     return token, datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
 
 
 def resolve_binding(namespace, token, *, field, code):
     try:
-        raw = resolve_public_token(namespace, token, message="预检结果已过期，物料没有改动。请点「重新预检」。", field=field)
+        binding = resolve_public_token(namespace, token, message="预检结果已过期，物料没有改动。请点「重新预检」。", field=field)
     except ValidationError as exc:
         raise WorkbenchCommandRejected(code, "预检结果已过期，物料没有改动，范围也没有自动更换。请点「重新预检」。") from exc
-    binding = json.loads(raw)
-    if binding["version"] != 1 or binding["source"] != "production":
-        raise WorkbenchCommandRejected(code, "预检结果和这次操作对不上，物料没有改动。请点「重新预检」。")
     return binding
 
 
 def issue_preview(preview, content=None):
-    key = preview_key(preview.document)
-    binding = {"version": 1, "source": "production", "preview_key": key}
-    ref, expiry = issue_public_token_with_expiry(PREVIEW_SCOPE, canonical_json(binding), ttl_seconds=TTL_SECONDS)
-    retain_preview(key, preview, content, expiry)
+    ref, expiry = issue_public_token_with_expiry(PREVIEW_SCOPE, RetainedPreview(preview, content),
+                                               key=preview.document, ttl_seconds=TTL_SECONDS)
     expires_at = datetime.fromtimestamp(expiry).isoformat(timespec="seconds")
     document = preview.as_dict()
     action = document["operation"]
@@ -113,7 +112,7 @@ def issue_preview(preview, content=None):
 
 def resolve_preview(ref, action, write_token):
     binding = resolve_binding(PREVIEW_SCOPE, ref, field="preview_ref", code="stale_write")
-    preview, content = stored_preview(binding["preview_key"])
+    preview, content = binding.preview, binding.content
     if preview.as_dict()["operation"] != action:
         raise WorkbenchCommandRejected("stale_write", "预检结果不适用于这次操作，物料没有改动。请点「重新预检」。")
     validate_preview_confirmation(write_token, ref)

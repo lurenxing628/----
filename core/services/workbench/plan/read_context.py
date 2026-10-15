@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -28,12 +27,13 @@ class PlanReadQuery(_PagePlanQueryService):
 
 
 class PlanReadContext:
-    def __init__(self, conn, logger=None, *, references=None, entities=None):
+    def __init__(self, conn, logger=None, *, references=None, entities=None, captured_machines=None):
         if not conn.in_transaction:
             raise RuntimeError("Plan facts require a caller-owned read transaction")
         self.conn, self.logger = conn, logger
         self.references = references if references is not None else WorkbenchPlanIdentityRepository(conn, logger=logger)
         self.entities = entities if entities is not None else WorkbenchIdentityRepository(conn, logger=logger)
+        self.captured_machines = captured_machines
         self.repo = PointPlanCatalogRepository(conn, logger=logger, context=self)
         self._locators, self._selected, self._details, self._scoped = {}, {}, {}, {}
         self._entities, self._points, self._tasks, self._calendar_selections = {}, {}, {}, {}
@@ -93,8 +93,6 @@ class PlanReadContext:
     def seed_source_rows(self, rows, **query):
         """Accept raw rows already captured by this transaction's source owner."""
         key = self.source_key(query)
-        if len(rows) > MAX_PLAN_TASKS:
-            raise WorkbenchCommandRejected("query_too_large", "整个计划超过 10000 条上限。请缩小时间范围后重试。", 413)
         if query["source_table"] == "adjustment_scenario_rows":
             valid = all(row["scenario_id"] == query["scenario_id"] for row in rows)
         else:
@@ -128,9 +126,8 @@ class PlanReadContext:
         key = self.source_key(query)
         if key not in self._details:
             prepared = self.repo.prepared_rows(**query)
-            rows = self.repo.list_detail_rows_bounded(limit=MAX_PLAN_TASKS + 1, **query)
-            if len(rows) > MAX_PLAN_TASKS:
-                raise WorkbenchCommandRejected("query_too_large", "这次要读的安排超过上限。请缩小时间范围后重试。", 413)
+            rows = self.repo.enrich_arrangements(prepared, version=query["version"], captured_machines=self.captured_machines)
+            rows.sort(key=lambda row: (row["start_time"], row["schedule_id"]))
             points = {row["id"]: row["_point_work"] for row in prepared if row.get("_point_work")}
             self._details[key] = [dict(row, _point_work=points[row["schedule_id"]])
                                  if row["schedule_id"] in points else row for row in rows]

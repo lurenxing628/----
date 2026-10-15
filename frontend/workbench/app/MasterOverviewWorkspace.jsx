@@ -131,10 +131,10 @@
       catch (failure) { setActionError(failure); }
     }
     async function exportRows() {
-      if (!result || !data.page.total || exporting) return;
+      if (!result || exporting) return;
       const controller = new AbortController(); exportController.current = controller; setExporting(true); setMessage(''); setActionError(null);
       try {
-        const file = await api.export(data.scope, result.meta.snapshot_ref, data.page.total, controller.signal);
+        const file = await api.export(data.scope, result.meta.snapshot_ref, controller.signal);
         if (alive.current && !controller.signal.aborted) { window.APSMasterOverviewAPI.save(file); setMessage(window.WorkbenchTerms.download_started(file.filename) + '（共 ' + file.count + ' 条）。'); }
       } catch (failure) { if (alive.current && failure.name !== 'AbortError') setActionError(failure); }
       finally { if (alive.current) setExporting(false); }
@@ -145,7 +145,7 @@
       <header className="mo-heading"><div><h2 className="wb-page-title">资料总览</h2><p className="wb-page-context">{summary ? '基础资料 · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(summary.asOf)) : '基础资料'}
         <span role="status">{pending ? summary ? ' · 正在更新统计' : ' · 正在读取资料' : readError ? summary ? ' · 更新失败，显示上次读取结果' : ' · 读取失败' : ''}</span></p></div>
         <div className="mo-actions"><Button reasonDisplay="inline" className="btn mo-icon" icon="refresh-cw" aria-label="刷新资料" onClick={refresh} />
-          <Button reasonDisplay="inline" transfer="export" disabled={!data || !data.page.total || pending || exporting} onClick={exportRows}>导出筛选结果</Button>
+          <Button reasonDisplay="inline" transfer="export" disabled={!data || pending || exporting} onClick={exportRows}>导出筛选结果</Button>
           <Button reasonDisplay="inline" className="btn primary" reason={typeof onNavigate !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={async () => { try { await onNavigate('process', { source: 'production' }); } catch (failure) { setActionError(failure); } }}>维护基础资料</Button></div></header>
       <Statistics overview={overview} pending={pending} error={readError} scope={scope} domainsId={domainsId} onDomain={domain => filter({ domain })} />
       {overview && overview.gaps.length > 0 && <details className="mo-gaps" open><summary>原始数据缺口 {overview.gaps.length} 项</summary><ul>{overview.gaps.map((gap, index) => <li key={index}>{gap.message}</li>)}</ul></details>}

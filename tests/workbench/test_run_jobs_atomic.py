@@ -25,11 +25,24 @@ from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
 from tests.workbench.run_jobs_support import service
 
 
+def test_spawned_compute_consumes_the_parent_admission_and_returns_actual_status(job_case):
+    from web.bootstrap.run_compute_process import run_compute_in_process
+
+    case = job_case
+    accepted = case.accept(key="spawned-compute-single-admission")
+    result = WorkbenchRunWorker(case.conn, compute_runner=run_compute_in_process).execute(accepted["run_ref"])
+    assert result["state"] == "complete" and result["result_persisted"] is True
+    assert result == public_job_status(WorkbenchRunRepository(case.conn).status(accepted["run_ref"]))
+    assert result["started_at"] is not None and result["finished_at"] is not None and result["receipt_ref"]
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts WHERE run_ref=?", (accepted["run_ref"],)).fetchone()[0] == 1
+
+
 def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     from collections import Counter
 
     from core.models.workbench_command import WorkbenchCommandRejected
-    from core.services.workbench.run import jobs, preflight
+    from core.services.scheduler.execution import execution_ledger_adapter
+    from core.services.workbench.run import input_config, jobs
     from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
     case = job_case
@@ -64,7 +77,8 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
         table_reads[name] += 1
         return capture_table(repo, name)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", capture_once)
-    for module, name in ((jobs, "GenerationFacts"), (preflight, "configuration_snapshot")):
+    for module, name in ((jobs, "GenerationFacts"), (input_config, "configuration_snapshot"),
+                         (execution_ledger_adapter, "current_execution_plan")):
         original = getattr(module, name)
         def prepared_once(*args, _name=name, _original=original, **kwargs):
             preparations[_name] += 1
@@ -75,7 +89,7 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     case.conn.set_trace_callback(None)
     assert accepted["replayed"] is False and input_checks == [ref]
     assert table_reads and set(table_reads.values()) == {1}
-    assert preparations == {"GenerationFacts": 1, "configuration_snapshot": 1}
+    assert preparations == {"GenerationFacts": 1, "configuration_snapshot": 1, "current_execution_plan": 1}
     assert not any(sql.upper().startswith("SELECT") and "FROM WORKBENCHRUNJOBS" in sql.upper()
                    and any(field in sql.upper() for field in ("FACTS_JSON", "EXECUTION_JSON", "BASELINE_JSON"))
                    for sql in statements)
@@ -276,3 +290,28 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     assert all(table != "WorkbenchRunCandidateTasks" for table, column in status_reads + ownership_reads)
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunDecisionReadModels WHERE run_ref=?", (next_run["run_ref"],)).fetchone()[0] == 1
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateReadModels WHERE run_ref=?", (next_run["run_ref"],)).fetchone()[0] == 1
+
+
+def test_worker_shares_capture_inside_compute_and_recaptures_only_for_persistence(job_case, monkeypatch):
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
+    from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
+
+    case = job_case
+    accepted = case.accept()
+    captures, tables = [], Counter()
+    initialize, read = ProductionFactsCapture.__init__, WorkbenchPreflightFactsRepository.capture_table
+
+    def capture_once(capture, conn):
+        captures.append(conn)
+        initialize(capture, conn)
+
+    def table_once(repo, name):
+        tables[id(repo.conn), name] += 1
+        return read(repo, name)
+
+    monkeypatch.setattr(ProductionFactsCapture, "__init__", capture_once)
+    monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_once)
+    completed = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    assert completed["state"] == "complete"
+    assert len(captures) == 2 and captures[0] is not case.conn and captures[1] is case.conn
+    assert tables and set(tables.values()) == {1}

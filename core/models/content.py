@@ -6,20 +6,26 @@ import math
 from datetime import date, datetime
 
 
-def packed(value):
+def packed(value, *, json_input=False):
     if isinstance(value, (date, datetime)):
+        if json_input:
+            raise TypeError("JSON input does not support date values")
         return {"storage_type": type(value).__name__, "iso": value.isoformat()}
     if isinstance(value, bytes):
+        if json_input:
+            raise TypeError("JSON input does not support binary values")
         return {"$sqlite_blob": base64.b64encode(value).decode("ascii")}
     if type(value) is float and not math.isfinite(value):
+        if json_input:
+            raise ValueError("JSON input does not support non-finite numbers")
         return {"$sqlite_real": value.hex()}
     if type(value) is dict:
         keys = set(value)
         if keys in ({"$sqlite_blob"}, {"$sqlite_real"}, {"$sqlite_dict"}, {"storage_type", "iso"}):
-            return {"$sqlite_dict": {key: packed(item) for key, item in value.items()}}
-        return {key: packed(item) for key, item in value.items()}
+            return {"$sqlite_dict": {key: packed(item, json_input=json_input) for key, item in value.items()}}
+        return {key: packed(item, json_input=json_input) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [packed(item) for item in value]
+        return [packed(item, json_input=json_input) for item in value]
     return value
 
 
@@ -42,8 +48,8 @@ def unpacked(value):
     return value
 
 
-def content_text(value):
-    return json.dumps(packed(value), ensure_ascii=False, sort_keys=True,
+def content_text(value, *, json_input=False):
+    return json.dumps(packed(value, json_input=json_input), ensure_ascii=False, sort_keys=True,
                       separators=(",", ":"), allow_nan=False)
 
 

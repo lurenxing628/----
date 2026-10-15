@@ -20,7 +20,7 @@ RESTORE_STATUS_ENV = "aps.restore_host_status"
 def request_restore_status(environ, controller):
     """One host observation shared by the health and restore WSGI layers."""
     if RESTORE_STATUS_ENV not in environ:
-        environ[RESTORE_STATUS_ENV] = controller.status
+        environ[RESTORE_STATUS_ENV] = controller.static_status()
     return environ[RESTORE_STATUS_ENV]
 
 
@@ -81,9 +81,13 @@ class RestoreStatusTransport:
     def _request_status(self, environ, path):
         if path.startswith("/static/") and self.static_status is not None:
             return self.static_status()
-        if RESTORE_STATUS_ENV not in environ:
-            environ[RESTORE_STATUS_ENV] = self.status()
-        return environ[RESTORE_STATUS_ENV]
+        if path == BASE + "/restore-host":
+            return self.status()
+        if self.static_status is not None:
+            if RESTORE_STATUS_ENV not in environ:
+                environ[RESTORE_STATUS_ENV] = self.static_status()
+            return environ[RESTORE_STATUS_ENV]
+        return self.status()
 
     def _result(self, path, status):
         if path.startswith(BASE + "/results/"):

@@ -1,66 +1,13 @@
-"""Material previews and prepared file sources, separate from opaque token bindings.
+"""Immutable material previews retained directly by the public token registry."""
 
-Entries share the existing short-token expiry. There is no new row/file/count
-limit here; upload limits and the 2000-row import contract remain authoritative.
-Expired entries are reclaimed on access. App restart loses unconfirmed previews,
-never the committed command receipts. The single-process host is threaded.
-"""
-
-from __future__ import annotations
-
-import time
 from dataclasses import dataclass
-from threading import RLock
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
-from flask import current_app
-
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import MaterialPreview
 from core.models.workbench_resource_file_source import PreparedImportSource
 
-_EXTENSION = "workbench_material_previews_v1"
-_LOCK = RLock()
-FileSource = Optional[Union[bytes, PreparedImportSource]]
-
 
 @dataclass(frozen=True)
-class _RetainedPreview:
+class RetainedPreview:
     preview: MaterialPreview
-    content: FileSource
-    expires_at: float
-
-
-def _live_store() -> Dict[str, _RetainedPreview]:
-    store = current_app.extensions.setdefault(_EXTENSION, {})
-    now = time.time()
-    for key in list(store):
-        if store[key].expires_at <= now:
-            del store[key]
-    return store
-
-
-def preview_key(document: str) -> str:
-    # Resource contexts import material wire helpers, so reuse their key after module initialization.
-    from .resource_action_context import _context_key
-
-    return _context_key(_EXTENSION, document)
-
-
-def retain_preview(key: str, preview: MaterialPreview, content: FileSource, expires_at: float) -> None:
-    with _LOCK:
-        store = _live_store()
-        previous = store.get(key)
-        if previous is not None:
-            if previous.preview.document != preview.document or previous.content != content:
-                raise RuntimeError("物料预览引用对应了不同内容，未替换原预览。")
-            expires_at = max(expires_at, previous.expires_at)
-        store[key] = _RetainedPreview(preview, content, expires_at)
-
-
-def stored_preview(key: str) -> Tuple[MaterialPreview, FileSource]:
-    with _LOCK:
-        entry = _live_store().get(key)
-        if entry is None:
-            raise WorkbenchCommandRejected("stale_write", "预检结果已过期，物料没有改动；系统没有拿页面上的内容凑一份。请点「重新预检」。")
-        return entry.preview, entry.content
+    content: Optional[Union[bytes, PreparedImportSource]]

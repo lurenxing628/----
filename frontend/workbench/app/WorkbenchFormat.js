@@ -73,12 +73,22 @@
     // A value that rounds to zero must not read as "-0.0": nothing was reduced.
     return Number(value.toFixed(digits)) === 0 ? 0 : value;
   }
+  const formatters = new Map();
+  function formatNumber(value, { digits, trim, exact }, percent = false) {
+    if (exact && !percent) return String(value === 0 ? 0 : value);
+    const key = (percent ? 'percent:' : 'number:') + digits + ':' + trim;
+    let formatter = formatters.get(key);
+    if (!formatter) {
+      formatter = new Intl.NumberFormat('zh-CN', { ...(percent ? { style: 'percent' } : {}), minimumFractionDigits: trim ? 0 : digits, maximumFractionDigits: digits });
+      formatters.set(key, formatter);
+    }
+    return formatter.format(signedZero(value, digits + (percent ? 2 : 0)));
+  }
   function number(value, options) {
     if (empty(value)) return unknown;
-    const { digits, trim, exact } = numberOptions(options, '数值');
+    const parsed = numberOptions(options, '数值');
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('数值');
-    if (exact) return String(value === 0 ? 0 : value);
-    return signedZero(value, digits).toLocaleString('zh-CN', { minimumFractionDigits: trim ? 0 : digits, maximumFractionDigits: digits });
+    return formatNumber(value, parsed);
   }
   function integerText(value) {
     if (empty(value)) return unknown;
@@ -89,15 +99,15 @@
   }
   function percent(ratio, options) {
     if (empty(ratio)) return unknown;
-    const { digits, trim } = numberOptions(options, '百分比');
+    const parsed = numberOptions(options, '百分比');
     if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return invalid('百分比');
-    return signedZero(ratio, digits + 2).toLocaleString('zh-CN', { style: 'percent', minimumFractionDigits: trim ? 0 : digits, maximumFractionDigits: digits });
+    return formatNumber(ratio, parsed, true);
   }
   function hours(value, options) {
     if (empty(value)) return unknown;
-    numberOptions(options, '工时');
+    const parsed = numberOptions(options, '工时');
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('工时');
-    return number(value, options) + HOURS_UNIT;
+    return formatNumber(value, parsed) + HOURS_UNIT;
   }
   window.WorkbenchFormat = Object.freeze({ dateTime, compactDateTime, compactRange, date, instant, number, integerText, percent, hours });
 })();

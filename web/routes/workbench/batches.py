@@ -1,6 +1,6 @@
 """Independent batch route registration. Global mounting belongs to the host."""
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
 from core.models.workbench_batch_material import normalize_material_changes
@@ -13,7 +13,7 @@ from core.services.workbench.batch.quantity_split import WorkbenchQuantitySplitS
 from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.batch.service import WorkbenchBatchService
 from core.services.workbench.commands import WorkbenchCommandService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .batch_context import command_body, json_body, load_preview, read_scope, retry_hint, retry_message, save_preview
@@ -29,7 +29,7 @@ from .write_context import (
 COLLECTION = "batch:create"
 
 
-def entity_context(entity, fingerprint):
+def entity_context(entity, issue_context):
     actions = ["batch.update", "batch.materials_update"]
     blocked = []
     if not entity["protected"]:
@@ -50,7 +50,7 @@ def entity_context(entity, fingerprint):
     if not entity["protected"] and template is not None and not template["complete"]:
         actions.remove("batch.sync_confirm")
         blocked.append({"action": "batch.sync_confirm", "message": "；".join(row["message"].rstrip("。") for row in template["diagnostics"]) + "。"})
-    context = issue_write_context(entity["ref"], actions, fingerprint)
+    context = issue_context(entity["ref"], actions)
     for action in ("delete", "sync_confirm", "operation_update"):
         context["capabilities"]["batch." + action] = "batch." + action in actions
     context["blocked_reasons"] = blocked
@@ -63,8 +63,9 @@ def _list(scope):
     with batch_read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot(snapshot_scope(scope), fingerprint, scope.get("snapshot_ref"))
         data = reader.page(scope)
-        data["entities"] = [entity_context(entity, fingerprint) for entity in data["entities"]]
-        data["create_context"] = issue_write_context(COLLECTION, ["batch.create"], fingerprint)
+        issue_context = issue_write_context.for_snapshot(fingerprint)
+        data["entities"] = [entity_context(entity, issue_context) for entity in data["entities"]]
+        data["create_context"] = issue_context(COLLECTION, ["batch.create"])
     return query_success(data, snapshot)
 
 
@@ -96,7 +97,7 @@ def batch_detail(ref):
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
     with batch_read_snapshot(reader) as fingerprint:
         snapshot = bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, request.args.get("snapshot_ref"))
-        data = entity_context(reader.detail(ref), fingerprint)
+        data = entity_context(reader.detail(ref), issue_write_context.for_snapshot(fingerprint))
     return query_success(data, snapshot)
 
 
@@ -106,9 +107,7 @@ def batch_choices():
     if set(args) - {"batch_ref", "operation_ref"} or any(len(args.getlist(key)) != 1 for key in args) or bool(args.get("batch_ref")) != bool(args.get("operation_ref")):
         raise WorkbenchCommandRejected("invalid_input", "请选择完整的批次及工序后再读取候选资源。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    # Operation choices read qualifications/capabilities after the batch snapshot.
-    # Keep those reads in the same transaction; plain catalog choices can detach.
-    with batch_read_snapshot(reader, detached=not bool(args)) as fingerprint:
+    with batch_read_snapshot(reader) as fingerprint:
         data = reader.choices(args.get("batch_ref"), args.get("operation_ref"))
         snapshot = bind_read_snapshot({"kind": "batch_choices", **dict(args)}, fingerprint)
     return query_success(data, snapshot)
@@ -134,12 +133,14 @@ def batch_command(action, ref=None):
         if action == "materials_update":
             return WorkbenchBatchMaterialService(g.db, current_app.logger, reader=reader).apply(ref, normalized)
         if action == "operation_update":
-            return WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).update(ref, normalized)
-        return domain.apply(action, normalized, ref)
+            operations = WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader)
+            return operations.apply_update(operations.prepare_update(ref, normalized))
+        change = domain.preparation().prepare(action, normalized, ref)
+        return domain.apply_prepared(change)
 
     # The guard's whole-ledger load is reused by checks before the command's first write.
     with reader.command_snapshot():
-        return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"],
+        return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"],
             action="batch." + action, context_ref=subject, normalized_input=normalized, guard=guard, mutate=mutate))
 
 
@@ -154,9 +155,7 @@ def batch_preview(action, ref=None):
                normalize_split(body["input"]) if action == "split_confirm" else
                WorkbenchBatchOperationService.normalize_sync(body["input"]))
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    # Split and bulk plans only compute over the captured facts. The sync preview still
-    # re-reads the stored process workflow, so it keeps one read transaction.
-    with batch_read_snapshot(reader, detached=action != "sync_confirm") as fingerprint:
+    with batch_read_snapshot(reader) as fingerprint:
         if action in ("sync_confirm", "split_confirm"):
             bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, body["snapshot_ref"])
             if action == "split_confirm":
@@ -225,7 +224,7 @@ def batch_confirm(action, ref=None):
         return WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).sync(ref, payload)
 
     with reader.command_snapshot():
-        return jsonify(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch." + action,
+        return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch." + action,
             context_ref=ref or token, normalized_input=normalized, guard=guard, mutate=mutate))
 
 

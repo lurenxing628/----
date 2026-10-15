@@ -346,6 +346,12 @@
       && (algorithm === null ? value.source_kind === 'trial_adoption'
         : window.RunGenerationContract.algorithm(algorithm, value.run_ref));
   }
+  function processOrder(value) {
+    if (!exact(value, ['state', 'basis', 'issues']) || !Array.isArray(value.issues)
+      || !value.issues.every(row => exact(row, ['code', 'message']) && typeof row.code === 'string' && !!row.code && typeof row.message === 'string' && !!row.message)) return false;
+    return value.state === 'available' ? ['run_admission', 'trial_creation'].includes(value.basis) && !value.issues.length
+      : value.state === 'unavailable' && value.basis === null && value.issues.length > 0;
+  }
   function workspace(result, planRef, scope = {}) {
     const query = workspaceScope(planRef, scope);
     envelope(result, query);
@@ -361,7 +367,7 @@
         || !taskSpans(d, query) || !exact(d.projections, projections)
         || !baseline(d.projections.baseline, d) || !resourceDirectory(d) || !calendar(d.projections.calendar, d)
         || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d)
-        || !window.PlanProcessOrder.validate(d.projections.process_order, d)
+        || !processOrder(d.projections.process_order)
         || !window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.tasks, taskRef: 'task_ref', time: localTime,
           sequence: int64, processLabel: label,
           completeCount: d.scope.range_start === null ? d.tasks.length : undefined }))

@@ -1,6 +1,6 @@
 """External identity mapping with the original Dashboard state/history storage; no rulings here."""
 
-from core.infrastructure.schema_structure import SchemaStructure
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_dashboard_external_schema import contract_issues, objects, orphaned_handling_receipts
 from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
 from data.repositories.workbench_dashboard_source_repo import rows
@@ -12,7 +12,7 @@ class WorkbenchDashboardExternalRepository(WorkbenchDashboardRepository):
     history_table = "WorkbenchDashboardExternalHistory"
 
     def schema_state(self):
-        structure = SchemaStructure(self.conn)
+        structure = schema_contract_memo(self.conn).structure
         if not structure.objects.keys() & set(objects()):
             return "unavailable" if orphaned_handling_receipts(self.conn) else "not_connected"
         return "unavailable" if contract_issues(self.conn, structure=structure) else "loaded"

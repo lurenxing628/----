@@ -8,14 +8,14 @@ from typing import Any, Dict, List, Sequence
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_preflight import local_date, normalize_preflight_input
 from core.services.scheduler.calendar.service import CalendarService
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.operation_effort import build_operation_efforts
 from core.services.scheduler.run.schedule_execution_reservations import (
     ExecutionResourceCalendar,
     build_execution_resource_reservations,
 )
 from core.services.scheduler.run.schedule_input_builder import build_algo_operations
-from core.services.scheduler.run.schedule_input_collector import ScheduleRunInput
-from core.services.scheduler.schedule_service import ScheduleService
+from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from core.services.workbench.facts.run_input_codec import validate_projection_dto
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.run_input_rows import (
@@ -26,7 +26,7 @@ from core.services.workbench.facts.run_input_rows import (
     validate_single_chain,
 )
 
-from .input_config import candidate_config, configuration_snapshot, hold_window
+from .input_config import candidate_config, hold_window
 from .input_effort import saved_seed_efforts
 from .input_execution import execution_guards
 from .input_external import external_execution_cycles, prime_template_cache
@@ -41,6 +41,10 @@ class CandidateRunInput(ScheduleRunInput):
     normalized_input: Dict[str, Any] = field(default_factory=dict)
     dispositions: List[Dict[str, Any]] = field(default_factory=list)
     facts_fingerprint: str = ""
+    preflight_facts: Any = None
+    execution_reservations: List[Any] = field(default_factory=list)
+    latest_plan_rows: Dict[int, Any] = field(default_factory=dict)
+    operation_sources: Any = None
 
 
 def _projection_map(execution_projections, selected_refs, *, validated=None):
@@ -75,9 +79,10 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
         if facts is not None:
             if facts.conn is not conn or not conn.in_transaction:
                 raise RuntimeError("Prepared input requires this transaction's own production facts")
-            fingerprint = facts.capture.content() if capture_fingerprint else ""
-            return _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
-                                  config_snapshot, baseline, validated_projections)
+            with facts.execution_snapshot():
+                fingerprint = facts.capture.content() if capture_fingerprint else ""
+                return _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
+                                      config_snapshot, baseline, validated_projections)
         facts = PreflightFacts(conn)
         with facts.snapshot(fingerprint=capture_fingerprint) as fingerprint:
             return _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
@@ -92,6 +97,7 @@ def _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
     operations = [operation_model(row) for row in raw_ops]
     projections = _projection_map(execution_projections, [facts.operation_ref(row) for row in raw_ops],
                                   validated=validated_projections)
+    facts.execution_projections.update(projections)
     return _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections,
                     config_snapshot=config_snapshot, baseline=baseline)
 
@@ -103,9 +109,8 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     piece_scope = input_piece_scope(operations, batches)
     if piece_scope is None:
         validate_single_chain(operations)
-    svc = ScheduleService(conn)
-    base_config = (configuration_snapshot(conn, rows=facts.tables["ScheduleConfig"])
-                   if config_snapshot is None else config_snapshot)
+    svc = build_schedule_repository_bundle(conn)
+    base_config = facts.configuration() if config_snapshot is None else config_snapshot
     cfg = candidate_config(conn, settings, snapshot=base_config)
     if piece_scope is not None:
         cfg = replace(cfg, dispatch_mode="sgs")
@@ -114,22 +119,22 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     guards = execution_guards(svc, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
     execution_facts, fixed, completed, execution_seeds, revisions, snapshot = guards
-    cycles = external_execution_cycles(facts.tables, batches, operations, execution_seeds, set(fixed) | set(completed))
+    cycles = external_execution_cycles(facts, batches, operations, execution_seeds, set(fixed) | set(completed))
     dispositions, mutable = classify_rows(facts, settings, raw_batches, operations, projections,
                                          set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles)
     guarded_ids = set(fixed) | set(completed) | set(cycles)
     algo_outcome, runtime_mutable = _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, settings)
     reservations = build_execution_resource_reservations(
-        svc, facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start,
+        svc, facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start, capture=facts.capture,
     )
-    calendar = CalendarService(conn)
+    calendar = CalendarService(conn, capture=facts.capture)
     if reservations:
         calendar = ExecutionResourceCalendar(calendar, reservations)
     runtime = build_runtime(
         svc, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
         mutable=runtime_mutable, algo_ops=algo_outcome.value, fixed_ids=fixed, completed_ids=completed,
         execution_seeds=execution_seeds, reservations=reservations, hold_window=hold_window(conn, hold, snapshot=base_config)[0],
-        hold_start=datetime.combine(local_date(hold["start_date"]), datetime.min.time()),
+        hold_start=datetime.combine(local_date(hold["start_date"]), datetime.min.time()), facts=facts,
     )
     frozen, seeds, warnings, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime
     missing_ids = _missing_internal_resources(mutable)
@@ -157,6 +162,9 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
         downtime_map=downtime, resource_pool=pool, optimizer_seed_version=seed_version,
         normalized_input=settings, dispositions=dispositions, facts_fingerprint=fingerprint,
         operation_efforts=efforts,
+        preflight_facts=facts, execution_reservations=reservations,
+        latest_plan_rows=facts.latest_plan_rows(prev_version),
+        operation_sources=({op.id: op.source for op in operations}, []),
     )
 
 

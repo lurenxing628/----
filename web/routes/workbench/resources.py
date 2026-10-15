@@ -2,13 +2,13 @@
 
 import re
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .materials import _command_body
@@ -81,15 +81,16 @@ def resource_command(kind, action, ref=None):
     command = kind + "." + action
 
     def guard():
-        identity = None if action == "create" else reader.resolve(ref)
-        state = reader.create_snapshot() if identity is None else reader.domain.snapshot(identity)
+        preparation = reader.preparation()
+        identity = None if action == "create" else preparation.identity(kind, ref)
+        state = preparation.create_snapshot(kind) if identity is None else preparation.state(kind, identity.entity_key)
         validate_write_context(body["write_token"], subject, command, state)
-        return state if identity is not None else None
+        return reader.domain.prepare(action, normalized, state if identity is not None else None, preparation)
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=normalized,
-        guard=guard, mutate=lambda checked: reader.domain._apply_checked(action, normalized, checked))
-    return jsonify(outcome)
+        guard=guard, mutate=reader.domain.apply_prepared)
+    return json_response(outcome)
 
 
 @api_endpoint

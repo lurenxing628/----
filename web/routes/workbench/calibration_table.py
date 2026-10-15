@@ -15,6 +15,7 @@ from .api_responses import api_endpoint
 from .calibration_read_context import as_of as _as_of
 from .calibration_read_context import bind as _bind
 from .calibration_read_context import page_integer as _page_integer
+from .read_context import resolve_read_snapshot
 
 
 @api_endpoint
@@ -36,11 +37,12 @@ def calibration_facets(column, selection=False):
     token = request.args.get("snapshot_ref")
     if (selection or number > 1) and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
-    as_of = _as_of(token)
+    binding = resolve_read_snapshot(token) if token is not None else None
+    as_of = _as_of(token, binding)
     service = WorkbenchCalibrationService(g.db, as_of=as_of)
     bound = {"kind": "calibration_table_facets", "scope": query.scope(), "column": column, "query": search, "size": size}
     with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:
-        facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of, snapshot_scope=bound))
+        facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of, snapshot_scope=bound, binding=binding))
         data = facet_data(filtered_suggestions(facts["rows"], query), column, search, number, size, selection=selection)
     response = query_success(data, facts["snapshot"])
     response.headers["Cache-Control"] = "no-store"

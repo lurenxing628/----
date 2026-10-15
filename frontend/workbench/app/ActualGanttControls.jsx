@@ -35,8 +35,9 @@
         </div></div>
     </div>;
   }
-  function Chain({ graph, model, onLocate }) {
-    const visible = new Set(model.items.map(item => item.task.task_ref)), nodes = new Map(graph.nodes.map(node => [node.task_ref, node]));
+  function Chain({ index, model, onLocate }) {
+    const { graph, nodes } = index;
+    const visible = new Set(model.items.map(item => item.task.task_ref));
     const incoming = new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge]));
     const edgeLabels = { process: '工艺先后', machine: '设备接续', operator: '人员接续' };
     return <div className="fg-chain-strip" aria-label="所选计划关键链">
@@ -55,7 +56,7 @@
       <span className="fg-muted">当前显示 {graph.critical_task_refs.filter(ref => visible.has(ref)).length} / {graph.critical_task_refs.length} 道关键工序 · 与图中的金色标记一致</span>
     </div>;
   }
-  function Range({ scope, resources, onApply, busy }) {
+  function Range({ scope, resources = null, onApply, busy }) {
     const [draft, setDraft] = React.useState(scope), [batches, setBatches] = React.useState((scope.batch_ids || []).join(','));
     React.useEffect(() => { setDraft(scope); setBatches((scope.batch_ids || []).join(',')); }, [scope]);
     const patch = value => setDraft(previous => ({ ...previous, ...value }));
@@ -68,8 +69,10 @@
       {scope.range_start && <span className="fg-muted">原计划时段 {M.time(scope.range_start)} 至 {M.time(scope.range_end)}<small>按原计划时段有重叠来挑工序；选中的工序保留全部有效报工</small></span>}
       <label>计划完工日<input type="date" aria-label="计划完工开始日" value={draft.plan_finish_date_from || ''} onChange={e => patch({ plan_finish_date_from: e.target.value })} /></label>
       <label>至<input type="date" aria-label="计划完工结束日" value={draft.plan_finish_date_to || ''} onChange={e => patch({ plan_finish_date_to: e.target.value })} /></label>
-      <label>资源<select aria-label="资源范围" value={draft.resource_ref || ''} onChange={e => { const row = resources.find(r => r.ref === e.target.value); patch({ resource_ref: e.target.value, resource_type: row ? row.kind : '' }); }}>
-        <option value="">全部计划或实际资源</option>{resources.filter(r => r.kind !== 'supplier').map(r => <option key={r.ref} value={r.ref}>{M.views[r.kind]} · {r.label || r.business_code}</option>)}</select></label>
+      <label>资源<select aria-label="资源范围" value={draft.resource_ref || ''} disabled={resources === null} onChange={e => { const row = resources.find(r => r.ref === e.target.value); patch({ resource_ref: e.target.value, resource_type: row ? row.kind : '' }); }}>
+        {resources === null ? <option value={draft.resource_ref || ''}>{draft.resource_ref ? '已选资源（选项待读取）' : '资源选项待读取'}</option> : <><option value="">全部计划或实际资源</option>
+          {draft.resource_ref && !resources.some(r => r.ref === draft.resource_ref && r.kind !== 'supplier') && <option value={draft.resource_ref}>已选资源（当前范围无记录）</option>}
+          {resources.filter(r => r.kind !== 'supplier').map(r => <option key={r.ref} value={r.ref}>{M.views[r.kind]} · {r.label || r.business_code}</option>)}</>}</select></label>
       <label>批次<input className="fg-batches" aria-label="批次范围" placeholder="多个批次用逗号分隔" value={batches} onChange={e => setBatches(e.target.value)} /></label>
       <Button type="submit" icon="search" busy={busy}>应用范围</Button><Button icon="x" aria-label="清除来源范围" disabled={busy} onClick={() => onApply({ plan_ref: scope.plan_ref })} />
     </form>;

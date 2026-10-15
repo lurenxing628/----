@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
-from core.algorithm_contracts.ordering import build_batch_sort_inputs, build_normalized_batches_map
+from core.algorithm_contracts.ordering import build_batch_sort_inputs
 from core.algorithms import SortStrategy, StrategyFactory
 from core.algorithms.evaluation_completion import _expected_keys
 from core.errors import ValidationError
@@ -33,7 +33,7 @@ from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
 from .optimizer.search_report import OptimizationSearchReportState
 from .optimizer.search_stage import SearchStage
 from .optimizer.search_state import OptimizerSearchState
-from .optimizer.shared_archive import SharedScheduleArchive
+from .optimizer.shared_archive import ArchiveObservation, SharedScheduleArchive
 from .optimizer.shared_budget import SharedSearchBudget, SharedSearchSkip
 from .optimizer.shared_decode import SharedDecodeSession
 from .optimizer.shared_process import build_shared_process
@@ -132,14 +132,24 @@ class _SharedSearch:
         if receipt is not None:
             source.update(request_id=receipt["request_id"], source_event_ref=receipt.get("source_event_ref"),
                           execution_kind=receipt["execution_kind"])
-        previous_improvements = self.archive.improvement_counts
-        observed = self.archive.observe(candidate, validation_state="valid" if verified else "unknown",
-                                        decode_completed=True, origin=source, elapsed_ms=elapsed_ms)
-        strict_improvements = [target for target, count in self.archive.improvement_counts.items()
-                               if count > previous_improvements[target]]
-        if self.decode_session is not None and receipt is not None and observed.entry_id is not None:
+        observed: Optional[ArchiveObservation] = candidate.pop("_archive_observation", None)
+        if observed is None:
+            entry_id = candidate.get("_shared_entry_id")
+            if entry_id is None:
+                raise ValueError("A decoded candidate must receive its archive identity before reporting.")
+            observed = ArchiveObservation(entry_id=entry_id, reused=True,
+                                          reason=None if verified else "validation_unknown")
+        entry_id = observed.entry_id
+        retained = entry_id in self.archive.retained_entry_ids
+        if retained and verified:
+            self.archive.finish_observation(observed, candidate, origin=source)
+        strict_improvements = (list(observed.improved_objectives)
+                               if retained and entry_id is not None
+                               and self.archive.entry(entry_id).score_scope.is_complete else [])
+        if self.decode_session is not None and receipt is not None and retained:
             self.decode_session.bind_observation(receipt, observed.entry_id, verified, candidate=candidate)
-        event: Dict[str, Any] = dict(source, event_type="archive_observation", elapsed_ms=elapsed_ms,
+        event_source = {key: value for key, value in source.items() if key != "repair_decision"}
+        event: Dict[str, Any] = dict(event_source, event_type="archive_observation", elapsed_ms=elapsed_ms,
                                     verified=verified, entry_id=observed.entry_id, reason=observed.reason,
                                     content_reused=observed.reused, restored=observed.restored,
                                     evidence_updated=observed.evidence_updated,
@@ -150,8 +160,7 @@ class _SharedSearch:
             event["request_id"] = receipt["request_id"]
         event_id = self.record_event(event)
         event = self.events[-1]
-        if observed.entry_id is not None:
-            entry_id = observed.entry_id
+        if retained and entry_id is not None and verified:
             candidate["_shared_entry_id"] = entry_id
             entry = self.archive.entry(entry_id)
             event["evaluations"] = {target: {"field_order": list(evaluation.field_order),
@@ -192,13 +201,10 @@ class _SharedSearch:
                         self.archive.set_starting_entries(target, (entry_id,))
                     if self.archive.current_by_objective[target] is None:
                         self.archive.accept_exploration(target, entry_id)
-        else:
-            candidate.pop("_shared_entry_id", None)
-            candidate.pop("_shared_evidence_revision", None)
 
     def accept(self, objective: str, *, candidate: Dict[str, Any], origin: str, current_only: bool) -> None:
         entry_id = candidate.get("_shared_entry_id")
-        if entry_id is not None:
+        if entry_id in self.archive.retained_entry_ids:
             self.archive.accept_exploration(objective, entry_id)
 
     def capture(self, objective: str, *, before: Dict[str, Any], after: Optional[Dict[str, Any]],
@@ -232,7 +238,7 @@ class _SharedSearch:
         entry_id = self.selected_entry(view.objective)
         revision = self.revisions.get(entry_id, 0) if entry_id is not None else -1
         if entry_id is not None and (view.entry_id != entry_id or view.evidence_revision != revision):
-            view.candidate = self.archive.materialize(entry_id, objective=view.objective)
+            view.candidate = self.archive.view(entry_id, objective=view.objective)
             view.candidate["_shared_entry_id"] = entry_id
             view.candidate["_shared_evidence_revision"] = revision
             view.entry_id, view.evidence_revision = entry_id, revision
@@ -311,7 +317,7 @@ class _SharedSearch:
 
         def retain(candidate: Optional[Dict[str, Any]]) -> Optional[int]:
             entry_id = candidate.get("_shared_entry_id") if candidate is not None else None
-            if entry_id is not None:
+            if entry_id in self.archive.retained_entry_ids:
                 active.add(entry_id)
             return entry_id
 
@@ -431,14 +437,6 @@ def optimize_shared_schedule(
     forced_sgs = piece or graph_dispatch_mode_override == "sgs"
     dispatch_mode = "sgs" if forced_sgs else config.dispatch_mode
     dispatch_modes = ["sgs"] if forced_sgs else config.dispatch_modes()
-    normalized_batches = build_normalized_batches_map(batches)
-
-    def build_order(strategy: SortStrategy, params: Dict[str, Any]) -> List[str]:
-        sortable = build_batch_sort_inputs(normalized_batches, strict_mode=bool(strict_mode), strategy=strategy,
-                                           readiness_gate_enabled=bool(readiness_gate_enabled))
-        sorter = StrategyFactory.create(strategy, **(params or {}))
-        return [item.batch_id for item in sorter.sort(sortable, base_date=start_dt.date())]
-
     expected = _expected_keys(algo_ops_to_schedule, seeds)
     targets = target_objectives_for(config.objective_name)
     archive = SharedScheduleArchive(config.objective_name, targets, (op_id for _, op_id in expected),
@@ -450,7 +448,16 @@ def optimize_shared_schedule(
         archive=archive, budget=shared_budget, scheduler=scheduler, operations=algo_ops_to_schedule,
         batches=batches, seed_results=seeds, downtime_map=downtime_map, resource_pool=resource_pool,
         graph_ready_context=graph_ready_context, clock=runtime.clock, started_at=started_at, deadline=deadline,
-        event_sink=session.record_event)
+        event_sink=session.record_event, schedule_fn=_schedule_with_optional_strict_mode, start_dt=start_dt)
+    native_preparation = session.decode_session.native_preparation
+
+    def build_order(strategy: SortStrategy, params: Dict[str, Any]) -> List[str]:
+        sortable = build_batch_sort_inputs(native_preparation.batches,
+                                           strict_mode=bool(strict_mode), strategy=strategy,
+                                           readiness_gate_enabled=bool(readiness_gate_enabled))
+        sorter = StrategyFactory.create(strategy, **(params or {}))
+        return [item.batch_id for item in sorter.sort(sortable, base_date=start_dt.date())]
+
     profile = build_candidate_profile(algo_mode=config.algo_mode, dispatch_mode=dispatch_mode,
         dispatch_rule=config.dispatch_rule, time_budget_seconds=config.time_budget_seconds, version=version,
         strict_mode=bool(strict_mode), ortools_enabled=is_ortools_enabled(cfg), graph_sgs_required=piece)
@@ -536,7 +543,7 @@ def optimize_shared_schedule(
                 version=version, base_strategy=config.strategy_enum, base_params=config.strategy_params or {},
                 build_order=build_order, dispatch_rule_cfg=config.dispatch_rule, objective_name=view.objective,
                 attempts=view.state.attempts, improvement_trace=view.state.improvement_trace,
-                graph_ready_context=graph_ready_context, schedule_fn=_schedule_with_optional_strict_mode,
+                graph_ready_context=graph_ready_context,
                 search_report_state=view.report, candidate_construction=graph_construction,
                 prepared_features=prepared_features)
             view.stages.extend(view.graph_bundle.stages)

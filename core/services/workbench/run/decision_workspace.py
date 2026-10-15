@@ -1,11 +1,9 @@
 """Read the admission's original official timeline for comparison drill-down."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, RunCandidateReadScope, reject
+from core.models.workbench_run_candidate import RunCandidateReadScope, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import operation_labels, task_span
-from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.facts.delivery_projection import delivery_summary
 from core.services.workbench.facts.gantt_graph import candidate_gantt_graph, unavailable_graph
 
@@ -25,7 +23,6 @@ def read_reference_workspace(conn, run_ref, *, selected_candidate_ref=None, comp
         if source.baseline["state"] != "available":
             reject("entity_not_found", "这次排产受理时没有正式计划，所选候选仍可查看。", 404)
         data = _reference_workspace(source, batch_ref)
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, source.state()
 
 

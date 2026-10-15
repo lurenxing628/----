@@ -33,6 +33,7 @@ from tools.test_debt_registry import (  # noqa: E402
     build_test_debt_ledger_from_baseline,
     load_full_test_debt_baseline,
     mark_test_debt_fixed,
+    retire_test_debt,
     validate_current_candidate_payload,
 )
 
@@ -210,6 +211,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     mark_test_debt_fixed_parser.add_argument("--debt-id", required=True, help="要关闭的测试债务 debt_id")
     mark_test_debt_fixed_parser.set_defaults(handler=_handle_mark_test_debt_fixed)
+
+    retire_test_debt_parser = subparsers.add_parser(
+        "retire-test-debt", help="将职责已退出的 fixed 测试债务标为 retired 并保留历史",
+    )
+    retire_test_debt_parser.add_argument("--debt-id", required=True, help="要退役的测试债务 debt_id")
+    retire_test_debt_parser.add_argument("--reason", required=True, help="测试职责退出的实际原因")
+    retire_test_debt_parser.set_defaults(handler=_handle_retire_test_debt)
     return parser
 
 
@@ -388,6 +396,16 @@ def _handle_mark_test_debt_fixed(args: argparse.Namespace) -> int:
     )
     save_ledger(next_ledger)
     _print_summary("测试债务已标记为 fixed", summary)
+    return 0
+
+
+def _handle_retire_test_debt(args: argparse.Namespace) -> int:
+    ledger = load_ledger(required=True)
+    next_ledger, summary = retire_test_debt(
+        ledger, str(args.debt_id), reason=str(args.reason), retired_at=now_shanghai_iso(),
+    )
+    save_ledger(next_ledger)
+    _print_summary("测试债务职责已退役，历史记录已保留", summary)
     return 0
 
 

@@ -1,10 +1,58 @@
 from __future__ import annotations
 
-import inspect
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.operation_effort import OperationEffort
+from core.models import Batch, BatchOperation
 from core.services.common.build_outcome import BuildOutcome
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
+
+
+@dataclass
+class ScheduleRunInput:
+    normalized_batch_ids: List[str]
+    start_dt_norm: datetime
+    end_date_norm: Optional[date]
+    created_by_text: str
+    run_label: str
+    t0: float
+    cal_svc: Any
+    cfg_svc: Any
+    cfg: Any
+    readiness_gate_enabled: bool
+    batches: Dict[str, Batch]
+    operations: List[BatchOperation]
+    reschedulable_operations: List[BatchOperation]
+    reschedulable_op_ids: Set[int]
+    missing_internal_resource_op_ids: Set[int]
+    algo_input_outcome: BuildOutcome[List[Any]]
+    algo_ops: List[Any]
+    prev_version: int
+    frozen_op_ids: Set[int]
+    seed_results: List[Dict[str, Any]]
+    execution_facts: Dict[int, ExecutionFact]
+    execution_fixed_op_ids: Set[int]
+    execution_completed_op_ids: Set[int]
+    execution_seed_results: List[Dict[str, Any]]
+    execution_guard_state_revisions: Dict[int, str]
+    execution_snapshot_revision: str
+    execution_snapshot_op_ids: List[int]
+    execution_snapshot_op_count: int
+    execution_has_guarded_facts: bool
+    schedule_output_allowed_op_ids: Set[int]
+    payload_validation_operations: List[BatchOperation]
+    algo_warnings: List[str]
+    freeze_meta: Dict[str, Any]
+    algo_ops_to_schedule: List[Any]
+    downtime_meta: Dict[str, Any]
+    resource_pool_meta: Dict[str, Any]
+    downtime_map: Dict[str, Any]
+    resource_pool: Any
+    optimizer_seed_version: int
+    run_time_budget_seconds: Optional[float] = None
+    operation_efforts: List[OperationEffort] = field(default_factory=list)
 
 
 def _op_seq(op: Any) -> int:
@@ -16,95 +64,6 @@ def _op_seq(op: Any) -> int:
         return int(getattr(op, "seq", 0) or 0)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"工序 seq 值无效（无法转为整数）：{getattr(op, 'seq', None)!r}") from exc
-
-
-def _signature_supports_keyword_arg(signature: inspect.Signature, arg_name: str) -> bool:
-    for parameter in signature.parameters.values():
-        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
-            return True
-        if parameter.name == arg_name and parameter.kind != inspect.Parameter.POSITIONAL_ONLY:
-            return True
-    return False
-
-
-def _unsupported_keyword_args(signature: inspect.Signature, arg_names: Tuple[str, ...]) -> List[str]:
-    return [arg_name for arg_name in arg_names if not _signature_supports_keyword_arg(signature, arg_name)]
-
-
-def _raise_keyword_contract_error(callable_name: str, *, arg_names: Tuple[str, ...]) -> None:
-    names = "、".join([str(arg_name).strip() for arg_name in arg_names if str(arg_name).strip()]) or "<empty>"
-    raise TypeError(f"{callable_name} 必须支持关键字参数 {names}。")
-
-
-def _ensure_callable_supports_keyword_args(
-    callable_obj: Any,
-    *,
-    callable_name: str,
-    arg_names: Tuple[str, ...],
-) -> None:
-    try:
-        signature = inspect.signature(callable_obj)
-    except (TypeError, ValueError):
-        return
-    unsupported = tuple(_unsupported_keyword_args(signature, arg_names))
-    if unsupported:
-        _raise_keyword_contract_error(callable_name, arg_names=unsupported)
-
-
-def _is_unexpected_keyword_argument_error(exc: TypeError, arg_name: str) -> bool:
-    message = str(exc or "")
-    return (
-        f"unexpected keyword argument '{arg_name}'" in message
-        or f'got an unexpected keyword argument "{arg_name}"' in message
-        or f"got an unexpected keyword argument '{arg_name}'" in message
-    )
-
-
-def _call_build_algo_operations_fn(
-    build_algo_operations_fn: Any,
-    svc: Any,
-    operations: List[Any],
-    *,
-    strict_mode: bool,
-) -> Any:
-    required_arg_names = ("strict_mode", "return_outcome")
-    _ensure_callable_supports_keyword_args(
-        build_algo_operations_fn,
-        callable_name="build_algo_operations_fn",
-        arg_names=required_arg_names,
-    )
-    try:
-        return build_algo_operations_fn(
-            svc,
-            operations,
-            strict_mode=bool(strict_mode),
-            return_outcome=True,
-        )
-    except TypeError as exc:
-        unsupported = tuple(
-            arg_name for arg_name in required_arg_names if _is_unexpected_keyword_argument_error(exc, arg_name)
-        )
-        if unsupported:
-            _raise_keyword_contract_error("build_algo_operations_fn", arg_names=unsupported)
-        raise
-
-
-def _build_algo_operations_outcome(
-    build_algo_operations_fn: Any,
-    svc: Any,
-    operations: List[Any],
-    *,
-    strict_mode: bool,
-) -> BuildOutcome[List[Any]]:
-    outcome = _call_build_algo_operations_fn(
-        build_algo_operations_fn,
-        svc,
-        operations,
-        strict_mode=bool(strict_mode),
-    )
-    if not isinstance(outcome, BuildOutcome):
-        raise TypeError("build_algo_operations_fn 在 return_outcome=True 时必须返回 BuildOutcome。")
-    return outcome
 
 
 def _build_freeze_window_seed_with_meta(
@@ -119,29 +78,15 @@ def _build_freeze_window_seed_with_meta(
     strict_mode: bool,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str], Dict[str, Any]]:
     freeze_meta: Dict[str, Any] = {}
-    required_arg_names = ("cfg", "prev_version", "start_dt", "operations", "reschedulable_operations", "strict_mode", "meta")
-    _ensure_callable_supports_keyword_args(
-        build_freeze_window_seed_fn,
-        callable_name="build_freeze_window_seed_fn",
-        arg_names=required_arg_names,
+    result = build_freeze_window_seed_fn(
+        svc,
+        cfg=cfg,
+        prev_version=prev_version,
+        start_dt=start_dt,
+        operations=operations,
+        reschedulable_operations=reschedulable_operations,
+        strict_mode=bool(strict_mode),
+        meta=freeze_meta,
     )
-    try:
-        result = build_freeze_window_seed_fn(
-            svc,
-            cfg=cfg,
-            prev_version=prev_version,
-            start_dt=start_dt,
-            operations=operations,
-            reschedulable_operations=reschedulable_operations,
-            strict_mode=bool(strict_mode),
-            meta=freeze_meta,
-        )
-    except TypeError as exc:
-        unsupported = tuple(
-            arg_name for arg_name in required_arg_names if _is_unexpected_keyword_argument_error(exc, arg_name)
-        )
-        if unsupported:
-            _raise_keyword_contract_error("build_freeze_window_seed_fn", arg_names=unsupported)
-        raise
     frozen_op_ids, seed_results, algo_warnings = result
     return set(frozen_op_ids or set()), list(seed_results or []), list(algo_warnings or []), freeze_meta

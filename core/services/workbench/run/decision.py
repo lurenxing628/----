@@ -1,10 +1,7 @@
 """All same-run candidates under one admission archive and one viewing reference."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.facts.decision_metrics import (
     metric_definitions,
     metric_delta,
@@ -131,11 +128,6 @@ def _overview_data(source, candidates, previous, before_coverage, definitions, r
             "resource_cohort": source.resource_cohort}
 
 
-def _bounded_overview(data):
-    bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
-    return data
-
-
 def decision_overview(source):
     definitions = metric_definitions()
     core = _core_candidates(source)
@@ -149,7 +141,7 @@ def decision_overview(source):
         "candidate_refs": group["candidate_refs"], "complete_batch_count": len(group["complete_batch_refs"]),
         "sample_complete_batch_refs": group["complete_batch_refs"][:3]}
         for index, group in enumerate(source.completion.groups(candidates))]
-    return _bounded_overview(data)
+    return data
 
 
 def decision_summary(source):
@@ -169,8 +161,8 @@ def decision_summary(source):
         _set_deltas(source, [recommended], full_previous, definitions)
         recommended["metrics"] = _public_metrics(recommended["metrics"])
         recommendation_candidates = [recommended]
-    return _bounded_overview(_overview_data(source, candidates, core_previous, core_coverage,
-                                            definitions, recommendation_candidates))
+    return _overview_data(source, candidates, core_previous, core_coverage,
+                          definitions, recommendation_candidates)
 
 
 def _difference_summary(selected, previous, definitions):

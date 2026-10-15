@@ -44,6 +44,7 @@ def schedule_internal_operation(
     machine_busy_hours: Optional[Dict[str, float]] = None,
     operator_busy_hours: Optional[Dict[str, float]] = None,
     strict_mode: bool = False,
+    total_hours_by_op_id: Any = None,
 ) -> Tuple[Optional[ScheduleResult], bool]:
     bid = normalize_text_id(getattr(op, "batch_id", ""))
     machine_id, operator_id = _resolve_internal_resources(
@@ -83,6 +84,7 @@ def schedule_internal_operation(
         last_op_type_by_machine=last_op_type_by_machine,
         errors=errors,
         strict_mode=bool(strict_mode),
+        total_hours_base=(total_hours_by_op_id.get(getattr(op, "id", None)) if total_hours_by_op_id is not None else None),
     )
     if estimate is None:
         return None, False
@@ -188,6 +190,7 @@ def _estimate_internal(
     last_op_type_by_machine: Optional[Dict[str, str]],
     errors: List[str],
     strict_mode: bool,
+    total_hours_base: Optional[float] = None,
 ):
     try:
         inputs = dict(
@@ -203,12 +206,13 @@ def _estimate_internal(
             end_dt_exclusive=end_dt_exclusive,
             machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
             last_op_type_by_machine=last_op_type_by_machine,
+            total_hours_base=total_hours_base,
         )
         estimate = None
         if estimate_internal_slot is _NATIVE_ESTIMATE_SLOT:
             reused = selected_sgs_estimate(**inputs)
             # Formal placement keeps its own validation, failure accounting and occupancy writes.
-            if reused is not None and validate_internal_hours(op, batch) == reused[1]:
+            if reused is not None and (total_hours_base if total_hours_base is not None else validate_internal_hours(op, batch)) == reused[1]:
                 estimate = reused[0]
         if estimate is None:
             estimate = estimate_internal_slot(**inputs, abort_after=None, overlap_reuse=overlap_reuse_for(machine_timeline))

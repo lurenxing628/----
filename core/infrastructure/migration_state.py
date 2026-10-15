@@ -45,7 +45,7 @@ from .workbench_run_schema import workbench_run_contract_issues, workbench_run_o
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
-CURRENT_SCHEMA_VERSION = 42
+CURRENT_SCHEMA_VERSION = 43
 
 
 class MigrationContractError(RuntimeError):
@@ -121,11 +121,11 @@ def ensure_schema_version_not_newer(db_version: int, *, supported_version: int =
 
 
 def ensure_current_schema_contract(
-    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None
+    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None, full_data: bool = False
 ) -> None:
     version = int(get_schema_version(conn) if schema_version is None else schema_version)
     if version == CURRENT_SCHEMA_VERSION:
-        issues = current_schema_contract_issues(conn, schema_sql=schema_sql)
+        issues = current_schema_contract_issues(conn, schema_sql=schema_sql, full_data=full_data)
         if issues:
             raise build_current_schema_contract_error(version, issues=issues)
 
@@ -244,7 +244,7 @@ def _live_columns(conn: sqlite3.Connection, table: str, *, structure=None) -> Se
     return {str(row[1]) for row in rows}
 
 
-def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None) -> List[str]:
+def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None, full_data: bool = False) -> List[str]:
     """
     当前库是否满足当前版本的结构契约。
 
@@ -275,7 +275,7 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
     ):
         if not ok:
             issues.append(label)
-    issues.extend(operation_execution_event_contract_issues(conn, structure=structure))
+    issues.extend(operation_execution_event_contract_issues(conn, structure=structure, full_data=full_data))
     issues.extend(workbench_metadata_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(workbench_resource_contract_issues(conn, structure=structure))
     issues.extend(workbench_process_contract_issues(conn, structure=structure))
@@ -299,7 +299,18 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
     issues.extend(calendar_periods_contract_issues(conn, structure=structure))
     issues.extend(machine_capabilities_contract_issues(conn, structure=structure))
     issues.extend(material_stages_contract_issues(conn, structure=structure))
+    from .single_pass_indexes_schema import contract_issues as index_contract_issues
+    if get_schema_version(conn) in (0, CURRENT_SCHEMA_VERSION):
+        issues.extend(index_contract_issues(conn, structure=structure))
+    if full_data and structure.has_table("Schedule") and structure.has_table("ScheduleHistory"):
+        issues.extend(schedule_history_data_issues(conn))
     return issues
+
+
+def schedule_history_data_issues(conn):
+    """Each persisted schedule version must own its historical head."""
+    versions = conn.execute("SELECT DISTINCT version FROM Schedule EXCEPT SELECT version FROM ScheduleHistory LIMIT 8").fetchall()
+    return ["bad_data: Schedule version=" + str(row[0]) + " missing ScheduleHistory head" for row in versions[:8]]
 
 
 def _batch_material_ready_default_is_no(conn: sqlite3.Connection, *, structure=None) -> bool:
@@ -329,7 +340,7 @@ def _has_schedule_unique_index(conn: sqlite3.Connection, *, structure=None) -> b
 
 def _has_candidate_indexes(conn: sqlite3.Connection, *, structure=None) -> bool:
     structure = structure if structure is not None else SchemaStructure(conn)
-    names = ['idx_schedule_candidate_rows_time', 'idx_schedule_candidate_rows_version_candidate', 'idx_schedule_candidate_rows_version_candidate_time', 'idx_schedule_candidate_selection_version', 'idx_schedule_candidate_version', 'idx_schedule_candidate_version_kind', 'idx_schedule_history_version', 'idx_schedule_version_time']
+    names = ['idx_schedule_candidate_rows_time', 'idx_schedule_candidate_rows_version_candidate', 'idx_schedule_candidate_rows_version_candidate_time', 'idx_schedule_candidate_version_kind', 'idx_schedule_history_version', 'idx_schedule_version_time']
     return all(name in structure.objects and structure.objects[name][0] == "index" for name in names)
 
 

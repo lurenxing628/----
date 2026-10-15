@@ -18,6 +18,7 @@ from .entities import WorkbenchResourceService
 from .metrics import WorkbenchResourceMetricsService
 from .projection import project_resource
 from .readiness import process_readiness, resource_readiness
+from .states import ResourceChangePreparation
 from .suppliers import WorkbenchSupplierService
 from .table_facts import ResourceTableFacts
 from .table_states import resource_table_states
@@ -83,6 +84,18 @@ class WorkbenchResourceQueryService:
 
     def create_snapshot(self):
         return self.repo.create_relations(self.kind)
+
+    def preparation(self):
+        repo = WorkbenchResourceTableRepository(self.conn, self.logger)
+        identities = self._table_identities
+        if identities is None:
+            identities = repo.identities()
+        else:
+            missing = {"op_type", "machine", "operator", "supplier", "machine_group", "shift_profile"} - set(
+                self._metrics_reader().identity_kinds(self.kind))
+            identities = identities + repo.identities(sorted(missing)) if missing else identities
+        facts = ResourceTableFacts(self._metrics_reader(), identities, scope_state=self._snapshot_scope)
+        return ResourceChangePreparation(facts)
 
     def summary(self):
         return self.repo.summary()

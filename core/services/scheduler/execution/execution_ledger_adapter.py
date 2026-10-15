@@ -1,10 +1,10 @@
 """Read-only bridge from permanent ledger identities to legacy execution scopes."""
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 
 from core.errors import AppError, ErrorCode
-from core.infrastructure.schema_probe import object_names
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.content import same
@@ -28,7 +28,7 @@ def _unavailable(reason, *, op_id=None):
 
 
 def _ledger_required(conn):
-    names = object_names(conn)
+    names = set(schema_contract_memo(conn).structure.objects)
     if "SchemaVersion" not in names:
         raise _unavailable("execution_ledger_schema_version_missing")
     repo = ExecutionLedgerScopeRepository(conn)
@@ -44,22 +44,25 @@ def _ledger_required(conn):
 
 
 @contextmanager
-def ledger_read_snapshot(conn):
+def ledger_read_snapshot(conn, *, ledger=None):
     with TransactionManager(conn).transaction():
-        if not _ledger_required(conn):
+        if ledger is not None and ledger.conn is not conn:
+            raise ValueError("Execution ledger must belong to the current connection")
+        if ledger is None and not _ledger_required(conn):
             yield None
             return
-        ledger = ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
-        try:
-            with ledger.read_snapshot():
-                yield ledger
-        except WorkbenchCommandRejected as exc:
-            raise _unavailable(exc.code) from exc
+        ledger = ledger if ledger is not None else ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(ledger.read_snapshot())
+            except WorkbenchCommandRejected as exc:
+                raise _unavailable(exc.code) from exc
+            yield ledger
 
 
-def _scope_tasks(conn, scopes):
+def _scope_tasks(ledger, scopes):
     by_identity = {}
-    rows = ExecutionLedgerScopeRepository(conn).scope_task_rows(sorted({scope.schedule_id for scope in scopes}))
+    rows = ledger.scope_task_rows(sorted({scope.schedule_id for scope in scopes}))
     for row in rows:
         key = tuple(row[:4])
         if key in by_identity:
@@ -74,8 +77,8 @@ def _scope_tasks(conn, scopes):
     return result
 
 
-def _require_reported_operation_scopes(conn):
-    row = ExecutionLedgerScopeRepository(conn).reported_operation_without_schedule_row()
+def _require_reported_operation_scopes(ledger):
+    row = ledger.reported_operation_without_schedule_row()
     if row is not None:
         raise _unavailable("execution_ledger_report_scope_missing", op_id=int(row[0]))
 
@@ -128,19 +131,22 @@ def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, 
 
 
 def adapt_ledger_facts(ledger, legacy_facts, *, execution_projections=None):
-    _require_reported_operation_scopes(ledger.conn)
-    scopes = [scope for scope in legacy_facts if scope.source_table == SOURCE_SCHEDULE
-              and scope.effective_plan_role == ROLE_ADOPTED and scope.scenario_id is None]
-    if not scopes:
-        if execution_projections:
-            raise _unavailable("execution_ledger_projection_scope_mismatch")
-        return legacy_facts
-    tasks = _scope_tasks(ledger.conn, scopes)
-    refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
-    projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
-    resource_refs = {ref for row in projections.values() for ref in _projection_resource_refs(row)}
-    resources = {row["ref"]: row for row in ledger.repo.resources(resource_refs)}
-    return _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources)
+    try:
+        _require_reported_operation_scopes(ledger)
+        scopes = [scope for scope in legacy_facts if scope.source_table == SOURCE_SCHEDULE
+                  and scope.effective_plan_role == ROLE_ADOPTED and scope.scenario_id is None]
+        if not scopes:
+            if execution_projections:
+                raise _unavailable("execution_ledger_projection_scope_mismatch")
+            return legacy_facts
+        tasks = _scope_tasks(ledger, scopes)
+        refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
+        projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
+        resource_refs = {ref for row in projections.values() for ref in _projection_resource_refs(row)}
+        resources = {row["ref"]: row for row in ledger.resources(resource_refs)}
+        return _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources)
+    except WorkbenchCommandRejected as exc:
+        raise _unavailable(exc.code) from exc
 
 
 def _projection_resource_refs(projection):

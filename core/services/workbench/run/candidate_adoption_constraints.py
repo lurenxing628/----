@@ -6,15 +6,15 @@ from datetime import datetime
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
-from core.services.scheduler.resource_pool_builder import load_machine_downtimes
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
     merged_external_group_identity,
 )
-from core.services.scheduler.schedule_service import ScheduleService
-from core.services.workbench.facts.preflight_checks import PreflightChecks, stored_date
+from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.zero_duration import candidate_point_validator
-from data.repositories.workbench_run_input_repo import ADOPTION_CHECK_TABLES, WorkbenchRunInputRepository
+from data.repositories.workbench_run_input_repo import ADOPTION_CHECK_TABLES
+
+from .input_runtime import runtime_resource_facts
 
 # piece_adoption 仍按这份表清单读主数据；清单本体归输入仓储维护。
 _TABLES = ADOPTION_CHECK_TABLES
@@ -45,8 +45,7 @@ def adoption_downtimes(conn, prepared, payload):
         return {}
     # Locked seeds may precede the requested run window. Prove every planned
     # arrangement against downtime at its own time and assigned machine.
-    return load_machine_downtimes(ScheduleService(conn), algo_ops=rows,
-                                 start_dt=min(row.start_time for row in rows))
+    return runtime_resource_facts(prepared.preflight_facts).downtimes
 
 
 def calendar_duration_conflict(calendar, row, op, batch, machine_downtimes):
@@ -130,7 +129,7 @@ def _protected_arrangement(prepared, checks, row, raw, algo, actual_ids, actual_
 
 
 def validate_adoption_constraints(conn, prepared, payload):
-    checks = PreflightChecks(WorkbenchRunInputRepository(conn).adoption_check_tables())
+    checks = prepared.preflight_facts.checks()
     ops = {op.id: op for op in prepared.operations}
     algo_ops = {op.id: op for op in prepared.algo_ops}
     actual_ids = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids

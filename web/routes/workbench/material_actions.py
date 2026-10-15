@@ -17,7 +17,7 @@ the domain mutation revalidates every original fact under the same transaction.
 
 from __future__ import annotations
 
-from flask import current_app, g, jsonify, request
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_material_file import normalize_refs
@@ -25,7 +25,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
 from core.services.workbench.material.files import WorkbenchMaterialFileService
 from core.services.workbench.material.queries import WorkbenchMaterialQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .material_actions_context import (
@@ -116,7 +116,7 @@ def material_action_confirm(action):
         normalized_input={"preview_ref": ref},
         guard=lambda: resolve_preview(ref, action, body["write_token"]),
         mutate=lambda checked: _apply_preview(action, checked))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 def register_material_action_routes(bp):

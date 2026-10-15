@@ -14,7 +14,10 @@ from core.services.workbench.execution.field_report_files import FieldReportFile
 def test_prepared_import_retains_original_bytes_and_confirmed_document():
     content = b"original-file\x00\xff"
     request = {"format": "csv", "mode": "upsert", "scope": {}}
-    source = PreparedImportSource.build("material.import", request, [{"value": True}], [], content=content)
+    decoded = [{"value": True}]
+    notices = [{"details": ["extra sheet"]}]
+    source = PreparedImportSource.build("material.import", request, decoded, notices, content=content)
+    assert source._rows is decoded and source._notices is notices
     checked = source.request_for("material.import", "csv", "upsert", {})
     preview = AtomicActionPreview.build("material.import", checked, [{"result": "new"}], source=source)
     assert source.content == content
@@ -25,9 +28,11 @@ def test_prepared_import_retains_original_bytes_and_confirmed_document():
     with pytest.raises(WorkbenchCommandRejected) as failure:
         PreparedImportSource.confirmation(preview, content + b"changed")
     assert failure.value.code == "stale_write"
-    rows, _ = source.parsed()
+    rows, parsed_notices = source.parsed()
     rows[0]["value"] = 1
+    parsed_notices[0]["details"].append("consumer note")
     assert source.parsed()[0][0]["value"] is True
+    assert source.parsed()[1] == [{"details": ["extra sheet"]}]
     intent = preview.intent()
     assert intent["preview_document"] == preview.document
     assert content.decode("latin-1") not in intent["preview_document"]

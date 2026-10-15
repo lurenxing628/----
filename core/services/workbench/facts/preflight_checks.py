@@ -4,7 +4,7 @@ import math
 from collections import defaultdict
 from datetime import date, datetime
 
-from core.models.resource_capabilities import machine_type_index, supports_source
+from core.models.resource_capabilities import machine_type_index, supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import issue
 from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
@@ -47,7 +47,7 @@ class PreflightChecks:
             if row["skills_declared"]:
                 self.skills[row["operator_id"]]
         self.supplier_skills = defaultdict(set)
-        for row in tables["WorkbenchSupplierOpTypes"]:
+        for row in supplier_capability_rows(tables["Suppliers"], tables["WorkbenchSupplierOpTypes"]):
             self.supplier_skills[row["supplier_id"]].add(row["op_type_id"])
         self.external_contexts = {row["operation_id"]: row for row in tables.get("BatchExternalContexts", [])}
         self.external_members = member_index(self.external_contexts, tables.get("BatchOperations", []))
@@ -82,7 +82,7 @@ class PreflightChecks:
         supplier = self.catalogs["supplier"].get(op["supplier_id"])
         if not supplier or supplier["status"] != "active":
             gaps.append(issue("supplier_missing", "外协供应商没填或已停用。请到资料总览核对供应商。"))
-        elif op["op_type_id"] not in self.supplier_skills.get(op["supplier_id"], {supplier.get("op_type_id")}):
+        elif op["op_type_id"] not in self.supplier_skills[op["supplier_id"]]:
             gaps.append(issue("supplier_skill_missing", "这家供应商没有登记该外协工种。请到资料总览补登。"))
         context = self.external_contexts.get(op["id"])
         problem = (context_problem(context, operation_id=op["id"], part_no=batch["part_no"], sequence=op["seq"])

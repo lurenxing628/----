@@ -1,13 +1,13 @@
 """Process review and atomic stage confirmations using the shared receipt protocol."""
 
-from flask import current_app, g, jsonify
+from flask import current_app, g
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
-from web.api_responses import failure, query_success
+from web.api_responses import failure, json_response, query_success
 
 from .api_responses import api_endpoint
 from .process_json import read_process_json
@@ -45,13 +45,15 @@ def process_stage_preview(ref):
             if entity["workflow"]["route"]["state"] != "confirmed":
                 raise WorkbenchCommandRejected("stage_locked", "工艺路线还没有确认，归属没有保存。请先点「确认保存路线」，再点「保存归属并继续」。")
             action = body["action"]
-            affected = set(domain.affected_groups(action, normalized, reader.resolve(ref))) if action == "source_confirm" else set()
+            checked = domain.checked_facts(reader.resolve(ref), reader.facts())
+            prepared = domain.prepare_review(action, normalized, checked, facts=reader.facts())
+            affected = {row["ref"] for row in prepared.affected} if action == "source_confirm" else set()
             binding = {"state": state, "input": reviewed_input(action, normalized)}
             data = {"part_ref": ref, "action": action,
                     "affected_groups": [row for row in entity["external_groups"] if row["ref"] in affected],
                     "write_context": issue_write_context(ref, ["process." + action], binding)}
             if action == "groups_confirm":
-                data["changes"] = domain.preview_groups(normalized, reader.resolve(ref))
+                data["changes"] = prepared.auxiliary
             snapshot = bind_read_snapshot({"kind": "process_stage_preview", "entity_ref": ref,
                                            "input_content": normalized}, state)
         response = query_success(data, snapshot)
@@ -89,17 +91,18 @@ def process_stage_command(ref, action):
             identity = reader.resolve(ref)
             binding = state if action == "hours_confirm" else {"state": state, "input": reviewed_input(action, normalized)}
             validate_write_context(body["write_token"], ref, "process." + action, binding)
-            return domain.checked_facts(identity, reader.facts())
+            checked = domain.checked_facts(identity, reader.facts())
+            return domain.prepare_checked(action, normalized, checked, facts=reader.facts())
 
     try:
         outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
             request_key=body["request_key"], action="process." + action, context_ref=ref,
-            normalized_input=normalized, guard=guard, mutate=lambda checked: domain._apply_checked(action, normalized, checked))
+            normalized_input=normalized, guard=guard, mutate=domain.apply_prepared)
     except WorkbenchCommandRejected as exc:
         if not exc.operation_refs:
             raise
         return _operation_failure(exc)
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 def register_process_write_routes(bp):

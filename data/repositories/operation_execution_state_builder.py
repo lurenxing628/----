@@ -10,10 +10,7 @@ from core.models.operation_execution_event import (
     EXECUTION_EVENT_RESUME,
     EXECUTION_EVENT_START,
     OperationExecutionEvent,
-    normalize_operation_event_time,
-    normalize_operation_execution_event_values,
     parse_operation_event_time,
-    validate_operation_execution_event_sequence,
 )
 from core.models.operation_execution_labels import (
     event_type_to_action,
@@ -25,10 +22,6 @@ from core.models.operation_execution_labels import (
     public_execution_remark,
     severity_label,
     suggest_reschedule_label,
-)
-from core.models.operation_execution_scope import (
-    operation_execution_scope_from_event,
-    validate_current_official_execution_scope,
 )
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.resource_identity import ResourceIdentity, build_resource_identity
@@ -42,7 +35,7 @@ def _parse_time(value: Optional[str]) -> Optional[datetime]:
 
 
 def _event_time(event: OperationExecutionEvent) -> str:
-    return normalize_operation_event_time(event.event_time)
+    return event.event_time
 
 
 def _duration_minutes(start: Optional[str], end: Optional[str]) -> Optional[float]:
@@ -65,22 +58,6 @@ def _suggest_reschedule_bool(value: Any) -> bool:
 
 def _current_status(last_event: OperationExecutionEvent) -> str:
     return last_event.reported_status
-
-
-def _validate_event_contracts(events: Sequence[OperationExecutionEvent]) -> None:
-    for event in events:
-        scope = operation_execution_scope_from_event(event)
-        validate_current_official_execution_scope(
-            source_table=scope.source_table,
-            effective_plan_role=scope.effective_plan_role,
-            scenario_id=scope.scenario_id,
-        )
-        normalize_operation_execution_event_values(
-            event_type=event.event_type,
-            reported_status=event.reported_status,
-            event_time=event.event_time,
-        )
-    validate_operation_execution_event_sequence(events)
 
 
 def _event_remark(event: OperationExecutionEvent) -> Optional[str]:
@@ -230,7 +207,6 @@ def build_operation_execution_state(
             batch_id=batch_id,
             state_revision=f"{int(op_id)}:0:0",
         )
-    _validate_event_contracts(events)
     last_event = events[-1]
     latest_exception = _latest_exception(events)
     actual_start_time = _first_event_time(events, EXECUTION_EVENT_START)

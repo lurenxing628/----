@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
@@ -185,12 +186,6 @@ def _validate_events_by_scope(events: Sequence[OperationExecutionEvent]) -> None
         validate_operation_execution_event_sequence(scoped_events)
 
 
-def _same_event(left: OperationExecutionEvent, right: OperationExecutionEvent) -> bool:
-    if left.id is not None and right.id is not None:
-        return int(left.id) == int(right.id)
-    return bool(left.idempotency_key) and left.idempotency_key == right.idempotency_key
-
-
 class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseRepository):
     """现场执行事件仓库。事件只追加，当前状态由事件流聚合。"""
 
@@ -212,10 +207,11 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
         return self._validated_event_from_row(row) if row else None
 
     def _validated_event_from_row(self, row: Dict[str, Any]) -> OperationExecutionEvent:
-        event = OperationExecutionEvent.from_row(row)
-        for scoped_event in self.list_events_by_scope(_event_scope(event)):
-            if _same_event(scoped_event, event):
-                return scoped_event
+        scope = OperationExecutionScope.from_values(**{field: row[field] for field in (
+            "schedule_version", "schedule_id", "op_id", "batch_id", "source_table", "effective_plan_role", "scenario_id")})
+        for event in self.list_events_by_scope(scope):
+            if event.id == row["id"]:
+                return event
         raise ValueError("event is missing from validated operation execution sequence")
 
     def insert_event(self, event_row: Union[OperationExecutionEvent, Dict[str, Any]]) -> OperationExecutionEvent:
@@ -299,30 +295,30 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
                 event_type,
                 reported_status,
                 event_time,
-                _text_or_none(payload.get("actual_machine_id")),
-                _text_or_none(payload.get("actual_operator_id")),
-                _optional_int(payload.get("quantity_done")),
-                _optional_int(payload.get("quantity_scrapped")),
-                _text_or_none(payload.get("reason_code")),
-                _text_or_none(payload.get("reason_detail")),
-                _text_or_none(payload.get("severity")),
-                _optional_int(payload.get("impact_minutes")),
-                _text_or_none(payload.get("affected_machine_id")),
-                _text_or_none(payload.get("affected_operator_id")),
-                _text_or_none(payload.get("handling_status")),
-                _suggest_reschedule_value(payload.get("suggest_reschedule")),
-                _text_or_none(payload.get("remark")),
-                required_text["created_by"],
-                required_text["idempotency_key"],
-                payload.get("request_fingerprint"),
-                required_text["previous_state_revision"],
+                event_to_insert.actual_machine_id,
+                event_to_insert.actual_operator_id,
+                event_to_insert.quantity_done,
+                event_to_insert.quantity_scrapped,
+                event_to_insert.reason_code,
+                event_to_insert.reason_detail,
+                event_to_insert.severity,
+                event_to_insert.impact_minutes,
+                event_to_insert.affected_machine_id,
+                event_to_insert.affected_operator_id,
+                event_to_insert.handling_status,
+                event_to_insert.suggest_reschedule,
+                event_to_insert.remark,
+                event_to_insert.created_by,
+                event_to_insert.idempotency_key,
+                event_to_insert.request_fingerprint,
+                event_to_insert.previous_state_revision,
             ),
         )
         event_id = int(cur.lastrowid or 0)
-        created = self.get_event_by_id(event_id)
+        created = self.fetchone("SELECT created_at FROM OperationExecutionEvents WHERE id=?", (event_id,))
         if created is None:
             raise RuntimeError("现场反馈写入后没有读回事件。")
-        return created
+        return replace(event_to_insert, id=event_id, created_at=_text_or_none(created["created_at"]))
 
     def _ensure_schedule_identity_matches(
         self,
@@ -349,7 +345,7 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
             raise ValueError("schedule identity does not match event")
 
     def _validate_event_sequence_for_insert(self, scope: OperationExecutionScope, event: OperationExecutionEvent) -> None:
-        validate_operation_execution_event_sequence([*self.list_events_by_scope(scope), event])
+        validate_operation_execution_event_sequence([*self._events_by_scope(scope), event])
 
     # 故意保留：旧的只按 op_id 读取必须报完整计划身份错误，不能删成 AttributeError 或改成空结果。
     def list_events_by_op_id(self, op_id: int) -> List[OperationExecutionEvent]: raise _unscoped_execution_read_error()
@@ -357,6 +353,11 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
     def list_events_by_op_ids(self, op_ids: Sequence[int]) -> List[OperationExecutionEvent]: raise _unscoped_execution_read_error()
 
     def list_events_by_scope(self, scope: OperationExecutionScope) -> List[OperationExecutionEvent]:
+        events = self._events_by_scope(scope)
+        validate_operation_execution_event_sequence(events)
+        return events
+
+    def _events_by_scope(self, scope: OperationExecutionScope) -> List[OperationExecutionEvent]:
         where_sql, params = _scope_where(scope)
         rows = self.fetchall(
             f"""
@@ -367,9 +368,7 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
             """,
             params,
         )
-        events = [OperationExecutionEvent.from_row(row) for row in rows]
-        validate_operation_execution_event_sequence(events)
-        return events
+        return [OperationExecutionEvent.from_row(row) for row in rows]
 
     def list_events_by_scopes(self, scopes: Sequence[OperationExecutionScope]) -> List[OperationExecutionEvent]:
         normalized = list(dict.fromkeys(scopes or ()))

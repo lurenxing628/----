@@ -4,11 +4,17 @@ from datetime import datetime, timedelta
 from math import fsum
 
 from core.models.content import content_text
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.facts.execution_values import execution_deviation
+from core.services.workbench.facts.plan_serialization import plain_plan_facts
+from core.services.workbench.plan.calendar import project_plan_calendar
+from core.services.workbench.plan.calendar_context import selected_context
 from core.services.workbench.plan.process_order import project_process_order
+from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.read_context import PlanReadContext
+from core.services.workbench.plan.workspace_dto import resource_directory
 
 from .actual_gantt_chain import plan_chain
 from .actual_gantt_scope import cohort_match
@@ -22,12 +28,6 @@ def ledger_projection(conn, plan_ref, tasks):
     return ExecutionLedgerService(conn).workspace_projection(plan_ref, tasks)
 
 
-def check_actual_size(data):
-    if len(canonical_json(data).encode("utf-8")) > MAX_ACTUAL_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "这次要读的现场甘特数据超过 32 MB，系统没有返回截断后的数据。请缩小范围后重试。", 413)
-    return data
-
-
 def bind_axis_time(data, as_of, snapshot_ref=None):
     """The visible clock is derived from the pinned as_of, not the browser clock."""
     clock = datetime.fromisoformat(as_of).replace(minute=0, second=0, microsecond=0)
@@ -39,7 +39,7 @@ def bind_axis_time(data, as_of, snapshot_ref=None):
     for item in data["items"]:
         item["deviation"] = execution_deviation(item["task"]["end"], item["execution"], as_of)
     data["execution_summary"] = _execution_summary(data)
-    return check_actual_size(data)
+    return data
 
 
 def _execution_summary(data):
@@ -111,11 +111,34 @@ class ActualGanttService:
     def read_snapshot(self):
         return self.plans.read_snapshot()
 
+    def _planned(self, scope, context):
+        plan_scope = PlanReadScope(scope.plan_ref, scope.range_start, scope.range_end)
+        _, entry, span = context.selected(scope.plan_ref)
+        rows = context.scoped_rows(entry, plan_scope)
+        if scope.plan_finish_date_from is not None or scope.batch_ids:
+            times, batches = context.intervals(entry), set(scope.batch_ids)
+            rows = [row for row in rows
+                    if (not batches or row["batch_id"] in batches)
+                    and (scope.plan_finish_date_from is None or scope.plan_finish_date_from <=
+                         times[row["schedule_id"]][1][:10] <= scope.plan_finish_date_to)]
+        tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, entry, rows)
+        selected = selected_context(self.conn, entry, plan_scope, rows, resources, span, read_context=context)
+        calendar, calendar_facts = project_plan_calendar(self.conn, entry=entry, scope=plan_scope, rows=rows,
+            resources=resources, plan_span=span, context=context, selected=selected)
+        planned = {"plan": project_plan(entry, scope.plan_ref), "plan_span": span, "tasks": tasks,
+                   "resources": resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"]),
+                   "projections": {"calendar": calendar}}
+        return planned, {"plan_revision": context.references.read_revision(), "resources": resource_state,
+                         "calendar": plain_plan_facts(calendar_facts)}
+
     def _execution(self, planned, scope):
         availability = {"state": "available", "reason_code": None, "reason": None}
         try:
             projection = ledger_projection(self.conn, scope.plan_ref, planned["tasks"])
         except WorkbenchCommandRejected as exc:
+            if exc.code == "query_too_large":
+                raise WorkbenchCommandRejected(exc.code,
+                    str(exc) + " 请缩小计划完工日期范围或减少所选批次后重试。", exc.status) from exc
             if exc.code != "execution_ledger_unavailable":
                 raise
             projection = None
@@ -134,28 +157,23 @@ class ActualGanttService:
         return projection, items, resources, availability
 
     def workspace(self, scope, *, chain_target=None):
-        planned, plan_state = self.plans.execution_workspace(
-            PlanReadScope(scope.plan_ref, scope.range_start, scope.range_end), include_calendar=True,
-        )
+        context = PlanReadContext(self.conn)
+        with context.read_scope():
+            planned, plan_state = self._planned(scope, context)
         projection, items, resources, availability = self._execution(planned, scope)
         items = [item for item in items if cohort_match(item, scope)]
-        _, _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref)
+        _, _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref, context=context)
         data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
                 "axis_span": _span(planned["plan_span"], items), "availability": availability,
                 "items": items, "task_count": len(items), "items_complete": True,
                 "report_count": sum(len(item["execution"]["reports"]) for item in items) if projection else None,
                 "resources": resources, "calendar": planned["projections"]["calendar"],
                 "gantt_graph": gantt_graph,
-                "critical_chain": plan_chain(self.plans, planned, {item["task"]["task_ref"] for item in items}),
                 "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
                               "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
                               "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
-        check_actual_size(data)
         state = content_text({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
                                    "data": data})
-        if chain_target is not None:
-            # The timeline token pins all plan/ledger facts; target identity also binds the engine evidence.
-            data["critical_chain"] = plan_chain(self.plans, planned,
-                {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target)
-            check_actual_size(data)
+        data["critical_chain"] = plan_chain(scope.plan_ref,
+            {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)
         return data, state

@@ -296,7 +296,7 @@
         "run_ref": "cb290bffcd82d59594e4d629023df19e3b5fd375e9cca4ca",
         "source_verification": {
           "baseline_matches_archived_schedule": true,
-          "execution_matches_archived_evidence": true,
+          "execution_verified_at": "run_admission",
           "facts_content_verified": true,
           "input_source_verified": true,
           "candidate_content_verified": true

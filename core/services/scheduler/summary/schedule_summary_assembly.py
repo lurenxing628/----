@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.objective_specs import best_score_schema, comparison_metric_key
 from core.models.enums import YesNo
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.services.scheduler.contracts.schedule_summary_types import (
     AlgorithmSummaryState,
     FallbackState,
@@ -17,6 +16,7 @@ from core.services.scheduler.contracts.schedule_summary_types import (
 from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_errors
 from core.services.scheduler.run.optimizer.search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
+from core.shared.local_datetime import format_local_datetime as fmt_dt
 
 from .due_risk_items import NEAR_DUE_WINDOW_DAYS, incomplete_batches_payload
 from .optimizer_public_summary import project_public_algo_summary
@@ -41,12 +41,7 @@ _SUMMARY_MERGE_ERROR_CODES = {
 
 
 def _config_snapshot_dict(cfg: Any) -> Dict[str, Any]:
-    return ensure_schedule_config_snapshot(
-        cfg,
-        strict_mode=False,
-        source="scheduler.summary.config_snapshot",
-    ).to_dict()
-
+    return cfg.to_dict()
 
 def _comparison_metric(objective_name: str) -> str:
     return comparison_metric_key(objective_name)
@@ -383,7 +378,6 @@ def _dispatch_failure_detail_count(failure_details: List[Dict[str, Any]]) -> int
 
 
 def _build_result_summary_obj(
-    svc,
     *,
     ctx: SummaryBuildContext,
     runtime_state: RuntimeState,
@@ -433,7 +427,7 @@ def _build_result_summary_obj(
         "strategy_params": ctx.used_params or {},
         "algo": public_algo,
         "selected_batch_ids": list(ctx.normalized_batch_ids),
-        "start_time": svc._format_dt(ctx.start_dt),
+        "start_time": fmt_dt(ctx.start_dt),
         "end_date": serialize_end_date_fn(ctx.end_date),
         "invalid_due_count": int(runtime_state.invalid_due_count),
         "invalid_due_batch_ids_sample": list(runtime_state.invalid_due_batch_ids_sample[:10]),
@@ -460,7 +454,6 @@ def _build_result_summary_obj(
         # 排产未完成批次（有失败工序、finish 为截断值）不进超期/临期"健康"分类，
         # 在此单列风险口径（audit 2026-07-20 A18），构造口径见 due_risk_items。
         "incomplete_batches": incomplete_batches_payload(
-            svc,
             failure_details=failure_details,
             finish_by_batch=runtime_state.finish_by_batch,
             batches=ctx.batches,

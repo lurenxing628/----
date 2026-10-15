@@ -5,8 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from core.errors import ValidationError
-
-from ._sched_display_utils import fmt_dt as _fmt_dt
+from core.shared.local_datetime import format_local_datetime as _fmt_dt
 
 
 def _parse_date(value: Optional[str]) -> Optional[date]:

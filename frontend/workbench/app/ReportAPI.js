@@ -31,20 +31,19 @@
       throw new Error('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
   }
-  function validateLedger(data) {
-    const count = value => Number.isInteger(value) && value >= 0;
-    const amount = value => value === null || Number.isFinite(value);
-    const hours = row => ['effective_processing_hours', 'known_effective_processing_hours'].every(key => amount(row[key])) && count(row.unknown_hour_events);
-    const totals = row => ['events', 'production_reports', 'records'].every(key => count(row[key])) && row.events + row.production_reports === row.records && hours(row);
-    const operation = row => ['event_count', 'production_report_count', 'record_count', 'unknown_record_count'].every(key => count(row[key]))
+  const count = value => Number.isInteger(value) && value >= 0;
+  const amount = value => value === null || Number.isFinite(value);
+  const hours = row => ['effective_processing_hours', 'known_effective_processing_hours'].every(key => amount(row[key])) && count(row.unknown_hour_events);
+  const totals = row => ['events', 'production_reports', 'records'].every(key => count(row[key])) && row.events + row.production_reports === row.records && hours(row);
+  const operation = row => ['event_count', 'production_report_count', 'record_count', 'unknown_record_count'].every(key => count(row[key]))
       && row.event_count + row.production_report_count === row.record_count && amount(row.known_completed_quantity) && amount(row.remaining_quantity) && hours(row);
-    const record = row => ['legacy_event', 'production_report'].includes(row.record_kind) && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0
+  const record = row => ['legacy_event', 'production_report'].includes(row.record_kind) && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0
       && amount(row.quantity_done) && amount(row.effective_processing_hours) && ['factory_local', 'legacy_storage'].includes(row.recorded_at_time_basis)
       && (row.record_kind === 'legacy_event' ? row.legacy_evidence && typeof row.legacy_evidence === 'object' : typeof row.report_no === 'string'
         && Array.isArray(row.correction_history) && row.correction_history.length > 0 && row.correction_history.every(revision => revision.after && (revision.before === null || typeof revision.before === 'object')));
+  function validateLedger(data) {
     if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals))
-      || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation)
-      || data.detail && (!operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record)))
+      || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation))
       throw new Error('报工数据缺项或计数不一致，请刷新重试。');
   }
   function validate(result) {
@@ -59,13 +58,21 @@
     if (topics.includes(data.topic)) validateLedger(data);
     return result;
   }
+  function validateDetail(result) {
+    const data = result && result.data;
+    if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref
+      || !data || !data.plan || !data.plan.is_current_official || !data.detail || !data.detail.operation
+      || !operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record))
+      throw new Error('读到的工序详情不完整，请刷新重试。');
+    return result;
+  }
   function create(transport) {
     const io = transport || window.APSResourceAPI.create();
     return {
       async read(input, signal) { return validate(await io.query('analytics', input, signal)); },
       async detail(ref, input, signal) {
         if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
-        const result = validate(await io.query('analytics/operations/' + ref, input, signal));
+        const result = validateDetail(await io.query('analytics/operations/' + ref, input, signal));
         if (!result.data.detail || result.data.detail.operation.operation_ref !== ref
           || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref
           || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref)
@@ -88,5 +95,5 @@
       }
     };
   }
-  window.ReportAPI = { create, scope, table, readView, validate, topics, sorts };
+  window.ReportAPI = { create, scope, table, readView, validate, validateDetail, topics, sorts };
 })();

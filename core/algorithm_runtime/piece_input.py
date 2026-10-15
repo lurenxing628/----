@@ -1,9 +1,8 @@
 """Operation-local work and graph progress; original batches remain untouched."""
 
 from copy import copy
-from dataclasses import replace
 from datetime import datetime
-from typing import Tuple
+from typing import Any, Tuple
 
 from core.errors import ValidationError
 from core.shared.strict_parse import parse_optional_date
@@ -29,9 +28,25 @@ def external_group_key(op) -> Tuple[str, ...]:
     return key if piece is None else key + (piece,)
 
 
-def operation_dispatch_state(state, graph_state, op, batch):
+class _OperationDispatchState:
+    """Override one ready operation's release floor; every live counter still reads its run state."""
+
+    __slots__ = ("_state", "batch_progress")
+
+    def __init__(self, state, batch_id, earliest):
+        self._state = state
+        self.batch_progress = {batch_id: earliest}
+
+    def __getattr__(self, name):
+        return getattr(self._state, name)
+
+
+def operation_dispatch_state(state, graph_state, op, batch) -> Any:
     if graph_state is None or "end_time_by_op_id" not in graph_state:
         return state
+    states = graph_state.setdefault("operation_dispatch_states", {})
+    if op.id in states:
+        return states[op.id]
     ends = graph_state["end_time_by_op_id"]
     predecessors = graph_state["predecessor_op_ids_by_op_id"].get(op.id, set())
     if any(key not in ends for key in predecessors):
@@ -41,4 +56,6 @@ def operation_dispatch_state(state, graph_state, op, batch):
         ready = parse_optional_date(getattr(batch, "ready_date", None), field="ready_date")
         if ready is not None:
             earliest = max(earliest, datetime.combine(ready, datetime.min.time()))
-    return replace(state, batch_progress={op.batch_id: earliest})
+    local = _OperationDispatchState(state, op.batch_id, earliest)
+    states[op.id] = local
+    return local

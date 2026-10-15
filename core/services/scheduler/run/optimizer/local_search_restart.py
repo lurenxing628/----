@@ -125,7 +125,7 @@ def _evaluate_restart_candidate(
     """
     best_resource_pool = local_state.best.get("resource_pool")
     candidate_resource_pool = (
-        dict(best_resource_pool) if isinstance(best_resource_pool, dict) else {}
+        best_resource_pool if isinstance(best_resource_pool, dict) else {}
     ) or resource_pool
     decode_started = clock()
     evaluate = partial(
@@ -144,6 +144,7 @@ def _evaluate_restart_candidate(
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         resource_pool=candidate_resource_pool,
+        resource_pair_rank=local_state.best.get("resource_pair_rank") or {},
         objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
         schedule_fn=schedule_fn,

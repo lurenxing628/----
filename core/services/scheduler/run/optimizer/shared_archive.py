@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Optional, Set, Tuple
+from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Optional, Set, Tuple, cast
 
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
@@ -40,13 +40,12 @@ class ScheduleEvaluation:
 
 @dataclass(frozen=True)
 class ScheduleArchiveEntry:
-    """A metadata snapshot; owned rows are available only through materialize."""
+    """Metadata and evidence references owned by the archive."""
 
     entry_id: int
     content_key: ContentKey
     score_scope: ScheduleScoreScope
     evaluations: Mapping[str, ScheduleEvaluation]
-    origins: Tuple[Dict[str, Any], ...]
     evidence_origin: Dict[str, Any]
     first_found_elapsed_ms: int
     validation_state: str
@@ -74,7 +73,6 @@ class _ContentIdentity:
     entry_id: int
     content_key: ContentKey
     first_found_elapsed_ms: int
-    origins: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -86,15 +84,12 @@ class _StoredSchedule:
     evidence_origin: Dict[str, Any]
 
 
-def _snapshot_candidate(
-    candidate: Dict[str, Any], *, owned_results: Optional[List[ScheduleResult]] = None,
-) -> Dict[str, Any]:
+def _snapshot_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
     # Fixed business seeds and input resource pools remain owned by the run input.
     # All other containers belong to this completed decode, including its decisions.
     out = {key: value if key in ("resource_pool", "seed_results") else deepcopy(value)
            for key, value in candidate.items() if key not in ("results", "summary", "metrics")}
-    out["results"] = ([replace(result) for result in candidate["results"]]
-                      if owned_results is None else owned_results)
+    out["results"] = [replace(result) for result in candidate["results"]]
     out["summary"] = deepcopy(candidate["summary"])
     out["metrics"] = deepcopy(candidate["metrics"])
     return out
@@ -158,11 +153,18 @@ class SharedScheduleArchive:
         identity = stored.identity
         return ScheduleArchiveEntry(
             entry_id, identity.content_key, stored.score_scope, dict(stored.evaluations),
-            tuple(deepcopy(identity.origins)), deepcopy(stored.evidence_origin), identity.first_found_elapsed_ms, "valid",
+            stored.evidence_origin, identity.first_found_elapsed_ms, "valid",
         )
 
+    def view(self, entry_id: int, *, objective: Optional[str] = None) -> Dict[str, Any]:
+        """Return a stage's small fields while sharing the one owned decode payload."""
+        objective = self.primary_objective if objective is None else objective
+        self._require_objective(objective)
+        stored = self._entries[entry_id]
+        return dict(stored.payload, score=stored.evaluations[objective].score, _shared_entry_id=entry_id)
+
     def materialize(self, entry_id: int, *, objective: Optional[str] = None) -> Dict[str, Any]:
-        """Return owned stage containers; do not turn an incumbent into fixed business seeds."""
+        """Give a public result independent ownership at its publication boundary."""
         objective = self.primary_objective if objective is None else objective
         self._require_objective(objective)
         stored = self._entries[entry_id]
@@ -170,22 +172,37 @@ class SharedScheduleArchive:
         candidate["score"] = stored.evaluations[objective].score
         return candidate
 
-    def observe(
-        self, candidate: Dict[str, Any], *, validation_state: str, decode_completed: bool,
-        origin: Dict[str, Any], elapsed_ms: int,
-    ) -> ArchiveObservation:
-        if decode_completed is not True:
-            return ArchiveObservation(reason="decode_not_completed")
-        if validation_state != "valid":
-            return ArchiveObservation(reason="validation_invalid" if validation_state == "invalid" else "validation_unknown")
+    def register_decode(self, candidate: Dict[str, Any], *, verified: bool, elapsed_ms: int) -> ArchiveObservation:
+        """Own a new verified decode; unknown trials retain only a temporary number."""
         if not self._has_completed_payload(candidate):
             return ArchiveObservation(reason="candidate_payload_missing")
         completion = candidate["metrics"].completion
         if completion is not None and completion.expected_operation_count != len(self.expected_operation_ids):
             return ArchiveObservation(reason="completion_scope_mismatch")
+        key = schedule_content_key(candidate["results"])
+        if not verified:
+            identity = self._identities.get(key)
+            if identity is not None:
+                return ArchiveObservation(entry_id=identity.entry_id, reason="validation_unknown", reused=True)
+            entry_id = self._next_entry_id
+            self._next_entry_id += 1
+            return ArchiveObservation(entry_id=entry_id, reason="validation_unknown")
+        return self._register_verified(candidate, elapsed_ms=elapsed_ms, content_key=key)
+
+    def finish_observation(self, observed: ArchiveObservation, candidate: Dict[str, Any], *,
+                           origin: Dict[str, Any]) -> None:
+        """Attach the selected stage evidence without registering or copying its rows again."""
+        stored = self._entries[cast(int, observed.entry_id)]
+        if not stored.evidence_origin or observed.evidence_updated or observed.restored:
+            stored.evidence_origin = origin
+            stored.payload.update({key: value for key, value in candidate.items()
+                                   if not key.startswith("_") and key not in ("results", "summary", "metrics", "score")})
+
+    def _register_verified(self, candidate: Dict[str, Any], *, elapsed_ms: int,
+                           content_key: ContentKey) -> ArchiveObservation:
         scope = self._score_scope(candidate)
         evaluations = self._objective_evaluations(candidate)
-        key = schedule_content_key(candidate["results"])
+        key = content_key
         identity = self._identities.get(key)
         restored = False
         if identity is None:
@@ -193,16 +210,14 @@ class SharedScheduleArchive:
             self._next_entry_id += 1
             self._identities[key] = identity
         elif identity.entry_id in self._entries:
-            self._record_origin(identity, origin)
             stored = self._entries[identity.entry_id]
             if self._evidence_can_upgrade(stored.score_scope, scope):
-                payload = _snapshot_candidate(candidate, owned_results=stored.payload["results"])
-                evidence_origin = deepcopy(origin)
+                payload = dict(candidate, results=stored.payload["results"])
                 self._remove_partial_entry(stored, keep_empty_scope=not scope.is_complete)
                 stored.payload = payload
                 stored.score_scope = scope
                 stored.evaluations = evaluations
-                stored.evidence_origin = evidence_origin
+                stored.evidence_origin = {}
                 initialized, improved = self._update_best(stored)
                 self._evict_unreferenced()
                 return ArchiveObservation(identity.entry_id, reused=True, evidence_updated=True,
@@ -210,9 +225,8 @@ class SharedScheduleArchive:
             return ArchiveObservation(entry_id=identity.entry_id, reused=True)
         else:
             restored = True
-        self._record_origin(identity, origin)
-        payload = _snapshot_candidate(candidate)
-        stored = _StoredSchedule(identity, payload, scope, evaluations, deepcopy(origin))
+        payload = dict(candidate)
+        stored = _StoredSchedule(identity, payload, scope, evaluations, {})
         self._entries[identity.entry_id] = stored
         initialized, improved = self._update_best(stored)
         self._evict_unreferenced()
@@ -277,11 +291,6 @@ class SharedScheduleArchive:
                 and all(isinstance(result, ScheduleResult) for result in candidate["results"])
                 and isinstance(candidate.get("summary"), ScheduleSummary)
                 and isinstance(candidate.get("metrics"), ScheduleMetrics))
-
-    @staticmethod
-    def _record_origin(identity: _ContentIdentity, origin: Dict[str, Any]) -> None:
-        if origin not in identity.origins:
-            identity.origins.append(deepcopy(origin))
 
     def _score_scope(self, candidate: Dict[str, Any]) -> ScheduleScoreScope:
         arranged = [result for result in candidate["results"]

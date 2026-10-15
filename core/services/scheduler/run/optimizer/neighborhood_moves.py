@@ -7,7 +7,6 @@ from .neighborhood_move_support import (
     batch_id,
     bottleneck_machine_rows,
     changeover_count,
-    copy_resource_pool,
     earliest_due_pressure_batch,
     finish_by_batch,
     first_changeover_pair,
@@ -57,7 +56,7 @@ class NeighborhoodMove:
     fallback_used: bool = False
     fallback_reason: str = ""
     candidate_rejected: str = ""
-    resource_pool: Optional[Dict[str, Any]] = None
+    resource_pair_rank: Optional[Dict[Tuple[str, str], int]] = None
     diagnostics: Optional[Dict[str, Any]] = None
     decision_key: Tuple[Any, ...] = ()
     selected_operation_ids: Tuple[str, ...] = ()
@@ -189,12 +188,11 @@ def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodM
 
 
 def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str, Any]]) -> NeighborhoodMove:
-    pool = copy_resource_pool(resource_pool)
+    pool = resource_pool or {}
     picked = pick_resource_pair(pool)
     if picked is None:
         return noop_move(RESOURCE_ALTERNATIVE, reason="no_alternative_resource_pair", order=order, input_scope="resource_pool")
     operator_id, machine_id, old_rank = picked
-    pair_rank = pool.setdefault("pair_rank", {})
     new_rank = min(int(old_rank), -1)
     if new_rank == int(old_rank):
         return noop_move(
@@ -203,7 +201,6 @@ def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str
             order=order,
             input_scope="resource_pool",
         )
-    pair_rank[(operator_id, machine_id)] = new_rank
     diagnostics = {"alternative_pair_count": 1, "resource_pool_adjusted": True}
     return NeighborhoodMove(
         schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
@@ -213,7 +210,7 @@ def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str
         batch_order=tuple(order or []),
         changed_decision_count=1,
         expected_effect="try_alternative_resource_assignment",
-        resource_pool=pool,
+        resource_pair_rank={(operator_id, machine_id): new_rank},
         diagnostics=diagnostics,
         decision_key=("resource_alternative", tuple(order or []), resource_pair_count(pool)),
         selected_machine_ids=(machine_id,),

@@ -1,9 +1,9 @@
 """Select exact permanent identities for AQ; never interpret ledger protection."""
 
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
-from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.workbench.facts.run_input_rows import fail
 
+from .input_external import execution_groups
 from .piece_adoption_execution import _quantities
 
 
@@ -34,7 +34,7 @@ def _validate_execution_origin(op_id, projection, prior_refs):
 
 
 def execution_guards(svc, facts, operations, batches, projections, prev_version, *, piece_scope=None):
-    plan_rows = _latest_plan_rows(svc, prev_version)
+    plan_rows = facts.latest_plan_rows(prev_version)
     prior_refs = _prior_operation_refs(facts, plan_rows)
     selected_refs = {facts.operation_refs[op.id] for op in operations}
     if set(projections) != selected_refs | prior_refs:
@@ -48,4 +48,6 @@ def execution_guards(svc, facts, operations, batches, projections, prev_version,
     return build_execution_guardrails_from_projections(
         svc, operations, prev_version=prev_version,
         execution_projections=[projections[ref] for ref in sorted(prior_refs)],
+        facts=facts,
+        external_groups=execution_groups(facts, batches, operations),
     )

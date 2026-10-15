@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from contextlib import nullcontext
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.external_group_repo import ExternalGroupRepository
@@ -13,8 +14,16 @@ from .route_choices import preview_existing_route
 from .route_preview import ProcessRoutePreviewService
 
 
-def prepare_route(conn, logger, payload, operations):
-    preview = preview_existing_route(conn, ProcessRoutePreviewService(conn, logger).preview(payload["route"]), operations)
+def prepare_route(conn, logger, payload, operations, *, facts=None, preview=None):
+    if preview is None:
+        parser = ProcessRoutePreviewService(conn, logger, facts=facts)
+        with parser.reference_snapshot() if conn.in_transaction else nullcontext():
+            preview = parser.preview(payload["route"])
+    from .route_choices import route_choice_context
+
+    if not preview.get("_choices_projected"):
+        context = route_choice_context(conn, operations, facts) if operations else None
+        preview = preview_existing_route(conn, preview, operations, context)
     if not preview["can_confirm_route"]:
         raise WorkbenchCommandRejected("route_invalid", "路线预检未通过，请核对完整诊断后重新确认。", 422)
     existing = {row["seq"]: row for row in operations}
@@ -95,9 +104,7 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
     return False, False
 
 
-def apply_route(conn, part, operations, preview, identities):
-    if not preview.get("_choices_projected"):
-        preview = preview_existing_route(conn, preview, operations)
+def apply_route(conn, part, operations, preview, identities, *, part_updates=None):
     if not preview["can_confirm_route"]:
         raise WorkbenchCommandRejected("route_invalid", "路线中的工种已变化，请重新预检。", 422)
     op_repo = PartOperationRepository(conn)
@@ -112,8 +119,11 @@ def apply_route(conn, part, operations, preview, identities):
         changed = row_changed or changed
         if apply_defaults:
             defaults.add(row["sequence"])
+    fields = dict(part_updates or {})
     if part["route_raw"] != preview["route_raw"] or part["route_parsed"] != "yes":
-        PartRepository(conn).update(part["part_no"], {"route_raw": preview["route_raw"], "route_parsed": "yes"})
+        fields.update(route_raw=preview["route_raw"], route_parsed="yes")
+    if fields:
+        PartRepository(conn).update(part["part_no"], fields)
         changed = True
     if defaults:
         from .group_defaults import apply_default_groups

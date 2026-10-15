@@ -9,8 +9,8 @@
       <summary className="gantt-route-group-heading">{label}<small> · {group.nodes.length} 道</small></summary>{children}</details>
       : <div className="gantt-route-group"><h4>{label}</h4>{children}</div>;
   }
-  function GanttRouteList({ graph, targetRef, loadedRefs, onSelect, disabled = false, collapsible = false, children }) {
-    const index = React.useMemo(() => G.create(graph), [graph]);
+  function GanttRouteList({ index, targetRef, loadedRefs, onSelect, disabled = false, collapsible = false, children }) {
+    const graph = index.graph;
     const route = React.useMemo(() => G.route(index, targetRef), [index, targetRef]);
     return <section className="gantt-route" aria-label="完整工艺路线"><h3>完整工艺路线</h3>
       {graph.state !== 'available' ? <p className="gantt-route-summary">{graph.reason}</p> : !route ?
@@ -34,6 +34,7 @@
                     aria-label={'定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)}>{pieceLabel(parent)} · {operationLabel(parent)}</Button>)}</div>}
               </li>;
             })}</ul></RouteGroup>)}
+          {index.missingPredecessors.get(targetRef) > 0 && <p className="plan-muted">所选工序有 {index.missingPredecessors.get(targetRef)} 道前序未在本计划安排。</p>}
         </>}{children}
     </section>;
   }

@@ -1,16 +1,17 @@
 """Field namespace registration. Caller owns blueprint, app startup and schema."""
 
-from flask import g, jsonify, request
+from flask import g, request
 
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from core.services.workbench.execution.field_workspace_scope import PARAMETERS, normalize_scope, page_input
-from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_budget import PLAN_READ_SLOTS
-from web.routes.workbench.read_context import bind_read_snapshot
-from web.routes.workbench.write_context import issue_write_context, validate_write_context
+from web.routes.workbench.read_context import bind_read_snapshot, fact_value
+from web.routes.workbench.write_context import WriteContextFactory, validate_write_context
 
 
 def arguments():
@@ -19,12 +20,11 @@ def arguments():
     return request.args.to_dict()
 
 
-def field_context(subject, actions, state):
-    return issue_write_context(subject, actions, plain_plan_facts(state))
+field_context = WriteContextFactory(lambda state: fact_value(state if isinstance(state, str) else content_text(state)))
 
 
 def validate_field_context(token, subject, action, state):
-    return validate_write_context(token, subject, action, plain_plan_facts(state))
+    return validate_write_context(token, subject, action, state if isinstance(state, str) else content_text(state))
 
 
 def field_query(task_ref=None):
@@ -46,7 +46,7 @@ def field_query(task_ref=None):
             raise WorkbenchCommandRejected('constraint_conflict', '选中的工序和这条任务对不上，安排没有变化。请刷新页面后重新选择工序。')
         number = index // size + 1
     data = reader.detail(cohort, task_ref) if task_ref else reader.page(cohort, number, size)
-    response = query_success(data, snapshot)
+    response = query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
     response.headers['Cache-Control'] = 'no-store'
     return response
 
@@ -78,7 +78,7 @@ def save_report(action, ref):
     service = WorkbenchProductionReportService(g.db, context_factory=field_context)
     result = service.execute(action, ref, body['input'], request_key=body['request_key'],
                              validate_context=lambda subject, operation, snapshot: validate_field_context(body['write_token'], subject, operation, snapshot))
-    response = jsonify(result)
+    response = json_response(result)
     response.headers['Cache-Control'] = 'no-store'
     return response
 
@@ -113,7 +113,7 @@ def field_report_void_preview(report_ref):
     service = WorkbenchProductionReportService(g.db, context_factory=field_context)
     preview = service.preview('report_void', report_ref, body['input'])
     snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, preview.pop('snapshot'))
-    response = query_success(preview, snapshot)
+    response = query_success(preview, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
     response.headers['Cache-Control'] = 'no-store'
     return response
 

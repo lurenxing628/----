@@ -1,278 +1,95 @@
 ---
 doc_type: architecture
 slug: service-scheduler
-scope: core/services/scheduler 排产调度模块的内部结构现状——对外接口面、已分包子系统、根目录业务族、排产主链数据流、内部依赖方向与已知结构张力
-summary: 排产巨型模块系统地图，记录子包/业务族/主链及 A1/A3 解耦后的单向依赖；区分目录 SCC、父包感知文件 SCC 与纯显式文件 SCC
+scope: 当前工作台排产计算、事务事实、搜索会话、结果档案与正式采用职责
+summary: 工作台拥有受理和持久化，scheduler 只编排计算；事实、固定准备和已解码结果在各自作用域内共享
 status: current
 created: 2026-06-28
-last_reviewed: 2026-09-20
+last_reviewed: 2026-10-15
 updated: 2026-10-15
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
 ---
 
-# 排产调度模块(scheduler)架构现状
-
-> 状态:CodeStable 现状地图(只记现状,不含改进方案;治理路径见后续 roadmap / refactor)
-> 锚点根目录:`core/services/scheduler/`
-> 2026-09-12 本次只增补 §10 的算法合同；前文规模、引用计数及 SCC 数字保留各自历史统计口径，未重新普查，不代表本次源码规模。
-
-## 1. 定位与规模
-
-`core/services/scheduler/` 是 APS 的排产核心,也是全仓最大的单一模块:**43886 行 / 219 个 Python 文件**。它对上承接 web 层的排产请求,对下编排算法层(`core.algorithms`)、基础资料服务(equipment / material / personnel / process)、数据访问层(`data/repositories`),产出正式排产版本、甘特视图、资源派工、周计划、报表底数和现场执行事实。
-
-模块内部现有 7 个子包(`run/`、`summary/`、`analysis/`、`graph/`、`config/`、`execution/`、`contracts/`),根目录仍有 **79 个 Python 文件**；其中一部分已是指向 run/execution/低层叶子的兼容入口，不能再把“根目录文件数”直接等同于“根目录实现数”。
-
-## 2. 对外接口面
-
-对外公开入口集中在 `core/services/scheduler/__init__.py:18-57`,采用 **惰性 `__getattr__` 转出**(`_EXPORTS` 映射 + `__all__`),共 **13 个 Service**:
-
-| Service | 来源文件 | 职责 |
-|---|---|---|
-| `ScheduleService` | `schedule_service.py`(根) | 排产运行总门面(抢锁、收输入、编排、持久化) |
-| `BatchService` | `batch_service.py`(根) | 批次(生产订单)主数据 |
-| `CalendarService` | `calendar_service.py`(根) | 工作日历 |
-| `ConfigService` | `config/config_service.py`(**唯一来自子包**) | 排产策略配置门面 |
-| `GanttService` | `gantt_service.py`(根) | 甘特视图任务/资源负荷装配 |
-| `ResourceDispatchService` / `…ActualRecordService` / `…ExecutionService` | `resource_dispatch_*`(根) | 资源派工视图、实际记录、执行态 |
-| `OperationExecutionFeedbackService` | `operation_execution_feedback_service.py`(根) | 现场执行反馈/事实写入 |
-
-**关键事实**:13 个 Service 里 12 个落在根目录文件、仅 `ConfigService` 来自子包；7 个子包的 `__init__.py` 都不做大规模再导出，`execution/` 与 `contracts/` 的 `__init__.py` 保持空文件，避免扩大父包初始化链。子包能力通过完整模块路径消费。即:**Service 门面仍在根，但执行事实与中立合同实现已有明确叶子归属**。
-
-## 3. 内部结构总览(地图)
-
-```
-core/services/scheduler/
-├── __init__.py                 13 Service 惰性门面
-│
-├── 【已分包子系统】
-│   ├── run/       (73 文件 / 17686 行)  排产执行引擎:收输入→跑算法→多候选→校验→持久化
-│   ├── summary/   (20 文件 / 3520 行)   结果摘要组装:公开摘要+降级+体积护栏
-│   ├── config/    (21 文件 / 5011 行)   排产策略配置:读写/预设/校验(自洽,唯一直连 data)
-│   ├── graph/     (13 文件 / 1714 行)   可选工序图分析(NetworkX,延迟 import 隔离)
-│   ├── analysis/  (2 文件 / 87 行)      诊断合同事实面(休眠/兼容,见 §8)
-│   ├── execution/ (5 文件 / 513 行)     执行事实/快照/计划 scope/派工执行态叶子
-│   └── contracts/ (6 文件 / 812 行)     summary/run 共用 DTO、计数解析与公开投影叶子
-│
-└── 【根目录业务族】(按"业务对象"聚集,尚未成包)
-    ├── 计划身份内核 plan_core      计划身份/版本/视图上下文(全模块共享底座)
-    ├── 甘特 gantt                  甘特图渲染全链
-    ├── 甘特调整 gantt_adjustment   手工调整草稿/校验/发布
-    ├── 资源派工 resource_dispatch  派工单视图 + 实际记录导入
-    ├── 现场事实 exec_feedback      执行快照/事实 provider/反馈(共享服务层)
-    ├── 工作日历 calendar           日历引擎/管理/门面
-    ├── 延误诊断 delay_diag         延误根因诊断
-    ├── 批次主数据 batch            批次 CRUD/模板/导入(与排产执行主链基本分离)
-    ├── 周计划导出 week_plan        Excel/打印纸面/合计行
-    ├── 排产门面 sched_svc          schedule_service + history + repository_bundle
-    └── 共享层 shared_util / run_shim  纯工具 + run/ 回兼垫片
-```
-
-依赖大方向:**根目录门面/业务族 → summary → run → config/execution/contracts，summary 也单向依赖 config/contracts；底层再指向 models / algorithms / infrastructure / data**。A1 后 scheduler 根、config、run、summary 均不在 hard 目录 SCC 中。
-
-## 4. 七个已分包子系统
-
-> **2026-09-20 分包后现状（基础边界治理 P3）**：根目录业务族已分子包——`gantt/`（16）、`resource_dispatch/`（12）、`calendar/`（9，含 operator_shift）、`run/optimizer/`（38，含 signature_support 与 graph_ready_profiles/feature_basis）、`run/optimizer/graph/`（44，入口 `ready.py`）；`batch` 族迁出为 `core/services/batch/`，排产门面不再懒导出 `BatchService`；`analysis/` 与 7 个根目录转发垫片删除；PyInstaller 冻结锚迁到 `web/bootstrap/_frozen_import_anchor.py`。根目录只剩计划身份内核、现场事实包装、延误诊断、`schedule_service` 门面、共享工具，以及四个为解双向依赖下沉的叶子：`week_range`、`dispatch_task_ids`、`overdue_batch_ids`、`task_chain`。族间方向单一：gantt/resource_dispatch → 根、gantt → calendar、run → optimizer → graph；硬目录环 0（`tools/scan_import_cycles.py` 基线）。搬迁计划见 `.codestable/roadmap/foundation-boundary-governance/moves/scheduler-p3*.json`。下文 §4 analysis、§5 表格、§8.3–8.5 保留为分包前的历史记录。
-
-### run/ —— 排产执行引擎
-- **职责**:收集排产输入 → 跑算法 / 多候选对比 → 校验产出 → 持久化。排产主链的执行核心。
-- **核心文件**：`run/schedule_orchestrator.py` 拥有选中结果校验、版本分配与事务；`run/schedule_input_collector.py` 收集输入，`run/schedule_candidate_runner.py:run_candidate_comparison` 将一次共同优化结果发布为业务代表，`run/schedule_shared_optimizer.py:optimize_shared_schedule` 拥有真实优化执行；`run/schedule_persistence.py` 保存正式结果。工作台计算复用相同入口，在用户采用前保持正式版本不变。
-- **optimizer 现状**：`optimizer/runtime.py` 唯一拥有 scheduler_factory、clock、rng_factory、run_ortools_warmstart 及预算 clock 绑定。一次 `SharedSearchBudget`、`SharedDecodeSession` 和 `SharedScheduleArchive` 服务全部目标；共享阶段每次完成一个真实动作后交回控制权。MultiStart、LocalSearch、GRASP/IG 与图 Profile/Repair/IG 保留真实算法和业务邻域，解码、复用、成本与跳过由共同会话记录。SGS局搜实际effective邻域为`sgs_dispatch_rule`；GRASP/IG仅支持`batch_order`，配置邻域与实际执行邻域分别记录。
-- **graph ready 现状**：图特征和内部权重 profile 继续生成真实搜索动作，排序结果经共同解码与完整校验后才成为候选。外层固定3/5/7档已退出结果生成；业务代表按实际目标 winner 和取舍发布。批次空交期继续生成 no-due 特征，非法非空交期明确报错；图循环、分件 DAG、SGS 单轮评分和 decode checkpoint 各保留原职责。
-- **对外依赖**:`core.errors`/既有 infrastructure 兼容错误入口、`core.models.enums`、`core.algorithms` 根 façade，以及 `core.algorithm_contracts.*` / `core.algorithm_runtime.*` 中立叶子、`core.shared.strict_parse`、`core.services.common.build_outcome`;不直接 import `data`(经 svc 句柄)。
-- **对其它子包**:→ graph(13 处,**全是函数内延迟 import**)、→ execution(6 处)、→ contracts(4 处)、→ config(3 处)；→ summary 已为 0。
-
-### summary/ —— 排产结果摘要投影
-- **职责**:把算法原始结果投影成"对外可见摘要 + 降级状态 + 体积护栏"的展示合同。
-- **核心文件**:`summary/schedule_summary.py` `build_result_summary`(总入口)、`summary/schedule_summary_assembly.py:381` `_build_result_summary_obj`(组装枢纽)、`summary/optimizer_public_summary.py` `project_public_result_summary`(web 直连投影)、`summary/summary_size_guard.py:271` `apply_summary_size_guard`(体积护栏)。
-- **对外依赖**:`core.models.enums`、`core.services.common.build_outcome`；公开标识脱敏与 projection 实现在 contracts 叶子。
-- **对其它子包**:→ config(5 处)、→ contracts(22 处)、→ run(4 处)。summary→run 仍是现有 helper 调用，但 run→summary 已清零，因此是单向依赖，不再成环。
-- **web 直连**:无。原 `web/routes/domains/scheduler/scheduler_analysis.py`、`scheduler_week_plan.py` 已随旧路由层于 2026-09-18 删除，摘要只经 `core/services/workbench` 投影到工作台 API。
-
-### config/ —— 排产策略配置
-- **职责**:配置读写、预设管理、字段校验/强转、活跃预设溯源。
-- **核心文件**:`config/config_service.py` `ConfigService`(对外门面)、`config/config_snapshot.py`(数据库快照读取与共同 Snapshot/ensure 的跨包出口)、`config/config_field_spec.py`(页面元数据)、`config/config_page_save_service.py`(旧公开配置保存入口)。
-- **共同语义**:`core/models/schedule_config_runtime*` 维护唯一字段规格、Snapshot、转换及权重公式。服务层保留页面标签、方案缺省适配与配置事务；工作台同次候选覆盖和默认保留窗口共用原始配置快照。可变输入在算法入口仍重新验证，不能按对象类型跳过。
-- **依赖现状**:`core.errors`、`core.shared.field_labels`、`core.services.common.safe_logging`;**唯一直连仓储的子包**——`config_service.py` import `data.repositories.config_repo.ConfigRepository`。
-- **对其它子包**:**0**(完全自洽,不依赖 run/summary/graph/analysis)。
-- **当前入口**:工作台排产参数经只读配置快照进入 run/preflight；旧 `scheduler_config*` HTTP 页面已退役，公开 Python 服务和仍消费的 setter/日历读取保持兼容。
-
-### execution/ —— 现场执行事实叶子
-- **职责**:集中 `ExecutionFact`/provider、执行快照、计划身份 scope 读取和派工行执行态 enrichment。
-- **核心文件**:`execution/execution_fact_provider.py`、`execution/execution_snapshot.py`、`execution/operation_execution_scope_read.py`、`execution/resource_dispatch_execution_enrichment.py`。
-- **依赖现状**:只依赖 models 与 execution event repository，不反向依赖 scheduler 根、run、summary、config。provider 提供 `positive_op_ids`，snapshot 单向依赖 provider；旧有 provider⇄snapshot 的函数内 import 已消失。
-- **兼容面**:根目录四个同名模块仅显式 re-export，同一符号在旧/新路径满足对象 identity。
-
-### contracts/ —— run/summary 中立合同叶子
-- **职责**:集中 `SummaryBuildContext` 等摘要 DTO、summary count parser、graph/optimizer 公开投影与安全过滤。
-- **核心文件**:`contracts/schedule_summary_types.py`、`summary_count_parse.py`、`graph_public_summary.py`、`optimizer_public_safety.py`、`optimizer_public_search_report.py`。
-- **依赖现状**:只依赖 models/common 等更低层能力，不反向依赖 root/run/summary/config；run 与 summary 可同时单向消费。
-- **兼容面**:summary 下五个旧模块仅显式 re-export，旧/新路径对象 identity、签名、dataclass 字段/默认值由 A1 边界测试锁定。
-
-### graph/ —— 可选工序图分析
-- **职责**:基于工序前驱关系建图、算关键路径/拓扑层/图警告。package docstring 明确"图分析是可选基础设施,import 期不得要求 NetworkX"(`graph/__init__.py:1-6`)。
-- **核心文件**:`graph/analysis_service.py:14` `ScheduleGraphAnalysisService`、`graph/precedence_builder.py`(建图)、`graph/metrics.py`(指标)、`graph/nx_runtime.py` `NetworkXUnavailable`(缺失隔离闸)。
-- **依赖现状**:几乎零外部依赖(仅 `graph/scoring.py` 引 `core.algorithms.greedy.dispatch.ready_queue`)。
-- **唯一消费者**:run/ 的 5 个 `schedule_graph_*` 文件,其中 4 个直接函数体内延迟 import graph 子包(如 `run/schedule_graph_report.py:158-162`),贯彻"不在 import 期拉 NetworkX"。代价是 graph 的真实接入点散落在 run/ 里、不在 graph 包边界上。
+# 排产调度模块架构现状
 
-### analysis/ —— 诊断合同事实面(休眠/兼容)【已删除，2026-09-20】
-- **职责**:仅 `analysis/schedule_diagnostic_contract.py`,提供诊断合同构造器。
-- **现状**:在 core/web 中**零 Python import**,自带 `# O23 KEEP` 注解(`analysis/schedule_diagnostic_contract.py:5-7`)说明活护栏已迁到 `web.viewmodels.scheduler_analysis_diagnostic_helpers`。占一个独立子包却不在活路径上,属"为兼容刻意保留"的事实面(tests/ 是否引用未深扫,**TODO: 待确认**)。
+本文以 2026-10-15 当前工作区已落地代码为准。单次准备重构的整合检查、性能材料和平台延期状态由[方案及执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)统一维护；文末专题段落保留各次交付时的历史口径。
 
-## 5. 根目录业务族（分包前记录；gantt / gantt_adjustment / resource_dispatch* / calendar 四族已于 2026-09-20 进子包，batch 族已迁出）
+## 1. 入口与职责
 
-79 个根目录业务文件按业务对象聚成 13 族 + 2 共享层。多数文件无 docstring,职责按文件名 + import 结构推断;每族"可否独立成包"判断依据是"族内互依紧、跨族缠绕松"。
+工作台的 `core/services/workbench/run/` 拥有排产预检、持久受理、worker、候选保存和正式采用。`core/services/scheduler/run/` 消费准备好的输入，执行算法、校验结果并生成摘要。正式版本在采用事务中分配，计算阶段使用明确的版本上下文。
 
-| 族 | 代表文件 | 职责 | 内聚现状 |
-|---|---|---|---|
-| **plan_core 计划身份内核** | `schedule_plan_query_service.py`(in-deg **9**)、`schedule_result_view_context.py`(in-deg 7)、`schedule_plan_identity_builder.py`、`version_resolution.py`(in-deg 5) | 计划身份/版本/视图上下文最底层语义 | **全模块共享底座**,被 gantt/dispatch/adjustment/exec/delay_diag 五大族单向依赖 |
-| **gantt 甘特** | `gantt_service.py:44`(族内总装)、`gantt_range.py`(in-deg 6)、`gantt_tasks.py`、`gantt_critical_chain.py` | 甘特图渲染全链 | 族内自洽;纠缠点 `gantt_tasks`(被 dispatch 借)、`gantt_range`(被 plan_core 借) |
-| **gantt_adjustment 甘特调整** | （2026-09-20 整族退役：Draft / Validation / Scenario / Publish 四个服务、投影与草稿仓储随旧路由层删除；`ScheduleAdjustmentScenario*` 表与模型保留，工作台计划目录经 `WorkbenchPlanCatalogRepository` 分页读取） | 手工调整草稿→校验→投影→发布 | 已退役 |
-| **resource_dispatch 资源派工** | `resource_dispatch_service.py:41`、`…rows.py`、`…execution_service.py` | 派工单(资源×工序)视图 | 与 gantt + exec_feedback 双向纠缠 |
-| **resource_dispatch_actual 实际派工** | `resource_dispatch_actual_record_service.py`、`…records.py`、`…import*.py` | 实际记录录入/校验/Excel 导入 | 内聚高(6 文件成链),dispatch 大族里相对独立子簇 |
-| **exec_feedback 现场事实** | `execution/` 实现、根目录四个兼容 wrapper、`operation_execution_feedback_*` | 现场执行事实采集/反馈(契约 4.10) | 共享服务叶子被 adjustment/dispatch/actual/run 单向依赖；provider→scope/enrichment、snapshot→provider，不再靠 `TYPE_CHECKING` 或函数内 import 拆环 |
-| **calendar 工作日历** | `calendar_service.py`、`calendar_admin.py`、`calendar_engine.py` | 日历引擎/管理/门面 | 干净单向链,稳定底座(in-deg 4) |
-| **delay_diag 延误诊断** | `schedule_delay_diagnosis_service.py`、`…clues.py`、`…utils.py` | 排产延误根因诊断 | 内聚高、只回依赖 plan_core,最干净的可独立候选之一 |
-| **batch 批次主数据** | `batch_service.py`、`batch_template_ops.py`、`batch_write_rules.py`、`batch_excel_import.py`、`batch_copy.py`、`batch_query_service.py` | 批次 CRUD/模板/写规则/导入/复制 | **围绕 `batch_service.py` 形成批次主数据簇**;`batch_service.py` 同目录导入 `batch_copy` / `batch_excel_import` / `batch_template_ops` / `batch_write_rules`,并通过 `batch_template_ops` 从模板建批次;对 run/summary/graph 等排产执行族仍基本无反向耦合 |
-| **week_plan 周计划导出** | `week_plan_excel.py`、`week_plan_print_sheet.py`、`week_plan_daily_summary.py` | 周计划/派工单 Excel/打印/合计 | 纯展示转换层,三文件互不 import |
-| **op_edit / resource_pool / sched_svc** | `operation_edit_service.py` / `resource_pool_builder.py` / `schedule_service.py`、`schedule_history_query_service.py`、`repository_bundle.py` | 工序编辑 / 资源池构建 / 排产运行门面 | op_edit 孤立;resource_pool 只被 sched_svc 用;sched_svc 是 run+summary 引擎对外门面 |
+`core/services/scheduler/__init__.py` 不再装配或再导出服务。实际消费者从各职责文件深路径导入；当前保留以下真实服务职责：
 
-**两个横切共享层**:
-- **shared_util(纯工具/兼容入口)**:`_sched_display_utils.py`(in-deg **8**)、`_sched_utils.py`、`history_summary_parser.py`；`number_utils.py` 与 `degradation_messages.py` 已是分别指向 `core.shared` 和 `core.models` 的单向兼容入口。
-- **compat shim(回兼垫片)**:原有 **7 个** `schedule_*`/`freeze_window` 薄入口指向 run；新增 **4 个** execution 同名入口指向 execution。兼容层只从新实现导出，不允许新叶子反向引用 wrapper。
+| 服务 | 当前职责 |
+|---|---|
+| `CalendarService` | 工作日历及资源班次查询 |
+| `OperationExecutionFeedbackService` | 现场执行反馈与事件写入 |
+| `ScheduleService` | 批次工序查询和内制、外协字段编辑 |
 
-**跨族枢纽文件(被多族共依,分包时的"胶水")**:`schedule_plan_query_service`(in-deg 9,5 族共依)、`_sched_display_utils`(8,4 族)、`schedule_result_view_context`(7)、`gantt_range`(6)、`execution/operation_execution_scope_read`、`version_resolution`(5)、`gantt_tasks`(gantt↔dispatch 纠缠点)。
+批次主数据位于 `core/services/batch/`。原 `ScheduleService.run_schedule/_run_schedule_impl`、输入 collector 的生产采集链和 `schedule_persistence.py` 已退役；`schedule_input_contracts.py` 保留共同输入合同，输入领域校验、资源事实和实际错误类型仍由当前消费者使用。排产配置通过 `core/models/schedule_config_runtime*` 的共同字段、Snapshot 和解析规则进入计算；旧配置服务装配及页面保存入口已经退出。
 
-## 6. 排产主链数据流
+## 2. 当前分层
 
-入口在根目录 `ScheduleService`(**不在子包内**):
+| 位置 | 所有者职责 |
+|---|---|
+| `workbench/run/` | 预检、输入准备、worker、保存、查询与采用 |
+| `scheduler/run/` | 纯计算编排、共同优化、图准备、产出校验 |
+| `scheduler/run/optimizer/` | 共享预算、解码会话、结果档案与各阶段的小视图 |
+| `scheduler/run/optimizer/graph/` | Profile、Repair、IG 以及父代和真实续排决策 |
+| `scheduler/summary/`、`scheduler/contracts/` | 当前摘要组装及公开投影合同 |
+| `scheduler/graph/` | 可选工序图分析，按实际功能延迟加载 NetworkX |
+| `scheduler/calendar/`、`scheduler/execution/` | 日历与执行事实叶子 |
+| `core/algorithms/`、`core/algorithm_runtime/`、`core/algorithm_contracts/` | 算法、动态运行态与中立输入合同 |
 
-1. **触发**:`schedule_service.py:197` `run_schedule()` 抢 `_RUN_SCHEDULE_LOCK` 单实例锁 → `:226` `_run_schedule_impl()`。
-2. **收输入(→run/)**:`collect_schedule_run_input`(批次归一/窗口归一/可重排状态/执行护栏/算法输入构建)→ `ScheduleRunInput`。
-3. **编排(→run/)**:`schedule_service.py:321` 调 `run/schedule_orchestrator.py:279` `orchestrate_schedule_run`,把 `optimize_schedule` 和 `build_result_summary` 作为**函数参数注入**(`optimize_schedule_fn` / `build_result_summary_fn`)——这是 run 内部解耦的关键先例。
-4. **选解(run/)**:`_run_plan_selection` →(关候选)`optimize_schedule`(调 `core.algorithms` 的 `GreedyScheduler`/`StrategyFactory`)/(开候选)`run_candidate_comparison` + `_graph_analysis_for_summary`(经 `schedule_graph_*` 延迟拉 graph 子包)。
-5. **校验产出(run/)**:`build_validated_schedule_payload` → `ValidatedSchedulePayload`。
-6. **投影摘要(→summary/)**:调注入的 `build_result_summary`(`summary/schedule_summary.py`,内部装配/降级/护栏)。
-7. **持久化(run/,非 simulate)**:`persist_schedule` 在事务内分配版本并落库。
-8. **返回**:组 `result` dict 回 web。
+主要方向为工作台领域服务 → scheduler 计算 → algorithms/runtime/contracts；算法和事实叶子保持各自职责。具体目录依赖约束继续由现有分层检查维护，本文不沿用旧文件数或历史 SCC 数字描述当前规模。
 
-一句话链:`ScheduleService.run_schedule`(根)→ `collect_schedule_run_input`(run)→ `orchestrate_schedule_run`(run)→ {`optimize_schedule` + `core.algorithms` | `run_candidate_comparison`→graph(延迟)} → `build_validated_schedule_payload`(run)→ `build_result_summary`(summary)→ `persist_schedule`(run)。
+## 3. 一次排产的数据流
 
-## 7. 跨层与依赖方向现状
+1. 工作台受理在事务内捕获输入、执行事实与当时正式计划，保存持久任务及来源。
+2. `WorkbenchRunWorker` 在私有计算副本中创建 `ProductionFactsCapture`；事实复核和 `compute_candidate_run` 共用这一份捕获。
+3. `PreflightFacts` 消费已捕获的表、最新安排索引、执行与资源事实，`prepare_candidate_run_input` 生成 `CandidateRunInput`。组合入口在同一只读快照内直接计算；独立 `compute_prepared_candidate_run` 对跨时点输入继续核对当前事实。
+4. `orchestrate_schedule_run` 调用 `run_candidate_comparison`，执行一次 `optimize_shared_schedule`；选中结果、校验 payload 和对象摘要沿同一计算链交接。
+5. worker 的结果准备构造实际保存文本和读模型；完成事务重新取得当时事实，再保存候选与终态。保存推荐、当前查看和比较基准各有自己的身份。
+6. 正式采用由 `candidate_adoption*` 或试调采用入口在写事务中核对来源、当前执行事实、资源约束与版本，并原子写入正式计划和回执。
 
-- **主要跨层方向仍清楚，但并非全仓零反向依赖**:scheduler 不反依赖 web；算法层不依赖 service，并已形成 `algorithms → greedy → dispatch → algorithm_contracts/algorithm_runtime` 主方向，runtime 只单向依赖 contracts；web 主要经 `ScheduleService` 等门面消费 scheduler。基础层 A2 已改成 `migrations → infrastructure → models → shared → core.errors` 单向结构：models/shared 不再反借 infrastructure，migrations 复用父层事件合同但 infrastructure 不再反借 child common；实现提交 `d6d41e1a` 已完成前后工作区均干净的 19 步完整门禁。
-- **服务主链大体单向，但目录商图并非全 DAG**:`report → scheduler → {equipment → process/personnel, process, personnel, material}` 是主要方向；同时现存 A5 `plugins⇄services/common`、A6 `report⇄report/exporters` 等目录 SCC，须与“主要调用方向”分开表述。
-- **config 自带持久化通道**:config/ 是唯一直连 `data` 仓储的子包,抽象层比其它纯计算/投影子包"厚"。
-- **graph 接入靠延迟 import**:静态调用图(symbol_locator / checkup)对 run→graph 这些边标"动态/盲区",外人难从包结构看出 graph 何时被触发。
+`ProductionFactsCapture` 的作用域是一份事务快照，`latest_plan_rows` 等派生索引也归它拥有。`PreflightFacts`、`BatchFacts`、`GenerationFacts`、`DecisionSource` 分别复用本次操作已取得的行、永久引用、解码表和共同来源；新请求、新事务或真实写入后的事实由对应入口重新取得。
 
-## 8. 已知结构现状、已解除张力与剩余张力
+## 4. 一次搜索的固定准备与结果所有权
 
-> 本节只陈述现状事实与客观影响,**不含改进方案**。治理路径与执行证据归 roadmap / refactor。
+- `NativeSchedulePreparation` 归本次搜索所有，准备固定工序、批次、种子、停机、基础资源、图拓扑和断点固定编码。`GreedyScheduler.schedule` 的独立原始输入入口准备一次；共享会话直接调用共同准备后的核心。
+- `SharedDecodeSession` 在创建时选定实际解码器及输入适配，请求只表达批序、派工规则、图开关和优先级、资源覆盖或偏好、允许变化的参数。已解析参数连同 warnings、param_fallbacks 直接交解码，缺省起点使用会话起点。
+- 静态资格和资源组合共同准备，动态占用、换型、需求退休和排槽仍随搜索运行态实时计算。`RepairParentPreparation` 供 repair 与 IG 共用；内部合法覆盖只复制被修改的工序。
+- 图准备和图特征各在实际搜索作用域内生成一次。旧多候选 `core_cache`、缓存 factory、候选侧重复拓扑匹配和缓存专用深拷贝已经删除。
+- `SharedScheduleArchive.register_decode` 在真实解码出口取得安排身份，计算一次内容 key 并接管已验证 payload；已登记安排复用 `entry_id`，完成性证据升级仍沿原 revision 处理。
+- 未验证 checkpoint trial 只查询已有安排身份；未命中时从同一编号器取得临时编号，随后释放 key，不进入档案、best 或已验证 seen。trial 的实际结果由原 IG 待验证路径短暂持有，正式采用前继续完整验证。
+- 内部阶段、请求命中和目标同步使用 `archive.view`，共享档案的 results、metrics 和原摘要；目标 score、请求 warnings 和阶段决策属于各自的小视图。`materialize` 只在最终 `CandidatePlan` 发布出口赋予外部结果独立所有权。
+- 报告只比较 `entry_id + objective + 完成性摘要 + metric/score`，保留同安排不同评价的真实差异。旧结果扫描和另一份结果身份投影已经退出。
+- 多来源由已有 events 保存；`origins`、`_record_origin` 和报告反向驱动内容登记的旧入口已删除。档案只持选中 `evidence_origin`，事件通过 entry/request/event 编号串联，最终发布时复制选中证据。
 
-### 8.1 A1 已解除：root/config/run/summary 改为单向依赖
-- **起点**:A1 原为 scheduler 根、config、run、summary 四目录 hard SCC，共 49 条圈内规范化模块边；其中 run→summary 与 summary→run 各 4 条。
-- **当前方向**:run 原消费的 `SummaryBuildContext`、count parser、graph/search public projection 已归入 `contracts/`，run→summary 为 0；summary→run 的 4 个既有纯 helper 调用保留为单向边。config/run/summary 不再反借根目录 number/degradation 实现，run 直接消费 `execution/`。
-- **兼容边界**:旧 root/summary 路径仍通过显式 re-export 可用，旧新符号为同一对象；`execution/__init__.py`、`contracts/__init__.py` 不做聚合导出。没有用函数内 import、`TYPE_CHECKING` 或动态 `__getattr__` 隐藏结构边。
-- **静态终态(2026-07-12)**:生产 761 模块、5 个 hard 目录 SCC；含测试 1455 模块、6 个 hard 目录 SCC。A1 四目录均不在任何 hard SCC；其他 SCC 的成员和圈内边逐项未变，production / with-tests unresolved 分别仍为 6 / 44。父包感知 hard 文件 SCC 仍为 9，纯显式 hard 文件 SCC 仍为 0。
-- **基线终态**:双 v2 基线只删除各自 1 个 A1 块(每份 59 行)，未新增或改写其他 SCC；因此旧 A1 若回潮会被 `--fail-on-new-cycle` 重新阻断。行为等价由 identity、签名、正逆序新解释器 import 和 scheduler 专项测试锁定。
-- **clean proof**:实现提交 `c2243cd0` 在前后工作区均干净的条件下完成 19/19 步门禁；4716 collected、unexpected failure 0，required proof 为 253 targets / 2467 nodeids。
+`OptimizerRuntime` 保留 scheduler_factory、clock、rng_factory、run_ortools_warmstart 四项实际依赖。共同预算记录真实解码成本、复用、跳过和目标机会。MultiStart、LocalSearch、GRASP/IG 与图 Profile/Repair/IG 继续执行真实算法；普通 SGS、分件 DAG、合法点工序、种子和完整验证各自保留原业务语义。
 
-### 8.2 A3 已解除：algorithms / greedy / dispatch 改为主链 + sibling leaves
-- **当前方向**：`core.algorithms → core.algorithms.greedy → core.algorithms.greedy.dispatch` 保留 façade/执行主链；纯合同归 `core.algorithm_contracts`，共享运行时归 `core.algorithm_runtime`，后者只单向依赖前者。两个 leaf 的 `__init__.py` 都不聚合导出，也不反向依赖 algorithms/services。
-- **兼容边界**：根 `GreedyScheduler` identity、签名、`__module__` 和根 `__all__` 不变，`core/algorithms/__init__.py` 字节不变；旧日期/排序/类型/runtime 路径显式同对象 re-export。dispatch 和旧 `greedy.algo_stats` 继续保留真实执行模块 globals，既有 monkeypatch 路径仍有效。
-- **静态终态（2026-07-13）**：生产 779 模块 / 3 hard 目录 SCC，含测试 1475 模块 / 4 SCC；A3 消失，A4/A5/A6/tests 记录不变，unresolved 仍为 6/44。A3 相关父包感知文件圈从 21/94 严格缩为 8/24；hard/runtime 文件 SCC 总数仍为 9/13，纯显式口径仍为 0/4。
-- **证明边界**：调用图两个独立候选逐文件确定；7329 个旧 callable 全映射，新增仅 8 个 context adapter callable。实现已提交为 `f422b88c`，并在该固定 HEAD 的干净工作区前后完成无缓存、无续跑 19/19 步门禁；4731 collected、unexpected failure 0，manifest=`passed`。该 clean proof 只绑定此实现提交。
+## 5. 保存结果与真实出口
 
-### 8.3 分包标准不统一,79 文件平铺根目录【已解除，2026-09-20：业务族分子包】
-- 已按"计算流程"切出 run/summary/graph/config,但 resource / schedule / gantt 等多组**业务族**仍平铺根目录,每族体量都不小。一半按流程分包、一半按业务族平铺,目录可读性与心智负担偏高。
+新运行发布 1—3 份实际业务代表，各目标 winner 可以指向同一永久候选；部分结果按真实完成集合表达。`WorkbenchRunCandidateTasks` 拥有安排正文，`GenerationFacts` 提供共同解码表；`decision-read-v1` 在受理、完成事务和明确迁移中构建，查询直接消费保存投影。旧 balanced/health/权重、复用、失败和跳过记录按其保存版本解释。
 
-### 8.4 batch 族与排产执行主链基本分离【已解除，2026-09-20：迁出为 core/services/batch/】
-- `batch` 族 6 文件(批次主数据 CRUD/模板/导入/复制)通过 `batch_service.py` 串起多个同目录 helper,不是静态调用图里的全孤岛。它本质仍是"批次主数据服务":主要依赖 `data.repositories`+`core.models`,没有被 run/summary/graph 这些排产执行族反向调用,归在 scheduler 内属历史归类。
+摘要对象在计算内交接，持久化文本在实际保存边界生成并直接落库。Web 的 `json_response` 对最终信封编码 UTF-8，并发送同一份字节；大小限制也针对实际产物。内部 `execution_workspace` 的 HTTP 大小预演已删除。归档读取消费保存证据，公式与内容确认由原落档、采用和迁移边界负责。
 
-### 8.5 兼容 shim 双入口【已解除，2026-09-20：7 个 run 垫片退役；execution 的 4 个转发件仍由 A1 边界测试锁定】
-- 根目录 7 个 `schedule_*`/`freeze_window` 与 4 个 execution wrapper 保留旧 import 路径；仓内生产代码直接依赖 `scheduler.run.*` / `scheduler.execution.*`，旧根路径只服务 tests/外部兼容消费。wrapper 不得承载业务实现或反向被新叶子依赖。
+当前 Schema 为 43：v41/v42 的保存读模型和原生业务目标候选继续保留，v43 只调整实际查询所需索引。`schema_compat.py` 接纳明确的 v39—v43 表示差异，业务行和未声明结构变化继续参与事实比较。普通启动检查结构；新库、升级、恢复等数据进入边界执行完整数据合同。
 
-### 8.6 config_snapshot 是隐性跨包公共依赖
-- `config/config_snapshot.py` `ensure_schedule_config_snapshot` 被 run(2 处)和 summary(5 处)直接钻进 config 子包取用,共 8 处。它已成事实上的"公共契约层"却物理埋在 config/ 内,config 内部重构会同时震动 run + summary。
+## 6. 相关入口与历史演进
 
-## 9. 相关文档
+- [工作台外壳](workbench-shell.md)、[甘特显示模型](ui-gantt.md)记录宿主、token、输出和前端职责。
+- [单次准备方案](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)及同目录执行记录维护本轮范围和验收状态。
+- 2026-06-28 的 43886 行、219 个文件、79 个根目录文件属于当时普查。2026-07 A1/A3 拆除循环依赖，2026-09-20 将 gantt/resource_dispatch/calendar 分包、batch 迁出、旧 analysis 与转发垫片退役；上述规模和引用计数保留为历史事实。
+- 2026-09 的多候选外层预算、原生内容认证、图缓存与旧 `ScheduleService` 运行链属于本轮重构前结构，已由当前单会话与工作台拥有者接替。历史验收材料保留各自源码和环境范围。
 
-- `.codestable/architecture/ARCHITECTURE.md` —— 项目架构总入口。
-- `.codestable/audits/2026-06-28-circular-imports/` —— 全仓循环依赖普查；其中 A1/A2/A3 已由独立 refactor 解除，A4/A5/A6/tests 继续按 roadmap 治理。
-- `.codestable/refactors/2026-07-10-scheduler-a1-dependency-decoupling/` —— A1 scan/design/checklist/apply 证据。
-- `.codestable/architecture/ui-gantt.md` —— 甘特图结果查看页面(前端职责/缩放/只读边界),与本文档的后端 service 视角互补。
-- `core/services/scheduler/__init__.py` —— 本模块对外 13 个 Service 的惰性门面。
+## 历史专题记录（2026-10-13—2026-10-14）
 
-## 10. 算法能力与效率合同（2026-09-12 增补）
+以下保留这些专题交付时的业务口径和证据入口；当前接线、Schema、固定准备与结果所有权以本文前五节为准。
 
-本节对应已进入当前工作区的实现，记录调度内部的职责和边界。模块测试、完整入口对照与最终门禁是不同证据；验收状态统一见 `.codestable/features/2026-09-12-algorithm-capability-efficiency/algorithm-capability-efficiency-acceptance.md`，本节不声明最终 HEAD 的 clean-worktree proof。实施与定向验收已完成，最终整仓门禁按用户要求未追加完成；稳定证据见[最终记录](../../evidence/algorithm-capability-efficiency/2026-09-13-final/README.md)。
-
-### 10.1 候选总预算与搜索阶段
-
-`run_candidate_comparison` 的所有候选共用同一个 monotonic 总截止时间。每个未运行方案从剩余总时间中取得显式份额；图准备也消耗该份额，未使用时间继续留在总池。预算组件仅用同目标、完整成功方案的实际改善和有限耗时调整下一份额，并为其他未试候选保留至少半个均分份额；未知观测保持中性，不预测下一候选收益。SGS 不能自行延长截止时间。`SearchBudget` 是冻结的候选预算合同，`optimize_schedule(..., search_budget=None)` 接受它，并同时受配置的单次优化上限约束。首次正式基线先于可选搜索；多起点、warm-start、非图构造具有阶段截点，给后续阶段保留机会。2026-09-14 图阶段的固定 repair 预留由三阶段轮转取代，见 §10.6；外层预算不变。
-
-每次启动可选正式解码前检查 `now >= deadline`。已开始的 SGS 允许完成，下一次解码停止，准备耗尽份额的方案记录为 skipped。阶段份额耗尽记录 `reserved_for_later_phases`，不冒充整个优化超时。公开 `assigned_time_budget_ms` 与配置预算分开；预算诊断只通过白名单投影准备耗时、优化额度和超时等聚合字段。原生真实解码计数留在内部 search report，不进入该公共投影。
-
-代码锚点：`run/schedule_candidate_runner.py:167`、`run/optimizer_search_budget.py:15`、`run/optimizer_search_budget.py:54`、`run/optimizer_deadline_guard.py:9`、`contracts/optimizer_budget_projection.py:15`。原生多起点去重在 `run/optimizer_multi_start_dedup.py:167`：只有完整、成功的原生决策与输入/日历/事务证据一致时省去重复解码；每个策略仍进行原参数校验和排序构造，自定义对象或方法不套用该证明。
-
-### 10.2 真实插入位置与稀缺资源
-
-`MachineTypeState` 归 `algorithm_runtime` 所有，保留原 dict 尾工种接口，同时维护真实时间邻接工种。时隙找到后按实际前后邻居计算换型增量，避免用机器尾工种评价早期插空。`ResourceDemand` 记录当前未完成需求，成功、失败、跳过与图阻塞的退休由运行态统一负责；只在合法资源组合的实际完工时间和换型增量均相同时比较稀缺占用。提示只计会完全剥夺其他待排工序全部合格组合的选择；不更改资格池、固定资源、工时或已有种子，也不把换型次数升级成顺序相关 setup 时长模型。exact SimpleNamespace的工序类型读取直接访问当前原生字段，不缓存mutable字段；一般对象与潜在回调仍保留原入口时序。
-
-代码锚点：`core/algorithm_runtime/resource_quality.py:16`、`core/algorithm_runtime/resource_quality.py:75`、`core/algorithm_runtime/resource_quality.py:95`、`core/algorithm_runtime/resource_demand.py:153`、`core/algorithm_runtime/run_state.py:189`。运行态向派工暴露内容证书，算法层仍单向依赖 `algorithm_runtime`，不反向依赖 scheduler service。
-
-### 10.3 SGS 评分与时隙复用
-
-`NativeSgsReuse` 属于一次 SGS 运行，只缓存成功的固定机人评分；新建缓存要求当前 ready 集合中机器和人员均独占，并且至少有两个可比较的固定资源候选。自动分配且无固定机人组合的输入跳过无收益缓存并用普通占用时间轴；首次helper导入前的模型覆盖、动态getter和自定义metaclass不会被认作原生证书。已有条目只有输入、批次进度、前置完成、资源占用、插入邻居与日历政策等相关内容一致才可复用。`OwnedTimeline` / `OwnedSegments` 由运行态维护可验证变更，普通借入容器仍按实际内容检查；同长度修改、方法覆盖、自定义输入或回调不能借用原生证书。
-
-评分估算可以在选中后交给正式 dispatch，但正式执行仍重验适用证书；证书不成立便重新估算，不复用错误。日历实现通过中立注册入口提供原生政策证书，避免 `algorithm_runtime` 反向 import service。交期字符串解析仅缓存 exact `str` 的成功结果，按 strict mode 区分，最多 4096 条；无效输入和自定义转换仍按原入口暴露错误。
-
-代码锚点：`core/algorithms/greedy/dispatch/sgs_reuse.py:168`、`core/algorithms/greedy/dispatch/sgs_reuse.py:341`、`core/algorithm_runtime/owned_timeline.py:11`、`core/algorithm_runtime/sgs_estimate_reuse.py:10`、`calendar_sgs_certificate.py:11`、`core/algorithms/greedy/dispatch/sgs_scoring.py:45`。跨设备、人员、停机的连续忙段仅在原生索引与恒定日历窗口认证后合并跳过；任意真实空隙、工作窗边界和自定义行为都限制该快路径，见 `core/algorithm_runtime/busy_block_skip.py:12`、`:50`。
-
-### 10.4 图候选、目标特征和修补
-
-GraphReady profile显式接收四个正式目标，保留既有v1基线；batch_workload_v1基础排序和operation_successor_v1增强排序明确并存，通过feature basis选择各自指标。增强特征按真实后继唯一计量负担、按前置最长路径和毛日历计算释放偏移；基础启发只在明确子行中保存，不覆盖顶层正确工量。piece 菱形汇合不能重复累加工量，合并外协按现有身份规则去重，冻结 seed 的完成时间进入释放条件但不重复加入待排负担；必要的 piece 图缺失时明确报错。停机后净窗口与毛容量预算仍分别表达，没有改变毛容量或跨日效率的既有业务语义。
-
-正式 elite repair 默认最多 3 轮，`max_rounds` 严格正整数并封顶 8；轮数、候选总额和同一deadline继续限制搜索，真实未耗尽尾部可在有限轮数内继续。批次顺序、关键块/空档导出的工序优先序以及单工序合格机人选择交错生成，`RepairDecision` 只承载决策，不承载新排程时间。每个候选由真实 SGS 解码，固定维度、资格、DAG 和种子继续受约束；只有严格改善且输出指纹不同的结果才能生成新 elite。下一轮优先强化改进并保留未探索旧elite；top_k按不同已解码parent计槽，同parent的所有basis变体共享该槽和每次最多8个邻域决策，避免重复父排程挤占探索名额。候选家族先保留代表，并按实际解码成本预留；原总预算与60候选上限不变。成功延期和真正预算耗尽分别计数。通用 GRASP/IG 和局搜对 GraphReady 仍保持 §4 的跳过边界，新增图邻域属于 GraphReady 自己的正式阶段。
-
-代码锚点：`run/optimizer_graph_ready_profiles.py:105`、`run/optimizer_graph_ready_workload.py:14`、`run/optimizer_graph_ready_v2_features.py:43`、`run/optimizer_graph_ready_repair_contract.py:23`、`run/optimizer_graph_ready_repair.py:161`、`run/optimizer_graph_ready_repair_decisions.py:13`、`run/optimizer_graph_ready_repair_portfolio.py:90`。
-
-### 10.5 图准备复用与工作台只读快照
-
-图影响计数先证明全图每节点至多一个后继，再使用 O(N+E) 反向动态规划；一般 DAG 使用真实弱连通分量中的位集合精确去重，不能简单累加菱形后继。联合评分只做一次指标合法化，同时产出精确整数 bonus 和原排序 key。comparison 内可缓存权重无关的健康/ready/资源匹配模板；缓存键保留模式与指标模式，每个候选的可变容器独立复制，指标和权重仍重新验证。该缓存不跨排产运行使用。
-
-工作台组合入口在已有 `candidate_read_snapshot` 内连续 prepare 后立刻 compute，中间不向调用者暴露 prepared 对象，也没有完整事实指纹消费者，因此不生成该指纹。公开独立 prepare 默认捕获完整事实指纹，`compute_prepared_candidate_run` 仍重新扫描全部事实并拒绝 stale 输入，共享计算体要求活动的 query_only 事务。准入回调消费一次真实预检的业务校验与新鲜度结果，独立 freshness 解析入口仍重核。原 worker 私有数据库快照、最终事实复核与持久化边界保留；每个候选和选中结果的 payload 校验也保留，没有加入结果缓存或可复用的新鲜度 token。
-
-代码锚点：`graph/impact_counts.py:10`、`graph/scoring.py:107`、`run/schedule_graph_cached_projection.py:40`、`core/services/workbench/run/compute.py:22`、`core/services/workbench/run/compute.py:70`、`core/services/workbench/run/compute.py:83`、`core/services/workbench/run/worker.py:64`。
-
-### 10.6 图阶段轮转与经过验证的 IG 续排（2026-09-14）
-
-2026-09-15 补充：从 128 道工序起，图 IG 采用位置预筛、独立邻域预算和状态收敛后的尾段复用。先完成一道工序的最小邻域，再根据实测成本控制规模；全局截止与局部超时分别处理，保留完整验证预算。尾段必须证明未来资源、依赖和优先键一致后才能回放，采用前仍独立完整解码。唯一图键的大实例使用 ready 堆，其首项罚分不为零时恢复完整评分。小实例保留原求解器；详见 [局部任务决定](../compound/2026-09-15-decision-ig-local-tasks-and-tail-reuse.md) 和 [最终验收](../issues/2026-09-15-ig-local-search/ig-local-search-fix-note.md)。以下为共用基础行为，具体大实例预算和反馈以补充决定为准。
-
-本节描述当前工作区实现；同条件质量验收单独记录于 `.codestable/features/2026-09-14-graph-ready-iterated-greedy/`。三个阶段共享最好已验证方案；尚未启动且实际可用的阶段优先获得机会，之后以累计调度用时和最近 8 个任务的严格改进率排队，收益最多带来 25% 优势。每任务至少记 1ms 公平排队用量，真实耗时不填造。IG 首次等待可修补的 v2 父解，profiles 无法继续时允许合法 baseline 起步；保留 v1 anchor 的初始化解码成本。因此极短预算不能无条件保证三个阶段都解码。
-
-IG 每个试解及其必要全量验证后交回控制权，原位插回、拒绝、变差和预算中断都进入生成器统计。暂停期间共享 incumbent 立即更新，父解上下文只在完整迭代边界切换。成功生成器续用；停滞后从有界解池换起点并重置规模；指数退火仅控制搜索行走。解池、评分缓存按批序、工序顺序、资源覆盖和 profile 区分，已验证参考检查点缓存按解池容量淘汰。
-
-启动选择限于解池的最佳分数层，等分时随机；解池与邻域使用独立随机流，避免选择起点改变随后邻域序列。`min_overdue` 下，若每批单工序、无图依赖/固定工序、已成功排在同一内部机人组合，默认启用额外交期起点。它以观察工时构造 Moore/Hodgson 队列并作有界探测，最多 2048 次，仍受真实截止限制；只返回顺序，不产生排程时间或正式分数。返回顺序必须重新经 SGS 验算，实际分数较差时仍从原起点搜索。`due_date_seed=false` 可关闭此构造；经典单机模型的结论不扩大为带日历、释放时间、权重和资源变化的 APS 最优性保证。
-
-前缀加速通过 SGS 状态检查点恢复，继续禁止经 `seed_results` 注入可变工序时间。签名覆盖原生工序、批次、资源、种子、日历及解码参数；日历证书绑定业务表和执行态资源释放，SQLite 可写事务不缓存未提交内容。未知日历不能恢复旧检查点；仅在捕获开始前缺少日历证书时，IG 明确上报禁用该加速器并使用全量解码。输入不一致、读取失败和哈希不等价仍明确报错。
-
-续排试解计入实际工作，但不能占用已验证指纹集合或成为公开最好方案；严格改善必须先在同一预算内全量解码并核对业务输出摘要和完整 score。预算不足保留此前已验证方案。profiles + repair 共用原 60 候选安全上限，IG 有独立上限；验证、参考检查点重捕获和首 pick 前拒绝分别记账，不能把三阶段合计描述成最多 60。
-
-`initial_seed` 的构造耗时和探测数与 SGS 解码分开，`selected` 表示用作行走参考，`incumbent_improved` 才表示严格改善全局最好方案。`parent_order_consistent` 记录实际参考分数是否等于原父方案分数；采用更优交期起点时可以为 false，不能独立用它判定同序重解码失败，需结合 `initial_seed.selected` 和完整等价核对结果。
-
-代码锚点：`run/optimizer_graph_ready_stage_scheduler.py`、`run/optimizer_graph_ready_iterated_greedy_iteration.py`、`run/optimizer_graph_ready_iterated_greedy_incumbent.py`、`core/algorithms/greedy/dispatch/sgs_checkpoint.py`、`calendar_checkpoint_certificate.py`。技术决定见 `.codestable/compound/2026-09-14-decision-graph-search-rotation-and-checkpoint.md`。
-
-## 变更日志
-
-- 2026-09-14：补齐 §10.6 三阶段用时轮转、完整上下文接力、检查点验证与有界交期起点；验收采用本次定向测试和同条件算法对照，按用户要求不跑全门禁。
-
-- 2026-09-13：归并最终共享parent/basis额度、基础与增强特征、全剥夺提示及原生回调边界；实施和定向验收完成，最终整仓门禁未完成，见统一验收。未更新历史规模/SCC统计。
-
-- 2026-09-12：增补 §10 当前算法预算、资源选择、SGS/图准备复用、正式图修补与只读快照合同，并链接本轮统一验收；未刷新历史规模或 SCC 统计。
-
-## 2026-10-13 同次候选决策入口
+### 2026-10-13 同次候选决策入口
 
 - `schedule_candidate_selection.py` 保存选择规则版本、实际 balanced 容差与所选分数；`WorkbenchRunResultRepository.prepare_run_result` 在分配永久候选引用后，将推荐、原始分数最佳候选和算法健康基准一次映射到运行收据。同次查看基准由查询选择，两组身份分别负责计算解释与当前差值。
 - `core/services/workbench/run/decision.py` 在一个 SQLite 只读快照中读取运行、候选全集、归档和任务；`GenerationFacts` 共同解析 JSON、Schema 与永久身份。查询消费归档事实，当前业务资料修改由正式采用预检处理。
@@ -280,7 +97,7 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - `decision_selection.py` 从保存收据给出固定选择依据，旧收据用原候选键映射为永久引用。`decision_export.py` 将同一查询结果与目录写为 CSV/XLSX；总览快照直接保存范围和身份字段。
 - 实施与实际验证记录：`../features/2026-10-13-decision-comparison-loop/`。本节只更新相关链路，前文历史规模和算法治理记录保留各自时间口径。
 
-## 2026-10-13 共同交付投影与决策影响
+### 2026-10-13 共同交付投影与决策影响
 
 - `plan/delivery_projection.py` 为共同批次投影、汇总与成对差值入口。搜索覆盖、可排工序覆盖与全链交付独立；合法待料后道为 `deferred`，普通漏排为 `incomplete`，缺事实为 `unknown`。`due_state` 区分合法交期、`9999-12-31` 未指定和缺失/非法交期。完整且合法交期才有已知拖期；全未指定为 `not_applicable`，拖期为 null。已知小计与未知覆盖同时返回，保留微秒时间精度。
 - `due_eligible_count`、`excluded_due_count`、`invalid_due_count` 分别计指定、未指定和无效交期，合计全部批次；`due_evaluation_count` 为指定加无效，等于已知加未知数量。工艺完成状态与交期风险分别表达。候选、正式计划、值班台、试调、候选分析及导出均提供自己的保存事实并消费共同规则；算法保存的原分数与采用事务保持原职责。
@@ -289,7 +106,7 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - `decision_impact.py` 投影逐批和逐工序变化、资源变化、保存工艺的标准工时依据与甘特钻取身份；`decision_queries.py` 共用筛选、稳定排序和 20/50 分页。明细快照绑定共同范围、基准和筛选，翻页不改变快照。`decision_workspace.py` 提供正式基准只读甘特；`decision_export.py` 复用同一投影输出总览、批次、工序和完整比较。当前指标目录版本为 `decision-preparation-v4`。
 - 第 2 阶段实施、真实边界运行、浏览器与导出证据见 `../features/2026-10-13-decision-delivery-impact/`。主对话独立验收已通过；实际准备需求分解见下面第4阶段共同需求入口。
 
-## 2026-10-13 共同资源投影与资源影响
+### 2026-10-13 共同资源投影与资源影响
 
 - `facts/archived_calendar.py` 将保存的全局日历、停机、个人日历、轮班、资源状态、Schema 版本和永久身份适配为逐自然日容量，复用领域日历规则。运行与试调保存全表，默认规则和例外均从自己的保存事实解释；当前资料不回填历史。未知日独立保留，休息、禁排或停机扣尽为真实 0；夜班包含前日尾段。
 - `resource_intervals.py` 按永久资源和工序建立索引；`resource_projection.py` 复用 `ResourceUtilizationMetrics` 计算班表内区间并集占用、独立工序合并后的累计需求、班外占用、重叠、日峰及冲突身份。点事件无资源占用。`resource_summary.py` 按固定资源集合汇总，容量加权占用率和 CV 纳入正容量空闲 0；均值为零时 CV 不适用。缺安排与已知空安排区分，独立容量事实保留。
@@ -298,7 +115,7 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - `decision_resource_export.py` 与比较屏幕复用同一资源服务，输出资源及逐日 CSV/XLSX。全比较增加资源影响表，逐日入口可追加单资源逐日表；资源行覆盖使用原生数量，XLSX“覆盖工序”逐侧／分类／工序保存完整永久身份，避免Excel单格长度造成截断。逐日冲突数量为原生整数，“资源冲突”按区间和实际成员保留工序、行及批次身份。数字保持原生类型、null为空，百分数按单位转换。既有候选、值班台和试调同义资源读者使用共同规则；`facts/current_resource_calendar.py` 只适配已读的本事务日历、Schema和身份，明确 `current_transaction_snapshot` 来源。保存候选／试调使用 `archived_resource_calendar` 来源。
 - 本阶段设计、实施验收及原始验证入口见 `../features/2026-10-13-decision-resource-impact/`，主对话独立验收状态分别记录。
 
-## 2026-10-13 共同工序需求与工种切换
+### 2026-10-13 共同工序需求与工种切换
 
 - `algorithm_runtime/operation_effort.py` 的 `internal_requirement_parts` 是实际排槽及需求账的共同标准公式；`OperationEffort` 保存准备、加工、总需求、实际量依据、准备状态与种子角色。`piece_input.operation_batch` 决定分件自身量或共同批量，外协周期／合并组独立于内制标准小时。
 - `scheduler/run/operation_effort.py` 在真实执行保护、冻结与种子分离后构造需求账。新排使用真正排槽量，保留种子从其最后正式采用来源读取原分解；原需求目标保持原值，本次AJ目标及剩余量独立记录。执行中、完成和旧档缺项各有状态，现行安排和执行保护继续生效。
@@ -307,7 +124,7 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - `algorithm_contracts/changeover_events.py` 按真实工种ID生成事件及计数；首道、同工种和零时点为0，缺身份保留缺项，重叠附冲突。设备完整序列先建立前驱，再按后序开始落入左闭右开窗口筛选。新排结果、执行／冻结种子和原生插入惩罚透传同一工种ID；原算法保存计数单列来源。
 - `DecisionChangeovers` 提供双方保存事件、永久工序／安排行引用及甘特钻取。目录为 `decision-preparation-v4`，新增8项准备／加工和2项实际切换指标；资源共同计量继续使用 `available_occupancy_v1`。第4阶段证据和独立验收状态见 `../features/2026-10-13-decision-preparation-events/`。
 
-## 2026-10-13 选择解释与推荐取舍
+### 2026-10-13 选择解释与推荐取舍
 
 - 原选择器和健康计分处分别保存 `candidate-selection-evidence-v1`、`candidate-health-evidence-v1`。实际目标完整score、目标／全score并列、baseline／sequence裁决、balanced四项实际检查及真正覆盖标记、健康原数和原阈值在原完成事务中映射为永久候选引用。选择规则版本保持 `candidate-selection-v1`，原求解和健康结果沿用。
 - `facts/completion_scope.py` 统一精确完成、普通未完整、合法暂缓和未知批次集合，分别保留实际剩余工序、原runtime需求／归档标准／本次AJ目标。`facts/common_completed_delivery.py` 是共同完成批次交集的交付差值入口，复用原交付算术；整次受理未知摘要继续保留。
@@ -317,7 +134,7 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - 推荐读模型使用 `decision-recommendation-v1`，共同52项指标目录仍为 `decision-preparation-v4`。既有v1推荐字段保持兼容，新解释和当前取舍各有独立字段；页面、旧实际比较入口和CSV/XLSX复用同源投影。推荐、完成性和当前采用预检分层，采用继续走原preview及事务内复验。
 - 本阶段实施、浏览器、原始导出与独立验收状态在 `../features/2026-10-13-decision-recommendation/`；本节交接时第5阶段已通过独立复验，第6阶段已派发，第7—8阶段等待派发。
 
-## 2026-10-13 候选优化过程
+### 2026-10-13 候选优化过程
 
 - `optimizer/process_evidence.py` 接入共同 `OptimizationSearchReportState` 的实际评估、接受、拒绝与阶段入口；评估、接受、当前解接受、严格改善、未核验试验、解码调用各有真实口径。原 `search_report` 语义延续，新严格改善按同完成子集的完整评分判断，旧含同分的最好解更新独立表达。
 - 完成后按真实总耗时等宽分桶保留桶末当前最好结果，并固定保留首次有效、首次应排完整和最终结果；重合标记合并，每候选最多200点。运行期只保留有效变化的小事件，最终采样同时记录原事件数、保留数、桶宽及首尾覆盖；原代表尝试排名与12条保留规则延续。
@@ -328,14 +145,14 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - 代表尝试在真实接受结果确定后保存来源、profile、累计耗时、对应评价序号、接受和严格改善。`attempt_decision_evidence` 冻结当时比较对象的目标、评价范围、评分与业务指标，只有同一评价范围且资料齐全时提供差值；原12条保留排名继续承担代表选择，行间名次不承担时间先后。首次无比较对象、未核验试解、不同范围和旧缺项各自保留真实状态。GraphReady生成、修复、IG及原多起点／局部搜索共用该保存职责。
 - 过程读模型 `decision-process-v1` 与共同52项目录版本独立。GET、页面和四grain导出消费同一投影，当前页只限制屏幕；完整导出保留全部过程成员，普通16表、逐日18表。设计与验收材料见 `../features/2026-10-13-decision-optimization-process/`。
 
-## 2026-10-14 整页决策工作台共同投影
+### 2026-10-14 整页决策工作台共同投影
 
 - `decision_source.operation_change` 作为真实工序差异共同入口；批次完工相同仍可有工序变化，缺料／未安排状态及缺项沿原归档读取。`decision_queries` 的 `delivery_filter` 与 `selected_batch_ref` 支持当前风险筛选和过滤外选中项；`difference_summary` 复用三个完整受理范围指标的既有差值及覆盖判据。
 - 资源 `decision-resource-v4` 在同一保存班表与区间上按小时、真实可排班段、天、周汇总；周比例为占用合计除容量合计，单列日峰及高负荷时段。小时筛选窗口由当前实际桶范围确定并随公开 filters 传给导出，完整比较窗保持原 scope。零容量判断区分已知休息、班表缺项和未保存实际工作片段；保留跨度跨休息不生成实际加工证据。
 - 正式资源投影的 `available_overlap_hours`、`has_overlap` 和 `conflict_segments` 为归档可排窗口内不同永久工序的重叠；自然跨度与原 `segments` 留作安排详情。三道工序同时重叠一小时仍是一小时冲突区间，重复计时继续使用其独立指标。
 - `decision_process` 的完整 `attempts` 与分页 items、CSV／XLSX 共用同一保存尝试投影，求解记录、计数、采样和优化器行为保持原职责。Job `scope_summary` 读取不可变接收归档中的业务批次、工序数及保存目标；终态失败原因复用历史共同投影。新增写入保留真实时钟微秒，既有保存时间原样读取。
 
-## 2026-10-14 历史事件、保存来源与同条件指标
+### 2026-10-14 历史事件、保存来源与同条件指标
 
 - `core/models/workbench_decision_history.py` 统一`decision-history-v1`的查询、条目身份和快照范围。`web/routes/workbench/decision_history.py`注册历史读取与CSV/XLSX导出两个GET入口，沿已有只读预算、响应及快照绑定协议；历史页和文件各消费同一服务。
 - `history/catalog.py:read_history_catalog`只组织四类事件：运行、候选正式采用、试调正式采用、旧正式版本。运行以保存推荐为默认结果，缺推荐保留缺项；采用以真实回执和采用来源为准。同run多次采用分别保留事件，运行仍计一次；已有现代采用回执覆盖的旧版本只保留采用事件，原历史行和出处继续存在。发生时间保留原工厂本地、UTC回执和旧保存时间的各自依据。展示序号按完整未筛选运行目录的发生时间及永久引用确定；查询、分页、选择和导出共同读取此标签，永久事件身份继续沿原引用。
@@ -344,17 +161,3 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - `history/metrics.py:project_history_metrics`复用共同交付、资源、需求、切换及决策投影，算法保存统计和旧摘要保留自己的版本、范围与来源。资源缺省窗口从保存来源的排产起点起固定7天，可统一调整窗口天数或指定所有来源共用的绝对窗口；缺起点为窗口未知。实际起止、资源成员、占用分子和容量分母随条目返回。`gate_history_metric`依次核对生产条件、目标、指标充分性、单位／版本、范围、真实覆盖成员和资源窗／容量分母，成立时才提供同条件改善。
 - `history/queries.py`统一排序、20／50分页、过滤外选中条目及明确基准。`projection.py`生成当前页走势、范围变化标记、连接判断与成对结论；未知或口径不一致保留断点和观测原数。查询及导出共享请求内来源缓存与条件对照，分页不另建事实来源。`export.py:read_history_export/write_history_export`读取筛选全集与完整成对字段，CSV输出一个分区，XLSX追加指标口径、比较范围和数据缺项；批次总量同时保留数值、已知小计、真实覆盖成员、单位、版本和保存出处，数量缺项进入同一缺项表；原数、空值、类型和出处随文件保留。
 - 设计依据：[历史走势与同条件对照](../features/2026-10-14-decision-history-trends/decision-history-trends-design.md)。本节记录新增只读职责，求解、接收、保存归档、试调及正式采用继续沿原事务入口。
-
-## 11. 统一优化、保存读模型与历史兼容（2026-10-15）
-
-一次排产只构造一份共同输入和解码会话，目标方向分享真实已验证安排与成本。`run_candidate_comparison`发布1—3份具有实际业务取舍的代表，所选主目标与各方向winner可指向同一永久候选。新选择版本`business_objectives_v1`保存主目标、目标方向、winner及缺项原因；读取按保存版本解释，旧balanced/health/权重字段仍保持原值。旧外层固定档生成、重新选优和独立解码cache退出执行职责，内部图profile及真实搜索算法继续使用共同会话。
-
-`optimizer/runtime.py`保留四项真实运行时依赖，显式runtime优先；传入SearchBudget时仅替换clock。共同预算拥有实际成本、停止及目标机会；首次有效、首次应排完整和各目标首次发现均为实际累计时刻，总运行耗时独立保存。SGS循环覆盖在共同入口同时决定实际首解和模式池，普通SGS仍使用普通profile；piece仍要求真实DAG。
-
-v41的`decision-read-v1`在受理/完成事务或显式旧库迁移中构造不可变运行/候选读模型，v42扩展原生候选kind和目标role；保留原字段类型、永久引用及历史记录。`decision_source.py`只读加载保存投影与规范成员，公开投影维持解码形状；候选分析安排直接从同一保存源消费18列安排，避免重建整份排产输入。失败/中断无候选终态仍有真实保存原因。
-
-资源首屏由`decision_resource_workspace.py`在同一只读快照和DecisionSource内协调原summary/resources，两份信封各自绑定scope/token。每资源日历与measurement由当前请求拥有；完整窗口统计和筛选保持全范围，完整cell/明细只在实际输出时构造。资源读取仅保留整窗与可见明细的日值，旧pressure消费者默认保留完整日值；前缀批量流和单区间共用原数值公式，部分班表、未知、半开/零长及跨夜语义保持。
-
-当前配置四项`graph_candidate_weight_count/graph_selection_policy/graph_overdue_tolerance_count/graph_tardiness_tolerance_ratio`已退役，新runtime/页面写入和新preset使用有效字段；旧ScheduleConfig、preset历史和artifact保留，旧客户端提交退役字段明确要求刷新。内置常规/深入预算为10/30秒，用户明确预算及旧自定义preset预算继续保持。
-
-实现与分阶段验收见[统一优化feature](../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-design.md)。U5六项20k正式复测及主验收已保存；U6实现、整合门禁与最终验收分别记录，Windows实机验证按用户延期。

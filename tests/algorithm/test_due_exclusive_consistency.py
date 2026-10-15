@@ -7,21 +7,6 @@ from types import SimpleNamespace
 import pytest
 
 
-class _StubSvc:
-    logger = None
-
-    @staticmethod
-    def _normalize_text(value):
-        if value is None:
-            return None
-        s = str(value).strip()
-        return s if s else None
-
-    @staticmethod
-    def _format_dt(dt: datetime) -> str:
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
 def test_due_exclusive_consistency() -> None:
 
     from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
@@ -56,7 +41,6 @@ def test_due_exclusive_consistency() -> None:
     assert metrics.overdue_count == 1, f"evaluation overdue_count 应为 1，实际={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"边界拖期应为 0，实际={metrics.total_tardiness_hours}"
 
-    svc = _StubSvc()
     cfg = SimpleNamespace(freeze_window_enabled="no", auto_assign_enabled="no", freeze_window_days=0, objective="min_overdue")
     summary = SimpleNamespace(
         success=True,
@@ -91,8 +75,7 @@ def test_due_exclusive_consistency() -> None:
         simulate=False,
         t0=time.time(),
     )
-    _overdue, _status, result_summary_obj, _json_text, _ms = build_result_summary(
-        svc,
+    _overdue, _status, result_summary_obj, _ms = build_result_summary(
         ctx=summary_ctx,
     )
     overdue_batches = result_summary_obj.get("overdue_batches") or {}

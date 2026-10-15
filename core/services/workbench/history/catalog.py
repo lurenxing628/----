@@ -243,8 +243,10 @@ def read_history_catalog(conn):
     entries.extend(adopted)
     entries.extend(entry for entry in (_legacy(row, official) for row in histories if row["version"] not in covered) if entry is not None)
     _labels(entries)
-    # Structural snapshot state keeps original contents, including off-page records.
-    state = {"read_contract_version": 1, "runs": jobs, "adoption_receipts": receipts,
-             "schedule_history": histories, "official_bindings": bindings, "identity_clock": repo.identity_clock(),
-             "event_times": [{key: entry[key] for key in ("entry_ref", "occurred_at", "time_basis")} for entry in entries]}
+    # Permanent source/receipt identities and the existing clock own freshness.
+    state = {"entries": [{key: entry[key] for key in
+                          ("entry_ref", "source_kind", "state", "source", "times", "evidence_gaps")}
+                         for entry in entries],
+             "runs": [{key: row[key] for key in ("run_ref", "state", "stage", "receipt_ref", "receipt_state", "recorded_at")}
+                      for row in jobs], "identity_clock": repo.identity_clock()}
     return entries, state

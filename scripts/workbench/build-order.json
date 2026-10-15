@@ -57,7 +57,6 @@
     "resource-api.js",
     "ProcessContract.js",
     "PointContract.js",
-    "PlanProcessOrder.js",
     "GanttGraph.js",
     "PlanContract.js",
     "PlanAPI.js",

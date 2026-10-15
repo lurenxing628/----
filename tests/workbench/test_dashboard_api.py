@@ -214,7 +214,7 @@ def test_unavailable_plan_keeps_handling_readable_and_analysis_consistent(dashbo
 
 
 def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case, monkeypatch):
-    from core.models.workbench_dashboard import MAX_BYTES, payload_size
+    from core.models.workbench_dashboard import MAX_BYTES
 
     case = dashboard_case
     reason = "x" * (MAX_BYTES * 9 // 16)
@@ -227,7 +227,7 @@ def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case,
     merged = client.get(ROOT)
     assert merged.status_code == 200
     body = merged.get_json()
-    payload_size(body)
+    assert len(merged.data) <= MAX_BYTES
     assert body["data"]["analysis"] is None and "读取上限" in body["data"]["analysis_error"]
     assert body["data"]["page"]["total"] == len(body["data"]["items"]) == 4
     downtime = next(row for row in body["data"]["items"] if row["category"] == "downtime")

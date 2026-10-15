@@ -1,4 +1,4 @@
-"""Cross-check the original admission capture against the archived candidate facts."""
+"""Decode admission facts and bind their saved operation and task identities."""
 
 import base64
 import binascii
@@ -6,10 +6,6 @@ from collections import defaultdict
 from types import SimpleNamespace
 from typing import Any, Dict, NoReturn
 
-from core.infrastructure.snapshot_connection import ddl_columns
-from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
-from core.infrastructure.workbench_execution_void_schema import execution_void_objects
-from core.infrastructure.workbench_metadata_schema import _canonical_sql, canonical_ddl_parts
 from core.models.content import unpacked
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_execution_input import MAX_OPERATIONS
@@ -18,10 +14,9 @@ from core.models.workbench_run_baseline import elapsed_hours
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference, reject
 from core.models.workbench_run_compute import CandidateRunInputError
 
-from .candidate_facts import _index, _table
+from .candidate_facts import _index
 from .candidate_tasks import _resource
-from .candidate_values import bounded_size, gap, stored_json
-from .execution_projection import project_execution, report_dto
+from .candidate_values import bounded_size, gap
 from .run_input_codec import restore_execution_projections
 from .zero_duration import point_event_dto
 
@@ -35,23 +30,21 @@ class ArchivedAdmissionPlan:
 
     def __init__(self, capture, facts):
         self.facts = facts
-        archive = facts.archive
-        self.sources = self._required(archive, "WorkbenchPlanSourceRefs")
-        self.tasks = _index(self._required(archive, "WorkbenchTaskRefs"), "ref")
-        self.history = self._required(archive, "ScheduleHistory")
-        self.schedule = self._required(archive, "Schedule")
+        self.sources = self._required("WorkbenchPlanSourceRefs")
+        self.tasks = _index(self._required("WorkbenchTaskRefs"), "ref")
+        self.history = self._required("ScheduleHistory")
+        self.schedule = self._required("Schedule")
         self.baseline = capture["baseline"]
-        self._check_baseline(archive)
+        self._check_baseline()
         self._bindings()
 
-    @staticmethod
-    def _required(archive, name):
-        rows = _report_revisions(archive) if name == "WorkbenchProductionReportRevisions" else _table(archive, name)
+    def _required(self, name):
+        rows = self.facts.table(name)
         if rows is None:
             invalid_baseline()
         return rows
 
-    def _check_baseline(self, archive):
+    def _check_baseline(self):
         baseline = self.baseline
         if set(baseline) != {"plan_ref", "version", "rows"} or type(baseline["rows"]) is not list:
             invalid_baseline()
@@ -62,10 +55,10 @@ class ArchivedAdmissionPlan:
         version = max((row["version"] for row in history), default=None)
         if type(baseline["version"]) is not type(version) or baseline["version"] != version:
             invalid_baseline()
-        self._check_baseline_rows(archive, version)
+        self._check_baseline_rows(version)
         self._check_baseline_ref(version)
 
-    def _check_baseline_rows(self, archive, version):
+    def _check_baseline_rows(self, version):
         schedule = self.schedule
         rows = [row for row in schedule if row.get("version") == version] if version is not None else []
         if any(type(row.get("id")) is not int or type(row.get("op_id")) is not int for row in rows):
@@ -108,7 +101,7 @@ class ArchivedAdmissionPlan:
 
 
 class AdmissionBaseline(ArchivedAdmissionPlan):
-    """Verify selection and complete execution evidence after the archived plan."""
+    """Bind saved admission execution without replaying its historical formulas."""
 
     source_state: Dict[str, Any]
 
@@ -120,7 +113,7 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
         self._origin_issue = origin_issue or {"code": "adoption_not_recorded", "message": "此正式版本未保存可核对的采用来源。"}
         self.settings = self._settings(capture["input"])
         self.selected = self._selected(disposition)
-        self._execution(capture, disposition, facts.archive, accepted_at)
+        self._execution(capture)
 
     def _settings(self, value):
         try:
@@ -154,7 +147,7 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
                 invalid_baseline()
         return selected
 
-    def _execution_scope(self, archive):
+    def _execution_scope(self):
         # Admission also captures each operation's last official execution,
         # including operations absent from the latest (possibly partial) plan.
         # These rows validate execution evidence; they do not extend the latest
@@ -173,8 +166,8 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
             invalid_baseline()
         return self.selected | {identities[key] for key in scheduled}
 
-    def _execution(self, capture, disposition, archive, accepted_at):
-        expected = self._execution_scope(archive)
+    def _execution(self, capture):
+        expected = self._execution_scope()
         raw = capture["execution"]
         if type(raw) is not list or len(raw) != len(expected):
             invalid_baseline()
@@ -188,18 +181,8 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
         refs = {row.operation_ref for row in projections}
         if len(refs) != len(projections) or refs != expected:
             invalid_baseline()
-        snapshots = []
         for projection in projections:
             ref = projection.operation_ref
-            saved = projection.to_dict()
-            snapshots.append(saved)
-            if ref in disposition:
-                try:
-                    original = restore_execution_projections([disposition[ref].get("execution")])[0]
-                except (CandidateRunInputError, TypeError, ValueError):
-                    invalid_baseline()
-                if canonical_json(original.to_dict()) != canonical_json(saved):
-                    invalid_baseline()
             current = projection.current_task_ref
             if ref in self.by_operation:
                 task = self.tasks.get(current)
@@ -207,36 +190,6 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
                         or task.get("row_ref") not in {row["row_ref"] for row in self.by_operation[ref]}):
                     invalid_baseline()
             elif current is not None:
-                invalid_baseline()
-        self._verify_execution_values(projections, archive, accepted_at, snapshots)
-
-    def _verify_execution_values(self, projections, archive, accepted_at, snapshots):
-        reports = _archived_reports(archive)
-        legacy, unresolved = defaultdict(list), set()
-        for raw in self._required(archive, "WorkbenchExecutionLegacyFacts"):
-            row = {key: _blob(value) for key, value in raw.items()}
-            legacy[row.get("operation_ref")].append(row)
-            if row.get("operation_ref") is None or row.get("recorded_against_task_ref") is None:
-                unresolved.add(row.get("op_id"))
-        fields = ("target_quantity", "target_basis", "known_completed_quantity", "quantity_complete", "unknown_record_count",
-                  "records_complete", "first_actual_start", "confirmed_finish", "execution_state", "completion_basis",
-                  "data_quality", "remaining_quantity", "remaining_plan", "reports", "legacy_facts")
-        for projection, saved in zip(projections, snapshots):
-            ref = projection.operation_ref
-            operation = self.facts.tables["BatchOperations"].get(self.facts.operations.get(ref))
-            if operation is None:
-                invalid_baseline()
-            batch = self.facts.tables["Batches"].get(operation.get("batch_id"), {})
-            try:
-                checked = project_execution(
-                    {**operation, "operation_ref": ref, "identity_active": 1, "batch_quantity": batch.get("quantity")},
-                    reports.get(ref, []), sorted(legacy.get(ref, []), key=lambda row: row["id"]),
-                    current_task=None, comparison_task=None, plan_identity=None,
-                    now=local_time(accepted_at), unresolved=operation["id"] in unresolved,
-                ).to_dict()
-            except (KeyError, TypeError, ValueError, OverflowError):
-                invalid_baseline()
-            if canonical_json({key: checked[key] for key in fields}) != canonical_json({key: saved[key] for key in fields}):
                 invalid_baseline()
 
     def segments(self, ref):
@@ -290,68 +243,6 @@ def _blob(value):
         return base64.b64decode(value["sqlite_blob_base64"], validate=True)
     except (ValueError, binascii.Error):
         invalid_baseline()
-
-
-def _report_revisions(archive, name="WorkbenchProductionReportRevisions"):
-    sql = {**execution_ledger_objects(), **execution_void_objects()}[name]
-    ddl = [row[3] for row in archive["schema"] if type(row) is list and len(row) == 4 and row[0:2] == ["table", name]]
-    if len(ddl) != 1 or type(ddl[0]) is not str or _canonical_sql(ddl[0]) != _canonical_sql(sql):
-        invalid_baseline()
-    columns = _archived_columns(ddl[0], sql, name)
-    rows = archive["tables"].get(name)
-    if type(rows) is not list or any(type(row) is not list or len(row) != len(columns) for row in rows):
-        invalid_baseline()
-    return [dict(zip(columns, row)) for row in rows]
-
-
-def _archived_columns(archived_sql, sql, name):
-    """The archive's own physical column order: its definitions equal the known DDL's, only reordered.
-
-    Only the known application DDL is executed (to learn the column names); the archived text is
-    merely split into definitions, never run, and any definition that is not a known column must be
-    a constraint or the capture is rejected."""
-    known = {column.casefold(): column for column in ddl_columns(sql, name)}
-    ordered = []
-    for part in canonical_ddl_parts(archived_sql):
-        column = known.get(part.split(" ", 1)[0].casefold())
-        if column is not None:
-            ordered.append(column)
-    if sorted(ordered) != sorted(known.values()):
-        invalid_baseline()
-    return ordered
-
-
-def _archived_reports(archive):
-    headers = _index(AdmissionBaseline._required(archive, "WorkbenchProductionReports"), "report_ref")
-    receipts = _index(AdmissionBaseline._required(archive, "WorkbenchCommandReceipts"), "request_key")
-    histories, result = defaultdict(list), defaultdict(list)
-    # A historical capture without this table predates explicit withdrawals.
-    # Once the table is present its known DDL and every binding are mandatory.
-    void_rows = _report_revisions(archive, "WorkbenchProductionReportVoids") if "WorkbenchProductionReportVoids" in archive["tables"] else []
-    voids = _index(void_rows, "report_ref")
-    if not set(voids) <= set(headers):
-        invalid_baseline()
-    for row in AdmissionBaseline._required(archive, "WorkbenchProductionReportRevisions"):
-        histories[row.get("report_ref")].append(row)
-    if set(histories) != set(headers):
-        invalid_baseline()
-    for ref, header in headers.items():
-        history = []
-        for ordinal, revision in enumerate(sorted(histories[ref], key=lambda row: row["sequence"]), 1):
-            if revision["sequence"] != ordinal:
-                invalid_baseline()
-            history.append({**header, **{key: value for key, value in revision.items() if key != "recorded_at"},
-                            "revision_at": revision["recorded_at"], "values": stored_json(revision["values_json"]),
-                            "receipt_ref": receipts.get(revision["request_key"], {}).get("receipt_ref")})
-        try:
-            if ref in voids:
-                if voids[ref]["original_revision_ref"] != history[-1]["revision_ref"]:
-                    invalid_baseline()
-                continue
-            result[header["operation_ref"]].append(report_dto(history))
-        except (KeyError, TypeError, ValueError):
-            invalid_baseline()
-    return {ref: sorted(rows, key=lambda row: (row.recorded_at, row.report_no)) for ref, rows in result.items()}
 
 
 def _baseline_interval(row, gaps):

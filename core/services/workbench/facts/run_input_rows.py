@@ -9,7 +9,7 @@ from core.models.batch_operation import BatchOperation
 from core.models.workbench_preflight import issue
 from core.models.workbench_run_compute import CandidateRunInputError
 
-from .preflight_checks import PreflightChecks, number, stored_date
+from .preflight_checks import number, stored_date
 from .preflight_dependencies import link_predecessors, piece_scope_problem
 
 _BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
@@ -76,7 +76,7 @@ def validate_single_chain(operations):
 
 
 def classify_rows(facts, settings, raw_batches, operations, projections, guarded_ids, *, piece_scope=None, external_cycles=None):
-    checks = PreflightChecks(facts.tables)
+    checks = facts.checks()
     raw_by_id = {row["id"]: row for row in facts.tables["BatchOperations"]}
     batches = {row["batch_id"]: row for row in raw_batches}
     cycles = external_cycles or {}

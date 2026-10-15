@@ -90,7 +90,6 @@ class WorkbenchQuantitySplitService:
         plan = self.plan(ref, payload)
         batch, facts = self.reader.batch(ref), self.reader.load()
         code = plan["child_code"]
-        fields = {key: batch[key] for key in ("due_date", "priority", "remark", "part_name")}
         source_rows, child_rows = [], []
         for row in plan["materials"]:
             for target, prefix in ((source_rows, "source"), (child_rows, "child")):
@@ -105,28 +104,27 @@ class WorkbenchQuantitySplitService:
         writer = TemplateLineageWriter(self.conn)
         source_operations = [op for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]]
         prepared = writer.prepare_instances(source_operations, facts=facts)
-        WorkbenchBatchService(self.conn).domain.create(code, batch["part_no"], **fields, quantity=plan["quantity"],
+        domain = WorkbenchBatchService(self.conn, facts=self.reader)
+        change = domain.preparation(facts).copy(batch, code, quantity=plan["quantity"],
             ready_status=child_ready, ready_date=max(filter(None, (ready_day, plan["as_of_date"]))))
+        batch_outcome = domain.apply_prepared(change)
         mapping = {op["id"]: writer.copy_prepared_instance(code, ready)
                    for op, ready in zip(source_operations, prepared)}
         repo, stages = BatchMaterialRepository(self.conn), BatchMaterialStageRepository(self.conn)
         for index, row in enumerate(plan["materials"]):
-            created = repo.add(code, row["material_id"], required_qty=row["child_required"], available_qty=row["child_available"],
-                               ready_status=child_rows[index]["ready_status"])
+            created_material = repo.add(code, row["material_id"], required_qty=row["child_required"], available_qty=row["child_available"],
+                                        ready_status=child_rows[index]["ready_status"])
             operation_id = row["operation_id"]
             if operation_id is not None:
-                stages.replace_operation(created.id, mapping[operation_id])
+                stages.replace_operation(created_material.id, mapping[operation_id])
             if row["child_arrivals"]:
-                stages.replace_arrivals(created.id, row["child_arrivals"])
-            stages.review(created.id, plan["quantity"])
+                stages.replace_arrivals(created_material.id, row["child_arrivals"])
+            stages.review(created_material.id, plan["quantity"])
             repo.update_qty(row["requirement_id"], required_qty=row["source_required"], available_qty=row["source_available"],
                             ready_status=source_rows[index]["ready_status"])
             stages.replace_arrivals(row["requirement_id"], row["source_arrivals"])
             stages.review(row["requirement_id"], plan["remaining_quantity"])
         BatchRepository(self.conn).update(batch["batch_id"], {"quantity": plan["remaining_quantity"], "ready_status": source_ready})
         stages.record_split(batch["batch_id"], code, plan["original_quantity"], plan["quantity"], plan["as_of_date"])
-        identity = self.reader.identities.find_active("batch", code)
-        if identity is None:
-            raise RuntimeError("Split child is missing its permanent reference.")
-        return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "child_ref": identity.ref, "business_code": code,
+        return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "child_ref": batch_outcome.data["entity_ref"], "business_code": code,
             "quantity": plan["quantity"], "remaining_quantity": plan["remaining_quantity"], "commit_policy": "atomic"})

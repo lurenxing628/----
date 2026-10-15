@@ -173,7 +173,9 @@ function identities() {
   const task = { operation_ref: ref(100), row_ref: ref(700), batch_ref: batch, batch_label: 'B-01', process_label: '车削', part_label: '分件轴', sequence: 1, piece_id: 'A', quantity: 20, batch_quantity: 50,
     start, end, machine: { ref: machine, label: '车床01' }, operator: null, supplier: null, source: 'internal', locked: true, due_date: '2026-12-10', due_state: 'specified', due_issue: null, data_gaps: [], operation_effort: original };
   const target = [], second = { ...task, row_ref: ref(701), start: '2026-12-02T08:00:00' };
-  const inspector = initialRuntime.state.render(() => expand(h(window.RunCandidateControls.Detail, { data: { tasks: [task, second], gantt_graph: {} }, task, onClose: () => {}, onRelated: row => target.push(row) })));
+  const inspectorPrepared = { graph: {} };
+  const inspector = initialRuntime.state.render(() => expand(h(window.RunCandidateControls.Detail, { data: { tasks: [task, second] }, prepared: inspectorPrepared, task, onClose: () => {}, onRelated: row => target.push(row) })));
+  assert.strictEqual(nodes(inspector).find(node => node.type === 'routes').props.index, inspectorPrepared.graph, '候选详情把原准备图直接传给路线');
   const inspectorText = text(inspector).replace(/\s+/g, ' ');
   assert(inspectorText.includes('准备与加工需求') && fieldText(inspector, labels.target_quantity).startsWith('10') && fieldText(inspector, labels.execution_target_quantity).startsWith('20') && fieldText(inspector, labels.remaining_quantity) === '8', '甘特详情直接读取同一份保存需求');
   const segments = nodes(inspector).filter(node => node.props.className === 'rc-saved-segment'); assert.equal(segments.length, 2, '需求来源接入保留全部分段安排');

@@ -26,7 +26,7 @@ from core.services.workbench.facts.adoption_baseline_values import REASONS as AD
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 
 from .adoption_baseline import read_adoption_baseline
-from .projection import check_payload_size, project_plan, public_time
+from .projection import project_plan, public_time
 from .read_context import PlanReadContext, PlanReadQuery
 
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")
@@ -165,8 +165,6 @@ class _BaselineReader:
                                      "time_basis": "factory_local", "task_times": "unclipped"},
                 "compared_fields": list(_CHANGE_FIELDS), "items": items,
                 "item_count": len(items), "items_complete": True}
-        # Admit the COMPLETE comparison, not just a small visible slice.
-        check_payload_size(data)
         self.facts.update({"complete_comparison": data, "resources": resource_state})
         visible = [item for item in items if item["before_in_scope"] or item["after_in_scope"]]
         return dict(data, items=visible, item_count=len(visible)), self.facts
@@ -182,9 +180,9 @@ def build_plan_baseline(
     selected_rows is exactly the time-scoped result, without resource/subset filters.
     Compare complete plans, then keep either-side overlap; there is no resource
     Scope today. Reference/data failures explicitly disable comparison. Storage/
-    schema errors propagate. Whole-plan >10000 rows or >8 MiB raises 413 even if
-    the requested time slice is small. The caller must also size-check its combined
-    workspace and hash these private facts with all other projection facts.
+    schema errors propagate. Complete sources are compared before the public
+    workspace's scoped task limit and each endpoint's actual output byte limit.
+    The caller includes private projection facts and read bindings in its read snapshot.
     """
     if not conn.in_transaction:
         raise RuntimeError("Baseline reads require a caller-owned read transaction.")

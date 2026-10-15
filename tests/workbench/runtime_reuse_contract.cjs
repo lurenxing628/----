@@ -4,6 +4,7 @@ const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
 const babel = path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js');
 const source = name => fs.readFileSync(path.join(app, name), 'utf8');
+const unavailableGraph = () => ({ state: 'unavailable', reason: 'No captured process order', scope: 'full_plan', nodes: [], critical_task_refs: [], critical_edges: [] });
 function load(ctx, name, code = source(name)) {
   const output = compile({ babel_path: babel, sources: [{ path: name, code }] }).outputs[0].code;
   vm.runInContext(output, ctx, { filename: name });
@@ -228,7 +229,7 @@ async function main() {
   const planHooks = hooks(), timeScope = { range_start: '2026-10-12T08:00:00', range_end: '2026-10-14T18:00:00' };
   const planData = { plan: { plan_ref: planA, display_name: '正式计划', kind: 'official', version: 1, is_current_official: true },
     scope: { range_start: null }, time_scope: timeScope, plan_span: { start: timeScope.range_start, end: timeScope.range_end, end_inclusive: true },
-    task_count: 0, tasks: [], provenance: {}, projections: { delivery_risks: { state: 'available', issues: [], items: [] } } };
+    task_count: 0, tasks: [], resources: [], provenance: {}, gantt_graph: unavailableGraph(), projections: { calendar: { resources: [] }, occupancy: { resources: [] }, baseline: { state: 'unavailable' }, delivery_risks: { state: 'available', issues: [], items: [] } } };
   const planRead = { result: { data: planData, warnings: [], meta: { snapshot_ref: 'plan-snapshot' } }, loading: false, error: null, reload() {} };
   const planWindow = { APSResourceContract: { failure: text => new Error(text) }, APSPlanContract: { workspaceScope: (_, value) => value },
     APSResourceSession: { useQuery: () => planRead }, ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' },
@@ -238,7 +239,7 @@ async function main() {
     PlanDetailsUI: { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' },
     WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} }, WorkbenchControls: { Pager: 'pager', EmptyState: 'empty' } };
   const planContext = vm.createContext({ window: planWindow, React: planHooks.React });
-  load(planContext, 'PlanGanttModel.js'); Object.assign(planWindow.PlanGanttModel, { names: () => new Map(), timeLabel: String, number: String });
+  load(planContext, 'GanttGraph.js'); load(planContext, 'PlanGanttModel.js'); Object.assign(planWindow.PlanGanttModel, { names: () => new Map(), timeLabel: String, number: String });
   load(planContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
   const renderPlan = () => planHooks.render(() => planWindow.PlanWorkspaceSession({ adapter: {}, planRef: planA, initialContext: { projection_page: 3 } }));
   let planTree = renderPlan(); assert.equal(find(planTree, 'projection-tables').page, 3);
@@ -253,9 +254,63 @@ async function main() {
     due_date: null, completion_state: 'complete', risk: 'on_time', unscheduled_operation_count: 0, ordinary_unscheduled_operation_count: 0, deferred_operation_count: 0, issues: [] }];
   Object.assign(planWindow.WorkbenchTerms, { delivery_risks: { on_time: '准时' }, delivery_completion_states: { complete: '已排齐' }, due_date: () => '未指定' });
   load(planContext, 'PlanDetailsUI.jsx');
-  const projection = planHooks.render(() => planWindow.PlanDetailsUI.ProjectionTables({ data: planData, page: 3, onPage() {}, onTab() {}, onBatch() {} }));
+  const projection = planHooks.render(() => planWindow.PlanDetailsUI.ProjectionTables({ data: planData, prepared: planWindow.PlanGanttModel.prepare(planData), page: 3, onPage() {}, onTab() {}, onBatch() {} }));
   assert.equal(find(projection, 'pager').page, 1); assert(find(projection, 'button', props => props.children.includes('B-01')));
   assert.equal(find(projection, 'empty'), null);
+
+  {
+  // A route outside the loaded tasks uses the complete graph to perform one bounded read.
+  const routeHooks = hooks(), requests = [], ref = number => number.toString(16).padStart(48, '0');
+  const tasks = [
+    { task_ref: ref(1), operation_ref: ref(11), start: '2026-10-12T08:00:00', end: '2026-10-12T09:00:00' },
+    { task_ref: ref(2), operation_ref: ref(12), start: '2026-10-15T23:00:00.123456', end: '2026-10-16T00:00:00.654321' },
+    { task_ref: ref(3), operation_ref: ref(13), start: '2026-12-31T23:59:59.999999', end: '2026-12-31T23:59:59.999999', event_kind: 'point', duration_seconds: 0, occupies_resources: false }
+  ].map(task => ({ ...task, batch_id: 'ROUTE', piece_id: null, sequence: 1, process_label: '路线工序', machine_ref: null, operator_ref: null }));
+  const graph = { state: 'available', reason: null, scope: 'full_plan', nodes: tasks.map(task => ({ ...task, predecessor_operation_refs: [] })), critical_task_refs: [], critical_edges: [] };
+  const routeWindow = { APSResourceContract: { failure: text => new Error(text) }, APSPlanContract: { workspaceScope: (_, scope) => scope },
+    ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, PlanCatalogUI: { Catalog: 'catalog' },
+    PlanDetailsUI: { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' }, PlanGantt: 'plan-gantt', PlanExportUI: 'plan-export',
+    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} }, WorkbenchControls: { EmptyState: 'empty' } };
+  const routeContext = vm.createContext({ window: routeWindow, React: routeHooks.React, AbortController, DOMException });
+  for (const name of ['resource-session.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'GanttGraph.js', 'PlanContract.js', 'PlanGanttModel.js']) load(routeContext, name);
+  const createRouteGraph = routeWindow.GanttGraph.create; let routeGraphBuilds = 0;
+  routeWindow.GanttGraph.create = graph => { routeGraphBuilds++; return createRouteGraph(graph); };
+  load(routeContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
+  const routeProps = { planRef: planA, view: 'gantt', initialContext: { selected_task_ref: tasks[0].task_ref, range_start: tasks[0].start, range_end: tasks[0].end },
+    adapter: { async workspace(_plan, scope) {
+      requests.push(JSON.parse(JSON.stringify(scope)));
+      const task = tasks.find(task => task.start === scope.range_start);
+      return { warnings: [], meta: { snapshot_ref: 'route-' + requests.length }, data: { ...planData, scope,
+        tasks: [task], task_count: 1, gantt_graph: graph, time_scope: scope } };
+    } } };
+  const settleRoute = async () => { let tree; for (let index = 0; index < 4; index++) { tree = routeHooks.render(() => routeWindow.PlanWorkspaceSession(routeProps)); routeHooks.flush(); await turns(); } return tree; };
+  let routeTree = await settleRoute(); assert.equal(requests.length, 1); assert.equal(routeGraphBuilds, 1);
+  assert.strictEqual(find(routeTree, 'plan-gantt').prepared, find(routeTree, 'task-detail').prepared, 'Drawing and details receive the original preparation object');
+  find(routeTree, 'task-detail').onRelated(tasks[1].task_ref); routeTree = await settleRoute();
+  assert.equal(requests.length, 2); assert.equal(routeGraphBuilds, 2); assert.deepEqual(requests[1], { range_start: tasks[1].start, range_end: tasks[1].end });
+  assert.equal(find(routeTree, 'task-detail').selected.task.task_ref, tasks[1].task_ref);
+  find(routeTree, 'task-detail').onRelated(tasks[2].task_ref); routeTree = await settleRoute();
+  assert.equal(requests.length, 3); assert.equal(routeGraphBuilds, 3); assert.deepEqual(requests[2], { range_start: tasks[2].start, range_end: '2027-01-01T00:00:00' });
+  assert.equal(find(routeTree, 'task-detail').selected.task.task_ref, tasks[2].task_ref);
+  const beforeLocal = requests.length; find(routeTree, 'task-detail').onRelated(tasks[2].task_ref); await settleRoute();
+  assert.equal(requests.length, beforeLocal, 'Locating a loaded node uses its existing task without reading');
+  assert.equal(routeGraphBuilds, 3, 'The workspace prepares the graph once per successful result; local selection reuses it'); routeHooks.unmount();
+  }
+
+  {
+  const fileHooks = hooks(), command = { phase: 'idle', locked: false }, preview = { can_confirm: true, preview_ref: 'preview', write_context: {}, rows: [], summary: { total: 3, changed: 3 } };
+  const fileWindow = { FieldContract: { query: value => value, blocked: () => '' }, FieldControls: { Button: 'button', Modal: 'modal', ErrorBox: 'error', Feedback: 'feedback' } };
+  const fileContext = vm.createContext({ window: fileWindow, React: fileHooks.React, AbortController }); load(fileContext, 'FieldFiles.jsx');
+  const fileProps = { adapter: { previewFile: async () => ({ data: preview }) }, command, scope: {}, snapshot: 'snapshot' };
+  const renderFile = () => fileHooks.render(() => fileWindow.FieldFiles(fileProps));
+  let fileTree = renderFile(); find(fileTree, 'input').onChange({ target: { files: [{ name: '报工.xlsx', size: 10 }] } }); fileTree = renderFile();
+  await find(find(fileTree, 'modal').footer, 'button', props => props.children.includes('开始预检')).onClick(); fileTree = renderFile();
+  assert(find(fileTree, 'p', props => props.children.includes('预检通过，尚未写入报工。')));
+  command.phase = 'done'; fileTree = renderFile();
+  assert.equal(find(fileTree, 'p', props => props.children.includes('预检通过，尚未写入报工。')), null);
+  assert(find(fileTree, 'div', props => props.className === 'field-files-summary')); assert(find(fileTree, 'table'));
+  assert.strictEqual(find(fileTree, 'feedback').command, command); fileHooks.unmount();
+  }
 
   // Result/constraint/preparation task selection uses the same guarded detail-opening action.
   const trialHooks = hooks(), trialData = { draft_ref: 'draft', base: {}, base_identity: {}, name: '试调', status: 'editing',
@@ -334,12 +389,231 @@ async function main() {
     execution: { get execution_state() { reads++; return ['complete', 'unreported', 'partial'][n % 3]; }, confirmed_finish: '2026-09-09T08:30:00' } })) };
   assert.deepEqual(JSON.parse(JSON.stringify(modelContext.window.ActualGanttModel.metrics(data))), { complete: 334, pending: 333, reported: 333, average: 30 }); assert.equal(reads, 0, 'Actual metrics consume the shared full cohort summary without recomputing execution rows');
 
+  {
+  // Prepared Gantt facts survive local filtering, collapse and geometric width changes.
+  let timeReads = 0;
+  class CountingDate extends Date { static parse(value) { timeReads++; return Date.parse(value); } }
+  const preparedContext = vm.createContext({ window: { WorkbenchFormat: {}, FieldContract: { quantityReasons: {}, states: {} } }, Date: CountingDate });
+  for (const name of ['PointContract.js', 'PointGanttModel.js', 'GanttGraph.js', 'PlanGanttModel.js', 'ActualGanttModel.js']) load(preparedContext, name);
+  const PM = preparedContext.window.PlanGanttModel, AM = preparedContext.window.ActualGanttModel, stamp = hour => '2026-10-12T' + String(hour).padStart(2, '0') + ':00:00';
+  const createGraph = preparedContext.window.GanttGraph.create; let graphBuilds = 0;
+  preparedContext.window.GanttGraph.create = value => { graphBuilds++; return createGraph(value); };
+  const task = (id, start, end) => ({ task_ref: id, operation_ref: 'op-' + id, batch_id: id, process_label: id, sequence: 1, piece_id: null,
+    machine_ref: 'machine', operator_ref: null, start: stamp(start), end: stamp(end) });
+  const firstTask = task('first', 8, 10), secondTask = task('second', 9, 11), resources = [{ ref: 'machine', label: '设备' }];
+  const sharedData = { tasks: [firstTask, secondTask], resources, plan_span: { start: stamp(8), end: stamp(12) },
+    projections: { calendar: { resources: [] }, occupancy: { resources: [] }, baseline: { state: 'unavailable' } } };
+  const sharedFacts = PM.prepare(sharedData);
+  assert.equal(graphBuilds, 0, 'Shared task, time and mark preparation does not require or build a process graph');
+  assert.equal(sharedFacts.taskIndex.get('first').start, PM.instant(firstTask.start));
+  const planFacts = sharedFacts;
+  const preparedTimes = timeReads, planGroup = PM.groupPrepared(planFacts, 'machine');
+  const selectedPlan = PM.selectPrepared(planGroup, 'second'), narrowPlan = PM.layoutPrepared(selectedPlan, 640), widePlan = PM.layoutPrepared(selectedPlan, 2000);
+  PM.selectPrepared(planGroup, 'first'); PM.groupPrepared(planFacts, 'operator');
+  assert.equal(timeReads, preparedTimes, 'Plan local filters, resource grouping and width reuse parsed time facts');
+  assert.equal(narrowPlan.tasks.length, 1); assert.equal(narrowPlan.rows[0].tasks.length, 1);
+  assert.strictEqual(narrowPlan.locations.get('second').item, widePlan.locations.get('second').item);
+  assert.equal(graphBuilds, 0); assert.strictEqual(selectedPlan.taskIndex, planFacts.taskIndex);
+  const execution = (reports, legacy = []) => ({ execution_state: 'complete', reports, legacy_facts: legacy, remaining_quantity: 0, remaining_plan: null });
+  const report = (id, start, end, hours) => ({ report_ref: id, report_no: id, actual_start: stamp(start), actual_end: stamp(end),
+    actual_machine_ref: 'machine', actual_operator_ref: null, effective_processing_hours: hours });
+  const actualData = { resources, gantt_graph: unavailableGraph(), axis_span: { start: stamp(8), end: stamp(12) }, availability: { state: 'available' }, items: [
+    { task: firstTask, deviation: { finish_late: true }, execution: execution([report('known', 8, 10, 2), report('unknown', 9, 11, null)], [{ actual_machine_ref: 'machine' }]) },
+    { task: secondTask, deviation: { finish_late: false }, execution: execution([report('other', 10, 11, 1)]) }
+  ] };
+  const actualFacts = AM.prepare(actualData, stamp(12)), actualTimes = timeReads, actualGroup = AM.groupPrepared(actualFacts, 'machine');
+  const fullView = { query: '', late: 'all', onlySelected: false, selected: null, collapsed: {} };
+  const allSelected = AM.selectPrepared(actualGroup, fullView), firstSelected = AM.selectPrepared(actualGroup, { ...fullView, query: 'first' });
+  assert.equal(graphBuilds, 0); assert.strictEqual(firstSelected.taskIndex, actualFacts.taskIndex);
+  const allActual = AM.layoutPrepared(allSelected, {}), firstActual = AM.layoutPrepared(firstSelected, {});
+  assert.deepEqual([allActual.groups[0].reportCount, allActual.groups[0].knownHours, allActual.groups[0].unknownHours, allActual.groups[0].legacyCount], [3, 3, 1, 1]);
+  assert.deepEqual([firstActual.groups[0].reportCount, firstActual.groups[0].knownHours, firstActual.groups[0].unknownHours, firstActual.groups[0].legacyCount], [2, 2, 1, 1]);
+  const firstRow = firstActual.rows.find(row => row.kind === 'actual');
+  assert.strictEqual(firstRow.marks, allActual.rows.find(row => row.key === firstRow.key).marks, 'Visible layouts share prepared marks');
+  const collapsedActual = AM.layoutPrepared(allSelected, { machine: true });
+  assert.equal(collapsedActual.locations.size, 0); assert.equal(AM.graphLocations(collapsedActual).size, 0);
+  assert.equal(AM.graphLocations(firstActual).get('first').reported, true); assert.equal(timeReads, actualTimes);
+
+  load(preparedContext, 'ActualGanttWindow.js');
+  const actualWindow = preparedContext.window.ActualGanttWindow;
+  const initialActual = actualWindow.initial(allActual); assert(Number.isFinite(initialActual.zoom));
+  assert.equal(actualWindow.anchor(allActual, 'first', 'known'), ((actualFacts.facts[0].reports[0].start + actualFacts.facts[0].reports[0].end) / 2 - allActual.start) / (allActual.end - allActual.start));
+  actualWindow.anchor(firstActual, null, null); assert.equal(timeReads, actualTimes, 'Default windows and zoom anchors reuse the model time facts');
+
+  // Candidate and baseline search share their fixed facts, including hide/show of the same baseline.
+  preparedContext.window.WorkbenchTerms = {};
+  load(preparedContext, 'RunCandidateModel.js'); load(preparedContext, 'RunBaselineModel.js');
+  const CM = preparedContext.window.RunCandidateModel, BM = preparedContext.window.RunBaselineModel;
+  const candidateTasks = [firstTask, secondTask].map(value => ({ ...value, row_ref: value.task_ref, batch_ref: value.batch_id,
+    batch_label: value.batch_id, machine: { ref: 'machine', label: '设备' }, operator: null, data_gaps: [] }));
+  const candidateFacts = CM.prepare({ tasks: candidateTasks, gantt_graph: { ...unavailableGraph(), scope: 'full_candidate' }, task_span: { start: stamp(8), end: stamp(12) } });
+  const baselineFacts = BM.prepare({ comparisons: [{ ...candidateTasks[0], baseline_segments: [{ ...candidateTasks[0], row_ref: 'baseline-first', interval_comparable: true, start: stamp(7), end: stamp(9) }] }] });
+  const candidateTimes = timeReads, candidateGroups = CM.groupPrepared(candidateFacts, 'machine'), baselineGroups = BM.groupPrepared(baselineFacts, 'machine');
+  const selectedCandidate = CM.selectPrepared(candidateGroups, 'first'), withBaseline = BM.selectPrepared(selectedCandidate, baselineGroups, 'first');
+  assert.equal(graphBuilds, 0); assert.strictEqual(selectedCandidate.taskIndex, candidateFacts.taskIndex);
+  const narrowCandidate = BM.layoutPrepared(withBaseline, 640), wideCandidate = BM.layoutPrepared(withBaseline, 2000);
+  assert.strictEqual(narrowCandidate.locations.get('first').item, wideCandidate.locations.get('first').item);
+  CM.matching(candidateFacts, 'second'); CM.selectPrepared(candidateGroups, 'second');
+  const hiddenBaseline = BM.layoutPrepared(BM.selectPrepared(selectedCandidate, baselineGroups, 'first', null, false), 640);
+  assert.equal(hiddenBaseline.baselineLocations.size, 0); assert.equal(BM.layoutPrepared(withBaseline, 640).baselineLocations.size, 1);
+  assert.equal(timeReads, candidateTimes, 'Candidate filters, baseline hide/show and width consume the same parsed facts');
+
+  // Canvas listeners belong to the mount; redraws reuse the buffer and consume the latest paint.
+  const paintHooks = hooks(), paintFrames = new Map(), paintEvents = new Map(); let frameId = 0, themes = 0, resizes = 0, disconnects = 0, buffers = 0, paints = [];
+  let canvasWidth = 100, pixelRatio = 1, paintVersion = 1, dependency = 1, paintPrinting = false, visualScale = 1, canvasBufferWidth = 0, canvasBufferHeight = 0;
+  const paintCanvas = { get clientWidth() { return canvasWidth; }, clientHeight: 20, getBoundingClientRect: () => ({ width: canvasWidth * visualScale, height: 20 * visualScale }), getContext: () => ({ setTransform() {}, clearRect() {} }),
+    get width() { return canvasBufferWidth; }, set width(value) { buffers++; canvasBufferWidth = value; },
+    get height() { return canvasBufferHeight; }, set height(value) { buffers++; canvasBufferHeight = value; } };
+  const paintWindow = { get devicePixelRatio() { return pixelRatio; }, addEventListener(name, fn) { paintEvents.set(name, fn); }, removeEventListener(name) { paintEvents.delete(name); },
+    matchMedia: () => ({ addEventListener() {}, removeEventListener() {} }) };
+  const paintContext = vm.createContext({ window: paintWindow, React: paintHooks.React, document: { documentElement: {} },
+    MutationObserver: class { constructor(fn) { themes++; this.update = fn; } observe() {} disconnect() { disconnects++; } },
+    ResizeObserver: class { constructor(fn) { resizes++; this.update = fn; } observe() {} disconnect() { disconnects++; } },
+    requestAnimationFrame(fn) { const id = ++frameId; paintFrames.set(id, fn); return id; }, cancelAnimationFrame(id) { paintFrames.delete(id); } });
+  load(paintContext, 'GanttPresentation.js'); const paintRef = { current: paintCanvas }, palette = () => ({});
+  const renderPaint = () => paintHooks.render(() => paintWindow.GanttPresentation.useCanvasPaint(paintRef, () => paints.push(paintVersion), palette, [dependency], paintPrinting));
+  const drawFrames = () => { const queued = Array.from(paintFrames.values()); paintFrames.clear(); queued.forEach(fn => fn()); };
+  renderPaint(); paintHooks.flush(); assert.equal(paintFrames.size, 1); drawFrames(); assert.equal(buffers, 2);
+  paintVersion = 2; renderPaint(); paintHooks.flush(); assert.equal(paintFrames.size, 0, 'Hover-only renders do not request a canvas repaint');
+  dependency = 2; renderPaint(); paintHooks.flush(); dependency = 3; paintVersion = 3; renderPaint(); paintHooks.flush();
+  assert.equal(paintFrames.size, 1); drawFrames(); assert.equal(paints.at(-1), 3); assert.equal(buffers, 2); assert.deepEqual([themes, resizes], [1, 1]);
+  canvasWidth = 120; pixelRatio = 2; paintEvents.get('resize')(); drawFrames(); assert.equal(canvasBufferWidth, 240); assert.equal(canvasBufferHeight, 40);
+  dependency = 4; paintVersion = 4; renderPaint(); paintHooks.flush(); assert.equal(paintFrames.size, 1);
+  paintPrinting = true; visualScale = .5; paintVersion = 5; renderPaint(); paintHooks.flush();
+  assert.equal(paints.at(-1), 5, 'The beforeprint flushSync update paints its print content before returning');
+  assert.equal(paintFrames.size, 0, 'Print painting cancels the pending screen frame');
+  assert.equal(canvasBufferWidth, 240); assert.equal(canvasBufferHeight, 40, 'Print pagination scale cannot halve the layout-sized drawing buffer');
+  paintHooks.unmount(); assert.equal(disconnects, 2); assert.equal(paintEvents.size, 0);
+  const printMountHooks = hooks(); paintContext.React = printMountHooks.React; const beforePrintMount = paints.length;
+  printMountHooks.render(() => paintWindow.GanttPresentation.useCanvasPaint(paintRef, () => paints.push('new-print-row'), palette, [], true)); printMountHooks.flush();
+  assert.equal(paints.length, beforePrintMount + 1, 'A row newly mounted by the print layout is painted in its layout effect');
+  assert.equal(paints.at(-1), 'new-print-row'); assert.equal(paintFrames.size, 0); printMountHooks.unmount();
+
+  // The handler hint reads on mount, then consumes the actual local write result.
+  const hintHooks = hooks(); let hintReads = 0, savedHandler = '甲', failHandlerWrite = false;
+  const hintWindow = { localStorage: { getItem() { hintReads++; return savedHandler; }, setItem(_, value) { if (failHandlerWrite) throw Error('disk'); savedHandler = value; } }, addEventListener() {}, removeEventListener() {} };
+  const hintContext = vm.createContext({ window: hintWindow, React: hintHooks.React }); load(hintContext, 'WorkbenchHandlerMemory.js');
+  const hintMemory = hintWindow.WorkbenchHandlerMemory, renderHint = value => hintHooks.render(() => hintMemory.useHint(value));
+  assert(renderHint('甲').includes('预填')); hintHooks.flush(); assert.equal(renderHint('乙'), ''); assert.equal(hintReads, 1);
+  assert.equal(hintMemory.write('乙').saved, true); assert(renderHint('乙').includes('预填')); assert.equal(hintReads, 1);
+  failHandlerWrite = true; assert.equal(hintMemory.write('丙').saved, false); assert(renderHint('丙').includes('无法写入')); assert.equal(hintReads, 1); hintHooks.unmount();
+
+  }
+
+  {
+  // Column typing stays local until Enter or the existing search button submits it.
+  const filterHooks = hooks(), facetRequests = [], filterModel = { rule: () => ({ mode: 'exclude', values: [] }), signature: JSON.stringify,
+    toolbarScope: () => ({}), facets: value => value, selection: value => value, groupState: () => ({ all: false, mixed: false }) };
+  const facetResponse = () => ({ meta: { snapshot_ref: 'facet' }, warnings: [], data: { options: [], page: { number: 1, pages: 1, total: 0 } } });
+  const filterAdapter = { async facets(_, query) { facetRequests.push(query); return facetResponse(); }, async facetSelection() { return { warnings: [], data: { keys: [] } }; } };
+  const filterWindow = { ResourceTableFilterModel: filterModel, APSResourceContract: { failure: message => Error(message) }, ResourceControls: { Button: 'button', ErrorBox: 'error' } };
+  const filterContext = vm.createContext({ window: filterWindow, React: { ...filterHooks.React, useLayoutEffect() {} }, ReactDOM: { createPortal: tree => tree }, document: { body: {} }, AbortController });
+  load(filterContext, 'ResourceTableFilter.jsx');
+  const filterProps = { column: { key: 'label', title: '名称' }, kind: 'machine', scope: {}, adapter: filterAdapter, owner: { closest: () => null }, onFilter() {}, onClose() {} };
+  const renderFilter = () => filterHooks.render(() => filterWindow.ResourceTableFilter(filterProps));
+  let filterTree = renderFilter(); filterHooks.flush(); await turns(); filterTree = renderFilter();
+  assert.equal(facetRequests.length, 1);
+  find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onChange({ target: { value: '待提交' } });
+  filterTree = renderFilter(); filterHooks.flush(); await turns(); assert.equal(facetRequests.length, 1);
+  for (const composition of [{ isComposing: true }, { keyCode: 229 }, { nativeEvent: { isComposing: true } }, { nativeEvent: { keyCode: 229 } }]) {
+    find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onKeyDown({ key: 'Enter', ...composition,
+      preventDefault() { assert.fail('IME confirmation keeps its default input behavior'); }, stopPropagation() { assert.fail('IME confirmation is not intercepted as search submission'); } });
+    filterTree = renderFilter(); filterHooks.flush(); await turns(); assert.equal(facetRequests.length, 1, 'IME confirmation does not submit the unconfirmed query');
+  }
+  find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onKeyDown({ key: 'Enter', preventDefault() {}, stopPropagation() {} });
+  filterTree = renderFilter(); filterHooks.flush(); await turns(); filterTree = renderFilter();
+  assert.equal(facetRequests.length, 2); assert.equal(facetRequests.at(-1).query, '待提交');
+  find(filterTree, 'input', props => props['aria-label'] === '搜索名称列值').onChange({ target: { value: '按钮提交' } }); filterTree = renderFilter();
+  find(filterTree, 'button', props => props['aria-label'] === '搜索列值').onClick(); renderFilter(); filterHooks.flush(); await turns();
+  assert.equal(facetRequests.length, 3); assert.equal(facetRequests.at(-1).query, '按钮提交'); filterHooks.unmount();
+
+  // New operation types read the saved entity only; the create context was already loaded.
+  const createHooks = hooks(); let savedDetails = 0, savedLists = 0, committed = 0;
+  const createCommand = { phase: 'done', locked: false, reset: () => true, intent: { kind: 'op_type', action: 'create' }, result: { result: 'committed', receipt_ref: 'created' } };
+  const createWindow = { APSResourceContract: { query: value => value, resultRef: () => 'new-type', failure: message => Error(message) },
+    APSResourceSession: { useCommand: () => createCommand, useQuery: () => ({ result: { data: { create_context: {} }, meta: {} } }) },
+    ResourceControls: { Button: 'button', Modal: 'modal', ErrorBox: 'error' }, ResourceForms: 'resource-form' };
+  const createContext = vm.createContext({ window: createWindow, React: createHooks.React, AbortController }); load(createContext, 'ProcessOpTypeCreate.jsx');
+  const createProps = { adapter: { async detail() { savedDetails++; return { data: { ref: 'new-type' } }; }, async list() { savedLists++; } }, onClose() {}, onCommitted() { committed++; } };
+  const renderCreate = () => createHooks.render(() => createWindow.ProcessOpTypeCreate(createProps));
+  renderCreate(); createHooks.flush(); renderCreate(); createHooks.flush(); await turns();
+  const created = renderCreate(); assert.equal(created.props.refreshState.done, true); assert.deepEqual([savedDetails, savedLists, committed], [1, 0, 1]); createHooks.unmount();
+  }
+
+  {
+  // Actual read failures retain the existing range form and its selected resource.
+  const actualHooks = hooks(), rangeHooks = hooks(), actualReads = [], actualPlan = '4'.repeat(48), actualResource = '5'.repeat(48), otherResource = '6'.repeat(48);
+  let actualGraphBuilds = 0;
+  const actualFailure = Object.assign(Error('现场实际甘特数据超过读取容量，请缩小范围。'), { code: 'query_too_large', status: 413 });
+  const actualWindow = { APSResourceContract: { failure: message => Error(message) }, FieldContract: { quantityReasons: {}, states: {}, date: String },
+    ResourceControls: { Button: 'button', ErrorBox: 'error', Modal: 'modal' }, ActualGanttAPI: { adapter: value => value },
+    WorkbenchTerms: { current_official: '当前正式计划', data_as_of: String, plan_version: String }, WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} },
+    WorkbenchControls: { EmptyState: 'empty' }, GanttPresentation: { axis: () => ({ ticks: [] }) }, GanttPresentationUI: { Axis: 'axis' },
+    GanttGraph: { create: () => { actualGraphBuilds++; return {}; }, selection: () => ({ critical: new Set(), related: new Set() }), locationIndex: () => ({}), paths: () => ({}) },
+    GanttGraphLayer: { Controls: 'graph-controls', Lines: 'graph-lines' }, ActualGanttRows: 'actual-rows' };
+  const actualContext = vm.createContext({ window: actualWindow, React: actualHooks.React, AbortController, cancelAnimationFrame() {} });
+  for (const name of ['WorkbenchFormat.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'ActualGanttModel.js', 'ActualGanttWindow.js', 'ActualGanttContract.js', 'ActualGanttControls.jsx']) load(actualContext, name);
+  load(actualContext, 'ActualGanttWorkspace.jsx', source('ActualGanttWorkspace.jsx').replace('window.ActualGanttWorkspace = ActualGanttWorkspace;', 'window.ActualGanttSession = Content;'));
+  const actualProps = { initialContext: { plan_ref: actualPlan, scope: { resource_type: 'machine', resource_ref: actualResource, batch_ids: ['OLD'] } },
+    adapter: { async load(input) {
+      actualReads.push(JSON.parse(JSON.stringify(input)));
+      if (!input.plan_finish_date_from) throw actualFailure;
+      return { meta: { as_of: '2026-10-12T12:00:00', snapshot_ref: 'actual-range' }, data: { scope: input,
+        plan: { plan_ref: actualPlan, display_name: '正式计划', kind: 'official', is_current_official: true, version: 1 },
+        resources: [{ ref: otherResource, kind: 'machine', label: 'M1' }, ...(input.batch_ids.includes('ONLY-M1') ? [] : [{ ref: actualResource, kind: 'machine', label: 'M2' }])], items: [], task_count: 0,
+        availability: { state: 'available' }, axis_span: { start: '2026-10-12T08:00:00', end: '2026-10-12T16:00:00' },
+        execution_summary: { complete: 0, reported: 0, pending: 0, average_finish_deviation_minutes: null }, gantt_graph: {} } };
+    } } };
+  let actualTree, rangeTree;
+  const renderActual = async () => {
+    for (let index = 0; index < 4; index++) {
+      actualContext.React = actualHooks.React;
+      actualTree = actualHooks.render(() => actualWindow.ActualGanttSession(actualProps)); actualHooks.flush(); await turns();
+    }
+    const props = find(actualTree, actualWindow.ActualGanttControls.Range);
+    assert(props, 'A selected plan keeps its range form after the first read fails');
+    actualContext.React = rangeHooks.React;
+    rangeTree = rangeHooks.render(() => actualWindow.ActualGanttControls.Range(props)); rangeHooks.flush();
+  };
+  await renderActual(); assert.equal(actualReads.length, 1); assert.equal(actualGraphBuilds, 0);
+  assert.strictEqual(find(actualTree, 'error').error, actualFailure); assert.equal(find(actualTree, 'actual-rows'), null);
+  let resourceSelect = find(rangeTree, 'select');
+  assert.equal(resourceSelect.disabled, true); assert.equal(resourceSelect.value, actualResource);
+  assert.equal(find(rangeTree, 'option').value, actualResource);
+  assert(find(rangeTree, 'option').children.join('').includes('已选资源'));
+  find(rangeTree, 'input', props => props['aria-label'] === '计划完工开始日').onChange({ target: { value: '2026-10-12' } });
+  find(rangeTree, 'input', props => props['aria-label'] === '计划完工结束日').onChange({ target: { value: '2026-10-13' } });
+  find(rangeTree, 'input', props => props['aria-label'] === '批次范围').onChange({ target: { value: 'B1，B2' } });
+  await renderActual(); assert.equal(actualReads.length, 1, 'Editing dates and batches does not read or retry');
+  find(rangeTree, 'form').onSubmit({ preventDefault() {} }); await renderActual();
+  assert.equal(actualReads.length, 2, 'Applying the manual scope performs one new read'); assert.equal(actualGraphBuilds, 1);
+  assert.deepEqual(actualReads[1], { plan_ref: actualPlan, resource_type: 'machine', resource_ref: actualResource,
+    batch_ids: ['B1', 'B2'], plan_finish_date_from: '2026-10-12', plan_finish_date_to: '2026-10-13' });
+  assert.equal(find(actualTree, 'error').error, null); assert(find(actualTree, 'actual-rows'));
+  resourceSelect = find(rangeTree, 'select'); assert.equal(resourceSelect.disabled, false); assert.equal(resourceSelect.value, actualResource);
+  find(rangeTree, 'input', props => props['aria-label'] === '计划完工开始日').onChange({ target: { value: '2026-10-13' } });
+  find(rangeTree, 'input', props => props['aria-label'] === '计划完工结束日').onChange({ target: { value: '2026-10-14' } });
+  find(rangeTree, 'input', props => props['aria-label'] === '批次范围').onChange({ target: { value: 'ONLY-M1' } });
+  await renderActual(); assert.equal(actualReads.length, 2);
+  find(rangeTree, 'form').onSubmit({ preventDefault() {} }); await renderActual(); assert.equal(actualReads.length, 3); assert.equal(actualGraphBuilds, 2);
+  const narrowedResources = find(actualTree, actualWindow.ActualGanttControls.Range).resources;
+  assert.deepEqual(Array.from(narrowedResources, row => row.ref), [otherResource]);
+  resourceSelect = find(rangeTree, 'select'); assert.equal(resourceSelect.disabled, false); assert.equal(resourceSelect.value, actualResource);
+  const selectedOption = find(rangeTree, 'option', props => props.value === resourceSelect.value);
+  assert(selectedOption, 'A resource absent from a successful narrowed result remains a real selected option');
+  assert.equal(selectedOption.children.join(''), '已选资源（当前范围无记录）');
+  find(rangeTree, 'form').onSubmit({ preventDefault() {} }); await renderActual(); assert.equal(actualReads.length, 4); assert.equal(actualGraphBuilds, 3);
+  assert.deepEqual(actualReads[3], { plan_ref: actualPlan, resource_type: 'machine', resource_ref: actualResource,
+    batch_ids: ['ONLY-M1'], plan_finish_date_from: '2026-10-13', plan_finish_date_to: '2026-10-14' });
+  actualHooks.unmount(); rangeHooks.unmount();
+  }
+
   // R19's actual parent retains overview facts while print/fit unmount the child.
   const overviewParentHooks = hooks(), overviewThemes = [], overviewResizes = [], fills = [], pointXs = [], planWidths = [], overviewSteps = [];
   let overviewHooks = null, cssWidth = 200.2, cssHeight = 16, binBuilds = 0, overviewTimeReads = 0, printChange, primary = 'light', printing = false;
-  const overviewCtx = { setTransform() {}, fillRect(...args) { fills.push({ args, color: this.fillStyle }); }, strokeRect() {} };
-  const canvas = { getBoundingClientRect: () => ({ width: cssWidth, height: cssHeight }), getContext: () => overviewCtx };
-  const overviewWindow = { devicePixelRatio: 1, PointContract: { isPoint: task => task.event_kind === 'point' }, PointGanttModel: { paint: (_, x) => pointXs.push(x) },
+  const overviewCtx = { clearRect() {}, setTransform() {}, fillRect(...args) { fills.push({ args, color: this.fillStyle }); }, strokeRect() {} };
+  const canvas = { get clientWidth() { return Math.round(cssWidth); }, get clientHeight() { return Math.round(cssHeight); }, getBoundingClientRect: () => ({ width: cssWidth, height: cssHeight }), getContext: () => overviewCtx };
+  const overviewWindow = { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1, PointContract: { isPoint: task => task.event_kind === 'point' }, PointGanttModel: { paint: (_, x) => pointXs.push(x) },
     GanttPresentation: { palette: () => ({ primary: { edge: primary }, plan: {}, gold: 'gold' }) },
     matchMedia: () => ({ addEventListener(_, fn) { printChange = fn; }, removeEventListener() {} }) };
   const overviewContext = vm.createContext({ window: overviewWindow, React: overviewParentHooks.React, document: { documentElement: {} },
@@ -350,13 +624,14 @@ async function main() {
   load(overviewContext, 'PlanGanttModel.js'); const overviewInstant = overviewWindow.PlanGanttModel.instant;
   const planAsOf = '2026-10-10T00:00:00';
   overviewWindow.PlanGanttModel.instant = value => { if (value !== planAsOf) overviewTimeReads++; return overviewInstant(value); };
+  const overviewPalette = overviewWindow.GanttPresentation.palette; load(overviewContext, 'GanttPresentation.js'); overviewWindow.GanttPresentation.palette = overviewPalette;
   load(overviewContext, 'PlanGanttCanvas.jsx');
   const overviewTasks = [{ start: '2026-10-12T08:00:00', end: '2026-10-12T09:00:00' },
     { start: '2026-10-12T08:30:00', end: '2026-10-12T09:30:00' },
     { start: '2026-10-12T10:00:00', end: '2026-10-12T10:00:00', event_kind: 'point' }];
   const planStart = overviewInstant(overviewTasks[0].start), planEnd = overviewInstant(overviewTasks[2].end);
   const planBoard = { scrollLeft: 0, scrollTop: 0, clientWidth: 1000, clientHeight: 440 };
-  Object.assign(overviewWindow.PlanGanttModel, { prepare: () => ({}), layoutPrepared(_, width) { planWidths.push(width); return { start: planStart, end: planEnd, rows: [], tasks: [],
+  Object.assign(overviewWindow.PlanGanttModel, { prepare: () => ({ items: overviewTasks.map(task => ({ task, point: overviewWindow.PointContract.isPoint(task), start: overviewInstant(task.start), end: overviewInstant(task.end) })) }), groupPrepared: value => value, selectPrepared: value => value, layoutPrepared(_, width) { planWidths.push(width); return { start: planStart, end: planEnd, rows: [], tasks: [],
     groupCount: 0, height: 0, locations: new Map(), baselineLocations: new Map(), conflicts: new Set(), labels: {} }; }, visibleRows: rows => rows });
   Object.assign(overviewWindow, { ResourceControls: { Button: 'button', Icon: 'icon', TimelineZoom: 'plan-zoom', timelineZoomKey: () => null },
     WorkbenchFormat: { compactDateTime: String }, WorkbenchControls: { usePrintLayout: () => printing, EmptyState: 'empty' },
@@ -368,7 +643,12 @@ async function main() {
   let overviewProps, overviewMounts = 0;
   const planRender = () => {
     overviewContext.React = overviewParentHooks.React;
-    const tree = overviewParentHooks.render(() => overviewWindow.PlanGantt({ data: overviewParentData, asOf: planAsOf, selected: null, onSelect() {}, query: '', onQuery() {} }));
+    const tree = overviewParentHooks.render(() => {
+      const prepared = overviewParentHooks.React.useMemo(() => {
+        const facts = overviewWindow.PlanGanttModel.prepare(overviewParentData); facts.graph = overviewWindow.GanttGraph.create(overviewParentData.gantt_graph); return facts;
+      }, [overviewParentData]);
+      return overviewWindow.PlanGantt({ data: overviewParentData, prepared, asOf: planAsOf, selected: null, onSelect() {}, query: '', onQuery() {} });
+    });
     find(tree, 'div', props => props.className === 'plan-board').ref.current = planBoard; overviewParentHooks.flush();
     overviewProps = find(tree, overviewWindow.PlanGanttCanvas.Overview);
     if (overviewProps) {
@@ -381,29 +661,29 @@ async function main() {
   };
   let overviewParentTree = planRender(); assert.equal(overviewProps, null); assert.equal(overviewTimeReads, 0); assert.equal(binBuilds, 0);
   find(overviewParentTree, 'plan-zoom').onZoom(2); overviewParentTree = planRender(); const parentOverviewCache = overviewProps.cache;
-  assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 5); assert.equal(pointXs.at(-1), cssWidth);
+  assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 0); assert.equal(pointXs.at(-1), canvas.clientWidth);
   overviewSteps.push({ phase: 'first_display', date_reads: overviewTimeReads, histogram_builds: binBuilds });
   planBoard.scrollLeft += 20; find(overviewParentTree, 'div', props => props.className === 'plan-board').onScroll();
   overviewParentTree = planRender(); primary = 'dark'; overviewThemes.at(-1).draw(); printChange();
   assert.equal(overviewProps.left, planBoard.scrollLeft);
   overviewWindow.devicePixelRatio = 2; printChange(); find(overviewParentTree, 'plan-zoom').onZoom(4); overviewParentTree = planRender();
-  assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 5); assert.equal(fills.at(-1).color, 'dark');
+  assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 0); assert.equal(fills.at(-1).color, 'dark');
   printing = true; overviewParentTree = planRender(); assert.equal(overviewProps, null); assert.equal(overviewHooks, null); assert.equal(planWidths.at(-1), 640);
   printing = false; overviewParentTree = planRender(); assert.strictEqual(overviewProps.cache, parentOverviewCache);
-  assert.equal(overviewMounts, 2); assert.deepEqual({ date_reads: overviewTimeReads, histogram_builds: binBuilds }, { date_reads: 5, histogram_builds: 1 },
+  assert.equal(overviewMounts, 2); assert.deepEqual({ date_reads: overviewTimeReads, histogram_builds: binBuilds }, { date_reads: 0, histogram_builds: 1 },
     'A freshly mounted Overview after print reuses the parent-owned date facts and histogram');
   overviewSteps.push({ phase: 'after_print_remount', date_reads: overviewTimeReads, histogram_builds: binBuilds });
   find(overviewParentTree, 'plan-zoom').onFit(); overviewParentTree = planRender(); assert.equal(overviewHooks, null);
   find(overviewParentTree, 'plan-zoom').onZoom(2); overviewParentTree = planRender(); assert.strictEqual(overviewProps.cache, parentOverviewCache);
-  assert.equal(overviewMounts, 3); assert.equal(overviewTimeReads, 5); assert.equal(binBuilds, 1);
+  assert.equal(overviewMounts, 3); assert.equal(overviewTimeReads, 0); assert.equal(binBuilds, 1);
   overviewSteps.push({ phase: 'after_fit_remount', date_reads: overviewTimeReads, histogram_builds: binBuilds });
-  cssWidth = 200.8; overviewResizes.at(-1).draw(); assert.equal(binBuilds, 2); assert.equal(overviewTimeReads, 5); assert.equal(pointXs.at(-1), cssWidth);
+  cssWidth = 200.8; overviewResizes.at(-1).draw(); assert.equal(binBuilds, 2); assert.equal(overviewTimeReads, 0); assert.equal(pointXs.at(-1), canvas.clientWidth);
   cssHeight = 24; overviewResizes.at(-1).draw(); assert.equal(binBuilds, 2);
   overviewSteps.push({ phase: 'after_actual_css_resize', date_reads: overviewTimeReads, histogram_builds: binBuilds });
   printing = true; planRender(); overviewParentData = { ...overviewParentData, tasks: overviewTasks.slice() }; planRender();
-  assert.equal(overviewTimeReads, 5, 'Tasks changed while the overview is hidden wait until it is mounted');
+  assert.equal(overviewTimeReads, 0, 'Overview consumes the data preparation even while hidden');
   overviewSteps.push({ phase: 'hidden_new_tasks', date_reads: overviewTimeReads, histogram_builds: binBuilds });
-  printing = false; planRender(); assert.equal(overviewMounts, 4); assert.equal(overviewTimeReads, 10); assert.equal(binBuilds, 3);
+  printing = false; planRender(); assert.equal(overviewMounts, 4); assert.equal(overviewTimeReads, 0); assert.equal(binBuilds, 3);
   overviewSteps.push({ phase: 'display_new_tasks', date_reads: overviewTimeReads, histogram_builds: binBuilds });
   overviewHooks.unmount(); overviewHooks = null; overviewParentHooks.unmount();
 

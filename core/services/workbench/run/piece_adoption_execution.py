@@ -5,67 +5,21 @@ not used here. Fresh shared guardrails retain exact actual intervals/resources,
 all revisions, the whole official snapshot and unselected resource reservations.
 """
 
-from core.infrastructure.read_evidence import verified_read
 from core.models.content import same
-from core.services.scheduler.execution.execution_snapshot import execution_fact_values
-from core.services.scheduler.run.schedule_execution_guardrails import _collect_execution_guardrails
 from core.services.scheduler.run.schedule_execution_persistence_guard import _validate_unselected_resource_overlap
-from core.services.scheduler.run.schedule_execution_resource_facts import _latest_plan_rows
 from core.services.scheduler.run.schedule_input_seed_metadata import MERGED_EXECUTION_GROUP_SOURCE
-from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.piece_scope import block
-from core.services.workbench.facts.run_input_codec import restore_execution_projections
-from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
+from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 _FIELDS = ("start_time", "end_time", "machine_id", "operator_id", "source")
 
 
-def _stable_projection(projection):
-    value = projection.to_dict()
-    value.pop("write_context")
-    value.pop("comparison_task_ref")
-    for report in value["reports"]:
-        report.pop("write_context")
-    return value
-
-
 def validate_piece_execution(svc, prepared, payload, scope, refs, *, purpose):
-    facts, actual_seeds = verified_read(svc.conn, ("piece_execution", id(prepared)),
-        lambda: _execution_inputs(svc, prepared, scope, refs))
-    protected = _protected_arrangements(svc, prepared, payload, actual_seeds, purpose=purpose)
-    _validate_unselected_resource_overlap(svc, payload=payload, execution_facts=facts,
-                                        operations=prepared.operations)
+    projections = prepared.preflight_facts.execution_projections
+    _quantities(scope, refs, projections)
+    protected = _protected_arrangements(svc, prepared, payload, prepared.execution_seed_results, purpose=purpose)
+    _validate_unselected_resource_overlap(payload=payload, reservations=prepared.execution_reservations)
     return protected
-
-
-def _execution_inputs(svc, prepared, scope, refs):
-    if svc.history_repo.get_latest_version() != prepared.prev_version:
-        block("piece_baseline_changed", "正式计划在这次排产之后又变了，本次没有采用。请刷新后重新排产。")
-    ledger = ExecutionLedgerService(svc.conn)
-    current = {item.operation_ref: item for item in ledger.project_operations(list(refs.values()))}
-    supplied = restore_execution_projections([row["execution"] for row in prepared.dispositions])
-    if not same({item.operation_ref: _stable_projection(item) for item in supplied}, {
-        ref: _stable_projection(item) for ref, item in current.items()
-    }):
-        block("piece_execution_changed", "排产时读到的报工记录和现在的不一致，本次没有采用。请刷新现场记录后重新排产。")
-    _quantities(scope, refs, current)
-    return _current_protection(svc, prepared)
-
-
-def _current_protection(svc, prepared):
-    facts, fixed, completed, actual_seeds, revisions, snapshot = _collect_execution_guardrails(
-        svc, prepared.operations, prev_version=prepared.prev_version)
-    if (not same([[key, execution_fact_values(value)] for key, value in sorted(prepared.execution_facts.items())],
-                 [[key, execution_fact_values(value)] for key, value in sorted(facts.items())])
-            or not same(sorted(prepared.execution_fixed_op_ids), sorted(fixed))
-            or not same(sorted(prepared.execution_completed_op_ids), sorted(completed))
-            or not same(sorted(prepared.execution_guard_state_revisions.items()), sorted(revisions.items()))
-            or prepared.execution_snapshot_revision != snapshot.revision
-            or not same(list(prepared.execution_snapshot_op_ids), list(snapshot.op_ids))
-            or not same(prepared.execution_snapshot_op_count, snapshot.op_count)
-            or not same(prepared.execution_seed_results, actual_seeds)):
-        block("piece_execution_protection_changed", "已开工工序的保护数据缺失或已过期，本次没有采用。请刷新后重新排产。")
-    return facts, actual_seeds
 
 
 def _protected_arrangements(svc, prepared, payload, actual_seeds, *, purpose):
@@ -102,17 +56,16 @@ def _quantities(scope, refs, projections):
 
 def _original_arrangements(svc, prepared, rows, actual, protected, derived, *, purpose):
     """正式采用覆盖全部原正式工序；每份候选都保持受保护的原安排。"""
-    latest = _latest_plan_rows(svc, prepared.prev_version)
+    latest = prepared.latest_plan_rows
     if purpose == "adoption" and not set(latest) <= set(rows):
         block("official_scope_not_covered", "候选方案漏掉了正式计划里已有的部分工序，本次没有采用。请回「执行排产」重新排一次。")
-    official = WorkbenchPieceAdoptionRepository(svc.conn)
     for op_id, identity in latest.items():
         if op_id in actual or op_id not in protected or op_id in derived:
             continue
-        old = official.get_schedule_row(identity["schedule_id"])
+        old = identity
         row = rows[op_id]
         if old is None or not same((row.start_time, row.end_time, row.machine_id, row.operator_id), (
-                svc._normalize_datetime(old["start_time"]), svc._normalize_datetime(old["end_time"]),
+                parse_dt(old["start_time"]), parse_dt(old["end_time"]),
                 old["machine_id"], old["operator_id"])):
             block("piece_held_arrangement_changed", "保持原安排的工序的时间、设备或人员和原正式计划不一致，本次没有采用。请回「执行排产」重新排一次。")
     if protected - actual - derived - set(latest):

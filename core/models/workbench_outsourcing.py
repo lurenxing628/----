@@ -43,10 +43,12 @@ def raw_facts(value):
     raise TypeError("Unsupported outsourcing evidence type: " + type(value).__name__)
 
 
-def bounded(value):
-    if len(canonical_json(value).encode("utf-8")) > MAX_BYTES:
-        reject("外协数据超过 8 MB，这次没有读取。请缩小查询范围。", "query_too_large", 413)
-    return value
+def document_text(value):
+    """Encode the actual document written to a receipt column exactly once."""
+    encoded = canonical_json(value)
+    if len(encoded.encode("utf-8")) > MAX_BYTES:
+        reject("外协保存资料超过 8 MB，这次没有保存。请缩小登记范围。", "query_too_large", 413)
+    return encoded
 
 
 def label(value):

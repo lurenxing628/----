@@ -1,4 +1,4 @@
-"""Real ReportEngine/ExecutionReview facts, with current-official identity guards."""
+"""Current report facts, with current-official identity guards."""
 
 from __future__ import annotations
 
@@ -32,27 +32,20 @@ class WorkbenchReportFacts:
     def read_snapshot(self):
         return self.plans.read_snapshot()
 
-    def current_plan(self, scope):
-        return self._current_plan(scope, self.plans._selected)
-
     def current_plan_metadata(self, scope):
-        return self._current_plan(scope, self.plans._selected_metadata)
-
-    def _current_plan(self, scope, select):
         ref = scope.plan_ref
         if ref is None:
-            version = self.engine.latest_version()
+            version = self.plans._repo().latest_version()
             if not version:
                 raise WorkbenchCommandRejected("plan_unavailable", "当前没有正式计划，不能生成现场分析。")
             ref = self.plans.references.get_plan_ref(WorkbenchPlanLocator(version, ROLE_ADOPTED))
-        locator = self.plans.references.resolve_plan(ref)
-        if locator.plan_role != ROLE_ADOPTED or locator.scenario_id is not None:
+        resolution, entry, span = self.plans._selected_metadata(ref)
+        if resolution.selected_role != ROLE_ADOPTED or resolution.scenario_id is not None:
             raise WorkbenchCommandRejected("plan_not_current_official", "现场分析只看当前正式计划，没有生成结果。候选方案和试调方案请到试调页查看。")
-        _, entry, span = select(ref)
         plan = project_plan(entry, ref)
         if not plan["is_current_official"]:
             raise WorkbenchCommandRejected("plan_not_current_official", "请选择当前正式计划后重新分析。")
-        return replace(scope, plan_ref=ref), plan, locator.version, span
+        return replace(scope, plan_ref=ref), plan, resolution, span
 
     def _resource_maps(self, rows):
         maps = {}
@@ -73,7 +66,8 @@ class WorkbenchReportFacts:
             raise ValueError("Report as_of must be a factory-local naive datetime.")
         if scope.plan_finish_date_from:
             ensure_report_date_range_within_limit(date.fromisoformat(scope.plan_finish_date_from), date.fromisoformat(scope.plan_finish_date_to))
-        scope, plan, version, span = self.current_plan_metadata(scope)
+        scope, plan, resolution, span = self.current_plan_metadata(scope)
+        version = resolution.version
         batch = self.plans.entities.get(scope.batch_ref) if scope.batch_ref else None
         if scope.batch_ref and (batch is None or batch.kind != "batch"):
             raise WorkbenchCommandRejected("entity_not_found", "筛选记录已失效或类型不符，请重新选择。", 404)
@@ -88,14 +82,16 @@ class WorkbenchReportFacts:
         task_refs = self.plans.references.get_task_refs(scope.plan_ref, rows)
         tasks = [{"plan_ref": scope.plan_ref, "operation_ref": operation_refs[row["op_id"]],
                   "task_ref": task_refs[row["schedule_id"]]} for row in rows]
-        ledger_reader = ExecutionLedgerService(self.conn, clock=lambda: as_of)
+        ledger_reader = ExecutionLedgerService(self.conn, clock=lambda: as_of, current_plan_provider=lambda conn: plan)
         ledger = ledger_reader.workspace_projection(scope.plan_ref, tasks)
         events_count = sum(len(row["legacy_facts"]) + sum(len(report["correction_history"]) for report in row["reports"])
                            for row in ledger["projections"])
         if events_count > MAX_REPORT_EVENTS:
             raise WorkbenchCommandRejected("query_too_large", "这个范围里的报工和更正记录太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
-        resources = self._resource_maps(rows)
         choice_resources = self._resource_maps(self.repo.plan_resource_keys(version))
+        resources = {kind: {str(row[key]): choice_resources[kind][str(row[key])] for row in rows
+                            if row.get(key) not in (None, "")}
+                     for kind, key in (("machine", "machine_id"), ("operator", "operator_id"), ("batch", "batch_id"))}
         actual_resources = ledger_reader.repo.resources(self.repo.actual_resource_refs(scope.plan_ref))
         choices = choice_directory(choice_resources, {
             "machines": [row for row in actual_resources if row["kind"] == "machine"],

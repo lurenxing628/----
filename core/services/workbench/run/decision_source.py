@@ -78,7 +78,7 @@ class DecisionSource:
         self._candidate_reference(self.reference_ref)
         self._candidate_reference(self.selected_ref, require_result=False)
         self._projected, self._verified, self._task_intervals, self._analysis, self._candidate_records = {}, {}, {}, {}, {}
-        self._raw_tasks, self._candidate_sources, self._prepared_task_rows = {}, {}, {}
+        self._raw_tasks, self._candidate_sources, self._prepared_task_rows, self._scheduled_op_ids = {}, {}, {}, {}
         self._candidate_records.update({row["candidate_ref"]: row for row in prepared.get("rows", ())})
         for name in ("receipt", "capture", "facts", "disposition"):
             if name in prepared:
@@ -87,6 +87,7 @@ class DecisionSource:
             self._candidate_records[candidate_ref] = source.candidate
             self._projected[candidate_ref] = source.tasks
             self._raw_tasks[candidate_ref] = source.raw_tasks
+            self._scheduled_op_ids[candidate_ref] = source.scheduled_op_ids
             self._candidate_sources[candidate_ref] = source
         self.scope = self._scope(range_start, range_end)
         self.scope["resource_refs"] = {kind: self.resource_cohort[kind + "_refs"] for kind in ("machine", "operator")}
@@ -258,7 +259,8 @@ class DecisionSource:
             row = self.candidate_record(candidate_ref)
             self._raw_tasks[candidate_ref] = self.store.tasks(candidate_ref)
             self._prepared_task_rows[candidate_ref] = {}
-            self._verified[candidate_ref], self._task_intervals[candidate_ref] = validate_saved_tasks(
+            (self._verified[candidate_ref], self._task_intervals[candidate_ref],
+             self._scheduled_op_ids[candidate_ref]) = validate_saved_tasks(
                 self._raw_tasks[candidate_ref], row, self.facts, prepared_tasks=self._prepared_task_rows[candidate_ref])
         return self._verified[candidate_ref]
 
@@ -268,7 +270,8 @@ class DecisionSource:
             tasks = self.tasks(candidate_ref)
             packet = {"run": self.run, "rows": self.rows, "receipt": self.receipt,
                 "capture": self.capture, "facts": self.facts, "disposition": self.disposition,
-                "candidate": self.candidate_record(candidate_ref), "raw_tasks": self._raw_tasks[candidate_ref], "tasks": tasks}
+                "candidate": self.candidate_record(candidate_ref), "raw_tasks": self._raw_tasks[candidate_ref], "tasks": tasks,
+                "scheduled_op_ids": self._scheduled_op_ids[candidate_ref]}
             self._candidate_sources[candidate_ref] = read_candidate_source(self.store, candidate_ref, prepared=packet)
         return self._candidate_sources[candidate_ref]
 

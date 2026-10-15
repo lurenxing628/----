@@ -2641,19 +2641,32 @@ function SMExport({
     // A value that rounds to zero must not read as "-0.0": nothing was reduced.
     return Number(value.toFixed(digits)) === 0 ? 0 : value;
   }
+  const formatters = new Map();
+  function formatNumber(value, {
+    digits,
+    trim,
+    exact
+  }, percent = false) {
+    if (exact && !percent) return String(value === 0 ? 0 : value);
+    const key = (percent ? 'percent:' : 'number:') + digits + ':' + trim;
+    let formatter = formatters.get(key);
+    if (!formatter) {
+      formatter = new Intl.NumberFormat('zh-CN', {
+        ...(percent ? {
+          style: 'percent'
+        } : {}),
+        minimumFractionDigits: trim ? 0 : digits,
+        maximumFractionDigits: digits
+      });
+      formatters.set(key, formatter);
+    }
+    return formatter.format(signedZero(value, digits + (percent ? 2 : 0)));
+  }
   function number(value, options) {
     if (empty(value)) return unknown;
-    const {
-      digits,
-      trim,
-      exact
-    } = numberOptions(options, '数值');
+    const parsed = numberOptions(options, '数值');
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('数值');
-    if (exact) return String(value === 0 ? 0 : value);
-    return signedZero(value, digits).toLocaleString('zh-CN', {
-      minimumFractionDigits: trim ? 0 : digits,
-      maximumFractionDigits: digits
-    });
+    return formatNumber(value, parsed);
   }
   function integerText(value) {
     if (empty(value)) return unknown;
@@ -2665,22 +2678,15 @@ function SMExport({
   }
   function percent(ratio, options) {
     if (empty(ratio)) return unknown;
-    const {
-      digits,
-      trim
-    } = numberOptions(options, '百分比');
+    const parsed = numberOptions(options, '百分比');
     if (typeof ratio !== 'number' || !Number.isFinite(ratio)) return invalid('百分比');
-    return signedZero(ratio, digits + 2).toLocaleString('zh-CN', {
-      style: 'percent',
-      minimumFractionDigits: trim ? 0 : digits,
-      maximumFractionDigits: digits
-    });
+    return formatNumber(ratio, parsed, true);
   }
   function hours(value, options) {
     if (empty(value)) return unknown;
-    numberOptions(options, '工时');
+    const parsed = numberOptions(options, '工时');
     if (typeof value !== 'number' || !Number.isFinite(value)) return invalid('工时');
-    return number(value, options) + HOURS_UNIT;
+    return formatNumber(value, parsed) + HOURS_UNIT;
   }
   window.WorkbenchFormat = Object.freeze({
     dateTime,
@@ -3180,24 +3186,24 @@ function SMExport({
   // 经办人记忆：只记住这台机器上最后一次填写的经办人，作为下次的默认值。它不是登录身份，
   // 服务端仍按每次提交的字面值校验；本机存储不可用时按空值处理，并把原因随结果返回给调用方。
   const KEY = 'aps_workbench_handler_v1';
-  const valid = value => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= 100 && !value.includes(' ');
+  const valid = value => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= 100 && !value.includes('\u0000');
   function storage(store) {
     return store === undefined ? window.localStorage : store;
   }
+  const parsed = raw => raw === null ? {
+    value: '',
+    error: ''
+  } : valid(raw) ? {
+    value: raw,
+    error: ''
+  } : {
+    value: '',
+    error: '本机记住的经办人格式无效，这次不预填。'
+  };
   function read(store) {
     try {
       const raw = storage(store).getItem(KEY);
-      if (raw === null) return {
-        value: '',
-        error: ''
-      };
-      return valid(raw) ? {
-        value: raw,
-        error: ''
-      } : {
-        value: '',
-        error: '本机记住的经办人格式无效，这次不预填。'
-      };
+      return parsed(raw);
     } catch (_) {
       return {
         value: '',
@@ -3205,40 +3211,57 @@ function SMExport({
       };
     }
   }
-  let lastWriteError = '';
+  const listeners = new Set();
   function write(value, store) {
     const text = typeof value === 'string' ? value.trim() : '';
     if (!valid(text)) return {
       saved: false,
       error: '经办人为空或过长，没有记住。'
     };
+    let result;
     try {
       storage(store).setItem(KEY, text);
-      lastWriteError = '';
-      return {
+      result = {
         saved: true,
+        value: text,
         error: ''
       };
     } catch (_) {
-      lastWriteError = '本机经办人记忆无法写入，下次仍需手填。';
-      return {
+      result = {
         saved: false,
-        error: lastWriteError
+        value: '',
+        error: '本机经办人记忆无法写入，下次仍需手填。'
       };
     }
+    for (const listener of listeners) listener(result);
+    return result;
   }
   // 经办人输入框下方的说明：解释预填值从哪来，或者为什么这次没能用上记忆。
-  function hint(current, store) {
-    if (lastWriteError) return lastWriteError;
-    const memory = read(store);
+  function hint(current, memory) {
     if (memory.error) return memory.error;
     return memory.value && memory.value === current ? '已按本机上次填写的经办人预填，可以直接改。' : '';
+  }
+  function useHint(current) {
+    const [memory, setMemory] = React.useState(read);
+    React.useEffect(() => {
+      listeners.add(setMemory);
+      const changed = event => {
+        if (event.key === KEY || event.key === null) setMemory(parsed(event.key === null ? null : event.newValue));
+      };
+      window.addEventListener('storage', changed);
+      return () => {
+        listeners.delete(setMemory);
+        window.removeEventListener('storage', changed);
+      };
+    }, []);
+    return hint(current, memory);
   }
   window.WorkbenchHandlerMemory = Object.freeze({
     KEY,
     read,
     write,
-    hint
+    hint,
+    useHint
   });
 })();
 
@@ -4700,61 +4723,10 @@ function SMExport({
   'use strict';
 
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-  const exact = (value, keys) => object(value) && Reflect.ownKeys(value).length === keys.length && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
-  const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
-  function validate(value, data) {
-    if (!exact(value, ['state', 'basis', 'items', 'issues']) || !Array.isArray(value.items) || value.items.length > 10000 || !Array.isArray(value.issues) || !value.issues.every(row => exact(row, ['code', 'message']) && typeof row.code === 'string' && row.code && typeof row.message === 'string' && row.message)) return false;
-    if (value.state === 'unavailable') return value.basis === null && !value.items.length && value.issues.length > 0;
-    if (value.state !== 'available' || !['run_admission', 'trial_creation'].includes(value.basis) || value.issues.length) return false;
-    const tasks = new Map(),
-      operations = new Map();
-    for (const item of value.items) {
-      if (!exact(item, ['task_ref', 'operation_ref', 'predecessor_operation_refs']) || !ref(item.task_ref) || !ref(item.operation_ref) || tasks.has(item.task_ref) || !Array.isArray(item.predecessor_operation_refs) || item.predecessor_operation_refs.length > 10000 || !item.predecessor_operation_refs.every(ref) || new Set(item.predecessor_operation_refs).size !== item.predecessor_operation_refs.length || item.predecessor_operation_refs.includes(item.operation_ref)) return false;
-      tasks.set(item.task_ref, item.operation_ref);
-      const previous = JSON.stringify(item.predecessor_operation_refs.slice().sort());
-      if (operations.has(item.operation_ref) && operations.get(item.operation_ref) !== previous) return false;
-      operations.set(item.operation_ref, previous);
-    }
-    if (!data.tasks.every(task => tasks.get(task.task_ref) === task.operation_ref) || data.scope.range_start === null && tasks.size !== data.tasks.length) return false;
-    const incoming = new Map(),
-      next = new Map();
-    for (const [operation, encoded] of operations) {
-      const parents = JSON.parse(encoded).filter(parent => operations.has(parent));
-      incoming.set(operation, parents.length);
-      for (const parent of parents) {
-        if (!next.has(parent)) next.set(parent, []);
-        next.get(parent).push(operation);
-      }
-    }
-    const queue = Array.from(incoming).filter(([, count]) => count === 0).map(([operation]) => operation);
-    for (let index = 0; index < queue.length; index++) for (const child of next.get(queue[index]) || []) {
-      const count = incoming.get(child) - 1;
-      incoming.set(child, count);
-      if (!count) queue.push(child);
-    }
-    return queue.length === operations.size;
-  }
-  function missingPredecessors(order, taskRef) {
-    if (order.state !== 'available') return 0;
-    const current = order.items.find(row => row.task_ref === taskRef),
-      scheduled = new Set(order.items.map(row => row.operation_ref));
-    return current.predecessor_operation_refs.filter(ref => !scheduled.has(ref)).length;
-  }
-  window.PlanProcessOrder = {
-    validate,
-    missingPredecessors
-  };
-})();
-
-;
-(function () {
-  'use strict';
-
-  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const ref = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
   const edgeKey = edge => edge.from_task_ref + ':' + edge.to_task_ref + ':' + edge.edge_type;
   const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
-  // Both workspaces validate this shared graph once, at their existing API boundary.
+  // Workspaces validate this shared graph once, at their existing API boundary.
   function validate(graph, {
     scope,
     tasks,
@@ -4764,12 +4736,12 @@ function SMExport({
     processLabel,
     completeCount
   }) {
-    if (!object(graph) || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state) || !['nodes', 'edges', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))) return false;
-    if (graph.state === 'unavailable') return typeof graph.reason === 'string' && !!graph.reason.trim() && !graph.nodes.length && !graph.edges.length && !graph.critical_task_refs.length && !graph.critical_edges.length;
+    if (!object(graph) || Reflect.ownKeys(graph).length !== 6 || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state) || !['nodes', 'critical_task_refs', 'critical_edges'].every(key => Array.isArray(graph[key]))) return false;
+    if (graph.state === 'unavailable') return typeof graph.reason === 'string' && !!graph.reason.trim() && !graph.nodes.length && !graph.critical_task_refs.length && !graph.critical_edges.length;
     if (graph.reason !== null || completeCount !== undefined && graph.nodes.length !== completeCount) return false;
     const nodes = new Map();
     for (const node of graph.nodes) {
-      if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || nodes.has(node.task_ref) || typeof node.batch_id !== 'string' || !node.batch_id.trim() || !(node.piece_id === null || typeof node.piece_id === 'string' && !!node.piece_id.trim()) || !sequence(node.sequence) || !processLabel(node.process_label) || !time(node.start) || !time(node.end) || node.end < node.start) return false;
+      if (!object(node) || !ref(node.task_ref) || !ref(node.operation_ref) || nodes.has(node.task_ref) || typeof node.batch_id !== 'string' || !node.batch_id.trim() || !(node.piece_id === null || typeof node.piece_id === 'string' && !!node.piece_id.trim()) || !sequence(node.sequence) || !processLabel(node.process_label) || !time(node.start) || !time(node.end) || node.end < node.start || !Array.isArray(node.predecessor_operation_refs) || !node.predecessor_operation_refs.every(ref) || new Set(node.predecessor_operation_refs).size !== node.predecessor_operation_refs.length || node.predecessor_operation_refs.includes(node.operation_ref)) return false;
       nodes.set(node.task_ref, node);
     }
     if (!tasks.every(task => {
@@ -4788,14 +4760,17 @@ function SMExport({
         return true;
       });
     }
-    return edgesValid(graph.edges, ['process']) && edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
+    return edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
   }
   function create(graph) {
     const nodes = new Map(),
+      operations = new Map(),
       batches = new Map(),
-      batchFacts = new Map();
+      batchFacts = new Map(),
+      missingPredecessors = new Map();
     for (const [order, node] of graph.nodes.entries()) {
       nodes.set(node.task_ref, node);
+      operations.set(node.operation_ref, node);
       if (!batchFacts.has(node.batch_id)) {
         const facts = {
           nodes: [],
@@ -4818,22 +4793,35 @@ function SMExport({
         order
       });
     }
-    for (const [order, edge] of graph.edges.entries()) {
-      const from = nodes.get(edge.from_task_ref),
-        to = nodes.get(edge.to_task_ref),
-        facts = batchFacts.get(to.batch_id);
-      facts.previous.get(to.task_ref).push(from);
-      if (from.batch_id !== to.batch_id) continue;
-      const record = {
-        edge,
-        order
-      };
-      facts.edges.push(record);
-      if (from.piece_id === null && to.piece_id === null) facts.commonEdges.push(record);else if (from.piece_id === null || to.piece_id === null || from.piece_id === to.piece_id) {
-        const piece = from.piece_id === null ? to.piece_id : from.piece_id;
-        if (!facts.pieceEdges.has(piece)) facts.pieceEdges.set(piece, []);
-        facts.pieceEdges.get(piece).push(record);
+    let order = 0;
+    for (const to of graph.nodes) {
+      const facts = batchFacts.get(to.batch_id);
+      let missing = 0;
+      for (const parent of to.predecessor_operation_refs) {
+        const from = operations.get(parent);
+        if (!from) {
+          missing++;
+          continue;
+        }
+        facts.previous.get(to.task_ref).push(from);
+        const edge = {
+          from_task_ref: from.task_ref,
+          to_task_ref: to.task_ref,
+          edge_type: 'process'
+        };
+        if (from.batch_id !== to.batch_id) continue;
+        const record = {
+          edge,
+          order: order++
+        };
+        facts.edges.push(record);
+        if (from.piece_id === null && to.piece_id === null) facts.commonEdges.push(record);else if (from.piece_id === null || to.piece_id === null || from.piece_id === to.piece_id) {
+          const piece = from.piece_id === null ? to.piece_id : from.piece_id;
+          if (!facts.pieceEdges.has(piece)) facts.pieceEdges.set(piece, []);
+          facts.pieceEdges.get(piece).push(record);
+        }
       }
+      missingPredecessors.set(to.task_ref, missing);
     }
     const criticalEdges = new Map();
     graph.critical_edges.forEach(edge => criticalEdges.set(connection(edge), {
@@ -4845,6 +4833,7 @@ function SMExport({
       nodes,
       batches,
       batchFacts,
+      missingPredecessors,
       critical: new Set(graph.critical_task_refs),
       global: edgeFacts(Array.from(criticalEdges.values())),
       empty: edgeFacts([]),
@@ -5376,11 +5365,15 @@ function SMExport({
       algorithm = value.algorithm;
     return value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.source_kind) && ref(value.source_ref) && nullableRef(value.run_ref) && nullableLabel(value.source_label) && ['accepted_at', 'finished_at', 'adopted_at'].every(key => nullableLabel(value[key])) && exact(origin, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && nullableRef(origin.baseline_ref) && (origin.version === null || int64(origin.version)) && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at) && (origin.captured_task_count === null || count(origin.captured_task_count)) && (algorithm === null ? value.source_kind === 'trial_adoption' : window.RunGenerationContract.algorithm(algorithm, value.run_ref));
   }
+  function processOrder(value) {
+    if (!exact(value, ['state', 'basis', 'issues']) || !Array.isArray(value.issues) || !value.issues.every(row => exact(row, ['code', 'message']) && typeof row.code === 'string' && !!row.code && typeof row.message === 'string' && !!row.message)) return false;
+    return value.state === 'available' ? ['run_admission', 'trial_creation'].includes(value.basis) && !value.issues.length : value.state === 'unavailable' && value.basis === null && value.issues.length > 0;
+  }
   function workspace(result, planRef, scope = {}) {
     const query = workspaceScope(planRef, scope);
     envelope(result, query);
     const d = result.data;
-    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance']) || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query) || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000 || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref') || !taskSpans(d, query) || !exact(d.projections, projections) || !baseline(d.projections.baseline, d) || !resourceDirectory(d) || !calendar(d.projections.calendar, d) || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d) || !window.PlanProcessOrder.validate(d.projections.process_order, d) || !window.GanttGraph.validate(d.gantt_graph, {
+    if (!exact(d, ['plan', 'scope', 'time_scope', 'plan_span', 'task_span', 'tasks', 'task_count', 'tasks_complete', 'resources', 'projections', 'gantt_graph', 'provenance']) || !provenance(d.provenance) || !plan(d.plan) || !d.plan.capabilities.view || d.plan.plan_ref !== planRef || !exact(d.scope, ['source', 'kind', 'plan_ref', 'range_start', 'range_end']) || d.scope.source !== 'production' || d.scope.kind !== 'plan_workspace' || d.scope.plan_ref !== planRef || d.scope.range_start !== (own(query, 'range_start') ? query.range_start : null) || d.scope.range_end !== (own(query, 'range_end') ? query.range_end : null) || !workspaceSpans(d, query) || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000 || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref') || !taskSpans(d, query) || !exact(d.projections, projections) || !baseline(d.projections.baseline, d) || !resourceDirectory(d) || !calendar(d.projections.calendar, d) || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d) || !processOrder(d.projections.process_order) || !window.GanttGraph.validate(d.gantt_graph, {
       scope: 'full_plan',
       tasks: d.tasks,
       taskRef: 'task_ref',
@@ -7642,6 +7635,13 @@ function SMExport({
     });
     return text.replace(' ', 'T').replace(/\.(\d+)$/, (_, fraction) => '.' + fraction.padEnd(6, '0'));
   }
+  function nextInstant(value) {
+    const canonical = factoryTime(value),
+      seconds = canonical.slice(0, 19);
+    const fraction = Number((canonical.slice(20) || '').padEnd(6, '0')) + 1;
+    if (fraction < 1000000) return seconds + '.' + String(fraction).padStart(6, '0');
+    return new Date(Date.parse(seconds + 'Z') + 1000).toISOString().slice(0, 19);
+  }
   function hasShape(type, value, fractionDigits = 3) {
     if (type === 'date') return !!dateParts(value);
     if (type === 'month') return !!monthParts(value);
@@ -7819,6 +7819,7 @@ function SMExport({
     moveMonth,
     nativeField,
     factoryTime,
+    nextInstant,
     hasShape,
     validate,
     daySelectable,
@@ -8901,6 +8902,7 @@ function SMExport({
     service.current = adapter;
     const close = React.useRef(onClose);
     close.current = onClose;
+    const [draftQuery, setDraftQuery] = React.useState('');
     const [request, setRequest] = React.useState({
       query: '',
       page: 1,
@@ -9152,7 +9154,7 @@ function SMExport({
     function readFirst() {
       cache.current = null;
       setRequest({
-        query: request.query,
+        query: draftQuery,
         page: 1,
         size: pageSize
       });
@@ -9209,18 +9211,15 @@ function SMExport({
       ref: search,
       type: "text",
       "aria-label": '搜索' + column.title + '列值',
-      value: request.query,
+      value: draftQuery,
       placeholder: "\u641C\u7D22\u5217\u503C",
-      onChange: event => setRequest({
-        query: event.target.value,
-        page: 1,
-        size: pageSize
-      }),
+      onChange: event => setDraftQuery(event.target.value),
       onKeyDown: event => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          event.stopPropagation();
-        }
+        const nativeEvent = event.nativeEvent || event;
+        if (event.key !== 'Enter' || event.isComposing || nativeEvent.isComposing || event.keyCode === 229 || nativeEvent.keyCode === 229) return;
+        event.preventDefault();
+        event.stopPropagation();
+        readFirst();
       }
     }), /*#__PURE__*/React.createElement(Button, {
       className: "mini",
@@ -18707,7 +18706,6 @@ function SMExport({
         if (typeof ref !== 'string' || !ref) throw C.failure('新增结果里没有工种编号，工序还没绑定。请刷新后核对。');
         const detail = C.query(await adapter.detail('op_type', ref, controller.signal), 'entity');
         if (detail.data.ref !== ref) throw C.failure('读到的工种详情和新增结果不一致，请刷新后核对。');
-        await adapter.list('op_type', scope, controller.signal);
         if (!controller.signal.aborted) setRefresh({
           done: true,
           detail
@@ -25177,31 +25175,80 @@ function SMExport({
     }
     return result;
   }
-  function prepare(data, mode, query, baseline, changedOnly = false) {
+  function prepare(data) {
     const labels = names(data),
-      needle = query.trim().toLocaleLowerCase();
-    const directory = new Map(data.resources.map(row => [row.ref, row]));
-    const comparison = data.projections.baseline;
+      directory = new Map(data.resources.map(row => [row.ref, row]));
+    const fact = (task, baseline) => ({
+      task,
+      baseline,
+      start: instant(task.start),
+      end: instant(task.end),
+      search: searchText(task, labels),
+      point: window.PointContract.isPoint(task)
+    });
+    const items = data.tasks.map(task => fact(task, false)),
+      comparison = data.projections.baseline;
+    const before = comparison.state === 'available' ? comparison.items.filter(item => item.before).map(item => fact(item.before, true)) : [];
+    const taskIndex = new Map(items.map(item => [item.task.task_ref, item])),
+      resourceMembers = new Map();
+    for (const item of items) for (const ref of [item.task.machine_ref, item.task.operator_ref]) {
+      if (!ref) continue;
+      if (!resourceMembers.has(ref)) resourceMembers.set(ref, []);
+      resourceMembers.get(ref).push(item);
+    }
+    const beforeIndex = new Map(before.map(item => [item.task.task_ref, item]));
+    const times = (task, index) => task ? index.get(task.task_ref) || {
+      start: instant(task.start),
+      end: instant(task.end)
+    } : null;
+    const comparisons = new Map(comparison.state === 'available' ? comparison.items.map(item => [item.operation_ref, {
+      ...item,
+      beforeTime: times(item.before, beforeIndex),
+      afterTime: times(item.after, taskIndex)
+    }]) : []);
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
-    const matches = task => (!changedOnly || changed.has(task.operation_ref)) && (!needle || searchText(task, labels).includes(needle));
-    const selected = data.tasks.filter(matches),
-      selectedTasks = new Set(selected),
+    const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, {
+      resource: row,
+      segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({
+        start: instant(item.start),
+        end: instant(item.end)
+      }))
+    }]));
+    const conflictMembers = new Map();
+    for (const row of data.projections.occupancy.resources) for (const segment of row.conflict_segments || []) {
+      const start = instant(segment.start),
+        end = instant(segment.end);
+      conflictMembers.set(row.resource_ref + ':' + segment.start + ':' + segment.end, (resourceMembers.get(row.resource_ref) || []).filter(item => item.start < end && item.end > start));
+    }
+    return {
+      labels,
+      directory,
+      items,
+      before,
+      taskIndex,
+      beforeIndex,
+      comparisons,
+      changed,
+      occupancy,
+      resourceMembers,
+      conflictMembers,
+      start: instant(data.plan_span.start),
+      end: instant(data.plan_span.end)
+    };
+  }
+  function groupPrepared(prepared, mode) {
+    const {
+        labels,
+        directory,
+        occupancy
+      } = prepared,
       groups = new Map(),
       conflicts = new Set();
-    let start = instant(data.plan_span.start),
-      end = instant(data.plan_span.end);
-    const add = (task, before) => {
-      const item = {
-        task,
-        start: instant(task.start),
-        end: instant(task.end),
-        baseline: before
-      };
-      if (before) {
-        start = Math.min(start, item.start);
-        end = Math.max(end, item.end);
-      }
-      const id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
+    let start = prepared.start,
+      end = prepared.end;
+    function add(item) {
+      const task = item.task,
+        id = mode === 'batch' ? task.batch_id : task[mode + '_ref'] || 'unbound';
       if (!groups.has(id)) {
         const label = resourceLabel(task, mode, labels),
           resource = directory.get(id);
@@ -25213,59 +25260,77 @@ function SMExport({
           before: []
         });
       }
-      groups.get(id)[before ? 'before' : 'tasks'].push(item);
-    };
-    data.tasks.forEach(task => add(task, false));
-    if (baseline && data.projections.baseline.state === 'available') data.projections.baseline.items.forEach(item => {
-      if (item.before) add(item.before, true);
-    });
-    const P = window.PointContract,
-      G = window.PointGanttModel;
-    const bounds = G.bounds(start, end, Array.from(groups.values()).some(g => [...g.tasks, ...g.before].some(i => P.isPoint(i.task))));
-    start = bounds.start;
-    end = bounds.end;
-    const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref, row]));
-    const preparedGroups = [];
+      groups.get(id)[item.baseline ? 'before' : 'tasks'].push(item);
+      if (item.baseline) {
+        start = Math.min(start, item.start);
+        end = Math.max(end, item.end);
+      }
+    }
+    prepared.items.forEach(add);
+    prepared.before.forEach(add);
+    const G = window.PointGanttModel,
+      bounds = G.bounds(prepared.start, prepared.end, prepared.items.some(item => item.point));
+    const comparisonBounds = G.bounds(start, end, prepared.items.some(item => item.point) || prepared.before.some(item => item.point));
+    const facts = [];
     for (const group of groups.values()) {
-      const overlap = new Set();
-      const shown = new Set(group.tasks.filter(item => selectedTasks.has(item.task)));
-      group.before.forEach(item => {
-        if (matches(item.task)) shown.add(item);
-      });
-      const currentNormal = tracks(group.tasks.filter(i => !P.isPoint(i.task)), overlap);
-      const oldNormal = tracks(group.before.filter(i => !P.isPoint(i.task)), new Set());
-      const currentPoints = G.prepareTracks(group.tasks.filter(i => P.isPoint(i.task)));
-      const oldPoints = G.prepareTracks(group.before.filter(i => P.isPoint(i.task)));
-      // Visual overlap splits tracks; actual conflict color comes from the same server occupancy snapshot.
-      const resourceOccupancy = occupancy.get(group.id);
-      const segments = resourceOccupancy ? resourceOccupancy.segments.filter(item => item.concurrent_operations > 1).map(item => ({
-        start: instant(item.start),
-        end: instant(item.end)
-      })) : [];
+      const overlap = new Set(),
+        resource = occupancy.get(group.id),
+        segments = resource ? resource.segments : [];
+      const currentNormal = tracks(group.tasks.filter(item => !item.point), overlap),
+        oldNormal = tracks(group.before.filter(item => !item.point), new Set());
       for (const item of group.tasks) {
-        if (P.isPoint(item.task)) continue;
+        if (item.point) continue;
         const hit = firstIntersecting(segments, item.start);
         if (hit < segments.length && segments[hit].start < item.end) conflicts.add(item.task.task_ref);
       }
-      preparedGroups.push({
+      facts.push({
         group,
-        shown,
-        currentNormal: currentNormal.map(lane => lane.filter(item => shown.has(item))),
-        oldNormal: oldNormal.map(lane => lane.filter(item => shown.has(item))),
-        currentPoints,
-        oldPoints,
+        currentNormal,
+        oldNormal,
+        currentPoints: G.prepareTracks(group.tasks.filter(item => item.point)),
+        oldPoints: G.prepareTracks(group.before.filter(item => item.point)),
         overlap: overlap.size,
-        occupancy: resourceOccupancy
+        occupancy: resource && resource.resource
       });
     }
     return {
+      ...prepared,
       mode,
-      labels,
-      groups: preparedGroups,
-      start,
-      end,
-      conflicts,
-      tasks: selected
+      groups: facts,
+      start: bounds.start,
+      end: bounds.end,
+      baselineStart: comparisonBounds.start,
+      baselineEnd: comparisonBounds.end,
+      conflicts
+    };
+  }
+  function matching(prepared, query = '', changedOnly = false) {
+    const needle = query.trim().toLocaleLowerCase();
+    return prepared.items.filter(item => (!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle)));
+  }
+  function selectPrepared(prepared, query = '', changedOnly = false, baseline = false) {
+    const needle = query.trim().toLocaleLowerCase(),
+      selected = matching(prepared, query, changedOnly),
+      shown = new Set(selected);
+    for (const item of baseline ? prepared.before : []) if ((!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle))) shown.add(item);
+    const groups = prepared.groups.map(fact => ({
+      ...fact,
+      shown,
+      group: {
+        ...fact.group,
+        tasks: fact.group.tasks.filter(item => shown.has(item)),
+        before: baseline ? fact.group.before.filter(item => shown.has(item)) : []
+      },
+      currentNormal: fact.currentNormal.map(lane => lane.filter(item => shown.has(item))),
+      oldNormal: baseline ? fact.oldNormal.map(lane => lane.filter(item => shown.has(item))) : [],
+      oldPoints: baseline ? fact.oldPoints : []
+    }));
+    return {
+      ...prepared,
+      groups,
+      tasks: selected.map(item => item.task),
+      start: baseline ? prepared.baselineStart : prepared.start,
+      end: baseline ? prepared.baselineEnd : prepared.end
     };
   }
   function layoutPrepared(prepared, width = 1000) {
@@ -25339,9 +25404,6 @@ function SMExport({
       groupCount
     };
   }
-  function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
-    return layoutPrepared(prepare(data, mode, query, baseline, changedOnly), width);
-  }
   function firstIntersecting(items, start) {
     let low = 0,
       high = items.length;
@@ -25404,8 +25466,10 @@ function SMExport({
     resourceLabel,
     searchText,
     prepare,
+    groupPrepared,
+    matching,
+    selectPrepared,
     layoutPrepared,
-    layout,
     visibleItems,
     visibleRows,
     tickStep,
@@ -25507,6 +25571,77 @@ function SMExport({
       text: value('--ui-text'),
       font: value('--wb-gantt-font')
     };
+  }
+  function useCanvasPaint(ref, paint, colors, deps, printing = false) {
+    const current = React.useRef(paint),
+      printState = React.useRef(printing),
+      request = React.useRef(null);
+    current.current = paint;
+    printState.current = printing;
+    React.useLayoutEffect(() => {
+      let frame = null,
+        live = true;
+      function draw() {
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        const node = ref.current;
+        if (!live || !node) return;
+        // Layout dimensions remain in the same CSS coordinates as the marks when paginated print scales the visual rectangle.
+        const width = node.clientWidth,
+          height = node.clientHeight,
+          dpr = window.devicePixelRatio || 1;
+        const bufferWidth = Math.max(1, Math.round(width * dpr)),
+          bufferHeight = Math.max(1, Math.round(height * dpr));
+        if (node.width !== bufferWidth) node.width = bufferWidth;
+        if (node.height !== bufferHeight) node.height = bufferHeight;
+        const ctx = node.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, width, height);
+        current.current(ctx, width, height, colors(node));
+      }
+      function schedule() {
+        if (!live) return;
+        if (printState.current) {
+          draw();
+          return;
+        }
+        if (frame !== null) return;
+        frame = -1;
+        const id = requestAnimationFrame(draw);
+        if (frame === -1) frame = id;
+      }
+      request.current = schedule;
+      const theme = new MutationObserver(schedule),
+        resize = new ResizeObserver(schedule);
+      theme.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme', 'class']
+      });
+      resize.observe(ref.current);
+      const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
+      if (media) {
+        if (typeof media.addEventListener === 'function') media.addEventListener('change', schedule);else media.addListener(schedule);
+      }
+      window.addEventListener('beforeprint', draw);
+      window.addEventListener('afterprint', schedule);
+      window.addEventListener('resize', schedule);
+      return () => {
+        live = false;
+        request.current = null;
+        if (frame !== null) cancelAnimationFrame(frame);
+        theme.disconnect();
+        resize.disconnect();
+        window.removeEventListener('beforeprint', draw);
+        window.removeEventListener('afterprint', schedule);
+        window.removeEventListener('resize', schedule);
+        if (media) {
+          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', schedule);else media.removeListener(schedule);
+        }
+      };
+    }, []);
+    React.useLayoutEffect(() => {
+      if (request.current) request.current();
+    }, [printing, ...deps]);
   }
   function rounded(ctx, x, y, width, height) {
     const radius = Math.min(4, width / 2, height / 2);
@@ -25612,7 +25747,8 @@ function SMExport({
     axis,
     taskLines,
     palette,
-    paintBar
+    paintBar,
+    useCanvasPaint
   };
 })();
 
@@ -25792,7 +25928,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("h4", null, label), children);
   }
   function GanttRouteList({
-    graph,
+    index,
     targetRef,
     loadedRefs,
     onSelect,
@@ -25800,7 +25936,7 @@ function SMExport({
     collapsible = false,
     children
   }) {
-    const index = React.useMemo(() => G.create(graph), [graph]);
+    const graph = index.graph;
     const route = React.useMemo(() => G.route(index, targetRef), [index, targetRef]);
     return /*#__PURE__*/React.createElement("section", {
       className: "gantt-route",
@@ -25854,7 +25990,9 @@ function SMExport({
         onClick: () => onSelect(parent.task_ref),
         "aria-label": '定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)
       }, pieceLabel(parent), " \xB7 ", operationLabel(parent)))));
-    }))))), children);
+    })))), index.missingPredecessors.get(targetRef) > 0 && /*#__PURE__*/React.createElement("p", {
+      className: "plan-muted"
+    }, "\u6240\u9009\u5DE5\u5E8F\u6709 ", index.missingPredecessors.get(targetRef), " \u9053\u524D\u5E8F\u672A\u5728\u672C\u8BA1\u5212\u5B89\u6392\u3002")), children);
   }
   window.GanttRouteList = GanttRouteList;
 })();
@@ -25865,40 +26003,9 @@ function SMExport({
 
   const M = window.PlanGanttModel,
     V = window.GanttPresentation;
-  function usePaint(ref, paint, deps) {
-    React.useLayoutEffect(() => {
-      const draw = () => {
-        const node = ref.current,
-          scale = window.devicePixelRatio || 1;
-        const {
-          width,
-          height
-        } = node.getBoundingClientRect();
-        node.width = Math.max(1, Math.round(width * scale));
-        node.height = Math.max(1, Math.round(height * scale));
-        const ctx = node.getContext('2d');
-        ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        paint(ctx, width, height, V.palette(node));
-      };
-      draw();
-      const theme = new MutationObserver(draw);
-      theme.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme', 'class']
-      });
-      const resize = new ResizeObserver(draw);
-      resize.observe(ref.current);
-      const media = window.matchMedia('print');
-      if (typeof media.addEventListener === 'function') media.addEventListener('change', draw);else media.addListener(draw);
-      return () => {
-        theme.disconnect();
-        resize.disconnect();
-        if (typeof media.removeEventListener === 'function') media.removeEventListener('change', draw);else media.removeListener(draw);
-      };
-    }, deps);
-  }
   function DenseRow({
     row,
+    items,
     model,
     width,
     viewport,
@@ -25915,8 +26022,7 @@ function SMExport({
     const ref = React.useRef(null),
       scale = width / (model.end - model.start);
     const G = window.PointGanttModel;
-    const items = row.point ? G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale) : M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
-    usePaint(ref, (ctx, w, h, colors) => {
+    V.useCanvasPaint(ref, (ctx, w, h, colors) => {
       const paintScale = (printing ? w : width) / (model.end - model.start);
       for (const item of items) {
         const x = (item.start - model.start) * paintScale - left,
@@ -25971,12 +26077,12 @@ function SMExport({
           statusColor: colors.success.edge
         });
       }
-    }, [items, selectedRef, selectedBefore, active, width, left, viewport, printing, risks]);
+    }, V.palette, [items, selectedRef, selectedBefore, active, width, left, viewport, printing, risks], printing);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(),
         at = model.start + (event.clientX - box.left + left) / scale;
-      if (row.point) return G.hit(row.items, event.clientX - box.left, event.clientY - box.top, model, width, left, row.before ? 13 : 27);
-      return M.visibleItems(row.items, at, at + 0.001)[0];
+      if (row.point) return G.hit(items, event.clientX - box.left, event.clientY - box.top, model, width, left, row.before ? 13 : 27);
+      return M.visibleItems(items, at, at + 0.001)[0];
     }
     return /*#__PURE__*/React.createElement("canvas", {
       ref: ref,
@@ -26016,6 +26122,7 @@ function SMExport({
   function Overview({
     model,
     tasks,
+    prepared: facts,
     cache,
     width,
     viewport,
@@ -26026,11 +26133,8 @@ function SMExport({
     if (!cache.current || cache.current.tasks !== tasks) {
       const intervals = [],
         points = [];
-      for (const task of tasks) {
-        if (window.PointContract.isPoint(task)) points.push(M.instant(task.start));else intervals.push({
-          start: M.instant(task.start),
-          end: M.instant(task.end)
-        });
+      for (const item of facts.items) {
+        if (item.point) points.push(item.start);else intervals.push(item);
       }
       cache.current = {
         tasks,
@@ -26040,7 +26144,7 @@ function SMExport({
       };
     }
     const prepared = cache.current;
-    usePaint(ref, (ctx, w, h, colors) => {
+    V.useCanvasPaint(ref, (ctx, w, h, colors) => {
       let facts = prepared.histogram;
       if (!facts || facts.start !== model.start || facts.end !== model.end || facts.cssWidth !== w) {
         const bins = new Float64Array(Math.max(1, Math.ceil(w)) + 1),
@@ -26080,7 +26184,7 @@ function SMExport({
       ctx.strokeStyle = colors.gold;
       ctx.lineWidth = 2;
       ctx.strokeRect(left / width * w + 1, 1, Math.max(1, Math.min(w - 2, viewport / width * w - 2)), h - 2);
-    }, [model.start, model.end, prepared, width, left, viewport]);
+    }, V.palette, [model.start, model.end, prepared, width, left, viewport]);
     return /*#__PURE__*/React.createElement("div", {
       className: "plan-global"
     }, /*#__PURE__*/React.createElement("div", {
@@ -26295,6 +26399,7 @@ function SMExport({
   }
   function PlanGantt({
     data,
+    prepared: facts,
     asOf,
     selected,
     onSelect,
@@ -26345,9 +26450,10 @@ function SMExport({
       selectedRef = selected && selected.task.task_ref;
     const renderLeft = printing ? 0 : position.left,
       renderViewport = printing ? width : viewport;
-    const prepared = React.useMemo(() => M.prepare(data, mode, query, displayBaseline, displayChangedOnly), [data, mode, query, displayBaseline, displayChangedOnly]);
+    const grouped = React.useMemo(() => M.groupPrepared(facts, mode), [facts, mode]);
+    const prepared = React.useMemo(() => M.selectPrepared(grouped, query, displayChangedOnly, displayBaseline), [grouped, query, displayChangedOnly, displayBaseline]);
     const model = React.useMemo(() => M.layoutPrepared(prepared, width), [prepared, width]);
-    const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
+    const graph = facts.graph;
     const targetRef = hover && !hover.before ? hover.task.task_ref : selected && !selected.before ? selectedRef : null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, {
       enabled: chainEnabled,
@@ -26374,12 +26480,16 @@ function SMExport({
         viewport: renderViewport
       }),
       ticks = axis.ticks;
-    const refreshedAt = M.instant(asOf);
+    const refreshedAt = React.useMemo(() => M.instant(asOf), [asOf]);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
     const axisLeft = at => printing ? timeX(at) / width * 100 + '%' : timeX(at);
-    const visibleRows = printing ? model.rows : M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90);
+    const visibleRows = React.useMemo(() => printing ? model.rows : M.visibleRows(model.rows, Math.max(0, position.top - 90), position.top + position.height + 90), [model, printing, position.top, position.height]);
     const rangeStart = model.start + renderLeft / width * (model.end - model.start);
     const rangeEnd = model.start + (renderLeft + renderViewport) / width * (model.end - model.start);
+    const visible = React.useMemo(() => visibleRows.map(row => ({
+      row,
+      items: row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd)
+    })), [visibleRows, rangeStart, rangeEnd, width, model.start, model.end]);
     const measure = () => {
       const el = board.current;
       if (printState.current || typeof window.matchMedia === 'function' && window.matchMedia('print').matches) return;
@@ -26594,6 +26704,7 @@ function SMExport({
     }, !printing && width > viewport && /*#__PURE__*/React.createElement(Overview, {
       model: model,
       tasks: data.tasks,
+      prepared: facts,
       cache: overviewCache,
       width: width,
       viewport: renderViewport,
@@ -26637,8 +26748,10 @@ function SMExport({
       axis: axis,
       width: width,
       printing: printing
-    }))), visibleRows.map(row => {
-      const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
+    }))), visible.map(({
+      row,
+      items
+    }) => {
       const meta = row.before ? '原安排' : [row.code, row.tasks.length + ' 道工序', row.point ? '零工时节点 · 不占资源' : row.trackCount > 1 ? '重叠子行 ' + row.subrow + '/' + row.trackCount : null].filter(Boolean).join(' · ');
       const summary = row.occupancy ? '全时段已占 ' + F.hours(row.occupancy.occupied_hours, {
         digits: 1,
@@ -26680,6 +26793,7 @@ function SMExport({
         }
       })), items.length > 70 ? /*#__PURE__*/React.createElement(DenseRow, {
         row: row,
+        items: items,
         model: model,
         width: width,
         printing: printing,
@@ -27143,6 +27257,7 @@ function SMExport({
   }
   function Route({
     data,
+    prepared,
     selected,
     onRelated,
     disabled,
@@ -27152,20 +27267,18 @@ function SMExport({
     if (selected.before) return /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5207\u6362\u5230\u5F53\u524D\u5B89\u6392\u67E5\u770B\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF\u3002"));
-    const missing = window.PlanProcessOrder.missingPredecessors(data.projections.process_order, selected.task.task_ref);
     return /*#__PURE__*/React.createElement(window.GanttRouteList, {
-      graph: data.gantt_graph,
+      index: prepared.graph,
       targetRef: selected.task.task_ref,
       loadedRefs: loadedRefs,
       onSelect: onRelated,
       disabled: disabled,
       collapsible: collapsible
-    }, missing > 0 && /*#__PURE__*/React.createElement("p", {
-      className: "plan-muted"
-    }, "\u6240\u9009\u5DE5\u5E8F\u6709 ", missing, " \u9053\u524D\u5E8F\u672A\u5728\u672C\u8BA1\u5212\u5B89\u6392\u3002"));
+    });
   }
   function TaskDetail({
     data,
+    prepared,
     selected,
     onSelect,
     onRelated,
@@ -27176,13 +27289,13 @@ function SMExport({
     disabled = false
   }) {
     const task = selected && selected.task,
-      labels = React.useMemo(() => M.names(data), [data]);
+      labels = prepared.labels;
     const baseline = data.projections.baseline;
-    const comparison = task && baseline.state === 'available' && baseline.items.find(item => item.operation_ref === task.operation_ref);
+    const comparison = task && baseline.state === 'available' && prepared.comparisons.get(task.operation_ref);
     const changes = [];
     if (comparison && comparison.before && comparison.after) {
       for (const [field, label] of [['start', '开始'], ['end', '结束']]) {
-        const delta = M.instant(comparison.after[field]) - M.instant(comparison.before[field]);
+        const delta = comparison.afterTime[field] - comparison.beforeTime[field];
         if (delta) {
           const minutes = Math.abs(delta) >= 60000,
             value = Math.abs(delta) / (minutes ? 60000 : 1000);
@@ -27195,7 +27308,8 @@ function SMExport({
       for (const [kind, label] of [['machine', '设备'], ['operator', '人员']]) if (comparison.before[kind + '_ref'] !== comparison.after[kind + '_ref']) changes.push([label + '变化', M.resourceLabel(comparison.before, kind, labels) + ' → ' + M.resourceLabel(comparison.after, kind, labels)]);
     }
     const risk = task && data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id);
-    const resources = task ? data.projections.occupancy.resources.filter(row => [task.machine_ref, task.operator_ref].includes(row.resource_ref)) : [];
+    const taskFact = task && (comparison ? comparison[selected.before ? 'beforeTime' : 'afterTime'] : prepared.taskIndex.get(task.task_ref));
+    const resources = task ? [task.machine_ref, task.operator_ref].map(ref => prepared.occupancy.get(ref)).filter(Boolean).map(value => value.resource) : [];
     const compact = !!onCollapse,
       panel = React.useRef(null);
     React.useEffect(() => {
@@ -27234,7 +27348,7 @@ function SMExport({
         value: task.start
       })], ['预计结束', /*#__PURE__*/React.createElement(TimeValue, {
         value: task.end
-      })], ['安排时长', F.hours((M.instant(task.end) - M.instant(task.start)) / 3600000, 2)], ...(!task.supplier_ref ? [['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)]] : []), ...(task.supplier_ref || !task.machine_ref && !task.operator_ref && !window.PointContract.isPoint(task) ? [['供应商', task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' : data.provenance.state === 'unavailable' ? data.provenance.reason : '未记录']] : [])]
+      })], ['安排时长', F.hours((taskFact.end - taskFact.start) / 3600000, 2)], ...(!task.supplier_ref ? [['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)]] : []), ...(task.supplier_ref || !task.machine_ref && !task.operator_ref && !window.PointContract.isPoint(task) ? [['供应商', task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' : data.provenance.state === 'unavailable' ? data.provenance.reason : '未记录']] : [])]
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
     }, typeof renderTrial === 'function' ? renderTrial({
@@ -27253,6 +27367,7 @@ function SMExport({
       reason: window.WorkbenchTerms.outcomes.unavailable
     }, "\u8C03\u6574\u6B64\u5DE5\u5E8F")))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Route, {
       data: data,
+      prepared: prepared,
       selected: selected,
       onRelated: onRelated,
       disabled: disabled,
@@ -27356,7 +27471,8 @@ function SMExport({
     };
   }
   function Conflicts({
-    data
+    data,
+    prepared
   }) {
     const [page, setPage] = React.useState(0),
       read = React.useMemo(() => {
@@ -27379,7 +27495,7 @@ function SMExport({
         projection
       } = read,
       current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1)),
-      labels = M.names(data);
+      labels = prepared.labels;
     const legacy = projection.resources.some(resource => resource.metric_version !== 'decision-resource-v4');
     const known = projection.state === 'available' && !legacy;
     const empty = !known ? '班表内重叠资料未记录，暂无法完整核对。' : !projection.resources.length ? '当前读取范围没有资源占用记录。' : '当前读取范围未发现班表内资源安排重叠。';
@@ -27410,7 +27526,7 @@ function SMExport({
       className: "wb-col-key"
     }, row.label || labels.get(row.resource_ref) || '资源名称未填写', /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, M.kindLabels[row.kind])), /*#__PURE__*/React.createElement("td", null, data.tasks.filter(task => task[row.kind + '_ref'] === row.resource_ref && M.instant(task.start) < M.instant(row.end) && M.instant(task.end) > M.instant(row.start)).map(task => /*#__PURE__*/React.createElement("div", {
+    }, M.kindLabels[row.kind])), /*#__PURE__*/React.createElement("td", null, prepared.conflictMembers.get(row.resource_ref + ':' + row.start + ':' + row.end).map(item => item.task).map(task => /*#__PURE__*/React.createElement("div", {
       key: task.task_ref
     }, task.batch_id, " \xB7 ", task.sequence, " ", task.process_label))), /*#__PURE__*/React.createElement("td", {
       title: M.timeLabel(row.start) + ' 至 ' + M.timeLabel(row.end) + '（不含结束时刻）'
@@ -27430,6 +27546,7 @@ function SMExport({
   }
   function ProjectionTables({
     data,
+    prepared,
     onBatch,
     onResource,
     tab = 'risk',
@@ -27438,7 +27555,7 @@ function SMExport({
     onPage
   }) {
     const projections = data.projections,
-      labels = React.useMemo(() => M.names(data), [data]);
+      labels = prepared.labels;
     const rows = tab === 'risk' ? projections.delivery_risks.items : tab === 'load' ? projections.occupancy.resources : projections.calendar.resources || [];
     const pages = Math.max(1, Math.ceil(rows.length / 20)),
       current = Math.min(page, pages - 1);
@@ -27753,6 +27870,12 @@ function SMExport({
     }, [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result,
       data = result && result.data;
+    const prepared = React.useMemo(() => {
+      if (!data) return null;
+      const facts = M.prepare(data);
+      facts.graph = window.GanttGraph.create(data.gantt_graph);
+      return facts;
+    }, [data]);
     const chosen = selected && selected.result === result ? selected : null;
     React.useEffect(() => {
       if (!data || read.loading || read.error) return;
@@ -27765,7 +27888,7 @@ function SMExport({
       if (!target) return;
       const before = target.side === 'before';
       const original = before && data.projections.baseline.items.find(row => row.before && row.before.task_ref === target.ref);
-      const task = before ? original && original.before : data.tasks.find(row => row.task_ref === target.ref);
+      const task = before ? original && original.before : prepared.taskIndex.get(target.ref)?.task;
       if (task) setSelected({
         task,
         before,
@@ -27832,7 +27955,8 @@ function SMExport({
       } : null);
     }
     function openResource(resource) {
-      const task = data.tasks.find(row => row[resource.kind + '_ref'] === resource.resource_ref);
+      const member = prepared.resourceMembers.get(resource.resource_ref),
+        task = member && member[0] && member[0].task;
       const target = {
         ...remembered,
         query: '',
@@ -27874,7 +27998,8 @@ function SMExport({
     }
     function selectRelated(ref) {
       initialTask.current = null;
-      const task = data.tasks.find(row => row.task_ref === ref);
+      const fact = prepared.taskIndex.get(ref),
+        task = fact && fact.task;
       setQuery('');
       setRangeError(null);
       if (task) setSelected({
@@ -27883,8 +28008,12 @@ function SMExport({
         result,
         locate: true
       });else {
+        const node = prepared.graph.nodes.get(ref);
         setRelatedRef(ref);
-        changeScope({});
+        changeScope(P.workspaceScope(selection.plan_ref, {
+          range_start: node.start,
+          range_end: node.start === node.end ? window.WorkbenchDatePickerModel.nextInstant(node.end) : node.end
+        }));
       }
     }
     function applyRange(event) {
@@ -27904,12 +28033,7 @@ function SMExport({
         setRangeError(error);
       }
     }
-    const matches = React.useMemo(() => {
-      if (!data) return [];
-      const labels = M.names(data),
-        needle = query.trim().toLocaleLowerCase();
-      return data.tasks.filter(task => !needle || M.searchText(task, labels).includes(needle));
-    }, [data, query]);
+    const matches = React.useMemo(() => prepared ? M.matching(prepared, query) : [], [prepared, query]);
     const risks = data && data.projections.delivery_risks.items;
     const ready = !!data && !disabled;
     const scopeCaption = data ? M.scopeCaption(data) : '';
@@ -28067,6 +28191,7 @@ function SMExport({
     }, view === 'gantt' && /*#__PURE__*/React.createElement(window.PlanGantt, {
       key: 'gantt:' + data.plan.plan_ref,
       data: data,
+      prepared: prepared,
       asOf: result.meta.as_of,
       selected: chosen,
       onSelect: selectTask,
@@ -28084,6 +28209,7 @@ function SMExport({
         onClick: () => setDetailsOpen(!detailsOpen)
       }, detailsOpen ? '收起详情' : '详情'))
     }), view !== 'gantt' && /*#__PURE__*/React.createElement(ProjectionTables, {
+      prepared: prepared,
       key: 'risk:' + result.meta.snapshot_ref,
       data: data,
       tab: projectionTab,
@@ -28097,10 +28223,12 @@ function SMExport({
         if (task) selectTask(task, false, true);
       }
     }), view === 'delay' && /*#__PURE__*/React.createElement(Conflicts, {
+      prepared: prepared,
       key: 'conflicts:' + result.meta.snapshot_ref,
       data: data
     })), (view === 'gantt' ? detailsOpen : !!chosen) && /*#__PURE__*/React.createElement(TaskDetail, {
       data: data,
+      prepared: prepared,
       selected: chosen,
       onSelect: selectTask,
       onRelated: selectRelated,
@@ -29810,7 +29938,7 @@ function SMExport({
       className: "field-files-summary"
     }, [['total', '行数'], ['changed', '变更'], ['unchanged', '重复'], ['blank', '空白'], ['rejected', '问题']].map(([key, label]) => /*#__PURE__*/React.createElement("span", {
       key: key
-    }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.summary[key] || 0)))), /*#__PURE__*/React.createElement("p", {
+    }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.summary[key] || 0)))), command.phase !== 'done' && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, preview.can_confirm ? '预检通过，尚未写入报工。' : preview.summary.rejected ? '预检未通过，未写入任何报工。' : '没有可导入的实际记录，未写入报工。'), /*#__PURE__*/React.createElement("div", {
       className: "field-scroll wb-table-frame",
@@ -30194,9 +30322,9 @@ function SMExport({
     }
     return text.map(value => value == null ? '' : value).join(' ').toLowerCase();
   }
-  function filter(data, view, asOf, labels = names(data)) {
+  function filter(prepared, view) {
     const query = view.query.trim().toLowerCase();
-    return data.items.filter(item => (!query || searchText(item, labels).includes(query)) && (view.late === 'all' || deadlines(item)[view.late]) && (!view.onlySelected || item.task.task_ref === view.selected));
+    return prepared.facts.filter(fact => (!query || fact.search.includes(query)) && (view.late === 'all' || fact.deadlines[view.late]) && (!view.onlySelected || fact.item.task.task_ref === view.selected));
   }
   function push(heap, item) {
     let at = heap.length;
@@ -30227,132 +30355,279 @@ function SMExport({
   function tracks(reports) {
     const owners = new Map(),
       result = [];
-    reports.slice().sort((a, b) => instant(a.actual_start) - instant(b.actual_start) || a.report_ref.localeCompare(b.report_ref)).forEach(report => {
-      if (!report.actual_start || !report.actual_end || report.actual_start === report.actual_end) {
-        result.push([report]);
+    reports.slice().sort((a, b) => a.start - b.start || a.report.report_ref.localeCompare(b.report.report_ref)).forEach(fact => {
+      const report = fact.report;
+      if (!report.actual_start || !report.actual_end || fact.start === fact.end) {
+        result.push([fact]);
         return;
       }
       const key = JSON.stringify([report.actual_machine_ref, report.actual_operator_ref]);
       if (!owners.has(key)) owners.set(key, []);
       const heap = owners.get(key),
-        start = instant(report.actual_start);
-      const index = heap.length && heap[0].end <= start ? pop(heap).index : result.length;
+        index = heap.length && heap[0].end <= fact.start ? pop(heap).index : result.length;
       if (!result[index]) result[index] = [];
-      result[index].push(report);
+      result[index].push(fact);
       push(heap, {
-        end: report.actual_end ? instant(report.actual_end) : Infinity,
+        end: fact.end,
         index
       });
     });
     return result;
   }
-  function layout(data, view, asOf) {
+  function prepare(data, asOf) {
     const labels = names(data),
-      items = filter(data, view, asOf, labels),
-      groups = new Map(),
-      locations = new Map(),
-      reportLocations = new Map();
-    function group(item, owner) {
-      const ref = view.mode === 'batch' ? item.task.batch_id : owner[view.mode + '_ref'] || 'unbound';
+      taskIndex = new Map(),
+      facts = [],
+      planRange = {
+        start: Infinity,
+        end: -Infinity
+      },
+      reportRange = {
+        start: Infinity,
+        end: -Infinity
+      };
+    const include = (range, value) => {
+      if (Number.isFinite(value)) {
+        range.start = Math.min(range.start, value);
+        range.end = Math.max(range.end, value);
+      }
+    };
+    for (const item of data.items) {
+      const task = item.task,
+        e = item.execution,
+        point = window.PointContract.isPoint(task);
+      const baseline = {
+        key: 'plan',
+        kind: point ? 'plan-point' : 'plan',
+        start: instant(task.start),
+        end: instant(task.end),
+        y: point ? 64 : 74,
+        height: point ? 24 : 7
+      };
+      const reports = e ? e.reports.map(report => {
+        const start = instant(report.actual_start),
+          end = instant(report.actual_end || report.actual_start),
+          point = !report.actual_end || start === end;
+        return {
+          report,
+          start,
+          end,
+          mark: report.actual_start ? {
+            key: report.report_ref,
+            kind: point ? 'point' : 'actual',
+            report,
+            start,
+            end,
+            y: point ? 20 : 14,
+            height: point ? 24 : 38
+          } : null
+        };
+      }) : [];
+      const remaining = e && e.remaining_plan ? {
+        key: 'remaining',
+        kind: 'remaining',
+        start: instant(e.remaining_plan.start),
+        end: instant(e.remaining_plan.end),
+        y: 14,
+        height: 34
+      } : null;
+      include(planRange, baseline.start);
+      include(planRange, baseline.end);
+      for (const report of reports) {
+        include(reportRange, report.start);
+        include(reportRange, report.end);
+      }
+      const fact = {
+        item,
+        baseline,
+        reports,
+        reportIndex: new Map(reports.map(report => [report.report.report_ref, report])),
+        remaining,
+        search: searchText(item, labels),
+        deadlines: deadlines(item)
+      };
+      facts.push(fact);
+      taskIndex.set(task.task_ref, fact);
+    }
+    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point'));
+    const axis = window.PointGanttModel.bounds(instant(data.axis_span.start), instant(data.axis_span.end), hasPoints);
+    const dataRange = Number.isFinite(planRange.start) ? planRange : Number.isFinite(reportRange.start) ? reportRange : null;
+    return {
+      labels,
+      facts,
+      taskIndex,
+      dataRange,
+      start: axis.start,
+      end: axis.end,
+      asOf: instant(asOf),
+      executionAvailable: !!data.availability && data.availability.state === 'available'
+    };
+  }
+  function groupPrepared(prepared, mode) {
+    const groups = new Map(),
+      {
+        labels
+      } = prepared;
+    function group(fact, owner) {
+      const ref = mode === 'batch' ? fact.item.task.batch_id : owner[mode + '_ref'] || 'unbound';
       if (!groups.has(ref)) groups.set(ref, {
         id: ref,
-        label: view.mode === 'batch' ? ref : labels.get(ref) || views[view.mode] + '未填写',
+        label: mode === 'batch' ? ref : labels.get(ref) || views[mode] + '未填写',
         members: new Map()
       });
-      const members = groups.get(ref).members;
-      if (!members.has(item.task.task_ref)) members.set(item.task.task_ref, {
-        item,
+      const members = groups.get(ref).members,
+        key = fact.item.task.task_ref;
+      if (!members.has(key)) members.set(key, {
+        fact,
+        item: fact.item,
         baseline: false,
         reports: [],
         legacy: [],
         remaining: false
       });
-      return members.get(item.task.task_ref);
+      return members.get(key);
     }
-    items.forEach(item => {
-      group(item, item.task).baseline = true;
-      const e = item.execution;
-      if (!e) return;
-      e.reports.forEach(report => group(item, {
-        machine_ref: report.actual_machine_ref,
-        operator_ref: report.actual_operator_ref
+    for (const fact of prepared.facts) {
+      const item = fact.item,
+        e = item.execution;
+      group(fact, item.task).baseline = true;
+      if (!e) continue;
+      fact.reports.forEach(report => group(fact, {
+        machine_ref: report.report.actual_machine_ref,
+        operator_ref: report.report.actual_operator_ref
       }).reports.push(report));
-      e.legacy_facts.forEach(fact => {
-        if (fact.actual_machine_ref || fact.actual_operator_ref) group(item, {
-          machine_ref: fact.actual_machine_ref,
-          operator_ref: fact.actual_operator_ref
-        }).legacy.push(fact);
+      e.legacy_facts.forEach(legacy => {
+        if (legacy.actual_machine_ref || legacy.actual_operator_ref) group(fact, {
+          machine_ref: legacy.actual_machine_ref,
+          operator_ref: legacy.actual_operator_ref
+        }).legacy.push(legacy);
       });
-      if (e.execution_state !== 'complete' && e.remaining_quantity !== 0) group(item, e.remaining_plan || item.task).remaining = true;
-    });
-    const rows = [];
+      if (e.execution_state !== 'complete' && e.remaining_quantity !== 0) group(fact, e.remaining_plan || item.task).remaining = true;
+    }
+    for (const g of groups.values()) for (const member of g.members.values()) {
+      const ts = tracks(member.reports);
+      if (!ts.length) ts.push([]);
+      member.reportCount = member.reports.length;
+      member.legacyCount = member.legacy.length;
+      member.knownCount = 0;
+      member.knownHours = 0;
+      member.unknownHours = 0;
+      for (const {
+        report
+      } of member.reports) {
+        if (report.effective_processing_hours == null) member.unknownHours++;else {
+          member.knownCount++;
+          member.knownHours += report.effective_processing_hours;
+        }
+      }
+      member.rows = ts.map((reports, i) => ({
+        key: g.id + ':' + member.item.task.task_ref + ':' + i,
+        item: member.item,
+        reports: reports.map(fact => fact.report),
+        baseline: i === 0 && member.baseline,
+        kind: 'actual',
+        height: 88,
+        track: i + 1,
+        trackCount: ts.length,
+        planEnd: member.fact.baseline.end,
+        marks: (i === 0 && member.baseline ? [member.fact.baseline] : []).concat(reports.map(fact => fact.mark).filter(Boolean))
+      }));
+      if (member.remaining) member.rows.push({
+        key: g.id + ':' + member.item.task.task_ref + ':remaining',
+        item: member.item,
+        reports: [],
+        baseline: false,
+        kind: 'remaining',
+        height: 64,
+        marks: member.fact.remaining ? [member.fact.remaining] : []
+      });
+    }
+    return {
+      ...prepared,
+      mode,
+      groups: Array.from(groups.values())
+    };
+  }
+  function selectPrepared(prepared, view) {
+    const selected = filter(prepared, view),
+      shown = new Set(selected.map(fact => fact.item.task.task_ref)),
+      groups = [];
+    for (const source of prepared.groups) {
+      const members = new Map(Array.from(source.members).filter(([ref]) => shown.has(ref)));
+      if (!members.size) continue;
+      const g = {
+        ...source,
+        members,
+        reportCount: 0,
+        legacyCount: 0,
+        knownHours: null,
+        unknownHours: 0
+      };
+      let knownCount = 0,
+        knownHours = 0;
+      for (const member of members.values()) {
+        g.reportCount += member.reportCount;
+        g.legacyCount += member.legacyCount;
+        g.unknownHours += member.unknownHours;
+        knownCount += member.knownCount;
+        knownHours += member.knownHours;
+      }
+      g.knownHours = knownCount ? knownHours : null;
+      groups.push(g);
+    }
+    return {
+      ...prepared,
+      items: selected.map(fact => fact.item),
+      groups
+    };
+  }
+  function layoutPrepared(prepared, collapsed) {
+    const rows = [],
+      locations = new Map(),
+      reportLocations = new Map();
     let top = 0;
     function append(row) {
-      row.top = top;
-      rows.push(row);
+      const placed = {
+        ...row,
+        top
+      };
+      rows.push(placed);
       top += row.height;
+      return placed;
     }
-    groups.forEach(g => {
-      const reports = Array.from(g.members.values()).flatMap(member => member.reports);
-      g.reportCount = reports.length;
-      g.legacyCount = Array.from(g.members.values()).reduce((sum, member) => sum + member.legacy.length, 0);
-      const known = reports.filter(report => report.effective_processing_hours != null);
-      g.knownHours = known.length ? known.reduce((total, report) => total + report.effective_processing_hours, 0) : null;
-      g.unknownHours = reports.filter(report => report.effective_processing_hours == null).length;
+    for (const group of prepared.groups) {
       append({
-        key: 'group:' + g.id,
-        group: g,
+        key: 'group:' + group.id,
+        group,
         kind: 'group',
         height: 56
       });
-      if (view.collapsed[g.id]) return;
-      g.members.forEach(member => {
-        const {
-            item
-          } = member,
-          ts = tracks(member.reports);
-        if (!ts.length) ts.push([]);
-        ts.forEach((reports, i) => {
-          const row = {
-            key: g.id + ':' + item.task.task_ref + ':' + i,
-            group: g,
-            item,
-            reports,
-            baseline: i === 0 && member.baseline,
-            kind: 'actual',
-            height: 88,
-            track: i + 1,
-            trackCount: ts.length
-          };
-          append(row);
-          if (!locations.has(item.task.task_ref) || i === 0 && member.baseline) locations.set(item.task.task_ref, row);
-          reports.forEach(report => reportLocations.set(report.report_ref, row));
+      if (collapsed[group.id]) continue;
+      for (const member of group.members.values()) for (const template of member.rows) {
+        const row = append({
+          ...template,
+          group
         });
-        if (member.remaining) append({
-          key: g.id + ':' + item.task.task_ref + ':remaining',
-          group: g,
-          item,
-          reports: [],
-          baseline: false,
-          kind: 'remaining',
-          height: 64
-        });
-      });
-    });
-    const hasPoints = items.some(item => window.PointContract.isPoint(item.task) || item.execution && item.execution.reports.some(r => r.actual_start && (!r.actual_end || r.actual_start === r.actual_end)));
-    const axis = window.PointGanttModel.bounds(instant(data.axis_span.start), instant(data.axis_span.end), hasPoints);
+        if (row.kind !== 'actual') continue;
+        const ref = row.item.task.task_ref;
+        if (!locations.has(ref) || row.baseline) locations.set(ref, row);
+        row.reports.forEach(report => reportLocations.set(report.report_ref, row));
+      }
+    }
     return {
-      labels,
-      items,
-      groups: Array.from(groups.values()),
+      labels: prepared.labels,
+      taskIndex: prepared.taskIndex,
+      dataRange: prepared.dataRange,
+      items: prepared.items,
+      groups: prepared.groups,
       rows,
       height: top,
       locations,
       reportLocations,
-      executionAvailable: !!data.availability && data.availability.state === 'available',
-      start: axis.start,
-      end: axis.end,
-      asOf: instant(asOf)
+      executionAvailable: prepared.executionAvailable,
+      start: prepared.start,
+      end: prepared.end,
+      asOf: prepared.asOf
     };
   }
   function visibleRows(rows, top, bottom) {
@@ -30366,49 +30641,11 @@ function SMExport({
     for (let at = low; at < rows.length && rows[at].top < bottom; at++) result.push(rows[at]);
     return result;
   }
-  function marks(row) {
-    const result = [],
-      t = row.item.task,
-      e = row.item.execution;
-    if (row.baseline) {
-      const point = window.PointContract.isPoint(t);
-      result.push({
-        key: 'plan',
-        kind: point ? 'plan-point' : 'plan',
-        start: instant(t.start),
-        end: instant(t.end),
-        y: point ? 64 : 74,
-        height: point ? 24 : 7
-      });
-    }
-    row.reports.forEach(report => {
-      if (!report.actual_start) return;
-      const point = !report.actual_end || report.actual_end === report.actual_start;
-      result.push({
-        key: report.report_ref,
-        kind: point ? 'point' : 'actual',
-        report,
-        start: instant(report.actual_start),
-        end: instant(report.actual_end || report.actual_start),
-        y: point ? 20 : 14,
-        height: point ? 24 : 38
-      });
-    });
-    if (row.kind === 'remaining' && e.remaining_plan) result.push({
-      key: 'remaining',
-      kind: 'remaining',
-      start: instant(e.remaining_plan.start),
-      end: instant(e.remaining_plan.end),
-      y: 14,
-      height: 34
-    });
-    return result;
-  }
   function graphLocations(model) {
     const result = new Map();
     for (const row of model.rows) {
       if (row.kind !== 'actual') continue;
-      const candidates = marks(row);
+      const candidates = row.marks;
       let mark = null;
       for (const candidate of candidates) if (candidate.report && (!mark || candidate.end > mark.end)) mark = candidate;
       mark = mark || candidates[0];
@@ -30491,9 +30728,11 @@ function SMExport({
     searchText,
     filter,
     tracks,
-    layout,
+    prepare,
+    groupPrepared,
+    selectPrepared,
+    layoutPrepared,
     visibleRows,
-    marks,
     graphLocations,
     tickStep,
     tickLabel,
@@ -30508,7 +30747,6 @@ function SMExport({
 (function () {
   'use strict';
 
-  const M = window.ActualGanttModel;
   function dimensions(width) {
     const labelWidth = width < 550 ? 160 : 292;
     return {
@@ -30533,31 +30771,12 @@ function SMExport({
     if (position.centerAt !== undefined) return ((position.centerAt - model.start) / (model.end - model.start) * zoom - .5) * viewport;
     return position.viewport === undefined ? position.left : position.left * viewport / position.viewport;
   }
-  function range(values) {
-    const points = values.filter(Number.isFinite);
-    if (!points.length) return null;
-    let start = points[0],
-      end = points[0];
-    points.forEach(at => {
-      start = Math.min(start, at);
-      end = Math.max(end, at);
-    });
-    return {
-      start,
-      end
-    };
-  }
-  function dataRange(data) {
-    const plan = range(data.items.flatMap(item => [M.instant(item.task.start), M.instant(item.task.end)]));
-    if (plan) return plan;
-    return range(data.items.flatMap(item => item.execution ? item.execution.reports.flatMap(report => [M.instant(report.actual_start), M.instant(report.actual_end)]) : []));
-  }
   // The default window follows the data but never opens beyond 64x: a few hours inside a months-long axis otherwise
   // started at 1024x with a board hundreds of thousands of pixels wide and a scrollbar thumb too small to grab.
   // Manual zoom still reaches 1024.
   const INITIAL_ZOOM_MAX = 64;
-  function initial(data, model) {
-    const target = dataRange(data);
+  function initial(model) {
+    const target = model.dataRange;
     if (!target) return {
       zoom: 1,
       center: .5
@@ -30571,11 +30790,11 @@ function SMExport({
       center: ((start + end) / 2 - model.start) / span
     };
   }
-  function anchor(data, model, selectedRef, reportRef) {
-    const selected = data.items.find(item => item.task.task_ref === selectedRef);
-    const report = selected && selected.execution && selected.execution.reports.find(item => item.report_ref === reportRef);
-    const selectedRange = report && report.actual_start ? range([M.instant(report.actual_start), M.instant(report.actual_end)]) : selected ? range([M.instant(selected.task.start), M.instant(selected.task.end)]) : dataRange(data);
-    return selectedRange ? ((selectedRange.start + selectedRange.end) / 2 - model.start) / (model.end - model.start) : .5;
+  function anchor(model, selectedRef, reportRef) {
+    const selected = model.taskIndex.get(selectedRef),
+      report = selected && selected.reportIndex.get(reportRef);
+    const selectedRange = report && Number.isFinite(report.start) ? report : selected ? selected.baseline : model.dataRange;
+    return selectedRange && Number.isFinite(selectedRange.start) && Number.isFinite(selectedRange.end) ? ((selectedRange.start + selectedRange.end) / 2 - model.start) / (model.end - model.start) : .5;
   }
   function markBox(mark, model, width, left = 0) {
     const scale = width / (model.end - model.start),
@@ -30969,12 +31188,15 @@ function SMExport({
     }))));
   }
   function Chain({
-    graph,
+    index,
     model,
     onLocate
   }) {
-    const visible = new Set(model.items.map(item => item.task.task_ref)),
-      nodes = new Map(graph.nodes.map(node => [node.task_ref, node]));
+    const {
+      graph,
+      nodes
+    } = index;
+    const visible = new Set(model.items.map(item => item.task.task_ref));
     const incoming = new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge]));
     const edgeLabels = {
       process: '工艺先后',
@@ -31013,7 +31235,7 @@ function SMExport({
   }
   function Range({
     scope,
-    resources,
+    resources = null,
     onApply,
     busy
   }) {
@@ -31061,6 +31283,7 @@ function SMExport({
     })), /*#__PURE__*/React.createElement("label", null, "\u8D44\u6E90", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u8D44\u6E90\u8303\u56F4",
       value: draft.resource_ref || '',
+      disabled: resources === null,
       onChange: e => {
         const row = resources.find(r => r.ref === e.target.value);
         patch({
@@ -31068,12 +31291,16 @@ function SMExport({
           resource_type: row ? row.kind : ''
         });
       }
-    }, /*#__PURE__*/React.createElement("option", {
+    }, resources === null ? /*#__PURE__*/React.createElement("option", {
+      value: draft.resource_ref || ''
+    }, draft.resource_ref ? '已选资源（选项待读取）' : '资源选项待读取') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u5168\u90E8\u8BA1\u5212\u6216\u5B9E\u9645\u8D44\u6E90"), resources.filter(r => r.kind !== 'supplier').map(r => /*#__PURE__*/React.createElement("option", {
+    }, "\u5168\u90E8\u8BA1\u5212\u6216\u5B9E\u9645\u8D44\u6E90"), draft.resource_ref && !resources.some(r => r.ref === draft.resource_ref && r.kind !== 'supplier') && /*#__PURE__*/React.createElement("option", {
+      value: draft.resource_ref
+    }, "\u5DF2\u9009\u8D44\u6E90\uFF08\u5F53\u524D\u8303\u56F4\u65E0\u8BB0\u5F55\uFF09"), resources.filter(r => r.kind !== 'supplier').map(r => /*#__PURE__*/React.createElement("option", {
       key: r.ref,
       value: r.ref
-    }, M.views[r.kind], " \xB7 ", r.label || r.business_code)))), /*#__PURE__*/React.createElement("label", null, "\u6279\u6B21", /*#__PURE__*/React.createElement("input", {
+    }, M.views[r.kind], " \xB7 ", r.label || r.business_code))))), /*#__PURE__*/React.createElement("label", null, "\u6279\u6B21", /*#__PURE__*/React.createElement("input", {
       className: "fg-batches",
       "aria-label": "\u6279\u6B21\u8303\u56F4",
       placeholder: "\u591A\u4E2A\u6279\u6B21\u7528\u9017\u53F7\u5206\u9694",
@@ -31105,45 +31332,21 @@ function SMExport({
   'use strict';
 
   const M = window.ActualGanttModel;
-  function usePaint(ref, paint, deps) {
-    React.useLayoutEffect(() => {
-      const draw = () => {
-        const node = ref.current,
-          {
-            width,
-            height
-          } = node.getBoundingClientRect(),
-          dpr = window.devicePixelRatio || 1;
-        node.width = Math.max(1, Math.round(width * dpr));
-        node.height = Math.max(1, Math.round(height * dpr));
-        const ctx = node.getContext('2d');
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        const style = getComputedStyle(node),
-          colors = {};
-        for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']]) colors[kind] = {
-          fill: style.getPropertyValue('--wb-gantt-' + tone + '-fill').trim(),
-          edge: style.getPropertyValue('--wb-gantt-' + tone + '-edge').trim()
-        };
-        colors.remaining.fill = style.getPropertyValue('--wb-gantt-reference-fill').trim();
-        colors.selected = style.getPropertyValue('--wb-gantt-gold').trim();
-        paint(ctx, width, height, colors);
-      };
-      draw();
-      const theme = new MutationObserver(draw),
-        resize = new ResizeObserver(draw);
-      theme.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme', 'class']
-      });
-      resize.observe(ref.current);
-      return () => {
-        theme.disconnect();
-        resize.disconnect();
-      };
-    }, deps);
+  function palette(node) {
+    const style = getComputedStyle(node),
+      colors = {};
+    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']]) colors[kind] = {
+      fill: style.getPropertyValue('--wb-gantt-' + tone + '-fill').trim(),
+      edge: style.getPropertyValue('--wb-gantt-' + tone + '-edge').trim()
+    };
+    colors.remaining.fill = style.getPropertyValue('--wb-gantt-reference-fill').trim();
+    colors.selected = style.getPropertyValue('--wb-gantt-gold').trim();
+    return colors;
   }
   function DenseRow({
     row,
+    marks,
+    visibleMarks,
     model,
     width,
     viewport,
@@ -31155,18 +31358,17 @@ function SMExport({
     renderMark
   }) {
     const ref = React.useRef(null),
-      marks = M.marks(row),
       scale = width / (model.end - model.start);
     const pointerFocus = React.useRef(false),
       [activeKey, setActiveKey] = React.useState(null),
       [focused, setFocused] = React.useState(false);
     const activeIndex = Math.max(0, marks.findIndex(mark => mark.key === activeKey)),
       active = marks[activeIndex];
-    usePaint(ref, (ctx, w, h, colors) => {
+    window.GanttPresentation.useCanvasPaint(ref, (ctx, w, h, colors) => {
       const critical = graphActive.critical.has(row.item.task.task_ref),
         related = graphActive.related.has(row.item.task.task_ref);
       const chosen = selected === row.item.task.task_ref;
-      for (const mark of marks) {
+      for (const mark of visibleMarks) {
         const x = (mark.start - model.start) * scale - left,
           size = (mark.end - mark.start) * scale;
         if (x > w + 12 || x + size < -12) continue;
@@ -31194,7 +31396,7 @@ function SMExport({
         }
         ctx.restore();
       }
-    }, [row, width, viewport, left, selected, graphActive, focused, active && active.key]);
+    }, palette, [row, width, viewport, left, selected, graphActive, focused, active && active.key]);
     function reveal(mark) {
       if (!mark) return;
       const board = ref.current.closest('[data-actual-scroll]');
@@ -31231,7 +31433,7 @@ function SMExport({
       const rect = ref.current.getBoundingClientRect(),
         x = event.clientX - rect.left,
         y = event.clientY - rect.top;
-      return window.ActualGanttWindow.hitMark(marks, model, width, left, x, y);
+      return window.ActualGanttWindow.hitMark(visibleMarks, model, width, left, x, y);
     }
     const label = active ? '第 ' + (activeIndex + 1) + ' / ' + marks.length + ' 个色块；' + M.markTitle(active, row.item, model.labels) + '；方向键切换色块，Home/End 跳到首末，Enter/空格查看详情' : M.describe(row.item, model.labels).join('；') + '；无可选择的时间色块';
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("canvas", {
@@ -31281,7 +31483,7 @@ function SMExport({
       },
       onMouseLeave: () => onHover(null),
       onKeyDown: keyDown
-    }), marks.filter(mark => (mark.kind === 'point' || mark.kind === 'plan-point') && (mark.start - model.start) * scale >= left - 12 && (mark.start - model.start) * scale <= left + viewport + 12).map(mark => renderMark(mark, true)));
+    }), visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point').map(mark => renderMark(mark, true)));
   }
   window.ActualGanttCanvas = {
     DenseRow
@@ -31314,6 +31516,7 @@ function SMExport({
   function Bar({
     mark,
     row,
+    visibleMarks,
     model,
     width,
     selected,
@@ -31342,7 +31545,7 @@ function SMExport({
     };
     function atPointer(event) {
       const track = event.currentTarget.closest('.fg-track').getBoundingClientRect();
-      return window.ActualGanttWindow.hitMark(M.marks(row), model, width, 0, event.clientX - track.left, event.clientY - track.top);
+      return window.ActualGanttWindow.hitMark(visibleMarks, model, width, 0, event.clientX - track.left, event.clientY - track.top);
     }
     function hover(event) {
       if (!event) {
@@ -31433,9 +31636,15 @@ function SMExport({
     onChainTarget,
     patch
   }) {
-    const visible = M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100),
+    const visible = React.useMemo(() => M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100).map(row => ({
+        row,
+        visibleMarks: row.kind === 'group' ? [] : row.marks.filter(mark => (mark.end - model.start) / (model.end - model.start) * width >= left - 12 && (mark.start - model.start) / (model.end - model.start) * width <= left + viewport + 12)
+      })), [model, top, height, width, left, viewport]),
       ticks = M.ticks(model, width, left, viewport);
-    return /*#__PURE__*/React.createElement(React.Fragment, null, visible.map(row => {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, visible.map(({
+      row,
+      visibleMarks
+    }) => {
       const style = {
         top: row.top + 52,
         height: row.height,
@@ -31470,11 +31679,12 @@ function SMExport({
         } = row,
         e = item.execution,
         t = item.task,
-        marks = M.marks(row);
+        marks = row.marks;
       const renderMark = (mark, canvasPainted = false) => /*#__PURE__*/React.createElement(Bar, {
         key: mark.key,
         mark,
         row,
+        visibleMarks,
         model,
         width,
         active,
@@ -31536,12 +31746,14 @@ function SMExport({
         className: "fg-baseline-end",
         "data-plan-end": t.end,
         style: {
-          left: (M.instant(t.end) - model.start) / (model.end - model.start) * width
+          left: (row.planEnd - model.start) / (model.end - model.start) * width
         },
         title: '计划完工 ' + M.time(t.end),
         "aria-hidden": "true"
       }), dense || marks.length > 50 ? /*#__PURE__*/React.createElement(window.ActualGanttCanvas.DenseRow, {
         row,
+        marks,
+        visibleMarks,
         model,
         width,
         viewport,
@@ -31551,7 +31763,7 @@ function SMExport({
         renderMark,
         graphActive: active,
         selected: view.selected
-      }) : marks.filter(mark => (mark.end - model.start) / (model.end - model.start) * width >= left - 12 && (mark.start - model.start) / (model.end - model.start) * width <= left + viewport + 12).map(mark => renderMark(mark)), row.kind === 'remaining' && !e.remaining_plan && /*#__PURE__*/React.createElement("span", {
+      }) : visibleMarks.map(mark => renderMark(mark)), row.kind === 'remaining' && !e.remaining_plan && /*#__PURE__*/React.createElement("span", {
         className: "fg-wait"
       }, pending, " \xB7 ", M.number(e.remaining_quantity), " \u4EF6"), row.kind === 'actual' && !row.reports.length && /*#__PURE__*/React.createElement("span", {
         className: "fg-wait"
@@ -31764,9 +31976,17 @@ function SMExport({
       range: data.scope.plan_finish_date_from && data.scope.plan_finish_date_to ? '计划完工 ' + data.scope.plan_finish_date_from + ' 至 ' + data.scope.plan_finish_date_to : undefined
     } : null);
     const selectedFilter = view.onlySelected ? view.selected : null;
-    const model = React.useMemo(() => data ? M.layout(data, view, result.meta.as_of) : null, [data, result && result.meta.as_of, view.query, view.late, view.onlySelected, selectedFilter, view.mode, view.collapsed]);
+    const prepared = React.useMemo(() => {
+      if (!data) return null;
+      const facts = M.prepare(data, result.meta.as_of);
+      facts.graph = window.GanttGraph.create(data.gantt_graph);
+      return facts;
+    }, [data, result && result.meta.as_of]);
+    const grouped = React.useMemo(() => prepared ? M.groupPrepared(prepared, view.mode) : null, [prepared, view.mode]);
+    const visible = React.useMemo(() => grouped ? M.selectPrepared(grouped, view) : null, [grouped, view.query, view.late, view.onlySelected, selectedFilter]);
+    const model = React.useMemo(() => visible ? M.layoutPrepared(visible, view.collapsed) : null, [visible, view.collapsed]);
     const stats = React.useMemo(() => data ? M.metrics(data) : null, [data]);
-    const taskIndex = React.useMemo(() => data ? new Map(data.items.map(item => [item.task.task_ref, item])) : null, [data]);
+    const taskIndex = prepared && prepared.taskIndex;
     const snapshotPosition = model ? W.capture(position, viewport, model, zoom) : null;
     window.WorkbenchPageContext.useSnapshot(data ? {
       plan_ref: data.plan.plan_ref,
@@ -31810,7 +32030,7 @@ function SMExport({
       if (!node || !model) return;
       if (!defaultWindowApplied.current) {
         defaultWindowApplied.current = true;
-        const next = W.initial(data, model);
+        const next = W.initial(model);
         if (!pending.current) pending.current = {
           center: next.center
         };
@@ -31837,10 +32057,11 @@ function SMExport({
           const reportRow = model.reportLocations.get(view.report);
           const row = reportRow && reportRow.item.task.task_ref === pending.current.task ? reportRow : model.locations.get(pending.current.task);
           if (row) {
-            const report = row.item.execution && row.item.execution.reports.find(r => r.report_ref === view.report),
-              at = report && report.actual_start || row.item.task.start;
+            const fact = model.taskIndex.get(pending.current.task),
+              report = fact.reportIndex.get(view.report),
+              at = report && Number.isFinite(report.start) ? report.start : fact.baseline.start;
             node.scrollTop = Math.max(0, row.top - node.clientHeight / 3);
-            node.scrollLeft = (M.instant(at) - model.start) / (model.end - model.start) * width - viewport / 3;
+            node.scrollLeft = (at - model.start) / (model.end - model.start) * width - viewport / 3;
           }
         } else node.scrollLeft = pending.current.center * width - viewport / 2;
         pending.current = null;
@@ -31861,7 +32082,7 @@ function SMExport({
     }, [view, position.top, position.left]);
     function zoomTo(next) {
       pending.current = {
-        center: W.anchor(data, model, view.selected, view.report)
+        center: W.anchor(model, view.selected, view.report)
       };
       setZoom(Math.max(1, Math.min(1024, next)));
     }
@@ -31948,9 +32169,10 @@ function SMExport({
         report: report ? report.report_ref : null
       });
     }
-    const selected = taskIndex && taskIndex.get(view.selected);
+    const selectedFact = taskIndex && taskIndex.get(view.selected),
+      selected = selectedFact && selectedFact.item;
     const report = selected && selected.execution && selected.execution.reports.find(r => r.report_ref === view.report);
-    const graph = React.useMemo(() => data ? window.GanttGraph.create(data.gantt_graph) : null, [data]);
+    const graph = prepared && prepared.graph;
     const targetRef = chainTarget && chainTarget[0] || view.selected;
     const active = React.useMemo(() => graph ? window.GanttGraph.selection(graph, {
       enabled: view.chain,
@@ -32083,6 +32305,11 @@ function SMExport({
       }
     }, "\u8FD4\u56DE"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
+    }), scope.plan_ref && /*#__PURE__*/React.createElement(Range, {
+      scope: scope,
+      resources: data ? data.resources : null,
+      onApply: apply,
+      busy: loading
     }), !data && /*#__PURE__*/React.createElement(window.WorkbenchControls.EmptyState, {
       kind: loading ? 'loading' : error ? 'error' : 'empty',
       title: loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据',
@@ -32093,12 +32320,7 @@ function SMExport({
     }), !data && !loading && onNavigate && /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       onClick: () => onNavigate('analysis', {})
-    }, "\u9009\u62E9\u8BA1\u5212"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Range, {
-      scope: scope,
-      resources: data.resources,
-      onApply: apply,
-      busy: loading
-    }), data.availability.state !== 'available' && /*#__PURE__*/React.createElement("div", {
+    }, "\u9009\u62E9\u8BA1\u5212"), data && /*#__PURE__*/React.createElement(React.Fragment, null, data.availability.state !== 'available' && /*#__PURE__*/React.createElement("div", {
       role: "status",
       className: "fg-note"
     }, data.availability.reason), /*#__PURE__*/React.createElement("dl", {
@@ -32294,7 +32516,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("summary", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("div", {
       className: "wb-gantt-detail-section-body"
     }, /*#__PURE__*/React.createElement(window.GanttRouteList, {
-      graph: data.gantt_graph,
+      index: graph,
       targetRef: selected.task.task_ref,
       loadedRefs: new Set(model.items.map(item => item.task.task_ref)),
       onSelect: ref => {
@@ -32305,7 +32527,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u5212\u5173\u952E\u94FE"), /*#__PURE__*/React.createElement("div", {
       className: "wb-gantt-detail-section-body"
     }, /*#__PURE__*/React.createElement(Chain, {
-      graph: data.gantt_graph,
+      index: graph,
       model: model,
       onLocate: locate
     })))) : /*#__PURE__*/React.createElement("p", {
@@ -35240,7 +35462,7 @@ function SMExport({
     busy
   }) {
     const id = React.useId(),
-      memoryHint = window.WorkbenchHandlerMemory.hint(draft.declared_operator);
+      memoryHint = window.WorkbenchHandlerMemory.useHint(draft.declared_operator);
     return /*#__PURE__*/React.createElement("div", {
       className: "ra-fields"
     }, /*#__PURE__*/React.createElement("div", {
@@ -36099,10 +36321,13 @@ function SMExport({
   }
   const pieceLabel = t => t.piece_id === null ? (t.data_gaps || []).some(g => g.field === 'piece_id') ? '分件未记录' : '共同工序' : '分件 ' + t.piece_id;
   const searchText = t => [t.row_ref, t.operation_ref, t.batch_ref, t.batch_label, t.part_label, t.sequence, t.process_label, pieceLabel(t), t.machine && t.machine.label, t.operator && t.operator.label, t.reason && t.reason.message].filter(v => v != null).join(' ').toLocaleLowerCase();
-  const matching = (tasks, query) => {
+  function matches(item, needle, operationRefs, focus) {
+    return (!needle || item.search.includes(needle)) && (!operationRefs || operationRefs.has(item.task.operation_ref)) && resourceMatches(item.task, focus);
+  }
+  function matching(prepared, query, focus = null, unplanned = false) {
     const needle = query.trim().toLocaleLowerCase();
-    return needle ? tasks.filter(t => searchText(t).includes(needle)) : tasks;
-  };
+    return (unplanned ? prepared.unplanned : prepared.items).filter(item => matches(item, needle, null, focus)).map(item => item.task);
+  }
   const resource = (t, mode) => mode === 'batch' ? {
     ref: t.batch_ref,
     label: t.batch_label
@@ -36183,75 +36408,116 @@ function SMExport({
     }
     return lanes;
   }
-  function prepare(data, mode, query, operationRefs = null) {
-    const groups = new Map();
-    const matched = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref)),
-      tasks = [],
-      unplottableTasks = [];
+  function prepare(data) {
     const P = window.PointContract,
       G = window.PointGanttModel;
-    const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, data.tasks.some(P.isPoint));
-    // Missing references never merge unrelated named resources into an invented identity.
-    for (const task of matched) {
+    const items = data.tasks.map(task => {
       const start = instant(task.start),
         end = instant(task.end);
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
-        unplottableTasks.push(task);
-        continue;
-      }
-      tasks.push(task);
-      const r = resource(task, mode),
+      return {
+        task,
+        start,
+        end,
+        search: searchText(task),
+        point: P.isPoint(task),
+        plottable: Number.isFinite(start) && Number.isFinite(end) && end >= start
+      };
+    });
+    const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, items.some(item => item.point));
+    return {
+      items,
+      unplanned: (data.unplanned_operations || []).map(task => ({
+        task,
+        search: searchText(task)
+      })),
+      taskIndex: new Map(items.map(item => [item.task.row_ref, item])),
+      start: bounds.start,
+      end: bounds.end
+    };
+  }
+  function groupPrepared(prepared, mode) {
+    const groups = new Map(),
+      G = window.PointGanttModel;
+    for (const fact of prepared.items) {
+      if (!fact.plottable) continue;
+      // Overlap belongs to this resource grouping, while parsed time/search facts belong to the data.
+      const item = {
+          ...fact
+        },
+        task = item.task,
+        r = resource(task, mode),
         id = r && r.ref || 'missing:' + task.row_ref;
       if (!groups.has(id)) groups.set(id, {
         id,
         label: mode === 'batch' ? r.label || '批次未记录' : resourceLabel(task, mode),
         items: []
       });
-      groups.get(id).items.push({
-        task,
-        start,
-        end
-      });
+      groups.get(id).items.push(item);
     }
     for (const group of groups.values()) {
-      group.normal = tracks(group.items.filter(i => !P.isPoint(i.task)));
-      group.points = G.prepareTracks(group.items.filter(i => P.isPoint(i.task)));
+      group.normal = tracks(group.items.filter(item => !item.point));
+      group.points = G.prepareTracks(group.items.filter(item => item.point));
     }
     return {
+      ...prepared,
+      groups
+    };
+  }
+  function selectPrepared(prepared, query = '', operationRefs = null, focus = null) {
+    const needle = query.trim().toLocaleLowerCase(),
+      groups = new Map(),
+      tasks = [],
+      unplottableTasks = [];
+    for (const fact of prepared.items) if (matches(fact, needle, operationRefs, focus)) (fact.plottable ? tasks : unplottableTasks).push(fact.task);
+    for (const [id, group] of prepared.groups) {
+      const items = group.items.filter(item => matches(item, needle, operationRefs, focus));
+      if (!items.length) continue;
+      const shown = new Set(items);
+      groups.set(id, {
+        ...group,
+        items,
+        shown,
+        normal: group.normal.map(lane => lane.filter(item => shown.has(item)))
+      });
+    }
+    return {
+      ...prepared,
       groups,
       tasks,
       unplottableTasks,
-      groupCount: groups.size,
-      start: bounds.start,
-      end: bounds.end
+      groupCount: groups.size
     };
   }
   function groupRows(group, start, end, width, pointRows = false) {
-    const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width) : [];
+    const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
     const laneCount = group.normal.length + points.length,
       rows = [];
-    group.normal.forEach((items, lane) => rows.push({
-      id: group.id,
-      key: group.id + ':' + lane,
-      label: group.label,
-      items,
-      height: 56,
-      lane,
-      laneCount,
-      normalLaneCount: group.normal.length,
-      point: false
-    }));
-    points.forEach((items, lane) => rows.push({
-      id: group.id,
-      key: group.id + (pointRows ? ':point:' + lane : ':' + (group.normal.length + lane)),
-      label: group.label,
-      items,
-      height: 56,
-      lane: pointRows ? lane : group.normal.length + lane,
-      laneCount: pointRows ? points.length : laneCount,
-      normalLaneCount: group.normal.length,
-      point: true
-    }));
+    group.normal.forEach((items, lane) => {
+      if (items.length) rows.push({
+        id: group.id,
+        key: group.id + ':' + lane,
+        label: group.label,
+        items,
+        height: 56,
+        lane,
+        laneCount,
+        normalLaneCount: group.normal.length,
+        point: false
+      });
+    });
+    points.forEach((items, lane) => {
+      if (items.length) rows.push({
+        id: group.id,
+        key: group.id + (pointRows ? ':point:' + lane : ':' + (group.normal.length + lane)),
+        label: group.label,
+        items,
+        height: 56,
+        lane: pointRows ? lane : group.normal.length + lane,
+        laneCount: pointRows ? points.length : laneCount,
+        normalLaneCount: group.normal.length,
+        point: true
+      });
+    });
     return rows;
   }
   function layoutPrepared(prepared, width = 1000) {
@@ -36282,9 +36548,6 @@ function SMExport({
       end: prepared.end
     };
   }
-  function layout(data, mode, query, width = 1000, operationRefs = null) {
-    return layoutPrepared(prepare(data, mode, query, operationRefs), width);
-  }
   window.RunCandidateModel = {
     instant,
     wire,
@@ -36297,9 +36560,10 @@ function SMExport({
     ticks,
     matching,
     prepare,
+    groupPrepared,
+    selectPrepared,
     groupRows,
     layoutPrepared,
-    layout,
     title,
     laneLabel,
     pieceLabel,
@@ -36719,6 +36983,7 @@ function SMExport({
   }
   function Detail({
     data,
+    prepared,
     task,
     onClose,
     onRelated,
@@ -36789,7 +37054,7 @@ function SMExport({
       className: "btn link",
       onClick: () => onRelated(segment.row_ref)
     }, M.timeLabel(segment.start), " \u81F3 ", M.timeLabel(segment.end)), /*#__PURE__*/React.createElement("small", null, "\u8BBE\u5907 ", M.resourceLabel(segment, 'machine'), " \xB7 \u4EBA\u5458 ", M.resourceLabel(segment, 'operator')))))), /*#__PURE__*/React.createElement(window.GanttRouteList, {
-      graph: data.gantt_graph,
+      index: prepared.graph,
       targetRef: task.row_ref,
       loadedRefs: loadedRefs,
       onSelect: onRelated,
@@ -43739,10 +44004,67 @@ function SMExport({
       host = React.useRef(null),
       grain = heatmap.grain;
     const pressureLabel = R.metricDefinition('high_pressure_count', data.filters.resource_kind, definitions).label;
-    const selectedRow = focus ? heatmap.items.findIndex(row => row.resource_ref === focus.resource_ref) : -1;
-    const selectedCell = selectedRow >= 0 ? heatmap.items[selectedRow].cells.findIndex(cell => cell.bucket_key === focus.bucket_key) : -1;
-    const cursorRow = selectedRow >= 0 ? selectedRow : heatmap.items.findIndex(row => row.cells.length),
-      cursorCell = selectedCell >= 0 ? selectedCell : 0;
+    const prepared = React.useMemo(() => {
+      const resources = new Map(data.items.map(item => [item.resource_ref, item])),
+        rowIndex = new Map();
+      const rows = heatmap.items.map((row, index) => {
+        rowIndex.set(row.resource_ref, index);
+        const groups = new Map(),
+          columns = new Map();
+        row.cells.forEach((cell, column) => {
+          columns.set(cell.bucket_key, column);
+          if (!groups.has(cell.group_key)) groups.set(cell.group_key, {
+            cells: [],
+            continuations: [],
+            byStart: new Map()
+          });
+          const group = groups.get(cell.group_key);
+          group.cells.push({
+            cell,
+            column
+          });
+          if (!group.byStart.has(cell.start)) group.byStart.set(cell.start, column);
+        });
+        row.continuations.forEach(item => {
+          if (!groups.has(item.group_key)) groups.set(item.group_key, {
+            cells: [],
+            continuations: [],
+            byStart: new Map()
+          });
+          groups.get(item.group_key).continuations.push(item);
+        });
+        return {
+          row,
+          groups,
+          columns,
+          resource: resources.get(row.resource_ref)
+        };
+      });
+      return {
+        rows,
+        rowIndex,
+        first: rows.findIndex(value => value.row.cells.length)
+      };
+    }, [heatmap, data.items]);
+    const presentations = React.useMemo(() => {
+      const values = new Map();
+      let unknown = false;
+      for (const {
+        row
+      } of prepared.rows) for (const cell of row.cells) {
+        const value = cellPresentation(row, cell, mode, pressureLabel, data.baseline.state);
+        values.set(cell, value);
+        if (value.valueState === 'unknown') unknown = true;
+      }
+      return {
+        values,
+        unknown
+      };
+    }, [prepared, mode, pressureLabel, data.baseline.state]);
+    const selectedRow = focus && prepared.rowIndex.has(focus.resource_ref) ? prepared.rowIndex.get(focus.resource_ref) : -1;
+    const selectedCell = selectedRow >= 0 ? prepared.rows[selectedRow].columns.get(focus.bucket_key) : undefined;
+    const cursorRow = selectedRow >= 0 ? selectedRow : prepared.first,
+      cursorCell = selectedCell === undefined ? 0 : selectedCell;
     const shown = heatmap.display_scope,
       scopeLabel = grain === 'hour' ? '当前显示时段' : '所选日期范围';
     const peakLabel = grain === 'hour' ? '小时峰值' : grain === 'shift' ? '班段峰值' : '日峰值';
@@ -43761,8 +44083,8 @@ function SMExport({
       if (nextRow !== row && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
         const origin = heatmap.items[row].cells[column],
           group = origin.group_key;
-        const sameGroup = heatmap.items[nextRow].cells.filter(cell => cell.group_key === group);
-        if (sameGroup.length) nextColumn = heatmap.items[nextRow].cells.indexOf(sameGroup.find(cell => cell.start === origin.start) || sameGroup[0]);
+        const sameGroup = prepared.rows[nextRow].groups.get(group);
+        if (sameGroup && sameGroup.cells.length) nextColumn = sameGroup.byStart.has(origin.start) ? sameGroup.byStart.get(origin.start) : sameGroup.cells[0].column;
       }
       nextColumn = Math.min(nextColumn, heatmap.items[nextRow].cells.length - 1);
       const target = host.current.querySelector('[data-heatmap-row="' + nextRow + '"][data-heatmap-column="' + nextColumn + '"]');
@@ -43837,9 +44159,12 @@ function SMExport({
     }, bucket.label)), /*#__PURE__*/React.createElement("th", {
       scope: "col",
       className: "rres-total-column wb-col-actions"
-    }, mode === 'delta' ? '范围占用差值' : mode === 'before' ? '对照范围平均' : '范围平均', /*#__PURE__*/React.createElement("small", null, mode === 'before' ? '当前方案高负荷' : '高负荷时段')))), /*#__PURE__*/React.createElement("tbody", null, heatmap.items.map((row, rowIndex) => {
-      const resource = data.items.find(item => item.resource_ref === row.resource_ref),
-        summary = resource.filter_summary;
+    }, mode === 'delta' ? '范围占用差值' : mode === 'before' ? '对照范围平均' : '范围平均', /*#__PURE__*/React.createElement("small", null, mode === 'before' ? '当前方案高负荷' : '高负荷时段')))), /*#__PURE__*/React.createElement("tbody", null, prepared.rows.map(({
+      row,
+      groups,
+      resource
+    }, rowIndex) => {
+      const summary = resource.filter_summary;
       return /*#__PURE__*/React.createElement("tr", {
         key: row.resource_ref
       }, /*#__PURE__*/React.createElement("th", {
@@ -43851,12 +44176,19 @@ function SMExport({
         "data-resource-entry": row.resource_ref,
         onClick: () => onFocus(row)
       }, row.label || T.name_missing)), heatmap.buckets.map(bucket => {
-        const cells = row.cells.filter(cell => cell.group_key === bucket.key);
-        const continuations = row.continuations.filter(item => item.group_key === bucket.key);
+        const {
+          cells,
+          continuations
+        } = groups.get(bucket.key) || {
+          cells: [],
+          continuations: []
+        };
         return /*#__PURE__*/React.createElement("td", {
           key: bucket.key,
           role: "gridcell",
-          "aria-selected": cells.some(cell => focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key)
+          "aria-selected": cells.some(({
+            cell
+          }) => focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key)
         }, /*#__PURE__*/React.createElement("div", {
           className: "rres-period-cells"
         }, continuations.map(item => /*#__PURE__*/React.createElement(C.Button, {
@@ -43867,9 +44199,11 @@ function SMExport({
           title: '原完整班段：' + exactRange(item),
           onFocus: () => onCursor(cursor(row, item)),
           onClick: () => onFocus(row, item)
-        }, /*#__PURE__*/React.createElement("span", null, "\u73ED\u6BB5\u5EF6\u7EED"), /*#__PURE__*/React.createElement("small", null, F.compactRange(item.continuation_start, item.continuation_end)))), cells.map(cell => {
-          const columnIndex = row.cells.indexOf(cell),
-            presentation = cellPresentation(row, cell, mode, pressureLabel, data.baseline.state),
+        }, /*#__PURE__*/React.createElement("span", null, "\u73ED\u6BB5\u5EF6\u7EED"), /*#__PURE__*/React.createElement("small", null, F.compactRange(item.continuation_start, item.continuation_end)))), cells.map(({
+          cell,
+          column: columnIndex
+        }) => {
+          const presentation = presentations.values.get(cell),
             {
               value,
               side
@@ -43920,7 +44254,7 @@ function SMExport({
       className: "rres-swatch rres-swatch-conflict"
     }), "\u73ED\u5185\u51B2\u7A81"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "rres-swatch rres-swatch-rest"
-    }), "\u4F11\u606F"), heatmap.items.some(row => row.cells.some(cell => cellPresentation(row, cell, mode, pressureLabel, data.baseline.state).valueState === 'unknown')) && /*#__PURE__*/React.createElement("span", null, "\u5F85\u786E\u8BA4")), /*#__PURE__*/React.createElement(C.Pager, {
+    }), "\u4F11\u606F"), presentations.unknown && /*#__PURE__*/React.createElement("span", null, "\u5F85\u786E\u8BA4")), /*#__PURE__*/React.createElement(C.Pager, {
       label: "\u70ED\u529B\u56FE\u65E5\u671F",
       page: heatmap.page.number,
       pages: Math.max(1, Math.ceil(heatmap.page.total / heatmap.page.size)),
@@ -44658,7 +44992,7 @@ function SMExport({
     if (!q.range_start && !q.batch_ref) check(d.operation_count === d.full_operation_count);
     const g = d.generation,
       wg = workspace.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'source_verification']) && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated'].every(k => g[k] === wg[k]) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input) && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])) && shape(g.source_verification, ['facts_content_verified', 'baseline_matches_archived_schedule', 'execution_matches_archived_evidence', 'input_source_verified', 'candidate_content_verified']) && g.source_verification.facts_content_verified === true && typeof g.source_verification.input_source_verified === 'boolean' && g.source_verification.baseline_matches_archived_schedule === true && g.source_verification.execution_matches_archived_evidence === true && g.source_verification.candidate_content_verified === true);
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'source_verification']) && ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated'].every(k => g[k] === wg[k]) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && object(g.input) && Object.keys(wg.input).every(k => equal(g.input[k], wg.input[k])) && shape(g.source_verification, ['facts_content_verified', 'baseline_matches_archived_schedule', 'execution_verified_at', 'input_source_verified', 'candidate_content_verified']) && g.source_verification.facts_content_verified === true && typeof g.source_verification.input_source_verified === 'boolean' && g.source_verification.baseline_matches_archived_schedule === true && g.source_verification.execution_verified_at === 'run_admission' && g.source_verification.candidate_content_verified === true);
     const b = d.baseline,
       seen = new Set(),
       segments = new Set(),
@@ -44735,9 +45069,8 @@ function SMExport({
     baseline_only: '仅原安排',
     not_comparable: '无法一一对照'
   };
-  function matching(rows, query) {
-    const needle = query.trim().toLocaleLowerCase();
-    return !needle ? rows : rows.filter(r => [r.operation_ref, r.row_ref, r.batch_ref, r.batch_label, r.part_label, r.sequence, r.process_label, r.candidate, ...r.baseline_segments].flatMap(v => typeof v === 'object' && v ? [v.row_ref, v.machine && v.machine.label, v.operator && v.operator.label, v.supplier && v.supplier.label] : [v]).filter(v => v != null).join(' ').toLocaleLowerCase().includes(needle));
+  function searchText(row) {
+    return [row.operation_ref, row.row_ref, row.batch_ref, row.batch_label, row.part_label, row.sequence, row.process_label, row.candidate, ...row.baseline_segments].flatMap(value => typeof value === 'object' && value ? [value.row_ref, value.machine && value.machine.label, value.operator && value.operator.label, value.supplier && value.supplier.label] : [value]).filter(value => value != null).join(' ').toLocaleLowerCase();
   }
   function title(item) {
     const r = item.comparison,
@@ -44796,73 +45129,120 @@ function SMExport({
     }
     return rows;
   }
-  function prepare(candidate, baseline, mode, query, operationRefs = null) {
-    const groups = new Map();
-    const comparisons = baseline ? matching(baseline.comparisons, query).filter(row => !operationRefs || operationRefs.has(row.operation_ref)) : [];
-    const included = new Set(comparisons.map(r => r.operation_ref));
-    // compose() also accepts its existing, already-laid-out candidate argument.
-    if (candidate.rows) {
-      for (const row of candidate.rows) {
-        if (!groups.has(row.id)) groups.set(row.id, {
-          id: row.id,
-          label: row.label,
-          current: [],
+  function prepare(baseline) {
+    return {
+      hasBaseline: !!baseline,
+      facts: baseline ? baseline.comparisons.map(comparison => ({
+        comparison,
+        segments: comparison.baseline_segments.filter(segment => segment.interval_comparable).map(segment => ({
+          comparison,
+          segment,
+          start: M.instant(segment.start),
+          end: M.instant(segment.end),
+          point: window.PointContract.isPoint(segment)
+        }))
+      })) : []
+    };
+  }
+  function groupPrepared(prepared, mode, focus = null) {
+    const groups = new Map(),
+      comparisons = [];
+    let start = null,
+      end = null,
+      hasPoints = false;
+    for (const fact of prepared.facts) {
+      const comparison = focus ? {
+        ...fact.comparison,
+        baseline_segments: fact.comparison.baseline_segments.filter(segment => M.resourceMatches(segment, focus))
+      } : fact.comparison;
+      const entry = {
+        comparison,
+        search: searchText(comparison)
+      };
+      comparisons.push(entry);
+      for (const source of fact.segments) {
+        if (!M.resourceMatches(source.segment, focus)) continue;
+        const item = {
+            ...source,
+            comparison
+          },
+          resource = mode === 'batch' ? {
+            ref: comparison.batch_ref,
+            label: comparison.batch_label
+          } : item.segment[mode];
+        const id = resource && resource.ref || 'baseline-missing:' + item.segment.row_ref;
+        start = start === null ? item.start : Math.min(start, item.start);
+        end = end === null ? item.end : Math.max(end, item.end);
+        hasPoints = hasPoints || item.point;
+        if (!groups.has(id)) groups.set(id, {
+          id,
+          label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(item.segment, mode),
           before: []
         });
-        groups.get(row.id).current.push(row);
+        groups.get(id).before.push(item);
       }
-    } else {
-      for (const group of candidate.groups.values()) groups.set(group.id, {
-        id: group.id,
-        label: group.label,
-        candidate: group,
-        before: []
+    }
+    for (const group of groups.values()) {
+      group.intervals = tracks(group.before.filter(item => !item.point));
+      group.points = window.PointGanttModel.prepareTracks(group.before.filter(item => item.point));
+    }
+    return {
+      ...prepared,
+      groups,
+      comparisons,
+      start,
+      end,
+      hasPoints
+    };
+  }
+  function selectPrepared(candidate, baseline, query = '', operationRefs = null, baselineVisible = true) {
+    const groups = new Map(),
+      needle = query.trim().toLocaleLowerCase();
+    const comparisons = (baselineVisible ? baseline.comparisons : []).filter(entry => (!operationRefs || operationRefs.has(entry.comparison.operation_ref)) && (!needle || entry.search.includes(needle))).map(entry => entry.comparison);
+    const included = new Set(comparisons.map(row => row.operation_ref));
+    for (const group of candidate.groups.values()) groups.set(group.id, {
+      id: group.id,
+      label: group.label,
+      candidate: group,
+      intervals: [],
+      points: [],
+      before: [],
+      shown: new Set()
+    });
+    for (const [id, source] of baselineVisible ? baseline.groups : []) {
+      const before = source.before.filter(item => included.has(item.comparison.operation_ref));
+      if (!before.length) continue;
+      const shown = new Set(before),
+        group = groups.get(id) || {
+          id,
+          label: source.label,
+          current: []
+        };
+      groups.set(id, {
+        ...group,
+        before,
+        shown,
+        intervals: source.intervals.map(lane => lane.filter(item => shown.has(item))),
+        points: source.points
       });
     }
     let start = candidate.start,
-      end = candidate.end,
-      hasPoints = false;
-    for (const comparison of baseline ? baseline.comparisons : []) for (const segment of comparison.baseline_segments) {
-      if (!segment.interval_comparable) continue;
-      const item = {
-        comparison,
-        segment,
-        start: M.instant(segment.start),
-        end: M.instant(segment.end)
-      };
-      hasPoints = hasPoints || window.PointContract.isPoint(segment);
-      start = start === null ? item.start : Math.min(start, item.start);
-      end = end === null ? item.end : Math.max(end, item.end);
-      if (!included.has(comparison.operation_ref)) continue;
-      const resource = mode === 'batch' ? {
-        ref: comparison.batch_ref,
-        label: comparison.batch_label
-      } : segment[mode];
-      const id = resource && resource.ref || 'baseline-missing:' + segment.row_ref;
-      if (!groups.has(id)) groups.set(id, {
-        id,
-        label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(segment, mode),
-        current: [],
-        before: []
-      });
-      groups.get(id).before.push(item);
+      end = candidate.end;
+    if (baselineVisible && baseline.start !== null) {
+      start = start === null ? baseline.start : Math.min(start, baseline.start);
+      end = end === null ? baseline.end : Math.max(end, baseline.end);
     }
-    if (hasPoints) ({
+    if (baselineVisible && baseline.hasPoints) ({
       start,
       end
     } = window.PointGanttModel.bounds(start, end, true));
-    for (const group of groups.values()) {
-      const isPoint = item => window.PointContract.isPoint(item.segment);
-      group.intervals = tracks(group.before.filter(item => !isPoint(item)));
-      group.points = window.PointGanttModel.prepareTracks(group.before.filter(isPoint));
-    }
     return {
       candidate,
       groups,
       start,
       end,
       comparisons,
-      hasBaseline: !!baseline
+      hasBaseline: baselineVisible && baseline.hasBaseline
     };
   }
   function layoutPrepared(prepared, width = 1000) {
@@ -44891,20 +45271,22 @@ function SMExport({
     for (const [id, group] of prepared.groups) {
       const current = group.candidate ? M.groupRows(group.candidate, start, end, width, true) : group.current;
       current.forEach(append);
-      const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width) : [];
-      for (const [baselinePoint, lanes] of [[false, group.intervals], [true, points]]) lanes.forEach((items, lane) => append({
-        id,
-        key: 'baseline:' + id + ':' + (baselinePoint ? 'point:' : '') + lane,
-        label: group.label,
-        items,
-        height: 30,
-        lane,
-        laneCount: lanes.length,
-        baseline: true,
-        baselinePoint
-      }));
+      const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
+      for (const [baselinePoint, lanes] of [[false, group.intervals], [true, points]]) lanes.forEach((items, lane) => {
+        if (items.length) append({
+          id,
+          key: 'baseline:' + id + ':' + (baselinePoint ? 'point:' : '') + lane,
+          label: group.label,
+          items,
+          height: 30,
+          lane,
+          laneCount: lanes.length,
+          baseline: true,
+          baselinePoint
+        });
+      });
     }
-    const facts = candidate.rows ? candidate : {
+    const facts = {
       tasks: candidate.tasks,
       unplottableTasks: candidate.unplottableTasks
     };
@@ -44922,14 +45304,11 @@ function SMExport({
       } : {})
     };
   }
-  function compose(candidate, baseline, mode, query, operationRefs = null, width = 1000) {
-    return baseline ? layoutPrepared(prepare(candidate, baseline, mode, query, operationRefs), width) : candidate;
-  }
   window.RunBaselineModel = {
     prepare,
+    groupPrepared,
+    selectPrepared,
     layoutPrepared,
-    compose,
-    matching,
     title,
     resourceLabel,
     resourceChange,
@@ -44958,6 +45337,7 @@ function SMExport({
     }), [data], active);
     return {
       ...read,
+      retainedResult: read.result,
       result: active ? read.result : null,
       error: active ? read.error : null,
       busy: active && read.loading,
@@ -45221,6 +45601,7 @@ function SMExport({
     ZOOM_MAX = 128;
   function PointLane({
     row,
+    items,
     model,
     risks,
     width,
@@ -45233,9 +45614,7 @@ function SMExport({
     onSelect,
     onHover
   }) {
-    const scale = width / (model.end - model.start),
-      G = window.PointGanttModel;
-    const items = G.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale);
+    const scale = width / (model.end - model.start);
     return /*#__PURE__*/React.createElement("div", {
       "data-candidate-point-lane": true,
       style: {
@@ -45267,6 +45646,7 @@ function SMExport({
   }
   function Lane({
     row,
+    items,
     model,
     mode,
     risks,
@@ -45284,99 +45664,72 @@ function SMExport({
   }) {
     const ref = React.useRef(null),
       scale = width / (model.end - model.start);
-    const items = row.baselinePoint ? window.PointGanttModel.visible(row.items, model.start + left / scale, model.start + (left + viewport) / scale, scale) : M.visibleItems(row.items, model.start + left / scale, model.start + (left + viewport) / scale);
-    React.useLayoutEffect(() => {
-      function paint() {
-        const node = ref.current,
-          ratio = devicePixelRatio || 1,
-          w = Math.max(1, viewport),
-          h = row.height;
-        node.width = Math.round(w * ratio);
-        node.height = h * ratio;
-        const ctx = node.getContext('2d');
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        const P = window.GanttPresentation,
-          colors = P.palette(node);
-        for (const item of items) {
-          const x = (item.start - model.start) * scale - left,
-            barWidth = (item.end - item.start) * scale;
-          if (row.baseline) {
-            const chosen = baselineSelected && baselineSelected.comparison.operation_ref === item.comparison.operation_ref;
-            if (row.baselinePoint) {
-              window.PointGanttModel.paint(ctx, x, 15, colors.plan.fill, chosen ? colors.gold : colors.plan.edge, chosen);
-              continue;
-            }
-            P.paintBar(ctx, {
-              x,
-              y: 11,
-              width: barWidth,
-              height: 7,
-              fill: 'transparent',
-              edge: chosen ? colors.gold : colors.plan.edge,
-              lineWidth: chosen ? 2 : 1,
-              dashed: true,
-              viewport: w
-            });
+    const P = window.GanttPresentation;
+    P.useCanvasPaint(ref, (ctx, w, h, colors) => {
+      const paintScale = (printing ? w : width) / (model.end - model.start);
+      for (const item of items) {
+        const x = (item.start - model.start) * paintScale - left,
+          barWidth = (item.end - item.start) * paintScale;
+        if (row.baseline) {
+          const chosen = baselineSelected && baselineSelected.comparison.operation_ref === item.comparison.operation_ref;
+          if (row.baselinePoint) {
+            window.PointGanttModel.paint(ctx, x, 15, colors.plan.fill, chosen ? colors.gold : colors.plan.edge, chosen);
             continue;
           }
-          const external = item.task.source === 'external',
-            risk = risks.get(item.task.batch_ref);
-          const colorsForTask = colors[risk === 'overdue' ? 'critical' : 'primary'];
-          const chosen = !baselineSelected && item.task.row_ref === (selected && selected.row_ref);
-          const related = active.related.has(item.task.row_ref),
-            critical = active.critical.has(item.task.row_ref);
-          const lines = P.taskLines({
-            sequence: M.number(item.task.sequence),
-            process: item.task.process_label || '工序未记录',
-            batch: item.task.batch_label || '批次未记录',
-            piece: M.pieceLabel(item.task),
-            resource: [item.task.machine && item.task.machine.label, item.task.operator && item.task.operator.label].filter(Boolean).join(' / ') || '资源未记录'
-          }, mode, barWidth);
           P.paintBar(ctx, {
             x,
-            y: 7,
+            y: 11,
             width: barWidth,
-            height: 40,
-            fill: colorsForTask.fill,
-            edge: chosen || related || critical ? colors.gold : colorsForTask.edge,
-            lineWidth: chosen || critical ? 2 : related ? 1.5 : 1,
-            dashed: external,
-            texture: external ? 'external' : item.overlap ? 'overlap' : null,
-            textureColor: external ? colors.plan.edge : colors.overlap.edge,
-            textColor: colorsForTask.ink,
-            font: colors.font,
-            lines,
-            viewport: w,
-            critical,
-            criticalColor: colors.gold,
-            muted: !!active.target && !related && !critical,
-            onTime: risk === 'on_time',
-            locked: item.task.locked,
-            statusColor: colors.success.edge
+            height: 7,
+            fill: 'transparent',
+            edge: chosen ? colors.gold : colors.plan.edge,
+            lineWidth: chosen ? 2 : 1,
+            dashed: true,
+            viewport: w
           });
+          continue;
         }
+        const external = item.task.source === 'external',
+          risk = risks.get(item.task.batch_ref);
+        const colorsForTask = colors[risk === 'overdue' ? 'critical' : 'primary'];
+        const chosen = !baselineSelected && item.task.row_ref === (selected && selected.row_ref);
+        const related = active.related.has(item.task.row_ref),
+          critical = active.critical.has(item.task.row_ref);
+        const lines = P.taskLines({
+          sequence: M.number(item.task.sequence),
+          process: item.task.process_label || '工序未记录',
+          batch: item.task.batch_label || '批次未记录',
+          piece: M.pieceLabel(item.task),
+          resource: [item.task.machine && item.task.machine.label, item.task.operator && item.task.operator.label].filter(Boolean).join(' / ') || '资源未记录'
+        }, mode, barWidth);
+        P.paintBar(ctx, {
+          x,
+          y: 7,
+          width: barWidth,
+          height: 40,
+          fill: colorsForTask.fill,
+          edge: chosen || related || critical ? colors.gold : colorsForTask.edge,
+          lineWidth: chosen || critical ? 2 : related ? 1.5 : 1,
+          dashed: external,
+          texture: external ? 'external' : item.overlap ? 'overlap' : null,
+          textureColor: external ? colors.plan.edge : colors.overlap.edge,
+          textColor: colorsForTask.ink,
+          font: colors.font,
+          lines,
+          viewport: w,
+          critical,
+          criticalColor: colors.gold,
+          muted: !!active.target && !related && !critical,
+          onTime: risk === 'on_time',
+          locked: item.task.locked,
+          statusColor: colors.success.edge
+        });
       }
-      paint();
-      const theme = new MutationObserver(paint),
-        media = typeof matchMedia === 'function' ? matchMedia('print') : null;
-      theme.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme', 'class']
-      });
-      if (media) {
-        if (typeof media.addEventListener === 'function') media.addEventListener('change', paint);else media.addListener(paint);
-      }
-      return () => {
-        theme.disconnect();
-        if (media) {
-          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', paint);else media.removeListener(paint);
-        }
-      };
-    }, [row, model, mode, risks, width, left, viewport, printing, selected, baselineSelected, active]);
+    }, P.palette, [items, model.start, model.end, mode, risks, width, left, viewport, printing, selected, baselineSelected, active], printing);
     function hit(event) {
       const box = ref.current.getBoundingClientRect(),
         at = model.start + (event.clientX - box.left + left) / scale;
-      return row.baselinePoint ? window.PointGanttModel.hit(row.items, event.clientX - box.left, event.clientY - box.top, model, width, left, 15) : M.visibleItems(row.items, at, at + 0.001)[0];
+      return row.baselinePoint ? window.PointGanttModel.hit(items, event.clientX - box.left, event.clientY - box.top, model, width, left, 15) : M.visibleItems(items, at, at + 0.001)[0];
     }
     const choose = item => row.baseline ? onBaselineSelect(item) : onSelect(item.task);
     const selectedItem = row.items.find(item => !row.baseline && selected && item.task.row_ref === selected.row_ref);
@@ -45546,6 +45899,7 @@ function SMExport({
   }
   function RunCandidateGantt({
     data,
+    prepared: facts,
     comparison,
     query,
     onQuery,
@@ -45595,25 +45949,18 @@ function SMExport({
       } : null;
     }, [result, inspectedRef]);
     const selectedItem = selection && selection.result === result ? selection.item : inspected;
-    const chosen = selectedItem && (!operationRefs || operationRefs.has(selectedItem.comparison.operation_ref)) && B.matching([selectedItem.comparison], query).length ? selectedItem : null;
+    const candidateGroups = React.useMemo(() => M.groupPrepared(facts, mode), [facts, mode]);
+    const candidate = React.useMemo(() => M.selectPrepared(candidateGroups, query, operationRefs, resourceFocus), [candidateGroups, query, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    const baselineFacts = React.useMemo(() => B.prepare(baseline.retainedResult && baseline.retainedResult.data), [baseline.retainedResult]);
+    const baselineGroups = React.useMemo(() => B.groupPrepared(baselineFacts, mode, resourceFocus), [baselineFacts, mode, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    const prepared = React.useMemo(() => B.selectPrepared(candidate, baselineGroups, query, operationRefs, !!result), [candidate, baselineGroups, query, operationRefs, !!result]);
+    const chosen = selectedItem && prepared.comparisons.some(row => row.operation_ref === selectedItem.comparison.operation_ref) ? selectedItem : null;
     // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
     const labelWidth = 156,
       width = printing ? 640 : Math.max(1, viewport) * zoom;
-    const candidate = React.useMemo(() => M.prepare(resourceFocus ? {
-      ...data,
-      tasks: data.tasks.filter(task => M.resourceMatches(task, resourceFocus))
-    } : data, mode, query, operationRefs), [data, mode, query, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
-    const displayedBaseline = React.useMemo(() => result && resourceFocus ? {
-      ...result.data,
-      comparisons: result.data.comparisons.map(row => ({
-        ...row,
-        baseline_segments: row.baseline_segments.filter(segment => M.resourceMatches(segment, resourceFocus))
-      }))
-    } : result && result.data, [result, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
-    const prepared = React.useMemo(() => B.prepare(candidate, displayedBaseline, mode, query, operationRefs), [candidate, displayedBaseline, mode, query, operationRefs]);
     const model = React.useMemo(() => B.layoutPrepared(prepared, width), [prepared, width]);
     const risks = React.useMemo(() => new Map(data.delivery_risks.items.map(row => [row.batch_ref, row.risk])), [data]);
-    const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
+    const graph = facts.graph;
     const targetRef = hover && hover.taskRef || !chosen && selected && selected.row_ref || null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, {
       enabled: chainEnabled,
@@ -45763,7 +46110,16 @@ function SMExport({
     }, {
       locationIndex
     }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing, locationIndex]);
-    const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
+    const visible = React.useMemo(() => {
+      const rows = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
+      const scale = width / (model.end - model.start),
+        start = model.start + renderLeft / scale,
+        end = model.start + (renderLeft + renderViewport) / scale;
+      return rows.map(row => ({
+        row,
+        items: row.point || row.baselinePoint ? window.PointGanttModel.visible(row.items, start, end, scale) : M.visibleItems(row.items, start, end)
+      }));
+    }, [model, printing, scroll.top, viewportHeight, width, renderLeft, renderViewport]);
     const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
     const axis = window.GanttPresentation.axis({
       start: model.start,
@@ -45892,7 +46248,10 @@ function SMExport({
         width: width + labelWidth,
         height: Math.max(120, model.height)
       }
-    }, visible.map(row => /*#__PURE__*/React.createElement("div", {
+    }, visible.map(({
+      row,
+      items
+    }) => /*#__PURE__*/React.createElement("div", {
       key: row.key,
       className: "rc-lane",
       "data-candidate-track": row.baseline ? undefined : row.key,
@@ -45923,6 +46282,7 @@ function SMExport({
       }
     }, React.createElement(row.point ? PointLane : Lane, {
       row,
+      items,
       model,
       mode,
       risks,
@@ -46195,13 +46555,20 @@ function SMExport({
       ref: initialContext.resource_ref,
       kind: initialContext.resource_kind === 'operator' ? 'operator' : 'machine'
     } : null;
-    const tasks = React.useMemo(() => shown ? M.matching(shown.tasks.filter(task => M.resourceMatches(task, resourceFocus)), query) : [], [shown, query, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
-    const unplanned = React.useMemo(() => shown ? M.matching((shown.unplanned_operations || []).filter(task => M.resourceMatches(task, resourceFocus)), query) : [], [shown, query, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    const prepared = React.useMemo(() => {
+      if (!shown) return null;
+      const facts = M.prepare(shown);
+      facts.graph = window.GanttGraph.create(shown.gantt_graph);
+      return facts;
+    }, [shown]);
+    const tasks = React.useMemo(() => prepared ? M.matching(prepared, query, resourceFocus) : [], [prepared, query, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    const unplanned = React.useMemo(() => prepared ? M.matching(prepared, query, resourceFocus, true) : [], [prepared, query, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
     const filteredView = !!(scope.range_start || scope.batch_ref || resourceFocus || query.trim());
     const chosen = selected && selected.result === result ? selected.task : null;
     React.useEffect(() => {
       if (!shown || !pendingRow && !pendingOperation) return;
-      const exact = pendingRow && shown.tasks.find(row => row.row_ref === pendingRow && (!pendingOperation || row.operation_ref === pendingOperation));
+      const pendingFact = pendingRow && prepared.taskIndex.get(pendingRow);
+      const exact = pendingFact && (!pendingOperation || pendingFact.task.operation_ref === pendingOperation) && pendingFact.task;
       const task = exact || pendingOperation && shown.tasks.find(row => row.operation_ref === pendingOperation);
       const unplannedTask = !task && pendingOperation && (shown.unplanned_operations || []).find(row => row.operation_ref === pendingOperation);
       if (task || unplannedTask) {
@@ -46264,7 +46631,8 @@ function SMExport({
     }
     function lastOperation(task) {
       setQuery('');
-      const visible = shown.tasks.find(row => row.row_ref === task.row_ref);
+      const fact = prepared.taskIndex.get(task.row_ref),
+        visible = fact && fact.task;
       if (visible) select(visible);else {
         setPendingRow(task.row_ref);
         setScope({});
@@ -46385,7 +46753,7 @@ function SMExport({
       role: "status"
     }, isReference ? '正在读取排产时的正式计划。' : '正在读取这个候选方案。'), read.error && /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
-    }, "\u5019\u9009\u65B9\u6848\u8BFB\u53D6\u5931\u8D25\uFF0C\u8BF7\u70B9\u51FB\u5237\u65B0\u91CD\u8BD5\u3002"), (analysisRead.busy || historyRead.busy) && /*#__PURE__*/React.createElement("div", {
+    }, "\u5019\u9009\u65B9\u6848\u8BFB\u53D6\u5931\u8D25\uFF0C\u53EF\u901A\u8FC7\u201C\u8BFB\u53D6\u8303\u56F4\u201D\u8C03\u6574\u65E5\u671F\u540E\u91CD\u65B0\u8BFB\u53D6\uFF0C\u6216\u70B9\u51FB\u5237\u65B0\u91CD\u8BD5\u3002"), (analysisRead.busy || historyRead.busy) && /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("span", {
       role: "status"
@@ -46430,17 +46798,17 @@ function SMExport({
       rows: result.warnings
     }), /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: ownershipError(analysisRead)
-    }), /*#__PURE__*/React.createElement("div", {
+    })), A.ref(candidateRef) && !invalid && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
       title: scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部保存时间'
-    }, "\u67E5\u770B\u8303\u56F4\uFF1A", scope.range_start ? F.compactRange(scope.range_start, scope.range_end) : '全部时间', scope.batch_ref && ' · 指定批次'), ' · 当前显示 ' + tasks.length + ' 道安排'), /*#__PURE__*/React.createElement("div", {
+    }, "\u67E5\u770B\u8303\u56F4\uFF1A", scope.range_start ? F.compactRange(scope.range_start, scope.range_end) : '全部时间', scope.batch_ref && ' · 指定批次'), shown && ' · 当前显示 ' + tasks.length + ' 道安排'), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "calendar-days",
       "aria-expanded": rangeOpen,
       onClick: () => setRangeOpen(!rangeOpen)
-    }, "\u8BFB\u53D6\u8303\u56F4"), !isReference && /*#__PURE__*/React.createElement(Export, {
+    }, "\u8BFB\u53D6\u8303\u56F4"), shown && !isReference && /*#__PURE__*/React.createElement(Export, {
       key: result.meta.snapshot_ref,
       adapter: adapter,
       result: result,
@@ -46495,7 +46863,7 @@ function SMExport({
         });
         setRangeError(null);
       }
-    }, "\u5B8C\u6574\u4FDD\u5B58\u8303\u56F4\u5B9A\u4F4D"), /*#__PURE__*/React.createElement("details", {
+    }, "\u5B8C\u6574\u4FDD\u5B58\u8303\u56F4\u5B9A\u4F4D")), shown && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
       className: "rc-reasons"
     }, /*#__PURE__*/React.createElement("summary", null, "\u8303\u56F4\u4E0E\u5BFC\u51FA\u8BF4\u660E"), /*#__PURE__*/React.createElement("div", null, "\u5168\u65B9\u6848\u5171 ", shown.candidate_task_count, " \u9053\u5B89\u6392\uFF1B\u5F53\u524D\u8BFB\u53D6\u8303\u56F4 ", shown.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement("div", null, "\u672A\u5B89\u6392\u5DE5\u5E8F\uFF1A", shown.unplanned_operation_count === null ? '数量未保存，请查看原因' : shown.unplanned_operation_count + ' 道', "\u3002\u8FD9\u4E9B\u5DE5\u5E8F\u6CA1\u6709\u65F6\u95F4\u533A\u95F4\uFF0C\u6309\u6279\u6B21\u8303\u56F4\u8BFB\u53D6\uFF0C\u4FDD\u7559\u5728\u672A\u5B89\u6392\u660E\u7EC6\u3002"), /*#__PURE__*/React.createElement("div", null, "\u65F6\u95F4\u8FB9\u754C\uFF1A", scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部保存时间', "\u3002\u65F6\u95F4\u7B5B\u9009\u4FDD\u7559\u76F8\u4EA4\u5B89\u6392\u7684\u5B8C\u6574\u8D77\u6B62\u3002\u96F6\u5DE5\u65F6\u5DE5\u5E8F\u6309\u53D1\u751F\u65F6\u523B\u7B5B\u9009\uFF0C\u7ED3\u675F\u8FB9\u754C\u4E0D\u5305\u542B\u3002"), scope.batch_ref && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
@@ -46512,6 +46880,7 @@ function SMExport({
       className: view === 'gantt' ? 'wb-gantt-main-column' : undefined
     }, /*#__PURE__*/React.createElement(window.RunCandidateGantt, {
       data: shown,
+      prepared: prepared,
       comparison: analysis,
       query: query,
       onQuery: setQuery,
@@ -46597,6 +46966,7 @@ function SMExport({
     })))), !['delivery', 'history'].includes(tab) && (view !== 'gantt' || detailsOpen) && /*#__PURE__*/React.createElement(C.Detail, {
       task: chosen,
       data: shown,
+      prepared: prepared,
       onRelated: taskRef => lastOperation({
         row_ref: taskRef
       }),
@@ -52278,7 +52648,7 @@ function SMExport({
       metric: metric
     })))), [[c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) => /*#__PURE__*/React.createElement("div", {
       key: label
-    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, T.changeover_count), /*#__PURE__*/React.createElement("strong", null, c.changeovers === null ? '未知' : U.number(c.changeovers)), c.changeovers === null && c.changeover_reason && /*#__PURE__*/React.createElement("small", null, c.changeover_reason)), c.preparation_common && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, T.operation_effort_labels.setup_standard_hours), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(RequirementMetric, {
+    }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, U.number(value)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, T.changeover_count), /*#__PURE__*/React.createElement("strong", null, c.changeovers === null ? '未知' : U.number(c.changeovers)), c.changeovers === null && c.changeover_reason && /*#__PURE__*/React.createElement("small", null, c.changeover_reason)), c.preparation_common && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u65B0\u5B89\u6392\u51C6\u5907\u6807\u51C6\u5DE5\u65F6"), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(RequirementMetric, {
       value: c.preparation_common.after.scheduled_setup_hours
     })))));
   }
@@ -52295,7 +52665,7 @@ function SMExport({
       p = c.preparation_common,
       changes = c.changeover_common,
       name = window.TrialGantt.resourceNames(data);
-    const metrics = [['pending_setup_hours', '待执行准备标准工时'], ['scheduled_setup_hours', '已排准备标准工时'], ['unplanned_setup_hours', '其他未安排准备标准工时'], ['deferred_setup_hours', '缺料未安排准备标准工时'], ['pending_processing_hours', '待执行加工标准工时'], ['scheduled_processing_hours', '已新排加工标准工时'], ['unplanned_processing_hours', '其他未安排加工标准工时'], ['deferred_processing_hours', '缺料未安排加工标准工时']];
+    const metrics = [['pending_setup_hours', '待执行准备标准工时'], ['scheduled_setup_hours', '新安排准备标准工时'], ['unplanned_setup_hours', '其他未安排准备标准工时'], ['deferred_setup_hours', '缺料未安排准备标准工时'], ['pending_processing_hours', '待执行加工标准工时'], ['scheduled_processing_hours', '新安排加工标准工时'], ['unplanned_processing_hours', '其他未安排加工标准工时'], ['deferred_processing_hours', '缺料未安排加工标准工时']];
     const summaryColumns = [['标准需求（小时）', row => row[1]], ['原安排', row => /*#__PURE__*/React.createElement(RequirementMetric, {
       value: p.before[row[0]]
     })], ['当前试调', row => /*#__PURE__*/React.createElement(RequirementMetric, {
@@ -53629,7 +53999,7 @@ function SMExport({
   }) {
     const id = React.useId(),
       frozen = !!s.saved,
-      memoryHint = window.WorkbenchHandlerMemory.hint(s.draft.declared_operator);
+      memoryHint = window.WorkbenchHandlerMemory.useHint(s.draft.declared_operator);
     return /*#__PURE__*/React.createElement("div", {
       className: "ta-fields"
     }, /*#__PURE__*/React.createElement("div", {
@@ -53878,20 +54248,25 @@ function SMExport({
     if (result.data.page.number !== input.page || result.data.page.size !== input.size) throw new Error('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
   }
+  const count = value => Number.isInteger(value) && value >= 0;
+  const amount = value => value === null || Number.isFinite(value);
+  const hours = row => ['effective_processing_hours', 'known_effective_processing_hours'].every(key => amount(row[key])) && count(row.unknown_hour_events);
+  const totals = row => ['events', 'production_reports', 'records'].every(key => count(row[key])) && row.events + row.production_reports === row.records && hours(row);
+  const operation = row => ['event_count', 'production_report_count', 'record_count', 'unknown_record_count'].every(key => count(row[key])) && row.event_count + row.production_report_count === row.record_count && amount(row.known_completed_quantity) && amount(row.remaining_quantity) && hours(row);
+  const record = row => ['legacy_event', 'production_report'].includes(row.record_kind) && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0 && amount(row.quantity_done) && amount(row.effective_processing_hours) && ['factory_local', 'legacy_storage'].includes(row.recorded_at_time_basis) && (row.record_kind === 'legacy_event' ? row.legacy_evidence && typeof row.legacy_evidence === 'object' : typeof row.report_no === 'string' && Array.isArray(row.correction_history) && row.correction_history.length > 0 && row.correction_history.every(revision => revision.after && (revision.before === null || typeof revision.before === 'object')));
   function validateLedger(data) {
-    const count = value => Number.isInteger(value) && value >= 0;
-    const amount = value => value === null || Number.isFinite(value);
-    const hours = row => ['effective_processing_hours', 'known_effective_processing_hours'].every(key => amount(row[key])) && count(row.unknown_hour_events);
-    const totals = row => ['events', 'production_reports', 'records'].every(key => count(row[key])) && row.events + row.production_reports === row.records && hours(row);
-    const operation = row => ['event_count', 'production_report_count', 'record_count', 'unknown_record_count'].every(key => count(row[key])) && row.event_count + row.production_report_count === row.record_count && amount(row.known_completed_quantity) && amount(row.remaining_quantity) && hours(row);
-    const record = row => ['legacy_event', 'production_report'].includes(row.record_kind) && typeof row.record_kind_label === 'string' && row.record_kind_label.length > 0 && amount(row.quantity_done) && amount(row.effective_processing_hours) && ['factory_local', 'legacy_storage'].includes(row.recorded_at_time_basis) && (row.record_kind === 'legacy_event' ? row.legacy_evidence && typeof row.legacy_evidence === 'object' : typeof row.report_no === 'string' && Array.isArray(row.correction_history) && row.correction_history.length > 0 && row.correction_history.every(revision => revision.after && (revision.before === null || typeof revision.before === 'object')));
-    if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals)) || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation) || data.detail && (!operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record))) throw new Error('报工数据缺项或计数不一致，请刷新重试。');
+    if (!totals(data.summary) || !data.resources || !['machines', 'people'].every(kind => Array.isArray(data.resources[kind]) && data.resources[kind].every(totals)) || !data.rows.every(data.topic === 'records' ? record : ['machines', 'people'].includes(data.topic) ? totals : operation)) throw new Error('报工数据缺项或计数不一致，请刷新重试。');
   }
   function validate(result) {
     const data = result && result.data;
     if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref || !data || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps) || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages)) throw new Error('读到的报表数据不完整，请刷新重试。');
     if (topics.includes(data.topic) && (!['operations', 'events', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0) || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key])))) throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
     if (topics.includes(data.topic)) validateLedger(data);
+    return result;
+  }
+  function validateDetail(result) {
+    const data = result && result.data;
+    if (!result || result.ok !== true || !result.meta || result.meta.source !== 'production' || !result.meta.snapshot_ref || !data || !data.plan || !data.plan.is_current_official || !data.detail || !data.detail.operation || !operation(data.detail.operation) || !Array.isArray(data.detail.records) || !data.detail.records.every(record)) throw new Error('读到的工序详情不完整，请刷新重试。');
     return result;
   }
   function create(transport) {
@@ -53902,7 +54277,7 @@ function SMExport({
       },
       async detail(ref, input, signal) {
         if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
-        const result = validate(await io.query('analytics/operations/' + ref, input, signal));
+        const result = validateDetail(await io.query('analytics/operations/' + ref, input, signal));
         if (!result.data.detail || result.data.detail.operation.operation_ref !== ref || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref) throw new Error('工序详情与原工序、计划或当前数据版本不一致，没有改指其他工序。');
         return result;
       },
@@ -53936,6 +54311,7 @@ function SMExport({
     table,
     readView,
     validate,
+    validateDetail,
     topics,
     sorts
   };
@@ -54859,12 +55235,7 @@ function SMExport({
       Table
     } = window.ReportTable;
     const identity = operationRef + JSON.stringify(input);
-    const request = useRead(signal => api.detail(operationRef, {
-      ...input,
-      page: 1,
-      topic: 'delivery',
-      sort: 'batch_label'
-    }, signal), identity);
+    const request = useRead(signal => api.detail(operationRef, input, signal), identity);
     const detail = request.result && request.result.data.detail;
     const [page, setPage] = React.useState(initialView ? initialView.page : 1),
       [size, setSize] = React.useState(initialView ? initialView.size : 10);
@@ -57886,10 +58257,10 @@ function SMExport({
         if (!result.data.selected || result.data.selected.entity_ref !== selected.entity_ref || result.data.selected.domain !== selected.domain || !result.data.rows.some(row => row.ref === selected.entity_ref && row.domain === selected.domain)) C.fail('清单里没有定位到这条资料，页面内容没有变化。请刷新后重试。');
         return result;
       },
-      export: (scope, token, count, signal) => download(scope, token, count, signal)
+      export: (scope, token, signal) => download(scope, token, signal)
     };
   }
-  async function download(scope, token, count, signal) {
+  async function download(scope, token, signal) {
     const controller = new AbortController(),
       abort = () => controller.abort();
     let timedOut = false;
@@ -57916,7 +58287,9 @@ function SMExport({
         const payload = type.includes('application/json') ? await response.json() : null;
         C.fail(payload && payload.error && payload.error.message || '基础资料导出失败，没有开始下载。请刷新后重试。');
       }
-      if (!type.startsWith('text/csv') || response.headers.get('X-Workbench-Snapshot-Ref') !== token || response.headers.get('X-Workbench-Row-Count') !== String(count)) C.fail('导出范围或数据版本对不上，没有开始下载。请刷新后重试。');
+      const countText = response.headers.get('X-Workbench-Row-Count'),
+        count = Number(countText);
+      if (!type.startsWith('text/csv') || response.headers.get('X-Workbench-Snapshot-Ref') !== token || countText === null || !/^(0|[1-9][0-9]*)$/.test(countText) || !Number.isSafeInteger(count)) C.fail('导出范围或数据版本对不上，没有开始下载。请刷新后重试。');
       const filename = scope.view === 'issues' ? '基础资料待维护项.csv' : '基础资料清单.csv';
       return {
         blob: await response.blob(),
@@ -58158,9 +58531,7 @@ function SMExport({
       "data-status": entity.status
     }, C.statuses[entity.status]), " \xB7 \u5DF2\u586B ", entity.filled_fields, " / ", entity.checked_fields, " \u4E2A\u68C0\u67E5\u9879"), !entity.checks_complete && /*#__PURE__*/React.createElement("p", {
       className: "mo-muted"
-    }, "\u90E8\u5206\u68C0\u67E5\u5C1A\u672A\u5B8C\u6210\uFF0C\u8BF7\u67E5\u770B\u5F85\u7EF4\u62A4\u9879\u548C\u8D44\u6599\u9879\u3002"), selected && selected.title && /*#__PURE__*/React.createElement("div", {
-      className: "mo-focus"
-    }, /*#__PURE__*/React.createElement("strong", null, selected.title), /*#__PURE__*/React.createElement("p", null, selected.evidence)), /*#__PURE__*/React.createElement(Tabs, {
+    }, "\u90E8\u5206\u68C0\u67E5\u5C1A\u672A\u5B8C\u6210\uFF0C\u8BF7\u67E5\u770B\u5F85\u7EF4\u62A4\u9879\u548C\u8D44\u6599\u9879\u3002"), /*#__PURE__*/React.createElement(Tabs, {
       label: "\u8D44\u6599\u660E\u7EC6\u7C7B\u578B",
       value: section,
       onChange: onSection,
@@ -58628,14 +58999,14 @@ function SMExport({
       }
     }
     async function exportRows() {
-      if (!result || !data.page.total || exporting) return;
+      if (!result || exporting) return;
       const controller = new AbortController();
       exportController.current = controller;
       setExporting(true);
       setMessage('');
       setActionError(null);
       try {
-        const file = await api.export(data.scope, result.meta.snapshot_ref, data.page.total, controller.signal);
+        const file = await api.export(data.scope, result.meta.snapshot_ref, controller.signal);
         if (alive.current && !controller.signal.aborted) {
           window.APSMasterOverviewAPI.save(file);
           setMessage(window.WorkbenchTerms.download_started(file.filename) + '（共 ' + file.count + ' 条）。');
@@ -58680,7 +59051,7 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       transfer: "export",
-      disabled: !data || !data.page.total || pending || exporting,
+      disabled: !data || pending || exporting,
       onClick: exportRows
     }, "\u5BFC\u51FA\u7B5B\u9009\u7ED3\u679C"), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
@@ -63043,21 +63414,24 @@ function SystemLiveOverview({
   'use strict';
 
   const G = window.PlanGanttModel;
-  function layout(data, mode, width) {
-    const stops = data.downtimes.filter(row => row.valid),
-      affected = new Set(stops.map(row => row.machine_ref));
-    const tasks = data.tasks.filter(row => row.source === 'internal' && row.machine_ref && (mode !== 'downtime' || affected.has(row.machine_ref)));
-    let start = data.time_scope.range_start,
-      end = data.time_scope.range_end;
-    if (mode === 'downtime') for (const stop of stops) {
-      if (stop.start < start) start = stop.start;
-      if (stop.end > end) end = stop.end;
+  function prepare(data) {
+    const stops = data.downtimes.filter(row => row.valid).map(row => ({
+      ...row,
+      startAt: G.instant(row.start),
+      endAt: G.instant(row.end)
+    }));
+    const affected = new Set(stops.map(row => row.machine_ref)),
+      windows = new Map();
+    for (const row of stops) {
+      if (!windows.has(row.machine_ref)) windows.set(row.machine_ref, []);
+      windows.get(row.machine_ref).push(row);
     }
-    const model = G.layout({
+    const tasks = data.tasks.filter(row => row.source === 'internal' && row.machine_ref);
+    const facts = G.prepare({
       tasks,
       plan_span: {
-        start,
-        end
+        start: data.time_scope.range_start,
+        end: data.time_scope.range_end
       },
       resources: data.resources.map(row => ({
         ref: row.resource_ref,
@@ -63074,24 +63448,51 @@ function SystemLiveOverview({
           state: 'unavailable'
         }
       }
-    }, 'machine', '', false, width);
-    const windows = new Map();
-    for (const row of stops) {
-      if (!windows.has(row.machine_ref)) windows.set(row.machine_ref, []);
-      windows.get(row.machine_ref).push(row);
-    }
-    const risks = new Map(data.deliveries.map(row => [row.batch_ref, row.risk]));
+    });
     return {
-      ...model,
+      facts,
+      stops,
+      affected,
       windows,
-      risks
+      risks: new Map(data.deliveries.map(row => [row.batch_ref, row.risk]))
+    };
+  }
+  function groupPrepared(prepared, mode) {
+    let facts = prepared.facts;
+    if (mode === 'downtime') {
+      let start = facts.start,
+        end = facts.end;
+      for (const stop of prepared.stops) {
+        start = Math.min(start, stop.startAt);
+        end = Math.max(end, stop.endAt);
+      }
+      facts = {
+        ...facts,
+        start,
+        end,
+        items: facts.items.filter(item => prepared.affected.has(item.task.machine_ref))
+      };
+    }
+    return {
+      ...G.selectPrepared(G.groupPrepared(facts, 'machine')),
+      windows: prepared.windows,
+      risks: prepared.risks
+    };
+  }
+  function layoutPrepared(prepared, width) {
+    return {
+      ...G.layoutPrepared(prepared, width),
+      windows: prepared.windows,
+      risks: prepared.risks
     };
   }
   function title(task, risk) {
     return [task.batch_id + ' · ' + task.sequence + ' ' + task.process_label, window.WorkbenchFormat.compactRange(task.start, task.end), '安排时长 ' + window.WorkbenchFormat.hours(task.span_hours), task.start === task.end ? '零工时工序，不占设备人员' : null, '设备：' + (task.machine_label || '名称未填写'), risk ? '批次交付：' + window.WorkbenchTerms.delivery_risks[risk] : null].filter(Boolean).join('\n');
   }
   window.DashboardTimelineModel = {
-    layout,
+    prepare,
+    groupPrepared,
+    layoutPrepared,
     title,
     instant: G.instant,
     wire: G.wire,
@@ -63201,7 +63602,9 @@ function SystemLiveOverview({
       labelWidth = position.width < 550 ? 140 : 170;
     const viewport = Math.max(80, position.width - labelWidth),
       width = viewport * zoom;
-    const model = React.useMemo(() => M.layout(data, mode, width), [data, mode, width]);
+    const prepared = React.useMemo(() => M.prepare(data), [data]);
+    const grouped = React.useMemo(() => M.groupPrepared(prepared, mode), [prepared, mode]);
+    const model = React.useMemo(() => M.layoutPrepared(grouped, width), [grouped, width]);
     const measure = () => {
       const node = board.current;
       if (node) setPosition({
@@ -63358,8 +63761,8 @@ function SystemLiveOverview({
           left: tick.x
         }
       })), mode === 'downtime' && (model.windows.get(row.id) || []).map(stop => {
-        const low = Math.max(model.start, M.instant(stop.start)),
-          high = Math.min(model.end, M.instant(stop.end));
+        const low = Math.max(model.start, stop.startAt),
+          high = Math.min(model.end, stop.endAt);
         const text = ['停机：' + (stop.reason || '原因未填写'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间：' + M.timeLabel(stop.recorded_at)].join('\n');
         return high > low ? /*#__PURE__*/React.createElement("span", {
           key: stop.downtime_ref,

@@ -7,7 +7,6 @@ from core.algorithm_runtime.internal_slot import validate_internal_hours
 from core.errors import AppError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import SourceType
-from core.services.personnel.operator_qualification import validate_fixed_operator_qualifications
 
 from .schedule_execution_reservations import ExecutionResourceReservation, reserve_execution_machines
 from .schedule_input_contracts import _build_freeze_window_seed_with_meta, _op_seq
@@ -146,6 +145,7 @@ def _build_runtime_support_inputs(
     build_resource_pool_fn: Any,
     extend_downtime_map_for_resource_pool_fn: Any,
     raise_schedule_empty_result_fn: Any,
+    validate_fixed_operator_qualifications_fn: Any,
     validate_completed_seed_constraints_fn: Any = None,
 ) -> Tuple[
     Set[int],
@@ -194,7 +194,7 @@ def _build_runtime_support_inputs(
         derived_group_op_ids=derived_group_ids,
     )
     _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
-    validate_fixed_operator_qualifications(svc.conn, algo_ops_to_schedule, logger=svc.logger)
+    validate_fixed_operator_qualifications_fn(svc.conn, algo_ops_to_schedule, logger=svc.logger)
     downtime_meta, resource_pool_meta, downtime_map, resource_pool = _load_runtime_resource_inputs(
         svc,
         cfg=cfg,
@@ -249,23 +249,6 @@ def _seed_end(seed: Dict[str, Any]) -> Any:
     return seed.get("end_time")
 
 
-def _downstream_operations(
-    operations: List[BatchOperation],
-    *,
-    completed_op_id: int,
-    completed_batch_id: str,
-    completed_seq: int,
-) -> List[BatchOperation]:
-    out: List[BatchOperation] = []
-    for op in list(operations or []):
-        op_id = _algo_op_id(op)
-        batch_id = str(getattr(op, "batch_id", "") or "").strip()
-        seq = _op_seq(op)
-        if op_id != int(completed_op_id) and batch_id == completed_batch_id and seq > completed_seq:
-            out.append(op)
-    return out
-
-
 def _raise_downstream_seed_conflict(*, op_id: int, completed_op_id: int) -> None:
     raise AppError(
         ErrorCode.SCHEDULE_CONFLICT,
@@ -308,6 +291,13 @@ def _validate_completed_downstream_seed_constraints(
         if _seed_op_id(seed) > 0
     }
     groups = {op.id: merged_external_group_identity(op) for op in algo_ops}
+    by_batch, by_group = {}, {}
+    for op in operations:
+        op_id = _algo_op_id(op)
+        by_batch.setdefault(str(getattr(op, "batch_id", "") or "").strip(), []).append(op)
+        group = groups.get(op_id)
+        if group is not None:
+            by_group.setdefault(group, set()).add(op_id)
     for completed_op_id in sorted(set(execution_completed_op_ids or set())):
         completed_seed = seed_by_op_id.get(int(completed_op_id))
         if completed_seed is None or not isinstance(_seed_end(completed_seed), datetime):
@@ -316,13 +306,13 @@ def _validate_completed_downstream_seed_constraints(
         completed_seq = _seed_seq(completed_seed)
         if not completed_batch_id or completed_seq <= 0:
             continue
-        for op in _downstream_operations(
-            operations,
-            completed_op_id=int(completed_op_id),
-            completed_batch_id=completed_batch_id,
-            completed_seq=completed_seq,
-        ):
-            op_id = _algo_op_id(op)
+        downstream = {_algo_op_id(op) for op in by_batch.get(completed_batch_id, ())
+                      if _op_seq(op) > completed_seq}
+        group = groups.get(completed_op_id)
+        if group is not None:
+            downstream.update(by_group.get(group, ()))
+        downstream.discard(completed_op_id)
+        for op_id in sorted(downstream):
             seed = seed_by_op_id.get(int(op_id))
             if seed is None:
                 continue

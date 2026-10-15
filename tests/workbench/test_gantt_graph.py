@@ -1,10 +1,12 @@
 """Frozen full-scope Gantt graph from real worker output and adopted plans."""
 
 import csv
+from datetime import datetime, timedelta
 from io import StringIO
 
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
+from core.services.workbench.facts.gantt_graph import build_gantt_graph
 from core.services.workbench.plan.export import HEADERS, write_plan_export
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
@@ -36,6 +38,8 @@ def assert_mixed_graph(case, ids, data, *, candidate):
     graph = data["gantt_graph"]
     assert graph["state"] == "available" and graph["reason"] is None
     assert graph["scope"] == ("full_candidate" if candidate else "full_plan")
+    if not candidate:
+        assert set(data["projections"]["process_order"]) == {"state", "basis", "issues"}
     stored_refs = operation_refs(case)
     refs = {key: stored_refs[op_id] for key, op_id in ids.items()}
     nodes = {row["operation_ref"]: row for row in graph["nodes"]}
@@ -49,8 +53,9 @@ def assert_mixed_graph(case, ids, data, *, candidate):
         assert nodes[operation_ref]["sequence"] == sequence
         assert nodes[operation_ref]["process_label"] == process_labels[operation_ref]
     by_task = {row["task_ref"]: row["operation_ref"] for row in graph["nodes"]}
-    actual = {(by_task[edge["from_task_ref"]], by_task[edge["to_task_ref"]], edge["edge_type"])
-              for edge in graph["edges"]}
+    assert "edges" not in graph
+    actual = {(parent, node["operation_ref"], "process")
+              for node in graph["nodes"] for parent in node["predecessor_operation_refs"]}
     expected = set()
     for piece in ("item-A", "item-B", "item-C"):
         for previous, following in (((None, 10), (piece, 20)), ((piece, 20), (piece, 30)),
@@ -98,7 +103,8 @@ def test_candidate_and_adopted_graph_keep_full_frozen_route_across_range_and_bom
     assert candidate_workspace(case, refs[0])["gantt_graph"] == candidate_graph
     invalidated = plan_workspace(case, plan_ref)["gantt_graph"]
     assert invalidated["state"] == "unavailable" and invalidated["reason"]
-    assert invalidated["nodes"] == invalidated["edges"] == invalidated["critical_task_refs"] == invalidated["critical_edges"] == []
+    assert invalidated["nodes"] == invalidated["critical_task_refs"] == invalidated["critical_edges"] == []
+    assert "edges" not in invalidated
 
 
 def test_zero_duration_split_and_join_are_graph_nodes_after_adoption(trial_case):
@@ -166,3 +172,28 @@ def test_candidate_resource_chain_uses_assignments_when_frozen_display_records_a
     assert all(any(gap["field"] == kind and gap["code"] == "source_missing" for gap in task["data_gaps"])
                for task in missing_directory["tasks"] for kind in ("machine", "operator"))
     assert missing_directory["gantt_graph"] == before
+
+
+def test_shared_graph_keeps_20k_nodes_all_predecessors_and_complete_critical_facts():
+    start = datetime(2026, 1, 1, 8)
+    tasks, relations = [], {}
+    missing = format(40001, "048x")
+    for index in range(20000):
+        operation_ref = format(20001 + index, "048x")
+        sequence = index % 100
+        tasks.append({"task_ref": format(index + 1, "048x"), "operation_ref": operation_ref,
+            "batch_id": "B" + str(index // 100), "piece_id": "piece-a", "sequence": sequence + 1,
+            "process_label": "Operation " + str(sequence + 1),
+            "start": (start + timedelta(hours=sequence)).isoformat(),
+            "end": (start + timedelta(hours=sequence + 1)).isoformat(),
+            "machine_ref": None, "operator_ref": None})
+        relations[operation_ref] = [format(20000 + index, "048x")] if sequence else []
+    relations[tasks[0]["operation_ref"]] = [missing]
+    graph = build_gantt_graph(tasks, relations, scope="full_plan")
+    assert set(graph) == {"state", "reason", "scope", "nodes", "critical_task_refs", "critical_edges"}
+    assert graph["state"] == "available" and len(graph["nodes"]) == 20000
+    assert {node["operation_ref"]: node["predecessor_operation_refs"] for node in graph["nodes"]} == relations
+    assert graph["nodes"][0]["predecessor_operation_refs"] == [missing]
+    assert all(node["piece_id"] == "piece-a" for node in graph["nodes"])
+    assert len(graph["critical_task_refs"]) == 100 and len(graph["critical_edges"]) == 99
+    assert all(edge["edge_type"] == "process" for edge in graph["critical_edges"])

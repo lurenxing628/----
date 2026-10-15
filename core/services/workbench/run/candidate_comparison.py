@@ -1,12 +1,10 @@
 """Read-only dashboard comparisons from one immutable decision source."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
 from core.models.workbench_run_analysis import operation_change
 from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason, elapsed_hours
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reject
+from core.models.workbench_run_candidate import local_time, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta, delivery_summary
 
 from .candidate_baseline import _in_time
@@ -75,7 +73,7 @@ def _comparison_metadata(source, rows, scope=None):
                   "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
                   "current_entities_consulted": False, "formal_version_allocated": False, "input": source.input,
                   "source_verification": {"facts_content_verified": True, "baseline_matches_archived_schedule": True,
-                                          "execution_matches_archived_evidence": True, "input_source_verified": True,
+                                          "execution_verified_at": "run_admission", "input_source_verified": True,
                                           "candidate_content_verified": True}}
     baseline = {"baseline_ref": source.baseline["plan_ref"], "version": source.baseline["version"],
                 "kind": "admission_official", "captured_at": run["accepted_at"],
@@ -166,5 +164,4 @@ def read_candidate_comparison(conn, scope):
     with store.snapshot(), read_evidence_scope(conn):
         source = _analysis_source(store, scope.candidate_ref, range_start=scope.range_start, range_end=scope.range_end)
         data = _projection(source, scope)
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, _analysis_state(source)

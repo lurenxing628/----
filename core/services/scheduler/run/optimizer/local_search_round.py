@@ -263,7 +263,14 @@ def run_local_search_candidate_round(
         return LocalSearchRoundResult(no_improve + 1, False, False, move)
     mark_neighborhood_move(search_report_state, move)
     cand_order = list(move.batch_order or local_state.current_order)
-    candidate_resource_pool = move.resource_pool if move.resource_pool is not None else (local_state.current_resource_pool or resource_pool)
+    candidate_resource_pool = local_state.current_resource_pool or resource_pool
+    candidate_pair_rank = local_state.current_resource_pair_rank
+    if move.resource_pair_rank:
+        candidate_pair_rank = dict(candidate_pair_rank)
+        candidate_pair_rank.update(move.resource_pair_rank)
+        ranks = dict((candidate_resource_pool or {}).get("pair_rank") or {})
+        ranks.update(move.resource_pair_rank)
+        candidate_resource_pool = dict(candidate_resource_pool or {}, pair_rank=ranks)
     candidate_mode = str(move.dispatch_mode or cur_dispatch_mode)
     candidate_rule = str(move.dispatch_rule or cur_dispatch_rule)
     # ``started_at`` is the loop's reading taken just before this round; choosing the move costs
@@ -284,6 +291,7 @@ def run_local_search_candidate_round(
         dispatch_mode=candidate_mode,
         dispatch_rule=candidate_rule,
         resource_pool=candidate_resource_pool,
+        resource_pair_rank=candidate_pair_rank,
         objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
         schedule_fn=schedule_fn,

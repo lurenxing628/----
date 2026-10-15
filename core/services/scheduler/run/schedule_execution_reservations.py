@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_runtime.calendar_timing_memo import (
@@ -32,13 +33,16 @@ class ExecutionResourceReservation:
 def build_execution_resource_reservations(
     svc: Any, *, facts: Dict[int, ExecutionFact], selected_op_ids: Set[int],
     start_dt: Optional[datetime] = None,
+    capture,
 ) -> List[ExecutionResourceReservation]:
     reservations = []
     for op_id, fact in sorted(facts.items()):
         if op_id in selected_op_ids or fact.actual_status not in (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED):
             continue
-        row = svc.schedule_repo.get(int(fact.schedule_id or 0))
-        op = svc.op_repo.get(op_id)
+        saved = capture.index("Schedule", "id").get(fact.schedule_id)
+        raw = capture.index("BatchOperations", "id").get(op_id)
+        row = None if saved is None else SimpleNamespace(**saved)
+        op = None if raw is None else SimpleNamespace(**raw)
         if row is None or op is None or row.op_id != op_id or row.version != fact.schedule_version:
             raise _execution_conflict("在制工序缺少对应正式计划，本次没有写入新排程。",
                                       reason="missing_previous_schedule_row", op_id=op_id)
@@ -53,7 +57,8 @@ def build_execution_resource_reservations(
             raise _execution_conflict("在制工序的资源占用类型不明确，本次没有写入新排程。",
                                       reason="invalid_execution_resource_source", op_id=op_id)
         machine_id, operator_id = _execution_seed_resources(fact, op_id=op_id)
-        if svc.machine_repo.get(machine_id) is None or svc.operator_repo.get(operator_id) is None:
+        if (machine_id not in capture.index("Machines", "machine_id")
+                or operator_id not in capture.index("Operators", "operator_id")):
             raise _execution_conflict("在制工序的实际设备或人员不存在，本次没有写入新排程。",
                                       reason="unknown_actual_resource", op_id=op_id)
         if fact.actual_start_time is None:

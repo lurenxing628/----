@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
 
+from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
 from core.services.workbench.facts.preparation_projection import project_operation_effort
 from core.services.workbench.run.decision import read_run_decision
@@ -35,6 +36,26 @@ from tests.workbench.test_material_stage_release import add_requirement
 from tests.workbench.test_run_candidate_partial_adoption import persisted_partial_run
 
 
+def test_archive_builder_reuses_its_admission_scope_for_candidate_metrics(candidate_case, monkeypatch):
+    from core.services.workbench.facts import decision_metrics, decision_read_model
+
+    scopes = []
+    original_summary = decision_read_model.project_candidate_summary
+
+    def prepared_summary(*args, **kwargs):
+        scopes.append(kwargs["operation_scope"])
+        return original_summary(*args, **kwargs)
+
+    def repeated_admission(*args, **kwargs):
+        raise AssertionError("候选摘要重复派生本次已准备的准入集合")
+
+    monkeypatch.setattr(decision_metrics, "admission_operations", repeated_admission)
+    monkeypatch.setattr(decision_read_model, "project_candidate_summary", prepared_summary)
+    _, refs = compute(candidate_case)
+    assert len(scopes) == len(refs) > 0
+    assert all(scope is scopes[0] for scope in scopes)
+
+
 def test_delivery_delta_requires_matching_batch_identities_and_known_values():
     before = {definition["key"]: metric_value(1, total=2) for definition in metric_definitions()}
     after = {key: dict(value) for key, value in before.items()}
@@ -48,7 +69,8 @@ def test_delivery_delta_requires_matching_batch_identities_and_known_values():
 
 
 def test_unspecified_due_is_excluded_while_invalid_due_keeps_delivery_unknown():
-    facts = SimpleNamespace(
+    facts = GenerationFacts.__new__(GenerationFacts)
+    facts.__dict__.update(
         operations={"op-a": 1, "op-b": 2},
         entity_refs={("batch", "B1"): "batch-a", ("batch", "B2"): "batch-b"},
         tables={"BatchOperations": {1: {"id": 1, "batch_id": "B1"}, 2: {"id": 2, "batch_id": "B2"}},
@@ -171,7 +193,8 @@ def test_unproven_official_point_keeps_time_difference_unknown():
 
 
 def test_formal_workspace_preserves_archived_arrangement_with_unknown_time():
-    facts = SimpleNamespace(
+    facts = GenerationFacts.__new__(GenerationFacts)
+    facts.__dict__.update(
         operations={"op-a": 1}, entity_refs={("batch", "B1"): "batch-a"},
         tables={"BatchOperations": {1: {"id": 1, "batch_id": "B1"}},
                 "Batches": {"B1": {"batch_id": "B1", "part_no": "P1", "part_name": "零件A", "due_date": "2026-09-09"}}},

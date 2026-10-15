@@ -103,9 +103,9 @@ def get_user_visible_field_label(field: Any) -> str:
     if shared_label and shared_label != key:
         return shared_label
     try:
-        from core.services.scheduler.config import ConfigService
+        from core.services.scheduler.config.config_field_spec import field_label_for
 
-        label = str(ConfigService.get_field_label(key) or "").strip()
+        label = str(field_label_for(key) or "").strip()
     except Exception:
         label = ""
     if label and label != key:

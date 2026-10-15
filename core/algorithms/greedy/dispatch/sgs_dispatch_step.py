@@ -29,10 +29,13 @@ def _dispatch_selected(
     graph_state: Optional[Dict[str, Any]] = None,
 ) -> None:
     try:
+        preparation = getattr(ctx, "native_preparation", None)
+        batch = (preparation.operation_batch(op, batches[batch_id]) if preparation is not None
+                 else operation_batch(op, batches[batch_id]))
         result, _blocked = _schedule_op(
             ctx,
             op=op,
-            batch=operation_batch(op, batches[batch_id]),
+            batch=batch,
             state=operation_dispatch_state(state, graph_state, op, batches[batch_id]),
             base_time=state.base_time,
             end_dt_exclusive=end_dt_exclusive,

@@ -1,7 +1,6 @@
 """In-memory batch simulation. No SQL writes, including preview and import checks."""
 
-import copy
-from typing import Any, Dict, List, NoReturn, Optional
+from typing import Any, Dict, List, NoReturn, Optional, cast
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import (
@@ -17,6 +16,7 @@ from .production_report_dependencies import ReportDependencies
 from .production_report_validation import (
     ReportResourceValidator,
     execution_conflicts,
+    execution_facts_changed,
     legacy_link_values,
     require_current,
     validate_legacy_link,
@@ -110,7 +110,9 @@ class ReportBatchPreparation:
         repo = self.ledger.repo
         refs = list(dict.fromkeys(row["operation_ref"] for row in self.resolved))
         self.facts = self.ledger.load(refs)
-        self.before = copy.deepcopy(self.facts)
+        self.before = self.facts
+        self.facts = dict(self.before, reports={ref: {number: list(history) for number, history in groups.items()}
+                                               for ref, groups in self.before["reports"].items()})
         self._preload_resources()
         self.by_number = repo.report_headers({item["payload"]["report_no"] for item in self.items
                                              if item["payload"].get("report_no")}, by_number=True)
@@ -132,6 +134,8 @@ class ReportBatchPreparation:
                 _reject_row(exc, index)
         self.projections = self.ledger.project_loaded(self.facts, contexts=False)
         dependencies = ReportDependencies(self.ledger, self.projections)
+        dependencies.prepare(self.facts["operations"][after.operation_ref] for after in self.projections
+                             if execution_facts_changed(before[after.operation_ref], after))
         changed_by_operation = {}
         for row in self.appended:
             changed_by_operation.setdefault(row["operation_ref"], []).append(row)
@@ -157,7 +161,8 @@ class ReportBatchPreparation:
         old = history[-1] if history else None
         if old and old["report_ref"] in self.facts["voids"]:
             reject("这条报工已经撤销，不能再补齐、更正或用原单号导入。需要登记实际生产时请新增报工。", "report_voided", 409)
-        legacy = self.facts["legacy"].get(operation_ref, [])
+        legacy_by_operation = cast(Dict[str, List[Dict[str, Any]]], self.facts["legacy"])
+        legacy = legacy_by_operation.get(operation_ref, [])
         link = old["legacy_fact_ref"] if old else item["payload"].get("legacy_fact_ref")
         known = legacy_link_values(legacy, link)
         row: Dict[str, Any]

@@ -154,15 +154,15 @@ def _fallback_samples_dict(value: Any) -> Dict[str, List[Dict[str, Any]]]:
 
 
 def build_overdue_items(
-    svc,
     *,
     batches: Dict[str, Any],
     finish_by_batch: Dict[str, datetime],
     summary: Any,
     incomplete_batch_ids: Optional[Set[str]] = None,
+    logger: Any = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     return _build_overdue_items_impl(
-        svc,
+        logger=logger,
         batches=batches,
         finish_by_batch=finish_by_batch,
         summary=summary,
@@ -174,7 +174,7 @@ def build_overdue_items(
 
 def _build_runtime_state(
     *,
-    svc,
+    logger: Any,
     batches: Dict[str, Batch],
     results: List[ScheduleResult],
     summary: Optional[ScheduleSummary],
@@ -188,7 +188,7 @@ def _build_runtime_state(
         finish_by_batch,
     )
     overdue_items, overdue_meta = build_overdue_items(
-        svc,
+        logger=logger,
         batches=batches,
         finish_by_batch=finish_by_batch,
         summary=summary,

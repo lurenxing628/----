@@ -8,7 +8,6 @@ from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
-from core.services.scheduler.schedule_service import ScheduleService
 from core.services.scheduler.summary.schedule_summary import build_result_summary
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.run_input_rows import fail
@@ -18,27 +17,32 @@ from .compute_graph import piece_graph_preparer
 from .compute_validation import validate_candidate
 from .input import CandidateRunInput, prepare_candidate_run_input
 from .piece_adoption import validate_piece_candidate
-from .preflight_facts import full_facts_content
+from .preflight_facts import PreflightFacts, full_facts_content
 
 
 def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None,
-                          on_progress: Optional[Callable[[int, int], None]] = None) -> CandidateRunComputation:
+                          on_progress: Optional[Callable[[int, int], None]] = None, capture=None) -> CandidateRunComputation:
     """Compute actual candidate rows under one read snapshot; worker owns run lock.
 
     ``on_progress(done, total)`` is only a progress sink for the worker's status ledger; it never
     receives prepared input or results and cannot influence the computation.
     """
     with candidate_read_snapshot(conn):
-        return _prepare_and_compute_in_snapshot(conn, normalized_input, execution_projections, version_override, on_progress)
+        return _prepare_and_compute_in_snapshot(conn, normalized_input, execution_projections, version_override, on_progress, capture)
 
 
 def _prepare_and_compute_in_snapshot(
     conn, normalized_input, execution_projections, version_override,
     on_progress: Optional[Callable[[int, int], None]] = None,
+    capture=None,
 ):
     # The private continuation consumes this preparation in the same read snapshot.
     # Independent prepared inputs still capture and recheck their complete fingerprint.
-    prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections, capture_fingerprint=False)
+    facts = None
+    if capture is not None:
+        facts = PreflightFacts(conn, capture=capture)
+        facts.bind_capture(capture)
+    prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections, capture_fingerprint=False, facts=facts)
     version = _prepared_version(conn, prepared, version_override)
     return _compute_in_read_snapshot(conn, prepared, version, on_progress)
 
@@ -51,8 +55,6 @@ def _prepared_version(conn, schedule_input, version_override):
     version = schedule_input.prev_version if version_override is None else version_override
     if type(version) is not int or version < 0:
         fail("invalid_version_context", "Version context must be an explicit non-negative integer.")
-    if version == 0 and schedule_input.prev_version != 0:
-        fail("version_context_unrepresentable", "The existing orchestrator cannot retain explicit zero beside a previous version.")
     return version
 
 
@@ -96,16 +98,14 @@ def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Option
     """Private continuation after preparation or full freshness validation."""
     if not conn.in_transaction or not is_query_only(conn):
         fail("candidate_read_snapshot_lost", "Candidate computation requires its active read-only snapshot.")
-    svc = ScheduleService(conn)
     compare = run_candidate_comparison
     if callable(on_progress):
         compare = partial(compare, on_progress=on_progress)
     if any(op.piece_id is not None for op in schedule_input.operations):
         compare = partial(compare, prepare_graph_fn=piece_graph_preparer(schedule_input))
     orchestration = orchestrate_schedule_run(
-        svc, schedule_input=schedule_input, simulate=True, strict_mode=True,
+        schedule_input=schedule_input, version=version, strict_mode=True,
         build_result_summary_fn=build_result_summary,
-        allocate_version=False, version_override=version, persist_schedule_fn=None,
         point_validator=candidate_point_validator(schedule_input),
         candidate_comparison_fn=compare,
     )

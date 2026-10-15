@@ -181,22 +181,6 @@ def changeover_count(results: List[Any], *, prepared_machine_rows: Optional[List
     return int(count)
 
 
-def copy_resource_pool(resource_pool: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    if not isinstance(resource_pool, dict):
-        return {}
-    out: Dict[str, Any] = {}
-    for key in ("machines_by_op_type", "operators_by_machine", "machines_by_operator", "pair_rank") + (("operator_skills",) if "operator_skills" in resource_pool else ()):
-        value = resource_pool.get(key)
-        if isinstance(value, dict):
-            out[key] = {
-                item_key: list(item_value) if isinstance(item_value, list) else item_value
-                for item_key, item_value in value.items()
-            }
-        else:
-            out[key] = {}
-    return out
-
-
 def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
     operators_by_machine = pool.get("operators_by_machine")
     pair_rank = pool.get("pair_rank")
@@ -229,7 +213,6 @@ __all__ = [
     "batch_id",
     "bottleneck_machine_rows",
     "changeover_count",
-    "copy_resource_pool",
     "due_batch_count",
     "earliest_due_pressure_batch",
     "finish_by_batch",

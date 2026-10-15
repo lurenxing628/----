@@ -38,10 +38,10 @@
     }
     return text.map(value => value == null ? '' : value).join(' ').toLowerCase();
   }
-  function filter(data, view, asOf, labels = names(data)) {
+  function filter(prepared, view) {
     const query = view.query.trim().toLowerCase();
-    return data.items.filter(item => (!query || searchText(item, labels).includes(query)) &&
-      (view.late === 'all' || deadlines(item)[view.late]) && (!view.onlySelected || item.task.task_ref === view.selected));
+    return prepared.facts.filter(fact => (!query || fact.search.includes(query)) &&
+      (view.late === 'all' || fact.deadlines[view.late]) && (!view.onlySelected || fact.item.task.task_ref === view.selected));
   }
   function push(heap, item) {
     let at = heap.length; heap.push(item);
@@ -59,92 +59,115 @@
   }
   function tracks(reports) {
     const owners = new Map(), result = [];
-    reports.slice().sort((a, b) => instant(a.actual_start) - instant(b.actual_start) || a.report_ref.localeCompare(b.report_ref)).forEach(report => {
-      if (!report.actual_start || !report.actual_end || report.actual_start === report.actual_end) {
-        result.push([report]); return;
-      }
+    reports.slice().sort((a, b) => a.start - b.start || a.report.report_ref.localeCompare(b.report.report_ref)).forEach(fact => {
+      const report = fact.report;
+      if (!report.actual_start || !report.actual_end || fact.start === fact.end) { result.push([fact]); return; }
       const key = JSON.stringify([report.actual_machine_ref, report.actual_operator_ref]);
       if (!owners.has(key)) owners.set(key, []);
-      const heap = owners.get(key), start = instant(report.actual_start);
-      const index = heap.length && heap[0].end <= start ? pop(heap).index : result.length;
+      const heap = owners.get(key), index = heap.length && heap[0].end <= fact.start ? pop(heap).index : result.length;
       if (!result[index]) result[index] = [];
-      result[index].push(report);
-      push(heap, { end: report.actual_end ? instant(report.actual_end) : Infinity, index });
+      result[index].push(fact); push(heap, { end: fact.end, index });
     });
     return result;
   }
-  function layout(data, view, asOf) {
-    const labels = names(data), items = filter(data, view, asOf, labels), groups = new Map(), locations = new Map(), reportLocations = new Map();
-    function group(item, owner) {
-      const ref = view.mode === 'batch' ? item.task.batch_id : owner[view.mode + '_ref'] || 'unbound';
-      if (!groups.has(ref)) groups.set(ref, { id: ref, label: view.mode === 'batch' ? ref : labels.get(ref) || views[view.mode] + '未填写', members: new Map() });
-      const members = groups.get(ref).members;
-      if (!members.has(item.task.task_ref)) members.set(item.task.task_ref, { item, baseline: false, reports: [], legacy: [], remaining: false });
-      return members.get(item.task.task_ref);
+  function prepare(data, asOf) {
+    const labels = names(data), taskIndex = new Map(), facts = [], planRange = { start: Infinity, end: -Infinity }, reportRange = { start: Infinity, end: -Infinity };
+    const include = (range, value) => { if (Number.isFinite(value)) { range.start = Math.min(range.start, value); range.end = Math.max(range.end, value); } };
+    for (const item of data.items) {
+      const task = item.task, e = item.execution, point = window.PointContract.isPoint(task);
+      const baseline = { key: 'plan', kind: point ? 'plan-point' : 'plan', start: instant(task.start), end: instant(task.end), y: point ? 64 : 74, height: point ? 24 : 7 };
+      const reports = e ? e.reports.map(report => {
+        const start = instant(report.actual_start), end = instant(report.actual_end || report.actual_start), point = !report.actual_end || start === end;
+        return { report, start, end, mark: report.actual_start ? { key: report.report_ref, kind: point ? 'point' : 'actual', report, start, end, y: point ? 20 : 14, height: point ? 24 : 38 } : null };
+      }) : [];
+      const remaining = e && e.remaining_plan ? { key: 'remaining', kind: 'remaining', start: instant(e.remaining_plan.start), end: instant(e.remaining_plan.end), y: 14, height: 34 } : null;
+      include(planRange, baseline.start); include(planRange, baseline.end);
+      for (const report of reports) { include(reportRange, report.start); include(reportRange, report.end); }
+      const fact = { item, baseline, reports, reportIndex: new Map(reports.map(report => [report.report.report_ref, report])), remaining, search: searchText(item, labels), deadlines: deadlines(item) };
+      facts.push(fact); taskIndex.set(task.task_ref, fact);
     }
-    items.forEach(item => {
-      group(item, item.task).baseline = true;
-      const e = item.execution; if (!e) return;
-      e.reports.forEach(report => group(item, { machine_ref: report.actual_machine_ref, operator_ref: report.actual_operator_ref }).reports.push(report));
-      e.legacy_facts.forEach(fact => {
-        if (fact.actual_machine_ref || fact.actual_operator_ref) group(item, { machine_ref: fact.actual_machine_ref, operator_ref: fact.actual_operator_ref }).legacy.push(fact);
-      });
-      if (e.execution_state !== 'complete' && e.remaining_quantity !== 0) group(item, e.remaining_plan || item.task).remaining = true;
-    });
-    const rows = []; let top = 0;
-    function append(row) { row.top = top; rows.push(row); top += row.height; }
-    groups.forEach(g => {
-      const reports = Array.from(g.members.values()).flatMap(member => member.reports);
-      g.reportCount = reports.length;
-      g.legacyCount = Array.from(g.members.values()).reduce((sum, member) => sum + member.legacy.length, 0);
-      const known = reports.filter(report => report.effective_processing_hours != null);
-      g.knownHours = known.length ? known.reduce((total, report) => total + report.effective_processing_hours, 0) : null;
-      g.unknownHours = reports.filter(report => report.effective_processing_hours == null).length;
-      append({ key: 'group:' + g.id, group: g, kind: 'group', height: 56 });
-      if (view.collapsed[g.id]) return;
-      g.members.forEach(member => {
-        const { item } = member, ts = tracks(member.reports);
-        if (!ts.length) ts.push([]);
-        ts.forEach((reports, i) => {
-          const row = { key: g.id + ':' + item.task.task_ref + ':' + i, group: g, item, reports,
-            baseline: i === 0 && member.baseline, kind: 'actual', height: 88, track: i + 1, trackCount: ts.length };
-          append(row);
-          if (!locations.has(item.task.task_ref) || i === 0 && member.baseline) locations.set(item.task.task_ref, row);
-          reports.forEach(report => reportLocations.set(report.report_ref, row));
-        });
-        if (member.remaining) append({ key: g.id + ':' + item.task.task_ref + ':remaining', group: g, item, reports: [], baseline: false, kind: 'remaining', height: 64 });
-      });
-    });
-    const hasPoints = items.some(item => window.PointContract.isPoint(item.task) || item.execution && item.execution.reports.some(r => r.actual_start && (!r.actual_end || r.actual_start === r.actual_end)));
+    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point'));
     const axis = window.PointGanttModel.bounds(instant(data.axis_span.start), instant(data.axis_span.end), hasPoints);
-    return { labels, items, groups: Array.from(groups.values()), rows, height: top, locations, reportLocations, executionAvailable: !!data.availability && data.availability.state === 'available',
-      start: axis.start, end: axis.end, asOf: instant(asOf) };
+    const dataRange = Number.isFinite(planRange.start) ? planRange : Number.isFinite(reportRange.start) ? reportRange : null;
+    return { labels, facts, taskIndex, dataRange, start: axis.start, end: axis.end, asOf: instant(asOf),
+      executionAvailable: !!data.availability && data.availability.state === 'available' };
+  }
+  function groupPrepared(prepared, mode) {
+    const groups = new Map(), { labels } = prepared;
+    function group(fact, owner) {
+      const ref = mode === 'batch' ? fact.item.task.batch_id : owner[mode + '_ref'] || 'unbound';
+      if (!groups.has(ref)) groups.set(ref, { id: ref, label: mode === 'batch' ? ref : labels.get(ref) || views[mode] + '未填写', members: new Map() });
+      const members = groups.get(ref).members, key = fact.item.task.task_ref;
+      if (!members.has(key)) members.set(key, { fact, item: fact.item, baseline: false, reports: [], legacy: [], remaining: false });
+      return members.get(key);
+    }
+    for (const fact of prepared.facts) {
+      const item = fact.item, e = item.execution;
+      group(fact, item.task).baseline = true;
+      if (!e) continue;
+      fact.reports.forEach(report => group(fact, { machine_ref: report.report.actual_machine_ref, operator_ref: report.report.actual_operator_ref }).reports.push(report));
+      e.legacy_facts.forEach(legacy => { if (legacy.actual_machine_ref || legacy.actual_operator_ref) group(fact, { machine_ref: legacy.actual_machine_ref, operator_ref: legacy.actual_operator_ref }).legacy.push(legacy); });
+      if (e.execution_state !== 'complete' && e.remaining_quantity !== 0) group(fact, e.remaining_plan || item.task).remaining = true;
+    }
+    for (const g of groups.values()) for (const member of g.members.values()) {
+      const ts = tracks(member.reports); if (!ts.length) ts.push([]);
+      member.reportCount = member.reports.length; member.legacyCount = member.legacy.length;
+      member.knownCount = 0; member.knownHours = 0; member.unknownHours = 0;
+      for (const { report } of member.reports) {
+        if (report.effective_processing_hours == null) member.unknownHours++;
+        else { member.knownCount++; member.knownHours += report.effective_processing_hours; }
+      }
+      member.rows = ts.map((reports, i) => ({ key: g.id + ':' + member.item.task.task_ref + ':' + i, item: member.item,
+        reports: reports.map(fact => fact.report), baseline: i === 0 && member.baseline, kind: 'actual', height: 88,
+        track: i + 1, trackCount: ts.length, planEnd: member.fact.baseline.end,
+        marks: (i === 0 && member.baseline ? [member.fact.baseline] : []).concat(reports.map(fact => fact.mark).filter(Boolean)) }));
+      if (member.remaining) member.rows.push({ key: g.id + ':' + member.item.task.task_ref + ':remaining', item: member.item,
+        reports: [], baseline: false, kind: 'remaining', height: 64, marks: member.fact.remaining ? [member.fact.remaining] : [] });
+    }
+    return { ...prepared, mode, groups: Array.from(groups.values()) };
+  }
+  function selectPrepared(prepared, view) {
+    const selected = filter(prepared, view), shown = new Set(selected.map(fact => fact.item.task.task_ref)), groups = [];
+    for (const source of prepared.groups) {
+      const members = new Map(Array.from(source.members).filter(([ref]) => shown.has(ref)));
+      if (!members.size) continue;
+      const g = { ...source, members, reportCount: 0, legacyCount: 0, knownHours: null, unknownHours: 0 };
+      let knownCount = 0, knownHours = 0;
+      for (const member of members.values()) {
+        g.reportCount += member.reportCount; g.legacyCount += member.legacyCount; g.unknownHours += member.unknownHours;
+        knownCount += member.knownCount; knownHours += member.knownHours;
+      }
+      g.knownHours = knownCount ? knownHours : null; groups.push(g);
+    }
+    return { ...prepared, items: selected.map(fact => fact.item), groups };
+  }
+  function layoutPrepared(prepared, collapsed) {
+    const rows = [], locations = new Map(), reportLocations = new Map(); let top = 0;
+    function append(row) { const placed = { ...row, top }; rows.push(placed); top += row.height; return placed; }
+    for (const group of prepared.groups) {
+      append({ key: 'group:' + group.id, group, kind: 'group', height: 56 });
+      if (collapsed[group.id]) continue;
+      for (const member of group.members.values()) for (const template of member.rows) {
+        const row = append({ ...template, group });
+        if (row.kind !== 'actual') continue;
+        const ref = row.item.task.task_ref;
+        if (!locations.has(ref) || row.baseline) locations.set(ref, row);
+        row.reports.forEach(report => reportLocations.set(report.report_ref, row));
+      }
+    }
+    return { labels: prepared.labels, taskIndex: prepared.taskIndex, dataRange: prepared.dataRange, items: prepared.items, groups: prepared.groups, rows, height: top, locations, reportLocations,
+      executionAvailable: prepared.executionAvailable, start: prepared.start, end: prepared.end, asOf: prepared.asOf };
   }
   function visibleRows(rows, top, bottom) {
     let low = 0, high = rows.length;
     while (low < high) { const mid = (low + high) >> 1; if (rows[mid].top + rows[mid].height <= top) low = mid + 1; else high = mid; }
     const result = []; for (let at = low; at < rows.length && rows[at].top < bottom; at++) result.push(rows[at]); return result;
   }
-  function marks(row) {
-    const result = [], t = row.item.task, e = row.item.execution;
-    if (row.baseline) {
-      const point = window.PointContract.isPoint(t);
-      result.push({ key: 'plan', kind: point ? 'plan-point' : 'plan', start: instant(t.start), end: instant(t.end), y: point ? 64 : 74, height: point ? 24 : 7 });
-    }
-    row.reports.forEach(report => {
-      if (!report.actual_start) return;
-      const point = !report.actual_end || report.actual_end === report.actual_start;
-      result.push({ key: report.report_ref, kind: point ? 'point' : 'actual', report,
-        start: instant(report.actual_start), end: instant(report.actual_end || report.actual_start), y: point ? 20 : 14, height: point ? 24 : 38 });
-    });
-    if (row.kind === 'remaining' && e.remaining_plan) result.push({ key: 'remaining', kind: 'remaining', start: instant(e.remaining_plan.start), end: instant(e.remaining_plan.end), y: 14, height: 34 });
-    return result;
-  }
   function graphLocations(model) {
     const result = new Map();
     for (const row of model.rows) {
       if (row.kind !== 'actual') continue;
-      const candidates = marks(row); let mark = null;
+      const candidates = row.marks; let mark = null;
       for (const candidate of candidates) if (candidate.report && (!mark || candidate.end > mark.end)) mark = candidate;
       mark = mark || candidates[0];
       if (!mark) continue;
@@ -195,5 +218,5 @@
     const value = data.execution_summary;
     return { complete: value.complete, reported: value.reported, pending: value.pending, average: value.average_finish_deviation_minutes };
   }
-  window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, searchText, filter, tracks, layout, visibleRows, marks, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
+  window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, searchText, filter, tracks, prepare, groupPrepared, selectPrepared, layoutPrepared, visibleRows, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

@@ -20,7 +20,7 @@
 6. 默认 `on` 模式下，Win7 离线交付包必须包含兼容 Python 3.8 的 `networkx==3.1`；缺依赖不能静默当成 `off`，必须在门禁、配置或启动链路里可见。
 7. 图节点 ID 必须严格生成，不允许空 ID、二义性 ID 或 bytes/bytearray 静默解码。
 8. 图值对象必须是纯 Python、可 JSON 序列化；`OperationGraphNode` 内部候选资源与 `raw` 快照不可变。
-9. 图配置默认值由配置规格与 `ConfigService.ensure_defaults()` 管理；`schema.sql` 不直接插入 graph 默认配置行。
+9. 图配置默认值由配置规格与 `web/bootstrap/schedule_config.py` 的启动初始化管理（2026-10-15 退出旧 `ConfigService`）；`schema.sql` 不直接插入 graph 默认配置行。
 10. 旧库升级通过 v9 迁移补默认配置与 preset JSON，迁移必须幂等，坏 preset JSON 必须 fail fast。
 
 ## 后果

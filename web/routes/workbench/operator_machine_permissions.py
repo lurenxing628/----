@@ -1,13 +1,13 @@
 """Personnel machine permission preview and confirmation routes."""
 
-from flask import current_app, g, jsonify
+from flask import current_app, g
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_resource_action import ResourceActionPreview
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.operator_machine_permissions import OPERATION, WorkbenchOperatorMachinePermissions
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
@@ -22,9 +22,11 @@ def operator_machine_preview(ref):
     body = json_body({"machine_permissions", "write_token"})
     reader = WorkbenchResourceQueryService(g.db, "operator", current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        record = reader.detail(ref)
-        validate_write_context(body["write_token"], ref, "operator.update", record.state)
-        preview = WorkbenchOperatorMachinePermissions(g.db, current_app.logger).preview(ref, body["machine_permissions"])
+        preparation = reader.preparation()
+        identity = preparation.identity("operator", ref)
+        validate_write_context(body["write_token"], ref, "operator.update", preparation.state("operator", identity.entity_key))
+        preview = WorkbenchOperatorMachinePermissions(g.db, current_app.logger).preview(
+            ref, body["machine_permissions"], preparation=preparation)
         preview_ref, expiry = retain_context(SCOPE, preview.document)
         value = preview.as_dict()
         data = {"operator_ref": ref, "preview_ref": preview_ref, "expires_at": expiry,
@@ -56,7 +58,7 @@ def operator_machine_confirm(ref):
         request_key=body["request_key"], action=OPERATION, context_ref=ref, normalized_input={"preview_ref": preview_ref},
         guard=lambda: _resolve(ref, preview_ref, body["write_token"]),
         mutate=lambda preview: WorkbenchOperatorMachinePermissions(g.db, current_app.logger).confirm(preview))
-    return jsonify(outcome)
+    return json_response(outcome)
 
 
 def register_operator_machine_routes(bp):

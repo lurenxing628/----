@@ -3,20 +3,20 @@
 import json
 from io import BytesIO
 
-from flask import g, jsonify, request, send_file
+from flask import g, request, send_file
 
 from core.models.content import same
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_field_report_source import PreparedFieldReportSource
 from core.services.workbench import messages
 from core.services.workbench.execution.field_report_files import FieldReportFileService
 from core.services.workbench.execution.field_report_files_codec import BYTE_LIMIT, MIME, decode_reports, encode_issues
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from core.services.workbench.execution.field_workspace_scope import normalize_scope
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_budget import PLAN_READ_SLOTS
-from web.routes.workbench.read_context import bind_read_snapshot
+from web.routes.workbench.read_context import bind_read_snapshot, fact_value
 from web.routes.workbench.resource_action_context import read_endpoint, resolve_context, retain_context
 from web.routes.workbench.write_context import preview_write_context, validate_preview_confirmation
 
@@ -49,8 +49,8 @@ def field_file_preview():
             cohort, state = reader.cohort(scope)
             snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, token)
             preview, _ = FieldReportFileService(g.db).prepare_source(source, cohort)
-    document = {'preview': preview, 'read_state': state, 'read_snapshot': token}
-    ref, expiry = retain_context(PREVIEW_NAMESPACE, canonical_json(document), source)
+    document = {'preview': preview, 'read_state': fact_value(state)}
+    ref, expiry = retain_context(PREVIEW_NAMESPACE, document, source, key=source.source_ref)
     context = preview_write_context(ref, expiry, ['import_confirm'])
     if not preview['can_confirm']:
         context.update(capabilities={'import_confirm': False}, blocked_reasons=[{'code': 'constraint_conflict', 'message': '文件里有问题行或没有可导入的记录，一条报工都没有写入。请修好文件后点「选择文件」重新选择，再点「开始预检」。'}])
@@ -73,12 +73,13 @@ def field_file_confirm():
     service = WorkbenchProductionReportService(g.db, context_factory=field_context)
     def load_items():
         document, source = resolve_context(PREVIEW_NAMESPACE, ref, 'stale_write')
-        stored = json.loads(document)
+        stored = document
         preview = stored['preview']
         if not preview['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检结果已过期，报工还没有写入，也没有替换任何内容。请点「重新预检」。')
         cohort, read_state = FieldWorkspaceService(g.db).cohort(preview['scope'])
-        bind_read_snapshot({'kind': 'field', **cohort['scope']}, read_state, stored['read_snapshot'])
+        if fact_value(read_state) != stored['read_state']:
+            raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
         checked, prepared = FieldReportFileService(g.db).prepare_source(source, cohort)
         if not same(checked['items'], preview['items']) or not same(checked['snapshot'], preview['snapshot']) or not checked['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
@@ -90,7 +91,7 @@ def field_file_confirm():
         validate_preview_confirmation(body['write_token'], subject)
 
     # 整份现场范围和文件复核在拿写锁前的读快照里做；写锁里库没变就直接沿用，只核对并写入报工。
-    response = jsonify(service.execute_import(ref, request_key=body['request_key'], load_items=load_items, validate_context=guard,
+    response = json_response(service.execute_import(ref, request_key=body['request_key'], load_items=load_items, validate_context=guard,
                                               admission=PLAN_READ_SLOTS.slot))
     response.headers['Cache-Control'] = 'no-store'
     return response
@@ -101,7 +102,7 @@ def field_file_errors():
     if set(request.args) != {'preview_ref'} or len(request.args.getlist('preview_ref')) != 1:
         raise WorkbenchCommandRejected('invalid_input', '预检结果已过期，没有开始下载。请点「重新预检」。', 400)
     document, _ = resolve_context(PREVIEW_NAMESPACE, request.args['preview_ref'], 'snapshot_stale')
-    content = encode_issues(json.loads(document)['preview']['rows'])
+    content = encode_issues(document['preview']['rows'])
     response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True, download_name='报工导入问题.xlsx', max_age=0)
     response.headers['Cache-Control'] = 'no-store'
     return response

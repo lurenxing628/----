@@ -146,12 +146,12 @@ def _resolve_schema_path(schema_path: Optional[str]) -> str:
 
 
 def ensure_schema(
-    db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None
+    db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None, *, full_data: bool = False
 ) -> None:
     """
     确保数据库表结构存在。
 
-    说明：使用 IF NOT EXISTS 方式建表，因此可重复执行。
+    新库按声明建表，当前版本普通启动只验证结构；迁移及 full_data=True 的外部恢复验证完整数据合同。
     """
     schema_path = _resolve_schema_path(schema_path)
 
@@ -171,7 +171,7 @@ def ensure_schema(
             if initial_version == CURRENT_SCHEMA_VERSION:
                 # One unchanged current-schema validation owns one transaction.
                 conn.execute("BEGIN")
-                _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql)
+                _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql, full_data=full_data)
             elif _has_no_user_tables(conn):
                 _ensure_no_user_tables_db_can_bootstrap(conn, initial_version)
                 conn.executescript(script)

@@ -254,113 +254,6 @@
           "751e2b7603a43a81bb7da869fc7128545b1f54ae5f33028c",
           "5111afdfe7bb56978eb79910deb28126a84296c02da5b54d"
         ],
-        "edges": [
-          {
-            "edge_type": "process",
-            "from_task_ref": "a93e6797dd2de69ee71551d1860009878a58dd9a147ed810",
-            "to_task_ref": "1b422c04f7da70e8b56a970296d99cd6e59ea03cd0de97ba"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "92be870c13208bd0c70a9b2078cf7181657110fb05897dcb",
-            "to_task_ref": "1d1f6d62c1bf535ad78845273ad87f74f4dc0d886eb6f8cd"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "1b422c04f7da70e8b56a970296d99cd6e59ea03cd0de97ba",
-            "to_task_ref": "de15f0184460bfb81ed06e5e96e33389e4878b3dfa6824e4"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "8b5caa148156add186df7cc33353322909115ab921a7bbd1",
-            "to_task_ref": "700f723389b33dd217f291c1b97985650256366e9ee5d758"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "45ccb8f4bee62aa8edb5f494686b15e7ba672d63eb1bc95b",
-            "to_task_ref": "62b9e5e2ab58108967f98ed628f1b27e28412c2e8f5c778b"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "9991bbdef5eb3ebf52d5d6c2a1dbb6aeda9738602ac09443",
-            "to_task_ref": "02efab5ec7cbea9daa77fc701109ea12de0974c9b80bd505"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "278a3198b03ad530830a01fdda87784091206f70d3b6f43c",
-            "to_task_ref": "257c9213e6447e873b4a4b23e4df82f438394b15c056c5b7"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "c9b06deca59fc641c635f368b26ea397823501dad282c186",
-            "to_task_ref": "751e2b7603a43a81bb7da869fc7128545b1f54ae5f33028c"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "87df2292efb0f1a92b19d92078a96662e6f21b28681b2c9b",
-            "to_task_ref": "5111afdfe7bb56978eb79910deb28126a84296c02da5b54d"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "02efab5ec7cbea9daa77fc701109ea12de0974c9b80bd505",
-            "to_task_ref": "08f77dbe42100c8ecd9039f9289d4b240651f7cf27d62330"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "e98c8739e43cce48e944746515be0fec806ea263d2e8ef60",
-            "to_task_ref": "bf90f92968bcbc929fadd0518d192e53978c16ee5a460ad0"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "e98c8739e43cce48e944746515be0fec806ea263d2e8ef60",
-            "to_task_ref": "cc34178e62bf4b03be050d972a9a6568d239407e25ab64cb"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "1d1f6d62c1bf535ad78845273ad87f74f4dc0d886eb6f8cd",
-            "to_task_ref": "f135c45dcdf5630b4875fc1e91df0378a8521ce99782447b"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "62b9e5e2ab58108967f98ed628f1b27e28412c2e8f5c778b",
-            "to_task_ref": "68da19b83b17979bbe251f7b860b083eb46f40c26821e329"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "bf90f92968bcbc929fadd0518d192e53978c16ee5a460ad0",
-            "to_task_ref": "07e0d99080127a58182c17f56c80f45e3b1ebf662707f7c7"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "cc34178e62bf4b03be050d972a9a6568d239407e25ab64cb",
-            "to_task_ref": "60842fe863a397f0f5f5d2ddc5e77888f4e96e9504c9039c"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "08f77dbe42100c8ecd9039f9289d4b240651f7cf27d62330",
-            "to_task_ref": "f39b182f4f23a6f1a94c15eafa3e9de28358acdb1067a060"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "f39b182f4f23a6f1a94c15eafa3e9de28358acdb1067a060",
-            "to_task_ref": "f526b18d0260b9c7ab03ea5957d6d7235c9c443b8d2c72b0"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "07e0d99080127a58182c17f56c80f45e3b1ebf662707f7c7",
-            "to_task_ref": "bdb112f5559b9517f9770bfbcb2cab422aeadac9ecd18142"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "60842fe863a397f0f5f5d2ddc5e77888f4e96e9504c9039c",
-            "to_task_ref": "bdb112f5559b9517f9770bfbcb2cab422aeadac9ecd18142"
-          },
-          {
-            "edge_type": "process",
-            "from_task_ref": "700f723389b33dd217f291c1b97985650256366e9ee5d758",
-            "to_task_ref": "b427a594d90eca6a9d02b4a6af7d8ff37f90514aac13d3c8"
-          }
-        ],
         "nodes": [
           {
             "batch_id": "DC-05",
@@ -370,7 +263,8 @@
             "process_label": "车削",
             "sequence": 1,
             "start": "2026-10-13T08:00:00",
-            "task_ref": "a93e6797dd2de69ee71551d1860009878a58dd9a147ed810"
+            "task_ref": "a93e6797dd2de69ee71551d1860009878a58dd9a147ed810",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DC-05",
@@ -380,7 +274,10 @@
             "process_label": "铣削",
             "sequence": 2,
             "start": "2026-10-13T13:30:00",
-            "task_ref": "1b422c04f7da70e8b56a970296d99cd6e59ea03cd0de97ba"
+            "task_ref": "1b422c04f7da70e8b56a970296d99cd6e59ea03cd0de97ba",
+            "predecessor_operation_refs": [
+              "e7b5ff4b65955f02a5c73c3e68614bb203b6d3f38da3fbaf"
+            ]
           },
           {
             "batch_id": "DC-01",
@@ -390,7 +287,8 @@
             "process_label": "车削",
             "sequence": 1,
             "start": "2026-10-13T13:30:00",
-            "task_ref": "92be870c13208bd0c70a9b2078cf7181657110fb05897dcb"
+            "task_ref": "92be870c13208bd0c70a9b2078cf7181657110fb05897dcb",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DP-NORMAL",
@@ -400,7 +298,8 @@
             "process_label": "准备验收车削",
             "sequence": 1,
             "start": "2026-10-13T08:00:00",
-            "task_ref": "9991bbdef5eb3ebf52d5d6c2a1dbb6aeda9738602ac09443"
+            "task_ref": "9991bbdef5eb3ebf52d5d6c2a1dbb6aeda9738602ac09443",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DC-01",
@@ -410,7 +309,10 @@
             "process_label": "铣削",
             "sequence": 2,
             "start": "2026-10-14T11:15:00",
-            "task_ref": "1d1f6d62c1bf535ad78845273ad87f74f4dc0d886eb6f8cd"
+            "task_ref": "1d1f6d62c1bf535ad78845273ad87f74f4dc0d886eb6f8cd",
+            "predecessor_operation_refs": [
+              "8b885af19a1a6a5b4893cf088526e48616e687aa8abdd42b"
+            ]
           },
           {
             "batch_id": "DC-03",
@@ -420,7 +322,8 @@
             "process_label": "车削",
             "sequence": 1,
             "start": "2026-10-14T09:03:36",
-            "task_ref": "45ccb8f4bee62aa8edb5f494686b15e7ba672d63eb1bc95b"
+            "task_ref": "45ccb8f4bee62aa8edb5f494686b15e7ba672d63eb1bc95b",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DC-05",
@@ -430,7 +333,10 @@
             "process_label": "精车",
             "sequence": 3,
             "start": "2026-10-14T12:04:48",
-            "task_ref": "de15f0184460bfb81ed06e5e96e33389e4878b3dfa6824e4"
+            "task_ref": "de15f0184460bfb81ed06e5e96e33389e4878b3dfa6824e4",
+            "predecessor_operation_refs": [
+              "452af8dbde1cd473f12db3b9fdc983963f5b80d608bc6a3b"
+            ]
           },
           {
             "batch_id": "DP-EXTERNAL",
@@ -440,7 +346,8 @@
             "process_label": "准备验收车削",
             "sequence": 1,
             "start": "2026-10-13T08:00:00",
-            "task_ref": "8b5caa148156add186df7cc33353322909115ab921a7bbd1"
+            "task_ref": "8b5caa148156add186df7cc33353322909115ab921a7bbd1",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DP-EXTERNAL",
@@ -450,7 +357,10 @@
             "process_label": "准备验收外协热处理",
             "sequence": 2,
             "start": "2026-10-13T08:30:00",
-            "task_ref": "700f723389b33dd217f291c1b97985650256366e9ee5d758"
+            "task_ref": "700f723389b33dd217f291c1b97985650256366e9ee5d758",
+            "predecessor_operation_refs": [
+              "8f44256da60933af7b96af518f72eefb34e472a92026b3a1"
+            ]
           },
           {
             "batch_id": "DC-03",
@@ -460,7 +370,10 @@
             "process_label": "铣削",
             "sequence": 2,
             "start": "2026-10-15T10:18:00",
-            "task_ref": "62b9e5e2ab58108967f98ed628f1b27e28412c2e8f5c778b"
+            "task_ref": "62b9e5e2ab58108967f98ed628f1b27e28412c2e8f5c778b",
+            "predecessor_operation_refs": [
+              "78fc4cac8f249756fa8cba857a2d4d9cd44ba14d42b286d8"
+            ]
           },
           {
             "batch_id": "DC-06",
@@ -470,7 +383,8 @@
             "process_label": "车削",
             "sequence": 1,
             "start": "2026-10-14T14:19:48",
-            "task_ref": "c9b06deca59fc641c635f368b26ea397823501dad282c186"
+            "task_ref": "c9b06deca59fc641c635f368b26ea397823501dad282c186",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DC-04",
@@ -480,7 +394,8 @@
             "process_label": "车削",
             "sequence": 1,
             "start": "2026-10-15T08:59:24",
-            "task_ref": "278a3198b03ad530830a01fdda87784091206f70d3b6f43c"
+            "task_ref": "278a3198b03ad530830a01fdda87784091206f70d3b6f43c",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DP-PIECE",
@@ -490,7 +405,8 @@
             "process_label": "准备验收车削",
             "sequence": 10,
             "start": "2026-10-13T08:00:00",
-            "task_ref": "e98c8739e43cce48e944746515be0fec806ea263d2e8ef60"
+            "task_ref": "e98c8739e43cce48e944746515be0fec806ea263d2e8ef60",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DC-02",
@@ -500,7 +416,8 @@
             "process_label": "车削",
             "sequence": 1,
             "start": "2026-10-15T11:06:00",
-            "task_ref": "87df2292efb0f1a92b19d92078a96662e6f21b28681b2c9b"
+            "task_ref": "87df2292efb0f1a92b19d92078a96662e6f21b28681b2c9b",
+            "predecessor_operation_refs": []
           },
           {
             "batch_id": "DP-NORMAL",
@@ -510,7 +427,10 @@
             "process_label": "准备验收车削",
             "sequence": 2,
             "start": "2026-10-13T15:00:00",
-            "task_ref": "02efab5ec7cbea9daa77fc701109ea12de0974c9b80bd505"
+            "task_ref": "02efab5ec7cbea9daa77fc701109ea12de0974c9b80bd505",
+            "predecessor_operation_refs": [
+              "b5e4c7edfd13bf811ec23c39744bc516910be6da0c58f85e"
+            ]
           },
           {
             "batch_id": "DC-04",
@@ -520,7 +440,10 @@
             "process_label": "铣削",
             "sequence": 2,
             "start": "2026-10-15T14:39:00",
-            "task_ref": "257c9213e6447e873b4a4b23e4df82f438394b15c056c5b7"
+            "task_ref": "257c9213e6447e873b4a4b23e4df82f438394b15c056c5b7",
+            "predecessor_operation_refs": [
+              "33c238b3b8fe4c22dea83d88040a2babe5dbab3b83e851f7"
+            ]
           },
           {
             "batch_id": "DC-06",
@@ -530,7 +453,10 @@
             "process_label": "铣削",
             "sequence": 2,
             "start": "2026-10-16T09:19:30",
-            "task_ref": "751e2b7603a43a81bb7da869fc7128545b1f54ae5f33028c"
+            "task_ref": "751e2b7603a43a81bb7da869fc7128545b1f54ae5f33028c",
+            "predecessor_operation_refs": [
+              "ce56cbba6e1845ac34ed2e081a6967882f45367794c264b2"
+            ]
           },
           {
             "batch_id": "DC-02",
@@ -540,7 +466,10 @@
             "process_label": "铣削",
             "sequence": 2,
             "start": "2026-10-16T11:52:30",
-            "task_ref": "5111afdfe7bb56978eb79910deb28126a84296c02da5b54d"
+            "task_ref": "5111afdfe7bb56978eb79910deb28126a84296c02da5b54d",
+            "predecessor_operation_refs": [
+              "889e1c4d5a408651097088d86b7a8037be82b29f2658e714"
+            ]
           },
           {
             "batch_id": "DP-NORMAL",
@@ -550,7 +479,10 @@
             "process_label": "准备验收铣削",
             "sequence": 3,
             "start": "2026-10-14T08:00:00",
-            "task_ref": "08f77dbe42100c8ecd9039f9289d4b240651f7cf27d62330"
+            "task_ref": "08f77dbe42100c8ecd9039f9289d4b240651f7cf27d62330",
+            "predecessor_operation_refs": [
+              "b81927f355524d4454d09c4ac48eafa0d0b6b71f52fb416d"
+            ]
           },
           {
             "batch_id": "DP-PIECE",
@@ -560,7 +492,10 @@
             "process_label": "准备验收车削",
             "sequence": 20,
             "start": "2026-10-13T10:00:00",
-            "task_ref": "bf90f92968bcbc929fadd0518d192e53978c16ee5a460ad0"
+            "task_ref": "bf90f92968bcbc929fadd0518d192e53978c16ee5a460ad0",
+            "predecessor_operation_refs": [
+              "a3f335b4c68283f9677c1e8058eece5d65e353ed3f492f8e"
+            ]
           },
           {
             "batch_id": "DP-PIECE",
@@ -570,7 +505,10 @@
             "process_label": "准备验收车削",
             "sequence": 20,
             "start": "2026-10-13T10:45:00",
-            "task_ref": "cc34178e62bf4b03be050d972a9a6568d239407e25ab64cb"
+            "task_ref": "cc34178e62bf4b03be050d972a9a6568d239407e25ab64cb",
+            "predecessor_operation_refs": [
+              "a3f335b4c68283f9677c1e8058eece5d65e353ed3f492f8e"
+            ]
           },
           {
             "batch_id": "DC-01",
@@ -580,7 +518,10 @@
             "process_label": "精车",
             "sequence": 3,
             "start": "2026-10-15T12:33:00",
-            "task_ref": "f135c45dcdf5630b4875fc1e91df0378a8521ce99782447b"
+            "task_ref": "f135c45dcdf5630b4875fc1e91df0378a8521ce99782447b",
+            "predecessor_operation_refs": [
+              "7f765e07b62ae8625bbf4138d83e42788974df102e0df1d3"
+            ]
           },
           {
             "batch_id": "DC-03",
@@ -590,7 +531,10 @@
             "process_label": "精车",
             "sequence": 3,
             "start": "2026-10-15T14:39:00",
-            "task_ref": "68da19b83b17979bbe251f7b860b083eb46f40c26821e329"
+            "task_ref": "68da19b83b17979bbe251f7b860b083eb46f40c26821e329",
+            "predecessor_operation_refs": [
+              "44ad48c5ad2d58c7d7bdcff51eef41fd12147641531c1369"
+            ]
           },
           {
             "batch_id": "DP-PIECE",
@@ -600,7 +544,10 @@
             "process_label": "准备验收车削",
             "sequence": 30,
             "start": "2026-10-13T11:30:00",
-            "task_ref": "07e0d99080127a58182c17f56c80f45e3b1ebf662707f7c7"
+            "task_ref": "07e0d99080127a58182c17f56c80f45e3b1ebf662707f7c7",
+            "predecessor_operation_refs": [
+              "f56a976327256fe7330321f5d97f5090c5ce0572a6bc9881"
+            ]
           },
           {
             "batch_id": "DP-PIECE",
@@ -610,7 +557,10 @@
             "process_label": "准备验收车削",
             "sequence": 30,
             "start": "2026-10-13T12:00:00",
-            "task_ref": "60842fe863a397f0f5f5d2ddc5e77888f4e96e9504c9039c"
+            "task_ref": "60842fe863a397f0f5f5d2ddc5e77888f4e96e9504c9039c",
+            "predecessor_operation_refs": [
+              "a43ea7a78174b221e26add1215fd32c6c9e337a168498bd7"
+            ]
           },
           {
             "batch_id": "DP-NORMAL",
@@ -620,7 +570,10 @@
             "process_label": "准备验收零工时检验",
             "sequence": 4,
             "start": "2026-10-14T09:00:00",
-            "task_ref": "f39b182f4f23a6f1a94c15eafa3e9de28358acdb1067a060"
+            "task_ref": "f39b182f4f23a6f1a94c15eafa3e9de28358acdb1067a060",
+            "predecessor_operation_refs": [
+              "cc7e2b60121fd89c83e82b385b1147b62296dc54fc484914"
+            ]
           },
           {
             "batch_id": "DP-NORMAL",
@@ -630,7 +583,10 @@
             "process_label": "准备验收车削",
             "sequence": 5,
             "start": "2026-10-14T09:00:00",
-            "task_ref": "f526b18d0260b9c7ab03ea5957d6d7235c9c443b8d2c72b0"
+            "task_ref": "f526b18d0260b9c7ab03ea5957d6d7235c9c443b8d2c72b0",
+            "predecessor_operation_refs": [
+              "4da03a523dded1d250805792ff01dcf02093192825d8a1e4"
+            ]
           },
           {
             "batch_id": "DP-PIECE",
@@ -640,7 +596,11 @@
             "process_label": "准备验收车削",
             "sequence": 40,
             "start": "2026-10-13T12:30:00",
-            "task_ref": "bdb112f5559b9517f9770bfbcb2cab422aeadac9ecd18142"
+            "task_ref": "bdb112f5559b9517f9770bfbcb2cab422aeadac9ecd18142",
+            "predecessor_operation_refs": [
+              "2d1fd319e581f61465b25757e9a81873a3bcf7d588c28cb9",
+              "32b5be62c6d23cb5a1774922e3cb55ff7452309cc7ed3db6"
+            ]
           },
           {
             "batch_id": "DP-EXTERNAL",
@@ -650,7 +610,10 @@
             "process_label": "准备验收铣削",
             "sequence": 3,
             "start": "2026-10-13T14:30:00",
-            "task_ref": "b427a594d90eca6a9d02b4a6af7d8ff37f90514aac13d3c8"
+            "task_ref": "b427a594d90eca6a9d02b4a6af7d8ff37f90514aac13d3c8",
+            "predecessor_operation_refs": [
+              "922ca1f65e45effe07ce69590ae4cb72123e91cad4394fac"
+            ]
           },
           {
             "batch_id": "DP-STAGE",
@@ -660,7 +623,8 @@
             "process_label": "准备验收车削",
             "sequence": 1,
             "start": "2026-10-13T13:15:00",
-            "task_ref": "e31ec976b6ef02ab123999b8fddf52cd61264826fc43890d"
+            "task_ref": "e31ec976b6ef02ab123999b8fddf52cd61264826fc43890d",
+            "predecessor_operation_refs": []
           }
         ],
         "reason": null,

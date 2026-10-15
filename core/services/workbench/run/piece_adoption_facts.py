@@ -1,14 +1,9 @@
 """Bind complete prepared scope to current raw rows and existing permanent refs."""
 
-from dataclasses import asdict
 
 from core.infrastructure.read_evidence import verified_read
 from core.services.workbench.facts.piece_scope import block, build_piece_adoption_scope
-from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
-from core.services.workbench.facts.run_input_rows import batch_model, operation_model
-from data.repositories.workbench_piece_adoption_repo import WorkbenchPieceAdoptionRepository
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
 def current_piece_scope(conn, prepared):
@@ -19,48 +14,19 @@ def _current_piece_scope(conn, prepared):
     ids = prepared.normalized_batch_ids
     if not ids or len(ids) != len(set(ids)) or set(ids) != set(prepared.batches):
         block("piece_scope_incomplete", "这次排产的批次范围为空或有重复，本次没有采用。请回「执行排产」重新排一次。")
-    repo = WorkbenchPieceAdoptionRepository(conn)
-    batches, operations, batch_refs = {}, [], {}
-    for batch_id in ids:
-        row = repo.get_batch(batch_id)
-        if row is None:
-            block("piece_identity_changed", "有批次已被删除，本次没有采用。请回「执行排产」重新选批次排一次。")
-        batches[batch_id] = batch_model(dict(row))
-        ref = repo.active_batch_refs(batch_id)
-        if len(ref) != 1:
-            block("piece_identity_changed", "有批次缺少唯一编号，本次没有采用。请刷新后重新排产。")
-        batch_refs[batch_id] = ref[0]
-        operations.extend(operation_model(dict(row)) for row in repo.list_batch_operations(batch_id))
+    facts = prepared.preflight_facts
+    batches, operations = prepared.batches, prepared.operations
+    batch_refs = {batch_id: facts.refs.get(("batch", batch_id)) for batch_id in ids}
+    if any(ref is None for ref in batch_refs.values()):
+        block("piece_identity_changed", "有批次缺少唯一编号，本次没有采用。请刷新后重新排产。")
     scope = build_piece_adoption_scope(operations, batches)
     if not any(op.piece_id is not None for op in operations):
         block("piece_scope_required", "本批工序现在没有分件，不能按分件采用。请回「执行排产」重新排一次。")
     if sorted(prepared.normalized_input["batch_refs"]) != sorted(batch_refs.values()):
         block("piece_identity_changed", "排产时的批次范围和现在的不一致，本次没有采用。请回「执行排产」重新排一次。")
-    _require_original_work(prepared, operations, batches)
-    refs = WorkbenchPlanIdentityRepository(conn).get_operation_refs(op.id for op in operations)
+    refs = {op.id: facts.operation_refs[op.id] for op in operations}
     _dispositions(prepared, scope, refs, batch_refs)
     return scope, refs
-
-
-def _require_original_work(prepared, operations, batches):
-    for op in prepared.operations:
-        operation_model(asdict(op))
-    accepted = {key: _batch_facts(value) for key, value in prepared.batches.items()}
-    current = {key: _batch_facts(value) for key, value in batches.items()}
-    if (len(prepared.operations) != len(operations)
-            or {op.id: asdict(op) for op in prepared.operations} != {op.id: asdict(op) for op in operations}
-            or accepted != current):
-        block("piece_raw_changed", "工序或数量在排产之后被改过，本次没有采用。请回「执行排产」重新排一次。")
-
-
-def _batch_facts(batch):
-    raw = asdict(batch)
-    batch_model(raw)
-    # SQLite DATE objects and saved JSON dates share only this validated form.
-    for key in ("due_date", "ready_date"):
-        if raw[key] is not None:
-            raw[key] = stored_date(raw[key])
-    return raw
 
 
 def _dispositions(prepared, scope, refs, batch_refs):

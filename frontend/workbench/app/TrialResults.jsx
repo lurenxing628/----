@@ -16,16 +16,16 @@
     return <><div className="tt-summary">{[['overdue_count', T.overdue_count], ['total_tardiness_hours', T.total_tardiness_hours + '（小时）']].map(([metric, label]) =>
       <div key={metric}><span>{label}</span><strong><DeliveryValue summary={c.delivery_summary} metric={metric} /></strong></div>)}{[[c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) =>
       <div key={label}><span>{label}</span><strong>{U.number(value)}</strong></div>)}<div><span>{T.changeover_count}</span><strong>{c.changeovers === null ? '未知' : U.number(c.changeovers)}</strong>{c.changeovers === null && c.changeover_reason && <small>{c.changeover_reason}</small>}</div>
-      {c.preparation_common && <div><span>{T.operation_effort_labels.setup_standard_hours}</span><strong><RequirementMetric value={c.preparation_common.after.scheduled_setup_hours} /></strong></div>}</div></>;
+      {c.preparation_common && <div><span>新安排准备标准工时</span><strong><RequirementMetric value={c.preparation_common.after.scheduled_setup_hours} /></strong></div>}</div></>;
   }
   function RequirementMetric({ value }) {
     return <>{value.state === 'not_applicable' ? '不适用' : U.number(value.value)}{value.value === null && <small>已知小计 {U.number(value.known_subtotal)} · 未知 {value.unknown_count} 道</small>}</>;
   }
   function Preparation({ data, onSelect }) {
     const c = data.comparison, p = c.preparation_common, changes = c.changeover_common, name = window.TrialGantt.resourceNames(data);
-    const metrics = [['pending_setup_hours', '待执行准备标准工时'], ['scheduled_setup_hours', '已排准备标准工时'],
+    const metrics = [['pending_setup_hours', '待执行准备标准工时'], ['scheduled_setup_hours', '新安排准备标准工时'],
       ['unplanned_setup_hours', '其他未安排准备标准工时'], ['deferred_setup_hours', '缺料未安排准备标准工时'],
-      ['pending_processing_hours', '待执行加工标准工时'], ['scheduled_processing_hours', '已新排加工标准工时'],
+      ['pending_processing_hours', '待执行加工标准工时'], ['scheduled_processing_hours', '新安排加工标准工时'],
       ['unplanned_processing_hours', '其他未安排加工标准工时'], ['deferred_processing_hours', '缺料未安排加工标准工时']];
     const summaryColumns = [
       ['标准需求（小时）', row => row[1]], ['原安排', row => <RequirementMetric value={p.before[row[0]]} />],

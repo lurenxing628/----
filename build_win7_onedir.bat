@@ -71,14 +71,8 @@ if exist vendor (
     --add-data "schema.sql;." ^
     --hidden-import networkx ^
     --hidden-import core.services.scheduler.calendar.service ^
-    --hidden-import core.services.scheduler.config.config_page_outcome ^
-    --hidden-import core.services.scheduler.config.config_service ^
-    --hidden-import core.services.scheduler.gantt.service ^
     --hidden-import core.services.scheduler.operation_execution_feedback_service ^
     --hidden-import core.services.scheduler.schedule_service ^
-    --hidden-import core.services.scheduler.resource_dispatch.service ^
-    --hidden-import core.services.scheduler.resource_dispatch.execution_service ^
-    --hidden-import core.services.scheduler.resource_dispatch.actual_record_service ^
     --name "排产系统" ^
     app.py
 ) else (
@@ -91,14 +85,8 @@ if exist vendor (
     --add-data "schema.sql;." ^
     --hidden-import networkx ^
     --hidden-import core.services.scheduler.calendar.service ^
-    --hidden-import core.services.scheduler.config.config_page_outcome ^
-    --hidden-import core.services.scheduler.config.config_service ^
-    --hidden-import core.services.scheduler.gantt.service ^
     --hidden-import core.services.scheduler.operation_execution_feedback_service ^
     --hidden-import core.services.scheduler.schedule_service ^
-    --hidden-import core.services.scheduler.resource_dispatch.service ^
-    --hidden-import core.services.scheduler.resource_dispatch.execution_service ^
-    --hidden-import core.services.scheduler.resource_dispatch.actual_record_service ^
     --name "排产系统" ^
     app.py
 )

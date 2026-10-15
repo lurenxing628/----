@@ -1,4 +1,4 @@
-"""Real old run and scenario adoption paths, including no adopted-result writes."""
+"""真实历史执行事实经当前 worker 与采用路径保持不变。"""
 
 import json
 from dataclasses import replace
@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.errors import AppError
-from core.infrastructure.migrations import v42
 from core.infrastructure.transaction import TransactionManager
 from core.services.personnel.operator_machine_service import OperatorMachineService
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
@@ -15,59 +14,17 @@ from core.services.scheduler.operation_execution_feedback_service import (
     ExecutionFeedbackContext,
     OperationExecutionFeedbackService,
 )
-from core.services.scheduler.schedule_service import ScheduleService
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.worker import WorkbenchRunWorker
-from tests.schedule.service.test_scheduler_reschedule_execution_minimum_guard import _seed_two_operation_plan
 from tests.workbench.field_workspace_support import FieldAPI
 from tests.workbench.run_candidate_adoption_support import INTENT, preview, service
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
 from tests.workbench.run_candidate_support import compute
 from tests.workbench.scheduler_execution_ledger_support import (
     formal_rows,
-    install_case,
-    raw_connection,
     read_facts,
 )
-
-
-@pytest.mark.parametrize("simulate", [False])
-@pytest.mark.parametrize("payload", [{"completed_quantity": 4}])
-def test_old_run_cannot_skip_partial_or_started_new_reports(tmp_path, simulate, payload):
-    conn = raw_connection(tmp_path)
-    try:
-        _seed_two_operation_plan(conn)
-        case = install_case(conn)
-        case.command("create", case.task(1, 10), payload)
-        before = formal_rows(conn)
-        with pytest.raises(AppError) as error:
-            ScheduleService(conn).run_schedule(["B1"], start_dt="2026-05-01 08:00:00", simulate=simulate, created_by="pytest")
-        assert error.value.details["reason"] == "execution_ledger_requires_reconciliation"
-        assert error.value.details["op_id"] == 10
-        assert formal_rows(conn) == before
-    finally:
-        conn.close()
-
-
-def test_complete_report_is_fixed_seed_in_real_run(tmp_path):
-    conn = raw_connection(tmp_path)
-    try:
-        _seed_two_operation_plan(conn)
-        case = install_case(conn)
-        case.command("create", case.task(1, 10), case.values(10, actual_start="2026-05-01T08:20:00",
-            actual_end="2026-05-01T08:50:00", effective_processing_hours=0.5))
-        v42.run(conn)
-        old = formal_rows(conn)
-        result = ScheduleService(conn).run_schedule(["B1"], start_dt="2026-05-01 08:00:00", created_by="pytest")
-        row = conn.execute("SELECT * FROM Schedule WHERE version=? AND op_id=10", (result["version"],)).fetchone()
-        assert row["start_time"] == "2026-05-01 08:20:00" and row["end_time"] == "2026-05-01 08:50:00"
-        assert row["machine_id"] == "M1" and row["operator_id"] == "O1" and row["lock_status"] == "locked"
-        assert [tuple(r) for r in conn.execute("SELECT * FROM Schedule WHERE version=1 ORDER BY id")] == old["Schedule"]
-        assert formal_rows(conn)["OperationExecutionEvents"] == []
-        assert read_facts(conn, result["version"])[10].actual_status == "completed"
-    finally:
-        conn.close()
 
 
 def _saved_effort(case, run_ref):

@@ -6,14 +6,15 @@ from core.infrastructure.read_evidence import verified_read
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
-from .adoption_baseline_sources import read_adoption_operation_facts
-from .candidate_facts import _entity_refs, _table
+from .adoption_baseline_sources import (
+    prepare_trial_adoption_facts,
+    read_adoption_operation_facts,
+    trial_adoption_facts,
+)
 from .candidate_read_source import read_candidate_source
 from .candidate_store import CandidateStore
-from .candidate_values import stored_json
 from .material_deferral_evidence import archived_deferred_operation_evidence
 from .preflight_dependencies import material_deferred_ids
-from .trial_scenario_archive import load_saved_scenario
 from .zero_duration import PointEventError
 from .zero_duration_evidence import CandidatePointReader, trial_point_evidence
 
@@ -126,7 +127,7 @@ def _type_names_by_ref(refs, names):
 def _operation_metadata(source, evidence):
     if evidence["basis"] == "candidate_adoption":
         traces = {row["op_id"]: row for row in source.candidate["artifact"].get("results", [])}
-        names = {row["op_type_id"]: row.get("name") for row in _table(source.facts.archive, "OpTypes") or []}
+        names = {row["op_type_id"]: row.get("name") for row in source.facts.table("OpTypes") or []}
         operations = {ref: source.facts.tables["BatchOperations"][op_id]
                       for ref, op_id in source.facts.operations.items() if op_id in source.facts.tables["BatchOperations"]}
         types = {ref: _operation_type(operation, source.facts.entity_refs, names, traces.get(operation["id"]))
@@ -136,21 +137,14 @@ def _operation_metadata(source, evidence):
         return (source.receipt or {}).get("operation_effort"), types, standards
     saved, head, rows = source
     original = head["admission"]["source"]
-    capture = original.get("capture")
-    if capture is not None:
-        archive = stored_json(capture["facts_text"])
-        refs = _entity_refs(archive)
-        names = {row["op_type_id"]: row.get("name") for row in _table(archive, "OpTypes") or []}
-    else:
-        tables = head["admission"]["facts"]["tables"]
-        refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables.get("WorkbenchEntityRefs", [])
-                if row["active"] == 1}
-        names = {row["op_type_id"]: row.get("name") for row in tables.get("OpTypes", [])}
+    prepared = evidence.get("trial_source")
+    if prepared is None:
+        prepared = prepare_trial_adoption_facts(source)
+    refs = prepared.resources.entity_refs
+    names = {key: row.get("name") for key, row in prepared.resources.tables["OpTypes"].items()}
     names_by_ref = _type_names_by_ref(refs, names)
-    tables = head["admission"]["facts"]["tables"]
-    slot_refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables.get("WorkbenchEntityRefs", [])
-                 if row["active"] == 1}
-    slot_names = {row["op_type_id"]: row.get("name") for row in tables.get("OpTypes", [])}
+    slot_refs = prepared.assigned_resources.entity_refs
+    slot_names = {key: row.get("name") for key, row in prepared.assigned_resources.tables["OpTypes"].items()}
     slot_names_by_ref = _type_names_by_ref(slot_refs, slot_names)
     recorded, slot_types = original.get("operation_types") or {}, original.get("trial_operation_types") or {}
     ledger = {item["operation_ref"]: item for item in (saved.get("operation_effort") or {}).get("items", [])}
@@ -228,9 +222,11 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider=None):
             else:
                 key = ("trial", audit["scenario_ref"])
                 if key not in sources:
-                    sources[key] = load_saved_scenario(conn, audit["scenario_ref"])
-                source = sources[key]
+                    sources[key] = trial_adoption_facts(conn, audit["scenario_ref"])
+                prepared = sources[key]
+                source = prepared.source
                 evidence, points = _trial_evidence(source, audit), _trial_points
+                evidence["trial_source"] = prepared
             deferred, deferred_issues = _deferred_evidence(source, evidence)
             effort, types, standards = _operation_metadata(source, evidence)
             return {"evidence": evidence, "origins": read_adoption_operation_facts(conn, evidence),

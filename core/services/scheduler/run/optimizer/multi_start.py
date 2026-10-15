@@ -133,24 +133,20 @@ def _evaluate_multi_start_candidate(
     before_decode: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Any]:
     decoded = decode_and_metrics(
-        decode_session=decode_session, scheduler=scheduler, schedule_fn=_schedule_with_optional_strict_mode,
-        expected_operations=algo_ops_to_schedule, objective_name=objective_name,
+        decode_session=decode_session, objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats, before_decode=before_decode,
         strict_mode=bool(strict_mode),
-        operations=algo_ops_to_schedule,
-        batches=batches,
         strategy=strategy,
         strategy_params=params,
         start_dt=start_dt,
         end_date=end_date,
-        machine_downtimes=downtime_map,
         batch_order_override=order,
-        seed_results=seed_sr_list,
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
-        resource_pool=resource_pool,
         readiness_gate_enabled=bool(readiness_gate_enabled),
-        graph_ready_context=graph_ready_context,
+        graph_enabled=graph_ready_context is not None,
+        graph_score_enabled=bool(graph_ready_context and graph_ready_context.get("score_enabled")),
+        graph_priority_key_by_op_id=(graph_ready_context or {}).get("graph_priority_key_by_op_id"),
     )
     candidate = {
         "results": decoded.results,
@@ -165,9 +161,10 @@ def _evaluate_multi_start_candidate(
         "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
         "seed_result_count": len(seed_sr_list or []),
-        "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
         "mutable_scope": {"scope": "batch_order", "batch_count": len(order or [])},
     }
+    candidate["_shared_entry_id"] = decoded.entry_id
+    candidate["_archive_observation"] = decoded.archive_observation
     if decoded.receipt is not None:
         candidate["decode_receipt"] = decoded.receipt
         if decoded.receipt["execution_kind"] == "decision_reused":

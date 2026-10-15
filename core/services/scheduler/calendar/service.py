@@ -5,8 +5,6 @@ from typing import Any, Dict, List, Optional, Set
 
 from core.algorithm_runtime.calendar_timing_memo import register_calendar_timing_guard
 from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
-from core.algorithm_runtime.native_snapshot import make_class_guard
-from core.algorithm_runtime.sgs_estimate_reuse import register_sgs_calendar_certificate
 from core.models import OperatorCalendar, WorkCalendar
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
@@ -16,7 +14,6 @@ from .admin import CalendarAdmin
 from .checkpoint_certificate import calendar_checkpoint_snapshot
 from .engine import CalendarEngine, DayPolicy
 from .native_timing import make_calendar_days_guard, make_native_method_guard, make_timing_memo_guard
-from .sgs_certificate import policy_snapshot
 
 
 class CalendarService:
@@ -24,16 +21,16 @@ class CalendarService:
     工作日历服务（对外 façade）。
 
     说明：
-    - 对外 API 保持稳定（路由层/算法层继续 `from core.services.scheduler import CalendarService`）
+    - 日历服务入口：`from core.services.scheduler.calendar.service import CalendarService`
     - 内部按职责拆分：管理侧（CRUD/标准化）与引擎侧（时间推进/效率）
     """
 
-    def __init__(self, conn, logger=None, op_logger=None):
+    def __init__(self, conn, logger=None, op_logger=None, *, capture=None):
         self.conn = conn
         self.logger = logger
         self.op_logger = op_logger
         self._admin = CalendarAdmin(conn, logger=logger, op_logger=op_logger)
-        self._engine = CalendarEngine(conn, logger=logger, op_logger=op_logger)
+        self._engine = CalendarEngine(conn, logger=logger, op_logger=op_logger, capture=capture)
 
     # -------------------------
     # Backward compatibility
@@ -207,17 +204,18 @@ class CalendarService:
                 }
             )
 
-        stats = execute_preview_rows_transactional(
-            self.conn,
-            mode=mode,
-            preview_rows=rows,
-            existing_row_ids=existing_row_ids,
-            replace_existing_no_tx=_replace_existing_no_tx,
-            row_id_getter=_row_id_getter,
-            apply_row_no_tx=_apply_row_no_tx,
-            max_error_sample=10,
-            process_unchanged=False,
-        )
+        with self._admin.normalization_operation(self._engine.default_periods):
+            stats = execute_preview_rows_transactional(
+                self.conn,
+                mode=mode,
+                preview_rows=rows,
+                existing_row_ids=existing_row_ids,
+                replace_existing_no_tx=_replace_existing_no_tx,
+                row_id_getter=_row_id_getter,
+                apply_row_no_tx=_apply_row_no_tx,
+                max_error_sample=10,
+                process_unchanged=False,
+            )
         result = stats.to_dict()
         result["total_rows"] = len(rows)
         self._engine.clear_policy_cache()
@@ -294,10 +292,6 @@ class CalendarService:
     def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
         return self._engine.capacity_hours_between(start, end, priority=priority, operator_id=operator_id)
 
-    def certified_sgs_policy_snapshot(self, operator_id):
-        """Exact native policy contents used to invalidate one SGS candidate."""
-        return policy_snapshot(self, operator_id, _SGS_SERVICE_GUARD)
-
     def certified_decode_checkpoint_snapshot(self):
         """Business calendar contents, unchanged by ordinary policy-cache population."""
         return calendar_checkpoint_snapshot(self)
@@ -309,8 +303,6 @@ _NATIVE_ENGINE_TIMING = {name: getattr(CalendarEngine, name) for name in
                          ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "_add_hours",
                           "policy_for_datetime", "_policy_for_datetime", "_policy_for_date", "_effective_segments", "_allowed_segments")}
 _NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
-_SGS_SERVICE_GUARD = make_class_guard(CalendarService)
-register_sgs_calendar_certificate(CalendarService, CalendarService.certified_sgs_policy_snapshot)
 register_calendar_timing_guard(CalendarService, make_timing_memo_guard(CalendarService),
                                calendar_days_guard=make_calendar_days_guard(CalendarService))
 register_checkpoint_calendar(CalendarService, CalendarService.certified_decode_checkpoint_snapshot)

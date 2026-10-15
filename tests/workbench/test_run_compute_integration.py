@@ -1,5 +1,6 @@
 """Real resource, readiness, calendar and external-precedence integration."""
 
+import re
 from datetime import datetime
 
 import pytest
@@ -82,3 +83,44 @@ def test_complex_merged_external_chain_and_shared_resource_competition(run_case)
         assert rows[last].start_time >= second.end_time
         internal = sorted((row for row in rows.values() if row.source == "internal"), key=lambda row: row.start_time)
         assert all(left.end_time <= right.start_time for left, right in zip(internal, internal[1:]))
+
+
+def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(run_case):
+    case = run_case
+    conn = case.conn
+    conn.execute("INSERT INTO WorkCalendar(date,shift_start,shift_end,shift_hours,efficiency) "
+                 "VALUES ('2026-09-09',NULL,NULL,NULL,NULL)")
+    conn.execute("INSERT INTO WorkbenchShiftProfiles(profile_id,name,anchor_date,cycle_days) "
+                 "VALUES ('S','Shift','2026-09-09',1)")
+    conn.execute("INSERT INTO WorkbenchShiftPatternDays(profile_id,day_offset,is_rest,shift_start,shift_end) "
+                 "VALUES ('S',0,0,'09:00','17:00')")
+    conn.execute("INSERT INTO WorkbenchShiftDayPeriods(profile_id,day_offset,periods_json) VALUES ('S',0,?)",
+                 ('[{"start":"09:00","end":"17:00","day_offset":0}]',))
+    conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES ('O1','S')")
+    conn.commit()
+    tables = ("WorkCalendar", "OperatorCalendar", "WorkbenchCalendarDefaults", "WorkbenchOperatorProfiles",
+              "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchShiftDayPeriods")
+
+    def run():
+        projections = case.projections()
+        statements = []
+        conn.set_trace_callback(statements.append)
+        try:
+            result = compute_candidate_run(conn, case.settings(), projections)
+            signature = result.schedule_input.cal_svc.certified_decode_checkpoint_snapshot()
+        finally:
+            conn.set_trace_callback(None)
+        for table in tables:
+            reads = [sql for sql in statements if re.search(r'\bFROM\s+"?' + table + r'"?\b', sql, re.I)]
+            assert len(reads) == 1, (table, reads)
+            assert "ORDER BY rowid" in reads[0], (table, reads)
+        return result, signature
+
+    original, signature = unchanged(case, run)
+    assert original.orchestration.results[0].start_time == datetime(2026, 9, 9, 9)
+    conn.execute("UPDATE WorkbenchShiftDayPeriods SET periods_json=? WHERE profile_id='S'",
+                 ('[{"start":"11:00","end":"17:00","day_offset":0}]',))
+    conn.commit()
+    changed, changed_signature = unchanged(case, run)
+    assert changed.orchestration.results[0].start_time == datetime(2026, 9, 9, 11)
+    assert changed_signature != signature

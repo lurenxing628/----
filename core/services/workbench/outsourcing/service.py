@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, TypedDict, cast
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_outsourcing import MAX_ROWS, bounded, page, pagination, reference, reject
+from core.models.workbench_outsourcing import MAX_ROWS, page, pagination, reference, reject
 from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRepository
 
 from .projection import fact, receipt
@@ -44,7 +44,7 @@ class WorkbenchOutsourcingService:
             reject("外协原登记不存在，未改读其他对象。", "entity_not_found", 404)
         if header["target"]["operation_refs"] != header["origin"]["operation_refs"]:
             reject("外协成员映射与原登记不一致，未忽略缺失成员。", "outsourcing_unavailable", 503)
-        return bounded(header)
+        return header
 
     def latest(self, ref):
         return self.latest_from_row(self.repo.latest(ref))
@@ -53,7 +53,7 @@ class WorkbenchOutsourcingService:
     def latest_from_row(row):
         if row is None:
             reject("外协登记缺少确认事实，请恢复完整记录。", "outsourcing_unavailable", 503)
-        return bounded(row)
+        return row
 
     def refs(self, batch_ref=None):
         refs = self.repo.refs(batch_ref, MAX_ROWS)
@@ -101,7 +101,7 @@ class WorkbenchOutsourcingService:
         result = receipt(header, latest, now, source_state=state, issues=issues)
         result["can_preview"] = state == "current"
         snapshot = {"header": header, "latest_fact_ref": latest["fact_ref"], "source": source, "issues": issues}
-        return bounded(result), snapshot
+        return result, snapshot
 
     def detail(self, ref, *, as_of=None):
         reference(ref)
@@ -114,8 +114,8 @@ class WorkbenchOutsourcingService:
         pagination(number, size)
         result = self.detail(ref, as_of=as_of)
         rows, paging = self.repo.history(ref, number, size)
-        result["history"] = {"items": [fact(row) for row in bounded(rows)], "page": paging}
-        return bounded(result)
+        result["history"] = {"items": [fact(row) for row in rows], "page": paging}
+        return result
 
     def receipts(self, *, batch_ref=None, status="all", number=1, size=20, as_of=None):
         if batch_ref is not None:
@@ -135,8 +135,8 @@ class WorkbenchOutsourcingService:
             matches = {"all": True, "awaiting": item["awaiting_return"], "overdue": item["overdue"], "returned": not item["awaiting_return"]}
             if matches[status]:
                 rows.append(item)
-        return bounded({**page(rows, number, size), "content": bounded(snapshots),
-                        "as_of": now.isoformat(timespec="seconds"), "tracking_basis": "manual_receipt_facts"})
+        return {**page(rows, number, size), "content": snapshots,
+                "as_of": now.isoformat(timespec="seconds"), "tracking_basis": "manual_receipt_facts"}
 
     def targets(self, *, batch_ref=None, query="", number=1, size=20):
         if batch_ref is not None:
@@ -150,5 +150,5 @@ class WorkbenchOutsourcingService:
         target_rows, sources = self.sources.capture_targets(batch_ref, query)
         rows = [item for item, source in sources.load_target_rows(target_rows)]
         clock = sources.repo.plan_identity_revision()
-        return bounded({**page(rows, number, size), "content": {"rows": rows, "clock": clock, "query": query},
-                        "grouping_basis": "explicit_receipt_membership", "dates_inferred": False})
+        return {**page(rows, number, size), "content": {"rows": rows, "clock": clock, "query": query},
+                "grouping_basis": "explicit_receipt_membership", "dates_inferred": False}

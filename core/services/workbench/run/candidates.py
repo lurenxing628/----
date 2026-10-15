@@ -69,7 +69,8 @@ class WorkbenchRunCandidateQueryService:
             unplanned = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in unplanned]
         delivery = candidate_delivery_risks(source.candidate, source.facts, source.tasks, source.disposition, scope,
                                             source.capture["input"], tasks, unplanned)
-        data = {"candidate": candidate_summary(source.candidate, source.disposition),
+        data = {"candidate": candidate_summary(source.candidate, source.disposition,
+                                                scheduled_op_ids=source.scheduled_op_ids),
                 "generation": _generation(source.run, source.capture, source.candidate), "tasks": tasks, "task_count": len(tasks),
                 "gantt_graph": source.gantt_graph,
                 "tasks_complete": True, "candidate_task_count": source.candidate["task_count"],

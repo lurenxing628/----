@@ -87,7 +87,7 @@ def parse_operation_event_time(value: Any) -> datetime:
 
 
 def normalize_operation_event_time(value: Any) -> str:
-    return parse_operation_event_time(value).strftime("%Y-%m-%d %H:%M:%S")
+    return parse_operation_event_time(value).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
 
 
 def _required_contract_text(value: Any, field_name: str) -> str:
@@ -118,44 +118,23 @@ def normalize_operation_execution_event_values(
     return event_type_text, status_text, normalize_operation_event_time(event_time)
 
 
-def _event_field(event: Any, field_name: str) -> Any:
-    if hasattr(event, field_name):
-        return getattr(event, field_name)
-    try:
-        return event[field_name]
-    except (KeyError, TypeError, IndexError):
-        return None
+def _event_identity(event: OperationExecutionEvent) -> str:
+    if event.id not in (None, ""):
+        return f"id={event.id}"
+    return f"type={event.event_type!r}"
 
 
-def _event_identity(event: Any) -> str:
-    event_id = _event_field(event, "id")
-    if event_id not in (None, ""):
-        return f"id={event_id}"
-    return f"type={_event_field(event, 'event_type')!r}"
-
-
-def _event_positive_int(event: Any, field_name: str) -> int:
-    value = parse_int(_event_field(event, field_name), default=None)
-    if value is None or value <= 0:
-        raise ValueError(f"{field_name} must be a positive integer at {_event_identity(event)}")
-    return value
-
-
-def _event_scope(event: Any) -> OperationExecutionScope:
-    return OperationExecutionScope.from_values(
-        schedule_version=_event_field(event, "schedule_version"),
-        schedule_id=_event_field(event, "schedule_id"),
-        op_id=_event_field(event, "op_id"),
-        batch_id=_event_field(event, "batch_id"),
-        source_table=_event_field(event, "source_table"),
-        effective_plan_role=_event_field(event, "effective_plan_role"),
-        scenario_id=_event_field(event, "scenario_id"),
+def _event_scope(event: OperationExecutionEvent) -> OperationExecutionScope:
+    return OperationExecutionScope(
+        schedule_version=event.schedule_version, schedule_id=event.schedule_id,
+        op_id=event.op_id, batch_id=event.batch_id, source_table=event.source_table,
+        effective_plan_role=event.effective_plan_role, scenario_id=event.scenario_id,
     )
 
 
 def _event_id_for_revision(event: Any, *, index: int, total: int) -> int:
     # 只有序列最后一个新事件允许 id=0 哨兵；前面任何事件缺 id 都必须响亮失败。
-    raw = _event_field(event, "id")
+    raw = event.id
     value = parse_int(raw, default=None)
     if value is not None and value > 0:
         return value
@@ -191,18 +170,21 @@ def validate_operation_execution_event_transition(*, current_status: Any, event_
     event_type_text = _required_contract_text(event_type, "event_type")
     if event_type_text not in VALID_EXECUTION_EVENT_TYPES:
         raise ValueError(f"event_type must be one of {VALID_EXECUTION_EVENT_TYPES}: {event_type!r}")
-    allowed_events = ALLOWED_EXECUTION_EVENTS_BY_STATUS[status_text]
-    if event_type_text not in allowed_events:
+    return _next_execution_status(status_text, event_type_text)
+
+
+def _next_execution_status(current_status: str, event_type: str) -> str:
+    if event_type not in ALLOWED_EXECUTION_EVENTS_BY_STATUS[current_status]:
         raise ValueError(
             "operation execution event sequence is invalid: "
-            f"event_type {event_type_text!r} cannot follow current_status {status_text!r}"
+            f"event_type {event_type!r} cannot follow current_status {current_status!r}"
         )
-    return REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE[event_type_text]
+    return REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE[event_type]
 
 
-def validate_operation_execution_event_sequence(events: Sequence[Any]) -> None:
+def validate_operation_execution_event_sequence(events: Sequence[OperationExecutionEvent]) -> None:
     current_status = EXECUTION_STATUS_NOT_STARTED
-    previous_event_time: Optional[datetime] = None
+    previous_event_time: Optional[str] = None
     previous_event_id = 0
     sequence_scope: Optional[OperationExecutionScope] = None
     events_list = list(events or [])
@@ -215,10 +197,10 @@ def validate_operation_execution_event_sequence(events: Sequence[Any]) -> None:
                 "operation execution event sequence is invalid: "
                 f"scope changed from {sequence_scope!r} to {scope!r} at {_event_identity(event)}"
             )
-        op_id = _event_positive_int(event, "op_id")
+        op_id = event.op_id
         expected_previous_revision = f"{op_id}:{index - 1}:{previous_event_id}"
         previous_revision = _required_contract_text(
-            _event_field(event, "previous_state_revision"),
+            event.previous_state_revision,
             "previous_state_revision",
         )
         if previous_revision != expected_previous_revision:
@@ -227,23 +209,14 @@ def validate_operation_execution_event_sequence(events: Sequence[Any]) -> None:
                 f"previous_state_revision {previous_revision!r} does not match current state "
                 f"{expected_previous_revision!r} at {_event_identity(event)}"
             )
-        event_type, reported_status, event_time = normalize_operation_execution_event_values(
-            event_type=_event_field(event, "event_type"),
-            reported_status=_event_field(event, "reported_status"),
-            event_time=_event_field(event, "event_time"),
-        )
-        validate_operation_execution_event_transition(
-            current_status=current_status,
-            event_type=event_type,
-        )
-        parsed_event_time = parse_operation_event_time(event_time)
-        if previous_event_time is not None and parsed_event_time < previous_event_time:
+        _next_execution_status(current_status, event.event_type)
+        if previous_event_time is not None and event.event_time < previous_event_time:
             raise ValueError(
                 "operation execution event sequence is invalid: "
                 f"event_time moved backwards at {_event_identity(event)}"
             )
-        previous_event_time = parsed_event_time
-        current_status = reported_status
+        previous_event_time = event.event_time
+        current_status = event.reported_status
         previous_event_id = _event_id_for_revision(event, index=index, total=len(events_list))
 
 

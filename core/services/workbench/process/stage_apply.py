@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from core.models.resource_capabilities import supports_source
+from core.models.resource_capabilities import supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_hours import ProcessTemplateHours
 from core.services.process.template_source import group_suppliers_consistent
@@ -30,7 +30,17 @@ def _related(identities, ref, kind, cache):
     return current.entity_key
 
 
-def source_catalog(conn, logger=None):
+def source_catalog(conn, logger=None, facts=None):
+    if facts is not None:
+        references = facts["references"]
+        types = {row["op_type_id"]: row for row in references["OpTypes"]}
+        profiles = {row["supplier_id"]: row for row in references["WorkbenchSupplierProfiles"]}
+        suppliers = {row["supplier_id"]: dict(row, inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
+                     for row in references["Suppliers"]}
+        capabilities = {(row["supplier_id"], row["op_type_id"]) for row in
+                        supplier_capability_rows(references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
+                        if not row["missing_supplier"]}
+        return types, suppliers, capabilities
     repo = WorkbenchProcessQueryRepository(conn, logger)
     types = {row["op_type_id"]: row for row in repo.op_type_reference_rows()}
     suppliers = {row["supplier_id"]: row for row in repo.supplier_status_rows()}
@@ -57,9 +67,9 @@ def require_supplier(conn, operation, supplier_key, type_key, catalog=None):
     return supplier
 
 
-def prepare_source(conn, logger, payload, operations, identities):
+def prepare_source(conn, logger, payload, operations, identities, *, catalog=None):
     active = exact_operations(payload, operations)
-    catalog = source_catalog(conn, logger)
+    catalog = source_catalog(conn, logger) if catalog is None else catalog
     types = catalog[0]
     changes, affected, cache = [], set(), {}
     for row in payload["operations"]:
@@ -145,22 +155,28 @@ def _hours_updates(payload, active, merged):
     return updates
 
 
-def apply_hours(conn, payload, operations, groups):
+def prepare_hours(conn, payload, operations, groups, *, confirmations=None):
     active = exact_operations(payload, operations)
     merged = _merged_hours_groups(payload, active, groups)
     updates = _hours_updates(payload, active, merged)
     require_zero_confirmation(conn, [(active[row["ref"]], row) for row in payload["operations"]],
-                              payload["confirm_zero_unit_hours"])
-    changed = bool(updates)
+                              payload["confirm_zero_unit_hours"], states=confirmations)
+    group_updates = [(merged[row["ref"]], row["total_days"]) for row in payload["groups"]
+                     if merged[row["ref"]]["total_days"] != row["total_days"]]
+    by_id = {row["id"]: row for row in active.values()}
+    return [(by_id[key], fields) for key, fields in updates], group_updates
+
+
+def apply_prepared_hours(conn, prepared):
+    updates, group_updates = prepared
     hours = ProcessTemplateHours(conn)
     group_repo = ExternalGroupRepository(conn)
-    by_id = {row["id"]: row for row in active.values()}
-    for key, fields in updates:
-        old = by_id[key]
-        hours.revise(old["ref"], fields, expected_revision=old["revision"])
-    for row in payload["groups"]:
-        old = merged[row["ref"]]
-        if old["total_days"] != row["total_days"]:
-            group_repo.set_total_days(old["group_id"], row["total_days"])
-            changed = True
-    return changed
+    for old, fields in updates:
+        hours.revise_current(old, fields, expected_revision=old["revision"])
+    for old, days in group_updates:
+        group_repo.set_total_days(old["group_id"], days)
+    return bool(updates or group_updates)
+
+
+def apply_hours(conn, payload, operations, groups):
+    return apply_prepared_hours(conn, prepare_hours(conn, payload, operations, groups))

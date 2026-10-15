@@ -181,10 +181,12 @@ def prepare_run_result(computation, identities, *, run, capture, admission, fact
         payload = computation.candidate_payloads.get(candidate["key"])
         intervals = ({task["row_ref"]: (row.start_time, row.end_time)
                       for task, row in zip(candidate["tasks"], payload.schedule_rows)} if payload is not None else {})
-        packets[candidate["candidate_ref"]] = {"raw_tasks": candidate["tasks"], "intervals": intervals}
+        packets[candidate["candidate_ref"]] = {"raw_tasks": candidate["tasks"], "intervals": intervals,
+            "scheduled_op_ids": payload.scheduled_op_ids if payload is not None else None}
     models = build_decision_read_models(run, capture, result, candidates, packets, None,
         facts=facts, dependencies=dependencies, admission=admission, process=result.get("unified_process"))
     from data.repositories.workbench_run_repo import encode_decision_read_models, encode_result
     from data.repositories.workbench_run_result_repo import encode_candidate_rows
 
-    return PreparedRunResult(encode_candidate_rows(candidates), encode_result(result), encode_decision_read_models(models))
+    return PreparedRunResult(encode_candidate_rows(candidates), encode_result(result), encode_decision_read_models(models),
+                             models["run_model"]["header"])

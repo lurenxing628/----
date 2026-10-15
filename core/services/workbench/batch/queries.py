@@ -68,14 +68,15 @@ class WorkbenchBatchQueryService(BatchFacts):
         for row in rows:
             entity = projection.entity(row)
             entity["materials"] = projection.materials(row)
-            entity["template"] = template_status(facts, row)
+            entity["template"] = template_status(facts, row, projection.resources)
             entities.append(entity)
         return entities
 
     def choices(self, batch_ref=None, operation_ref=None):
-        projection = BatchProjection(self.load())
+        facts = self.load()
+        projection = BatchProjection(facts)
         parts = [{"ref": projection.ref("part", row["part_no"]), "business_code": row["part_no"], "label": row["part_name"]}
-                 for row in self.load()["Parts"]]
+                 for row in facts["Parts"]]
         choices = {"parts": parts, **{name: [projection.resource(kind, key) for key in projection.catalogs[kind]]
                                   for name, kind in (("machines", "machine"), ("operators", "operator"), ("suppliers", "supplier"))},
                 "authorizations": [{"machine_ref": projection.ref("machine", mid), "operator_ref": projection.ref("operator", oid)}
@@ -83,7 +84,7 @@ class WorkbenchBatchQueryService(BatchFacts):
         if batch_ref is not None:
             from .resource_choices import operation_choices
 
-            return operation_choices(self, batch_ref, operation_ref, choices)
+            return operation_choices(self, batch_ref, operation_ref, choices, projection.resources, facts)
         return choices
 
     def selection(self, scope):

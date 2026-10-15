@@ -14,6 +14,14 @@ _SORTS = {"business_code": "m.material_id", "label": "m.name", "spec": "m.spec",
 
 
 class WorkbenchMaterialQueryRepository(BaseRepository):
+    def export_by_refs(self, refs):
+        rows = []
+        for start in range(0, len(refs), 400):
+            chunk = refs[start:start + 400]
+            marks = ",".join("?" for _ in chunk)
+            rows.extend(self.fetchall(_TABLE_SELECT + " WHERE r.ref IN (" + marks + ")", chunk))
+        return rows
+
     def table_rows(self, query="", status=None, *, requirements=None):
         where, params = self._where(query, status)
         rows = self.fetchall(_TABLE_SELECT + where + " ORDER BY m.material_id", params)

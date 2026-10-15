@@ -8,7 +8,7 @@
     const read = window.APSResourceSession.useQuery(signal => window.RunBaselineAPI.create().read(data, signal).catch(error => {
       throw new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message);
     }), [data], active);
-    return { ...read, result: active ? read.result : null, error: active ? read.error : null,
+    return { ...read, retainedResult: read.result, result: active ? read.result : null, error: active ? read.error : null,
       busy: active && read.loading, enabled: active, toggle: setEnabled, retry: read.reload };
   }
   function Toggle({ state }) {

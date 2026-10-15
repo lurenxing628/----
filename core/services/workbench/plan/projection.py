@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from core.models.schedule_plan_role import ROLE_ADOPTED
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.zero_duration import point_event_dto
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 
@@ -15,7 +14,6 @@ _REASONS = {
     "history_missing": "这个试调方案依据的那次排产已经没有了，暂时看不了。",
     "scenario_not_active": "这个试调方案已发布、过期或作废，不能再拿来查看。请回「试调」重新选一个。",
     "scenario_unavailable": "这个试调方案依据的计划关系或明细无效，暂时看不了。",
-    "plan_capacity_exceeded": "这个计划或它依据的计划明细超过本次读取上限，还确认不了是否完整。请缩小时间范围后重试。",
     "plan_binding_invalid": "这个计划的类型或它依据的计划已经变了，暂时看不了。请刷新计划列表后重试。",
     "identity_missing": "计划编号缺失，请刷新计划列表。",
     "identity_invalid": "这个计划的编号和当前记录对不上，暂时看不了。请刷新计划列表后重试。",
@@ -58,22 +56,11 @@ def project_unavailable_plan(locator, plan_ref, display_name, reason_codes, *, c
             "blocked_reasons": _public_reasons(reason_codes)}
 
 
-def project_capacity_blocked_plan(locator, plan_ref, display_name):
-    return project_unavailable_plan(locator, plan_ref, display_name, ("plan_capacity_exceeded",), completeness="unknown")
-
-
 def public_time(value):
     parsed = parse_dt_for_sql(value)
     if parsed is None:
         raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
     return parsed.replace(" ", "T")
-
-
-def task_span(rows):
-    if not rows:
-        return None
-    return {"start": min(public_time(row["start_time"]) for row in rows),
-            "end": max(public_time(row["end_time"]) for row in rows)}
 
 
 def _required_text(value):
@@ -134,7 +121,7 @@ def _read_adopted_task_facts(conn, plan_ref, *, context=None):
         if evidence is None:
             return {}, "plan_target_not_recorded", None
         basis, audit, arranged = evidence["basis"], evidence["audit"], evidence["arranged"]
-        result = _source_quantities(conn, basis, audit, arranged, generation_facts=evidence["generation_facts"])
+        result = _source_quantities(conn, basis, audit, arranged, generation_facts=evidence["generation_facts"], trial_source=evidence.get("trial_source"))
         require(set(result) == {row["op_id"] for row in arranged}, "quantity.complete_operation_set")
         return result, None, read_adoption_operation_facts(conn, evidence)
     except (AdoptionBaselineUnavailable, WorkbenchPlanReferenceError):
@@ -172,13 +159,12 @@ def _adopted_source_record(conn, plan_ref, *, context=None):
     return read_adoption_source(conn, plan_ref=plan_ref, version=locator.version, history=history, context=context)
 
 
-def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None):
-    from core.services.workbench.facts.adoption_baseline_sources import candidate_source_evidence
-    from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None, trial_source=None):
+    from core.services.workbench.facts.adoption_baseline_sources import candidate_source_evidence, trial_adoption_facts
 
     # Only the audited source can supply target work; current batch joins cannot.
     if basis == "candidate_adoption":
-        facts = generation_facts if generation_facts is not None else candidate_source_evidence(conn, audit)[3]
+        facts = generation_facts if generation_facts is not None else candidate_source_evidence(conn, audit)["generation_facts"]
         refs = {key: ref for ref, key in facts.operations.items()}
         result = {}
         for item in arranged:
@@ -186,7 +172,8 @@ def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None):
             result[item["op_id"]] = _captured_quantities(op, facts.tables["Batches"][op["batch_id"]],
                                                        facts.execution.get(refs[item["op_id"]]), "run_admission")
         return result
-    _, _, saved = load_saved_scenario(conn, audit["scenario_ref"])
+    prepared = trial_source if trial_source is not None else trial_adoption_facts(conn, audit["scenario_ref"])
+    _, _, saved = prepared.source
     return {row["original"]["operation"]["id"]: _captured_quantities(
         row["original"]["operation"], row["original"]["batch"], row["original"]["execution"], "trial_creation")
         for row in saved}
@@ -226,9 +213,3 @@ def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=
     if len({task["task_ref"] for task in tasks}) != len(tasks):
         raise WorkbenchCommandRejected("task_binding_invalid", "计划里有安排编号重复，确认不了完整范围。请刷新后重试。")
     return tasks
-
-
-def check_payload_size(data):
-    if len(canonical_json(data).encode("utf-8")) > MAX_PLAN_RESPONSE_BYTES:
-        raise WorkbenchCommandRejected("query_too_large", "计划查询结果超过本次读取大小上限。请缩小时间范围后重试。", 413)
-    return data

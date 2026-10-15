@@ -104,8 +104,10 @@ def export_table(engine, data, rows, snapshot, format_name):
         output = io.StringIO(newline="")
         writer = csv.writer(output)
         writer.writerow([column["label"] for column in columns] + ["数据截至", IDENTITY_LABELS[1], "筛选范围", "数据来源", "统计说明与待补资料"])
+        static_values = [_csv_cell(value) for value in [snapshot["as_of"], snapshot["snapshot_ref"],
+            canonical_json(data["scope"]), data["provenance"], "；".join(data["data_gaps"])]]
         for row in values:
-            writer.writerow([_csv_cell(value) for value in row + [snapshot["as_of"], snapshot["snapshot_ref"], canonical_json(data["scope"]), data["provenance"], "；".join(data["data_gaps"])]])
+            writer.writerow([_csv_cell(value) for value in row] + static_values)
         return ReportExport(filename + ".csv", "text/csv;charset=utf-8", io.BytesIO(output.getvalue().encode("utf-8-sig")), estimated_rows=len(rows))
     import openpyxl
 

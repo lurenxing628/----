@@ -73,14 +73,13 @@ try:
     response.close()
     assert 'openpyxl' in sys.modules
     from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
-    from core.services.scheduler.schedule_service import RUN_SCHEDULE_LOCK as service_lock
     from core.services.workbench.run.worker import RUN_SCHEDULE_LOCK as worker_lock
     from core.services.workbench.run.worker_recovery import RUN_SCHEDULE_LOCK as recovery_lock
     from core.services.workbench.run.candidate_adoption import RUN_SCHEDULE_LOCK as adoption_lock
     from core.services.workbench.trial.adoption import RUN_SCHEDULE_LOCK as trial_lock
     from web.bootstrap.workbench_system_restore import RUN_SCHEDULE_LOCK as restore_lock
     assert all(lock is RUN_SCHEDULE_LOCK for lock in
-               (service_lock, worker_lock, recovery_lock, adoption_lock, trial_lock, restore_lock))
+               (worker_lock, recovery_lock, adoption_lock, trial_lock, restore_lock))
     print(json.dumps({'ready': runtime.ready, 'xlsx': response.status_code, 'shared_lock': True}))
 finally:
     stop_run_runtime(runtime)

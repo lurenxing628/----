@@ -8,23 +8,24 @@ An omitted date is preserved; explicit null only clears returned with matching s
 Each new intent records a confirmation, including unchanged-value reconfirmations.
 """
 
-import json
 from datetime import datetime
+from types import MappingProxyType
 
-from flask import g, jsonify, request
+from flask import g, request
 
 from core.errors import ValidationError
-from core.models.content import content_text, same, unpacked
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_outsourcing import bounded, reject
+from core.models.workbench_outsourcing import MAX_BYTES, reject
 from core.models.workbench_outsourcing_input import factory_time
 from core.services.workbench import messages
 from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
-from web.api_responses import query_success
+from web.api_responses import json_response, query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 
 from .api_responses import api_endpoint
+from .read_context import fact_value
 from .write_context import issue_write_context, validate_write_context
 
 _SCOPE = "workbench-outsourcing-read-v1"
@@ -58,8 +59,8 @@ def _snapshot_time(token, scope):
     if token is None:
         return datetime.now().replace(microsecond=0), None
     try:
-        saved = json.loads(resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref"))
-        if type(saved) is not dict or saved.get("scope") != scope or saved.get("source") != "production":
+        saved = resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")
+        if saved["scope"] != content_text(scope):
             raise ValueError("scope changed")
         return factory_time(saved["as_of"]), saved
     except (ValidationError, ValueError, TypeError, KeyError) as exc:
@@ -84,12 +85,14 @@ def _read(kind, ref=None):
                 reject("单条外协登记没有分页。请直接查看这一条。", status=400)
             data = reader.detail(ref, as_of=now)
         content = data.pop("content")
-        if saved is not None and ("content" not in saved or not same(unpacked(saved["content"]), content)):
+        facts = fact_value(content)
+        if saved is not None and saved["content"] != facts:
             reject("外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。", "snapshot_stale", 409)
         if token is None:
-            token = issue_public_token(_SCOPE, content_text({"scope": scope, "source": "production", "content": content,
-                                       "as_of": now.isoformat(timespec="seconds")}), ttl_seconds=900)
-    response = query_success(bounded(data), {"snapshot_ref": token, "as_of": now.isoformat(timespec="seconds")})
+            scope_value, stamp = content_text(scope), now.isoformat(timespec="seconds")
+            token = issue_public_token(_SCOPE, MappingProxyType({"scope": scope_value, "content": facts, "as_of": stamp}),
+                                       key=(scope_value, stamp), group=facts, ttl_seconds=900)
+    response = query_success(data, {"snapshot_ref": token, "as_of": now.isoformat(timespec="seconds")}, byte_limit=MAX_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -129,7 +132,8 @@ def outsourcing_preview():
     body = _body(False)
     service = WorkbenchOutsourcingCommandService(g.db, context_factory=issue_write_context)
     result = service.preview(body["input"])
-    response = query_success(result, {"as_of": service.reader.now().isoformat(timespec="seconds"), "snapshot_ref": None})
+    response = query_success(result, {"as_of": service.reader.now().isoformat(timespec="seconds"), "snapshot_ref": None},
+                             byte_limit=MAX_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -141,7 +145,7 @@ def outsourcing_confirm():
     service = WorkbenchOutsourcingCommandService(g.db)
     result = service.execute(body["input"], request_key=body["request_key"],
         validate_context=lambda subject, action, snapshot: validate_write_context(body["write_token"], subject, action, snapshot))
-    response = jsonify(result)
+    response = json_response(result)
     response.headers["Cache-Control"] = "no-store"
     return response
 

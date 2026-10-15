@@ -2,25 +2,25 @@
 doc_type: architecture
 slug: workbench-shell
 scope: 工作台离线外壳、领域服务、受管运行及恢复边界
-summary: 真实业务工作区已挂载，逐项终验与旧入口退役仍在收口
+summary: 工作台拥有事务与持久结果，内存绑定和真实出口共享准备，显示模型分准备、布局、绘制
 status: current
 created: 2026-09-09
-last_reviewed: 2026-09-28
-updated: 2026-10-14
+last_reviewed: 2026-10-15
+updated: 2026-10-15
 tags: [workbench, flask, offline, win7]
 depends_on: [ARCHITECTURE]
 implements: [workbench-foundation-read-loop, workbench-production-workflows]
 ---
 
-# 工作台迁移宿主
+# 工作台宿主与领域边界
 
 ## 当前边界
 
-`/workbench` 和 `/workbench/trial` 支持15个视图，侧栏12项；计划甘特/交付风险及报表/复盘通过页内页签组织，旧URL和精确上下文仍保留。主数据、工艺、批次、候选生成和采用、正式计划、试调、执行台账、实际甘特、复盘报表、工时校准、值班台和系统维护均通过真实领域服务接线。本文件描述当前源码，不替代逐动作验收。旧入口退役与Win7打包、真机和最终发布由迁移路线图管理，本次界面质量整改不替其签发通过结论。
+`/workbench` 和 `/workbench/trial` 支持15个视图，侧栏12项；计划甘特/交付风险及报表/复盘通过页内页签组织，旧URL和精确上下文仍保留。主数据、工艺、批次、候选生成和采用、正式计划、试调、执行台账、实际甘特、复盘报表、工时校准、值班台和系统维护均通过真实领域服务接线。本文记录 2026-10-15 当前工作区已落地职责；本轮整合验收见[单次准备执行记录](../refactors/2026-10-15-single-pass-workflow/single-pass-workflow-refactor-design.md)，Win7 打包、真机和发布状态由既有路线图维护。
 
 ## 职责
 
-- `web/bootstrap/factory.py` 注册 `web.routes.workbench`。实际 managed runtime 且维护 owner 当前准入可用时，在路由事务前驱动访问间隔自动维护；没有 runtime 的只读服务调用不驱动，static/health 不驱动。配置读取不补默认值；首次真正到期任务在同一维护窗口核对 fresh journal，覆盖本轮备份与清理。关闭、未到期和节流请求不扫描历史；未确认维护停止 owner 并中止本次请求。 已知维护接纳拒绝/忙锁在服务挂载前关闭连接并返回503；未知 driver 异常沿清理传播为500，不继续服务。请求 path 同次只取一次。
+- `web/bootstrap/factory.py` 注册 `web.routes.workbench`，在开库前检查一次实际维护窗口。普通请求消费 runtime 的内存运行状态；static/health 走轻量路径。真正到期的自动维护才进入原维护 owner 与 journal 准入，失败沿原503或存储错误传播；请求关闭和恢复继续由既有生命周期协调。
 - `web/routes/workbench/assets.py` 校验本地 manifest 和引用文件；资源不完整时宿主明确503。`pages.py` 提供启动信息和只读 JSON 协议，不执行 SQL。
 - `core/services/system/workbench_overview.py` 使用已提供的连接及路径进行只读投影；不补配置、不读日志正文、不校验备份、不生成备份。失败、未知和0分开。
 - `frontend/workbench/app/` 负责呈现、正式主题键 `aps_theme`、请求时限/取消、响应校验及样例隔离；不计算或保存正式业务事实。
@@ -30,23 +30,33 @@ implements: [workbench-foundation-read-loop, workbench-production-workflows]
 ## 服务包结构（2026-09-20 起）
 
 - `core/services/workbench/` 按业务簇分子包，根只留跨簇协调件 `commands.py`（命令事务框架）与 `messages.py`（共享文案）。簇：`facts/`（只读事实与叶子助手）、`plan/`、`execution/`、`run/`、`trial/`、`report/`、`dashboard/`、`process/`、`resource/`、`material/`、`batch/`、`calibration/`、`outsourcing/`、`system/`、`master/`。
-- 簇之间只允许单向依赖：结果侧 `facts ← plan ← execution ← run ← trial ← report ← dashboard`，主数据侧 `facts ← process ← resource`，`batch`、`calibration` 在其上，其余只依赖 `facts`。完整方向表、五对历史双向依赖的解法与模块分配表见 `.codestable/roadmap/foundation-boundary-governance/workbench-cluster-layering.md`；门禁 `tests/gate_meta/test_workbench_cluster_layering.py`。
+- 簇之间只允许单向依赖：结果侧 `facts ← plan ← execution ← run ← trial ← report ← dashboard`，主数据侧 `facts ← process ← resource`，`batch`、`calibration` 在其上，其余只依赖 `facts`。完整方向表、五对历史双向依赖的解法与模块分配表见 `.codestable/roadmap/foundation-boundary-governance/workbench-cluster-layering.md`；当前依赖核对沿开发文档的质量治理入口执行。
 - 子包 `__init__.py` 只有 docstring，没有转发导入或懒导出；搬模块用 `tools/move_modules.py` 一次改完所有调用方。
 
 ## 请求与恢复
 
 HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同源领域API -> 校验实际消费字段 -> 展示数据。读请求有时限，卸载或切换工作区取消旧读取。错误显示重试，不静默读取样例。主题偏好与业务状态分开。
 
-系统概况的`snapshot_ref`只标识本次只读响应。新增物料列表/详情的快照则绑定筛选、排序、当前资料修订和读取时点；分页复用原引用时若数据或范围变化，明确返回`snapshot_stale`，不自动刷新。它仍不是永久实体身份。
+系统概况的 `snapshot_ref` 标识本次只读响应；各领域读快照继续按其真实事实和 scope 绑定。资料总览的列表、详情、定位与导出统一读取该 scope 下的当前资料，响应回传本次 `as_of` 和实际导出条数；过期或 scope 不符沿原 `snapshot_stale` 表达。永久实体引用、短期上下文和页面偏好各有独立职责。
 
-## 共同事实与存储（2026-10-06）
+## 2026-10-15 单次准备的当前实现
+
+- **事务与计算**：工作台拥有受理、worker、保存和正式采用。`ScheduleService` 当前只负责批次工序编辑；候选计算经 `compute_candidate_run` → `orchestrate_schedule_run` → `run_candidate_comparison`，计算阶段使用明确版本上下文。旧运行、collector 生产采集和持久化链已经退役。
+- **共享事实**：`ProductionFactsCapture` 拥有一次事务快照的原始表、最新正式安排索引与资源执行事实；`PreflightFacts`、`CandidateRunInput`、`BatchFacts`、`GenerationFacts` 和 `DecisionSource` 消费已取得内容。worker 同一次副本核对与输入准备共用 capture，写锁内的新事实仍在实际采用或完成事务取得。
+- **搜索与档案**：`NativeSchedulePreparation` 和 `SharedDecodeSession` 拥有固定工序、参数适配、资源、拓扑与断点准备，请求表达真实变化。真实解码出口取得安排编号，阶段和目标同步使用档案小视图；未验证 trial 未命中时只保留临时编号。报告消费编号及评价标量，完整来源在 events，最终发布物化结果与选中证据。
+- **内存 token**：`web/public_token_registry.py` 直接保留 `ReadBinding`、`WriteBinding` 和预览/文件对象；共同规范事实按组共享，小键服务签发复用。binding 不再做 JSON 编码后解析，逐行 token 不再各包一份大事实。读写绑定直接引用各自所需值，写入口寿命由自身 expiry 决定；等待写锁后的实际到期检查和锁内当前事实比较继续执行。
+- **规范化、写入和输出**：日历、资源、工艺及报工的原始输入在共同领域入口规范化，写入者返回实际 ref、revision 和时间供响应使用。命令回执首发与重放消费实际保存文本。JSON 最终信封在 `web/api_responses.py:json_response` 编码 UTF-8 并直接发送该字节；独立文件在自己的真实输出边界编码。内部投影按实际消费者加工，HTTP 大小限制位于真实响应出口。
+- **显示和查询**：计划与实际甘特把固定事实准备、可见成员/布局与绘制分开；Canvas 生命周期归 `GanttPresentation.useCanvasPaint`，搜索只更新筛选与轻量汇总，宽度只改变几何，滚动只选择可见区。列筛选由 Enter 或已有按钮提交；资源热图直接消费后端已有桶。报表工序详情使用 `plan + detail` 的窄 DTO，前端同步按详情合同读取。
+- **启动和维护**：启动协调器在开库前捕获 journal，后续 owner 消费同一捕获；普通请求读取内存停止状态并在开库前检查维护窗口。当前 Schema43 在 v41/v42 保存读模型上调整实际查询索引；普通启动检查结构，新库、升级与恢复执行完整数据合同，v39—v43 明确表示差异由现有 `schema_compat.py` 处理。
+
+## 共同事实与存储
 
 - 排产事实新鲜度排除只写审计 `OperationLogs` 和仅驱动维护间隔的 `SystemJobState` 内容及其自增序列；真实 Schema 和业务输入仍参与核验。访问驱动自动备份不使排产候选保存误报输入变化。
 - 新候选以 `WorkbenchRunCandidateTasks` 为安排正文权威，artifact 标记 `candidate_tasks_v1`，只保存引擎独有追溯和验证结论；写前核对引擎与验证安排一致。旧完整 artifact 保持原数据和读取合同，永久身份、范围、顺序与零工时依据继续验证。
-- 新保存试调的 `snapshot_json` 只保存元数据与有序永久行引用，任务正文来自 `WorkbenchTrialScenarioRows`。完整命令回执承担精确 replay；档案核对解析或重建后的完整内容，旧摘要、历史编码和记录保留原值。
+- 新保存试调的 `snapshot_json` 只保存元数据与有序永久行引用，任务正文来自 `WorkbenchTrialScenarioRows`。完整命令回执承担精确 replay；读取解析保存内容及永久引用，落档、采用和迁移承担实际内容确认，旧摘要、历史编码和记录保留原值。
 - 排产配置字段、Snapshot、转换和权重公式由 `core/models/schedule_config_runtime*` 统一维护；服务层只补页面元数据、错误标签与旧方案缺省策略。可变配置输入仍在算法边界验证；同次候选参数覆盖和默认保留窗口共用原始配置读取。
-- 原生优化器在同次 evaluator 内共用不可变拓扑，decode 重新创建进度和优先级；当前内容、类型及 scope 不匹配或未知注入入口仍走独立验证和输入隔离。
-- 普通维护状态使用真实 owner 的当前准入状态；启动、文件维护接受、真正到期自动维护及明确历史读取保留 fresh journal 校验。正常结果跟踪使用原 request key 精确读取，手工 job_ref 查询独立保留。
+- 原生优化器在会话创建时准备固定拓扑和实际输入适配，decode 只重建动态进度并消费请求优先级；独立原始算法入口继续适配真实原始输入。
+- 普通维护状态使用运行 owner 的内存状态；启动、文件维护接受、真正到期自动维护及明确历史读取在实际边界取得 journal 记录。正常结果跟踪使用原 request key 精确读取，手工 job_ref 查询独立保留。
 - 页面 context 与 scroll 由共同导航 owner 保存；普通 read 生命周期和已核实 Blob 的 DOM 保存进入已有共享机制。领域响应、业务归属、跨 tab 和写前/写后核验各自保留，卸载会取消请求及等待队列。
 
 ## 界面共享层
@@ -71,7 +81,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `calendars.py`月读和单日/范围维护只修改全局WorkCalendar。公开投影区分编辑字段、原存储字段和实际生效工作窗，不泄露内部revision/history；原始预览留服务器。DATE在仓储统一ISO字符串，不截断datetime或做UTC转换。
 - `ResourceLive`挂载真实adapter与各独立向导。`resource-api.js`验证同源、协议与提交状态；`resource-session.js`在会话存储保留待核实请求键，不持久化生产输入/短期令牌。未确认提交时不自动换请求重试。
 - 非物料`resource_actions/resource_file_exports`按白名单类型开放预检、三字段确认、CSV/XLSX模板和下载。服务器保留完整原预览/字节，公开令牌仅短引用；导入限2000行，完整导出与显式批删不沿用该行数限制。scope固定自制/外协类别，未展示旧字段只读回传，不开放新写入口。
-- `WorkbenchResourceFileRepository`为冲突核对保留全部引用字段，将真实SQLite DATE对象规范为ISO日期，但不截断datetime；个人日历/旧授权既阻止删除，也参与预检后的过时保护。导出不是只读取当前页或新建资源。
+- `WorkbenchResourceFileRepository`为导入冲突核对提供所需引用，将真实SQLite DATE对象规范为ISO日期，保留datetime原义；个人日历/旧授权继续参与删除约束和预检后的过时保护。导出读取当前范围内实际输出列，覆盖完整筛选结果。
 - `ResourceRail`消费真实资源统计与本周日历只读投影。标准工时未配置不填样例值，显式/服务默认/无许可/坏资料分开。工种文件待核实状态独立保留category，跨资源命名空间不混用。
 - 计划查询已通过`core/services/workbench/`的公开领域层与`web/routes/workbench/`接到目录、分析和甘特UI。内部计划目录/页仍只负责内部数据，不直接序列化内部行号；公开计划和任务引用跨进程稳定，快照与范围另外核对。
 
@@ -84,12 +94,16 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 分次报工与更正走追加台账，旧事件保留原义，未知数量和工时不补零。实际甘特、复盘、报表及工时校准消费同一已核实事实，交付风险不把缺工序或局部完工当作完整批次完成。
 - 值班处理状态与业务风险分开。系统备份下载只解析已登记公开引用，文件存在不等于可恢复；`workbench_system_restore*.py`与`workbench_request_lifecycle*.py`负责排空连接、停止worker、恢复状态及冷启动核对，恢复不走普通行命令。
 
-## 2026-09-28 工艺与外协一致性
+## 历史专题与验收记录
+
+以下保留各次专题交付时的业务说明和证据范围。当前输入、token、输出、显示和 Schema 职责以本文前面的现状章节及对应代码为准。
+
+### 2026-09-28 工艺与外协一致性
 
 - `process.groups_confirm`复用阶段预检与回执协议，按永久工序/组引用增量新增、调整、拆分和解除外协段。合并段周期只解释一次，旧逐序周期保留但不参与合并段的生效投影；整段换供应商保持组身份。页面共用能力选择器，并在已确认保存、详情刷新失败时开放父页面恢复入口，保留未存工时草稿。
 - v33 的 `BatchExternalContexts`保存各批次工序的外协规则；新建、实例复制、分件、明确模板更新分别捕获或复制来源，不在排产时回查当前模板。旧库只记录升级时可核实资料并标记来源。批次逐序维护不能拆开合并段改派供应商，预检和输入构建独立核对冻结组与实际成员；历史候选试调仅使用该候选自己的归档事实。
 
-## 2026-09-15 手动整改实现
+### 2026-09-15 手动整改实现
 
 - `ResourceControls.jsx`统一本地 `trash-2`、展开/收起与搜索图标，`20-controls.css`统一按钮图文和筛选对齐，`21-table-frame.css`提供单层表格框及编辑列分隔。所有可达删除动作使用垃圾桶和可见文字。可达管理样例的三项共享组件移至 `SystemSampleControls.jsx`，由 build-order 放在资源控件之后、SystemLive 之前，冻结原型不改。
 - 工艺归属保存继续走 `stagePreview` 与 `process.source_confirm`；明确保存时提交全部有效工序的确认内容，实际解除外协组关系仍单独列出影响。`ProcessHoursEditor.jsx`拆分自制/外协表，`process_zero_hours.py`在事务内按内容绑定的确认记录决定是否要求零值确认，工时文件读写复用相同规则。既有批次不随模板修改自动变化。
@@ -108,7 +122,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `FieldWorkspace.done`保存后同时更新当前`task_ref/operation_ref`，没有任务时一起清除；原计划、搜索和日期范围保留。任务切换不复用入口工序引用，后端继续拒绝真正错配；已成功保存后的读取失败不自动重复提交。
 - `ResourceWorkspace`读取父表单最新资料后同时更新保存上下文，借既有`acceptedEntity/rebaseDraft`保留用户已改字段、更新未改字段。从父表单自己完成班次/设备组维护后统一刷新选项及父版本，不再额外要求“已核对”；未知维护结果和后续并发变化仍不自动放行或重提。
 
-### 独立功能补验中的接续修复
+#### 独立功能补验中的接续修复
 
 - `trial_execution_anchors.py`在新草稿创建与验证时复用`build_execution_guardrails_from_projections`：已完工工序固定为真实起止和资源，已支持的开工工序固定实际开工/资源并沿用原计划时长推算预计结束。`original.execution_anchor`保留依据，`original.arrangement`仍保存原计划对比；公开DTO校验固定安排一致且不可编辑。旧保存场景不重写，旧计划时段与真实固定冲突时返回`scenario_execution_anchor_outdated`。齐套、前后序及最终采用保护不放宽，预计结束不充当可信实际释放。
 - `TrialAdoptionBlocked`复制实际阻止采用的问题并统一为blocker级别，保留其code、消息与任务引用；草稿warning和原保存快照不变，避免采用预检把真实业务原因误判为响应损坏。
@@ -118,7 +132,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 
 以上描述源码职责与合同；本轮程序专项、真实UI结果、迁移保留证据及未覆盖动作分别记录在[执行盘点](../roadmap/workbench-manual-remediation/execution-20260915/implementation-and-coverage.md)，不作为整系统手动通过声明。
 
-## 页面状态与故障
+### 页面状态与故障
 
 - `templates/workbench/index.html`先给可读启动状态，并由独立watchdog显示资源错误或启动超时，不依赖末尾主脚本自己报告缺失。
 - `WorkbenchBoundary.jsx`隔离工作区渲染错误，保留侧栏和同对象重试。启动信息或核心资源损坏时提供重新加载入口，不渲染虚假业务页面。
@@ -126,7 +140,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `WorkbenchPageContext.jsx`让各领域显式登记已验证的只读选择和筛选，不保存写表单、不重放请求；待核实写入仍由原命令恢复协议负责。各域接入与实际回返验收仍在收口。
 - `WorkbenchCaption.jsx`只消费领域DTO的真实方案身份、版本和范围。页面切换或卸载清除旧信息，无所选方案不显示样例。主题焦点返回同步不改业务状态。
 
-## 统一交互控件
+### 统一交互控件
 
 - `templates/workbench/index.html`以`body.aps-workbench`限定工作台样式和事件范围，不影响旧入口。`main.jsx`常驻挂载公共样式、下拉/日期浮层及数字微调器，后续工作区复用同一套控件。
 - `WorkbenchControlStyles.jsx`沿用原主题变量和本地Lucide图标，统一按钮、输入、单选、勾选、滑块、文件选择、分页、展开状态和键盘焦点。工具区32px，编辑字段36px，控件4px圆角；导航、日历格和甘特条保留各自语义与尺寸。
@@ -135,7 +149,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `WorkbenchDatePickerModel.js`使用工厂本地日期字符串和浏览器原生约束校验，不以UTC转换日期，不猜测未填的时间。保留原value attribute作为step基点；时间增减按钮与其他数字微调器一致。
 - 所有资源本地交付，不新增目标运行时或依赖。编译使用Chrome109支持的对象展开，避免多个独立脚本生成同名Babel全局辅助函数。系统的文件打开/保存窗口继续由操作系统负责，页面内触发按钮及状态提示使用工作台样式。
 
-## 验证边界
+### 验证边界
 
 2026-09-12界面质量层补充：
 
@@ -151,7 +165,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 
 完整门禁的仓库入口仍为`scripts/run_quality_gate.py`，这是工具事实，不是本轮执行授权。2026-09-15用户明确禁止全门禁，本轮不调用该入口任何模式、不运行整仓测试，仅执行相关专项、构建与手动浏览器验证；未提交工作区不声称clean-worktree proof。历史迁移路线的归档、旧UI退役状态见`../roadmap/workbench-prototype-migration/round2-progress-20260910.md`及同目录`legacy-retirement/`；本轮最新覆盖见上述执行盘点。Win7打包、真机与最终发布仍排除。代码归档不是业务数据库备份，代码回退与新数据保全分别核对，不用旧库覆盖新增事实，未应用的决定不作为已实现能力。
 
-## 2026-09-21 界面全量审查修复
+### 2026-09-21 界面全量审查修复
 
 - “管理样例”下线：`SystemSampleControls.jsx` 删除并从 build-order 移出，`SystemLive.jsx` 只读本机数据，`SystemMaintenanceAPI.pageContext` 只接受 `source: "current"`；恢复状态标签以 `SystemRestoreStatus.labels` 为唯一来源，后端 `workbench_system_restore_view.py` 与之逐字对齐并由测试锁住。
 - 共享控件：`ResourceControls.jsx` 的 Modal 在打开时记住启动器按钮，关闭后按“启动器 → 父弹窗启动器 → 最近可聚焦容器（`#wb-view-panel[tabindex=-1]`）”恢复焦点（vm 合同 `tests/workbench/modal_focus_restore_contract.cjs`）；带 tooltip 原因的 Button 改用 `aria-disabled="true"` 保持可聚焦并拦截点击。
@@ -159,7 +173,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 样式 token：主按钮走 `--wb-primary-button-bg/-text/-hover-bg`（深色映射 `--ui-primary-hover` 底 + `--ui-bg` 字）；深色弹窗遮罩靠 `--wb-modal-backdrop-dim`（`backdrop-filter`）；深色表头底色统一 `--ui-surface-muted`；固定操作列阴影 `--wb-scroll-shadow-right/-left`；产能链收起态由 `section.rail[data-collapsed]` 驱动。
 - 文案：`tools/ui_copy_glossary.json` 新增停用词“证据”，`scan.backend` 扩到 `core/services/execution` 及会经 `_domain_failure`/`WorkbenchCommandRejected` 原样上屏的领域服务文件；`WorkbenchTerms.js` 新增 `refresh_latest`、`accept_latest`、`personal_calendar`、`plan_version`、`download_started`、`data_as_of`、`run_statuses`、`candidate_statuses` 等共享叫法。
 
-## 2026-10-13 同次候选方案比较
+### 2026-10-13 同次候选方案比较
 
 - `RunCandidateWorkspace` 的 `analysis` 候选入口挂载 `RunDecisionComparison.Workspace`；首屏一次读取全部候选紧凑总览，按推荐、收益代价、当前选择动作和候选行表组织页面。默认常用指标，完整指标矩阵按需展开；运行搜索覆盖显示一次，算法角色归入选择依据。比较方式可选同次候选或受理时正式计划，采用记录按需展开。
 - `RunDecisionAPI` 统一 envelope 和响应身份核对；指标单位、精度、改善方向和范围从服务目录消费，差值由服务计算。失败、跳过和待料暂缓显示保存原因与三轴覆盖。
@@ -167,7 +181,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 采用继续接 `renderAdoption` 的原预检/正式事务入口；CSV/XLSX 总览绑定同一比较快照。离线 JavaScript/CSS 由现有 build-order 编译，浅深主题使用工作台 token。
 - 第 0、1 阶段交付与界面证据见 `../features/2026-10-13-decision-comparison-loop/`，后续能力按整体路线图推进。
 
-## 2026-10-13 交付与工序影响
+### 2026-10-13 交付与工序影响
 
 - `RunDecisionDetails.Pane` 在候选行表后按“总览 / 批次交付 / 工序变化”页签组织明细。批次显示双方全链完成状态、交期状态、完工与拖期差、改善/恶化及未排工序；工序按永久身份配对，保留多段安排、设备人员、执行、保护与保存的锁定标记。工时需求标注保存工艺标准依据，准备需求的实际排槽分解沿第 4 阶段建设。
 - 明细查询使用所选候选、比较模式、基准和共同时间窗；全范围汇总与行筛选分别表达。批次/资源目录覆盖整个比较范围，分页前筛选和稳定排序，默认 20 行、可选 50 行，未知值排末，同值按永久引用排序。
@@ -176,7 +190,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 新导航沿现有 `WorkbenchPageContext`，显式 URL 校验工序引用、比较页签和指标视图；正式只读上下文必须带运行、所选候选和正式计划身份，同次候选基准仅用于候选模式。旧候选分析、值班台、正式计划与试调前端消费共同交期、完成性和风险枚举。
 - 第 2 阶段实施与独立验收已通过，记录见 `../features/2026-10-13-decision-delivery-impact/`。第 3 阶段已派发，第 4—8 阶段等待母任务继续派发。
 
-## 2026-10-13 设备人员资源影响
+### 2026-10-13 设备人员资源影响
 
 - 方案对比沿紧凑候选行表增加资源页签，设备／人员共用一张资源影响表和逐日热力图。共同时间窗与 `resource_view` 随总览和明细请求传递；本次选批贡献／完整候选安排均标明正式覆盖缺口、未排和待料范围。
 - 资源影响展示双方容量、班表内占用、独立工序需求、班外、重叠、占用率和逐日峰值。整窗容量加权汇总保留固定资源集合；Top10压力和增长可展开全部。筛选排序与20/50分页、热力图日期页分别控制显示，整窗摘要保持完整。
@@ -185,7 +199,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 资源／单资源逐日CSV和XLSX由同一服务输出全部筛选记录，完整比较包含资源影响；逐日入口追加该资源完整日期。资源覆盖及逐日冲突为原生数量，XLSX另附“覆盖工序”完整逐条身份、逐日“资源冲突”区间及实际成员；常用标记和来源独立表达。旧候选分析、值班台和试调按共同字段呈现容量、需求、占用及未知原因。
 - 本阶段实施与独立验收状态见 `../features/2026-10-13-decision-resource-impact/`；产品继续使用本地静态资源及Chrome109构建目标。
 
-## 2026-10-13 准备需求与工种切换
+### 2026-10-13 准备需求与工种切换
 
 - `RunDecisionPreparation.Pane` 沿同一比较屏幕提供准备需求、工种切换两个页签。`EffortProjectionContract` 与 `RunOperationEffort` 校验并呈现共同需求账：准备、加工、排槽标准需求、原需求目标、本次执行目标／剩余量及来源；归档工序标准独立展开。历史缺账、已保存但未构造和保存缺项分别说明。
 - 准备汇总覆盖整次受理，区分实际新排、普通未排、合法暂缓和保留／执行／完成；切换汇总按共同窗口及资源视角。两页支持设备、各自业务条件、稳定排序和20／50分页，完整汇总和筛选目录保持原范围。
@@ -193,7 +207,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 总览目录为52项，新增准备／加工8项和实际工种切换2项；准备范围变化使用中性差值，算法保存切换保持独立标签。CSV及XLSX同scope输出准备需求和事件双方原始值，页码只控制屏幕；旧候选、值班台和试调需求／切换读取复用共同投影。
 - 第4阶段设计、验证与交接见 `../features/2026-10-13-decision-preparation-events/`。产品静态资产继续由原build-order本地构建，目标Chrome109。
 
-## 2026-10-13 推荐、当前取舍与采用预检
+### 2026-10-13 推荐、当前取舍与采用预检
 
 - `RunDecisionRecommendation` 从后端消费三类推荐结论、完成性主因、固定选择解释和当前3+3主要取舍，原生展开保存规则、全部差值、完成集合及真实剩余需求。前端仅格式化数值、单位和状态，理由由共同服务生成。
 - 当前查看候选与保存推荐分别显示。切换第三候选／基准后，保存推荐及raw最优／健康基准保留原身份，当前取舍按新基准读取。部分结果显示具体未排、合法暂缓和未知；搜索失败／跳过单列。
@@ -202,7 +216,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 推荐、排产完整性与当前采用预检各有独立展示。采用仍由原入口读取当前preview并在事务中复验；试调保存后先进行采用预检，通过后再确认。值班台收益／代价接同一差值投影，保留其明确候选、选批和窗口。
 - 推荐CSV/XLSX增加推荐说明、完成集合和剩余需求分行表，保存与页面一致的固定推荐、当前查看／基准、范围、版本、数值与缺项。第5阶段实施和独立验收状态在 `../features/2026-10-13-decision-recommendation/`；本节交接时第5阶段已通过独立复验，第6阶段已派发，第7—8阶段等待派发。
 
-## 2026-10-13 优化过程阅读
+### 2026-10-13 优化过程阅读
 
 - `RunDecisionComparison` 在候选表后挂默认折叠过程区，候选依据可打开指定过程成员；展开时 `RunDecisionProcess.Pane` 才读取，当前查看、比较基准与保存推荐继续保持各自身份。
 - 外层列全部候选的真实计算来源、profile、配置／实际派工规则、候选自身／来源求解耗时、状态、停止原因和保存最终值。复用来源使用永久引用，已开始预算中断、未开始和失败各有实际覆盖说明。
@@ -211,7 +225,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 过程查询叶保存独立成员、attempts/progress、排序、20/50页容量、页码及snapshot。现有 `APSResourceSession` 处理刷新、取消与重试，原 `return_decision_context` 恢复第三查看候选、基准、窗口和过程叶。代表尝试只读取已保存结果，最终候选可进入原甘特。
 - CSV分行及XLSX候选计算／进步事件／搜索阶段／代表尝试与屏幕共用读取协议，保留原数、单位、null和覆盖。原离线build-order与Chrome109目标编译两个过程组件，样式限定过程区。材料见 `../features/2026-10-13-decision-optimization-process/`。
 
-## 2026-10-13 计划相关页面的共同信息层级
+### 2026-10-13 计划相关页面的共同信息层级
 
 - 比较、候选／正式甘特、交付风险、资源负荷／班表及同义试调、值班台保留同一事实的一个默认展示位置。身份、范围、安排数量与操作各自归位；编号、读取时间、生成来源、精确边界、评分和数学说明按需展开，正常0值不扩成长句。
 - 比较页统一安排现有导航和操作工具组，移除隐藏标题留下的空容器。范围复用`WorkbenchFormat.compactRange`与`compactDateTime`：默认分钟显示，同年缩短日期、跨年保留年份；原查询秒、小数、区间开闭和末端零工时边界保存在原值和详情，打开关闭编辑保持原范围。
@@ -219,13 +233,13 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 工序已排齐、预计完工、未安排和因缺料暂未安排表达保存安排；现场完工沿执行记录。缺料与其他未安排可以出现在同一批次，汇总按实际非零项说明。推荐主因使用当时目标、真实指标和并列／健康决定项，搜索过程的接受与正式采用分别命名。
 - 班表突出可排总时长与时段，普通／急件效率分别折算标准工时并按需显示。资源工序起止合计、班次内实际占用、重叠区间长度、重叠重复计时和班表外占用继续消费各自字段，UI调整不改变计算。
 
-## 2026-10-13 读取与临时编号计算清理
+### 2026-10-13 读取与临时编号计算清理
 
 - 进程内读令牌直接绑定规范范围和实际来源状态，保留原`as_of`。正式采用来源状态由共同resolver明确给出可用性与缺项；原来源后补恢复、历史新增、运行非终态进度和查询范围改变仍使旧读取状态失效。
 - 缓存键复用查询值、原audit或已留存文档。SGS输入及日历证据用原结构比较，物料行由共同排序序号生成。缓存与临时展示键沿实际业务身份生成；真实归档、命令回放、外部下载与文件更换核对各自承担原职责。
 - 本地构建索引只登记来源、路径及字节；便携交付使用ZIP完整性和实际离线启动检查。全仓扫描、具体删除及保留用途记录在`../../evidence/sha256-cleanup/`。
 
-## 2026-10-14 第二版原型正式接入
+### 2026-10-14 第二版原型正式接入
 
 - 完成及已产出候选的部分结果由 `SchedulingWorkspace` 直接进入原 `RunCandidateWorkspace`／方案比较工作台；等待、计算中、失败及中断读取同一 Job 记录。批次业务名称、工序数量与目标来自接收时归档，接收／开始／结束时间保留保存精度，旧秒级记录明确其精度。
 - 全部候选卡保留当前查看、固定对照与保存推荐三个身份。交期页默认列当前超期、缺料及其他未安排批次；差异页依据永久工序的时间、资源、供应商、来源和安排状态变化筛选。`selected_batch_ref` 在候选切换及两类甘特返回时保持，单一全宽详情分别显示当前工序链或真实前后差异。三项差异摘要读取服务端值，零变化中性、未知保留缺项。
@@ -235,7 +249,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 资源共同读模型为 `decision-resource-v4`：班表内冲突与保留安排跨度分开，跨度跨非工作时间不推断实际加工。正式计划资源主表和冲突详情读取权威班表内重叠时段；旧缺项显示未记录。页面和原生导出分别标注资源版本及原共同指标版本。
 - 本轮实现、实际页面、原生文件和保全证据在 `../features/2026-10-13-decision-optimization-process/` 与 `../../evidence/prototype-integration/2026-10-14/`，实施验收与主对话验收分别记录。
 
-## 2026-10-14 历史走势与同条件对照
+### 2026-10-14 历史走势与同条件对照
 
 - `RunHistoryWorkspace.TopicTabs` 在既有“排产记录”入口组织“运行记录 / 历史走势”，默认保留运行查找。`DecisionHistoryWorkspace.Session` 持有时间线、业务／同条件模式、日期、指标、基准、资源窗、筛选排序、条目／条件分页和选中项；查询消费只读服务，前端负责显示与阅读上下文。
 - `DecisionHistoryChart.Chart` 与历史数值表读取同一当前页，图按发生时间排列，支持点选、方向键与Home／End。曲线消费每项指标的已知状态、单位、版本、范围和服务给出的连接标记；缺数值或时间保留可选择的条目，原数和具体原因进入详情。列表20／50分页与显示图页保持一致。
@@ -245,7 +259,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 零匹配沿共同空态提供清除日期与状态筛选入口，保留时间线、指标、基准和资源窗；越页恢复第1页继续原快照。三组页签使用系统主题选中色与键盘焦点。条目、基准选择、图和详情统一消费目录`label`，运行序号从完整未筛选目录确定，发生时间保留独立字段。
 - 代码入口：`frontend/workbench/app/RunHistoryWorkspace.jsx:TopicTabs`、`DecisionHistoryWorkspace.jsx:Session/Export`、`DecisionHistoryChart.jsx:Chart`、`DecisionHistoryDetails.jsx:Details`、`SchedulingWorkspace.jsx:HistoryReturn`、`web/routes/workbench/navigation_boot.py:_decision_history_state`。设计依据：[历史走势与同条件对照](../features/2026-10-14-decision-history-trends/decision-history-trends-design.md)；本节更新实现职责，阶段验收材料保持独立。
 
-## 2026-10-15 统一优化与保存结果读取
+### 2026-10-15 统一优化与保存结果读取
 
 - 新运行使用一次共同预算/解码/档案，发布1—3份实际业务代表；保存推荐、当前查看与比较基准仍各自持有身份。各目标winner可指向同一代表，部分结果依已知完成集合表达，目标搜索机会与安排完整性分别读取。旧4/6/8候选、weight/health/selection及复用/失败/跳过继续读取原保存值。
 - Schema42包含v41的三类不可变`decision-read-v1`保存读模型，以及v42原生business_objective候选与四目标role。受理与完成事务构造读模型，查询保持只读，缺行/损坏/未知版本明确失败；历史升级沿显式迁移，不在首次浏览中补写。

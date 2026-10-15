@@ -12,7 +12,6 @@ from core.models.workbench_command import (
     WorkbenchCommandOutcome,
     WorkbenchCommandRejected,
     WorkbenchCommandUncertain,
-    canonical_json,
     validate_request_key,
 )
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -78,8 +77,7 @@ class WorkbenchCommandService:
         if not isinstance(action, str) or not action or not isinstance(context_ref, str) or not context_ref:
             raise WorkbenchCommandRejected("invalid_input", "没有指定要操作哪条记录或做什么操作。", 400)
         try:
-            canonical_json(normalized_input)
-            input_text = content_text(normalized_input)
+            input_text = content_text(normalized_input, json_input=True)
         except (TypeError, ValueError, OverflowError) as exc:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容里有存不下来的数据，操作没有完成。", 400) from exc
         if self.conn.in_transaction:
@@ -108,9 +106,5 @@ class WorkbenchCommandService:
         if not isinstance(outcome, WorkbenchCommandOutcome):
             raise TypeError("领域动作必须返回明确的数据库命令结果。")
         receipt_ref = uuid.uuid4().hex
-        self.repo.insert(request_key=request_key, receipt_ref=receipt_ref, action=action,
-                         context_ref=context_ref, input_json=input_text, outcome=outcome)
-        row = self.repo.get(request_key)
-        if row is None:
-            raise RuntimeError("命令回执写入后无法读回。")
-        return self.repo.public_result(row, replayed=False)
+        return self.repo.insert(request_key=request_key, receipt_ref=receipt_ref, action=action,
+                                context_ref=context_ref, input_json=input_text, outcome=outcome)

@@ -1,6 +1,7 @@
 """Only unstarted, freshly verified run claims may retry transient SQLite locks."""
 
 import sqlite3
+from typing import Any, Dict, Optional, Tuple, cast
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
@@ -28,7 +29,7 @@ def _is_sqlite_lock(exc):
     return str(exc).lower() in ("database is locked", "database table is locked")
 
 
-def claim_run(conn, run_ref, now, retry_original=None):
+def claim_run(conn, run_ref, now, retry_original=None) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
     repo = WorkbenchRunRepository(conn)
     try:
         with TransactionManager(conn).transaction(begin_immediate=True):
@@ -40,11 +41,14 @@ def claim_run(conn, run_ref, now, retry_original=None):
                 _require_unchanged_unclaimed(repo, row, retry_original)
             else:
                 if row["state"] != "queued" or row["stage"] != "queued":
-                    return None, public_job_status(repo.status(run_ref))
-                row = repo.get(run_ref)
+                    return row, public_job_status(repo.status(run_ref))
+                # The same write transaction already owns this observed job.
+                row = cast(Dict[str, Any], repo.get(run_ref))
             require_admission(repo, row)
-            if not repo.claim(run_ref, PROCESS_EXECUTOR_REF, now()):
+            claimed = repo.claim(run_ref, PROCESS_EXECUTOR_REF, now())
+            if claimed is None:
                 raise RuntimeError("Run was claimed by another worker")
+            row.update(claimed)
         return row, None
     except sqlite3.OperationalError as exc:
         # TransactionManager surfaces rollback failure as RuntimeError. BEGIN

@@ -17,17 +17,15 @@ from core.services.scheduler.contracts.external_context import (
     member_index,
     merged_supplier_problem,
 )
+from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_execution_resource_facts import collect_resource_execution_facts
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
     merged_external_group_identity,
 )
-from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.execution.ledger import ExecutionLedgerService
-from core.services.workbench.facts.run_input_codec import restore_execution_projections
 from core.services.workbench.facts.run_input_rows import fail
-from data.repositories.schedule_execution_facts_repo import ScheduleExecutionFactsRepository
 
 
 def prime_template_cache(svc, tables, batches, operations):
@@ -63,14 +61,21 @@ def _merged_groups(tables, batches, operations):
     return groups
 
 
+def execution_groups(facts, batches, operations):
+    key = tuple(sorted(op.id for op in operations))
+    if key not in facts.external_groups:
+        facts.external_groups[key] = _merged_groups(facts.tables, batches, operations)
+    return facts.external_groups[key]
+
+
 def _cycle_members(groups, periods, actual_ids):
     return {op_id: {"start": periods[group][0].isoformat(), "end": periods[group][1].isoformat()}
             for op_id, group in groups.items() if op_id not in actual_ids and group in periods}
 
 
-def external_execution_cycles(tables, batches, operations, seeds, actual_ids):
+def external_execution_cycles(facts, batches, operations, seeds, actual_ids):
     """Use proven actual periods with valid immutable batch/group/piece bindings."""
-    groups = _merged_groups(tables, batches, operations)
+    groups = execution_groups(facts, batches, operations)
     return _cycle_members(groups, merged_actual_group_intervals(groups, seeds, actual_ids), actual_ids)
 
 
@@ -109,29 +114,28 @@ def preflight_external_cycles(facts, batches, operations, projections):
     if not any(op["source"] == "external" and (contexts.get(op["id"]) or {}).get("merge_mode") == "merged"
                and projections[facts.operation_ref(op)]["first_actual_start"] for op in operations):
         return {}, []
-    svc = ScheduleService(facts.conn)
-    version = svc.history_repo.get_latest_version()
+    svc = build_schedule_repository_bundle(facts.conn)
+    version = max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
     prior = prior_execution_projections(facts, version, projections)
     models = [SimpleNamespace(**op) for op in operations]
-    _, fixed, completed, seeds, _, _ = build_execution_guardrails_from_projections(
-        svc, models, prev_version=version, execution_projections=prior)
     batch_models = {batch["batch_id"]: SimpleNamespace(**batch) for batch in batches}
+    groups = execution_groups(facts, batch_models, models)
+    _, fixed, completed, seeds, _, _ = build_execution_guardrails_from_projections(
+        svc, models, prev_version=version, execution_projections=prior, facts=facts, external_groups=groups)
     rows = {op["id"]: op for op in operations}
-    groups = _merged_groups(facts.tables, batch_models, models)
     periods, problems = _actual_periods(facts, groups, seeds, fixed | completed, rows, completed_ids=completed)
     cycles = _cycle_members(groups, periods, fixed | completed)
     return cycles, problems
 
 
 def prior_execution_projections(facts, version, projections):
-    rows = ScheduleExecutionFactsRepository(facts.conn).latest_plan_rows(version)
-    refs = {facts.operation_refs[row["op_id"]] for row in rows}
-    supplied = dict(projections)
+    refs = {facts.operation_refs[op_id] for op_id in facts.latest_plan_rows(version)}
+    supplied = facts.execution_projections
     missing = sorted(refs - set(supplied))
-    ledger = ExecutionLedgerService(facts.conn)
+    ledger = getattr(facts, "execution_service", None) or ExecutionLedgerService(facts.conn)
     for offset in range(0, len(missing), 10000):
-        supplied.update({item.operation_ref: item.to_dict() for item in ledger.project_operations(missing[offset:offset + 10000])})
-    return restore_execution_projections([supplied[ref] for ref in sorted(refs)])
+        supplied.update((item.operation_ref, item) for item in ledger.project_operations(missing[offset:offset + 10000]))
+    return [supplied[ref] for ref in sorted(refs)]
 
 
 _SEEDED = (EXECUTION_STATUS_PROCESSING, EXECUTION_STATUS_PAUSED, EXECUTION_STATUS_COMPLETED)
@@ -150,18 +154,20 @@ def _projection_holds_resource(projection):
 
 
 def _planned_external(facts, version):
-    planned = {row["op_id"] for row in facts.schedule_through(version)}
+    planned = set(facts.latest_plan_rows(version))
     return {facts.operation_refs[op["id"]]: op for op in facts.tables["BatchOperations"]
             if op["source"] == "external" and op["id"] in planned and op["id"] in facts.operation_refs}
 
 
 def _resource_bearing_external(facts, version, projections):
     external = _planned_external(facts, version)
-    supplied = {ref: projections[ref] for ref in external if ref in projections}
+    supplied = {ref: facts.execution_projections[ref].to_dict() for ref in external if ref in facts.execution_projections}
     missing = sorted(set(external) - set(supplied))
-    ledger = ExecutionLedgerService(facts.conn)
+    ledger = getattr(facts, "execution_service", None) or ExecutionLedgerService(facts.conn)
     for offset in range(0, len(missing), 10000):
-        supplied.update((row.operation_ref, row.to_dict()) for row in ledger.project_operations(missing[offset:offset + 10000]))
+        for row in ledger.project_operations(missing[offset:offset + 10000]):
+            facts.execution_projections[row.operation_ref] = row
+            supplied[row.operation_ref] = row.to_dict()
     return {op["id"]: (op, supplied[ref]) for ref, op in external.items()
             if _projection_holds_resource(supplied[ref])}
 
@@ -203,8 +209,11 @@ def external_resource_issues(facts, svc, operations, projections, version):
     if not candidates:
         return []
     try:
-        guard_facts, _, _ = collect_resource_execution_facts(
-            svc, prev_version=version, execution_projections=prior_execution_projections(facts, version, projections))
+        if version not in facts.resource_execution:
+            facts.resource_execution[version] = collect_resource_execution_facts(
+                svc, prev_version=version, execution_projections=prior_execution_projections(facts, version, projections),
+                capture=facts.capture, ledger=getattr(facts, "execution_service", None))
+        guard_facts, _, _ = facts.resource_execution[version]
     except (AppError, ValueError, TypeError, KeyError, OverflowError):
         # 执行记录本身核对不了时排产也会失败；仍逐条指出带资源的外协记录，按会拦下整次排产提示。
         guard_facts = None

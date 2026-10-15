@@ -1,7 +1,8 @@
 """Calendar business contents for SGS checkpoints, independent of filled policy caches.
 
 SQLite metadata is checked once per decode (and again while building new content).
-Business tables are read again only after a version change, except writable
+An already captured run supplies its fixed business rows directly. Live
+business tables are read again only after a version change, except writable
 transactions: their rollback cannot be certified by total_changes, so their
 uncommitted contents are never reused or put into the reusable cache.
 """
@@ -37,7 +38,9 @@ def calendar_checkpoint_snapshot(service):
         if reusable and cached is not None and cached[0] is connection and cached[1] == metadata:
             return cached[2]
         # The fixed business SELECTs already return immutable row tuples in a stable order.
-        rows = CalendarCheckpointRepository(connection).calendar_signature_rows()
+        capture = service._engine.capture
+        rows = (CalendarCheckpointRepository(connection).calendar_signature_rows() if capture is None
+                else CalendarCheckpointRepository(connection).calendar_signature_rows(capture=capture))
         after = _metadata(connection)
         if metadata != after:
             raise ValidationError("读取断点日历证书时日历输入发生变化，请重新排产。", field="decode_checkpoint",

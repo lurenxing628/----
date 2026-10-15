@@ -1,5 +1,7 @@
 """Execution reads keep their real cohort without unrelated plan projections."""
 
+import json
+from datetime import datetime, timedelta
 from io import BytesIO
 
 import pytest
@@ -131,17 +133,105 @@ def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monke
         assert response.status_code == 409 and response.get_json()['error']['code'] == 'snapshot_stale'
 
 
-def test_required_task_payload_still_has_original_plan_budget(ledger_case):
+def test_internal_execution_cohort_uses_actual_endpoint_budget(ledger_case):
     case = ledger_case
     plan_ref, _ = _three_tasks(case)
-    # The required task data itself exceeds 8 MiB; removing unused projections
-    # cannot admit it or silently truncate it.
-    case.conn.execute('UPDATE BatchOperations SET op_type_name=?', ('工序' * (2 * 1024 * 1024),))
+    # A full internal cohort may exceed the plan endpoint's 8 MiB while the
+    # paged field response remains small. Only the actual HTTP output is bounded.
+    case.conn.execute('UPDATE BatchOperations SET op_type_name=? WHERE id=?', ('工序' * (2 * 1024 * 1024), case.op_id))
     case.conn.commit()
     before = all_rows(case.conn)
     reader = queries.WorkbenchPlanQueryService(case.conn)
     with reader.read_snapshot():
-        with pytest.raises(WorkbenchCommandRejected) as rejected:
-            reader.execution_workspace(PlanReadScope(plan_ref))
-    assert rejected.value.code == 'query_too_large' and rejected.value.status == 413
+        data, _ = reader.execution_workspace(PlanReadScope(plan_ref))
+    assert data['task_count'] == 3 and data['tasks_complete'] is True
+    client = app_for(case).test_client()
+    field = client.get(FIELD + '/tasks', query_string=dict(plan_ref=plan_ref, size=1, page=2))
+    assert field.status_code == 200 and field.get_json()['data']['page']['total'] == 3
+    oversized = client.get(FIELD + '/tasks', query_string=dict(plan_ref=plan_ref, size=1, page=1))
+    assert oversized.status_code == 413 and oversized.get_json()['error']['code'] == 'query_too_large'
     assert all_rows(case.conn) == before
+
+
+def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger_case, monkeypatch):
+    from flask import g
+
+    from core.services.workbench.execution import actual_gantt
+
+    case = ledger_case
+    batches = ['SCALE-' + str(index).zfill(3) for index in range(200)]
+    case.conn.executemany("INSERT INTO Batches(batch_id,part_no,quantity) VALUES (?,'P1',10)",
+                          [(batch,) for batch in batches])
+    case.conn.executemany("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source) "
+                          "VALUES (?,?,?,'T1','Turning','internal')",
+                          [('SCALE-' + str(index), batch, sequence)
+                           for index, (batch, sequence) in enumerate((batch, sequence)
+                               for batch in batches for sequence in range(1, 101))])
+    rows = list(case.conn.execute("SELECT id,batch_id,seq FROM BatchOperations WHERE batch_id LIKE 'SCALE-%' ORDER BY id"))
+    assert len(rows) == 20000
+    start = datetime(2026, 9, 9, 8)
+    schedule = []
+    for index, row in enumerate(rows):
+        low = start + timedelta(days=index // 200, minutes=index % 200)
+        schedule.append((row['id'], low.isoformat(), (low + timedelta(minutes=1)).isoformat()))
+    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) "
+                      "VALUES (2,'actual-range','success','{}','2026-09-09T08:00:00')")
+    case.conn.executemany("INSERT INTO Schedule(version,op_id,machine_id,operator_id,start_time,end_time) "
+                          "VALUES (2,?,'M1','O1',?,?)", schedule)
+    case.conn.commit()
+    case.install()
+    case.path = case.conn.execute('PRAGMA database_list').fetchone()[2]
+    plan_ref, projected, statements = case.plan_ref(2), [], []
+    original = actual_gantt.ledger_projection
+
+    def project(conn, ref, tasks):
+        projected.append(len(tasks))
+        return original(conn, ref, tasks)
+
+    monkeypatch.setattr(actual_gantt, 'ledger_projection', project)
+    monkeypatch.setattr(queries.WorkbenchPlanQueryService, 'execution_workspace',
+                        lambda *args, **kwargs: pytest.fail('Actual reconstructed an execution workspace'))
+    app = app_for(case)
+
+    @app.before_request
+    def trace():
+        g.db.set_trace_callback(statements.append)
+
+    client = app.test_client()
+    scopes = [({'plan_finish_date_from': '2026-09-09', 'plan_finish_date_to': '2026-09-09'}, 200),
+              ({'batch_ids': json.dumps([batches[0]])}, 100),
+              ({'range_start': '2026-09-09T08:00:00', 'range_end': '2026-09-09T08:10:00'}, 10)]
+    for scope, expected in scopes:
+        statements.clear()
+        response = client.get(ACTUAL, query_string=dict(plan_ref=plan_ref, **scope))
+        assert response.status_code == 200, response.get_json()
+        data = response.get_json()['data']
+        assert data['task_count'] == len(data['items']) == projected[-1] == expected
+        assert data['availability']['state'] == 'available' and data['items_complete'] is True
+        assert data['critical_chain']['state'] == 'available'
+        assert data['critical_chain']['plan_task_count'] == len(data['critical_chain']['nodes']) == 20000
+        assert data['critical_chain']['visible_node_count'] == expected
+        source_reads = [' '.join(sql.upper().replace('"', '').split()) for sql in statements]
+        assert sum(' FROM SCHEDULE R WHERE R.VERSION = 2 ' in sql for sql in source_reads) == 1
+    response = client.get(ACTUAL, query_string={'plan_ref': plan_ref})
+    assert response.status_code == 413 and projected[-1] == 20000
+    error = response.get_json()['error']
+    assert error['code'] == 'query_too_large' and '10000' in error['message']
+    assert '计划完工日期' in error['message'] and '批次' in error['message']
+
+
+def test_actual_resource_filter_keeps_planned_and_reported_owners(ledger_case):
+    case = ledger_case
+    plan_ref, refs = _three_tasks(case)
+    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Reported machine','T1')")
+    case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('O1','M2')")
+    case.conn.commit()
+    api = FieldAPI(case)
+    task = next(row for row in api.read(plan_ref=plan_ref)['data']['tasks'] if row['task_ref'] == refs[0])
+    api.create(case.values(2, actual_machine_ref=case.ref('machine', 'M2')), task)
+    client = app_for(case).test_client()
+    scope = dict(plan_ref=plan_ref, plan_finish_date_from='2026-09-09',
+                 plan_finish_date_to='2026-09-09', batch_ids=json.dumps(['B1']), resource_type='machine')
+    for key, expected in (('M1', refs), ('M2', refs[:1])):
+        data = read(client, ACTUAL, resource_ref=case.ref('machine', key), **scope)['data']
+        assert {item['task']['task_ref'] for item in data['items']} == set(expected)

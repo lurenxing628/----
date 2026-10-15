@@ -89,7 +89,8 @@ class IteratedGreedyRun:
         self.started_at = started
         best = self.state.best
         parent = _parent_from_candidate(best, operations=self.operations, graph_context=self.graph_context,
-                                        resource_pool=(best or {}).get("resource_pool"))
+                                        resource_pool=(best or {}).get("resource_pool"),
+                                        prepared_parent=self.pool.prepare_parent(best) if best is not None else None)
         profile = self.parent_profile(best)
         if parent is None or profile is None:
             self.report["status"] = "skipped_no_parent"

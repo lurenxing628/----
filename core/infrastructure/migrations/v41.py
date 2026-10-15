@@ -38,9 +38,9 @@ def _prepare_candidate(store, packet, candidate):
         if len(rows) != candidate["task_count"]:
             corrupt()
         prepared_tasks = {}
-        rows, intervals = validate_saved_tasks(rows, candidate, packet["facts"], prepared_tasks=prepared_tasks)
+        rows, intervals, ids = validate_saved_tasks(rows, candidate, packet["facts"], prepared_tasks=prepared_tasks)
         ready = packet["prepared_candidates"][ref] = {
-            "raw_tasks": rows, "intervals": intervals, "prepared_tasks": prepared_tasks}
+            "raw_tasks": rows, "intervals": intervals, "prepared_tasks": prepared_tasks, "scheduled_op_ids": ids}
     return ready
 
 
@@ -72,7 +72,8 @@ def _candidate_provider(store, repo, current):
             ready["tasks"] = project_validated_tasks(ready["raw_tasks"], candidate, packet["facts"], ready["intervals"],
                                                      prepared_tasks=ready["prepared_tasks"])
         return read_candidate_source(store, candidate_ref, prepared={
-            **packet, "candidate": candidate, "raw_tasks": ready["raw_tasks"], "tasks": ready["tasks"]})
+            **packet, "candidate": candidate, "raw_tasks": ready["raw_tasks"], "tasks": ready["tasks"],
+            "scheduled_op_ids": ready["scheduled_op_ids"]})
 
     return load
 

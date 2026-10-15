@@ -1,11 +1,8 @@
 """One candidate's full immutable admission comparison, independent of viewport."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_command import canonical_json
 from core.models.workbench_run_analysis import delivery_deltas, delivery_metrics, operation_metrics
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import bounded_size
 
 from .candidate_comparison import (
     _analysis_source,
@@ -39,5 +36,4 @@ def read_candidate_analysis(conn, candidate_ref):
                           "operation_identity": "permanent_operation_reference", "comparison": "candidate_minus_admission_official",
                           "current_entities_consulted": False, "recommendation": None},
                 "capabilities": {"view": True, "adopt": False, "edit_draft": False, "report_actual": False}}
-        bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
         return data, _analysis_state(source)

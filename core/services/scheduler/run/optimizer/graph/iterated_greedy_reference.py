@@ -29,7 +29,7 @@ def seed_solution_pool(search: Any) -> None:
     sources.extend(elite["candidate"] for elite in search.pool.elites)
     for candidate in sources:
         parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context,
-                                        resource_pool=candidate.get("resource_pool"))
+                                        resource_pool=candidate.get("resource_pool"), prepared_parent=search.pool.prepare_parent(candidate))
         if parent is None:
             continue
         search.solution_pool.add(PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
@@ -116,7 +116,7 @@ def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[Gr
     if search.operations is None or search.graph_context is None:
         return
     parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context,
-                                    resource_pool=candidate.get("resource_pool"))
+                                    resource_pool=candidate.get("resource_pool"), prepared_parent=search.pool.prepare_parent(candidate))
     if parent is None:
         return
     search.report["incumbent_adoptions"] += 1

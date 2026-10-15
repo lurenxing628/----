@@ -25,7 +25,6 @@ from web.api_responses import query_success
 
 from .material_actions_context import (
     EXPORT_SCOPE,
-    check_source_snapshot,
     issue_binding,
     json_body,
     opaque_ref,
@@ -33,6 +32,7 @@ from .material_actions_context import (
     resolve_binding,
     scope_input,
 )
+from .read_context import bind_read_snapshot, resolve_read_snapshot
 
 
 def _selection(body, reader, scope):
@@ -55,10 +55,11 @@ def material_export_preview():
     scope, query_scope, snapshot_ref = scope_input(body)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        snapshot = check_source_snapshot(query_scope, fingerprint, snapshot_ref)
+        read_binding = resolve_read_snapshot(snapshot_ref)
+        snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
         arguments, count = _selection(body, reader, scope)
-        binding = {"version": 1, "source": "production", "query_scope": query_scope,
-                   "snapshot_ref": snapshot_ref, "arguments": arguments}
+        binding = {"query_scope": query_scope, "snapshot_ref": snapshot_ref,
+                   "read_binding": read_binding, "arguments": arguments}
         ref, expires_at = issue_binding(EXPORT_SCOPE, binding)
     data = {"export_ref": ref, "expires_at": expires_at, "selection": body["selection"],
             "row_count": count, "scope": arguments.get("scope"), "formats": ["csv", "xlsx"]}
@@ -89,7 +90,7 @@ def material_export():
     binding = resolve_binding(EXPORT_SCOPE, ref, field="export_ref", code="snapshot_stale")
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        snapshot = check_source_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"])
+        snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=binding["read_binding"])
         rows = WorkbenchMaterialFileService(g.db, current_app.logger).export_rows(file_format, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
     response = _download_response(WorkbenchMaterialFileService.write_export(rows, file_format))
