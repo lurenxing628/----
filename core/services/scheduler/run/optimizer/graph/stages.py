@@ -1,13 +1,14 @@
 """The three graph phase stages as rotation units: weight profiles, elite repair, iterated greedy."""
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.algorithms import SortStrategy
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
 from core.services.scheduler.run.optimizer.candidate_fingerprint import score_strictly_better
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
+from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
 from .acceptance import build_graph_ready_improve_only_acceptance_event
 from .context import reason_from_validation
@@ -16,12 +17,10 @@ from .iterated_greedy_run import IteratedGreedyRun
 from .predecode import GraphReadyProfileSearch
 from .repair import EliteRepairPool, EliteRepairRun
 from .reporting import append_graph_attempt, append_graph_trace, record_rejected_attempt
-from .stage_scheduler import SearchStage
 from .v2_contract import is_graph_ready_v2_contract_error
 
-# Consecutive decoded profiles whose schedules were all seen before end the profile stage early.
-PROFILE_STAGNATION_REPEATED_OUTPUTS = 6
-
+if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 class GraphSearchState:
     """The incumbent shared by all stages of one graph phase run."""
@@ -37,7 +36,8 @@ class ProfileStage(SearchStage):
                  state: GraphSearchState, order: List[str], strict_mode: bool, base_strategy: SortStrategy,
                  dispatch_rule_cfg: str, version: int, attempts: List[Dict[str, Any]], improvement_trace: List[Dict[str, Any]],
                  search_report_state: Any, clock: Callable[[], float], t_begin: float,
-                 extra_summary: Optional[Callable[[], Dict[str, Any]]] = None) -> None:
+                 extra_summary: Optional[Callable[[], Dict[str, Any]]] = None,
+                 decode_session: SharedDecodeSession) -> None:
         self.profiles = list(profiles)
         self.search = search
         self.pool = pool
@@ -53,30 +53,17 @@ class ProfileStage(SearchStage):
         self.clock = clock
         self.t_begin = t_begin
         self.extra_summary = extra_summary
+        self.decode_session = decode_session
         self.index = 0
         self.finished = False
-        self.repeated_outputs = 0
-        self.stagnated = False
 
     def available(self) -> bool:
-        return self.index < len(self.profiles) and not self.stagnated and self.search.can_start()
+        return self.index < len(self.profiles) and self.search.can_start()
 
     def unavailable_reason(self) -> Optional[str]:
         if self.index >= len(self.profiles):
             return "profiles_exhausted"
-        if self.stagnated:
-            return "profiles_stagnated"
-        if self.search.cost_stopped:
-            return "skipped_by_estimated_decode_cost"
         return None if self.search.can_start() else self.search.budget.stop_reason
-
-    def _note_output(self, same_as_seen: bool) -> None:
-        """Stop decoding profiles once a run of them only reproduced schedules already seen."""
-        self.repeated_outputs = self.repeated_outputs + 1 if same_as_seen else 0
-        if self.repeated_outputs >= PROFILE_STAGNATION_REPEATED_OUTPUTS and not self.stagnated:
-            self.stagnated = True
-            self.search.report["stagnation_stop"] = {"consecutive_repeated_outputs": self.repeated_outputs,
-                                                     "unvisited_profiles": len(self.profiles) - self.index}
 
     def run_task(self) -> int:
         profile = self.profiles[self.index]
@@ -87,7 +74,6 @@ class ProfileStage(SearchStage):
         if candidate is None:
             return 0
         fingerprint = self.pool.observe(candidate, profile)
-        self._note_output(fingerprint.same_as_seen)
         if not _candidate_should_replace_best(candidate, profile=profile, best=self.state.best, attempts=self.attempts,
                                               search_report_state=self.search_report_state, fingerprint=fingerprint,
                                               clock=self.clock, t_begin=self.t_begin):
@@ -121,8 +107,6 @@ class RepairStage(SearchStage):
     def unavailable_reason(self) -> Optional[str]:
         if not self.run.pool.limits.enabled:
             return "disabled"
-        if self.run.budget.remaining_candidates() <= 0:
-            return "candidate_budget"
         if self.run.clock() >= self.run.repair_deadline:
             return "time_budget"
         if self.run.exhausted:

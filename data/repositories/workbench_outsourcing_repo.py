@@ -6,12 +6,19 @@ core.services.workbench.outsourcing.service; this module only returns what is st
 
 import json
 import secrets
+from typing import Any, Dict, Optional, TypedDict
 
+from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_outsourcing_schema import contract_issues
 from core.infrastructure.workbench_outsourcing_source_schema import contract_issues as source_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.models.workbench_command import canonical_json
+
+
+class RawReceiptFacts(TypedDict):
+    header: Optional[Dict[str, Any]]
+    latest: Optional[Dict[str, Any]]
 
 
 class WorkbenchOutsourcingRepository:
@@ -20,8 +27,10 @@ class WorkbenchOutsourcingRepository:
 
     def schema_issues(self):
         """Receipt, source-confirmation, metadata and plan-identity contract issues; empty when complete."""
-        return (contract_issues(self.conn) + source_contract_issues(self.conn) +
-                workbench_metadata_contract_issues(self.conn) + workbench_plan_identity_contract_issues(self.conn))
+        structure = SchemaStructure(self.conn)
+        return (contract_issues(self.conn, structure=structure) + source_contract_issues(self.conn, structure=structure) +
+                workbench_metadata_contract_issues(self.conn, structure=structure) +
+                workbench_plan_identity_contract_issues(self.conn, structure=structure))
 
     def header(self, ref):
         """Receipt header with decoded origin/identity and the stored member refs; None when absent.
@@ -32,13 +41,39 @@ class WorkbenchOutsourcingRepository:
         row = self.conn.execute("SELECT * FROM WorkbenchOutsourcingReceipts WHERE outsourcing_ref=?", (ref,)).fetchone()
         if row is None:
             return None
+        members = [row[0] for row in self.conn.execute("SELECT operation_ref FROM WorkbenchOutsourcingMembers WHERE outsourcing_ref=? ORDER BY operation_ref", (ref,))]
+        return self._header(dict(row), members)
+
+    @staticmethod
+    def _header(row, members):
         result = dict(row)
         result["origin"] = json.loads(result.pop("origin_json"))
         result["identity"] = json.loads(result.pop("identity_json"))
-        members = [row[0] for row in self.conn.execute("SELECT operation_ref FROM WorkbenchOutsourcingMembers WHERE outsourcing_ref=? ORDER BY operation_ref", (ref,))]
         result["target"] = {"kind": result["target_kind"], "batch_ref": result["batch_ref"],
                             "supplier_ref": result["supplier_ref"], "operation_refs": members}
         return result
+
+    def receipt_facts(self, refs) -> Dict[str, RawReceiptFacts]:
+        """Read headers, sorted members and latest raw facts for these receipt refs once."""
+        refs = list(dict.fromkeys(refs))
+        captured: Dict[str, RawReceiptFacts] = {ref: {"header": None, "latest": None} for ref in refs}
+        for start in range(0, len(refs), 400):
+            chunk = refs[start:start + 400]
+            marks = ",".join("?" for _ in chunk)
+            headers = {row["outsourcing_ref"]: dict(row) for row in self.conn.execute(
+                "SELECT * FROM WorkbenchOutsourcingReceipts WHERE outsourcing_ref IN (" + marks + ")", chunk)}
+            members = {ref: [] for ref in chunk}
+            for row in self.conn.execute("SELECT outsourcing_ref,operation_ref FROM WorkbenchOutsourcingMembers "
+                                         "WHERE outsourcing_ref IN (" + marks + ") ORDER BY operation_ref", chunk):
+                members[row["outsourcing_ref"]].append(row["operation_ref"])
+            for ref, row in headers.items():
+                captured[ref]["header"] = self._header(row, members[ref])
+            for row in self.conn.execute("SELECT f.* FROM WorkbenchOutsourcingFacts f JOIN "
+                "(SELECT outsourcing_ref,MAX(sequence) AS sequence FROM WorkbenchOutsourcingFacts "
+                "WHERE outsourcing_ref IN (" + marks + ") GROUP BY outsourcing_ref) latest "
+                "ON latest.outsourcing_ref=f.outsourcing_ref AND latest.sequence=f.sequence", chunk):
+                captured[row["outsourcing_ref"]]["latest"] = dict(row)
+        return captured
 
     def latest(self, ref):
         """Highest-sequence confirmation fact of the receipt; None when the receipt has no fact."""
@@ -55,10 +90,6 @@ class WorkbenchOutsourcingRepository:
         rows = self.conn.execute("SELECT outsourcing_ref FROM WorkbenchOutsourcingReceipts" + where +
                                  " ORDER BY outsourcing_ref LIMIT ?", params + (limit + 1,)).fetchall()
         return [row[0] for row in rows]
-
-    def plan_identity_revision(self):
-        """计划身份时钟当前修订号（singleton=1 行的 revision）。"""
-        return self.conn.execute("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton=1").fetchone()[0]
 
     def has_confirm_receipts(self):
         """是否已有任何 outsourcing.confirm 命令回执。"""

@@ -216,6 +216,9 @@ def build_result_summary(
         time_cost_ms=time_cost_ms,
         serialize_end_date_fn=serialize_end_date,
     )
+    preserve_full_result = (not ctx.simulate and isinstance(ctx.candidate_comparison_public, dict)
+                            and ctx.candidate_comparison_public.get("generation_policy_version") == "unified_search_v1")
+    full_json = json.dumps(result_summary_obj, ensure_ascii=False) if preserve_full_result else None
     result_summary_obj = apply_summary_size_guard(result_summary_obj)
-    result_summary_json = json.dumps(result_summary_obj, ensure_ascii=False)
+    result_summary_json = full_json if full_json is not None else json.dumps(result_summary_obj, ensure_ascii=False)
     return runtime_state.overdue_items, result_status, result_summary_obj, result_summary_json, time_cost_ms

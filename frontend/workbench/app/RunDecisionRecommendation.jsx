@@ -37,8 +37,22 @@
   }
   function SelectionEvidence({ basis, data }) {
     const name = reference => { const row = data.candidates.find(candidate => candidate.candidate_ref === reference); return row ? row.label || '候选名称未填写' : '资料未记录'; };
-    return <><h4>排产时的推荐规则与数值</h4><dl className="rd-selection-facts">
-      <div><dt>目标最优候选</dt><dd>{name(basis.raw_score_best_candidate_ref)}</dd></div><div><dt>健康比较原方案</dt><dd>{name(basis.health_reference_candidate_ref)}</dd></div>
+    const unified = window.RunGenerationContract.unified(basis), G = window.RunGenerationContract;
+    return <><h4>{unified ? '共同优化的推荐规则与数值' : '排产时的推荐规则与数值'}</h4><dl className="rd-selection-facts">
+      {unified ? <>
+        <div><dt>主目标</dt><dd>{G.objectiveLabel(basis.primary_objective)}</dd></div>
+        <div><dt>本轮推荐</dt><dd>{name(basis.selected_candidate_ref)}<window.WorkbenchReference value={basis.selected_candidate_ref} label="候选永久编号" /></dd></div>
+        {basis.target_objectives.map(objective => {
+          const reference = basis.objective_winners[objective], reason = basis.objective_winner_reasons[objective];
+          return <div key={objective} data-selection-objective={objective}><dt>{G.objectiveLabel(objective)}代表</dt><dd>{reference === null ? '本轮未保存该方向代表' : name(reference)}
+            <window.WorkbenchReference label="方向代表记录" entries={{ '业务方向': objective, '候选永久编号': reference, '代表缺项说明': reason }} /></dd></div>;
+        })}
+        <div><dt>推荐评分范围</dt><dd><C.ScoringScope value={basis.scoring_scope} /></dd></div>
+        <div><dt>选择记录</dt><dd>{basis.evidence_state === 'complete' ? '已保存完整评分依据' : '已保存部分评分依据'}<window.WorkbenchReference label="查看保存的选择依据" entries={{
+          '生成策略版本': basis.generation_policy_version, '选择规则版本': basis.selection_policy_version,
+          '选择原因': basis.reason_code, '主目标指标顺序': basis.objective_field_order[basis.primary_objective], '主目标保存评分': basis.selected_score
+        }} /></dd></div>
+      </> : <><div><dt>目标最优候选</dt><dd>{name(basis.raw_score_best_candidate_ref)}</dd></div><div><dt>健康比较原方案</dt><dd>{name(basis.health_reference_candidate_ref)}</dd></div></>}
       {basis.explanation.entries.map(entry => <div key={entry.key} data-selection-evidence={entry.key}>
       <dt>{entry.label}</dt><dd>{entry.text}<small className="rd-evidence-values">{[['reference_value', '参考值'], ['selected_value', '本项值'], ['value', '记录值'], ['limit', '采用上限'], ['tolerance', '采用容差']].filter(([key]) => entry[key] !== null).map(([key, label]) => {
         const unit = key === 'tolerance' ? entry.tolerance_unit : entry.unit, value = unit === '%' ? window.WorkbenchFormat.percent(entry[key]) : window.WorkbenchFormat.number(entry[key], { digits: 6, trim: true });

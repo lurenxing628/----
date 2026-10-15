@@ -15,11 +15,31 @@ _fixture = collection_api_fixture
 
 
 @pytest.mark.parametrize("advanced", [True])
-def test_delete_cross_page_explicit_refs_survive_filter_and_match_actual_js_contract(collection_api, monkeypatch, advanced):
+def test_delete_cross_page_explicit_refs_survive_filter_and_match_actual_js_contract(collection_api, monkeypatch, advanced, record_property):
+    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+
     api = collection_api
     codes = seed_table_rows(api, 43)
-    first = api.listing({"query": "TABLE-"}, size=20)
-    third = api.listing({"query": "TABLE-"}, size=20, page=3, snapshot_ref=first["meta"]["snapshot_ref"])
+    original, calls = WorkbenchProcessQueryService.page, []
+
+    def page(reader, query):
+        calls.append(query.number)
+        return original(reader, query)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(WorkbenchProcessQueryService, "page", page)
+        third = api.listing({"query": "TABLE-"}, size=20, page=3)
+    assert calls == [3] and third["data"]["page"]["number"] == 3
+    assert third["data"]["page"]["total"] == 43 and len(third["data"]["entities"]) == 3
+    record_property("direct_page", 3)
+    record_property("page_query_calls", len(calls))
+    record_property("data_fields", sorted(third["data"]))
+    token = third["meta"]["snapshot_ref"]
+    repeated = api.listing({"query": "TABLE-"}, size=20, page=3, snapshot_ref=token)
+    assert repeated["data"] == third["data"] and repeated["meta"].keys() == third["meta"].keys()
+    assert repeated["meta"]["request_ref"] != third["meta"]["request_ref"]
+    assert all(repeated["meta"][key] == value for key, value in third["meta"].items() if key != "request_ref")
+    first = api.listing({"query": "TABLE-"}, size=20, snapshot_ref=token)
     refs = [third["data"]["entities"][-1]["ref"], first["data"]["entities"][0]["ref"], api.ref(code="PROC-003")]
     scope = {"query": "does not match selected refs", "stage": "ready"}
     if advanced:

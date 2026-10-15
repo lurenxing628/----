@@ -5,7 +5,8 @@ import sqlite3
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
-from core.services.workbench.facts.run_policy import public_run, require_admission, require_run_schema
+from core.services.workbench.facts.decision_read_models import public_job_status
+from core.services.workbench.facts.run_policy import require_admission, require_run_schema
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
@@ -32,13 +33,15 @@ def claim_run(conn, run_ref, now, retry_original=None):
     try:
         with TransactionManager(conn).transaction(begin_immediate=True):
             require_run_schema(repo)
-            row = repo.get(run_ref)
+            row = repo.get(run_ref) if retry_original is not None else repo.claim_head(run_ref)
             if row is None:
                 raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
             if retry_original is not None:
                 _require_unchanged_unclaimed(repo, row, retry_original)
-            if row["state"] != "queued" or row["stage"] != "queued":
-                return None, public_run(conn, row)
+            else:
+                if row["state"] != "queued" or row["stage"] != "queued":
+                    return None, public_job_status(repo.status(run_ref))
+                row = repo.get(run_ref)
             require_admission(repo, row)
             if not repo.claim(run_ref, PROCESS_EXECUTOR_REF, now()):
                 raise RuntimeError("Run was claimed by another worker")

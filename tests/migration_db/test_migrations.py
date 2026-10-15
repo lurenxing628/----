@@ -13,6 +13,7 @@ from core.infrastructure.migrations.v15 import _EVENT_INDEX_SQL
 from core.infrastructure.workbench_calibration_adoption_legacy_schema import objects as legacy_adoption_objects
 from core.infrastructure.workbench_calibration_adoption_schema import objects as adoption_objects
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
+from core.infrastructure.workbench_run_read_model_schema import objects as run_read_model_objects
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -172,6 +173,10 @@ def _schema_statement(sql):
 def _v36_review_case(path):
     """Keep the accepted historical contract with reversed physical columns."""
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
+    for sql in run_read_model_objects().values():
+        statement = _schema_statement(sql)
+        assert statement in schema
+        schema = schema.replace(statement, "")
     materials = material_objects()
     reviews_sql = ("CREATE TABLE BatchMaterialReviews ("
                    "batch_quantity INTEGER NOT NULL CHECK(batch_quantity >= 0),"

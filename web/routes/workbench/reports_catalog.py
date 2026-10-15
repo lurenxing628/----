@@ -70,7 +70,7 @@ def _catalog(kind, export=False):
     scope = ReportCatalogScope(kind, **{key: request.args[key] for key in ("source", "plan_ref", "window_date_from", "window_date_to", "query") if key in request.args})
     page = _catalog_page(kind)
     token = request.args.get("snapshot_ref")
-    if (export or page.number > 1) and not token:
+    if export and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():

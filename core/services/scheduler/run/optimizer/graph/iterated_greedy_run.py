@@ -4,19 +4,18 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional
 
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
+from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 from .iterated_greedy import (
     _BudgetExhausted,
     _IteratedGreedySearch,
     _parent_from_candidate,
     _publish,
-    _stage_deadline,
-    admit_parent_decode,
 )
 from .iterated_greedy_contract import IteratedGreedyLimits, new_iterated_greedy_report
 from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_large import iteration_for, search_type_for
-from .iterated_greedy_local import LOCAL_BUDGET_REASON
 
 
 class IteratedGreedyRun:
@@ -27,12 +26,14 @@ class IteratedGreedyRun:
                  pool: Any, evaluate: Callable[..., Dict[str, Any]], operations: List[Any], graph_context: Dict[str, Any],
                  metrics_by_op_id: Dict[int, Dict[str, Any]], objective_name: str, start_dt: Any, seed: int, deadline: float,
                  clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                 improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool) -> None:
+                 improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool,
+                 decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.state = state
         self.parent_profile = parent_profile
         self.pool = pool
         self.evaluate = evaluate
+        self.decode_session = decode_session
         self.operations = operations
         self.graph_context = graph_context
         self.metrics_by_op_id = metrics_by_op_id
@@ -66,15 +67,17 @@ class IteratedGreedyRun:
         try:
             if self.search is None:
                 self._start(started)
+            elif self.search.reference is None:
+                self.search._start_reference()
             else:
                 self._advance()
+        except SharedSearchSkip as exc:
+            # A rejected request ends only this cooperative action; the stage and its
+            # remaining insertion tasks remain available to the common rotation.
+            self.report["last_shared_skip"] = exc.reason
         except _BudgetExhausted as exc:
-            if exc.reason == LOCAL_BUDGET_REASON:
-                self.report["local_search"]["local_timeouts"] += 1
-                self.iteration = None
-            else:
-                self.report["stop_reason"] = exc.reason
-                self.stopped = True
+            self.report["stop_reason"] = exc.reason
+            self.stopped = True
         finally:
             if self.search is not None:
                 self.state.best = self.search.best
@@ -85,7 +88,8 @@ class IteratedGreedyRun:
     def _start(self, started: float) -> None:
         self.started_at = started
         best = self.state.best
-        parent = _parent_from_candidate(best, operations=self.operations, graph_context=self.graph_context)
+        parent = _parent_from_candidate(best, operations=self.operations, graph_context=self.graph_context,
+                                        resource_pool=(best or {}).get("resource_pool"))
         profile = self.parent_profile(best)
         if parent is None or profile is None:
             self.report["status"] = "skipped_no_parent"
@@ -96,12 +100,11 @@ class IteratedGreedyRun:
         self.search = search_type_for(parent)(
             limits=self.limits, parent=parent, profile=profile, pool=self.pool, evaluate=self.evaluate,
             metrics_by_op_id=self.metrics_by_op_id, start_dt=self.start_dt, seed=self.seed,
-            deadline=_stage_deadline(self.limits, started=started, deadline=self.deadline), clock=self.clock,
+            deadline=self.deadline, clock=self.clock,
             t_begin=self.t_begin, attempts=self.attempts, improvement_trace=self.improvement_trace,
             report_state=self.report_state, strict_mode=self.strict_mode, report=self.report,
-            operations=self.operations, graph_context=self.graph_context)
+            operations=self.operations, graph_context=self.graph_context, decode_session=self.decode_session)
         self.search.best = best
-        admit_parent_decode(best, clock=self.clock, deadline=self.search.deadline, report=self.report)
         self.search._start_reference()
 
     def _advance(self) -> None:
@@ -154,29 +157,4 @@ class IteratedGreedyRun:
                 report["status"] = "skipped_no_parent"
 
 
-class _BestHolder:
-    def __init__(self, best: Optional[Dict[str, Any]]) -> None:
-        self.best = best
-
-
-def run_graph_ready_iterated_greedy(
-    *, limits: IteratedGreedyLimits, best: Optional[Dict[str, Any]], parent_profile: Optional[GraphReadyWeightProfile],
-    pool: Any, evaluate: Callable[..., Dict[str, Any]], operations: List[Any], graph_context: Dict[str, Any],
-    metrics_by_op_id: Dict[int, Dict[str, Any]], objective_name: str, start_dt: Any, seed: int, deadline: float,
-    clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]], improvement_trace: List[Dict[str, Any]],
-    report_state: Any, strict_mode: bool,
-) -> Optional[Dict[str, Any]]:
-    """One-shot form of the stage: run it alone until it stops (tests and direct callers)."""
-    state = _BestHolder(best)
-    run = IteratedGreedyRun(
-        limits=limits, state=state, parent_profile=lambda _best: parent_profile, pool=pool, evaluate=evaluate,
-        operations=operations, graph_context=graph_context, metrics_by_op_id=metrics_by_op_id,
-        objective_name=objective_name, start_dt=start_dt, seed=seed, deadline=deadline, clock=clock, t_begin=t_begin,
-        attempts=attempts, improvement_trace=improvement_trace, report_state=report_state, strict_mode=strict_mode)
-    while run.available():
-        run.step()
-    run.finish()
-    return state.best
-
-
-__all__ = ["IteratedGreedyRun", "run_graph_ready_iterated_greedy"]
+__all__ = ["IteratedGreedyRun"]

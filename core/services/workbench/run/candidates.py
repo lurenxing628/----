@@ -9,7 +9,6 @@ from core.services.workbench.facts.candidate_projection import (
     baseline_capture,
     candidate_summary,
 )
-from core.services.workbench.facts.candidate_read_source import candidate_manifest, read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import (
     filter_workspace,
@@ -27,8 +26,10 @@ class WorkbenchRunCandidateQueryService:
     def catalog(self, scope):
         """Return the public DTO and source identity, independent of page number."""
         with self.store.snapshot():
-            run, rows, disposition, _receipt = candidate_manifest(self.store, scope.run_ref)
-            summaries = [(row["sequence"], candidate_summary(row, disposition)) for row in rows]
+            from .decision_source import DecisionSource
+            source = DecisionSource(self.store, scope.run_ref)
+            run, rows = source.run, source.rows
+            summaries = [(row["sequence"], source.saved_candidate_catalog(row["candidate_ref"])) for row in rows]
             state = {"read_contract_version": 1, "run_ref": run["run_ref"], "run_state": run["state"]}
             filtered = [(seq, item) for seq, item in summaries if scope.status in ("all", item["status"])]
 
@@ -47,10 +48,17 @@ class WorkbenchRunCandidateQueryService:
                     "capabilities": read_capabilities(), "blocked_reasons": blocked_reasons()}
             return data, state
 
+    def identity(self, candidate_ref):
+        with self.store.snapshot():
+            data = self.store.candidate_identity(candidate_ref)
+            return data, {"read_contract_version": 1, **data}
+
     def workspace(self, scope):
         """No UI paging: every persisted task in the exact requested scope is returned."""
         with self.store.snapshot():
-            return self._workspace(read_candidate_source(self.store, scope.candidate_ref), scope)
+            from .decision_source import DecisionSource
+            source = DecisionSource(self.store, self.store.candidate_run(scope.candidate_ref), selected_candidate_ref=scope.candidate_ref)
+            return self._workspace(source.candidate_source(scope.candidate_ref), scope)
 
     @staticmethod
     def _workspace(source, scope):
@@ -99,6 +107,8 @@ def _generation(run, capture, candidate):
         values[key] = value if valid else None
         if not valid:
             gaps.append(gap("input." + key, "not_recorded" if value is None else "invalid_stored_value"))
+    if candidate["artifact"].get("generation_policy_version") == "unified_search_v1":
+        values["time_budget_seconds"] = settings["time_budget_seconds"]
     return {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
             "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
             "current_entities_consulted": False, "formal_version_allocated": False,

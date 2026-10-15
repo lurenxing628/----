@@ -13,6 +13,7 @@ from core.services.scheduler.schedule_service import ScheduleService
 from core.services.workbench.facts.candidate_archive import require_adoption_schema
 from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
 from core.services.workbench.run.candidate_adoption_storage import _require_official_baseline
@@ -43,7 +44,8 @@ def validate_trial_adoption(conn, scenario_ref):
             require_adoption_schema(conn)
             saved, head, rows = load_saved_scenario(conn, scenario_ref)
             admission = head["admission"]
-            live = live_context(conn, [row["operation_ref"] for row in rows])
+            capture, execution = ProductionFactsCapture(conn), []
+            live = live_context(conn, [row["operation_ref"] for row in rows], capture=capture, prepared_execution=execution)
             _current_baseline(conn, admission, live)
             _original_work(rows, live)
             checked = _scenario_validation(conn, saved, admission, rows, live)
@@ -51,9 +53,10 @@ def validate_trial_adoption(conn, scenario_ref):
             if issues:
                 raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
             settings = adoption_settings(admission, rows, PreflightChecks(live["facts"]["tables"]), live["execution"])
-            projections = run_execution_projections(conn, settings)
+            projections = run_execution_projections(conn, settings, capture=capture, existing=execution)
             _require_official_baseline(live["baseline"], projections)
-            prepared = prepare_trial_adoption_input(conn, settings, projections, live, hold=hold_settings(admission, settings))
+            prepared = prepare_trial_adoption_input(conn, settings, projections, live, hold=hold_settings(admission, settings),
+                capture=capture, validated_projections={row.operation_ref: row for row in projections})
             _complete_scope(rows, prepared)
             # Pending stage work follows the run's end date; the saved rows keep their own span.
             prepared = replace(prepared, end_date_norm=_span_end(rows))

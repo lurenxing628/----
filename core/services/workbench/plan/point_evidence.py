@@ -13,13 +13,13 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 from .adoption_baseline import read_adoption_source
 
 
-def official_point_work(conn, version, *, evidence=None):
+def official_point_work(conn, version, *, evidence=None, context=None):
     try:
         if evidence is None:
-            refs = WorkbenchPlanIdentityRepository(conn)
+            refs = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
             plan_ref = refs.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
-            history = WorkbenchPlanBaselineRepository(conn).get_history_result_summary(version)
-            evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history)
+            history = context.history(version) if context is not None else WorkbenchPlanBaselineRepository(conn).get_history_result_summary(version)
+            evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, context=context)
         if evidence is None or evidence["audit"]["version"] != version:
             raise PointEventError("point_evidence_missing", "这一版正式计划没有可核对的采用记录，证明不了这道零工时工序。")
         basis, audit = evidence["basis"], evidence["audit"]
@@ -36,22 +36,23 @@ def official_point_work(conn, version, *, evidence=None):
         raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序缺少可核对的原始采用记录，这里不当成正常零工时工序读。请刷新后重试。") from exc
 
 
-def annotate_plan_points(conn, rows, *, source_table="schedule"):
+def annotate_plan_points(conn, rows, *, source_table="schedule", context=None, intervals=None):
     from datetime import datetime
     from types import SimpleNamespace
 
     from data.repositories.schedule_time_sql import parse_dt_for_sql
 
     result, versions = [], {}
-    for original in rows:
+    for index, original in enumerate(rows):
         row = dict(original)
         start, end = row["start_time"], row["end_time"]
-        if parse_dt_for_sql(start) is not None and parse_dt_for_sql(start) == parse_dt_for_sql(end):
+        low, high = intervals[index] if intervals is not None else (parse_dt_for_sql(start), parse_dt_for_sql(end))
+        if low is not None and low == high:
             if source_table != "schedule":
                 raise WorkbenchCommandRejected("point_evidence_unproven", "旧候选方案或试调行没有零工时工序的采用记录，读不出来。请刷新后重试。")
             version = row["version"]
             if version not in versions:
-                versions[version] = official_point_work(conn, version)
+                versions[version] = context.point_work(version) if context is not None else official_point_work(conn, version)
             work = versions[version].get(row["op_id"])
             check = SimpleNamespace(op_id=row["op_id"], source="internal", machine_id=row["machine_id"],
                 operator_id=row["operator_id"], start_time=datetime.fromisoformat(start), end_time=datetime.fromisoformat(end))

@@ -32,14 +32,16 @@
   function input(value) {
     if (object(value) && value.material_strategy === undefined) value = { ...value, material_strategy: 'strict' };
     if (object(value) && value.hold_window === undefined && own(value, 'hold_window')) { value = { ...value }; delete value.hold_window; }
-    const keys = object(value) && own(value, 'hold_window') ? fields.concat(['hold_window']) : fields;
+    const optional = ['hold_window', 'time_budget_seconds'].filter(key => object(value) && own(value, key)), keys = fields.concat(optional);
     if (!object(value) || Object.keys(value).length !== keys.length || !keys.every(key => own(value, key))
         || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date
         || !['strict', 'stage', 'split'].includes(value.material_strategy) || value.material_strategy !== 'strict' && !value.ready_check
-        || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals')
+        || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals'
+        || own(value, 'time_budget_seconds') && !window.RunGenerationContract.budget(value.time_budget_seconds))
       throw fail('请核对已选批次、排产日期范围和本次排产规则。');
     const normalized = Object.fromEntries(fields.map(key => [key, key === 'batch_refs' ? value[key].slice().sort() : value[key]]));
-    if (keys !== fields) normalized.hold_window = holdWindow(value.hold_window, value.start_date, value.end_date);
+    if (own(value, 'hold_window')) normalized.hold_window = holdWindow(value.hold_window, value.start_date, value.end_date);
+    if (own(value, 'time_budget_seconds')) normalized.time_budget_seconds = value.time_budget_seconds;
     return normalized;
   }
   function defaults() {
@@ -56,10 +58,10 @@
   }
   function initial(context) {
     if (context === undefined) return defaults();
-    if (!object(context) || Object.keys(context).some(key => !fields.concat(['hold_window', 'scope', 'entity_ref', 'return_to']).includes(key)))
+    if (!object(context) || Object.keys(context).some(key => !fields.concat(['hold_window', 'time_budget_seconds', 'scope', 'entity_ref', 'return_to']).includes(key)))
       throw fail('传入的排产范围无效或已过期，未自动扩大为全部批次。');
     const value = { ...defaults() };
-    fields.concat(['hold_window']).forEach(key => { if (own(context, key)) value[key] = context[key]; });
+    fields.concat(['hold_window', 'time_budget_seconds']).forEach(key => { if (own(context, key)) value[key] = context[key]; });
     if (context.scope !== undefined) {
       const scope = context.scope;
       if (!object(scope) || scope.source !== 'production' || !refs(scope.batch_refs) || Object.keys(scope).some(key => !['source', 'batch_refs'].includes(key)) || context.batch_refs !== undefined || context.entity_ref !== undefined)
@@ -99,9 +101,11 @@
   const taskStates = ['eligible', 'auto_assign_required', 'skipped', 'blocked', 'protected'];
   const countKeys = ['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks', 'eligible_tasks', 'selected_batches', 'selected_tasks', 'no_route_batches', 'unready_batches', 'missing_resource_tasks', 'actual_fact_tasks', 'held_tasks', 'hold_window_tasks'];
   function result(envelope, expected) {
-    const d = envelope && envelope.data, normalized = input(expected), scope = new Set(normalized.batch_refs);
+    const d = envelope && envelope.data, normalized = input(expected), actual = d && input(d.normalized_input), scope = new Set(normalized.batch_refs);
+    if (actual && normalized.time_budget_seconds === undefined && actual.time_budget_seconds !== undefined) normalized.time_budget_seconds = actual.time_budget_seconds;
     if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key]))
-        || JSON.stringify(input(d.normalized_input)) !== JSON.stringify(normalized)
+        || JSON.stringify(actual) !== JSON.stringify(normalized)
+        || own(d, 'run_options') && (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds)
         || !Array.isArray(d.tasks) || !d.tasks.every(row => object(row) && ref(row.operation_ref) && scope.has(row.batch_ref)
           && typeof row.batch_id === 'string' && typeof row.label === 'string' && taskStates.includes(row.status) && typeof row.has_execution_facts === 'boolean'
           && issues(row.issues) && Array.isArray(row.predecessor_refs) && row.predecessor_refs.every(ref) && execution(row.execution) && own(row, 'held') && held(row.held))

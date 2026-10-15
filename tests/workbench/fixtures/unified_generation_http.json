@@ -1,0 +1,1375 @@
+{
+  "candidate_catalog": {
+    "blocked_reasons": [
+      {
+        "capability": "adopt",
+        "code": "candidate_adoption_preview_required",
+        "message": "正式采用前，请先检查完整候选方案。"
+      },
+      {
+        "capability": "edit_draft",
+        "code": "candidate_draft_not_connected",
+        "message": "调整候选方案需先新增试调草稿。"
+      },
+      {
+        "capability": "report_actual",
+        "code": "candidate_execution_write_not_connected",
+        "message": "正式采用方案后，才能按计划报工。"
+      }
+    ],
+    "candidate_count": 1,
+    "candidates": [
+      {
+        "blocked_reasons": [
+          {
+            "capability": "adopt",
+            "code": "candidate_adoption_preview_required",
+            "message": "正式采用前，请先检查完整候选方案。"
+          },
+          {
+            "capability": "edit_draft",
+            "code": "candidate_draft_not_connected",
+            "message": "调整候选方案需先新增试调草稿。"
+          },
+          {
+            "capability": "report_actual",
+            "code": "candidate_execution_write_not_connected",
+            "message": "正式采用方案后，才能按计划报工。"
+          }
+        ],
+        "candidate_ref": "88ec5f4b111c5cd8d1d4bc139e93b64f34e0c87bd3d0ffc7",
+        "capabilities": {
+          "adopt": false,
+          "edit_draft": false,
+          "export": true,
+          "report_actual": false,
+          "view": true
+        },
+        "completeness": "complete",
+        "data_gaps": [],
+        "evaluations": {
+          "min_changeover": {
+            "field_order": [
+              "failed_ops",
+              "changeover_count",
+              "overdue_count",
+              "total_tardiness_hours",
+              "weighted_tardiness_hours",
+              "makespan_hours"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.75
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          },
+          "min_overdue": {
+            "field_order": [
+              "failed_ops",
+              "overdue_count",
+              "weighted_tardiness_hours",
+              "total_tardiness_hours",
+              "makespan_hours",
+              "changeover_count"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.75,
+              0.0
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          },
+          "min_tardiness": {
+            "field_order": [
+              "failed_ops",
+              "total_tardiness_hours",
+              "overdue_count",
+              "weighted_tardiness_hours",
+              "makespan_hours",
+              "changeover_count"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.75,
+              0.0
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          }
+        },
+        "first_found_elapsed_ms": 1,
+        "generation_policy_version": "unified_search_v1",
+        "label": "交期优先 · 拖期更轻 · 切换更少",
+        "metric_scopes": {
+          "delivery": "completed_batches_only",
+          "resources": "scheduled_results_only"
+        },
+        "metrics": {
+          "changeover_count": {
+            "reason": null,
+            "value": 0
+          },
+          "elapsed_seconds": {
+            "reason": {
+              "code": "shared_run_time",
+              "field": "elapsed_seconds",
+              "message": "计算用时属于本轮共同优化。"
+            },
+            "state": "not_applicable",
+            "value": null
+          },
+          "machine_busy_hours_total": {
+            "reason": null,
+            "value": 0.75
+          },
+          "machine_used_count": {
+            "reason": null,
+            "value": 1
+          },
+          "machine_util_avg": {
+            "reason": null,
+            "value": 1.0
+          },
+          "makespan_hours": {
+            "reason": null,
+            "value": 0.75
+          },
+          "operator_busy_hours_total": {
+            "reason": null,
+            "value": 0.75
+          },
+          "operator_used_count": {
+            "reason": null,
+            "value": 1
+          },
+          "operator_util_avg": {
+            "reason": null,
+            "value": 1.0
+          },
+          "overdue_count": {
+            "reason": null,
+            "value": 0
+          },
+          "total_tardiness_hours": {
+            "reason": null,
+            "value": 0.0
+          },
+          "weighted_tardiness_hours": {
+            "reason": null,
+            "value": 0.0
+          }
+        },
+        "origin": {
+          "dispatch_mode": "batch_order",
+          "dispatch_rule": "slack",
+          "execution_kind": "new_decision",
+          "origin": "multi_start",
+          "phase": "multi_start",
+          "repair_decision": null,
+          "request_id": 1,
+          "search_objective": "min_overdue",
+          "source_event_ref": 1,
+          "strategy": "priority_first"
+        },
+        "persisted_status": "completed",
+        "representative_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ],
+        "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+        "search_evidence_ref": {
+          "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+          "source_event_id": 2
+        },
+        "status": "completed",
+        "task_count": 1
+      }
+    ],
+    "capabilities": {
+      "adopt": false,
+      "edit_draft": false,
+      "export": true,
+      "report_actual": false,
+      "view": true
+    },
+    "catalog_complete": true,
+    "page": {
+      "has_more": false,
+      "number": 1,
+      "size": 20,
+      "total": 1
+    },
+    "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+    "run_state": "complete"
+  },
+  "candidate_workspace": {
+    "batch_ref": null,
+    "blocked_reasons": [
+      {
+        "capability": "adopt",
+        "code": "candidate_adoption_preview_required",
+        "message": "正式采用前，请先检查完整候选方案。"
+      },
+      {
+        "capability": "edit_draft",
+        "code": "candidate_draft_not_connected",
+        "message": "调整候选方案需先新增试调草稿。"
+      },
+      {
+        "capability": "report_actual",
+        "code": "candidate_execution_write_not_connected",
+        "message": "正式采用方案后，才能按计划报工。"
+      }
+    ],
+    "candidate": {
+      "blocked_reasons": [
+        {
+          "capability": "adopt",
+          "code": "candidate_adoption_preview_required",
+          "message": "正式采用前，请先检查完整候选方案。"
+        },
+        {
+          "capability": "edit_draft",
+          "code": "candidate_draft_not_connected",
+          "message": "调整候选方案需先新增试调草稿。"
+        },
+        {
+          "capability": "report_actual",
+          "code": "candidate_execution_write_not_connected",
+          "message": "正式采用方案后，才能按计划报工。"
+        }
+      ],
+      "candidate_ref": "88ec5f4b111c5cd8d1d4bc139e93b64f34e0c87bd3d0ffc7",
+      "capabilities": {
+        "adopt": false,
+        "edit_draft": false,
+        "export": true,
+        "report_actual": false,
+        "view": true
+      },
+      "completeness": "complete",
+      "data_gaps": [],
+      "evaluations": {
+        "min_changeover": {
+          "field_order": [
+            "failed_ops",
+            "changeover_count",
+            "overdue_count",
+            "total_tardiness_hours",
+            "weighted_tardiness_hours",
+            "makespan_hours"
+          ],
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.75
+          ],
+          "scoring_scope": {
+            "complete_batch_refs": [
+              "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+            ],
+            "components_known": true,
+            "is_complete": true,
+            "objective_scope": "all_batches",
+            "scheduled_operation_refs": [
+              "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+            ]
+          }
+        },
+        "min_overdue": {
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0.75,
+            0.0
+          ],
+          "scoring_scope": {
+            "complete_batch_refs": [
+              "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+            ],
+            "components_known": true,
+            "is_complete": true,
+            "objective_scope": "all_batches",
+            "scheduled_operation_refs": [
+              "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+            ]
+          }
+        },
+        "min_tardiness": {
+          "field_order": [
+            "failed_ops",
+            "total_tardiness_hours",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0.75,
+            0.0
+          ],
+          "scoring_scope": {
+            "complete_batch_refs": [
+              "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+            ],
+            "components_known": true,
+            "is_complete": true,
+            "objective_scope": "all_batches",
+            "scheduled_operation_refs": [
+              "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+            ]
+          }
+        }
+      },
+      "first_found_elapsed_ms": 1,
+      "generation_policy_version": "unified_search_v1",
+      "label": "交期优先 · 拖期更轻 · 切换更少",
+      "metric_scopes": {
+        "delivery": "completed_batches_only",
+        "resources": "scheduled_results_only"
+      },
+      "metrics": {
+        "changeover_count": {
+          "reason": null,
+          "value": 0
+        },
+        "elapsed_seconds": {
+          "reason": {
+            "code": "shared_run_time",
+            "field": "elapsed_seconds",
+            "message": "计算用时属于本轮共同优化。"
+          },
+          "state": "not_applicable",
+          "value": null
+        },
+        "machine_busy_hours_total": {
+          "reason": null,
+          "value": 0.75
+        },
+        "machine_used_count": {
+          "reason": null,
+          "value": 1
+        },
+        "machine_util_avg": {
+          "reason": null,
+          "value": 1.0
+        },
+        "makespan_hours": {
+          "reason": null,
+          "value": 0.75
+        },
+        "operator_busy_hours_total": {
+          "reason": null,
+          "value": 0.75
+        },
+        "operator_used_count": {
+          "reason": null,
+          "value": 1
+        },
+        "operator_util_avg": {
+          "reason": null,
+          "value": 1.0
+        },
+        "overdue_count": {
+          "reason": null,
+          "value": 0
+        },
+        "total_tardiness_hours": {
+          "reason": null,
+          "value": 0.0
+        },
+        "weighted_tardiness_hours": {
+          "reason": null,
+          "value": 0.0
+        }
+      },
+      "origin": {
+        "dispatch_mode": "batch_order",
+        "dispatch_rule": "slack",
+        "execution_kind": "new_decision",
+        "origin": "multi_start",
+        "phase": "multi_start",
+        "repair_decision": null,
+        "request_id": 1,
+        "search_objective": "min_overdue",
+        "source_event_ref": 1,
+        "strategy": "priority_first"
+      },
+      "persisted_status": "completed",
+      "representative_objectives": [
+        "min_overdue",
+        "min_tardiness",
+        "min_changeover"
+      ],
+      "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+      "search_evidence_ref": {
+        "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+        "source_event_id": 2
+      },
+      "status": "completed",
+      "task_count": 1
+    },
+    "candidate_span": {
+      "end": "2026-09-09T08:45:00",
+      "start": "2026-09-09T08:00:00"
+    },
+    "candidate_task_count": 1,
+    "capabilities": {
+      "adopt": false,
+      "edit_draft": false,
+      "export": true,
+      "report_actual": false,
+      "view": true
+    },
+    "data_gaps": [],
+    "delivery_risks": {
+      "basis": {
+        "actual_completion": "not_evaluated",
+        "actual_delivery": "not_evaluated",
+        "completion_scope": "full_candidate",
+        "current_entities_consulted": false,
+        "due_boundary": "next_day_exclusive",
+        "kind": "planned_delivery",
+        "metadata_basis": "captured_at_run_admission",
+        "operation_scope": "captured_batch_operations",
+        "root_causes": "not_evaluated",
+        "time_basis": "factory_local"
+      },
+      "batch_count": 1,
+      "candidate_ref": "88ec5f4b111c5cd8d1d4bc139e93b64f34e0c87bd3d0ffc7",
+      "issues": [],
+      "items": [
+        {
+          "batch_id": "B1",
+          "batch_ref": "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc",
+          "completeness": "complete",
+          "completion_state": "complete",
+          "deferred_operation_count": 0,
+          "delay_days": 0.0,
+          "delay_hours": 0.0,
+          "delivery_deadline_exclusive": "2026-09-26T00:00:00",
+          "due_date": "2026-09-25",
+          "due_issue": null,
+          "due_state": "specified",
+          "invalid_task_count": 0,
+          "is_overdue": false,
+          "issues": [
+            "part_label_missing"
+          ],
+          "last_operations": [
+            {
+              "end": "2026-09-09T08:45:00",
+              "machine": {
+                "label": "Lathe",
+                "ref": "2891ebde288ee3a1a5a3d516b9f7e35d4c1dfb528aa6b7ac"
+              },
+              "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
+              "operator": {
+                "label": "Operator",
+                "ref": "c37404cfd3a536f26720c47060690483159e24265a0a8046"
+              },
+              "piece_id": null,
+              "process_label": "Turning",
+              "row_ref": "c776413f57559a17900be5fc0d8148e7162f59b7c006f9ff",
+              "sequence": 1,
+              "start": "2026-09-09T08:00:00"
+            }
+          ],
+          "operation_count": 1,
+          "ordinary_unscheduled_operation_count": 0,
+          "part_label": null,
+          "part_no": "P1",
+          "partial_planned_finish": null,
+          "planned_finish": "2026-09-09T08:45:00",
+          "priority": "normal",
+          "quantity": 3,
+          "risk": "on_time",
+          "schedule_complete": true,
+          "scheduled_operation_count": 1,
+          "task_count": 1,
+          "unscheduled_operation_count": 0
+        }
+      ],
+      "items_complete": true,
+      "scope": {
+        "batch_ref": null,
+        "candidate_ref": "88ec5f4b111c5cd8d1d4bc139e93b64f34e0c87bd3d0ffc7",
+        "kind": "run-candidate-workspace",
+        "order": "asc",
+        "range_end": null,
+        "range_start": null,
+        "sort": "sequence"
+      },
+      "state": "available",
+      "summary": {
+        "batch_count": 1,
+        "complete_batch_count": 1,
+        "complete_batch_refs": [
+          "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+        ],
+        "deferred_batch_count": 0,
+        "deferred_batch_refs": [],
+        "due_eligible_count": 1,
+        "due_evaluation_count": 1,
+        "excluded_due_count": 0,
+        "incomplete_batch_count": 0,
+        "invalid_due_count": 0,
+        "known_batch_refs": [
+          "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+        ],
+        "known_due_count": 1,
+        "known_on_time_count": 1,
+        "known_overdue_count": 0,
+        "known_tardiness_hours": 0.0,
+        "on_time_count": 1,
+        "overdue_count": 0,
+        "state": "complete",
+        "total_tardiness_hours": 0.0,
+        "unknown_batch_refs": [],
+        "unknown_count": 0,
+        "unknown_due_count": 0
+      }
+    },
+    "gantt_graph": {
+      "critical_edges": [],
+      "critical_task_refs": [
+        "c776413f57559a17900be5fc0d8148e7162f59b7c006f9ff"
+      ],
+      "edges": [],
+      "nodes": [
+        {
+          "batch_id": "B1",
+          "end": "2026-09-09T08:45:00",
+          "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
+          "piece_id": null,
+          "process_label": "Turning",
+          "sequence": 1,
+          "start": "2026-09-09T08:00:00",
+          "task_ref": "c776413f57559a17900be5fc0d8148e7162f59b7c006f9ff"
+        }
+      ],
+      "reason": null,
+      "scope": "full_candidate",
+      "state": "available"
+    },
+    "generation": {
+      "accepted_at": "2026-09-10T12:00:00.000000",
+      "algorithm": {
+        "evaluations": {
+          "min_changeover": {
+            "field_order": [
+              "failed_ops",
+              "changeover_count",
+              "overdue_count",
+              "total_tardiness_hours",
+              "weighted_tardiness_hours",
+              "makespan_hours"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.75
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          },
+          "min_overdue": {
+            "field_order": [
+              "failed_ops",
+              "overdue_count",
+              "weighted_tardiness_hours",
+              "total_tardiness_hours",
+              "makespan_hours",
+              "changeover_count"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.75,
+              0.0
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          },
+          "min_tardiness": {
+            "field_order": [
+              "failed_ops",
+              "total_tardiness_hours",
+              "overdue_count",
+              "weighted_tardiness_hours",
+              "makespan_hours",
+              "changeover_count"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.75,
+              0.0
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          }
+        },
+        "first_found_elapsed_ms": 1,
+        "generation_policy_version": "unified_search_v1",
+        "mode": "greedy",
+        "mode_label": "快速计算",
+        "origin": {
+          "dispatch_mode": "batch_order",
+          "dispatch_rule": "slack",
+          "execution_kind": "new_decision",
+          "origin": "multi_start",
+          "phase": "multi_start",
+          "repair_decision": null,
+          "request_id": 1,
+          "search_objective": "min_overdue",
+          "source_event_ref": 1,
+          "strategy": "priority_first"
+        },
+        "primary_objective": "min_overdue",
+        "representative_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ],
+        "search_evidence_ref": {
+          "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+          "source_event_id": 2
+        },
+        "strategy": "priority_first",
+        "strategy_label": "优先级优先",
+        "target_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ]
+      },
+      "baseline": {
+        "baseline_ref": null,
+        "captured_at": "2026-09-10T12:00:00.000000",
+        "captured_task_count": 0,
+        "kind": "admission_official",
+        "version": null
+      },
+      "current_entities_consulted": false,
+      "data_gaps": [],
+      "execution_basis": "captured_at_run_admission",
+      "finished_at": "2026-10-15T02:29:46.639621",
+      "formal_version_allocated": false,
+      "input": {
+        "completed_policy": "preserve_actuals",
+        "end_date": "2026-09-25",
+        "missing_resource_policy": "auto_assign",
+        "ready_check": true,
+        "start_date": "2026-09-09",
+        "time_budget_seconds": 60
+      },
+      "metadata_basis": "captured_at_run_admission",
+      "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960"
+    },
+    "task_count": 1,
+    "task_span": {
+      "end": "2026-09-09T08:45:00",
+      "start": "2026-09-09T08:00:00"
+    },
+    "tasks": [
+      {
+        "batch_label": "B1",
+        "batch_quantity": 3,
+        "batch_ref": "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc",
+        "data_gaps": [],
+        "due_date": "2026-09-25",
+        "end": "2026-09-09T08:45:00",
+        "execution_at_generation": {
+          "data_quality": "incomplete",
+          "execution_state": "unreported",
+          "known_completed_quantity": 0,
+          "remaining_quantity": 3,
+          "target_basis": "batch",
+          "target_quantity": 3
+        },
+        "locked": false,
+        "machine": {
+          "label": "Lathe",
+          "ref": "2891ebde288ee3a1a5a3d516b9f7e35d4c1dfb528aa6b7ac"
+        },
+        "operation_effort": {
+          "allocation_state": "new_schedule",
+          "data_gaps": [],
+          "effort_basis": "runtime_requirement_v1",
+          "evidence_source": {
+            "kind": "run",
+            "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960"
+          },
+          "execution_quantity_basis": "batch",
+          "execution_target_quantity": 3,
+          "external_cycle_days": null,
+          "external_group_id": null,
+          "external_merge_mode": null,
+          "processing_standard_hours": 0.75,
+          "quantity_basis": "batch",
+          "remaining_quantity": 3,
+          "required_standard_hours": 0.75,
+          "requirement_role": "new_schedule",
+          "setup_standard_hours": 0.0,
+          "setup_state": "pending",
+          "source": "internal",
+          "standard": {
+            "basis": "archived_operation_standard",
+            "evidence_source": {
+              "kind": "admission",
+              "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960"
+            },
+            "reason": null,
+            "remaining_quantity": 3,
+            "setup_standard_hours": 0.0,
+            "standard_total_hours": 0.75,
+            "state": "complete",
+            "target_quantity": 3,
+            "unit_standard_hours": 0.25
+          },
+          "state": "complete",
+          "target_quantity": 3
+        },
+        "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
+        "operator": {
+          "label": "Operator",
+          "ref": "c37404cfd3a536f26720c47060690483159e24265a0a8046"
+        },
+        "part_label": "Part",
+        "piece_id": null,
+        "process_label": "Turning",
+        "process_type_label": "Turning",
+        "process_type_ref": "63ad15f9cc01a0bfc137332e5d65d7607ce5c132f27e5adb",
+        "quantity": 3,
+        "row_ref": "c776413f57559a17900be5fc0d8148e7162f59b7c006f9ff",
+        "sequence": 1,
+        "source": "internal",
+        "start": "2026-09-09T08:00:00",
+        "supplier": null
+      }
+    ],
+    "tasks_complete": true,
+    "time_scope": {
+      "interval": "half_open_overlap",
+      "range_end": null,
+      "range_start": null,
+      "time_basis": "factory_local",
+      "unplanned_policy": "included_without_time_interval"
+    },
+    "unplanned_operation_count": 0,
+    "unplanned_operations": []
+  },
+  "adopted_plan_workspace": {
+    "gantt_graph": {
+      "critical_edges": [],
+      "critical_task_refs": [
+        "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
+      ],
+      "edges": [],
+      "nodes": [
+        {
+          "batch_id": "B1",
+          "end": "2026-09-09T08:45:00",
+          "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
+          "piece_id": null,
+          "process_label": "Turning",
+          "sequence": 1,
+          "start": "2026-09-09T08:00:00",
+          "task_ref": "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
+        }
+      ],
+      "reason": null,
+      "scope": "full_plan",
+      "state": "available"
+    },
+    "plan": {
+      "blocked_reasons": [],
+      "capabilities": {
+        "adopt": false,
+        "edit_draft": false,
+        "export": true,
+        "report_actual": false,
+        "view": true
+      },
+      "completeness": "complete",
+      "display_name": "正式采用方案",
+      "is_current_official": true,
+      "kind": "official",
+      "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
+      "version": 1
+    },
+    "plan_span": {
+      "end": "2026-09-09T08:45:00",
+      "start": "2026-09-09T08:00:00"
+    },
+    "projections": {
+      "baseline": {
+        "baseline_plan": null,
+        "item_count": 0,
+        "items": [],
+        "items_complete": false,
+        "reason": "这是首版正式计划，没有上一版可供对比。",
+        "reason_code": "no_adoption_baseline",
+        "state": "unavailable"
+      },
+      "calendar": {
+        "global": {
+          "available_hours": 0.75,
+          "basis": "global_calendar",
+          "effective_hours": 0.75,
+          "issues": [],
+          "normal_available_hours": 0.75,
+          "normal_effective_hours": 0.75,
+          "state": "available",
+          "urgent_available_hours": 0.75,
+          "urgent_effective_hours": 0.75,
+          "windows": [
+            {
+              "allow_normal": true,
+              "allow_urgent": true,
+              "efficiency": 1.0,
+              "end": "2026-09-09T08:45:00",
+              "policy_date": "2026-09-09",
+              "provenance": "domain_default",
+              "start": "2026-09-09T08:00:00"
+            }
+          ]
+        },
+        "issues": [],
+        "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
+        "resources": [
+          {
+            "available_hours": 0.75,
+            "basis": "global_calendar_machine_availability",
+            "downtime_available_hours": 0.0,
+            "downtime_scope_hours": 0.0,
+            "downtime_windows": [],
+            "effective_hours": 0.75,
+            "issues": [],
+            "kind": "machine",
+            "label": "Lathe",
+            "normal_available_hours": 0.75,
+            "normal_effective_hours": 0.75,
+            "resource_ref": "2891ebde288ee3a1a5a3d516b9f7e35d4c1dfb528aa6b7ac",
+            "state": "available",
+            "status": "active",
+            "urgent_available_hours": 0.75,
+            "urgent_effective_hours": 0.75,
+            "windows": [
+              {
+                "allow_normal": true,
+                "allow_urgent": true,
+                "efficiency": 1.0,
+                "end": "2026-09-09T08:45:00",
+                "policy_date": "2026-09-09",
+                "provenance": "domain_default",
+                "start": "2026-09-09T08:00:00"
+              }
+            ]
+          },
+          {
+            "available_hours": 0.75,
+            "basis": "personal_or_operator_shift_calendar",
+            "downtime_available_hours": 0.0,
+            "downtime_scope_hours": 0.0,
+            "downtime_windows": [],
+            "effective_hours": 0.75,
+            "issues": [],
+            "kind": "operator",
+            "label": "Operator",
+            "normal_available_hours": 0.75,
+            "normal_effective_hours": 0.75,
+            "resource_ref": "c37404cfd3a536f26720c47060690483159e24265a0a8046",
+            "state": "available",
+            "status": "active",
+            "urgent_available_hours": 0.75,
+            "urgent_effective_hours": 0.75,
+            "windows": [
+              {
+                "allow_normal": true,
+                "allow_urgent": true,
+                "efficiency": 1.0,
+                "end": "2026-09-09T08:45:00",
+                "policy_date": "2026-09-09",
+                "provenance": "domain_default",
+                "start": "2026-09-09T08:00:00"
+              }
+            ]
+          }
+        ],
+        "state": "available",
+        "time_scope": {
+          "boundary": "half_open",
+          "range_end": "2026-09-09T08:45:00",
+          "range_start": "2026-09-09T08:00:00",
+          "selection": "overlap",
+          "time_basis": "factory_local"
+        }
+      },
+      "delivery_risks": {
+        "basis": {
+          "actual_completion": "not_evaluated",
+          "actual_delivery": "not_evaluated",
+          "batch_selection": "plan_task_and_deferred_batches",
+          "completion_scope": "full_selected_plan",
+          "due_boundary": "next_day_exclusive",
+          "kind": "planned_delivery",
+          "operation_scope": "current_batch_operations",
+          "time_basis": "factory_local"
+        },
+        "batch_count": 1,
+        "completeness": "complete",
+        "items": [
+          {
+            "batch_id": "B1",
+            "batch_ref": "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc",
+            "completeness": "complete",
+            "completion_state": "complete",
+            "deferred_operation_count": 0,
+            "delay_days": 0.0,
+            "delay_hours": 0.0,
+            "delivery_deadline_exclusive": "2026-09-26T00:00:00",
+            "due_date": "2026-09-25",
+            "due_issue": null,
+            "due_state": "specified",
+            "invalid_task_count": 0,
+            "is_overdue": false,
+            "issues": [
+              "part_label_missing"
+            ],
+            "operation_count": 1,
+            "ordinary_unscheduled_operation_count": 0,
+            "part_label": null,
+            "part_no": "P1",
+            "partial_planned_finish": null,
+            "planned_finish": "2026-09-09T08:45:00",
+            "priority": "normal",
+            "quantity": 3,
+            "risk": "on_time",
+            "schedule_complete": true,
+            "scheduled_operation_count": 1,
+            "task_count": 1,
+            "unscheduled_operation_count": 0
+          }
+        ],
+        "items_complete": true,
+        "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
+        "scope": {
+          "kind": "plan_workspace",
+          "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
+          "range_end": null,
+          "range_start": null,
+          "source": "production"
+        },
+        "state": "available",
+        "summary": {
+          "batch_count": 1,
+          "complete_batch_count": 1,
+          "complete_batch_refs": [
+            "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+          ],
+          "deferred_batch_count": 0,
+          "deferred_batch_refs": [],
+          "due_eligible_count": 1,
+          "due_evaluation_count": 1,
+          "excluded_due_count": 0,
+          "incomplete_batch_count": 0,
+          "invalid_due_count": 0,
+          "known_batch_refs": [
+            "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+          ],
+          "known_due_count": 1,
+          "known_on_time_count": 1,
+          "known_overdue_count": 0,
+          "known_tardiness_hours": 0.0,
+          "on_time_count": 1,
+          "overdue_count": 0,
+          "state": "complete",
+          "total_tardiness_hours": 0.0,
+          "unknown_batch_refs": [],
+          "unknown_count": 0,
+          "unknown_due_count": 0
+        }
+      },
+      "occupancy": {
+        "basis": "selected_plan_only",
+        "issues": [],
+        "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
+        "resources": [
+          {
+            "arranged_hours": 0.75,
+            "available_hours": 0.75,
+            "available_occupied_hours": 0.75,
+            "available_overlap_hours": 0.0,
+            "capacity_basis": "global_calendar_machine_availability",
+            "capacity_insufficient": false,
+            "capacity_shortfall_hours": 0.0,
+            "conflict_basis": "work_calendar_reservation_overlap",
+            "conflict_segments": [],
+            "excess_arranged_hours": 0.0,
+            "has_overlap": false,
+            "issues": [],
+            "kind": "machine",
+            "label": "Lathe",
+            "metric_version": "decision-resource-v4",
+            "occupied_hours": 0.75,
+            "operation_count": 1,
+            "outside_available_hours": 0.0,
+            "outside_calendar_basis": "reservation_span_outside_work_calendar",
+            "overlap_hours": 0.0,
+            "resource_ref": "2891ebde288ee3a1a5a3d516b9f7e35d4c1dfb528aa6b7ac",
+            "segments": [
+              {
+                "concurrent_operations": 1,
+                "end": "2026-09-09T08:45:00",
+                "start": "2026-09-09T08:00:00"
+              }
+            ],
+            "state": "available",
+            "utilization": 1.0
+          },
+          {
+            "arranged_hours": 0.75,
+            "available_hours": 0.75,
+            "available_occupied_hours": 0.75,
+            "available_overlap_hours": 0.0,
+            "capacity_basis": "personal_or_operator_shift_calendar",
+            "capacity_insufficient": false,
+            "capacity_shortfall_hours": 0.0,
+            "conflict_basis": "work_calendar_reservation_overlap",
+            "conflict_segments": [],
+            "excess_arranged_hours": 0.0,
+            "has_overlap": false,
+            "issues": [],
+            "kind": "operator",
+            "label": "Operator",
+            "metric_version": "decision-resource-v4",
+            "occupied_hours": 0.75,
+            "operation_count": 1,
+            "outside_available_hours": 0.0,
+            "outside_calendar_basis": "reservation_span_outside_work_calendar",
+            "overlap_hours": 0.0,
+            "resource_ref": "c37404cfd3a536f26720c47060690483159e24265a0a8046",
+            "segments": [
+              {
+                "concurrent_operations": 1,
+                "end": "2026-09-09T08:45:00",
+                "start": "2026-09-09T08:00:00"
+              }
+            ],
+            "state": "available",
+            "utilization": 1.0
+          }
+        ],
+        "state": "available",
+        "time_scope": {
+          "boundary": "half_open",
+          "range_end": "2026-09-09T08:45:00",
+          "range_start": "2026-09-09T08:00:00",
+          "selection": "overlap",
+          "time_basis": "factory_local"
+        }
+      },
+      "process_order": {
+        "basis": "run_admission",
+        "issues": [],
+        "items": [
+          {
+            "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
+            "predecessor_operation_refs": [],
+            "task_ref": "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
+          }
+        ],
+        "state": "available"
+      }
+    },
+    "provenance": {
+      "accepted_at": "2026-09-10T12:00:00.000000",
+      "adopted_at": "2026-10-15T02:32:12",
+      "algorithm": {
+        "evaluations": {
+          "min_changeover": {
+            "field_order": [
+              "failed_ops",
+              "changeover_count",
+              "overdue_count",
+              "total_tardiness_hours",
+              "weighted_tardiness_hours",
+              "makespan_hours"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.75
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          },
+          "min_overdue": {
+            "field_order": [
+              "failed_ops",
+              "overdue_count",
+              "weighted_tardiness_hours",
+              "total_tardiness_hours",
+              "makespan_hours",
+              "changeover_count"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.75,
+              0.0
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          },
+          "min_tardiness": {
+            "field_order": [
+              "failed_ops",
+              "total_tardiness_hours",
+              "overdue_count",
+              "weighted_tardiness_hours",
+              "makespan_hours",
+              "changeover_count"
+            ],
+            "score": [
+              0,
+              0.0,
+              0.0,
+              0.0,
+              0.75,
+              0.0
+            ],
+            "scoring_scope": {
+              "complete_batch_refs": [
+                "600ae6edefff015542e72d9b8ac89dcbcd54d7d93066c4cc"
+              ],
+              "components_known": true,
+              "is_complete": true,
+              "objective_scope": "all_batches",
+              "scheduled_operation_refs": [
+                "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2"
+              ]
+            }
+          }
+        },
+        "first_found_elapsed_ms": 1,
+        "generation_policy_version": "unified_search_v1",
+        "mode": "greedy",
+        "mode_label": "快速计算",
+        "origin": {
+          "dispatch_mode": "batch_order",
+          "dispatch_rule": "slack",
+          "execution_kind": "new_decision",
+          "origin": "multi_start",
+          "phase": "multi_start",
+          "repair_decision": null,
+          "request_id": 1,
+          "search_objective": "min_overdue",
+          "source_event_ref": 1,
+          "strategy": "priority_first"
+        },
+        "primary_objective": "min_overdue",
+        "representative_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ],
+        "search_evidence_ref": {
+          "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+          "source_event_id": 2
+        },
+        "strategy": "priority_first",
+        "strategy_label": "优先级优先",
+        "target_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ]
+      },
+      "baseline": {
+        "baseline_ref": null,
+        "captured_at": "2026-09-10T12:00:00.000000",
+        "captured_task_count": 0,
+        "kind": "admission_official",
+        "version": null
+      },
+      "finished_at": "2026-10-15T02:29:46.639621",
+      "reason": null,
+      "run_ref": "71e7b04ca8550a470041d779f20d3e3cc7b22d9a7a3ea960",
+      "source_kind": "candidate_adoption",
+      "source_label": "交期优先 · 拖期更轻 · 切换更少",
+      "source_ref": "88ec5f4b111c5cd8d1d4bc139e93b64f34e0c87bd3d0ffc7",
+      "state": "available"
+    },
+    "resources": [
+      {
+        "business_code": "M1",
+        "kind": "machine",
+        "label": "Lathe",
+        "ref": "2891ebde288ee3a1a5a3d516b9f7e35d4c1dfb528aa6b7ac"
+      },
+      {
+        "business_code": "O1",
+        "kind": "operator",
+        "label": "Operator",
+        "ref": "c37404cfd3a536f26720c47060690483159e24265a0a8046"
+      }
+    ],
+    "scope": {
+      "kind": "plan_workspace",
+      "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
+      "range_end": null,
+      "range_start": null,
+      "source": "production"
+    },
+    "task_count": 1,
+    "task_span": {
+      "end": "2026-09-09T08:45:00",
+      "start": "2026-09-09T08:00:00"
+    },
+    "tasks": [
+      {
+        "batch_id": "B1",
+        "batch_quantity": 3,
+        "end": "2026-09-09T08:45:00",
+        "machine_ref": "2891ebde288ee3a1a5a3d516b9f7e35d4c1dfb528aa6b7ac",
+        "operation_ref": "39263183ce6fc9f7407f61d1e87b071a134a4628d2a6bfa2",
+        "operator_ref": "c37404cfd3a536f26720c47060690483159e24265a0a8046",
+        "piece_id": null,
+        "plan_ref": "b5fa8d4ba9c6d4ecd2d4c39090c5e07ef038017c956fc022",
+        "process_label": "Turning",
+        "quantity": 3,
+        "quantity_basis": "run_admission",
+        "quantity_reason": null,
+        "sequence": 1,
+        "start": "2026-09-09T08:00:00",
+        "supplier_ref": null,
+        "task_ref": "48ccdb9111581dbc855e71c8e472219ec71ec4fdc06a9993"
+      }
+    ],
+    "tasks_complete": true,
+    "time_scope": {
+      "boundary": "half_open",
+      "range_end": "2026-09-09T08:45:00",
+      "range_start": "2026-09-09T08:00:00",
+      "selection": "overlap",
+      "time_basis": "factory_local"
+    }
+  }
+}

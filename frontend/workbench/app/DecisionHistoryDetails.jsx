@@ -34,6 +34,7 @@
     graph_block_on_cycle: '工艺循环拦截', graph_critical_weight: '关键路径权重', graph_impact_weight: '影响范围权重',
     graph_downstream_weight: '后续工序权重', graph_candidate_weight_count: '图分析候选数量', graph_selection_policy: '图分析选优策略',
     graph_overdue_tolerance_count: '超期批次数容差', graph_tardiness_tolerance_ratio: '总拖期比例容差', objective_name: '目标名称',
+    generation_policy_version: '候选生成策略版本', selection_policy_version: '推荐选择策略版本', primary_objective: '主目标', target_objectives: '同时探索方向',
     algorithm_version: '算法版本', algorithm_profile: '算法配置', seed: '随机种子', profile: '搜索配置', enabled: '启用状态',
     seed_source: '随机种子来源', configured_time_budget_seconds: '配置计算预算（秒）', effective_time_budget_seconds: '实际计算预算（秒）',
     configured_max_iterations: '配置迭代上限', effective_max_iterations: '实际迭代上限', iteration_limit_source: '迭代上限来源',
@@ -41,14 +42,17 @@
     ortools_warmstart_enabled: '约束求解热启动', strict_mode: '严格约束模式', neighborhoods: '实际搜索邻域',
     configured_neighborhoods: '配置搜索邻域', candidate_strategy_families: '候选策略组' };
   const plain = value => value === null ? '未记录' : typeof value === 'boolean' ? value ? '是' : '否' : String(value);
-  const fieldLabel = value => fieldLabels[value] || fieldLabels[value.split('.').pop().replace(/\[\d+\]$/, '')] || '保存的字段';
+  const fieldLabel = row => row.entity.key === 'run_options' && row.field === 'time_budget_seconds' ? '总计算预算（秒）'
+    : fieldLabels[row.field] || fieldLabels[row.field.split('.').pop().replace(/\[\d+\]$/, '')] || '保存的字段';
   const number = (value, unit = '', precision = 0) => value === null ? '未知' : A.numberText(value, unit, precision);
   const localTime = value => value === null ? '未记录' : F.dateTime(value, { seconds: true, fractions: true });
   function Reason({ value }) { return value ? <p className="dh-note">{value.message}</p> : null; }
   function Raw({ value }) { return <pre className="dh-saved-value">{JSON.stringify(value, null, 2)}</pre>; }
-  function SavedSide({ value }) {
+  function SavedSide({ value, field }) {
     const saved = value.value;
     const preview = saved === null ? '空值' : saved === false ? '否' : saved === true ? '是'
+      : field === 'primary_objective' && typeof saved === 'string' ? window.RunGenerationContract.objectiveLabel(saved)
+      : field === 'target_objectives' && Array.isArray(saved) && saved.length && saved.every(value => typeof value === 'string') ? saved.map(window.RunGenerationContract.objectiveLabel).join(' · ')
       : Array.isArray(saved) ? saved.length + ' 项' : typeof saved === 'object' ? '字段记录' : saved === '' ? '空文本' : String(saved);
     return <div data-history-saved-state={value.state} data-history-value-present={value.present}><span>{value.present ? preview : '未保存'}</span>{value.state !== 'known' && <Reason value={value.reason} />}</div>;
   }
@@ -100,8 +104,8 @@
     const names = Object.fromEntries(categories.map(category => [category.key, category.label]));
     return rows.length ? <div className="wb-table-frame dh-condition-table" tabIndex={0} aria-label={label + '表格滚动区域'}><table className="wb-table" aria-label={label}>
       <caption className="wb-visually-hidden">{label}保存值</caption><thead><tr><th scope="col">对象</th><th scope="col">条件</th>{compare && <th scope="col">对照记录</th>}<th scope="col">{compare ? '当前记录' : '保存值'}</th>{compare && <th scope="col">结果</th>}</tr></thead>
-      <tbody>{rows.map((row, index) => <tr key={row.category + ':' + row.entity.key + ':' + row.field + ':' + index} data-history-condition-state={row.state}><td>{row.entity.label}<small className="dh-note">{names[row.category] || row.category}</small></td><th scope="row">{fieldLabel(row.field)}</th>
-        {compare && <td><SavedSide value={row.before} /></td>}<td><SavedSide value={row.after} /></td>{compare && <td>{pairLabels[row.state]}</td>}</tr>)}</tbody></table></div> : <p className="dh-note">本页没有{label}。</p>;
+      <tbody>{rows.map((row, index) => <tr key={row.category + ':' + row.entity.key + ':' + row.field + ':' + index} data-history-condition-state={row.state}><td>{row.entity.label}<small className="dh-note">{names[row.category] || row.category}</small></td><th scope="row">{fieldLabel(row)}</th>
+        {compare && <td><SavedSide value={row.before} field={row.field} /></td>}<td><SavedSide value={row.after} field={row.field} /></td>{compare && <td>{pairLabels[row.state]}</td>}</tr>)}</tbody></table></div> : <p className="dh-note">本页没有{label}。</p>;
   }
   function ConditionSummary({ value }) {
     const attention = value.summary.different + value.summary.unknown;

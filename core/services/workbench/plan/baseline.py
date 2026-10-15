@@ -20,16 +20,14 @@ from typing import Any, Dict, Mapping, Sequence, Tuple
 from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
-from core.models.workbench_plan_scope import MAX_PLAN_TASKS, PlanReadScope
-from core.services.common.bounded_plan_query import _PagePlanQueryService
+from core.models.workbench_plan_scope import PlanReadScope
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
 from core.services.workbench.facts.adoption_baseline_values import REASONS as ADOPTION_REASONS
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
-from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline import read_adoption_baseline
-from .projection import check_payload_size, project_plan, project_tasks, public_time
+from .projection import check_payload_size, project_plan, public_time
+from .read_context import PlanReadContext, PlanReadQuery
 
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")
 _REASONS = {
@@ -47,32 +45,6 @@ def _unavailable(code, facts):
             "baseline_plan": None, "items": [], "item_count": 0, "items_complete": False}
     facts["outcome"] = data
     return data, facts
-
-
-def _complete_rows(repo, *, version, source, candidate_id=None, scenario_id=None):
-    query = {"version": version, "source_table": source, "candidate_id": candidate_id, "scenario_id": scenario_id}
-    ids = repo.list_plan_row_ids_bounded(limit=MAX_PLAN_TASKS + 1, **query)
-    if len(ids) > MAX_PLAN_TASKS:
-        raise WorkbenchCommandRejected(
-            "query_too_large", "完整的初始计划或对比计划超过 10000 条上限。请缩小时间范围后重试。", 413,
-        )
-    rows = repo.list_detail_rows_bounded(limit=MAX_PLAN_TASKS + 1, **query)
-    if len(rows) != len(ids):
-        raise WorkbenchCommandRejected("plan_unavailable", "对比计划的明细条数前后不一致，确认不了完整范围。请刷新后重试。")
-    return rows
-
-
-def _resource_maps(conn, rows):
-    entities = WorkbenchIdentityRepository(conn)
-    resources, state = {}, {}
-    for kind in ("machine", "operator", "supplier", "batch"):
-        keys = sorted({str(row[kind + "_id"]) for row in rows if row[kind + "_id"] not in (None, "")})
-        mapping = entities.active_map(kind, keys)
-        if set(keys) != set(mapping):
-            raise WorkbenchCommandRejected("identity_missing", "对比工序关联的设备、人员或批次找不到编号。请刷新后重试。")
-        resources[kind] = mapping
-        state[kind] = [(key, value.ref, value.revision) for key, value in sorted(mapping.items())]
-    return resources, state
 
 
 def _overlaps(start, end, scope):
@@ -112,15 +84,13 @@ def _comparison_items(before_tasks, after_tasks, scope):
 
 
 class _BaselineReader:
-    def __init__(self, conn, entry, scope, selected_rows):
-        from .point_query import PointPlanCatalogRepository
+    def __init__(self, conn, entry, scope, selected_rows, context):
         self.conn, self.entry, self.scope, self.selected_rows = conn, entry, scope, selected_rows
-        self.repo = PointPlanCatalogRepository(conn)
-        self.references = WorkbenchPlanIdentityRepository(conn)
+        self.context, self.repo, self.references = context, context.repo, context.references
         self.facts = {"scope": scope.scope(), "selected_plan_ref": scope.plan_ref}
 
     def read(self):
-        locator = self.references.resolve_plan(self.scope.plan_ref)
+        locator = self.context.resolve(self.scope.plan_ref)
         selected = self.entry.locator
         if locator != WorkbenchPlanLocator(selected.version, selected.plan_role, selected.scenario_id):
             raise WorkbenchCommandRejected("invalid_input", "所选计划已经变了，不能跨计划对比。请刷新计划列表后重新选择。", 400)
@@ -137,41 +107,32 @@ class _BaselineReader:
         # candidate id/key against the current base. Same-number replacements fail.
         base_ref = self.references.get_plan_ref(base_locator)
         self.facts["base_plan_ref"] = base_ref
-        base_rows = _complete_rows(self.repo, version=base_locator.version, source=header["base_source_table"],
-                                   candidate_id=header["base_candidate_id"])
+        self.repo.source_rows(base_locator.version, header["base_source_table"], header["base_candidate_id"])
         base_entry = self._base_entry(base_locator)
         if base_entry is None or not base_entry.can_view:
             return _unavailable("baseline_unavailable", self.facts)
-        current_rows = _complete_rows(self.repo, version=locator.version, source=SOURCE_ADJUSTMENT_SCENARIO_ROWS,
-                                      scenario_id=locator.scenario_id)
+        base_rows = self.context.detail_rows(base_entry)
+        current_rows = self.context.detail_rows(self.entry)
         if not current_rows:
             return _unavailable("scenario_unavailable", self.facts)
-        _verify_selected_rows(current_rows, self.selected_rows, self.scope)
         return self._project(base_entry, base_ref, base_rows, current_rows)
 
     def _adopted(self, locator):
-        from .point_evidence import annotate_plan_points
-
         if locator.plan_role != "adopted":
             return _unavailable("not_recorded", self.facts)
         evidence = read_adoption_baseline(self.conn, plan_ref=self.scope.plan_ref, version=locator.version,
             history=self.repo.get_history_identity_row(locator.version), facts=self.facts,
-            point_annotator=lambda rows: annotate_plan_points(self.conn, rows))
+            point_annotator=lambda rows: self.context.attach_points(rows, version=rows[0]["version"],
+                source_table="schedule", candidate_id=None, scenario_id=None) if rows else rows,
+            context=self.context)
         if evidence is None:
             return _unavailable("not_recorded", self.facts)
         base = evidence["baseline"]
         base_entry = self._base_entry(WorkbenchPlanLocator(base["version"], "adopted"))
         if base_entry is None or not base_entry.can_view:
             return _unavailable("baseline_unavailable", self.facts)
-        current = _complete_rows(self.repo, version=locator.version, source="schedule")
-        current = annotate_plan_points(self.conn, current)
-        _verify_selected_rows(current, self.selected_rows, self.scope)
-        resources, state = _resource_maps(self.conn, current)
-        operations = self.references.get_operation_refs(row["op_id"] for row in current)
-        after_facts = {}
-        after = project_tasks(self.scope.plan_ref, current,
-                              self.references.get_task_refs(self.scope.plan_ref, current), operations, resources,
-                              conn=self.conn, facts=after_facts)
+        current = self.context.detail_rows(self.entry)
+        after, after_facts, resources, state = self.context.projected_tasks(self.scope.plan_ref, self.entry, current)
         self.facts["resource_directory"] = after_facts["resource_directory"]
         return self._comparison(base_entry, base["plan_ref"], evidence["tasks"], after, state, evidence["basis"])
 
@@ -183,18 +144,16 @@ class _BaselineReader:
         options = self.repo.list_plan_role_options(locator.version)
         self.facts["base_roles"] = options
         option = next((row for row in options if row["role"] == locator.plan_role), None)
-        query = _PagePlanQueryService(self.repo, self.repo.latest_version())
+        query = PlanReadQuery(self.repo, self.repo.latest_version())
         return _role_entry(query, history, query.latest, locator.plan_role, option)
 
     def _project(self, base_entry, base_ref, base_rows, current_rows):
         from .workspace_dto import resource_directory
 
-        resources, resource_state = _resource_maps(self.conn, base_rows + current_rows)
+        resources, resource_state = self.context.resources(base_rows + current_rows, baseline=True)
         self.facts["resource_directory"] = resource_directory(base_rows + current_rows, resources)
-        operations = self.references.get_operation_refs(row["op_id"] for row in base_rows + current_rows)
-        before = project_tasks(base_ref, base_rows, self.references.get_task_refs(base_ref, base_rows), operations, resources, conn=self.conn)
-        after = project_tasks(self.scope.plan_ref, current_rows,
-                              self.references.get_task_refs(self.scope.plan_ref, current_rows), operations, resources, conn=self.conn)
+        before, _, _, _ = self.context.projected_tasks(base_ref, base_entry, base_rows)
+        after, _, _, _ = self.context.projected_tasks(self.scope.plan_ref, self.entry, current_rows)
         return self._comparison(base_entry, base_ref, before, after, resource_state, "scenario_base")
 
     def _comparison(self, base_entry, base_ref, before, after, resource_state, basis):
@@ -215,7 +174,7 @@ class _BaselineReader:
 
 def build_plan_baseline(
     conn, *, entry: PlanCatalogEntry, scope: PlanReadScope,
-    selected_rows: Sequence[Mapping[str, Any]],
+    selected_rows: Sequence[Mapping[str, Any]], context=None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Return (public DTO, PRIVATE snapshot facts), never a snapshot token itself.
 
@@ -229,9 +188,14 @@ def build_plan_baseline(
     """
     if not conn.in_transaction:
         raise RuntimeError("Baseline reads require a caller-owned read transaction.")
-    reader = _BaselineReader(conn, entry, scope, selected_rows)
+    owned = context is None
+    context = PlanReadContext(conn) if context is None else context
+    reader = _BaselineReader(conn, entry, scope, selected_rows, context)
     try:
-        return reader.read()
+        with context.read_scope():
+            if owned:
+                context.admit_scope(entry, scope, selected_rows)
+            return reader.read()
     except AdoptionBaselineUnavailable as exc:
         reader.facts["evidence_gap"] = exc.gap
         return _unavailable(exc.code, reader.facts)

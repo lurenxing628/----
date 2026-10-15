@@ -8,23 +8,6 @@ _ACTIVE = ContextVar("native_sgs_score_reuse", default=None)
 # resources to formal placement in the same round; it never bypasses placement validation.
 _HANDOFF = ContextVar("sgs_score_cache_handoff", default=None)
 _CALENDAR_CERTIFICATES = {}
-_MULTI_START_CERTIFICATES = {}
-
-
-def register_multi_start_calendar_certificate(calendar_type, certificate):
-    _MULTI_START_CERTIFICATES[calendar_type] = certificate
-
-
-def native_multi_start_calendar_snapshot(calendar):
-    kind = type(calendar)
-    if type(kind) is not type:
-        return None
-    certificate = _MULTI_START_CERTIFICATES.get(kind)
-    if certificate is None or vars(kind).get("certified_multi_start_snapshot") is not certificate:
-        return None
-    if "certified_multi_start_snapshot" in vars(calendar):
-        return None
-    return certificate(calendar)
 
 
 def register_sgs_calendar_certificate(calendar_type, certificate):

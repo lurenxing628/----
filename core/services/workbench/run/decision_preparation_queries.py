@@ -7,9 +7,9 @@ from core.models.workbench_command import canonical_json
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import bounded_size
+from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 
 from .decision_impact import filter_options
-from .decision_metrics import METRIC_VERSION
 from .decision_queries import _page
 from .decision_source import DecisionSource
 

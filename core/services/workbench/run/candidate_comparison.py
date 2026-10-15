@@ -1,24 +1,18 @@
-"""Read-only dashboard comparisons anchored to one immutable run admission."""
-
-from collections import defaultdict
-from types import SimpleNamespace
+"""Read-only dashboard comparisons from one immutable decision source."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_analysis import operation_change
-from core.models.workbench_run_baseline import RunCandidateBaselineScope
-from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, RunCandidateReadScope, reject
-from core.services.workbench.facts.candidate_read_source import read_candidate_source
+from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason, elapsed_hours
+from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reject
+from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import bounded_size
-from core.services.workbench.facts.decision_baseline import read_decision_baseline
-from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta, delivery_summary
 
-from .candidate_baseline import WorkbenchRunCandidateBaselineQueryService, _rows, _scope_rows
-from .candidate_metrics import candidate_resource_cohort, changeovers, resource_comparison
+from .candidate_baseline import _in_time
+from .candidate_metrics import changeovers, resource_comparison
 from .candidate_tradeoffs import candidate_tradeoffs
-from .candidates import WorkbenchRunCandidateQueryService
-from .decision_delivery import project_decision_delivery
+from .decision_source import DecisionSource
 
 
 def _common_batches(settings, batch_ref):
@@ -30,24 +24,69 @@ def _common_batches(settings, batch_ref):
     return sorted(refs)
 
 
-def _admission_comparison(conn, source):
-    """Adapt the canonical formal source to existing descriptive comparison DTOs."""
-    official = read_decision_baseline(source.capture, source.facts, source.disposition, source.run["accepted_at"],
-                                      source_resolver=decision_baseline_source_resolver(conn))
-    by_operation = defaultdict(list)
-    for task in official["tasks"]:
-        by_operation[task["operation_ref"]].append(task)
-    frame = SimpleNamespace(facts=source.facts, settings=source.capture["input"], selected=set(source.disposition),
-                            by_operation=by_operation, segments=lambda ref: by_operation[ref],
-                            baseline={"plan_ref": official["identity"]["plan_ref"],
-                                      "version": official["identity"]["version"], "rows": official["tasks"]})
-    return official, frame, _rows(source.tasks, frame, source.disposition)
+def _analysis_source(store, candidate_ref, *, range_start=None, range_end=None):
+    return DecisionSource(store, store.candidate_run(candidate_ref), comparison_mode="admission_official",
+                          selected_candidate_ref=candidate_ref, range_start=range_start, range_end=range_end,
+                          resource_view="full_candidate")
 
 
-def _baseline_deliveries(facts, official, refs):
-    return project_decision_delivery(facts, official["tasks"], refs,
-                                     deferred_ids=official["deferred_operation_ids"],
-                                     available=official["identity"]["state"] == "available")
+def _comparison_interval(task):
+    fields = ("row_ref", "start", "end", "source", "machine", "operator", "supplier", "locked", "data_gaps")
+    start, end = task["start"], task["end"]
+    result = {**{key: task[key] for key in fields},
+              "elapsed_hours": elapsed_hours(start, end) if start is not None and end is not None else None,
+              "effective_processing_hours": None,
+              "interval_comparable": task.get("interval_comparable", True)}
+    if task.get("event_kind") == "point":
+        result.update(event_kind="point", duration_seconds=0, occupies_resources=False)
+    return result
+
+
+def _comparison_rows(source):
+    """Use the legacy comparison rule on compact permanent-identity rows."""
+    old = source.analysis_groups("reference")
+    new = {row["operation_ref"]: row for row in source.analysis_tasks(source.selected_ref)}
+    selected = source.operation_refs
+    result = []
+    for ref in sorted(selected | set(old) | set(new)):
+        task = new.get(ref)
+        # Execution annotations are not consumed by the arrangement metrics.
+        labels = {"batch_ref": source.operation_batch_ref(ref), "execution_at_generation": None}
+        result.append(RunBaselineComparison(
+            ref, task["row_ref"] if task else None, labels, _comparison_interval(task) if task else None,
+            [_comparison_interval(row) for row in old.get(ref, ())], ref in selected,
+            "scheduled" if task else "skipped" if ref in source.deferred_refs else "unscheduled" if ref in selected else None,
+        ).to_dict())
+    return result
+
+
+def _comparison_metadata(source, rows, scope=None):
+    captured = source.baseline["version"] is not None
+    visible = rows
+    if scope is not None:
+        if scope.batch_ref is not None:
+            visible = [row for row in visible if row["batch_ref"] == scope.batch_ref]
+        start, end = (local_time(source.scope[key]) for key in ("range_start", "range_end"))
+        visible = [row for row in visible if _in_time(row, start, end)]
+    available = any(row["comparison_available"] for row in visible)
+    reason = None if available else baseline_reason("no_comparable_operations" if captured else "no_admission_baseline")
+    run = source.run
+    generation = {"run_ref": run["run_ref"], "accepted_at": run["accepted_at"], "finished_at": run["finished_at"],
+                  "metadata_basis": "captured_at_run_admission", "execution_basis": "captured_at_run_admission",
+                  "current_entities_consulted": False, "formal_version_allocated": False, "input": source.input,
+                  "source_verification": {"facts_content_verified": True, "baseline_matches_archived_schedule": True,
+                                          "execution_matches_archived_evidence": True, "input_source_verified": True,
+                                          "candidate_content_verified": True}}
+    baseline = {"baseline_ref": source.baseline["plan_ref"], "version": source.baseline["version"],
+                "kind": "admission_official", "captured_at": run["accepted_at"],
+                "captured_task_count": len(source.analysis_tasks("reference")), "available": captured,
+                "comparison_available": available, "reason": reason}
+    return generation, baseline
+
+
+def _analysis_state(source):
+    return {"read_contract_version": 1, "run_ref": source.run["run_ref"],
+            "candidate_ref": source.selected_ref, "official_sources": source.official["source_states"]}
 
 
 def _delivery_summary(rows):
@@ -69,69 +108,63 @@ def _delivery_rows(before, after, refs):
     return result
 
 
-def _machine_changes(baseline, refs):
-    selected = [row for row in baseline["comparisons"] if row["batch_ref"] in refs]
-    machines = [(row["operation_ref"], operation_change(row)[1]) for row in selected]
+def _machine_changes(rows, refs):
+    machines = [(row["operation_ref"], operation_change(row)[1]) for row in rows if row["batch_ref"] in refs]
     changed = [ref for ref, changed in machines if changed is True]
     unknown = sum(changed is None for _, changed in machines)
     return {"count": None if unknown else len(changed), "known_count": len(changed),
             "unknown_count": unknown, "operation_refs": changed, "basis": "matched_operation_permanent_identity"}
 
 
-def _projection(workspace, baseline, full_workspace, full_baseline, official, facts, capture, scope, cohort):
-    refs = _common_batches(capture["input"], scope.batch_ref)
-    before_delivery = _baseline_deliveries(facts, official, refs)
-    after_delivery = [row for row in full_workspace["delivery_risks"]["items"] if row["batch_ref"] in refs]
+def _projection(source, scope):
+    refs = _common_batches(source.input, scope.batch_ref)
+    before_delivery = [row for row in source.delivery("reference") if row["batch_ref"] in refs]
+    after_delivery = [row for row in source.legacy_delivery(source.selected_ref) if row["batch_ref"] in refs]
     batches = _delivery_rows(before_delivery, after_delivery, refs)
-    before = [row for row in official["tasks"] if row["batch_ref"] in refs]
-    after = [row for row in full_workspace["tasks"] if row["batch_ref"] in refs]
+    before_tasks, after_tasks = source.analysis_tasks("reference"), source.analysis_tasks(source.selected_ref)
+    before, after = ([row for row in tasks if row["batch_ref"] in refs] for tasks in (before_tasks, after_tasks))
+    rows = _comparison_rows(source)
+    generation, baseline = _comparison_metadata(source, rows, scope)
     start, end = scope.range_start, scope.range_end
-    captured = full_baseline["baseline"]["available"]
-    old_cost = changeovers(official["tasks"], facts, captured, start=start, end=end,
-                          next_operation_refs=[row["operation_ref"] for row in before])
-    new_cost = changeovers(full_workspace["tasks"], facts, start=start, end=end,
-                          next_operation_refs=[row["operation_ref"] for row in after])
-    resources, resource_common = resource_comparison(before, after, capture, facts, start, end, captured, cohort)
-    resource_common.update(batch_refs=refs, resource_view="selected_batches", run_ref=workspace["generation"]["run_ref"])
+    old_intervals, new_intervals = source.task_intervals("reference"), source.task_intervals(source.selected_ref)
+    old_cost = changeovers(before_tasks, baseline["available"], start=start, end=end,
+                          next_operation_refs=[row["operation_ref"] for row in before], task_intervals=old_intervals)
+    new_cost = changeovers(after_tasks, start=start, end=end,
+                          next_operation_refs=[row["operation_ref"] for row in after], task_intervals=new_intervals)
+    resources, resource_common = resource_comparison(before, after, start, end, baseline["available"],
+        source.resource_cohort["resources"], calendar_archive=source.calendar_archive,
+        task_intervals=new_intervals, reference_task_intervals=old_intervals)
+    resource_common.update(batch_refs=refs, resource_view="selected_batches", run_ref=source.run["run_ref"])
     missing_resources = sum(row["source"] not in ("internal", "external") or
                             row["source"] == "internal" and (not row["machine"] or row["machine"]["ref"] is None)
                             for row in before + after)
-    result = {"candidate": workspace["candidate"], "generation": baseline["generation"], "baseline": baseline["baseline"],
-            "time_scope": baseline["time_scope"], "batch_ref": scope.batch_ref, "batch_refs": refs,
+    time_scope = {"range_start": start, "range_end": end, "interval": "half_open_overlap",
+                  "membership": "either_side_overlap", "counterpart_policy": "retain_complete_counterpart",
+                  "time_basis": "factory_local", "unplanned_policy": "included_without_time_interval",
+                  "unknown_or_zero_interval_policy": "included_without_time_interval"}
+    result = {"candidate": source.saved_candidate_catalog(source.selected_ref), "generation": generation,
+            "baseline": baseline, "time_scope": time_scope, "batch_ref": scope.batch_ref, "batch_refs": refs,
             "batches": batches, "resources": resources, "resource_common": resource_common,
             "summary": {"before": {**_delivery_summary(before_delivery), "changeovers": old_cost},
                         "after": {**_delivery_summary(after_delivery), "changeovers": new_cost},
                         "changeover_delta": None if old_cost["value"] is None or new_cost["value"] is None else new_cost["value"] - old_cost["value"]},
-            "machine_changes": _machine_changes(full_baseline, refs),
+            "machine_changes": _machine_changes(rows, refs),
             "resource_scope_complete": not bool(missing_resources), "resource_scope_unknown_rows": missing_resources,
             "basis": {"comparison": "candidate_minus_admission_official", "batch_scope": "admission_selected_batches",
                       "delivery": "complete_captured_batch_operations", "resources": "same_range_daily_peak_available_occupancy",
                       "changeovers": "same_range_scheduled_operation_type_changes", "current_entities_consulted": False},
             "capabilities": {"view": True, "adopt": False, "edit_draft": False, "report_actual": False}}
-    selected_batches = set(refs)
-    subject_operation_refs = {ref for ref, key in facts.operations.items()
-        if facts.entity_refs.get(("batch", facts.tables["BatchOperations"][key]["batch_id"])) in selected_batches}
-    result["tradeoffs"] = candidate_tradeoffs(result, before_delivery, after_delivery, official["tasks"], full_workspace["tasks"],
-                                           subject_operation_refs=subject_operation_refs)
+    result["tradeoffs"] = candidate_tradeoffs(result, before_delivery, after_delivery, before_tasks, after_tasks,
+        subject_operation_refs={row["operation_ref"] for row in before + after})
     return result
 
 
 def read_candidate_comparison(conn, scope):
     if scope.range_start is None or scope.range_end is None:
         reject("invalid_input", "请选择共同的比较时间范围。", 400)
-    reader = WorkbenchRunCandidateQueryService(conn)
-    baseline_scope = RunCandidateBaselineScope(scope.candidate_ref, scope.range_start, scope.range_end,
-                                               scope.batch_ref, scope.sort, scope.order)
-    with reader.store.snapshot(), read_evidence_scope(conn):
-        source = read_candidate_source(reader.store, scope.candidate_ref)
-        official, frame, rows = _admission_comparison(conn, source)
-        workspace, workspace_state = reader._workspace(source, scope)
-        candidate = workspace["candidate"]
-        baseline = WorkbenchRunCandidateBaselineQueryService._dto(source.run, candidate, frame, _scope_rows(rows, baseline_scope), len(rows), baseline_scope)
-        full_workspace, _ = reader._workspace(source, RunCandidateReadScope(scope.candidate_ref))
-        full_baseline = WorkbenchRunCandidateBaselineQueryService._dto(source.run, candidate, frame, rows, len(rows), RunCandidateBaselineScope(scope.candidate_ref))
-        data = _projection(workspace, baseline, full_workspace, full_baseline, official, source.facts, source.capture, scope,
-                           candidate_resource_cohort(reader.store, source, official["tasks"]))
-        state = {**workspace_state, "official_sources": official["source_states"]}
+    store = CandidateStore(conn)
+    with store.snapshot(), read_evidence_scope(conn):
+        source = _analysis_source(store, scope.candidate_ref, range_start=scope.range_start, range_end=scope.range_end)
+        data = _projection(source, scope)
         bounded_size(len(canonical_json(data).encode("utf-8")), MAX_RESPONSE_BYTES)
-        return data, state
+        return data, _analysis_state(source)

@@ -13,17 +13,11 @@ from .config_constants import (
     BUILTIN_PRESET_IMPROVE_SLOW,
     BUILTIN_PRESET_MIN_CHANGEOVER,
     PRESET_PREFIX,
+    RETIRED_CONFIG_FIELDS,
 )
 from .config_field_spec import get_field_spec, list_config_fields
 from .config_snapshot import ScheduleConfigSnapshot, build_schedule_config_snapshot
 from .config_validator import normalize_preset_snapshot as normalize_preset_snapshot_dict
-
-LEGACY_OPTIONAL_PRESET_FIELDS: Tuple[str, ...] = (
-    "graph_candidate_weight_count",
-    "graph_selection_policy",
-    "graph_overdue_tolerance_count",
-    "graph_tardiness_tolerance_ratio",
-)
 
 
 def preset_key(name: str) -> str:
@@ -68,7 +62,6 @@ def builtin_presets(default_snapshot: ScheduleConfigSnapshot) -> List[Tuple[str,
         **{
             **base.to_dict(),
             "algo_mode": "improve",
-            "time_budget_seconds": 30,
             "objective": "min_changeover",
         }
     )
@@ -76,7 +69,7 @@ def builtin_presets(default_snapshot: ScheduleConfigSnapshot) -> List[Tuple[str,
         **{
             **base.to_dict(),
             "algo_mode": "improve",
-            "time_budget_seconds": 120,
+            "time_budget_seconds": 30,
             "objective": "min_tardiness",
         }
     )
@@ -117,8 +110,7 @@ def registered_preset_keys() -> Tuple[str, ...]:
 
 def missing_required_preset_fields(data: Dict[str, Any]) -> List[str]:
     payload = dict(data or {})
-    legacy_optional = set(LEGACY_OPTIONAL_PRESET_FIELDS)
-    return [key for key in registered_preset_keys() if key not in payload and key not in legacy_optional]
+    return [key for key in registered_preset_keys() if key not in payload]
 
 
 def raw_value_matches_canonical(key: str, raw_value: Any, canonical_value: Any) -> bool:
@@ -174,7 +166,7 @@ def load_preset_payload(raw: Any, *, name: str) -> Dict[str, Any]:
         data = json.loads(str(raw))
         if not isinstance(data, dict):
             raise ValueError("preset json is not dict")
-        return dict(data)
+        return {key: value for key, value in data.items() if key not in RETIRED_CONFIG_FIELDS}
     except Exception as exc:
         raise ValidationError("方案数据已损坏，暂时无法读取。", field="方案数据") from exc
 
@@ -192,7 +184,6 @@ __all__ = [
     "dump_snapshot_payload",
     "get_snapshot_from_repo",
     "load_preset_payload",
-    "LEGACY_OPTIONAL_PRESET_FIELDS",
     "missing_required_preset_fields",
     "normalize_preset_snapshot",
     "preset_key",

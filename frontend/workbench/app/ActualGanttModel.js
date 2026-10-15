@@ -41,7 +41,7 @@
   function filter(data, view, asOf, labels = names(data)) {
     const query = view.query.trim().toLowerCase();
     return data.items.filter(item => (!query || searchText(item, labels).includes(query)) &&
-      (view.late === 'all' || deadlines(item, asOf)[view.late]) && (!view.onlySelected || item.task.task_ref === view.selected));
+      (view.late === 'all' || deadlines(item)[view.late]) && (!view.onlySelected || item.task.task_ref === view.selected));
   }
   function push(heap, item) {
     let at = heap.length; heap.push(item);
@@ -144,8 +144,9 @@
     const result = new Map();
     for (const row of model.rows) {
       if (row.kind !== 'actual') continue;
-      const candidates = marks(row), reports = candidates.filter(mark => mark.report);
-      const mark = reports.sort((a, b) => b.end - a.end)[0] || candidates[0];
+      const candidates = marks(row); let mark = null;
+      for (const candidate of candidates) if (candidate.report && (!mark || candidate.end > mark.end)) mark = candidate;
+      mark = mark || candidates[0];
       if (!mark) continue;
       const ref = row.item.task.task_ref, previous = result.get(ref), reported = !!mark.report;
       if (previous && (previous.reported && !reported || previous.reported === reported && previous.end >= mark.end)) continue;

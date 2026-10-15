@@ -11,6 +11,7 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 
 from .adoption_baseline_identity import _live_sources
 from .projection import check_payload_size, public_time, read_adopted_source, wire_positive_int64
+from .read_context import PlanReadContext
 
 
 def _unavailable(facts, code, gap):
@@ -21,7 +22,7 @@ def _unavailable(facts, code, gap):
             "issues": [{"code": code, "message": message}]}, facts, unavailable_graph("full_plan", message)
 
 
-def _frozen_operations(conn, tables, arranged):
+def _frozen_operations(conn, tables, arranged, *, context=None):
     operations = indexed(tables["BatchOperations"], "id")
     batches = indexed(tables["Batches"], "batch_id")
     wanted = {row["op_id"] for row in arranged}
@@ -34,7 +35,7 @@ def _frozen_operations(conn, tables, arranged):
                if row["kind"] == "operation" and row["active"] == 1 and row["source_key"] in keys]
     by_key = indexed(sources, "source_key")
     require(set(by_key) == keys, "process_order.complete_operation_refs")
-    _live_sources(conn, sources)
+    _live_sources(conn, sources, context=context)
     refs = {key: by_key[str(key)]["ref"] for key in related}
     require(len(set(refs.values())) == len(refs), "process_order.unique_operation_refs")
     return related, {key: batches[key] for key in batch_ids}, refs
@@ -75,10 +76,10 @@ def _acyclic(relations):
     require(len(ready) == len(relations), "process_order.frozen_cycle")
 
 
-def _project(conn, plan_ref, rows, relations, refs):
-    repository = WorkbenchPlanIdentityRepository(conn)
+def _project(conn, plan_ref, rows, relations, refs, *, context=None):
+    repository = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
     tasks = repository.get_task_refs(plan_ref, [dict(row, schedule_id=row["id"]) for row in rows])
-    all_refs = set(WorkbenchPlanBaselineRepository(conn).list_task_refs_by_plan(plan_ref))
+    all_refs = context.all_task_refs(plan_ref) if context is not None else set(WorkbenchPlanBaselineRepository(conn).list_task_refs_by_plan(plan_ref))
     require(all_refs == set(tasks.values()) and len(tasks) == len(rows), "process_order.complete_task_membership")
     items = []
     for row in rows:
@@ -90,24 +91,30 @@ def _project(conn, plan_ref, rows, relations, refs):
     return items
 
 
-def project_process_order(conn, *, plan_ref):
+def project_process_order(conn, *, plan_ref, context=None):
     """Return a complete read-only projection and the facts used by its fingerprint."""
     if not conn.in_transaction:
         raise RuntimeError("Process order reads require a caller-owned read transaction.")
+    context = PlanReadContext(conn) if context is None else context
+    with context.read_scope():
+        return _process_order(conn, plan_ref=plan_ref, context=context)
+
+
+def _process_order(conn, *, plan_ref, context):
     facts = {"plan_ref": plan_ref}
     try:
-        evidence = read_adopted_source(conn, plan_ref)
+        evidence = read_adopted_source(conn, plan_ref, context=context)
         if evidence is None:
             return _unavailable(facts, "process_order_not_recorded", "no_audited_frozen_source")
         basis, audit, tables, arranged, selected = evidence
         facts.update(adoption=audit, selected_rows=selected)
-        operations, batches, refs = _frozen_operations(conn, tables, arranged)
+        operations, batches, refs = _frozen_operations(conn, tables, arranged, context=context)
         if basis == "candidate_adoption":
             relations = frozen_process_relations(operations, batches, refs)
         else:
             relations = _trial_relations(conn, audit, refs)
         _acyclic(relations)
-        items = _project(conn, plan_ref, selected, relations, refs)
+        items = _project(conn, plan_ref, selected, relations, refs, context=context)
         data = {"state": "available", "basis": "run_admission" if basis == "candidate_adoption" else "trial_creation",
                 "items": items, "issues": []}
         check_payload_size(data)

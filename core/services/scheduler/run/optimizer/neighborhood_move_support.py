@@ -87,15 +87,20 @@ def due_batch_count(batches: Dict[str, Any]) -> int:
     return sum(1 for batch in (batches or {}).values() if batch_due_date(batch) is not None)
 
 
+def prepare_batch_due_dates(batches: Dict[str, Any]) -> Tuple[Tuple[str, Optional[date]], ...]:
+    return tuple((str(raw_batch_id or "").strip(), batch_due_date(batch))
+                 for raw_batch_id, batch in (batches or {}).items())
+
+
 def earliest_due_pressure_batch(
     *,
     finish_by_batch_rows: Dict[str, datetime],
     batches: Dict[str, Any],
+    prepared_due_dates: Optional[Tuple[Tuple[str, Optional[date]], ...]] = None,
 ) -> str:
     best: Optional[Tuple[date, str]] = None
-    for raw_batch_id, batch in (batches or {}).items():
-        bid = str(raw_batch_id or "").strip()
-        due_date = batch_due_date(batch)
+    due_dates = prepared_due_dates if prepared_due_dates is not None else prepare_batch_due_dates(batches)
+    for bid, due_date in due_dates:
         if not bid or due_date is None:
             continue
         finish_time = finish_by_batch_rows.get(bid)
@@ -129,14 +134,19 @@ def busy_hours(rows: List[Any]) -> float:
     return float(total)
 
 
-def first_changeover_pair(results: List[Any]) -> Optional[Tuple[Any, Any]]:
+def prepare_machine_rows(results: List[Any]) -> List[List[Any]]:
     grouped: Dict[str, List[Any]] = {}
     for result in list(results or []):
         machine_id = str(getattr(result, "machine_id", "") or "").strip()
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
-    for rows in grouped.values():
-        rows.sort(key=result_time_key)
+    return [sorted(rows, key=result_time_key) for rows in grouped.values()]
+
+
+def first_changeover_pair(results: List[Any], *, prepared_machine_rows: Optional[List[List[Any]]] = None
+                          ) -> Optional[Tuple[Any, Any]]:
+    groups = prepared_machine_rows if prepared_machine_rows is not None else prepare_machine_rows(results)
+    for rows in groups:
         previous = None
         for row in rows:
             if previous is not None and op_type(previous) and op_type(row) and op_type(previous) != op_type(row):
@@ -157,15 +167,10 @@ def op_type(result: Any) -> str:
     return str(getattr(result, "op_type_name", "") or "").strip()
 
 
-def changeover_count(results: List[Any]) -> int:
+def changeover_count(results: List[Any], *, prepared_machine_rows: Optional[List[List[Any]]] = None) -> int:
     count = 0
-    grouped: Dict[str, List[Any]] = {}
-    for result in list(results or []):
-        machine_id = str(getattr(result, "machine_id", "") or "").strip()
-        if machine_id:
-            grouped.setdefault(machine_id, []).append(result)
-    for rows in grouped.values():
-        rows.sort(key=result_time_key)
+    groups = prepared_machine_rows if prepared_machine_rows is not None else prepare_machine_rows(results)
+    for rows in groups:
         previous = ""
         for row in rows:
             current = op_type(row)
@@ -233,6 +238,8 @@ __all__ = [
     "most_tardy_batch",
     "pick_resource_pair",
     "positive_count",
+    "prepare_batch_due_dates",
+    "prepare_machine_rows",
     "resource_pair_count",
     "tardy_batch_count",
 ]

@@ -6,31 +6,30 @@ remain in the graph and only mutable nodes can change priority.
 from __future__ import annotations
 
 import heapq
-from collections import defaultdict
 from datetime import datetime
-from typing import Any, Dict, Iterator, List, Tuple
+from itertools import chain, zip_longest
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from .repair_decisions import RepairDecision
+from .repair_decisions import RepairDecision, RepairParentPreparation, prepare_repair_parent
+from .repair_decisions import decoded_topological_order as _decoded_topological_order
+from .repair_decisions import resource_timelines as _resource_timelines
 
 
 def operation_repair_decisions(
     candidate: Dict[str, Any], *, operations: List[Any], graph_context: Dict[str, Any],
     metrics_by_op_id: Dict[int, Dict[str, Any]], batch_order: Tuple[str, ...],
-    start_dt: datetime, objective_name: str, limit: int = 8,
+    start_dt: datetime, objective_name: str, limit: int = 8, resource_pool: Optional[Dict[str, Any]] = None,
+    prepared_parent: Optional[RepairParentPreparation] = None,
 ) -> Iterator[Tuple[str, RepairDecision]]:
-    mutable = {int(op.id) for op in operations}
-    rows = {int(row.op_id): row for row in candidate["results"] if int(row.op_id) in mutable}
-    if not mutable or set(rows) != mutable:
+    prepared = (prepared_parent if prepared_parent is not None
+                else prepare_repair_parent(candidate, operations, resource_pool, graph_context))
+    if not prepared.operation_order:
         return
-    predecessors = {op_id: set(graph_context["predecessor_op_ids_by_op_id"].get(op_id, ())) & mutable
-                    for op_id in mutable}
-    order = _decoded_topological_order(rows, predecessors)
-    ranks = {op_id: index for index, op_id in enumerate(order)}
-    timelines = _resource_timelines(candidate["results"])
-    inherited = tuple(tuple(item) for item in candidate.get("repair_decision", {}).get("resource_overrides", ()))
-    moves = _operation_moves(timelines, rows, metrics_by_op_id, start_dt, objective_name)
-    for kind, decision_order in _bounded_operation_orders(order, ranks, predecessors, moves, limit):
-        yield kind, RepairDecision(batch_order, decision_order, inherited)
+    moves = _operation_moves(prepared.resource_timelines, prepared.decoded_rows, metrics_by_op_id, start_dt, objective_name,
+                             latest_end_time=prepared.latest_end_time)
+    for kind, decision_order in _bounded_operation_orders(
+            prepared.operation_order, prepared.operation_ranks, prepared.predecessors, moves, limit):
+        yield kind, RepairDecision(batch_order, decision_order, prepared.inherited_resources)
 
 
 def _bounded_operation_orders(
@@ -41,11 +40,16 @@ def _bounded_operation_orders(
     seen = {order}
     considered_moves = set()
     emitted = 0
-    for inspected, (kind, source, target) in enumerate(moves):
+    inspected = 0
+    moves = iter(moves)
+    while emitted < limit and inspected < limit * 4:
         # Rejected DAG moves cost O(nodes + edges), too. Bound attempts as well
         # as outputs; a long precedence chain must not trigger quadratic probes.
-        if emitted >= limit or inspected >= limit * 4:
+        try:
+            kind, source, target = next(moves)
+        except StopIteration:
             break
+        inspected += 1
         if (source, target) in considered_moves:
             continue
         considered_moves.add((source, target))
@@ -62,56 +66,23 @@ def _bounded_operation_orders(
         yield kind, decision_order
 
 
-def _decoded_topological_order(rows: Dict[int, Any], predecessors: Dict[int, set]) -> Tuple[int, ...]:
-    successors: Dict[int, List[int]] = defaultdict(list)
-    pending = {op_id: len(parents) for op_id, parents in predecessors.items()}
-    for op_id, parents in predecessors.items():
-        for parent in parents:
-            successors[parent].append(op_id)
-    ready = [(rows[op_id].start_time, rows[op_id].end_time, op_id) for op_id, count in pending.items() if not count]
-    heapq.heapify(ready)
-    order = []
-    while ready:
-        _, _, op_id = heapq.heappop(ready)
-        order.append(op_id)
-        for child in successors[op_id]:
-            pending[child] -= 1
-            if not pending[child]:
-                heapq.heappush(ready, (rows[child].start_time, rows[child].end_time, child))
-    if len(order) != len(rows):
-        raise ValueError("GraphReady repair cannot reorder a cyclic mutable graph")
-    return tuple(order)
-
-
 # Public names for other decision stages; the internal helpers stay patchable under their old names.
 decoded_topological_order = _decoded_topological_order
 
 
-def _resource_timelines(results: List[Any]) -> List[List[Any]]:
-    timelines: Dict[Tuple[str, str], List[Any]] = defaultdict(list)
-    for row in results:
-        for field in ("machine_id", "operator_id"):
-            resource = str(getattr(row, field, "") or "")
-            if resource:
-                timelines[(field, resource)].append(row)
-    return [sorted(rows, key=lambda row: (row.start_time, row.end_time, int(row.op_id)))
-            for _, rows in sorted(timelines.items())]
-
-
 def _operation_moves(timelines: List[List[Any]], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],
-                     start_dt: datetime, objective_name: str) -> Iterator[Tuple[str, int, int]]:
-    latest = max(row.end_time for row in rows.values())
-    critical = []
-    inserts = []
-    for timeline in timelines:
-        critical.extend(_critical_block_moves(timeline, rows, metrics, latest, objective_name))
-        inserts.extend(_time_insert_moves(timeline, rows, metrics, start_dt, objective_name))
+                     start_dt: datetime, objective_name: str, *, latest_end_time: Optional[datetime] = None
+                     ) -> Iterator[Tuple[str, int, int]]:
+    latest = latest_end_time if latest_end_time is not None else max(row.end_time for row in rows.values())
+    critical = chain.from_iterable(_critical_block_moves(timeline, rows, metrics, latest, objective_name)
+                                  for timeline in timelines)
+    inserts = chain.from_iterable(_time_insert_moves(timeline, rows, metrics, start_dt, objective_name)
+                                 for timeline in timelines)
     # Neither family monopolizes the bounded operation prefix.
-    for index in range(max(len(critical), len(inserts))):
-        if index < len(critical):
-            yield critical[index]
-        if index < len(inserts):
-            yield inserts[index]
+    for group in zip_longest(critical, inserts):
+        for move in group:
+            if move is not None:
+                yield move
 
 
 def _critical_block_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],
@@ -135,9 +106,9 @@ def _is_critical_block_pair(left: Any, right: Any, ids: Tuple[int, int], metrics
 
 def _time_insert_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],
                        start_dt: datetime, objective_name: str) -> Iterator[Tuple[str, int, int]]:
-    ranked = sorted((row for row in timeline if int(row.op_id) in rows),
-                    key=lambda row: _target_priority(row, metrics[int(row.op_id)], start_dt, objective_name))
-    for target in ranked[:3]:
+    ranked = heapq.nsmallest(3, (row for row in timeline if int(row.op_id) in rows),
+                            key=lambda row: _target_priority(row, metrics[int(row.op_id)], start_dt, objective_name))
+    for target in ranked:
         previous_end = start_dt
         for anchor in timeline:
             if anchor.start_time >= target.start_time:

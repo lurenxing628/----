@@ -14,10 +14,12 @@
   }
   function save(value, previous) {
     C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。'); C.check(value === null || valid(value));
+    return write(value);
+  }
+  function write(value) {
     try { if (value === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(value)); }
     catch (_) { throw new Error('上次操作记录保存不了，不能开始处置。请重新打开页面。'); }
-    const stored = read(); C.check(C.equal(stored, value));
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: stored })); return stored;
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
   }
   function useCommand(api) {
     const [initial] = React.useState(() => { try { return { saved: read(), error: null }; } catch (error) { return { saved: null, error }; } });
@@ -25,7 +27,6 @@
     const [error, setError] = React.useState(null), [busy, setBusy] = React.useState(false), [notice, setNotice] = React.useState('');
     const mounted = React.useRef(false), running = React.useRef(false), active = React.useRef(saved); active.current = saved;
     function sync(event) { try { const v = event && event.type === EVENT ? event.detail : read();
-      if (event && event.type === EVENT) C.check(v === null || valid(v), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
       active.current = v; setSaved(v); setStorageError(null); } catch (e) { setStorageError(e); } }
     React.useEffect(() => {
       mounted.current = true; const changed = e => { if (!e.key || e.key === KEY) sync(e); };
@@ -48,7 +49,7 @@
       try {
         C.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持，请用 Chrome 打开。');
         await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          C.check(acquired, '另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。'); C.check(read() === null, '上次处置还没确认结果，不能再提交新的处置。请点「查询结果」。');
+          C.check(acquired, '另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。');
           C.check(item.write_context && item.write_context.capabilities[action] === true, '这条记录现在不能处置，请刷新后重试。');
           original = { version: 1, request_key: 'dashboard-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
             phase: 'pending', item_ref: item.item_ref, subject: item.subject, action, input, before: C.baseHandling(item.handling), source: item.source, risk: item.risk };
@@ -67,7 +68,7 @@
     }
     function finish() {
       if (running.current) return false;
-      try { const value = read(); C.check(value && value.phase !== 'pending', '上次处置的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。'); save(null, value); setError(null); setNotice(''); return true; }
+      try { const value = read(); C.check(value && value.phase !== 'pending', '上次处置的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。'); write(null); setError(null); setNotice(''); return true; }
       catch (e) { setStorageError(e); return false; }
     }
     return { saved, busy, error, storageError, notice, lookup, submit, finish, sync };

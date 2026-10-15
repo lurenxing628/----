@@ -15,8 +15,32 @@
     return <window.WorkbenchListControls.Pager page={page} pages={pages} onPage={onPage} disabled={disabled} label={label} />;
   }
   function Metric({ metric, suffix = '', kind }) {
+    if (metric.state === 'not_applicable' && metric.reason && metric.reason.code === 'shared_run_time')
+      return <details className="rc-metric rc-muted" data-metric-state="not_applicable"><summary title={metric.reason.message}>N/A</summary><small>{metric.reason.message}</small></details>;
     return metric.value === null ? <details className="rc-metric rc-muted"><summary title={metric.reason.message}>未知</summary><small>{metric.reason.message}</small></details> :
       <span>{['machine_util_avg', 'operator_util_avg'].includes(kind) ? window.RunCandidateModel.percent(metric.value) : window.RunCandidateModel.number(metric.value)}{suffix}</span>;
+  }
+  function ScoringScope({ value }) {
+    const labels = { all_batches: '本次参与计算的全部批次', completed_batches_only: '本次计算范围内工序已排齐的批次', unknown: '评分范围待确认' };
+    return <div className="rc-scoring-scope" data-scoring-scope={value.objective_scope}>
+      <span>已安排 {window.RunCandidateModel.number(value.scheduled_operation_refs.length)} 道工序，已排齐 {window.RunCandidateModel.number(value.complete_batch_refs.length)} 批</span>
+      <small>{labels[value.objective_scope]} · {value.is_complete ? '完整安排范围' : '部分安排范围'} · {value.components_known ? '评分分量已知' : '评分分量待确认'}</small>
+    </div>;
+  }
+  function GenerationMetadata({ value, runRef }) {
+    const G = window.RunGenerationContract, origin = value.origin, evidence = value.search_evidence_ref;
+    const elapsed = window.WorkbenchFormat.number(value.first_found_elapsed_ms / 1000, { digits: 6, trim: true });
+    return <dl className="rc-meta" data-generation-policy={value.generation_policy_version}>
+      <div><dt>搜索来源</dt><dd>本轮共同优化<small>由“{G.objectiveLabel(origin.search_objective)}”方向发现</small></dd></div>
+      <div><dt>代表方向</dt><dd>{value.representative_objectives.map(G.objectiveLabel).join(' · ') || '本方案未标记代表方向'}</dd></div>
+      <div><dt>首次发现</dt><dd><span title={value.first_found_elapsed_ms + ' ms'} data-first-found-elapsed-ms={value.first_found_elapsed_ms}>本轮开始后 {elapsed} 秒</span></dd></div>
+      <div><dt>生成与派工记录</dt><dd><window.WorkbenchReference label="查看实际来源记录" entries={{
+        '运行永久编号': runRef || evidence.run_ref, '来源事件编号': evidence.source_event_id,
+        '来源类型': origin.origin, '生成阶段': origin.phase, '生成策略': origin.strategy,
+        '派工模式': origin.dispatch_mode, '派工规则': origin.dispatch_rule, '搜索方向': origin.search_objective,
+        '计算请求编号': origin.request_id, '执行方式': origin.execution_kind, '修整记录': origin.repair_decision
+      }} />{evidence.source_event_id === null && <small>来源事件未记录</small>}</dd></div>
+    </dl>;
   }
   function Status({ candidate }) {
     return <><span className={'pill ' + (candidate.status === 'completed' && candidate.completeness === 'complete' ? 'ok' : 'warn')} data-candidate-status={candidate.status}>
@@ -51,15 +75,19 @@
     </section></details>;
   }
   function Generation({ data, analysis, meta }) {
-    const g = data.generation, input = g.input, M = window.RunCandidateModel;
+    const g = data.generation, input = g.input, M = window.RunCandidateModel, unified = window.RunGenerationContract.unified(g.algorithm);
     return <div className="rc-source-summary" aria-label="全方案资料"><details className="rc-reasons rc-generation wb-ref"><summary>全方案资料与记录编号</summary><dl className="rc-meta">
         <div><dt>全方案排产日期</dt><dd>{input.start_date || '未记录'} 至 {input.end_date || '未记录'}</dd></div>
         <div><dt>提交 / 结束时间</dt><dd>{M.timeLabel(g.accepted_at)}<small>{M.timeLabel(g.finished_at)}</small></dd></div>
         <div><dt>计算状态</dt><dd data-candidate-persisted-status={data.candidate.persisted_status}>{window.WorkbenchTerms.candidate_statuses[data.candidate.persisted_status] || '未记录'}</dd></div>
         {meta && <div><dt>本次刷新时间</dt><dd>{M.timeLabel(meta.as_of)}</dd></div>}
         <div><dt>计算方式</dt><dd>{[g.algorithm.mode_label, g.algorithm.strategy_label].filter(Boolean).join(' · ') || '未记录'}</dd></div>
+        {unified && <><div><dt>主目标</dt><dd>{window.RunGenerationContract.objectiveLabel(g.algorithm.primary_objective)}</dd></div>
+          <div><dt>同时探索</dt><dd>{g.algorithm.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · ')}</dd></div>
+          {input.time_budget_seconds !== undefined && <div><dt>总计算预算</dt><dd>{M.number(input.time_budget_seconds)} 秒</dd></div>}</>}
         <div><dt>物料齐套规则</dt><dd>{window.WorkbenchTerms.material_strategy(input.material_strategy, input.ready_check)}</dd></div><div><dt>不重排时段</dt><dd data-hold-window>{window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window'))}</dd></div><div><dt>齐套检查 / 缺资源</dt><dd>{input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭'} / {{ auto_assign: '自动分配', exclude: '暂不排' }[input.missing_resource_policy] || '未记录'}</dd></div>
         <div><dt>{'已有执行 / ' + window.WorkbenchTerms.baseline_plan}</dt><dd>{input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录'}<small>{g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排'}</small></dd></div></dl>
+      {unified && <GenerationMetadata value={g.algorithm} runRef={g.run_ref} />}
       <div>原安排：{g.baseline.version === null ? '提交试排时没有正式计划' : '提交试排时保存的正式 v' + M.number(g.baseline.version) + ' · ' + M.timeLabel(g.baseline.captured_at)}</div>
       <div className="rc-muted">生成资料：提交试排时保存。{analysis && analysis.baseline.reason && analysis.baseline.reason.message}</div>
       <div className="rc-muted">{analysis ? '全方案选批：' + analysis.batches.map(row => row.batch_id).join(' / ') : '全方案的批次清单暂不可用。'}</div>
@@ -134,5 +162,5 @@
         <div>交期评价 {M.number(summary.due_evaluation_count)} 批 · 未指定交期 {M.number(summary.excluded_due_count)} 批 · 交付待确认 {M.number(summary.unknown_due_count)} 批</div></details>
     </section>;
   }
-  window.RunCandidateControls = { Button, Icon, ErrorBox, Reasons, Pager, Metric, Status, Catalog, Generation, Detail, Delivery };
+  window.RunCandidateControls = { Button, Icon, ErrorBox, Reasons, Pager, Metric, ScoringScope, GenerationMetadata, Status, Catalog, Generation, Detail, Delivery };
 })();

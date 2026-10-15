@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 
 import pytest
 
-import core.services.scheduler.schedule_service as schedule_service_mod
 from core.services.scheduler.config.config_service import ConfigService
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 from core.services.scheduler.execution.execution_snapshot import build_execution_snapshot
+from core.services.scheduler.run import schedule_orchestrator
 from core.services.scheduler.run.schedule_execution_resource_facts import resource_execution_snapshot
 from core.services.scheduler.schedule_service import ScheduleService
 from tests.schedule.service.unselected_execution_guardrails_support import (
@@ -47,15 +47,15 @@ def test_simulate_only_reserves_without_writing_a_version(schema_conn, monkeypat
     start(schema_conn)
     before = persistent_state(schema_conn)
     actual_before = execution_state(schema_conn)
-    original = schedule_service_mod.optimize_schedule
+    original = schedule_orchestrator.run_candidate_comparison
     outcomes = []
 
     def capture(**kwargs):
         outcome = original(**kwargs)
-        outcomes.append(outcome)
+        outcomes.extend(outcome.candidates)
         return outcome
 
-    monkeypatch.setattr(schedule_service_mod, "optimize_schedule", capture)
+    monkeypatch.setattr(schedule_orchestrator, "run_candidate_comparison", capture)
     result = ScheduleService(schema_conn).run_schedule(["B2"], start_dt="2026-09-08 08:30:00", simulate=True)
     assert result["is_simulation"] is True
     assert result["version"] is None

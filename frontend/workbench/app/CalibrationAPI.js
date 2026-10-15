@@ -22,9 +22,7 @@
     return result;
   }
   function input(value = {}) {
-    const result = readInput(value);
-    if (result.page > 1 && !result.snapshot_ref) throw failure('翻页位置已失效，请回到第 1 页重新查询。', 'snapshot_required');
-    return result;
+    return readInput(value);
   }
   function restoreInitial(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
@@ -40,11 +38,8 @@
   const initial = value => restoreInitial(value).input;
   async function readView(api, value, signal) {
     if (value.snapshot_ref) return validate(await api.read(value, signal), value);
-    const wanted = readInput(value), firstQuery = { ...wanted, page: 1 };
-    const first = validate(await api.read(firstQuery, signal), firstQuery);
-    if (wanted.page === 1) return first;
-    const bound = { ...wanted, snapshot_ref: first.meta.snapshot_ref };
-    return validate(await api.read(bound, signal), bound);
+    const wanted = readInput(value);
+    return validate(await api.read(wanted, signal), wanted);
   }
   function validRow(row, meta) {
     return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref

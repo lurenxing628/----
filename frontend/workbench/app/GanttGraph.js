@@ -3,6 +3,7 @@
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const ref = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
   const edgeKey = edge => edge.from_task_ref + ':' + edge.to_task_ref + ':' + edge.edge_type;
+  const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
   // Both workspaces validate this shared graph once, at their existing API boundary.
   function validate(graph, { scope, tasks, taskRef, time, sequence, processLabel, completeCount }) {
     if (!object(graph) || graph.scope !== scope || !['available', 'unavailable'].includes(graph.state)
@@ -37,34 +38,69 @@
     return edgesValid(graph.edges, ['process']) && edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
   }
   function create(graph) {
-    const nodes = new Map(graph.nodes.map(node => [node.task_ref, node])), batches = new Map();
-    for (const node of graph.nodes) {
-      if (!batches.has(node.batch_id)) batches.set(node.batch_id, []);
-      batches.get(node.batch_id).push(node);
+    const nodes = new Map(), batches = new Map(), batchFacts = new Map();
+    for (const [order, node] of graph.nodes.entries()) {
+      nodes.set(node.task_ref, node);
+      if (!batchFacts.has(node.batch_id)) {
+        const facts = { nodes: [], pieces: new Map(), edges: [], commonEdges: [], pieceEdges: new Map(),
+          previous: new Map(), route: null };
+        batchFacts.set(node.batch_id, facts); batches.set(node.batch_id, facts.nodes);
+      }
+      const facts = batchFacts.get(node.batch_id);
+      facts.nodes.push(node); facts.previous.set(node.task_ref, []);
+      if (!facts.pieces.has(node.piece_id)) facts.pieces.set(node.piece_id, []);
+      facts.pieces.get(node.piece_id).push({ node, order });
     }
-    return { graph, nodes, batches };
+    for (const [order, edge] of graph.edges.entries()) {
+      const from = nodes.get(edge.from_task_ref), to = nodes.get(edge.to_task_ref), facts = batchFacts.get(to.batch_id);
+      facts.previous.get(to.task_ref).push(from);
+      if (from.batch_id !== to.batch_id) continue;
+      const record = { edge, order }; facts.edges.push(record);
+      if (from.piece_id === null && to.piece_id === null) facts.commonEdges.push(record);
+      else if (from.piece_id === null || to.piece_id === null || from.piece_id === to.piece_id) {
+        const piece = from.piece_id === null ? to.piece_id : from.piece_id;
+        if (!facts.pieceEdges.has(piece)) facts.pieceEdges.set(piece, []);
+        facts.pieceEdges.get(piece).push(record);
+      }
+    }
+    const criticalEdges = new Map();
+    graph.critical_edges.forEach(edge => criticalEdges.set(connection(edge), { ...edge, kind: 'critical' }));
+    return { graph, nodes, batches, batchFacts, critical: new Set(graph.critical_task_refs),
+      global: edgeFacts(Array.from(criticalEdges.values())), empty: edgeFacts([]), selected: null };
+  }
+  function edgeFacts(edges) {
+    const adjacency = new Map();
+    edges.forEach((edge, order) => {
+      if (!adjacency.has(edge.from_task_ref)) adjacency.set(edge.from_task_ref, []);
+      adjacency.get(edge.from_task_ref).push({ edge, order });
+    });
+    return { edges, adjacency };
   }
   function selection(index, { enabled = false, targetRef = null } = {}) {
     const { graph } = index, target = index.nodes.get(targetRef) || null;
-    const critical = new Set(graph.critical_task_refs), related = new Set(), edges = new Map();
-    const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
-    if (enabled && !target) graph.critical_edges.forEach(edge => edges.set(connection(edge), { ...edge, kind: 'critical' }));
-    if (target) {
+    if (!target) return { graph, target, critical: index.critical, related: index.emptyRelated || (index.emptyRelated = new Set()),
+      ...(enabled ? index.global : index.empty) };
+    let selected = index.selected;
+    if (!selected || selected.batch !== target.batch_id || selected.piece !== target.piece_id) {
+      const facts = index.batchFacts.get(target.batch_id), related = new Set(), edges = new Map();
       // A piece shares its common operations, but those operations must not lead into sibling pieces.
-      for (const node of index.batches.get(target.batch_id))
-        if (target.piece_id === null || node.piece_id === null || node.piece_id === target.piece_id) related.add(node.task_ref);
-      graph.edges.forEach(edge => {
-        if (related.has(edge.from_task_ref) && related.has(edge.to_task_ref)) edges.set(connection(edge), { ...edge, kind: 'related' });
-      });
+      const members = target.piece_id === null ? facts.nodes : [...(facts.pieces.get(null) || []), ...facts.pieces.get(target.piece_id)]
+        .sort((a, b) => a.order - b.order).map(item => item.node);
+      members.forEach(node => related.add(node.task_ref));
+      const selectedEdges = target.piece_id === null ? facts.edges : [...facts.commonEdges, ...(facts.pieceEdges.get(target.piece_id) || [])]
+        .sort((a, b) => a.order - b.order);
+      selectedEdges.forEach(({ edge }) => edges.set(connection(edge), { ...edge, kind: 'related' }));
+      selected = { batch: target.batch_id, piece: target.piece_id, related, ...edgeFacts(Array.from(edges.values())) };
+      index.selected = selected;
     }
-    return { graph, target, critical, related, edges: Array.from(edges.values()) };
+    return { graph, target, critical: index.critical, related: selected.related, edges: selected.edges, adjacency: selected.adjacency };
   }
   function route(index, targetRef) {
     const target = index.nodes.get(targetRef);
     if (!target) return null;
-    const nodes = index.batches.get(target.batch_id), previous = new Map(nodes.map(node => [node.task_ref, []]));
-    const next = new Map(nodes.map(node => [node.task_ref, []])), groups = new Map();
-    for (const edge of index.graph.edges) if (previous.has(edge.to_task_ref)) previous.get(edge.to_task_ref).push(index.nodes.get(edge.from_task_ref));
+    const facts = index.batchFacts.get(target.batch_id);
+    if (facts.route) return { target, ...facts.route };
+    const { nodes, previous } = facts, next = new Map(nodes.map(node => [node.task_ref, []])), groups = new Map();
     for (const node of nodes) for (const parent of previous.get(node.task_ref)) next.get(parent.task_ref).push(node);
     const pending = new Map(nodes.map(node => [node.task_ref, previous.get(node.task_ref).length]));
     const sequence = node => node.sequence === null ? Infinity : Number(node.sequence);
@@ -83,9 +119,10 @@
       }
       layer = following;
     }
-    return { target, count: nodes.length, previous,
+    facts.route = { count: nodes.length, previous,
       groups: Array.from(groups, ([pieceId, items]) => ({ pieceId, nodes: items }))
         .sort((a, b) => a.pieceId === null ? -1 : b.pieceId === null ? 1 : a.pieceId.localeCompare(b.pieceId, 'zh-CN', { numeric: true })) };
+    return { target, ...facts.route };
   }
   function locations(model, { candidate = false } = {}) {
     const result = new Map();
@@ -100,15 +137,39 @@
     }
     return result;
   }
-  function paths(active, model, width, viewport, options) {
-    const points = options && options.locations || locations(model, options), visible = new Set(), scale = width / (model.end - model.start);
-    const x = value => (value - model.start) * scale;
-    for (const [key, point] of points) {
-      const pad = point.start === point.end ? 12 : 0;
-      if (point.bottom > viewport.top && point.top < viewport.top + viewport.height
-        && x(point.end) + pad >= viewport.left && x(point.start) - pad <= viewport.left + viewport.width) visible.add(key);
+  function locationIndex(points) {
+    const buckets = new Map(); let order = 0;
+    for (const [ref, point] of points) {
+      if (!buckets.has(point.top)) buckets.set(point.top, { top: point.top, bottom: point.bottom, entries: [] });
+      const bucket = buckets.get(point.top);
+      bucket.bottom = Math.max(bucket.bottom, point.bottom); bucket.entries.push({ ref, point, order: order++ });
     }
-    const drawn = active.edges.filter(edge => visible.has(edge.from_task_ref) && visible.has(edge.to_task_ref)).map(edge => {
+    const rows = Array.from(buckets.values()).sort((a, b) => a.top - b.top); let bottom = -Infinity;
+    for (const row of rows) { bottom = Math.max(bottom, row.bottom); row.lastBottom = bottom; }
+    return { locations: points, rows };
+  }
+  function paths(active, model, width, viewport, options) {
+    const prepared = options && options.locationIndex || locationIndex(options && options.locations || locations(model, options));
+    const points = prepared.locations, visible = new Set(), visibleEntries = [], scale = width / (model.end - model.start);
+    const x = value => (value - model.start) * scale;
+    let low = 0, high = prepared.rows.length;
+    while (low < high) { const mid = (low + high) >> 1; if (prepared.rows[mid].lastBottom <= viewport.top) low = mid + 1; else high = mid; }
+    for (let row = low; row < prepared.rows.length && prepared.rows[row].top < viewport.top + viewport.height; row++) {
+      for (const entry of prepared.rows[row].entries) {
+        const { point } = entry, pad = point.start === point.end ? 12 : 0;
+        if (point.bottom > viewport.top && point.top < viewport.top + viewport.height
+          && x(point.end) + pad >= viewport.left && x(point.start) - pad <= viewport.left + viewport.width) visibleEntries.push(entry);
+      }
+    }
+    visibleEntries.sort((a, b) => a.order - b.order);
+    let criticalVisible = 0, relatedVisible = 0;
+    for (const { ref } of visibleEntries) {
+      visible.add(ref); if (active.critical.has(ref)) criticalVisible++; if (active.related.has(ref)) relatedVisible++;
+    }
+    const adjacency = active.adjacency || edgeFacts(active.edges).adjacency, drawnEdges = [];
+    for (const ref of visible) for (const edge of adjacency.get(ref) || []) if (visible.has(edge.edge.to_task_ref)) drawnEdges.push(edge);
+    drawnEdges.sort((a, b) => a.order - b.order);
+    const drawn = drawnEdges.map(({ edge }) => {
       const from = points.get(edge.from_task_ref), to = points.get(edge.to_task_ref), a = x(from.end), b = x(to.start);
       let d, endY = to.y, arrowX = Math.min(4, b - a), arrowY = 0;
       if (b < a) {
@@ -137,8 +198,7 @@
         : ' M' + (b - arrowX) + ',' + (endY - wing) + ' L' + b + ',' + endY + ' L' + (b - arrowX) + ',' + (endY + wing);
       return { ...edge, d: d + cap, top: Math.min(from.top, to.top), bottom: Math.max(from.bottom, to.bottom) };
     });
-    const count = refs => Array.from(refs).filter(key => visible.has(key)).length;
-    return { paths: drawn, visible, criticalVisible: count(active.critical), relatedVisible: count(active.related), focused: !!active.target };
+    return { paths: drawn, visible, criticalVisible, relatedVisible, focused: !!active.target };
   }
-  window.GanttGraph = { validate, create, selection, route, locations, paths };
+  window.GanttGraph = { validate, create, selection, route, locations, locationIndex, paths };
 })();

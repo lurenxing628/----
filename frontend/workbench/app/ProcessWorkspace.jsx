@@ -7,13 +7,10 @@
   const readScopeKeys = window.APSProcessReadView.scopeKeys;
   async function readList(adapter, scope, signal) {
     if (!adapter || typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.list');
-    let request = scope;
-    if (scope.page > 1 && !scope.snapshot_ref) {
-      const firstScope = { ...scope, page: 1 }, first = P.list(await adapter.list('part', firstScope, signal), firstScope);
-      if (first.meta.source !== 'production') throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
-      request = { ...scope, snapshot_ref: first.meta.snapshot_ref };
-    }
-    return P.list(await adapter.list('part', request, signal), request);
+    const result = P.list(await adapter.list('part', scope, signal), scope);
+    if (scope.page > 1 && !scope.snapshot_ref && result.meta.source !== 'production')
+      throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    return result;
   }
   function Pipeline({ entity }) {
     const w = entity.workflow;

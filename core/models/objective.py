@@ -58,6 +58,14 @@ def normalize_objective_name(objective: Any) -> str:
     return text if text in _OBJECTIVE_METRIC_KEYS else DEFAULT_OBJECTIVE
 
 
+def target_objectives_for(primary_objective: Any) -> Tuple[str, ...]:
+    """Return the primary objective followed by its two search directions."""
+    primary = normalize_objective_name(primary_objective)
+    tardiness = "min_weighted_tardiness" if primary == "min_weighted_tardiness" else "min_tardiness"
+    targets = ("min_overdue", tardiness, "min_changeover")
+    return (primary,) + tuple(objective for objective in targets if objective != primary)
+
+
 def objective_metric_keys(objective: Any) -> Tuple[str, ...]:
     return _OBJECTIVE_METRIC_KEYS[normalize_objective_name(objective)]
 
@@ -98,4 +106,5 @@ __all__ = [
     "normalize_objective_name",
     "objective_choice_labels",
     "objective_metric_keys",
+    "target_objectives_for",
 ]

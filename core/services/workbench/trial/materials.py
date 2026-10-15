@@ -9,9 +9,12 @@ from core.services.workbench.facts.preflight_checks import stored_date
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 
 
-def plan_material_policy(conn, version):
-    history = ScheduleHistoryRepository(conn).get_by_version(version)
-    raw = history.result_summary if history else None
+def plan_material_policy(conn, version, *, history=None):
+    if history is None:
+        stored = ScheduleHistoryRepository(conn).get_by_version(version)
+        raw = stored.result_summary if stored else None
+    else:
+        raw = history["result_summary"]
     if not raw:
         return {}
     try:

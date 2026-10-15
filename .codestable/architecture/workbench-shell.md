@@ -94,7 +94,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - `ResourceControls.jsx`统一本地 `trash-2`、展开/收起与搜索图标，`20-controls.css`统一按钮图文和筛选对齐，`21-table-frame.css`提供单层表格框及编辑列分隔。所有可达删除动作使用垃圾桶和可见文字。可达管理样例的三项共享组件移至 `SystemSampleControls.jsx`，由 build-order 放在资源控件之后、SystemLive 之前，冻结原型不改。
 - 工艺归属保存继续走 `stagePreview` 与 `process.source_confirm`；明确保存时提交全部有效工序的确认内容，实际解除外协组关系仍单独列出影响。`ProcessHoursEditor.jsx`拆分自制/外协表，`process_zero_hours.py`在事务内按内容绑定的确认记录决定是否要求零值确认，工时文件读写复用相同规则。既有批次不随模板修改自动变化。
 - `batch_template_validation.py`提供必要资料完整性结果，详情与更新预览共用；`batch_template_preview.py`生成逐工序前后变化及设备/人员指定清除列表。更新确认重新检查模板与批次快照并原子替换。旧 `strict_mode: false` 返回 `template_validation_required`，不再允许宽松复制缺项资料；旧模板缺少确认记录与资料实际缺项分开判断。
-- `run_data_context.py`由数据库 scope 与数据库外已成功恢复的 journal 集合生成 `data_context_ref`，普通重启及备份创建/删除不改变它。预览、受理和查询绑定同一数据上下文；查找先核对当前任务和回执。旧 pending 沿原 journal 与受保护备份定位原请求，核对备份元数据、原字节及实际任务/回执；原来源缺失保持未核实。v2 pending保存最小身份和数据上下文，旧64hex上下文仍可查询；未知查询满60秒暂停自动查询，保留同号重查，真实计算继续查询，不自动重新受理。
+- `run_data_context.py`由数据库 scope 与数据库外已成功恢复的 journal 集合生成 `data_context_ref`，普通重启及备份创建/删除不改变它。预览、受理和查询绑定同一数据上下文；查找先核对当前任务和回执，再捕获一次 journal 供 resolution 和 data_context_ref 共用。旧 pending 沿原 journal 与受保护备份定位原请求，核对登记文件身份并只读查询实际任务/回执；原来源缺失保持未核实。v2 pending保存最小身份和数据上下文，旧64hex上下文仍可查询；未知查询满60秒暂停自动查询，保留同号重查，真实计算继续查询，不自动重新受理。
 - `OperatorMachinePermissions.jsx`在人员详情维护既有设备资格集合，后端复用 `OperatorMachineService` 与原资格检查，无新授权表；界面以预览/确认保存全量关系，保留未展示的旧字段，不从工种技能推导全部设备权限。
 - v32 在同一可回滚迁移中安装两项追加扩展：`WorkbenchOutsourcingSourceConfirmations`与`WorkbenchProductionReportVoids`，共2表10触发器。只安装空结构，旧来源空值、旧出生事件、报工修订和回执不改写。`migration_state.py`严格校验两项结构，缺表/错误触发器不能以空数据继续读取；原 v25/v30 安装器及冻结历史 schema 保持原合同。
 - `core/services/workbench/outsourcing/source.py`（`resolve_source_binding`，仓储 `workbench_outsourcing_source_repo.py` 只读事实）按出生记录、首次登记确认、当前完整关系解析来源；已有证据与当前实例冲突仍拒绝。`source_resolution`用于说明与快照，不改变稳定的 `source.identity`。普通外协登记事务同时追加外协单、成员、事实、来源确认和回执；首次登记后来源解析方式变化不会使更正误认成新对象。
@@ -244,3 +244,13 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 历史导出弹窗选择条目、生产条件、算法配置或XLSX全部分区。条目文件覆盖筛选全集，条件与配置对应选中条目及明确基准；页码只控制屏幕，下载仍走既有取消、错误和原生文件通道。三个历史组件及`36-decision-history.css`登记在离线build-order中；完整历史说明同步`page_manuals_scheduler_outputs.py`与系统手册第6.3节。共同帮助按历史主题分别打开analysis与run章节，并附返回视图；缓存模块由宿主正常加载。
 - 零匹配沿共同空态提供清除日期与状态筛选入口，保留时间线、指标、基准和资源窗；越页恢复第1页继续原快照。三组页签使用系统主题选中色与键盘焦点。条目、基准选择、图和详情统一消费目录`label`，运行序号从完整未筛选目录确定，发生时间保留独立字段。
 - 代码入口：`frontend/workbench/app/RunHistoryWorkspace.jsx:TopicTabs`、`DecisionHistoryWorkspace.jsx:Session/Export`、`DecisionHistoryChart.jsx:Chart`、`DecisionHistoryDetails.jsx:Details`、`SchedulingWorkspace.jsx:HistoryReturn`、`web/routes/workbench/navigation_boot.py:_decision_history_state`。设计依据：[历史走势与同条件对照](../features/2026-10-14-decision-history-trends/decision-history-trends-design.md)；本节更新实现职责，阶段验收材料保持独立。
+
+## 2026-10-15 统一优化与保存结果读取
+
+- 新运行使用一次共同预算/解码/档案，发布1—3份实际业务代表；保存推荐、当前查看与比较基准仍各自持有身份。各目标winner可指向同一代表，部分结果依已知完成集合表达，目标搜索机会与安排完整性分别读取。旧4/6/8候选、weight/health/selection及复用/失败/跳过继续读取原保存值。
+- Schema42包含v41的三类不可变`decision-read-v1`保存读模型，以及v42原生business_objective候选与四目标role。受理与完成事务构造读模型，查询保持只读，缺行/损坏/未知版本明确失败；历史升级沿显式迁移，不在首次浏览中补写。
+- 资源首开或父scope刷新调用一次`decision/resource-workspace`，同一快照/source返回完整summary与resources；资源错误保留已成功summary并沿原资源错误/重试入口表达。无可查看完成候选时resource_result为null。普通summary/resources/resource-days接口及各自token保持，资源分页/筛选/刷新只读资源；切页签或隐藏重开复用现有成功状态。
+- 服务保留201等实际资源集合、完整候选范围和全窗统计，显示页仅决定完整cell/钻取投影；请求内日历、measurement和前缀统计共用。当前可见20×7与完整100日统计分别负责显示和计算；关闭的详细汇总保持保存内容，首屏以真实可见容量、占用、资源总数和热图判定。
+- 过程页与导出沿保存字段显示“跳过执行次数”和“不同计算请求”；同一排法请求可多次尝试，跳过按次数记录。总运行耗时与首次发现时刻分开，保留原64/40等实际存档值和旧缺项。操作帮助同步同一口径。
+- 当前共同runtime和真实阶段会话承担执行，固定图档、旧选择/health重算与旧独立缓存退出结果生成；内部图profile、SGS评分交接及decode checkpoint证书保持。配置退役四字段保留历史值，新页面只提交有效字段，旧客户端明确刷新。离线资产继续由原build-order构建，目标Chrome109。
+- 实施与主验收分别见[统一优化feature](../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-design.md)和`../../evidence/unified-scheduling-optimization/2026-10-14/`。U5质量/性能绑定其原冻结状态，U6整合与最终实页结果另存；Windows延期。

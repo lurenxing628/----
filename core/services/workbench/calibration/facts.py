@@ -24,9 +24,13 @@ def require_calibration_schema(repo):
 
 
 def read_templates(repo, query):
-    if query.part_ref is not None and not repo.part_exists(query.part_ref):
-        raise WorkbenchCommandRejected("entity_not_found", "所选零件已失效，请重新选择。", 404)
-    rows = repo.template_rows(query.part_ref, MAX_TEMPLATES)
+    part_no = None
+    if query.part_ref is not None:
+        part = repo.part_identity(query.part_ref)
+        if part is None:
+            raise WorkbenchCommandRejected("entity_not_found", "所选零件已失效，请重新选择。", 404)
+        part_no = part["entity_key"]
+    rows = repo.template_rows(part_no, MAX_TEMPLATES)
     if len(rows) > MAX_TEMPLATES:
         raise WorkbenchCommandRejected("query_too_large", "模板范围超过10000道，请按零件缩小范围；未截断数据。", 413)
     result = []

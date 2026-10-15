@@ -7,18 +7,17 @@ from core.infrastructure.connection_guards import is_query_only
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
-from core.services.scheduler.run.schedule_optimizer import optimize_schedule
 from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
 from core.services.scheduler.schedule_service import ScheduleService
 from core.services.scheduler.summary.schedule_summary import build_result_summary
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.run_input_rows import fail
-from core.services.workbench.facts.zero_duration import PointEventError, candidate_point_validator
+from core.services.workbench.facts.zero_duration import candidate_point_validator
 
 from .compute_graph import piece_graph_preparer
 from .compute_validation import validate_candidate
 from .input import CandidateRunInput, prepare_candidate_run_input
-from .piece_adoption import validate_piece_adoption
+from .piece_adoption import validate_piece_candidate
 from .preflight_facts import full_facts_content
 
 
@@ -57,16 +56,17 @@ def _prepared_version(conn, schedule_input, version_override):
     return version
 
 
-def _candidate_payloads(conn, schedule_input, comparison):
+def _candidate_payloads(conn, schedule_input, comparison, *, selected_payload=None):
     payloads = {}
     with read_evidence_scope(conn):
         for candidate in comparison.candidates:
             if candidate.status == "completed":
                 payloads[candidate.candidate_key] = validate_candidate(
                     schedule_input, candidate.results, list(candidate.summary.errors),
+                    prepared_payload=(selected_payload if candidate.candidate_key == comparison.selection.selected_candidate_key else None),
                 )
                 if any(op.piece_id is not None for op in schedule_input.operations):
-                    validate_piece_adoption(conn, prepared=schedule_input, payload=payloads[candidate.candidate_key])
+                    validate_piece_candidate(conn, prepared=schedule_input, payload=payloads[candidate.candidate_key])
     return payloads
 
 
@@ -104,7 +104,6 @@ def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Option
         compare = partial(compare, prepare_graph_fn=piece_graph_preparer(schedule_input))
     orchestration = orchestrate_schedule_run(
         svc, schedule_input=schedule_input, simulate=True, strict_mode=True,
-        optimize_schedule_fn=partial(_optimize_representable_candidate, schedule_input),
         build_result_summary_fn=build_result_summary,
         allocate_version=False, version_override=version, persist_schedule_fn=None,
         point_validator=candidate_point_validator(schedule_input),
@@ -113,19 +112,8 @@ def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Option
     comparison = orchestration.candidate_comparison
     if comparison is None:
         fail("candidate_comparison_missing", "这次排产没有算出可比较的方案，排产没有完成。请刷新重试；仍不行请联系维护人员。")
-    payloads = _candidate_payloads(conn, schedule_input, comparison)
+    payloads = _candidate_payloads(conn, schedule_input, comparison,
+                                   selected_payload=orchestration.validated_schedule_payload)
     state = _computation_state(schedule_input, comparison, payloads)
     return CandidateRunComputation(schedule_input, orchestration, payloads,
                                    schedule_input.dispositions, state)
-
-
-def _optimize_representable_candidate(schedule_input, **kwargs):
-    outcome = optimize_schedule(**kwargs)
-    validate_point = candidate_point_validator(schedule_input)
-    try:
-        for row in outcome.results:
-            if row.start_time == row.end_time:
-                validate_point(row)
-    except PointEventError as exc:
-        fail(exc.code, str(exc))
-    return outcome

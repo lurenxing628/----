@@ -17,8 +17,7 @@
     function readStorage(event) {
       try {
         const saved = event && event.type === A.EVENT ? event.detail : A.pending().read();
-        if (event && event.type === A.EVENT && saved !== null && !A.validIntent(saved)) throw new Error('本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。');
-        if (JSON.stringify(saved) !== JSON.stringify(active.current)) {
+        if (saved !== active.current && JSON.stringify(saved) !== JSON.stringify(active.current)) {
           active.current = saved; setIntent(saved); setResult(null); setPreview(null); setConsent(false);
           if (saved) setDraft(saved.input);
         }

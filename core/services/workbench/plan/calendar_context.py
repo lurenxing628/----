@@ -1,5 +1,7 @@
 """Shared selected-plan admission and public issue vocabulary."""
 
+from collections import namedtuple
+
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
 from core.services.capacity.plan_calendar_intervals import instant
@@ -9,13 +11,15 @@ from core.services.workbench.facts.zero_duration_evidence import overlaps
 
 from .point_evidence import annotate_plan_points
 
+SelectedPlanContext = namedtuple("SelectedPlanContext", "rows start end time_scope binding")
+
 
 def require_snapshot(conn):
     if not conn.in_transaction:
         raise RuntimeError("Plan projections require a caller-owned read transaction.")
 
 
-def selected_context(conn, entry, scope, rows, resources, plan_span):
+def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_context=None):
     require_snapshot(conn)
     if len(rows) > MAX_PLAN_TASKS:
         raise WorkbenchCommandRejected("query_too_large", "这个计划超过 10000 条安排上限。请缩小时间范围后重试。", 413)
@@ -25,15 +29,21 @@ def selected_context(conn, entry, scope, rows, resources, plan_span):
     start, end = instant(time_scope["range_start"]), instant(time_scope["range_end"])
     if start > end or (start == end and scope.range_start is not None):
         raise WorkbenchCommandRejected("plan_unavailable", "查询的时间范围无效。请重新选择起止日期。")
-    selected = _selected_rows(conn, entry, scope, rows, start, end)
+    selected = _selected_rows(conn, entry, scope, rows, start, end, read_context=read_context)
     binding = _context_binding(entry, scope, selected, resources, time_scope)
-    return selected, start, end, time_scope, plain_plan_facts(binding)
+    return SelectedPlanContext(selected, start, end, time_scope, plain_plan_facts(binding))
 
 
-def _selected_rows(conn, entry, scope, rows, start, end):
+def _selected_rows(conn, entry, scope, rows, start, end, *, read_context=None):
     selected, unique = [], {}
-    for original in annotate_plan_points(conn, rows, source_table=entry.plan_identity.source_table):
-        row, low, high = _validated_row(original, entry.locator.version)
+    prepared = rows if read_context is not None else annotate_plan_points(conn, rows, source_table=entry.plan_identity.source_table)
+    times = read_context.datetime_intervals(entry) if read_context is not None else None
+    for original in prepared:
+        if times is None:
+            row, low, high = _validated_row(original, entry.locator.version)
+        else:
+            row = original
+            low, high = times[row["schedule_id"]]
         key = row["schedule_id"]
         if key in unique and unique[key] != row:
             raise WorkbenchCommandRejected("plan_unavailable", "同一条安排读到了两份不一样的数据，算不出实际占用。请刷新后重试。")

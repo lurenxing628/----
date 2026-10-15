@@ -11,6 +11,12 @@ from core.services.workbench.facts.candidate_projection import dispositions
 from core.services.workbench.facts.candidate_tasks import task_span
 from core.services.workbench.facts.candidate_values import number
 from core.services.workbench.facts.completion_scope import project_completion_scope
+from core.services.workbench.facts.decision_metrics import (
+    admission_operations,
+    delivery_metric_values,
+    metric_definitions,
+    metric_value,
+)
 from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.preparation_projection import (
@@ -22,12 +28,6 @@ from core.services.workbench.facts.preparation_projection import (
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.facts.resource_projection import resource_cohort
 from core.services.workbench.facts.trial_origin import delivery_origin as trial_delivery_origin
-from core.services.workbench.run.decision_metrics import (
-    admission_operations,
-    delivery_metric_values,
-    metric_definitions,
-    metric_value,
-)
 from core.services.workbench.run.decision_resources import DecisionResources
 from core.services.workbench.run.preflight import batch_dependencies, classify, task_row
 from core.services.workbench.trial.capacity import _tasks as trial_resource_tasks
@@ -158,13 +158,13 @@ def _demand(rows):
     return effort_metric(pending, "required_standard_hours")["value"]
 
 
-def _admission_count_values(packet, operation_refs):
+def _admission_count_values(packet, operation_refs, *, reader=None):
     facts, settings = packet["facts"], packet["capture"]["input"]
     saved = dispositions(packet.get("receipt"))
     deferred = material_deferred_ids((saved or {}).values(), settings)
     reason = None
     if saved is None and settings.get("material_strategy") == "stage" and settings.get("ready_check") is True:
-        condition = ConditionSource(packet)
+        condition = reader.condition_source(packet) if reader is not None else ConditionSource(packet)
         tables = {name: condition.table(name) for name in PREFLIGHT_TABLES}
         if any(rows is None for rows in tables.values()) or not set(operation_refs) <= set(facts.execution):
             reason = _reason("admission_deferred_scope_missing", "保存的物料、工序或报工资料缺项，应排与待料范围尚待确认。")
@@ -213,7 +213,7 @@ def _run(reader, packet, window):
         operation_refs, _deferred, _skipped = admission_operations(facts, settings, None)
         batches = {ref: facts.tables["Batches"].get(key, {}) for (kind, key), ref in facts.entity_refs.items() if kind == "batch"}
         window.update(state="unavailable", reason=_reason("history_result_missing", "此事件尚未保存任务安排，资源集合与占用未知。"))
-        values = _admission_count_values(packet, operation_refs)
+        values = _admission_count_values(packet, operation_refs, reader=reader)
         return values, _scope(packet, settings["batch_refs"], operation_refs, batches=batches), "unavailable"
     source = reader.run_source(packet["ref"], ref, range_start=window["start"], range_end=window["end"])
     data = reader.decision(packet["ref"], window["start"], window["end"], candidate_ref=ref)
@@ -276,8 +276,9 @@ def _trial_resources(packet, projected, window):
     from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 
     calendar = ArchivedCalendar(archive, source_ref=packet["ref"])
-    entities = {(kind, saved_id): ref for (kind, ref), saved_id in calendar.bindings.items()}
-    view = SimpleNamespace(facts=SimpleNamespace(archive=archive, entity_refs=entities), run={"run_ref": packet["ref"]},
+    resources = [{"kind": kind, "ref": ref, "saved_id": saved_id}
+                 for (kind, ref), saved_id in calendar.bindings.items()]
+    view = SimpleNamespace(calendar_archive=archive, context={"resources": resources}, run={"run_ref": packet["ref"]},
         scope={"range_start": window["start"], "range_end": window["end"]},
         resource_cohort={"resources": cohort}, resource_before_tasks=original,
         rows=[{"candidate_ref": packet["ref"], "status": "completed"}], baseline={"state": "available"},
@@ -294,7 +295,7 @@ def _trial_resources(packet, projected, window):
     return values
 
 
-def _trial(packet, window):
+def _trial(packet, window, *, reader=None):
     saved, head = packet.get("saved"), packet.get("head")
     if saved is None:
         return {}, _scope(packet), "unavailable"
@@ -314,7 +315,7 @@ def _trial(packet, window):
     scheduled = {row["operation_ref"] for row in tasks}
     batches = {row["batch_ref"] for row in comparison.get("batches", [])}
     batches.update(row["batch_ref"] for row in tasks + unplanned if row.get("batch_ref") is not None)
-    condition = ConditionSource(packet) if head is not None else None
+    condition = (reader.condition_source(packet) if reader is not None else ConditionSource(packet)) if head is not None else None
     deferred, ordinary = None, None
     completion_reason = _reason("trial_pending_members_missing", "保存的未安排数量与实际工序身份不齐，应排、待料和其他未安排范围待确认。")
     if condition is not None:
@@ -477,7 +478,7 @@ def project_history_metrics(reader, descriptor, query):
         if packet["kind"] == "run":
             values, scope, state = _run(reader, packet, window)
         elif packet["kind"] == "trial":
-            values, scope, state = _trial(packet, window)
+            values, scope, state = _trial(packet, window, reader=reader)
         else:
             values, scope, state = _legacy(packet)
             window.update(state="unavailable", reason=_reason("history_resource_archive_missing", "旧摘要未保存可重建容量的资源日历与安排来源。"))

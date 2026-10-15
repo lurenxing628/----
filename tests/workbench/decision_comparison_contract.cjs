@@ -57,12 +57,12 @@ data.difference_summary = { scope: 'full_admission', items: ['overdue_count', 't
 const payload = { ok: true, schema_version: 1, data, warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: range_end } };
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(value => value !== null && value !== false && value !== undefined) });
 const writes = [], navigation = [], remembered = [];
-const React = { createElement: h, Fragment: 'fragment', useId: () => 'process-chart', useState: initial => { let value = typeof initial === 'function' ? initial() : initial; return [value, update => { value = typeof update === 'function' ? update(value) : update; writes.push(value); }]; }, useRef: initial => ({ current: initial }), useEffect: () => {}, useReducer: () => [0, () => {}] };
+const React = { createElement: h, Fragment: 'fragment', useId: () => 'process-chart', useMemo: fn => fn(), useState: initial => { let value = typeof initial === 'function' ? initial() : initial; return [value, update => { value = typeof update === 'function' ? update(value) : update; writes.push(value); }]; }, useRef: initial => ({ current: initial }), useEffect: () => {}, useReducer: () => [0, () => {}] };
 const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, WorkbenchReference: 'reference', PointContract: {},
   RunCandidateControls: { Button: 'button', Pager: 'pager', Status: 'candidate-status', ErrorBox: 'error-box', Reasons: 'reasons' }, RunCandidateModel: { number: String, timeLabel: value => value || '未记录' },
   WorkbenchPageContext: { useSnapshot: value => remembered.push(value) }, WorkbenchCaption: { useCaption: () => {} },
   APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) }, RunCandidateAnalysis: {}, RunDecisionDetails: { Pane: 'detail-pane' } };
-const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'resource-contract.js', 'PointContract.js', 'DeliveryProjectionContract.js', 'RunCandidateAPI.js', 'RunBaselineAPI.js', 'RecommendationContract.js', 'EffortProjectionContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionCompletion.jsx', 'RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx'];
+const files = ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'resource-contract.js', 'PointContract.js', 'DeliveryProjectionContract.js', 'RunGenerationContract.js', 'RunCandidateAPI.js', 'RunBaselineAPI.js', 'RecommendationContract.js', 'EffortProjectionContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionCompletion.jsx', 'RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) });
 for (const file of built.outputs) vm.runInNewContext(file.code, { React, window, AbortController, setTimeout, clearTimeout, URLSearchParams });
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -87,6 +87,10 @@ function nodes(node) { return !node || typeof node !== 'object' ? [] : [node, ..
 function text(node) { return node == null ? '' : typeof node !== 'object' ? String(node) : node.children.map(text).join(' '); }
 function visibleText(node) { if (node == null || typeof node !== 'object') return node == null ? '' : String(node); return node.type === 'details' && !node.props.open ? visibleText(node.children.find(child => child && child.type === 'summary')) : node.children.map(visibleText).join(' '); }
 const D = window.RunDecisionComparison, API = window.RunDecisionAPI;
+function resourceWorkspaceFixture(value, saved = {}) {
+  return { ...value, resource_query: API.resourceFilters(API.savedResourceView(API.resourceFilters(saved), value.data.scope.resource_refs, value.data.scope)),
+    resource_result: { ok: false, committed: false, status: 409, error: { code: 'snapshot_stale', message: '资源快照已变化，请刷新资源影响。', fields: [], retryable: false, request_ref: '1'.repeat(32) } } };
+}
 const query = { selected_candidate_ref: third, reference_candidate_ref: first, range_start, range_end };
 assert.strictEqual(API.decision(payload, runRef, query), data);
 const wrongRun = clone(payload); wrongRun.data.run.run_ref = third;
@@ -161,7 +165,7 @@ const runHistoryReturn = { view: 'analysis', context: { source: 'run_history', h
 const workspace = expand(h(D.Workspace, { adapter: { decisionSummary: () => payload }, initialContext: original, runHistoryReturn, onNavigate: (page, context) => navigation.push({ page, context }), renderAdoption: (ref, metadata) => h('adoption', { candidateRef: ref, ...metadata }) }));
 const workspaceRemembered = remembered.at(-1);
 window.RunDecisionResources = { Pane: 'resource-pane' };
-const resourceEntry = expand(h(D.Workspace, { adapter: { decisionSummary: () => payload }, initialContext: { ...original, comparison_tab: 'resources', resource_kind: 'operator', resource_ref: '0'.repeat(48) } }));
+const resourceEntry = expand(h(D.Workspace, { adapter: { resourceWorkspace: (reference, q, saved) => resourceWorkspaceFixture(summaryPayload, saved) }, initialContext: { ...original, comparison_tab: 'resources', resource_kind: 'operator', resource_ref: '0'.repeat(48) } }));
 assert.equal(nodes(resourceEntry).find(node => node.type === 'resource-pane').props.query.resource_kind, 'operator', '显式分析入口消费公有资源种类');
 assert.equal(nodes(resourceEntry).find(node => node.type === 'resource-pane').props.query.resource_ref, '0'.repeat(48), '显式分析入口消费公有资源身份');
 assert.equal(nodes(workspace).filter(node => node.props['data-decision-candidate']).length, 3, '默认展示全部候选卡片');
@@ -543,6 +547,30 @@ async function candidateWorkspace(context, value) {
 }
 async function workspaceContracts() {
   {
+    const state = hooks(), reads = [], local = { ...window, RunDecisionResources: { Pane: 'resource-pane' }, RunDecisionDetails: { Pane: 'detail-pane' } };
+    for (const name of ['resource-session.js', 'RunDecisionComparison.jsx']) for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
+      vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
+    const response = q => { const value = clone(summaryPayload); value.data.scope = { ...comparisonScope(q), resource_refs: { machine: [], operator: [] }, batch_refs: [batchRef], operation_refs: [operationRef] };
+      value.data.baseline.candidate_ref = value.data.scope.reference.candidate_ref; return bindRecommendationScope(value); };
+    const saved = { resource_kind: 'operator', pressure_threshold: 0.8, page: 2, heatmap_page: 2, snapshot_ref: 'r'.repeat(32) };
+    const props = { initialContext: { ...original, comparison_tab: 'resources', detail_queries: { resources: saved } }, adapter: API.adapter({
+      resourceWorkspace: async (run, q, leaf, signal) => { reads.push({ name: 'combined', query: clone(q), leaf: clone(leaf), signal }); return resourceWorkspaceFixture(response(q), leaf); },
+      decisionSummary: async (_, q) => { reads.push({ name: 'summary', query: clone(q) }); return response(q); }
+    }) };
+    let tree; const render = async () => { for (let index = 0; index < 3; index++) { tree = state.render(() => expand(local.RunDecisionComparison.Workspace(props))); state.flush(); await turns(); } };
+    await render(); assert.deepEqual(reads.map(row => row.name), ['combined']); assert.deepEqual(reads[0].leaf, saved);
+    const pane = nodes(tree).find(row => row.type === 'resource-pane'); assert.equal(pane.props.result.resource_result.ok, false);
+    assert.equal(nodes(tree).filter(row => row.props['data-decision-candidate']).length, 3, '资源明确失败时成功的摘要候选与推荐继续展示');
+    nodes(tree).find(row => row.props.id === 'rd-tab-delivery').props.onClick(); await render();
+    nodes(tree).find(row => row.props.id === 'rd-tab-resources').props.onClick(); await render(); assert.equal(reads.length, 1, '普通页签切换保留同一父读取，不为切换重读摘要');
+    nodes(tree).find(row => row.type === 'resource-pane').props.onQuery({ ...saved, page: 3 }); await render(); assert.equal(reads.length, 1, '资源叶分页由自身读 owner 处理');
+    nodes(tree).find(row => row.props['aria-label'] === '刷新方案对比').props.onClick(); await render();
+    assert.equal(reads.length, 2); assert.equal(reads[1].name, 'combined'); assert.equal(reads[1].leaf.page, 1); assert.equal(reads[1].leaf.snapshot_ref, undefined, '上层刷新沿用既有清分页与旧令牌规则');
+    nodes(nodes(tree).find(row => row.props['data-decision-candidate'] === first)).find(row => row.props.className === 'rd-candidate-choice').props.onClick(); await render();
+    assert.equal(reads.length, 3); assert.equal(reads[2].name, 'combined'); assert.equal(reads[2].query.selected_candidate_ref, first); assert.equal(reads[0].signal.aborted, true);
+    console.log(JSON.stringify({ u5_resource_workspace_parent_reads: { cold_resources: 1, cold_summary: 0, tab_reopen: 0, resource_leaf_page: 0, header_refresh: 1, selected_candidate_change: 1 } }));
+  }
+  {
     const state = hooks(), requests = [], summaries = [], local = { ...window, RunDecisionDetails: { Pane: 'detail-pane' } };
     for (const name of ['resource-session.js', 'RunDecisionComparison.jsx']) for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs)
       vm.runInNewContext(output.code, { React: state.React, window: local, AbortController, DOMException });
@@ -602,10 +630,37 @@ async function workspaceContracts() {
     nodes(tree).find(row => row.props.className === 'rd-official rd-data-source').props.onToggle({ currentTarget: { open: false } }); await render();
     assert.equal(requests.length, 5); assert(requests[4].signal.aborted);
     assert(!nodes(tree).some(row => row.props.className === 'rd-candidate-facts') && !text(tree).includes('正在读取全部方案指标'));
+    const metricsPanel = nodes(tree).find(row => row.props['data-decision-panel'] === 'metrics');
+    assert(metricsPanel.props.hidden, '已访问指标面板隐藏后保留原组件身份');
+    nodes(tree).find(row => row.props.id === 'rd-tab-metrics').props.onClick(); await render();
+    assert.equal(requests.length, 5, '同摘要快照重开指标直接复用已成功完整读取');
+    assert.equal(nodes(tree).find(row => row.props['data-decision-panel'] === 'metrics').props.key, metricsPanel.props.key);
+    assert.equal(nodes(tree).find(row => row.type === 'detail-pane').props.enabled, false, '已访问交付面板保留且关闭内部读取');
+    assert(!nodes(tree).some(row => row.props['data-decision-panel'] === 'resources'), '尚未访问的资源面板保持未挂载');
+    nodes(tree).find(row => row.props.id === 'rd-tab-delivery').props.onClick(); await render();
+    const hiddenSummaryReads = summaries.length;
+    nodes(tree).find(row => row.props['aria-label'] === '刷新方案对比').props.onClick(); await render();
+    assert.equal(summaries.length, hiddenSummaryReads + 1); assert.equal(requests.length, 5, '摘要刷新时隐藏指标不提前读取');
+    nodes(tree).find(row => row.props.id === 'rd-tab-metrics').props.onClick(); await render();
+    assert.equal(requests.length, 6, '重开刷新后的指标只读当前摘要快照一次');
+    requests[5].resolve(responseFor(requests[5].q)); await render();
+    console.log(JSON.stringify({ r18_full_read: { same_snapshot_reopen: 0, hidden_refresh: 0, refreshed_reopen: 1 } }));
   }
   const task = (ref, op) => ({ row_ref: ref, operation_ref: op, batch_ref: batchRef, batch_label: 'B-001', process_label: '车削', sequence: 1, start: range_start, end: range_end, source: 'internal', machine: null, operator: null, data_gaps: [] });
   const value = referenceFixture(); value.data.tasks = [task(otherRowRef, missingOperationRef), task(rowRef, operationRef), task(secondSegmentRef, operationRef)];
   value.data.task_count = value.data.candidate_task_count = 3;
+  const candidateOnly = await candidateWorkspace({ candidate_ref: third }, value);
+  assert.equal(candidateOnly.calls.filter(call => call.name === 'workspace').length, 1, '只有候选编号时发现排产编号仍只读一次workspace');
+  assert.equal(candidateOnly.calls.filter(call => call.name === 'catalog').length, 1, '发现排产编号只启动一次目录读取');
+  nodes(candidateOnly.tree).find(row => row.props.id === 'rc-detail-tab-history').props.onClick(); await candidateOnly.render();
+  assert.equal(candidateOnly.calls.filter(call => call.name === 'adoptions').length, 1);
+  nodes(candidateOnly.tree).find(row => row.props.id === 'rc-detail-tab-tasks').props.onClick(); await candidateOnly.render();
+  nodes(candidateOnly.tree).find(row => row.props.id === 'rc-detail-tab-history').props.onClick(); await candidateOnly.render();
+  assert.equal(candidateOnly.calls.filter(call => call.name === 'adoptions').length, 1, '候选采用记录同workspace快照重开不重复读取');
+  nodes(candidateOnly.tree).find(row => row.props['aria-label'] === '刷新候选方案').props.onClick(); await candidateOnly.render();
+  assert.equal(candidateOnly.calls.filter(call => call.name === 'workspace').length, 2);
+  assert.equal(candidateOnly.calls.filter(call => call.name === 'adoptions').length, 2, '显式刷新候选后重读当前采用记录');
+  console.log(JSON.stringify({ r18_candidate: { first_workspace: 1, discovered_catalog: 1, history_reopen: 0, refreshed_workspace: 1, refreshed_history: 1 } }));
   const base = { run_ref: runRef, candidate_ref: third, operation_ref: operationRef, selected_row_ref: otherRowRef };
   const candidate = await candidateWorkspace(base, value);
   assert.equal(candidate.chosen.row_ref, rowRef, 'rowRef 指向其他工序时按 operation_ref 定位目标工序');
@@ -1338,14 +1393,224 @@ async function transportContracts() {
   assert.equal(calls.length, reads + 1, '摘要令牌直接导出，前置完整概览零请求');
   assert.equal(calls.at(-1).url.pathname, '/api/workbench/v1/scheduling/runs/' + runRef + '/decision/export');
   assert.equal(calls.at(-1).url.searchParams.get('snapshot_ref'), summary.meta.snapshot_ref);
+  const savedResources = { resource_kind: 'operator', grain: 'day', pressure_threshold: 0.8, page: 2, heatmap_page: 2,
+    snapshot_ref: 'r'.repeat(32), heatmap_mode: 'after', day_resource_ref: '0'.repeat(48), day_page: 2 };
+  const combined = resourceWorkspaceFixture(summaryPayload, savedResources), controller = new AbortController();
+  responses.push(json(combined)); const resourceWorkspace = await transport.resourceWorkspace(runRef, { ...query, snapshot_ref: snapshot }, savedResources, controller.signal);
+  assert.strictEqual(resourceWorkspace, combined); assert.strictEqual(API.resourceWorkspace(combined, runRef, query, savedResources), combined.data);
+  const resourceRequest = calls.at(-1), params = resourceRequest.url.searchParams;
+  assert.equal(resourceRequest.url.pathname, '/api/workbench/v1/scheduling/runs/' + runRef + '/decision/resource-workspace');
+  assert.equal(params.get('snapshot_ref'), snapshot); assert.equal(params.get('resource_snapshot_ref'), savedResources.snapshot_ref, '摘要和旧资源 token 在各自字段传递');
+  assert.equal(params.get('resource_kind'), 'operator'); assert.equal(params.get('pressure_threshold'), '0.8'); assert.equal(params.get('page'), '2'); assert.equal(params.get('heatmap_page'), '2');
+  for (const key of ['heatmap_mode', 'day_resource_ref', 'day_page']) assert.equal(params.has(key), false, '呈现状态不带入服务查询：' + key);
+  assert.equal(resourceRequest.options.method, 'GET'); assert.equal(resourceRequest.options.cache, 'no-store'); assert.equal(resourceRequest.options.credentials, 'same-origin');
+  assert.equal(resourceRequest.options.signal.aborted, false);
+  for (const mutate of [value => { value.resource_result = null; }, value => { delete value.resource_query.heatmap_size; },
+    value => { value.resource_query.snapshot_ref = 'q'.repeat(32); }, value => { value.resource_result.error.retryable = 'false'; },
+    value => { value.resource_result.error.fields = [{}]; }, value => { value.resource_result.fallback = true; }, value => { value.data.scope.selected_candidate_ref = first; }]) {
+    const invalid = clone(combined); mutate(invalid); assert.throws(() => API.resourceWorkspace(invalid, runRef, query, savedResources));
+  }
+  const resourceInjected = API.adapter({ resourceWorkspace: async () => combined });
+  assert.strictEqual(await resourceInjected.resourceWorkspace(runRef, query, savedResources), combined, '组合注入 reader 仍走公共 DTO 读取边界');
+  await assert.rejects(() => resourceInjected.resourceWorkspace(runRef, query, { ...savedResources, pressure_threshold: 0.7 }), /筛选/);
   const injected = API.adapter({ decisionSummary: async () => summaryPayload });
   assert.strictEqual(await injected.decisionSummary(runRef, query), summaryPayload, '实际adapter公共读取边界绑定摘要校验');
   await assert.rejects(() => injected.decisionSummary(runRef, { ...query, selected_candidate_ref: first }), /查看方案/, '注入摘要reader也拒绝旧候选响应');
 }
+async function unifiedGenerationContracts() {
+  const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_generation_http.json'), 'utf8'));
+  const local = { ...window }, savedRun = raw.candidate_catalog.run_ref, savedCandidate = raw.candidate_workspace.candidate.candidate_ref;
+  const names = ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js',
+    'DeliveryProjectionContract.js', 'EffortProjectionContract.js', 'PlanProcessOrder.js', 'GanttGraph.js', 'RunCandidateAPI.js', 'RunJobAPI.js',
+    'PlanContract.js', 'RunCandidateControls.jsx', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx'];
+  const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+    sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
+  for (const output of outputs) vm.runInNewContext(output.code, { React, window: local, AbortController, setTimeout, clearTimeout, URLSearchParams });
+  // The capture saved public data bodies. This harness supplies the opaque transport metadata.
+  const envelope = value => ({ ok: true, schema_version: 1, data: value, warnings: [], meta: { request_ref: '1'.repeat(32),
+    source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-15T02:00:00' } });
+  const catalog = envelope(raw.candidate_catalog), workspace = envelope(raw.candidate_workspace), plan = envelope(raw.adopted_plan_workspace);
+  assert.strictEqual(local.RunCandidateAPI.catalog(catalog, savedRun, {}), raw.candidate_catalog);
+  assert.strictEqual(local.RunJobAPI.catalog(catalog, savedRun), raw.candidate_catalog, 'Job 与 candidate 目录共用真实新版候选合同');
+  assert.strictEqual(local.RunCandidateAPI.workspace(workspace, savedCandidate, {}), raw.candidate_workspace);
+  assert.strictEqual(local.APSPlanContract.workspace(plan, raw.adopted_plan_workspace.plan.plan_ref, {}), plan);
+  const algorithm = raw.candidate_workspace.generation.algorithm;
+  assert.deepEqual(algorithm.target_objectives, ['min_overdue', 'min_tardiness', 'min_changeover'], '真实 canonical JSON 往返保留保存的主目标优先顺序');
+  assert.deepEqual(algorithm, raw.adopted_plan_workspace.provenance.algorithm, '真实候选和正式采用计划沿同一份共同算法元数据');
+  for (const value of [workspace, plan]) {
+    const wrong = clone(value), item = wrong.data.generation ? wrong.data.generation.algorithm : wrong.data.provenance.algorithm;
+    item.target_objectives.reverse();
+    assert.throws(() => wrong.data.generation ? local.RunCandidateAPI.workspace(wrong, savedCandidate, {})
+      : local.APSPlanContract.workspace(wrong, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '两消费者均拒绝错序算法合同');
+  }
+  const extra = clone(plan); extra.data.provenance.algorithm.unrecorded = true;
+  assert.throws(() => local.APSPlanContract.workspace(extra, raw.adopted_plan_workspace.plan.plan_ref, {}), undefined, '新采用来源不接未声明字段');
+  const metadataTree = expand(h(local.RunCandidateControls.GenerationMetadata, { value: algorithm, runRef: savedRun }));
+  assert.equal(nodes(metadataTree).find(node => node.props['data-first-found-elapsed-ms'] !== undefined).props['data-first-found-elapsed-ms'], algorithm.first_found_elapsed_ms);
+  assert(text(metadataTree).includes('共同优化') && text(metadataTree).includes('代表方向'));
+  const elapsedTree = expand(h(local.RunCandidateControls.Metric, { metric: raw.candidate_catalog.candidates[0].metrics.elapsed_seconds }));
+  assert.equal(text(nodes(elapsedTree).find(node => node.type === 'summary')), 'N/A'); assert(text(elapsedTree).includes('本轮共同优化'));
+  const identity = envelope({ candidate_ref: savedCandidate, run_ref: savedRun, label: raw.candidate_workspace.candidate.label, status: 'completed' });
+  const calls = [], owner = new AbortController(), transport = local.RunCandidateAPI.create(async (url, options) => {
+    calls.push({ url, options }); return { ok: true, status: 200, headers: { get: key => key === 'Content-Type' ? 'application/json' : null }, json: async () => identity };
+  });
+  assert.strictEqual(await transport.identity(savedCandidate, owner.signal), identity);
+  assert.equal(calls.length, 1); assert(calls[0].url.endsWith('/candidates/' + savedCandidate + '/identity') && !calls[0].url.includes('/workspace'));
+  assert.equal(calls[0].options.cache, 'no-store'); assert.equal(calls[0].options.credentials, 'same-origin');
+  const badIdentity = clone(identity); badIdentity.data.candidate_ref = first;
+  await assert.rejects(() => local.RunCandidateAPI.adapter({ identity: async () => badIdentity }).identity(savedCandidate), /身份|方案/, '注入 identity reader 同样绑定永久候选编号');
+  const state = hooks(), lookups = [], summaries = [], ui = { ...local,
+    APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) } };
+  vm.runInNewContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, { React: state.React, window: ui, AbortController });
+  const props = { initialContext: { candidate_ref: savedCandidate }, adapter: {
+    identity: (reference, signal) => { lookups.push({ reference, signal }); return identity; },
+    workspace: () => { throw new Error('比较入口的运行编号查找只调用轻量 identity'); },
+    decisionSummary: (reference, query) => { summaries.push({ reference, query }); return null; }
+  } };
+  state.render(() => ui.RunDecisionComparison.Workspace(props)); state.flush(); state.render(() => ui.RunDecisionComparison.Workspace(props));
+  assert.equal(lookups.length, 1); assert.equal(summaries[0].reference, savedRun, '仅候选编号打开比较页由轻量身份结果取得 run_ref');
+  const processRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_http.json'), 'utf8'));
+  const native = processRaw.decision_summary, nativeRun = native.run.run_ref, nativeCandidate = native.scope.selected_candidate_ref;
+  assert.strictEqual(API.decisionSummary(envelope(native), nativeRun, { selected_candidate_ref: nativeCandidate }), native);
+  for (const [objective, process] of Object.entries(processRaw.process_by_objective)) {
+    assert.strictEqual(API.processDetails(envelope(process), nativeRun, { selected_candidate_ref: nativeCandidate, objective }), process);
+    assert.deepEqual(Object.keys(process.summary).sort(), ['elapsed_ms', 'first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms'].sort());
+    assert.equal(process.summary.last_improvement_elapsed_ms, null, '真实快速生成未改善，按保存事实显示');
+  }
+  const controlledRaw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_process_controlled.json'), 'utf8'));
+  assert.equal(controlledRaw.provenance.actual_http, false); assert.equal(controlledRaw.provenance.solver_calls, 0);
+  const improved = controlledRaw.improvement, improvementQuery = { ...improved.filters,
+    selected_candidate_ref: improved.scope.selected_candidate_ref, reference_candidate_ref: improved.scope.reference.candidate_ref };
+  delete improvementQuery.section;
+  const acceptedImprovement = API.processDetails(envelope(improved), improved.run_ref, improvementQuery);
+  assert.strictEqual(acceptedImprovement, improved, '真实metrics→SharedSearch→build_shared_process→projection先经过严格公开DTO边界');
+  assert.deepEqual(improved.progress.points.map(point => [point.elapsed_ms, point.flags]), [[10, ['first_valid', 'first_expected_complete']], [15, ['strict_improvement']], [100, ['final']]]);
+  const badMandatory = clone(improved); badMandatory.progress.sampling.mandatory.push('strict_improvement');
+  assert.throws(() => API.processDetails(envelope(badMandatory), improved.run_ref, improvementQuery), /采样/, '真实改善允许作为点标记，三个必要锚点合同保持');
+  const curveState = hooks(), curve = { ...window };
+  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+    sources: [{ path: 'RunDecisionProcessChart.jsx', code: fs.readFileSync(path.join(app, 'RunDecisionProcessChart.jsx'), 'utf8') }] }).outputs)
+    vm.runInNewContext(output.code, { React: curveState.React, window: curve });
+  const curveProps = { progress: acceptedImprovement.progress, objective: acceptedImprovement.selected_objective, scopes: acceptedImprovement.scopes,
+    elapsedMs: acceptedImprovement.summary.elapsed_ms, lastImprovementElapsedMs: acceptedImprovement.summary.last_improvement_elapsed_ms };
+  let curveTree; const renderCurve = () => { curveTree = curveState.render(() => expand(curve.RunDecisionProcessChart.Chart(curveProps))); };
+  renderCurve(); assert.equal(nodes(curveTree).find(node => node.props['data-process-last-improvement-ms'] !== undefined).props['data-process-last-improvement-ms'], 15);
+  const improvementButton = nodes(curveTree).find(node => node.type === 'button' && text(node).includes('改善阶段'));
+  assert.equal(improvementButton.props.disabled, false); assert(text(improvementButton).includes('15 毫秒'));
+  assert(nodes(curveTree).some(node => node.type === 'circle' && node.props['data-progress-flags'] === 'strict_improvement'), '真实15ms改善点标签显示');
+  improvementButton.props.onClick(); renderCurve(); assert.equal(curveTree.props['data-process-window'], 'improvements');
+  assert.equal(nodes(curveTree).filter(node => node.type === 'circle' && node.props['data-progress-flags'] === 'final').length, 0, '改善阶段采用15ms真实截止，100ms final留在全过程');
+  const noGain = processRaw.process_by_objective.min_overdue;
+  Object.assign(curveProps, { progress: noGain.progress, objective: noGain.selected_objective, scopes: noGain.scopes, elapsedMs: noGain.summary.elapsed_ms,
+    lastImprovementElapsedMs: noGain.summary.last_improvement_elapsed_ms });
+  renderCurve(); assert.equal(curveTree.props['data-process-window'], 'full'); assert(!nodes(curveTree).some(node => node.props['data-process-last-improvement-ms'] !== undefined));
+  assert.equal(nodes(curveTree).find(node => node.type === 'button' && text(node).includes('改善阶段')).props.disabled, true, '真实native无改善采用null事实');
+  const sampled = controlledRaw.sampled_improvement, sampledQuery = { ...sampled.filters,
+    selected_candidate_ref: sampled.scope.selected_candidate_ref, reference_candidate_ref: sampled.scope.reference.candidate_ref };
+  delete sampledQuery.section;
+  const acceptedSampled = API.processDetails(envelope(sampled), sampled.run_ref, sampledQuery);
+  assert.strictEqual(acceptedSampled, sampled); assert.equal(controlledRaw.sampled_provenance.actual_http, false);
+  assert.equal(controlledRaw.sampled_provenance.decoder_calls, 0); assert(!sampled.progress.points.some(point => point.flags.includes('strict_improvement')), '实际sampler将999ms改善点和1000ms final放入同桶，保留final');
+  assert.deepEqual(sampled.progress.points.map(point => point.elapsed_ms), [10, 1000]); assert.equal(sampled.summary.first_improvement_elapsed_ms, 999); assert.equal(sampled.summary.last_improvement_elapsed_ms, 999);
+  Object.assign(curveProps, { progress: acceptedSampled.progress, objective: acceptedSampled.selected_objective, scopes: acceptedSampled.scopes,
+    elapsedMs: acceptedSampled.summary.elapsed_ms, lastImprovementElapsedMs: acceptedSampled.summary.last_improvement_elapsed_ms });
+  renderCurve(); assert.equal(nodes(curveTree).find(node => node.props['data-process-last-improvement-ms'] !== undefined).props['data-process-last-improvement-ms'], 999);
+  const sampledWindow = nodes(curveTree).find(node => node.type === 'button' && text(node).includes('改善阶段'));
+  assert.equal(sampledWindow.props.disabled, false); assert(text(sampledWindow).includes('999 毫秒'), '抽样省略末改善点仍显示真实保存时刻');
+  sampledWindow.props.onClick(); renderCurve(); assert.equal(curveTree.props['data-process-window'], 'improvements');
+  assert.equal(nodes(curveTree).filter(node => node.type === 'circle' && node.props['data-progress-flags'] === 'final').length, 0);
+  // These card-count variants exercise presentation only; they reuse the captured business facts.
+  for (const count of [1, 2, 3]) {
+    const shown = clone(native); shown.candidates = Array.from({ length: count }, (_, index) => ({ ...clone(native.candidates[0]),
+      candidate_ref: String(index + 80).padStart(48, '0'), representative_objectives: index === 0 ? ['min_overdue', 'min_tardiness'] : ['min_changeover'] }));
+    const cards = expand(h(local.RunDecisionComparison.CandidateTable, { data: shown, selectedRef: shown.candidates[0].candidate_ref, referenceRef: nativeCandidate, onSelect: () => {} }));
+    assert.equal(cards.props['data-unified-candidates'], count); assert.equal(nodes(cards).filter(node => node.props['data-decision-candidate']).length, count);
+    assert(text(cards).includes('交期优先 · 拖期更轻') && text(cards).includes('推荐'), '合并代表方向与保存的推荐标记共同显示');
+  }
+  for (const count of [4, 6, 8]) {
+    const old = clone(data); old.candidates = Array.from({ length: count }, (_, index) => ({ ...clone(data.candidates[index % data.candidates.length]), candidate_ref: String(index + 90).padStart(48, '0') }));
+    const cards = expand(h(local.RunDecisionComparison.CandidateTable, { data: old, onSelect: () => {} }));
+    assert.equal(cards.props['data-unified-candidates'], undefined); assert.equal(nodes(cards).filter(node => node.props['data-decision-candidate']).length, count, '旧候选集合全部保留');
+  }
+  const partial = clone(native); partial.candidates[0].representative_objectives = []; partial.candidates[0].label = '算法选中的部分结果';
+  const partialCards = expand(h(local.RunDecisionComparison.CandidateTable, { data: partial, onSelect: () => {} }));
+  assert.equal(text(nodes(partialCards).find(node => node.props.className === 'rd-candidate-choice-heading').children[0]), '算法选中的部分结果', '未知评分的合法空代表方向保留保存名称');
+  const weighted = clone(native); weighted.selection_basis.primary_objective = 'min_weighted_tardiness';
+  Object.assign(weighted.candidates[0].metrics.weighted_tardiness_hours, { value: null, known_subtotal: 7, known_count: 2, unknown_count: 1, total_count: 3, state: 'partial' });
+  const weightedCards = expand(h(local.RunDecisionComparison.CandidateTable, { data: weighted, onSelect: () => {} }));
+  const weightedMetric = nodes(weightedCards).find(node => node.props['data-card-metric'] === 'weighted_tardiness_hours');
+  assert(weightedMetric && text(weightedMetric).includes('已知加权拖期') && text(weightedMetric).includes('7'));
+  const weightedText = text(weightedMetric).replace(/\s+/g, ' ');
+  assert(weightedText.includes('计算时保存的批次优先级') && weightedText.includes('2 / 3') && weightedText.includes('1 批待确认'), '加权主要指标展示已知小计、保存优先级依据和覆盖范围');
+  const evidence = expand(h(local.RunDecisionRecommendation.SelectionEvidence, { basis: native.selection_basis, data: native }));
+  assert(text(evidence).includes('主目标') && !text(evidence).includes('健康比较原方案'), '新版推荐展示真实业务规则');
+  assert(nodes(evidence).some(node => node.type === 'reference' && (node.props.value === native.selection_basis.selected_candidate_ref || node.props.entries && Object.values(node.props.entries).includes(native.selection_basis.selected_candidate_ref))), '推荐详情保留永久编号');
+  const compareState = hooks(), compareQueries = [], returns = [], display = clone(native), fullDisplay = clone(processRaw.decision_overview);
+  assert.strictEqual(API.decision(envelope(processRaw.decision_overview), nativeRun, { selected_candidate_ref: nativeCandidate }), processRaw.decision_overview);
+  for (const container of [display, fullDisplay]) container.candidates.push(...[first, third].map((reference, index) => ({ ...clone(container.candidates[0]), candidate_ref: reference,
+    label: ['拖期更轻代表方案', '切换更少代表方案'][index], selection_role: [], representative_objectives: [['min_tardiness'], ['min_changeover']][index] })));
+  const compare = { ...local, RunDecisionProcess: { Pane: 'process-pane' }, RunDecisionResources: { Pane: 'resource-pane' },
+    RunDecisionDetails: { Pane: 'detail-pane' }, RunDecisionCompletion: { Pane: 'completion-pane' },
+    APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) } };
+  vm.runInNewContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, { React: compareState.React, window: compare, AbortController });
+  const readDisplay = (reference, q, full = false) => { compareQueries.push(clone(q)); const value = clone(full ? fullDisplay : display);
+    value.scope.selected_candidate_ref = q.selected_candidate_ref || nativeCandidate;
+    value.scope.resource_view = q.resource_view; value.scope.comparison_mode = q.comparison_mode;
+    value.scope.reference.candidate_ref = q.reference_candidate_ref || nativeCandidate; return envelope(value); };
+  const compareProps = { initialContext: { run_ref: nativeRun, candidate_ref: nativeCandidate, reference_candidate_ref: nativeCandidate, comparison_tab: 'process',
+      detail_queries: { process: { objective: 'min_changeover', process_candidate_ref: first, page: 2, size: 20, snapshot_ref: snapshot } } },
+    adapter: { decisionSummary: readDisplay, resourceWorkspace: (reference, q, saved) => resourceWorkspaceFixture(readDisplay(reference, q), saved), decision: (reference, q) => readDisplay(reference, q, true) }, onNavigate: (page, context) => returns.push({ page, context }),
+    renderAdoption: reference => h('adoption', { candidateRef: reference }) };
+  let compareTree, compareRaw;
+  const renderCompare = () => { compareRaw = compareState.render(() => compare.RunDecisionComparison.Workspace(compareProps)); compareTree = expand(compareRaw); compareState.flush(); };
+  const processLeaf = () => nodes(compareTree).find(node => node.type === 'process-pane').props;
+  renderCompare(); assert.equal(processLeaf().query.process_candidate_ref, first); assert.equal(processLeaf().query.objective, 'min_changeover'); assert.equal(processLeaf().query.page, 2, '新版甘特返回保留独立过程来源页');
+  processLeaf().onQuery({ ...processLeaf().query, objective: 'min_tardiness', page: 1 }); renderCompare();
+  assert.equal(compareQueries.at(-1).selected_candidate_ref, nativeCandidate); assert.equal(compareQueries.at(-1).reference_candidate_ref, nativeCandidate);
+  nodes(nodes(compareTree).find(node => node.props['data-decision-candidate'] === third)).find(node => node.props.className === 'rd-candidate-choice').props.onClick(); renderCompare();
+  assert.equal(compareQueries.at(-1).selected_candidate_ref, third); assert.equal(processLeaf().query.process_candidate_ref, first); assert.equal(processLeaf().query.objective, 'min_tardiness');
+  nodes(compareTree).find(node => node.props['aria-label'] === '候选比较基准').props.onChange({ target: { value: first } }); renderCompare();
+  nodes(compareTree).find(node => node.props.id === 'rd-tab-resources').props.onClick(); renderCompare();
+  nodes(compareTree).find(node => node.type === 'resource-pane').props.onView('full_candidate'); renderCompare();
+  assert.equal(compareQueries.at(-1).selected_candidate_ref, third); assert.equal(compareQueries.at(-1).reference_candidate_ref, first); assert.equal(processLeaf().query.objective, 'min_tardiness');
+  nodes(compareTree).find(node => node.type === 'button' && text(node) === '看甘特').props.onClick();
+  assert.equal(returns.at(-1).context.candidate_ref, third); assert.equal(returns.at(-1).context.return_decision_context.detail_queries.process.process_candidate_ref, first);
+  assert.equal(returns.at(-1).context.return_decision_context.detail_queries.process.objective, 'min_tardiness'); assert.equal(nodes(compareTree).find(node => node.type === 'adoption').props.candidateRef, third, '采用对象继续绑定当前查看方案');
+  nodes(compareTree).find(node => node.props.className === 'rd-official rd-data-source').props.onToggle({ currentTarget: { open: true } }); renderCompare();
+  nodes(compareRaw).find(node => node.type === compare.RunDecisionComparison.CandidateFacts).props.onProcess(display.candidates[0]); renderCompare();
+  assert.equal(compareQueries.at(-1).selected_candidate_ref, third); assert.equal(processLeaf().query.process_candidate_ref, nativeCandidate, '候选保存依据定位来源保持查看和采用对象');
+  const processState = hooks(), processCalls = [], pane = { ...window, RunDecisionAPI: API,
+    APSResourceSession: { useQuery: (load, deps, enabled = true) => ({ result: enabled ? load() : null, loading: false, error: null }) } };
+  for (const name of ['RunDecisionProcessChart.jsx', 'RunDecisionProcess.jsx']) for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+    sources: [{ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') }] }).outputs) vm.runInNewContext(output.code, { React: processState.React, window: pane, AbortController });
+  const paneProps = { result: envelope(native), query: {}, enabled: true, onQuery: value => { paneProps.query = value; },
+    adapter: { process: (reference, q) => { processCalls.push(clone(q)); return envelope(processRaw.process_by_objective[q.objective || native.selection_basis.primary_objective]); } } };
+  let paneTree; const renderProcess = () => { paneTree = processState.render(() => expand(pane.RunDecisionProcess.Pane(paneProps))); processState.flush(); };
+  renderProcess(); nodes(paneTree).find(node => node.props['aria-label'] === '优化方向').props.onChange({ target: { value: 'min_changeover' } }); renderProcess();
+  assert.equal(processCalls.at(-1).objective, 'min_changeover'); assert.equal(processCalls.at(-1).selected_candidate_ref, nativeCandidate); assert.equal(processCalls.at(-1).process_candidate_ref, nativeCandidate);
+  assert.equal(nodes(paneTree).filter(node => node.props['data-unified-count']).length, 6, '共同真实计数只显示一次');
+  for (const [key, label] of [['skipped_requests', '跳过执行次数'], ['request_count', '不同计算请求']]) {
+    const countRow = nodes(paneTree).find(node => node.props['data-unified-count'] === key);
+    assert.equal(text(nodes(countRow).find(node => node.type === 'dt')), label);
+    assert.equal(text(nodes(countRow).find(node => node.type === 'dd')), String(processRaw.process_by_objective.min_changeover.counts[key]), '统计名称同步保留保存值');
+  }
+  assert(text(paneTree).includes('本次预算内未探索此方向') && nodes(paneTree).filter(node => node.type === 'circle' && node.props['data-progress-event-index'] !== undefined).length > 0, '真实未探索方向仍有共同初始评价点');
+  const exportState = hooks(), exportWindow = { ...window };
+  vm.runInNewContext(outputs.find(output => output.path === 'RunDecisionComparison.jsx').code, { React: exportState.React, window: exportWindow, AbortController });
+  let exportTree; const renderExport = () => { exportTree = exportState.render(() => expand(exportWindow.RunDecisionComparison.Export({
+    adapter: {}, result: envelope(noGain), initialSection: 'process' }))); };
+  renderExport(); nodes(exportTree).find(node => node.type === 'button' && node.props.icon === 'download').props.onClick(); renderExport();
+  assert(text(exportTree).includes('当前方向曲线'));
+  nodes(exportTree).find(node => node.props['aria-label'] === '方案对比导出内容').props.onChange({ target: { value: 'all' } }); renderExport();
+  assert(text(exportTree).includes('本轮全部优化目标') && !text(exportTree).includes('当前方向曲线'), '整份导出的说明准确包含全部目标，单张过程说明对应当前方向');
+  console.log(JSON.stringify({ u4_actual_public_generation: { candidate_catalog: true, candidate_workspace: true, adopted_plan_workspace: true,
+    target_objectives: algorithm.target_objectives, algorithm_metadata_equal: true, identity_reads: calls.length, decision_summary: true, process_directions: 3,
+    real_improvement_ms: improved.summary.last_improvement_elapsed_ms, sampled_improvement_ms: sampled.summary.last_improvement_elapsed_ms } }));
+}
 async function main() {
   comparisonHeaderContracts(schedulingNavigationContracts());
   detailContracts(); referenceContracts(); recommendationContracts(); await transportContracts(); await workspaceContracts(); await paneContracts(); await completionContracts();
-  processReadContracts(); attemptComparisonContracts(); processEvaluationScopeContracts(); processChartContracts(); await processPaneContracts(); await processTransportContracts();
+  processReadContracts(); attemptComparisonContracts(); processEvaluationScopeContracts(); processChartContracts(); await processPaneContracts(); await processTransportContracts(); await unifiedGenerationContracts();
   console.log('decision comparison contract: candidate/formal scope, recommendation/completion, process owners/unknowns, single-leaf paging/export, verified curve segments, cancellation and original-viewer gantt return passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

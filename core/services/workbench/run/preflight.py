@@ -1,9 +1,11 @@
 """Business preflight, not a schedule, publication or worker admission."""
 
 from collections import defaultdict
+from dataclasses import dataclass, field
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, Optional, cast
 
-from core.errors import AppError
+from core.errors import AppError, ValidationError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_preflight import issue, normalize_preflight_input
 from core.services.scheduler.schedule_service import ScheduleService
@@ -11,12 +13,32 @@ from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_checks import PreflightChecks, stored_date
 from core.services.workbench.facts.preflight_dependencies import link_predecessors, piece_scope_problem
 
-from .input_config import hold_window
+from .input_config import configuration_snapshot, hold_window, run_options
 from .input_external import external_resource_issues, preflight_external_cycles
 from .preflight_execution import execution_projections, is_protected
 from .preflight_facts import PreflightFacts
 from .preflight_held import held_arrangement_reasons
 from .preflight_result import summarize
+
+if TYPE_CHECKING:
+    from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+    from core.services.workbench.facts.production_capture import ProductionFactsCapture
+
+
+@dataclass
+class PreparedPreflight:
+    data: dict
+    fingerprint: str
+    settings: dict
+    capture: object
+    preflight_facts: PreflightFacts
+    config_snapshot: Optional["ScheduleConfigSnapshot"]
+    execution_projections: list
+    baseline: object = None
+    prepared_input: object = None
+    config_error: Optional[ValidationError] = None
+    run_options: object = None
+    data_context_ref: str = field(init=False, repr=False, compare=False)
 
 
 def task_row(facts, batch, op, projection):
@@ -102,12 +124,27 @@ class PreflightService:
         self.facts = PreflightFacts(conn)
 
     def evaluate(self, value):
+        prepared = self.evaluate_prepared(value)
+        return prepared.data, prepared.fingerprint
+
+    def evaluate_prepared(self, value) -> PreparedPreflight:
         settings = normalize_preflight_input(value)
+        self.facts = PreflightFacts(self.facts.conn)
         with self.facts.snapshot() as fingerprint:
+            config, config_error = None, None
+            try:
+                config = configuration_snapshot(self.facts.conn, rows=self.facts.tables["ScheduleConfig"])
+            except ValidationError as exc:
+                config_error = exc
+            self.facts.config_snapshot, self.facts.config_error = config, config_error
+            options = run_options(settings, config) if config is not None else None
+            if options is not None:
+                settings = {**settings, "time_budget_seconds": options["time_budget_seconds"]}
             batches = self.facts.selected(settings["batch_refs"])
             selected_ids = {row["batch_id"] for row in batches}
             operations = [row for row in self.facts.tables["BatchOperations"] if row["batch_id"] in selected_ids]
-            projections, ledger_reasons = execution_projections(self.facts, operations)
+            prepared_projections = []
+            projections, ledger_reasons = execution_projections(self.facts, operations, prepared=prepared_projections)
             cycles, arrangement_reasons = self._external_cycles(batches, operations, projections)
             checks = PreflightChecks(self.facts.tables)
             grouped = defaultdict(list)
@@ -137,9 +174,13 @@ class PreflightService:
                                                            checks, cycles)
             for row in rows:
                 row["held"] = marks.get(row["op_id"])
-            return summarize(settings, batches, rows, no_route, unready, ledger_reasons,
+            data = summarize(settings, batches, rows, no_route, unready, ledger_reasons,
                              dependency_reasons + arrangement_reasons + held, notes,
-                             hold=hold_window(self.facts.conn, settings)), fingerprint
+                             hold=((None, "default") if config_error is not None
+                                   else hold_window(self.facts.conn, settings, snapshot=config)))
+            data["run_options"] = options
+            return PreparedPreflight(data, fingerprint, settings, self.facts.capture, self.facts,
+                                     config, prepared_projections, config_error=config_error, run_options=options)
 
     def _external_cycles(self, batches, operations, projections):
         try:
@@ -152,7 +193,8 @@ class PreflightService:
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
         不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记})。"""
         svc = ScheduleService(self.facts.conn)
-        version = svc.history_repo.get_latest_version()
+        capture = cast("ProductionFactsCapture", self.facts.capture)
+        version = max((row["version"] for row in capture.table("ScheduleHistory")), default=0)
         ledger_ready = not any(item["code"] == "execution_ledger_unavailable" for item in ledger_reasons)
         reasons = external_resource_issues(self.facts, svc, operations, projections, version) if ledger_ready else []
         # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。

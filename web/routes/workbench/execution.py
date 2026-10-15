@@ -31,8 +31,6 @@ def field_query(task_ref=None):
     args = arguments()
     scope = normalize_scope(args)
     number, size = page_input(args)
-    if number > 1 and not args.get('snapshot_ref'):
-        raise WorkbenchCommandRejected('snapshot_required', '翻页位置已失效，请回到第 1 页重新查询。', 400)
     reader = FieldWorkspaceService(g.db, context_factory=field_context)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():

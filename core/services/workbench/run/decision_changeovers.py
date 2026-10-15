@@ -2,9 +2,9 @@
 
 from core.models.workbench_run_candidate import local_time
 from core.services.workbench.facts.changeovers import changeover_projection, subject_arrangements
+from core.services.workbench.facts.decision_metrics import metric_definitions, metric_delta, metric_value
 
 from .decision_impact import _drill
-from .decision_metrics import metric_definitions, metric_delta, metric_value
 
 
 class DecisionChangeovers:
@@ -13,15 +13,11 @@ class DecisionChangeovers:
         self._projections, self._metrics = {}, {}
 
     def available(self, key):
-        return self.source.preparation.available(key)
+        key = self.source.computation_key(key)
+        return self.source.baseline["state"] == "available" if key == "reference" else self.source.result_available(key)
 
     def tasks(self, key):
-        key = self.source.computation_key(key)
-        if key == "reference":
-            if self.source.comparison_mode == "admission_official":
-                return self.source.official["tasks"]
-            return self.source.tasks(self.source.reference_ref) if self.source.reference_ref else []
-        return self.source.tasks(key)
+        return self.source.analysis_tasks(key)
 
     def projection(self, key):
         key = self.source.computation_key(key)

@@ -1,10 +1,13 @@
-"""真实候选比较搜索规则池并公开实际采用的规则。"""
+"""完整规则池与实际共享规则动作保留真实采用来源。"""
 
 import itertools
 
 import pytest
 
-from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
+from core.models.schedule_config_runtime import default_snapshot_values
+from core.models.schedule_config_runtime_snapshot import snapshot_from_values
+from core.services.scheduler.config.config_field_spec import choices_for
+from core.services.scheduler.run.optimizer.multi_start import _iter_multi_start_specs
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_candidate_summary import (
     candidate_comparison_public_summary,
@@ -12,8 +15,8 @@ from core.services.scheduler.run.schedule_candidate_summary import (
 )
 from tests._support.optimizer_business_cases import case_environment, fixture_data
 
-# Registry rules plus the ATC k ladder; the optimizer may adopt any token from this pool.
-RULE_POOL = set(dispatch_rule_search_pool(("slack", "cr", "atc")))
+# Independent token contract; a limited shared run can execute a subset.
+RULE_POOL = {"slack", "cr", "atc", "atc:k=0.5", "atc:k=1.0", "atc:k=4.0", "atc:k=8.0", "atc:k=16.0"}
 
 
 def _compare(scenario, objective="min_overdue"):
@@ -23,7 +26,7 @@ def _compare(scenario, objective="min_overdue"):
     with case_environment(data, objective, config) as schedule_input:
         return run_candidate_comparison(
             schedule_input=schedule_input, clock=lambda: next(ticks), run_time_budget_seconds=config["run_time_budget_seconds"],
-            weight_count=3, selection_policy="score_only", strict_mode=True,
+            strict_mode=True,
         )
 
 
@@ -32,42 +35,66 @@ def shift_pool_outcome():
     return _compare("shift_pool")
 
 
-def test_baseline_candidate_starts_from_every_rule_and_the_rule_neighborhood_really_moves(shift_pool_outcome):
-    baseline = next(plan for plan in shift_pool_outcome.candidates if plan.candidate_key == "baseline")
-    assert baseline.status == "completed"
-    efficiency = baseline.search_report["candidate_profile"]["multi_start_efficiency"]
-    assert efficiency["configured_candidates"] == len(RULE_POOL) and efficiency["decoded_candidates"] == len(RULE_POOL)
-    neighborhood = baseline.search_report["neighborhood_summary"]["sgs_dispatch_rule"]
-    assert neighborhood["effective"] > 0
-    assert neighborhood["noop"] < neighborhood["attempted"]
-    attempts = [row for row in baseline.attempts if "score" in row]
-    assert attempts and len(attempts) <= 12
-    assert any(row["accepted"] is False for row in attempts)
-    assert any(row["source"] == "multi_start" for row in attempts)
-    for row in attempts:
-        assert isinstance(row["elapsed_ms"], int) and row["elapsed_ms"] >= 0
-        assert isinstance(row["accepted"], bool) and row["verified"] is True
-        comparison = row["comparison"]
-        if comparison["state"] == "comparable":
-            assert row["strict_improved"] == (row["score"] < comparison["reference_score"])
-            delta = comparison["metric_deltas"]["total_tardiness_hours"]
-            assert abs(delta - (row["metrics"]["total_tardiness_hours"]
-                               - comparison["reference_metrics"]["total_tardiness_hours"])) < 0.0001
-        else:
-            assert row["strict_improved"] is None and comparison["metric_deltas"] is None
+def test_complete_rule_pool_and_actual_shared_rule_actions(shift_pool_outcome, record_property):
+    values = default_snapshot_values()
+    values.update(sort_strategy="fifo", dispatch_mode="sgs", dispatch_rule="slack")
+    specs = list(_iter_multi_start_specs(
+        keys=["fifo"], dispatch_modes=["sgs"], dispatch_rule_cfg="slack",
+        valid_dispatch_rules=list(choices_for("dispatch_rule")), snapshot=snapshot_from_values(values),
+        strict_mode=True, optimizer_algo_stats={}, deadline_reached=lambda: False, graph_rule_scope=None,
+    ))
+    generated_rules = [spec[2] for spec in specs]
+    record_property("generated_dispatch_rules", generated_rules)
+    assert len(generated_rules) == len(set(generated_rules)) == 8
+    assert set(generated_rules) == RULE_POOL
+    assert generated_rules[0] == "slack"
+
+    events = shift_pool_outcome.unified_process["events"]
+    requests = [event for event in events if event["event_type"] in ("new_decision", "decision_reused")]
+    requested_rules = {event["dispatch_rule"] for event in requests}
+    multi_start = [event for event in requests if event["phase"] == "multi_start"]
+    skipped = [{"dispatch_rule": event.get("dispatch_rule"), "reason": event.get("reason")}
+               for event in events if event["event_type"] == "decode_skipped"]
+    proposed_rules = {event["dispatch_rule"] for event in events
+                      if event.get("request_id") is not None and event.get("dispatch_rule") in RULE_POOL}
+    record_property("shared_dispatch_rules", sorted(requested_rules))
+    record_property("multi_start_dispatch_rules", sorted({event["dispatch_rule"] for event in multi_start}))
+    record_property("decode_skipped", skipped)
+    record_property("not_proposed_dispatch_rules", sorted(RULE_POOL - proposed_rules))
+    assert requested_rules and requested_rules <= RULE_POOL
+    assert any(event["dispatch_rule"] == "atc:k=16.0" for event in requests)
+    assert requests[0]["phase"] == "multi_start"
+    observations = [event for event in events if event["event_type"] == "archive_observation" and event["verified"]]
+    rules_by_entry = {}
+    for event in observations:
+        rules_by_entry.setdefault(event["entry_id"], event["dispatch_rule"])
+        assert isinstance(event["elapsed_ms"], int) and event["elapsed_ms"] >= 0
+    rule_moves = [event for event in requests if event["phase"] == "local_search"
+                  and event["dispatch_mode"] == "sgs" and event["parent_entry_id"] in rules_by_entry
+                  and event["dispatch_rule"] != rules_by_entry[event["parent_entry_id"]]]
+    record_property("effective_rule_move_count", len(rule_moves))
+    assert rule_moves
+    assert all(event["dispatch_rule"] in RULE_POOL for event in rule_moves)
+    non_improving = [event for event in observations if not event["content_reused"]
+                     and not event["improved_objectives"] and not event["initialized_objectives"]]
+    record_property("non_improving_observation_count", len(non_improving))
+    assert non_improving
 
 
-def test_adopted_rule_is_reported_and_may_differ_from_the_configured_rule(shift_pool_outcome):
+def test_adopted_rule_and_origin_match_the_actual_shared_source(shift_pool_outcome):
+    events = {event["event_id"]: event for event in shift_pool_outcome.unified_process["events"]}
     for plan in shift_pool_outcome.candidates:
         assert plan.status == "completed"
-        assert plan.dispatch_mode == "sgs" and plan.dispatch_rule == "slack"
+        assert plan.dispatch_mode == "sgs"
         assert plan.adopted_dispatch_rule in RULE_POOL
+        source = events[plan.search_evidence_ref["source_event_id"]]
+        assert source["event_type"] == "archive_observation" and source["verified"] is True
+        assert plan.adopted_dispatch_rule == source["dispatch_rule"] == plan.origin["dispatch_rule"]
+        assert plan.origin["origin"] == source["origin"]
+        assert plan.origin["search_objective"] == source["search_objective"]
         public = candidate_public_summary(plan)
         assert public["adopted_dispatch_rule"] == plan.adopted_dispatch_rule
-        assert ("configured_dispatch_rule" in public) is (plan.adopted_dispatch_rule != plan.dispatch_rule)
-    baseline = next(plan for plan in shift_pool_outcome.candidates if plan.candidate_key == "baseline")
-    # Measured under the fixed clock: the configured slack start loses to a ladder atc on this fixture.
-    assert baseline.adopted_dispatch_rule == "atc:k=16.0"
-    assert candidate_public_summary(baseline)["configured_dispatch_rule"] == "slack"
+        assert public["origin"] == plan.origin
+    assert any(plan.adopted_dispatch_rule != "slack" for plan in shift_pool_outcome.candidates)
     summary = candidate_comparison_public_summary(shift_pool_outcome)
     assert [row["adopted_dispatch_rule"] for row in summary["candidates"]] == [plan.adopted_dispatch_rule for plan in shift_pool_outcome.candidates]

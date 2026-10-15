@@ -127,3 +127,31 @@ def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypa
     fresh = list_data(client, query="FREE-001", ready_status="yes")
     assert fresh["data"]["page"]["total"] == 1 and fresh["meta"]["as_of"] == "2026-10-08T00:00:30"
     assert state(client) == before and client.batch_conn.total_changes == changes
+
+
+def test_command_facts_reuse_without_version_probe_and_reload_after_write(batch_client, record_property):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.batch.facts import BatchFacts
+
+    conn = batch_client.batch_conn
+    reader, trace = BatchFacts(conn), []
+    ref = ref_for(batch_client)
+    conn.set_trace_callback(trace.append)
+    try:
+        with TransactionManager(conn).transaction(begin_immediate=True):
+            with reader.command_snapshot():
+                first, second = reader.load(), reader.load()
+                assert first["Batches"] is second["Batches"]
+                assert reader.batch(ref)["remark"] == "keep-hidden"
+                old_index = reader._lookups["Batches"]
+                conn.execute("UPDATE Batches SET remark='command-current' WHERE batch_id='FREE-001'")
+                changed = reader.load()
+                assert changed["Batches"] is not first["Batches"]
+                assert reader.batch(ref)["remark"] == "command-current"
+                assert reader._lookups["Batches"] is not old_index
+            assert reader._facts is reader._stamp is None and not reader._lookups
+    finally:
+        conn.set_trace_callback(None)
+    probes = sum("PRAGMA DATA_VERSION" in sql.upper() for sql in trace)
+    record_property("batch_command_data_version", probes)
+    assert probes == 0

@@ -16,15 +16,6 @@ from .template_preview import template_after, template_changes
 from .template_validation import template_status
 
 
-def insert_operation(conn, batch_id, row, *, template=False, writer=None):
-    """Avoid BatchOperation.from_row, whose legacy null-hours coercion is lossy.
-
-    一条命令复制多道工序时传同一个 writer，表结构只校验一次（改过表结构会重验）。
-    """
-    writer = writer if writer is not None else TemplateLineageWriter(conn)
-    return writer.copy_template(batch_id, row["id"]) if template else writer.copy_instance(batch_id, row["id"])
-
-
 class WorkbenchBatchOperationService:
     def __init__(self, conn, logger=None, reader=None):
         self.conn = conn
@@ -66,12 +57,13 @@ class WorkbenchBatchOperationService:
             raise RuntimeError("工序同步必须由工作台命令事务持有。")
         preview = self.sync_preview(ref, payload)
         writer = TemplateLineageWriter(self.conn)
-        writer.require_ready()
         batch = self.reader.batch(ref)
-        rows = [row for row in self.reader.load()["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
+        facts = self.reader.load()
+        rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
+        prepared = writer.prepare_templates(rows, facts=facts)
         BatchOperationRepository(self.conn).delete_by_batch(batch["batch_id"])
-        for row in rows:
-            insert_operation(self.conn, batch["batch_id"], row, template=True, writer=writer)
+        for row in prepared:
+            writer.copy_prepared_template(batch["batch_id"], row)
         return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"], "operation_count": len(rows)}, preview["warnings"])
 
     def update(self, ref, payload):

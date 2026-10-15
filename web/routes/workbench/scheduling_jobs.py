@@ -107,9 +107,10 @@ def get_scheduling_request(request_key):
         raise WorkbenchCommandRejected("invalid_input", "查询这次排产不需要其他条件。请直接点「刷新」。", 400)
     service = _service()
     data = service.lookup(request_key)
-    resolution = "found" if data is not None else service.data_context.resolve_missing(request_key, previous)
+    records = service.data_context.capture()
+    resolution = "found" if data is not None else service.data_context.resolve_missing(request_key, previous, records=records)
     return _query({"found": data is not None, "run": data, "resolution": resolution,
-                   "data_context_ref": service.data_context.ref()},
+                   "data_context_ref": service.data_context.ref(records=records)},
                   {"kind": "scheduling-request", "request_key": request_key})
 
 

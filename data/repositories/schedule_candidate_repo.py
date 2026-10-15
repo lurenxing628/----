@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from core.models.schedule_candidate import ScheduleCandidate, ScheduleCandidateRows, ScheduleCandidateSelection
+from core.models.schedule_plan_role import plan_role_order_sql
 
 from .base_repo import BaseRepository
 
@@ -233,13 +234,7 @@ class ScheduleCandidateRepository(BaseRepository):
             SELECT {_columns_sql(_SELECTION_COLUMNS)}
             FROM ScheduleCandidateSelection
             WHERE version = ?
-            ORDER BY
-                CASE role
-                    WHEN 'adopted' THEN 1
-                    WHEN 'baseline_best' THEN 2
-                    WHEN 'critical_best' THEN 3
-                    ELSE 99
-                END
+            ORDER BY {plan_role_order_sql()}
             """,
             (int(version),),
         )

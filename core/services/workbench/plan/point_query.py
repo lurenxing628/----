@@ -1,7 +1,9 @@
 """Workbench-only plan spans; legacy SQL keeps its positive-interval default."""
 
+from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS, SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
+from data.repositories.schedule_rows import ScheduleTimeSpanRow
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 
@@ -16,30 +18,89 @@ def _interval(row):
 
 
 class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
-    def _validated_rows(self, version, source_table, candidate_id, scenario_id):
-        rows = self.list_plan_rows_bounded(version=version, source_table=source_table, candidate_id=candidate_id,
-                                           scenario_id=scenario_id, limit=MAX_PLAN_TASKS + 1)
+    def __init__(self, conn, logger=None, *, context=None):
+        super().__init__(conn, logger=logger)
+        self.context = context
+        self._source_rows = {}
+        self._prepared_rows = {}
+        self._parsed_intervals = {}
+
+    @staticmethod
+    def _source_key(version, source_table, candidate_id, scenario_id):
+        return version, source_table, None if source_table == SOURCE_SCHEDULE else candidate_id, scenario_id
+
+    def source_rows(self, version, source_table, candidate_id, scenario_id=None):
+        key = self._source_key(version, source_table, candidate_id, scenario_id)
+        if key not in self._source_rows:
+            self._source_rows[key] = self.list_plan_storage_rows_bounded(
+                version=version, source_table=source_table, candidate_id=candidate_id,
+                scenario_id=scenario_id, limit=MAX_PLAN_TASKS + 1,
+            )
+        rows = self._source_rows[key]
         if len(rows) > MAX_PLAN_TASKS:
             raise WorkbenchCommandRejected("query_too_large", "整个计划超过 10000 条上限。请缩小时间范围后重试。", 413)
-        try:
-            for row in rows:
-                _interval(row)
-            return annotate_plan_points(self.conn, rows, source_table=source_table)
-        except WorkbenchCommandRejected as exc:
-            raise ValueError(str(exc)) from exc
+        return rows
+
+    def prepared_rows(self, version, source_table, candidate_id, scenario_id=None):
+        key = self._source_key(version, source_table, candidate_id, scenario_id)
+        if key not in self._prepared_rows:
+            raw = self.source_rows(version, source_table, candidate_id, scenario_id)
+            fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status")
+            rows = []
+            for row in raw:
+                prepared = {name: row[name] for name in fields}
+                prepared["version"] = version if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS else row["version"]
+                rows.append(prepared)
+            intervals = [_interval(row) for row in rows]
+            try:
+                if self.context is None:
+                    rows = annotate_plan_points(self.conn, rows, source_table=source_table, intervals=intervals)
+                else:
+                    rows = annotate_plan_points(self.conn, rows, source_table=source_table, context=self.context, intervals=intervals)
+            except WorkbenchCommandRejected as exc:
+                raise ValueError(str(exc)) from exc
+            self._parsed_intervals[key] = intervals
+            self._prepared_rows[key] = rows
+        return self._prepared_rows[key]
+
+    def _validated_rows(self, version, source_table, candidate_id, scenario_id=None):
+        return self.prepared_rows(version, source_table, candidate_id, scenario_id)
+
+    def parsed_intervals(self, version, source_table, candidate_id, scenario_id=None):
+        self.prepared_rows(version, source_table, candidate_id, scenario_id)
+        return self._parsed_intervals[self._source_key(version, source_table, candidate_id, scenario_id)]
 
     def validate_detail_times(self, resolution):
         self._validated_rows(resolution.version, resolution.source_table, resolution.candidate_id, resolution.scenario_id)
 
+    def get_first_plan_identity_row(self, *, version, source_table, candidate_id, scenario_id=None):
+        rows = self.source_rows(version, source_table, candidate_id, scenario_id)
+        return {"source_row_id": rows[0]["id"], "lock_status": rows[0]["lock_status"]} if rows else None
+
+    def has_candidate_rows(self, *, version, candidate_id):
+        return bool(self.source_rows(version, "candidate_rows", candidate_id))
+
+    def list_plan_role_options(self, version):
+        if self.context is None:
+            return super().list_plan_role_options(version)
+        if version not in self._roles:
+            self._roles[version] = self.context.references.read_role_options(version)
+        return self._roles[version]
+
     def get_plan_time_span(self, *, version, source_table, candidate_id, scenario_id=None):
-        rows = self._validated_rows(version, source_table, candidate_id, scenario_id)
-        if not rows:
-            return None
-        intervals = [_interval(row) for row in rows]
-        end = max(high for _, high in intervals)
-        return {"version": version, "start_time": min(low for low, _ in intervals),
-                "end_time": end, "end_includes_point": any(row.get("_point_work") and high == end
-                    for row, (_, high) in zip(rows, intervals))}
+        key = self._source_key(version, source_table, candidate_id, scenario_id)
+        if key not in self._spans:
+            rows = self.prepared_rows(version, source_table, candidate_id, scenario_id)
+            intervals = self._parsed_intervals[key]
+            if not rows:
+                self._spans[key] = None
+            else:
+                end = max(high for _, high in intervals)
+                span: ScheduleTimeSpanRow = {"version": version, "start_time": min(low for low, _ in intervals),
+                        "end_time": end, "end_includes_point": any(row.get("_point_work") and high == end
+                            for row, (_, high) in zip(rows, intervals))}
+                self._spans[key] = span
+        return self._spans[key]
 
 
 class PlanMetadataRepository(WorkbenchPlanCatalogRepository):

@@ -105,8 +105,8 @@
     }
     return lanes;
   }
-  function layout(data, mode, query, width = 1000, operationRefs = null) {
-    const groups = new Map(), rows = [], locations = new Map();
+  function prepare(data, mode, query, operationRefs = null) {
+    const groups = new Map();
     const matched = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref)), tasks = [], unplottableTasks = [];
     const P = window.PointContract, G = window.PointGanttModel;
     const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, data.tasks.some(P.isPoint));
@@ -119,18 +119,36 @@
       if (!groups.has(id)) groups.set(id, { id, label: mode === 'batch' ? r.label || '批次未记录' : resourceLabel(task, mode), items: [] });
       groups.get(id).items.push({ task, start, end });
     }
-    let top = 0;
     for (const group of groups.values()) {
-      const normal = tracks(group.items.filter(i => !P.isPoint(i.task)));
-      const lanes = [...normal,
-        ...G.tracks(group.items.filter(i => P.isPoint(i.task)), bounds.start, bounds.end, width)];
-      lanes.forEach((items, lane) => {
-        const row = { id: group.id, key: group.id + ':' + lane, label: group.label, items, top, height: 56, lane, laneCount: lanes.length, normalLaneCount: normal.length, point: P.isPoint(items[0].task) };
-        items.forEach(item => locations.set(item.task.row_ref, { row: rows.length, top, item })); rows.push(row); top += row.height;
-      });
+      group.normal = tracks(group.items.filter(i => !P.isPoint(i.task)));
+      group.points = G.prepareTracks(group.items.filter(i => P.isPoint(i.task)));
     }
-    return { rows, height: top, locations, tasks, unplottableTasks, groupCount: groups.size,
+    return { groups, tasks, unplottableTasks, groupCount: groups.size,
       start: bounds.start, end: bounds.end };
   }
-  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, layout, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, metricLabels, executionLabels, executionValue, executionField };
+  function groupRows(group, start, end, width, pointRows = false) {
+    const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width) : [];
+    const laneCount = group.normal.length + points.length, rows = [];
+    group.normal.forEach((items, lane) => rows.push({ id: group.id, key: group.id + ':' + lane, label: group.label,
+      items, height: 56, lane, laneCount, normalLaneCount: group.normal.length, point: false }));
+    points.forEach((items, lane) => rows.push({ id: group.id,
+      key: group.id + (pointRows ? ':point:' + lane : ':' + (group.normal.length + lane)), label: group.label,
+      items, height: 56, lane: pointRows ? lane : group.normal.length + lane,
+      laneCount: pointRows ? points.length : laneCount, normalLaneCount: group.normal.length, point: true }));
+    return rows;
+  }
+  function layoutPrepared(prepared, width = 1000) {
+    const rows = [], locations = new Map(); let top = 0;
+    for (const group of prepared.groups.values()) for (const source of groupRows(group, prepared.start, prepared.end, width)) {
+      const row = { ...source, top };
+      row.items.forEach(item => locations.set(item.task.row_ref, { row: rows.length, top, item }));
+      rows.push(row); top += row.height;
+    }
+    return { rows, height: top, locations, tasks: prepared.tasks, unplottableTasks: prepared.unplottableTasks,
+      groupCount: prepared.groupCount, start: prepared.start, end: prepared.end };
+  }
+  function layout(data, mode, query, width = 1000, operationRefs = null) {
+    return layoutPrepared(prepare(data, mode, query, operationRefs), width);
+  }
+  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, prepare, groupRows, layoutPrepared, layout, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, metricLabels, executionLabels, executionValue, executionField };
 })();

@@ -47,7 +47,7 @@ def legacy_guard(op, events):
             "data_gaps": gaps, "protected": protected, "reports": [], "legacy_facts": events}
 
 
-def execution_projections(facts, operations):
+def execution_projections(facts, operations, *, prepared=None):
     module = "core.infrastructure.workbench_execution_ledger_schema"
     installed = find_spec(module) is not None
     if installed:
@@ -56,15 +56,21 @@ def execution_projections(facts, operations):
         installed = not execution_ledger_contract_issues(facts.conn)
     if installed:
         from core.services.workbench.execution.ledger import ExecutionLedgerService
+        from core.services.workbench.facts.run_input_codec import validate_projection_dto
 
         refs = [facts.operation_ref(op) for op in operations]
         service = ExecutionLedgerService(facts.conn)
+        facts.execution_service = service
         projections = []
         for offset in range(0, len(refs), 10000):
             projections.extend(service.project_operations(refs[offset:offset + 10000]))
         result = {row.operation_ref: row.to_dict() for row in projections}
         if set(result) != set(refs) or len(projections) != len(refs):
             raise ValueError("ExecutionProjection did not cover the exact preflight operation scope")
+        if prepared is not None:
+            for projection in projections:
+                validate_projection_dto(projection)
+            prepared.extend(projections)
         return result, []
     events = defaultdict(list)
     for row in facts.tables["OperationExecutionEvents"]:

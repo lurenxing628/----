@@ -31,7 +31,7 @@ def read_reference_workspace(conn, run_ref, *, selected_candidate_ref=None, comp
 
 def _reference_workspace(source, batch_ref):
     full_view = source.resource_view == "full_candidate"
-    all_tasks = source.resource_before_tasks if full_view else source.before_tasks
+    all_tasks = source.official_details["tasks"] if full_view else source.before_tasks
     batch_refs = sorted(set(source.scope["batch_refs"]) | {row["batch_ref"] for row in all_tasks if row["batch_ref"] is not None}) if full_view else source.scope["batch_refs"]
     if batch_ref is not None and batch_ref not in batch_refs:
         reject("entity_not_found", "该批次不在这次排产的归档范围，请重新选择。", 404)
@@ -55,7 +55,7 @@ def _reference_workspace(source, batch_ref):
     tasks = [dict(row, operation_effort=source.preparation.compact("reference", row["operation_ref"])) for row in tasks]
     unplanned = [dict(row, operation_effort=source.preparation.compact("reference", row["operation_ref"])) for row in unplanned]
     if full_view:
-        from .decision_delivery import project_decision_delivery
+        from core.services.workbench.facts.decision_delivery import project_decision_delivery
         deliveries = project_decision_delivery(source.facts, all_tasks, batch_refs, deferred_ids=source.reference_deferred_ids)
     else:
         deliveries = reference_delivery(source)

@@ -72,15 +72,28 @@
       catch (problem) { if (serial.current === id) setError(problem); }
       finally { if (serial.current === id) setBusy(false); }
     }
-    async function read(input, controller, id) {
-      const response = await adapter.preflight(input, controller.signal); C.result(response, input);
-      if (serial.current === id) { setResult(response); setNeedsRecheck(false); rememberHold(input, response.data.effective_config); }
+    async function read(input, controller, id, confirmationOwner = null) {
+      const response = await adapter.preflight(input, controller.signal);
+      if (serial.current === id && !controller.signal.aborted) {
+        setResult({ response, confirmationOwner }); setNeedsRecheck(false); rememberHold(input, response.data.effective_config);
+        return response.data;
+      }
+      return null;
+    }
+    async function recheckForRun(input, signal, confirmationOwner) {
+      invalidate(); const id = ++serial.current, controller = new AbortController(); active.current = controller;
+      const cancel = () => { controller.abort(); if (serial.current === id) { serial.current++; setBusy(false); } };
+      setBusy(true);
+      if (signal.aborted) cancel(); else signal.addEventListener('abort', cancel, { once: true });
+      try { return await read(C.input(input), controller, id, confirmationOwner); }
+      catch (problem) { if (serial.current === id && !controller.signal.aborted) setError(problem); throw problem; }
+      finally { signal.removeEventListener('abort', cancel); if (serial.current === id) setBusy(false); }
     }
     function rememberHold(input, config) {
       if (config.hold_window_source === 'default') setHoldDefault({ start_date: input.start_date, hold_window: config.hold_window });
     }
     const effectiveHold = holdDefault && holdDefault.start_date === value.start_date ? holdDefault : null;
-    const data = result && result.data, counts = data && data.counts, currentStep = window.RunPresentation.step(remembered, data);
+    const data = result && result.response.data, counts = data && data.counts, currentStep = window.RunPresentation.step(remembered, data);
     const runBlocked = !data || data.write_context.capabilities['scheduling.run'] !== true || typeof adapter.run !== 'function';
     const runReason = data && data.run_blocked_reasons[0].message || window.WorkbenchTerms.outcomes.unavailable;
     const inputDisabled = !!initial.error || busy || splitBusy;
@@ -121,7 +134,7 @@
           <div><strong>{title}</strong><p>{description}</p></div>{kind && <Button disabled={!data || !onNavigate || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches)} onClick={() => navigate(kind)}>{action}</Button>}
         </div>)}</div></section></div>
       <ErrorBox error={error} />{needsRecheck && <p className="pf-recheck" role="status">排产参数已变化，请重新检查后再开始计算。</p>}{busy && <p role="status">正在读取批次、设备人员和报工记录，还没开始排产。</p>}
-      {data && <><p className="pf-muted" role="status">检查时间：{window.WorkbenchFormat.dateTime(result.meta.as_of)} · 结果有效至 {window.WorkbenchFormat.dateTime(data.input_expires_at)} · 班表未核对</p>
+      {data && <><p className="pf-muted" role="status">检查时间：{window.WorkbenchFormat.dateTime(result.response.meta.as_of)} · 结果有效至 {window.WorkbenchFormat.dateTime(data.input_expires_at)} · 班表未核对</p>
         <HoldSummary key={'hold-' + data.input_ref} data={data} />
         <Details key={data.input_ref} data={data} />
         {!!data.no_route_batches.length && <NoRoutes key={data.input_ref} rows={data.no_route_batches} />}
@@ -129,7 +142,7 @@
       <div className="pf-footer"><span className="pf-muted">{data ? '排产检查不生成版本、不写入业务或审计数据。' : renderRunPanel ? '请先选择批次和排产日期范围，再点「开始排产检查」。' : window.WorkbenchTerms.outcomes.unavailable}</span>
         <div className="pf-tools"><Button icon="search" className={currentStep === 2 ? 'btn primary' : 'btn'} busy={busy} disabled={!!initial.error || splitBusy} reason={!initial.error && !value.batch_refs.length ? '请先选择要排产的批次。' : ''} reasonDisplay="tooltip" onClick={check}>{data ? '重新检查' : '开始排产检查'}</Button>
           {!renderRunPanel && <Button icon="play" className={currentStep === 3 ? 'btn primary' : 'btn'} disabled={runBlocked} reason={runReason}>开始排产</Button>}</div></div></section>
-      {renderRunPanel && renderRunPanel(data)}
+      {renderRunPanel && renderRunPanel(data, { onRecheck: recheckForRun, confirmationOwner: result && result.confirmationOwner })}
     </div>;
   }
   window.PreflightWorkspace = PreflightWorkspace;

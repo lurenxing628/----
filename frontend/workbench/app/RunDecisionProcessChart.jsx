@@ -25,6 +25,10 @@
     }
   }
   function sameScope(left, right) {
+    if (left.scope_ref !== undefined || right.scope_ref !== undefined) {
+      return left.scope_ref === right.scope_ref && left.shared_scope && right.shared_scope
+        && left.shared_scope.components_known && right.shared_scope.components_known;
+    }
     const scopeKeys = ['source_candidate_ref', 'objective_scope'];
     const before = left.evaluation_scope, after = right.evaluation_scope;
     return !!(scopeKeys.every(key => knownDimension(left[key]) && left[key] === right[key])
@@ -58,11 +62,15 @@
       if (knownDimension(before.phase) && knownDimension(point.phase) && before.phase !== point.phase) changes.push('phase');
       if (knownDimension(before.phase) && before.phase === point.phase && known(before.phase_visit) && known(point.phase_visit) && before.phase_visit !== point.phase_visit) changes.push('phase_visit');
       if (knownDimension(before.segment) && knownDimension(point.segment) && before.segment !== point.segment) changes.push('segment');
-      if (before.evaluation_scope && point.evaluation_scope
-        && (before.evaluation_scope.incomplete_batch_ids.length !== point.evaluation_scope.incomplete_batch_ids.length
-          || before.evaluation_scope.incomplete_batch_ids.some((batch, member) => batch !== point.evaluation_scope.incomplete_batch_ids[member]))) changes.push('evaluation_scope');
-      if (completionKeys.every(key => known(before.completion[key]) && known(point.completion[key]))
-        && completionKeys.some(key => before.completion[key] !== point.completion[key])) changes.push('completion');
+      if (before.scope_ref !== undefined || point.scope_ref !== undefined) {
+        if (before.scope_ref !== point.scope_ref) changes.push('scope');
+      } else {
+        if (before.evaluation_scope && point.evaluation_scope
+          && (before.evaluation_scope.incomplete_batch_ids.length !== point.evaluation_scope.incomplete_batch_ids.length
+            || before.evaluation_scope.incomplete_batch_ids.some((batch, member) => batch !== point.evaluation_scope.incomplete_batch_ids[member]))) changes.push('evaluation_scope');
+        if (completionKeys.every(key => known(before.completion[key]) && known(point.completion[key]))
+          && completionKeys.some(key => before.completion[key] !== point.completion[key])) changes.push('completion');
+      }
       if (changes.length) result.push({ before, point, changes });
     });
     return result;
@@ -71,11 +79,21 @@
     const labels = { expected_operation_count: '参与计算工序', missing_operation_count: '计算范围内未安排工序', unexpected_result_count: '计算范围外结果', complete_batch_count: '计算范围内已排齐批次', incomplete_batch_count: '计算范围内未排齐批次' };
     const descriptions = changes.map(change => change === 'phase' ? '阶段：' + phaseText(before.phase) + ' → ' + phaseText(point.phase)
       : change === 'phase_visit' ? '搜索次数：' + phaseText(point.phase) + '，' + before.phase_visit + ' → ' + point.phase_visit
-      : change === 'segment' ? '开始新的比较' : change === 'evaluation_scope' ? '评价排除批次：' + (before.evaluation_scope.incomplete_batch_ids.join('、') || '无') + ' → ' + (point.evaluation_scope.incomplete_batch_ids.join('、') || '无')
+      : change === 'segment' ? '开始新的比较' : change === 'scope' ? '评价范围：' + sharedScopeText(before.shared_scope) + ' → ' + sharedScopeText(point.shared_scope)
+      : change === 'evaluation_scope' ? '评价排除批次：' + (before.evaluation_scope.incomplete_batch_ids.join('、') || '无') + ' → ' + (point.evaluation_scope.incomplete_batch_ids.join('、') || '无')
         : '工序安排：' + completionKeys.filter(key => before.completion[key] !== point.completion[key]).map(key => labels[key] + ' ' + before.completion[key] + ' → ' + point.completion[key]).join('、'));
     return '事件 ' + number(point.event_index) + '，累计求解 ' + elapsed(point.elapsed_ms) + '（' + point.elapsed_ms + ' ms）；' + descriptions.join('；') + '。';
   }
+  function sharedScopeText(scope) {
+    return scopeText(scope.objective_scope) + '；已安排 ' + number(scope.scheduled_operation_refs.length) + ' 道工序，已排齐 '
+      + number(scope.complete_batch_refs.length) + ' 批；' + (scope.is_complete ? '完整安排范围' : '部分安排范围')
+      + '；' + (scope.components_known ? '评分已知' : '评分缺项');
+  }
   function pointText(point, index, total, objective) {
+    if (point.shared_scope) return '第 ' + (index + 1) + ' / ' + total + ' 个保存点，来源事件 ' + number(point.source_event_id)
+      + '；累计计算 ' + elapsed(point.elapsed_ms) + '；' + metricLabel(objective) + ' ' + metricValue(point.primary_value, objective)
+      + '；' + sharedScopeText(point.shared_scope) + '；阶段 ' + phaseText(point.phase) + '；' + verifiedLabel(point)
+      + (point.flags.length ? '；事件标记：' + flagsText(point) : '') + '。';
     const completion = point.completion, scopeDescription = scopeText(point.objective_scope);
     return '第 ' + (index + 1) + ' / ' + total + ' 个保存点，事件 ' + number(point.event_index)
       + '；累计计算 ' + elapsed(point.elapsed_ms) + (known(point.elapsed_ms) ? '（' + point.elapsed_ms + ' ms）' : '')
@@ -93,7 +111,11 @@
     const primary = { key: objective.primary_metric_key, label: metricLabels[objective.primary_metric_key] || metricLabel(objective), unit: metricUnit(objective), primary: true };
     return [primary, ...objective.score_fields.filter(field => businessMetrics.includes(field.key) && field.key !== primary.key && Number.isInteger(field.index)).map(field => ({ ...field, label: metricLabels[field.key] || field.label }))];
   }
-  function savedValue(point, definition) { return definition.primary ? point.primary_value : Number.isInteger(definition.index) && known(point.score[definition.index]) ? point.score[definition.index] : null; }
+  function savedValue(point, definition) {
+    if (definition.primary) return point.primary_value;
+    const index = point.field_order ? point.field_order.indexOf(definition.key) : definition.index;
+    return Number.isInteger(index) && index >= 0 && known(point.score[index]) ? point.score[index] : null;
+  }
   function pointName(point, index, mode) {
     if (point.flags.includes('first_valid') && point.flags.includes('final')) return '首个有效方案 / 最终结果';
     if (point.flags.includes('first_valid')) return '首个有效方案';
@@ -101,11 +123,14 @@
     if (point.flags.includes('strict_improvement')) return '评分改善';
     return (mode === 'discrete' ? '旧保存点 ' : '保存点 ') + (index + 1);
   }
-  function timeRange(progress, elapsedMs) {
+  function timeRange(progress, elapsedMs, lastImprovementElapsedMs) {
     const times = progress.points.map(point => point.elapsed_ms).filter(known);
     const full = Math.max(0, ...(known(elapsedMs) ? [elapsedMs] : []), ...times);
-    const last = progress.points.filter(point => point.flags.includes('strict_improvement') && known(point.elapsed_ms)).slice(-1)[0];
-    return { full, improvements: last && last.elapsed_ms > 0 ? Math.min(full, last.elapsed_ms * 1.5) : full, lastImprovement: last || null };
+    const explicit = lastImprovementElapsedMs !== undefined;
+    const last = explicit ? null : progress.points.filter(point => point.flags.includes('strict_improvement') && known(point.elapsed_ms)).slice(-1)[0];
+    const lastElapsedMs = explicit ? lastImprovementElapsedMs : last ? last.elapsed_ms : null;
+    return { full, improvements: lastElapsedMs !== null && (explicit || lastElapsedMs > 0) ? Math.min(full, lastElapsedMs * (explicit ? 1 : 1.5)) : full,
+      lastImprovementElapsedMs: lastElapsedMs };
   }
   function nearestPoint(plotted, value, xValue) {
     if (!plotted.length) return null;
@@ -123,18 +148,25 @@
   }
   function ticks(range) { return range ? Array.from({ length: 5 }, (_, index) => range.min + (range.max - range.min) * index / 4) : []; }
   function ratio(value, range) { return range.min === range.max ? 0.5 : (value - range.min) / (range.max - range.min); }
-  function Chart({ progress, objective, elapsedMs = null, attempts = [] }) {
-    const id = React.useId(), svg = React.useRef(null), [selection, setSelection] = React.useState(null), [metricKey, setMetricKey] = React.useState(objective.primary_metric_key), [windowMode, setWindowMode] = React.useState('full'), [showAttempts, setShowAttempts] = React.useState(false);
+  function Chart({ progress: savedProgress, objective, elapsedMs = null, attempts = [], scopes = null, sourceEventId = null, lastImprovementElapsedMs }) {
+    const progress = React.useMemo(() => scopes === null ? savedProgress : { ...savedProgress,
+      mode: savedProgress.points.length ? 'curve' : 'none',
+      points: savedProgress.points.map(point => ({ ...point, event_index: point.source_event_id, shared_scope: scopes[point.scope_ref] })) }, [savedProgress, scopes]);
+    const shared = scopes !== null;
+    const id = React.useId(), svg = React.useRef(null), [selection, setSelection] = React.useState(null), [metricSelection, setMetricSelection] = React.useState({ objective: objective.name, key: objective.primary_metric_key }), [windowMode, setWindowMode] = React.useState('full'), [showAttempts, setShowAttempts] = React.useState(false);
+    const metricKey = metricSelection.objective === objective.name ? metricSelection.key : objective.primary_metric_key;
     const points = progress.points, mode = progress.mode, definitions = metricChoices(objective), definition = definitions.find(field => field.key === metricKey) || definitions[0];
     const value = point => savedValue(point, definition), viewedObjective = { ...objective, primary_metric_label: definition.label, unit: definition.unit };
     const eventAxis = mode === 'discrete' && points.length > 0 && points.every(point => !known(point.elapsed_ms));
-    const xValue = point => eventAxis ? point.event_index : point.elapsed_ms, range = timeRange(progress, elapsedMs), activeWindow = mode === 'curve' && range.lastImprovement ? windowMode : 'full', limit = activeWindow === 'improvements' ? range.improvements : range.full;
+    const xValue = point => eventAxis ? point.event_index : point.elapsed_ms, range = timeRange(progress, elapsedMs, lastImprovementElapsedMs), hasImprovement = range.lastImprovementElapsedMs !== null;
+    const activeWindow = mode === 'curve' && hasImprovement ? windowMode : 'full', limit = activeWindow === 'improvements' ? range.improvements : range.full;
     const plotted = mode === 'none' ? [] : points.map((point, index) => ({ point, index })).filter(item => known(xValue(item.point)) && known(value(item.point)) && (eventAxis || xValue(item.point) <= limit));
     const scatter = showAttempts && !eventAxis ? attempts.filter(point => known(point.elapsed_ms) && point.elapsed_ms <= limit && known(value(point))) : [];
     const eventValues = eventAxis ? points.map(xValue).filter(known) : [];
     const xDomain = eventAxis ? { min: eventValues.length ? Math.min(...eventValues) : 0, max: eventValues.length ? Math.max(...eventValues) : 1 } : { min: 0, max: limit || 1 };
     const yDomain = domain([...plotted.map(item => value(item.point)), ...scatter.map(value)]);
-    const cursor = selection && selection.progress === progress ? Math.min(selection.index, Math.max(0, points.length - 1)) : 0, selected = points[cursor];
+    const sourceIndex = shared && sourceEventId !== null ? points.findIndex(point => point.source_event_id === sourceEventId) : -1;
+    const cursor = selection && selection.progress === progress ? Math.min(selection.index, Math.max(0, points.length - 1)) : Math.max(0, sourceIndex), selected = points[cursor];
     const x = point => 8 + ratio(xValue(point), xDomain) * 784, y = point => 232 - ratio(value(point), yDomain) * 224;
     const sampled = mode === 'curve' && progress.sampling && known(progress.sampling.event_total_count) && progress.sampling.event_total_count > points.length;
     function choose(index) {
@@ -167,11 +199,11 @@
     const lastVisible = plotted.length ? plotted[plotted.length - 1].point : null, nextSaved = lastVisible ? points[points.indexOf(lastVisible) + 1] : null;
     const continueToEnd = lastVisible === final || windowMode === 'improvements' && nextSaved && nextSaved.verified === true && sameScope(lastVisible, nextSaved);
     return <figure className="rd-process-chart" data-progress-mode={mode} data-progress-axis={eventAxis ? 'event_index' : 'elapsed_ms'} data-process-metric={definition.key} data-process-window={activeWindow}>
-      <div className="rd-process-chart-toolbar"><figcaption className="rd-process-chart-caption" id={id + '-caption'}>{mode === 'curve' ? '保留方案的计算过程' : '已保存过程记录'}</figcaption><label>观察指标<select aria-label="计算过程观察指标" value={definition.key || ''} onChange={event => setMetricKey(event.target.value)}>{definitions.map(field => <option key={field.key || 'unknown'} value={field.key || ''}>{field.label}{field.unit ? '（' + field.unit + '）' : ''}</option>)}</select></label></div>
-      <div className="rd-process-chart-summary"><div><span>{mode === 'discrete' ? '首个保存点' : '首个有效方案'}</span><strong>{number(value(mode === 'discrete' ? points[0] || { primary_value: null, score: [] } : initial || { primary_value: null, score: [] }))}</strong>{definition.unit && ' ' + definition.unit}</div><div><span>{mode === 'discrete' ? '末个保存点' : '最终结果'}</span><strong>{number(value(mode === 'discrete' ? points[points.length - 1] || { primary_value: null, score: [] } : final || { primary_value: null, score: [] }))}</strong>{definition.unit && ' ' + definition.unit}</div>{range.lastImprovement && <div><span>最后一次评分改善</span><strong>{number(range.lastImprovement.elapsed_ms / 1000)}</strong> 秒</div>}</div>
+      <div className="rd-process-chart-toolbar"><figcaption className="rd-process-chart-caption" id={id + '-caption'}>{mode === 'curve' ? '保留方案的计算过程' : '已保存过程记录'}</figcaption><label>观察指标<select aria-label="计算过程观察指标" value={definition.key || ''} onChange={event => setMetricSelection({ objective: objective.name, key: event.target.value })}>{definitions.map(field => <option key={field.key || 'unknown'} value={field.key || ''}>{field.label}{field.unit ? '（' + field.unit + '）' : ''}</option>)}</select></label></div>
+      <div className="rd-process-chart-summary"><div><span>{mode === 'discrete' ? '首个保存点' : '首个有效方案'}</span><strong>{number(value(mode === 'discrete' ? points[0] || { primary_value: null, score: [] } : initial || { primary_value: null, score: [] }))}</strong>{definition.unit && ' ' + definition.unit}</div><div><span>{mode === 'discrete' ? '末个保存点' : '最终结果'}</span><strong>{number(value(mode === 'discrete' ? points[points.length - 1] || { primary_value: null, score: [] } : final || { primary_value: null, score: [] }))}</strong>{definition.unit && ' ' + definition.unit}</div>{hasImprovement && <div data-process-last-improvement-ms={range.lastImprovementElapsedMs}><span>最后一次评分改善</span>{shared ? <strong>{elapsed(range.lastImprovementElapsedMs)}</strong> : <><strong>{number(range.lastImprovementElapsedMs / 1000)}</strong> 秒</>}</div>}</div>
       {mode !== 'curve' && <p className="rd-process-chart-note">{mode === 'discrete' ? '旧记录按已保存的离散结果点显示，首末点按保存顺序表示。' : '计算进展未保存。'}</p>}
-      {mode === 'curve' && points.some(point => !point.evaluation_scope) && <p className="rd-process-chart-note" data-process-scope-missing>部分保存点的评价集合未记录，按离散点显示；保存事件条数和采样覆盖在记录说明中单列。</p>}
-      {(mode === 'curve' || !eventAxis && attempts.some(point => known(point.elapsed_ms))) && <div className="rd-process-chart-controls">{mode === 'curve' ? <div className="rc-tabs" role="group" aria-label="计算过程显示范围">{[['improvements', '改善阶段', range.improvements], ['full', '全过程', range.full]].map(([key, label, end]) => <window.RunCandidateControls.Button key={key} aria-pressed={activeWindow === key} disabled={key === 'improvements' && !range.lastImprovement} onClick={() => setWindowMode(key)}>{label} · {key === 'improvements' && !range.lastImprovement ? '无改善记录' : elapsed(end)}</window.RunCandidateControls.Button>)}</div> : <span>按真实保存时刻显示</span>}{attempts.length > 0 && <label><input type="checkbox" checked={showAttempts} onChange={event => setShowAttempts(event.target.checked)} />显示代表尝试点（{attempts.length} 条）</label>}</div>}
+      {mode === 'curve' && points.some(point => shared ? !point.shared_scope : !point.evaluation_scope) && <p className="rd-process-chart-note" data-process-scope-missing>部分保存点的评价集合未记录，按离散点显示；保存事件条数和采样覆盖在记录说明中单列。</p>}
+      {(mode === 'curve' || !eventAxis && attempts.some(point => known(point.elapsed_ms))) && <div className="rd-process-chart-controls">{mode === 'curve' ? <div className="rc-tabs" role="group" aria-label="计算过程显示范围">{[['improvements', '改善阶段', range.improvements], ['full', '全过程', range.full]].map(([key, label, end]) => <window.RunCandidateControls.Button key={key} aria-pressed={activeWindow === key} disabled={key === 'improvements' && !hasImprovement} onClick={() => setWindowMode(key)}>{label} · {key === 'improvements' && !hasImprovement ? '无改善记录' : elapsed(end)}</window.RunCandidateControls.Button>)}</div> : <span>按真实保存时刻显示</span>}{attempts.length > 0 && <label><input type="checkbox" checked={showAttempts} onChange={event => setShowAttempts(event.target.checked)} />显示代表尝试点（{attempts.length} 条）</label>}</div>}
       {mode !== 'none' && points.length > 0 && <>
         <div className="rd-process-plot">
           <div className="rd-process-y-axis" aria-hidden="true">{ticks(yDomain).map(tick => <span key={tick} style={{ top: (8 + (1 - ratio(tick, yDomain)) * 224) / 240 * 100 + '%' }} title={String(tick) + (definition.unit ? ' ' + definition.unit : '')}>{window.WorkbenchFormat.number(tick, { digits: 1, trim: true })}</span>)}</div>
@@ -192,10 +224,10 @@
         <div className="rd-process-point-picker"><window.RunCandidateControls.Button aria-label="上一个过程保存点" disabled={cursor === 0} onClick={() => choose(Math.max(0, cursor - 1))}>←</window.RunCandidateControls.Button><label htmlFor={id + '-point'}>记录点</label><input id={id + '-point'} type="range" min="0" max={points.length - 1} step="1" value={cursor} aria-label="查看过程保存点" onChange={event => choose(Number(event.target.value))} /><span>{cursor + 1} / {points.length}</span><window.RunCandidateControls.Button aria-label="下一个过程保存点" disabled={cursor === points.length - 1} onClick={() => choose(Math.min(points.length - 1, cursor + 1))}>→</window.RunCandidateControls.Button></div>
         <p className="rd-process-chart-keys wb-visually-hidden" id={id + '-keys'}>聚焦图表后，用方向键选择保存点，Home / End 到首末点；点击、悬停和记录点选择均定位真实保存时刻。</p>
       </>}
-      {selected && <div className="rd-process-point-card"><div><strong>{pointName(selected, cursor, mode)} · 保存于 {elapsed(selected.elapsed_ms)}</strong><span>{phaseText(selected.phase)}</span></div><div className="rd-process-point-values">{definitions.map(field => <div key={field.key || 'unknown'}><span>{field.label}</span><strong title={known(savedValue(selected, field)) ? String(savedValue(selected, field)) : undefined}>{number(savedValue(selected, field))}{known(savedValue(selected, field)) && field.unit && ' ' + field.unit}</strong></div>)}</div><small>本次计算范围：{number(selected.completion.expected_operation_count)} 道参与工序，其中未安排 {number(selected.completion.missing_operation_count)} 道；{scopeText(selected.objective_scope)}。完整交付和待料工序在“交期与未排”中查看。</small></div>}
+      {selected && <div className="rd-process-point-card"><div><strong>{pointName(selected, cursor, mode)} · 保存于 {elapsed(selected.elapsed_ms)}</strong><span>{phaseText(selected.phase)}</span></div><div className="rd-process-point-values">{definitions.map(field => <div key={field.key || 'unknown'}><span>{field.label}</span><strong title={known(savedValue(selected, field)) ? String(savedValue(selected, field)) : undefined}>{number(savedValue(selected, field))}{known(savedValue(selected, field)) && field.unit && ' ' + field.unit}</strong></div>)}</div><small>{shared ? sharedScopeText(selected.shared_scope) : <>本次计算范围：{number(selected.completion.expected_operation_count)} 道参与工序，其中未安排 {number(selected.completion.missing_operation_count)} 道；{scopeText(selected.objective_scope)}。</>}完整交付和待料工序在“交期与未排”中查看。</small></div>}
       <p className="rd-process-selected wb-visually-hidden" id={id + '-selected'} aria-live="polite" aria-atomic="true">{selectionText}</p>
       {mode === 'curve' && <p className="rd-process-chart-note">图中各指标沿同一保留方案的保存事件显示，评分改善时次要指标仍可能增加。</p>}
     </figure>;
   }
-  window.RunDecisionProcessChart = { Chart, segments, markers, flagLabels, scopeText, phaseText, stepPath };
+  window.RunDecisionProcessChart = { Chart, segments, markers, flagLabels, scopeText, sharedScopeText, phaseText, stepPath };
 })();

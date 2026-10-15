@@ -30,20 +30,21 @@ class ProcessHoursFileOperations:
             raise RuntimeError("工时文件写入必须在外层 BEGIN IMMEDIATE 事务中执行。")
         with TransactionManager(self.conn).transaction():
             self._check_rows(rows, discard_group_refs, confirm_zero_unit_hours)
-            current = ProcessTemplateHours(self.conn).current([row["expected"]["operation_ref"] for row in rows])
+            hours = ProcessTemplateHours(self.conn)
+            current = hours.current([row["expected"]["operation_ref"] for row in rows])
             self._check_current(rows, current)
             require_zero_confirmation(self.conn, [(current[row["expected"]["operation_ref"]], row["after"])
                                                  for row in rows], confirm_zero_unit_hours)
             groups = self._group_updates(rows)
             results, affected = [], set()
             for row in rows:
-                self._operation_update(row)
+                self._operation_update(row, current[row["expected"]["operation_ref"]], hours)
                 affected.add(row["expected"]["part_ref"])
                 results.append({"row": row["row"], "result": "committed" if row["result"] == "update" else "unchanged",
                                 "entity_ref": row["entity_ref"], "business_code": row["business_code"],
                                 "sequence": row["sequence"]})
             for group, total in groups.values():
-                self._update("ExternalGroups", "group_id", group["group_id"], group, {"total_days": total})
+                self._group_update(group, total)
             return results, sorted(affected)
 
     @staticmethod
@@ -82,7 +83,7 @@ class ProcessHoursFileOperations:
             groups[ref] = (group, total)
         return {ref: item for ref, item in groups.items() if item[0]["total_days"] != item[1]}
 
-    def _operation_update(self, row):
+    def _operation_update(self, row, current, hours):
         old = row["expected"]["operation"]
         updates = {}
         for field, value in row["input"]["hours"].items():
@@ -94,15 +95,10 @@ class ProcessHoursFileOperations:
             if old[column] != value:
                 updates[column] = value
         if updates:
-            self._update("PartOperations", "id", old["id"], old, updates)
+            hours.revise_current(current, updates, expected_revision=old["revision"])
 
-    def _update(self, table, key_column, key, expected, values):
-        if (table, key_column) == ("PartOperations", "id"):
-            ProcessTemplateHours(self.conn).revise(expected["ref"], values, expected_revision=expected["revision"])
-            return
-        elif (table, key_column) == ("ExternalGroups", "group_id"):
-            count = self.repo.update_group_cycle(key, values, ref=expected["ref"], revision=expected["revision"])
-        else:
-            raise ValueError("unsupported hours target: " + table + "." + key_column)
+    def _group_update(self, group, total):
+        count = self.repo.update_group_cycle(group["group_id"], {"total_days": total},
+                                            ref=group["ref"], revision=group["revision"])
         if count != 1:
             raise WorkbenchCommandRejected("stale_write", "预检时的工序或外协组已经变了，这批写入已经全部还原。请重新预检。")

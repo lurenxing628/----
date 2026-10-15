@@ -30,7 +30,7 @@ class ProcessRouteFileOperations:
         self.conn, self.logger = conn, logger
         self.tx = TransactionManager(conn)
         self.identities = WorkbenchIdentityRepository(conn, logger)
-        # 逐行新建零件、确认路线都要校验表结构；整条命令共用一份，按 schema 版本只解析一次。
+        # 新建零件、确认路线共用本命令的结构和连接事实；命令内不执行 DDL、不改外键设置。
         self.contracts = SchemaContractMemo(conn)
 
     def preview_rows(self, decoded_rows, facts, target_ref=None):

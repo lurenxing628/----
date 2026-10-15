@@ -28,11 +28,15 @@ async function main() {
   const queryHooks = hooks(), queryContext = vm.createContext({ window: { APSResourceContract: {} }, React: queryHooks.React, AbortController, DOMException });
   load(queryContext, 'resource-session.js'); load(queryContext, 'TrialSession.js');
   let first, second, oldSignal;
-  const read = (id, load) => queryHooks.render(() => queryContext.window.TrialSession.useRead(load, [id]));
+  const read = (id, load, enabled = true) => queryHooks.render(() => queryContext.window.TrialSession.useRead(load, [id], enabled));
   read('old', signal => { oldSignal = signal; return new Promise(resolve => { first = resolve; }); }); queryHooks.flush(); await turns();
   assert.equal(read('new', () => new Promise(resolve => { second = resolve; })).result, null); queryHooks.flush(); await turns();
   assert.equal(oldSignal.aborted, true); first('stale'); await turns();
   assert.equal(read('new', () => {}).result, null); second('current'); await turns(); assert.equal(read('new', () => {}).result, 'current');
+  let reopenLoads = 0;
+  assert.equal(read('new', () => { reopenLoads++; }, false).result, 'current'); queryHooks.flush(); await turns();
+  assert.equal(read('new', () => { reopenLoads++; }, true).result, 'current'); queryHooks.flush(); await turns();
+  assert.equal(reopenLoads, 0, 'Showing the same successful data identity uses the retained result');
   let waitingSignal, queuedLoads = 0;
   const outcomes = [], observe = promise => promise.then(() => outcomes.push('resolved'), error => outcomes.push(error.name));
   const inFlight = observe(read('new', () => {}).reloadAndWait(signal => { waitingSignal = signal; return new Promise(() => {}); }));
@@ -44,6 +48,43 @@ async function main() {
   assert.deepEqual(outcomes, ['AbortError', 'AbortError', 'AbortError']);
   await Promise.all([inFlight, replaced, queued]);
   assert.equal(waitingSignal.aborted, true); assert.equal(queuedLoads, 0); assert.equal(queryHooks.slots[2].current, null);
+
+  // Errors can retry after reopening; a hidden new snapshot waits until shown.
+  const retryHooks = hooks(), retryContext = vm.createContext({ window: { APSResourceContract: {} }, React: retryHooks.React, AbortController, DOMException });
+  load(retryContext, 'resource-session.js');
+  let retryLoads = 0;
+  const retryRead = (id, enabled = true) => retryHooks.render(() => retryContext.window.APSResourceSession.useQuery(() => {
+    retryLoads++; return retryLoads === 1 ? Promise.reject(new Error('read failed')) : Promise.resolve('snapshot-' + id);
+  }, [id], enabled));
+  retryRead('one'); retryHooks.flush(); await turns(); assert.equal(retryRead('one').error.message, 'read failed');
+  retryRead('one', false); retryHooks.flush(); retryRead('one'); retryHooks.flush(); await turns();
+  assert.equal(retryRead('one').result, 'snapshot-one'); assert.equal(retryLoads, 2);
+  assert.equal(retryRead('two', false).result, null); retryHooks.flush(); await turns(); assert.equal(retryLoads, 2);
+  retryRead('two'); retryHooks.flush(); await turns(); assert.equal(retryRead('two').result, 'snapshot-two'); assert.equal(retryLoads, 3);
+  retryHooks.unmount();
+
+  // Combined workspaces can issue a new parent object with the same snapshot token.
+  const ownerHooks = hooks(), ownerContext = vm.createContext({ window: { APSResourceContract: {} }, React: ownerHooks.React, AbortController, DOMException });
+  load(ownerContext, 'resource-session.js'); let owner = { meta: { snapshot_ref: 'same-token' } }, ownerLoads = 0;
+  const ownerRead = (enabled = true) => ownerHooks.render(() => ownerContext.window.APSResourceSession.useQuery(() => { ownerLoads++; return Promise.resolve(owner); }, [owner], enabled));
+  ownerRead(); ownerHooks.flush(); await turns(); assert.strictEqual(ownerRead().result, owner);
+  ownerRead(false); ownerHooks.flush(); ownerRead(); ownerHooks.flush(); await turns(); assert.equal(ownerLoads, 1);
+  owner = { meta: { snapshot_ref: 'same-token' } }; assert.equal(ownerRead(false).result, null); ownerHooks.flush(); await turns(); assert.equal(ownerLoads, 1);
+  ownerRead(); ownerHooks.flush(); await turns(); assert.strictEqual(ownerRead().result, owner); assert.equal(ownerLoads, 2);
+  ownerHooks.unmount();
+
+  // R18 retains the private baseline result while its display toggle masks it.
+  const baselineHooks = hooks(), baselineWindow = { APSResourceContract: {}, RunCandidateModel: {}, RunBaselineModel: {}, RunCandidateControls: { Button: 'button' } };
+  let baselineLoads = 0; const frozenBaseline = { snapshot: 'baseline-one' };
+  baselineWindow.RunBaselineAPI = { create: () => ({ read: async () => { baselineLoads++; return frozenBaseline; } }) };
+  const baselineContext = vm.createContext({ window: baselineWindow, React: baselineHooks.React, AbortController, DOMException });
+  load(baselineContext, 'resource-session.js'); load(baselineContext, 'RunBaselineControls.jsx'); let baselineData = {};
+  const baselineRead = () => baselineHooks.render(() => baselineWindow.RunBaselineControls.useBaseline(baselineData, true));
+  baselineRead().toggle(true); baselineRead(); baselineHooks.flush(); await turns(); assert.strictEqual(baselineRead().result, frozenBaseline);
+  baselineRead().toggle(false); assert.equal(baselineRead().result, null); baselineHooks.flush();
+  baselineRead().toggle(true); baselineRead(); baselineHooks.flush(); await turns(); assert.strictEqual(baselineRead().result, frozenBaseline); assert.equal(baselineLoads, 1);
+  baselineRead().retry(); baselineRead(); baselineHooks.flush(); await turns(); assert.equal(baselineLoads, 2);
+  baselineData = {}; assert.equal(baselineRead().result, null); baselineHooks.flush(); await turns(); assert.equal(baselineLoads, 3); baselineHooks.unmount();
 
   // Scrolling no longer registers controls or recomputes native step values/labels.
   const numberHooks = hooks(), listeners = {}, frames = new Map(); let frameId = 0, scans = 0, values = 0, positions = 0, observer;
@@ -240,11 +281,178 @@ async function main() {
   const beforeReopen = guardCalls; await find(trialTree, 'trial-results').onSelect('task-one'); trialTree = renderTrial();
   assert.equal(find(trialTree, 'trial-details').selected, 'task-one'); assert.equal(guardCalls, beforeReopen);
 
+  // Related-resource editing keeps the current list on its displayed clamped page.
+  const resourceHooks = hooks(), resourceRequests = [], resourceDetails = [], resourceSnapshots = [];
+  const machineRef = '1'.repeat(48), operatorRef = '2'.repeat(48);
+  const resourceForms = () => null; resourceForms.Detail = 'resource-detail'; resourceForms.Feedback = 'resource-feedback';
+  const resourceTables = () => null; resourceTables.Pager = 'resource-pager';
+  const resourceContract = { nodes: { machine: { kind: 'machine', label: '设备', chain: 'internal' }, operator: { kind: 'operator', label: '人员', chain: 'internal' } },
+    statuses: { machine: [], operator: [] }, object: value => value !== null && typeof value === 'object' && !Array.isArray(value),
+    own: (value, key) => Object.prototype.hasOwnProperty.call(value, key), query: value => value, failure: message => new Error(message),
+    message: error => error.message, blocked: () => '', receipt: value => value && value.ok ? 'terminal' : 'pending',
+    requestKey: () => 'related-resource-request', resultRef: (value, fallback) => value.data.entity_ref || fallback };
+  const resourceAdapter = {
+    async list(kind, scope) {
+      resourceRequests.push({ kind, ...scope });
+      return { data: { entities: [], page: { number: scope.page, size: scope.size, total: kind === 'machine' ? 21 : 1 } },
+        meta: { source: 'production', snapshot_ref: scope.snapshot_ref || 'snapshot-' + kind }, warnings: [] };
+    },
+    async detail(kind, ref) { resourceDetails.push({ kind, ref }); return { data: { ref, fields: {}, write_context: { write_token: 'resource-token' } }, meta: { source: 'production' } }; },
+    async command(kind, action, ref) { assert.equal(kind, 'operator'); assert.equal(action, 'update'); assert.equal(ref, operatorRef); return { ok: true, receipt_ref: 'related-save', data: { entity_ref: ref } }; }
+  };
+  const resourceWindow = { APSResourceContract: resourceContract, ResourceControls: { Button: 'button', Icon: 'icon', ErrorBox: 'error', Issues: 'issues', Modal: 'modal' },
+    ResourceForms: resourceForms, ResourceTables: resourceTables, ResourceRail: 'resource-rail', ResourceMetrics: 'resource-metrics',
+    ResourceTableFilterModel: { restore: filters => ({ filters, notice: '' }) }, WorkbenchPageContext: { useSnapshot: (...args) => resourceSnapshots.push(args) },
+    addEventListener() {}, removeEventListener() {} };
+  const resourceContext = vm.createContext({ window: resourceWindow, React: resourceHooks.React, AbortController, DOMException });
+  load(resourceContext, 'resource-session.js'); resourceWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
+  load(resourceContext, 'ResourceWorkspace.jsx');
+  const resourceContextInput = { source: 'production', kind: 'machine', read_view: { scope: { query: '', status: '', page: 3, size: 20, sort: 'business_code', direction: 'asc' },
+    selected_refs: [], sort_active: false, detail: null } };
+  const resourceRender = () => resourceHooks.render(() => resourceWindow.ResourceWorkspace({ adapter: resourceAdapter, initialContext: resourceContextInput }));
+  const settleResource = async () => { let tree; for (let n = 0; n < 4; n++) { tree = resourceRender(); resourceHooks.flush(); await turns(); } return tree; };
+  let resourceTree = await settleResource();
+  assert.deepEqual(resourceRequests.map(value => [value.kind, value.page, value.snapshot_ref || null]), [['machine', 3, null], ['machine', 2, 'snapshot-machine']]);
+  assert.equal(resourceSnapshots.at(-1)[0].read_view.scope.page, 2);
+  find(resourceTree, resourceTables).onOpen(machineRef); resourceTree = await settleResource();
+  find(resourceTree, 'resource-detail').onRelated('operator', operatorRef); resourceTree = await settleResource();
+  assert.equal(find(resourceTree, 'resource-detail').kind, 'operator');
+  find(resourceTree, 'resource-detail').onEdit(); resourceTree = resourceRender();
+  const resourceEditor = find(resourceTree, resourceForms); assert.equal(resourceEditor.kind, 'operator');
+  await resourceEditor.command.submit('operator', 'update', operatorRef, { write_token: 'resource-token' }, { label: '保存后的人员' });
+  resourceTree = await settleResource();
+  assert.deepEqual(resourceRequests.slice(2).map(value => [value.kind, value.page, value.snapshot_ref || null]), [['operator', 1, null], ['machine', 2, null]],
+    'Saving a related operator reads its own category and refreshes the current machine list at the displayed page');
+  assert.deepEqual(resourceDetails, [{ kind: 'machine', ref: machineRef }, { kind: 'operator', ref: operatorRef }, { kind: 'operator', ref: operatorRef }]);
+  assert.equal(find(resourceTree, resourceForms).refreshState.done, true);
+  assert.equal(find(resourceTree, resourceForms).refreshState.detail.data.ref, operatorRef);
+  assert.equal(resourceSnapshots.at(-1)[0].read_view.scope.page, 2); resourceHooks.unmount();
+
   const modelContext = vm.createContext({ window: { WorkbenchFormat: {}, FieldContract: { quantityReasons: {}, states: {} } } });
   load(modelContext, 'PlanGanttModel.js'); load(modelContext, 'ActualGanttModel.js'); let reads = 0;
   const data = { availability: { state: 'available' }, execution_summary: { scope: 'full_response_cohort', complete: 334, pending: 333, reported: 333, average_finish_deviation_minutes: 30, known_finish_count: 334 }, items: Array.from({ length: 1000 }, (_, n) => ({ task: { end: '2026-09-09T08:00:00' },
     execution: { get execution_state() { reads++; return ['complete', 'unreported', 'partial'][n % 3]; }, confirmed_finish: '2026-09-09T08:30:00' } })) };
   assert.deepEqual(JSON.parse(JSON.stringify(modelContext.window.ActualGanttModel.metrics(data))), { complete: 334, pending: 333, reported: 333, average: 30 }); assert.equal(reads, 0, 'Actual metrics consume the shared full cohort summary without recomputing execution rows');
+
+  // R19's actual parent retains overview facts while print/fit unmount the child.
+  const overviewParentHooks = hooks(), overviewThemes = [], overviewResizes = [], fills = [], pointXs = [], planWidths = [], overviewSteps = [];
+  let overviewHooks = null, cssWidth = 200.2, cssHeight = 16, binBuilds = 0, overviewTimeReads = 0, printChange, primary = 'light', printing = false;
+  const overviewCtx = { setTransform() {}, fillRect(...args) { fills.push({ args, color: this.fillStyle }); }, strokeRect() {} };
+  const canvas = { getBoundingClientRect: () => ({ width: cssWidth, height: cssHeight }), getContext: () => overviewCtx };
+  const overviewWindow = { devicePixelRatio: 1, PointContract: { isPoint: task => task.event_kind === 'point' }, PointGanttModel: { paint: (_, x) => pointXs.push(x) },
+    GanttPresentation: { palette: () => ({ primary: { edge: primary }, plan: {}, gold: 'gold' }) },
+    matchMedia: () => ({ addEventListener(_, fn) { printChange = fn; }, removeEventListener() {} }) };
+  const overviewContext = vm.createContext({ window: overviewWindow, React: overviewParentHooks.React, document: { documentElement: {} },
+    Float64Array: class extends Float64Array { constructor(length) { binBuilds++; super(length); } },
+    MutationObserver: class { constructor(fn) { this.draw = fn; overviewThemes.push(this); } observe() {} disconnect() {} },
+    ResizeObserver: class { constructor(fn) { this.draw = fn; overviewResizes.push(this); } observe() {} disconnect() {} },
+    requestAnimationFrame(fn) { fn(); return 1; }, cancelAnimationFrame() {} });
+  load(overviewContext, 'PlanGanttModel.js'); const overviewInstant = overviewWindow.PlanGanttModel.instant;
+  const planAsOf = '2026-10-10T00:00:00';
+  overviewWindow.PlanGanttModel.instant = value => { if (value !== planAsOf) overviewTimeReads++; return overviewInstant(value); };
+  load(overviewContext, 'PlanGanttCanvas.jsx');
+  const overviewTasks = [{ start: '2026-10-12T08:00:00', end: '2026-10-12T09:00:00' },
+    { start: '2026-10-12T08:30:00', end: '2026-10-12T09:30:00' },
+    { start: '2026-10-12T10:00:00', end: '2026-10-12T10:00:00', event_kind: 'point' }];
+  const planStart = overviewInstant(overviewTasks[0].start), planEnd = overviewInstant(overviewTasks[2].end);
+  const planBoard = { scrollLeft: 0, scrollTop: 0, clientWidth: 1000, clientHeight: 440 };
+  Object.assign(overviewWindow.PlanGanttModel, { prepare: () => ({}), layoutPrepared(_, width) { planWidths.push(width); return { start: planStart, end: planEnd, rows: [], tasks: [],
+    groupCount: 0, height: 0, locations: new Map(), baselineLocations: new Map(), conflicts: new Set(), labels: {} }; }, visibleRows: rows => rows });
+  Object.assign(overviewWindow, { ResourceControls: { Button: 'button', Icon: 'icon', TimelineZoom: 'plan-zoom', timelineZoomKey: () => null },
+    WorkbenchFormat: { compactDateTime: String }, WorkbenchControls: { usePrintLayout: () => printing, EmptyState: 'empty' },
+    GanttPresentationUI: { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, GanttGraphLayer: { Controls: 'graph-controls', Lines: 'graph-lines' },
+    GanttGraph: { create: () => ({}), selection: () => ({ related: new Set(), critical: new Set() }), locations: () => new Map(), locationIndex: () => ({}), paths: () => ({}) } });
+  overviewWindow.GanttPresentation.axis = () => ({ ticks: [] });
+  load(overviewContext, 'PlanGantt.jsx');
+  let overviewParentData = { tasks: overviewTasks, task_count: overviewTasks.length, gantt_graph: {}, projections: { baseline: { state: 'absent' }, delivery_risks: { items: [] } } };
+  let overviewProps, overviewMounts = 0;
+  const planRender = () => {
+    overviewContext.React = overviewParentHooks.React;
+    const tree = overviewParentHooks.render(() => overviewWindow.PlanGantt({ data: overviewParentData, asOf: planAsOf, selected: null, onSelect() {}, query: '', onQuery() {} }));
+    find(tree, 'div', props => props.className === 'plan-board').ref.current = planBoard; overviewParentHooks.flush();
+    overviewProps = find(tree, overviewWindow.PlanGanttCanvas.Overview);
+    if (overviewProps) {
+      if (!overviewHooks) { overviewHooks = hooks(); overviewMounts++; }
+      overviewContext.React = overviewHooks.React;
+      const child = overviewHooks.render(() => overviewWindow.PlanGanttCanvas.Overview(overviewProps));
+      find(child, 'canvas').ref.current = canvas; overviewHooks.flush();
+    } else if (overviewHooks) { overviewHooks.unmount(); overviewHooks = null; }
+    return tree;
+  };
+  let overviewParentTree = planRender(); assert.equal(overviewProps, null); assert.equal(overviewTimeReads, 0); assert.equal(binBuilds, 0);
+  find(overviewParentTree, 'plan-zoom').onZoom(2); overviewParentTree = planRender(); const parentOverviewCache = overviewProps.cache;
+  assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 5); assert.equal(pointXs.at(-1), cssWidth);
+  overviewSteps.push({ phase: 'first_display', date_reads: overviewTimeReads, histogram_builds: binBuilds });
+  planBoard.scrollLeft += 20; find(overviewParentTree, 'div', props => props.className === 'plan-board').onScroll();
+  overviewParentTree = planRender(); primary = 'dark'; overviewThemes.at(-1).draw(); printChange();
+  assert.equal(overviewProps.left, planBoard.scrollLeft);
+  overviewWindow.devicePixelRatio = 2; printChange(); find(overviewParentTree, 'plan-zoom').onZoom(4); overviewParentTree = planRender();
+  assert.equal(binBuilds, 1); assert.equal(overviewTimeReads, 5); assert.equal(fills.at(-1).color, 'dark');
+  printing = true; overviewParentTree = planRender(); assert.equal(overviewProps, null); assert.equal(overviewHooks, null); assert.equal(planWidths.at(-1), 640);
+  printing = false; overviewParentTree = planRender(); assert.strictEqual(overviewProps.cache, parentOverviewCache);
+  assert.equal(overviewMounts, 2); assert.deepEqual({ date_reads: overviewTimeReads, histogram_builds: binBuilds }, { date_reads: 5, histogram_builds: 1 },
+    'A freshly mounted Overview after print reuses the parent-owned date facts and histogram');
+  overviewSteps.push({ phase: 'after_print_remount', date_reads: overviewTimeReads, histogram_builds: binBuilds });
+  find(overviewParentTree, 'plan-zoom').onFit(); overviewParentTree = planRender(); assert.equal(overviewHooks, null);
+  find(overviewParentTree, 'plan-zoom').onZoom(2); overviewParentTree = planRender(); assert.strictEqual(overviewProps.cache, parentOverviewCache);
+  assert.equal(overviewMounts, 3); assert.equal(overviewTimeReads, 5); assert.equal(binBuilds, 1);
+  overviewSteps.push({ phase: 'after_fit_remount', date_reads: overviewTimeReads, histogram_builds: binBuilds });
+  cssWidth = 200.8; overviewResizes.at(-1).draw(); assert.equal(binBuilds, 2); assert.equal(overviewTimeReads, 5); assert.equal(pointXs.at(-1), cssWidth);
+  cssHeight = 24; overviewResizes.at(-1).draw(); assert.equal(binBuilds, 2);
+  overviewSteps.push({ phase: 'after_actual_css_resize', date_reads: overviewTimeReads, histogram_builds: binBuilds });
+  printing = true; planRender(); overviewParentData = { ...overviewParentData, tasks: overviewTasks.slice() }; planRender();
+  assert.equal(overviewTimeReads, 5, 'Tasks changed while the overview is hidden wait until it is mounted');
+  overviewSteps.push({ phase: 'hidden_new_tasks', date_reads: overviewTimeReads, histogram_builds: binBuilds });
+  printing = false; planRender(); assert.equal(overviewMounts, 4); assert.equal(overviewTimeReads, 10); assert.equal(binBuilds, 3);
+  overviewSteps.push({ phase: 'display_new_tasks', date_reads: overviewTimeReads, histogram_builds: binBuilds });
+  overviewHooks.unmount(); overviewHooks = null; overviewParentHooks.unmount();
+
+  // An unrestricted trial keeps its scope, resource names and row preparation on hover/scroll.
+  const trialGanttHooks = hooks(); let trialFilters = 0, trialNames = 0;
+  const trialTasks = [8, 9].map((hour, index) => ({ task_ref: 'task-' + index, batch_ref: 'batch', batch_id: 'B1', sequence: index + 1, process_label: '加工',
+    start: '2026-10-12T0' + hour + ':00:00', end: '2026-10-12T' + String(hour + 1).padStart(2, '0') + ':00:00', machine_ref: 'machine', operator_ref: null, issues: [], quantity: 1, batch_quantity: 1, piece_id: null }));
+  trialTasks.push({ ...trialTasks[1], task_ref: 'point', start: trialTasks[1].end, event_kind: 'point' });
+  trialTasks.forEach(task => { task.original = { start: task.start, end: task.end, machine_ref: task.machine_ref, operator_ref: task.operator_ref }; });
+  trialTasks.filter = function (...args) { trialFilters++; return Array.prototype.filter.apply(this, args); };
+  const trialMachines = [{ ref: 'machine', business_code: 'M1', label: '机床' }];
+  trialMachines.forEach = function (...args) { trialNames++; return Array.prototype.forEach.apply(this, args); };
+  const trialGanttData = { tasks: trialTasks, task_count: 3, scope: { batch_refs: ['batch'] }, resources: { machines: trialMachines, operators: [] } };
+  const trialValues = { mode: 'machine', baseline: false, only_changed: false, query: '' };
+  const trialGanttWindow = { TrialControls: { Button: 'button', Tabs: 'tabs', Pager: 'pager', timeLabel: String, number: String },
+    ResourceControls: { TimelineZoom: 'zoom' }, TrialViewState: { useView: () => ({ value: trialValues, change() {} }), Notice: 'notice' },
+    GanttPresentationUI: { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, GanttPresentation: { axis: () => ({ ticks: [] }), taskLines: () => ({ primary: '加工', secondary: '' }) },
+    PointContract: { isPoint: task => task.event_kind === 'point' }, PointGantt: { Marker: 'point' }, trialRowSorts: 0 };
+  const trialGanttContext = vm.createContext({ window: trialGanttWindow, React: trialGanttHooks.React, innerWidth: 1280, innerHeight: 800,
+    ResizeObserver: class { observe() {} disconnect() {} } });
+  load(trialGanttContext, 'PlanGanttModel.js'); load(trialGanttContext, 'TrialGantt.jsx');
+  vm.runInContext(`const rowSort = Array.prototype.sort; Array.prototype.sort = function (compare) {
+    if (this[0] && this[0].t) window.trialRowSorts++; return rowSort.call(this, compare);
+  };`, trialGanttContext);
+  const trialGanttRender = () => trialGanttHooks.render(() => trialGanttWindow.TrialGantt({ data: trialGanttData, selected: null, onSelect() {} }));
+  let trialGanttTree = trialGanttRender();
+  find(trialGanttTree, 'div', props => props.className === 'tt-board').ref.current = { scrollLeft: 100, clientWidth: 1000, querySelector: () => ({ getBoundingClientRect: () => ({ width: 100 }) }) };
+  find(trialGanttTree, 'div', props => props.className === 'tt-ticks').ref.current = { clientWidth: 1000 };
+  trialGanttHooks.flush(); trialGanttTree = trialGanttRender();
+  find(trialGanttTree, 'input', props => props.type === 'checkbox' && props.checked).onChange({ target: { checked: false } }); trialGanttTree = trialGanttRender();
+  const preparedTrialFilters = trialFilters, preparedTrialRows = trialGanttWindow.trialRowSorts;
+  find(trialGanttTree, 'point').onHover({ clientX: 200, clientY: 200 }); trialGanttTree = trialGanttRender();
+  assert(find(trialGanttTree, 'div', props => props.role === 'tooltip'));
+  find(trialGanttTree, 'div', props => props.className === 'tt-board').onScroll(); trialGanttTree = trialGanttRender();
+  assert.equal(trialFilters, preparedTrialFilters); assert.equal(trialGanttWindow.trialRowSorts, preparedTrialRows); assert.equal(trialNames, 1); trialGanttHooks.unmount();
+
+  // The three overdue flags share one pass and remain frozen with the data identity.
+  const toolbarHooks = hooks(); let deadlineVisits = 0;
+  const toolbarData = { task_count: 3, availability: { state: 'available' }, items: [{ task: { task_ref: 'one' }, deviation: { finish_late: true, unclosed: false, forecast_late: false } },
+    { task: { task_ref: 'two' }, deviation: { finish_late: false, unclosed: true, forecast_late: true } },
+    { task: { task_ref: 'three' }, deviation: { finish_late: false, unclosed: true, forecast_late: false } }] };
+  const toolbarWindow = { ResourceControls: { Button: 'button', Icon: 'icon', TimelineZoom: 'zoom' }, WorkbenchTerms: { overdue: '超期' },
+    ActualGanttModel: { ...modelContext.window.ActualGanttModel, deadlines(item) { deadlineVisits++; return modelContext.window.ActualGanttModel.deadlines(item); },
+      wire() { assert.fail('Deadlines no longer convert an unused date'); }, tickStep: () => 1, tickLabel: String } };
+  const toolbarContext = vm.createContext({ window: toolbarWindow, React: toolbarHooks.React }); load(toolbarContext, 'ActualGanttControls.jsx');
+  const toolbarProps = { data: toolbarData, model: { groups: [], items: toolbarData.items }, view: { mode: 'machine', query: '', late: 'all', collapsed: {}, selected: null }, width: 640, zoom: 1 };
+  const toolbar = toolbarHooks.render(() => toolbarWindow.ActualGanttControls.Toolbar(toolbarProps));
+  toolbarHooks.render(() => toolbarWindow.ActualGanttControls.Toolbar({ ...toolbarProps, width: 1000 })); assert.equal(deadlineVisits, 3);
+  assert.deepEqual(find(toolbar, 'select').children.flat().map(option => option.props.children.join('')), ['全部工序 (3)', '已晚完成 (1)', '到期未确认完成 (2)', '剩余安排预计晚完成 (1)']);
   // A first historical supplement preserves the selected original scope's
   // start/end, including legacy separators, padding and minute storage. It never takes the
   // aggregate start from another plan or replaces known time with now.
@@ -277,7 +485,12 @@ async function main() {
   }
   assert.equal(field.initialize({ task: legacyTask, record: null, action: 'create',
     legacy: { recorded_against_task_ref: 'no-start', event_time: '2026-09-09', quantity_done: 10 } }).draft.actual_start, '');
-  console.log(JSON.stringify({ read_identity_and_cancellation: true, unmount_refresh_waiters_cancelled: outcomes.length, unstarted_refresh_loads: queuedLoads,
+  console.log(JSON.stringify({ read_identity_and_cancellation: true, same_identity_reopen_loads: reopenLoads, error_retry_and_hidden_snapshot_loads: retryLoads, unmount_refresh_waiters_cancelled: outcomes.length, unstarted_refresh_loads: queuedLoads,
+    baseline_reopen_reads: 1, baseline_refresh_and_identity_reads: baselineLoads,
+    resource_related_save_requests: resourceRequests.map(value => ({ kind: value.kind, page: value.page, snapshot_ref: value.snapshot_ref || null })),
+    resource_related_save_detail_reads: resourceDetails, overview_time_reads: overviewTimeReads, overview_bin_builds: binBuilds,
+    overview_mounts: overviewMounts, overview_preparation_steps: overviewSteps,
+    trial_filter_calls: trialFilters, trial_row_sorts: trialGanttWindow.trialRowSorts, trial_resource_name_passes: trialNames, actual_deadline_visits: deadlineVisits,
     scroll_scans: scans, unrelated_scroll_refreshes: 0, context_updates: 60,
     trailing_history_writes: 1, immediate_navigation_and_history_restore: true, restoring_pagehide_preserved: true,
     forward_branch_plan_bound: true, history_help_chapters: true, dashboard_issue_scope_and_return: true, dashboard_late_request_isolated: true,

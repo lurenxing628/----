@@ -3,7 +3,7 @@
 from io import BytesIO
 from typing import Dict
 
-from flask import g, request, send_file
+from flask import current_app, g, jsonify, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.run.decision import read_run_decision, read_run_decision_summary
@@ -12,9 +12,10 @@ from core.services.workbench.run.decision_export import read_decision_export, wr
 from core.services.workbench.run.decision_preparation_queries import read_preparation_details
 from core.services.workbench.run.decision_process import read_process_details
 from core.services.workbench.run.decision_queries import read_decision_details
+from core.services.workbench.run.decision_resource_workspace import read_resource_workspace
 from core.services.workbench.run.decision_resources import read_resource_details
 from core.services.workbench.run.decision_workspace import read_reference_workspace
-from web.api_responses import query_success
+from web.api_responses import failure_payload, query_payload, query_success
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
@@ -76,7 +77,7 @@ def run_decision_completion_batches(run_ref):
 
 @api_endpoint
 def run_decision_process(run_ref):
-    values = _query(_QUERY + ("process_candidate_ref", "record_kind", "sort", "order", "page", "size", "snapshot_ref"))
+    values = _query(_QUERY + ("process_candidate_ref", "objective", "record_kind", "sort", "order", "page", "size", "snapshot_ref"))
     token = values.pop("snapshot_ref", None)
     with PLAN_READ_SLOTS.slot():
         data, state = read_process_details(g.db, run_ref, **values)
@@ -160,9 +161,51 @@ def run_decision_summary(run_ref):
     return response
 
 
+def _resource_error(error):
+    if error.status >= 500:
+        current_app.logger.error("工作台请求失败 code=%s", error.code,
+                                 exc_info=(type(error), error, error.__traceback__))
+    return {**failure_payload(error.code, str(error), error.status), "status": error.status}
+
+
+@api_endpoint
+def run_decision_resource_workspace(run_ref):
+    fields = ("resource_kind", "resource_ref", "grain", "pressure_threshold", "pressure_filter", "sort", "order",
+              "page", "size", "heatmap_page", "heatmap_size", "display_start", "display_end")
+    values = _query(_QUERY + fields + ("snapshot_ref", "resource_snapshot_ref"))
+    summary_token = values.pop("snapshot_ref", None)
+    resource_token = values.pop("resource_snapshot_ref", None)
+    summary_query = {key: values[key] for key in _QUERY if key in values}
+    resource_query = {key: values[key] for key in fields if key in values}
+    if resource_token is not None:
+        resource_query["snapshot_ref"] = resource_token
+    with PLAN_READ_SLOTS.slot():
+        data, resource_data, resource_query, resource_error, state = read_resource_workspace(
+            g.db, run_ref, resource_query=resource_query, **summary_query)
+    scope = {"kind": "run-decision", **data["scope"]}
+    snapshot = bind_read_snapshot(scope, state, summary_token) if summary_token is not None else None
+    resource_result = None
+    if resource_error is not None:
+        resource_result = _resource_error(resource_error)
+    elif resource_data is not None:
+        try:
+            resource_snapshot = bind_read_snapshot({**scope, "filters": resource_data["filters"]}, state,
+                resource_query.get("snapshot_ref"), as_of=snapshot["as_of"] if snapshot is not None else None)
+            resource_result = query_payload(resource_data, resource_snapshot)
+            if snapshot is None:
+                snapshot = bind_read_snapshot(scope, state, as_of=resource_snapshot["as_of"])
+        except WorkbenchCommandRejected as exc:
+            resource_result = _resource_error(exc)
+    if snapshot is None:
+        snapshot = bind_read_snapshot(scope, state)
+    response = jsonify({**query_payload(data, snapshot), "resource_result": resource_result, "resource_query": resource_query})
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @api_endpoint
 def run_decision_export(run_ref):
-    values = _query(_QUERY + _FILTERS + _RESOURCE_PERIOD_FILTERS + ("resource_kind", "pressure_filter", "machine_ref", "allocation_state", "work_scope", "event_side", "process_candidate_ref", "record_kind", "heatmap_page", "heatmap_size", "page", "size", "snapshot_ref", "format", "section", "filter_section"))
+    values = _query(_QUERY + _FILTERS + _RESOURCE_PERIOD_FILTERS + ("resource_kind", "pressure_filter", "machine_ref", "allocation_state", "work_scope", "event_side", "process_candidate_ref", "objective", "record_kind", "heatmap_page", "heatmap_size", "page", "size", "snapshot_ref", "format", "section", "filter_section"))
     fmt, section, token = values.pop("format", None), values.pop("section", "overview"), values.pop("snapshot_ref", None)
     if fmt not in ("csv", "xlsx") or section not in ("overview", "batches", "operations", "resources", "resource-days", "preparation", "changeovers", "recommendation", "process", "all") or fmt == "csv" and section == "all":
         raise WorkbenchCommandRejected("invalid_input", "CSV 可导出单个页签，XLSX 可导出页签或全部比较表。", 422)
@@ -185,6 +228,7 @@ def register_run_decision_routes(bp):
     base = "/api/workbench/v1/scheduling/runs/<run_ref>/decision"
     bp.add_url_rule(base, view_func=run_decision, methods=["GET"])
     bp.add_url_rule(base + "/summary", view_func=run_decision_summary, methods=["GET"])
+    bp.add_url_rule(base + "/resource-workspace", view_func=run_decision_resource_workspace, methods=["GET"])
     bp.add_url_rule(base + "/batches", view_func=run_decision_batches, methods=["GET"])
     bp.add_url_rule(base + "/operations", view_func=run_decision_operations, methods=["GET"])
     bp.add_url_rule(base + "/completion-batches", view_func=run_decision_completion_batches, methods=["GET"])

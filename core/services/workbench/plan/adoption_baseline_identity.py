@@ -45,26 +45,29 @@ def _captured_official(baseline, tables):
             "archived_official_reference")
 
 
-def _live_sources(conn, captured):
+def _live_sources(conn, captured, *, context=None):
     by_ref = indexed(captured, "ref")
     keys, live = list(by_ref), {}
-    repo = WorkbenchPlanBaselineRepository(conn)
-    for start in range(0, len(keys), 400):
-        chunk = keys[start:start + 400]
-        live.update(indexed(raw_table_rows(repo.raw_source_refs_by_refs(chunk), "WorkbenchPlanSourceRefs"), "ref"))
+    if context is not None:
+        live = indexed(raw_table_rows(context.source_identities(keys), "WorkbenchPlanSourceRefs"), "ref")
+    else:
+        repo = WorkbenchPlanBaselineRepository(conn)
+        for start in range(0, len(keys), 400):
+            chunk = keys[start:start + 400]
+            live.update(indexed(raw_table_rows(repo.raw_source_refs_by_refs(chunk), "WorkbenchPlanSourceRefs"), "ref"))
     if not same(by_ref, live):
         fail("adoption_reference_invalid", "captured_source_instances")
 
 
-def verify_arranged(conn, plan_ref, version, tables, arranged):
-    rows = schedule_rows(conn, version)
+def verify_arranged(conn, plan_ref, version, tables, arranged, *, context=None):
+    rows = context.source_rows(version=version, source_table="schedule", candidate_id=None, scenario_id=None) if context is not None else schedule_rows(conn, version)
     originals, current = indexed(arranged, "op_id"), indexed(rows, "op_id")
     if set(originals) != set(current):
         fail("adoption_plan_drift", "selected_complete_operation_set")
     for op_id, original in originals.items():
         if not _arrangement_matches(current[op_id], original):
             fail("adoption_plan_drift", "selected_saved_arrangement")
-    references = WorkbenchPlanIdentityRepository(conn)
+    references = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
     try:
         references.get_task_refs(plan_ref, [dict(row, schedule_id=row["id"]) for row in rows])
         operations = references.get_operation_refs(current)
@@ -76,7 +79,7 @@ def verify_arranged(conn, plan_ref, version, tables, arranged):
     require(len(sources) == len(current), "captured_selected_operations")
     if {int(row["source_key"]): row["ref"] for row in sources} != operations:
         fail("adoption_reference_invalid", "selected_original_operation_instances")
-    _live_sources(conn, sources)
+    _live_sources(conn, sources, context=context)
     return rows
 
 
@@ -91,14 +94,15 @@ def _arrangement_matches(row, original):
     return True
 
 
-def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None):
+def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None, context=None):
     from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
 
     from .projection import _adopted_source_record
 
     ref, version = baseline["plan_ref"], baseline["version"]
-    references = WorkbenchPlanIdentityRepository(conn)
-    if not WorkbenchPlanBaselineRepository(conn).history_version_exists(version):
+    references = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
+    present = context.history(version) is not None if context is not None else WorkbenchPlanBaselineRepository(conn).history_version_exists(version)
+    if not present:
         fail("adoption_baseline_archived", "ScheduleHistory.original_version")
     try:
         locator = references.resolve_plan(ref)
@@ -106,16 +110,16 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None):
         fail("adoption_reference_invalid", "baseline.plan_ref")
     if locator != WorkbenchPlanLocator(version, "adopted"):
         fail("adoption_reference_invalid", "baseline.official_locator")
-    rows = schedule_rows(conn, version)
+    rows = context.source_rows(version=version, source_table="schedule", candidate_id=None, scenario_id=None) if context is not None else schedule_rows(conn, version)
     facts["observed_baseline_rows"] = rows
     captured = baseline["rows"]
     if not {row["id"] for row in captured} <= {row["id"] for row in rows}:
         fail("adoption_baseline_archived", "Schedule.original_rows")
     if not same(rows, captured):
         fail("adoption_baseline_drift", "Schedule.complete_original_values_and_types")
-    task_refs, operations = _task_bindings(conn, baseline, tables, references)
-    resources = _resources(conn, captured, tables)
-    source = _adopted_source_record(conn, ref)
+    task_refs, operations = _task_bindings(conn, baseline, tables, references, context=context)
+    resources = _resources(conn, captured, tables, context=context)
+    source = context.adopted_source(ref) if context is not None else _adopted_source_record(conn, ref)
     if source is None:
         fail("adoption_evidence_missing", "baseline.original_adoption")
     origins = read_adoption_operation_facts(conn, source)
@@ -136,7 +140,7 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None):
                        "supplier_id": supplier["business_code"] if supplier is not None else None})
     if point_annotator is not None:
         detail = point_annotator(detail)
-    return project_tasks(ref, detail, task_refs, operations, resources, conn=conn, facts=facts)
+    return project_tasks(ref, detail, task_refs, operations, resources, conn=conn, facts=facts, context=context)
 
 
 def _captured_tasks(baseline, tables):
@@ -167,10 +171,10 @@ def _captured_row_binding(row, source, operation):
     return operation
 
 
-def _task_bindings(conn, baseline, tables, references):
+def _task_bindings(conn, baseline, tables, references, *, context=None):
     ref, rows = baseline["plan_ref"], baseline["rows"]
     tasks, task_refs, operations, used = _captured_tasks(baseline, tables)
-    _live_sources(conn, list({row["ref"]: row for row in used}.values()))
+    _live_sources(conn, list({row["ref"]: row for row in used}.values()), context=context)
     try:
         current_tasks = references.get_task_refs(ref, [dict(row, schedule_id=row["id"]) for row in rows])
         current_ops = references.get_operation_refs(operations)
@@ -178,13 +182,14 @@ def _task_bindings(conn, baseline, tables, references):
         fail("adoption_reference_invalid", "baseline.current_task_binding")
     if current_tasks != task_refs or current_ops != operations:
         fail("adoption_reference_invalid", "baseline.original_task_ref")
-    current = raw_table_rows(WorkbenchPlanBaselineRepository(conn).raw_task_refs_by_plan(ref), "WorkbenchTaskRefs")
+    current = raw_table_rows(context.task_identities(ref) if context is not None else
+                             WorkbenchPlanBaselineRepository(conn).raw_task_refs_by_plan(ref), "WorkbenchTaskRefs")
     if not same(indexed(current, "row_ref"), tasks):
         fail("adoption_reference_invalid", "baseline.full_current_task_membership")
     return task_refs, operations
 
 
-def _resources(conn, rows, tables):
+def _resources(conn, rows, tables, *, context=None):
     archived = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
     repo, result = WorkbenchIdentityRepository(conn), {"supplier": {}}
     operations = indexed(tables["BatchOperations"], "id")
@@ -193,7 +198,7 @@ def _resources(conn, rows, tables):
                 {row[kind + "_id"] for row in rows if row[kind + "_id"] is not None})
         require(all(type(key) is str for key in keys), "baseline.resource_storage_type")
         require(all((kind, key) in archived for key in keys), "baseline.captured_resource_identity")
-        live = repo.active_map(kind, sorted(keys))
+        live = (context.active_map if context is not None else repo.active_map)(kind, sorted(keys))
         if any(key not in live or live[key].ref != archived[kind, key] for key in keys):
             fail("adoption_reference_invalid", "baseline.original_" + kind + "_instance")
         result[kind] = {key: SimpleNamespace(ref=archived[kind, key]) for key in keys}

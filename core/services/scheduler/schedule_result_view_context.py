@@ -198,6 +198,7 @@ def selected_plan_role(plan_resolution: Dict[str, Any]) -> str:
 
 
 def attach_plan_metadata(data: Dict[str, Any], plan_resolution: Dict[str, Any]) -> None:
+    fields = plan_role_filter_fields(plan_resolution)
     data.update(
         requested_plan_role=plan_resolution.get("requested_role"),
         requested_plan_role_label=plan_resolution.get("requested_label"),
@@ -207,7 +208,7 @@ def attach_plan_metadata(data: Dict[str, Any], plan_resolution: Dict[str, Any]) 
         plan_role_message=plan_resolution.get("message"),
         plan_role_resolution=plan_resolution,
         available_plan_roles=list(plan_resolution.get("available_roles") or []),
-        is_comparison_plan=bool(plan_resolution.get("is_comparison")),
+        is_comparison_plan=bool(fields["is_comparison"]),
         is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
         scenario_id=plan_resolution.get("scenario_id"),
         scenario_name=plan_resolution.get("scenario_name"),
@@ -292,7 +293,7 @@ def _build_view_context(
         candidate_key=plan_resolution.get("candidate_key"),
         available_roles=available_roles,
         is_fallback=bool(plan_resolution.get("is_fallback")),
-        is_comparison=bool(plan_resolution.get("is_comparison")),
+        is_comparison=bool(fields["is_comparison"]),
         is_scenario_preview=bool(plan_resolution.get("is_scenario_preview")),
         scenario_id=plan_resolution.get("scenario_id"),
         scenario_name=plan_resolution.get("scenario_name"),

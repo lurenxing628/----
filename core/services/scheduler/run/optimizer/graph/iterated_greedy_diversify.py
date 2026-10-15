@@ -5,6 +5,8 @@ thresholds adapt that idea to a SGS run that may complete only a few tasks.
 """
 from __future__ import annotations
 
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
+
 from .iterated_greedy_neighborhoods import GeneratorRotation
 from .iterated_greedy_reference import capture_reference
 
@@ -36,12 +38,8 @@ class BudgetStagnation:
         threshold = min(search.limits.stagnation_iterations, 2)
         duration = max(search.deadline - search.started, 0.0)
         waited = now - self.last_progress
-        trigger = max(2.0 * search.trial_decode_cost(), 0.15 * duration)
+        trigger = 0.15 * duration
         if search.non_improving < threshold or waited < trigger:
-            return search.reference
-        reserve = search.full_decode_cost() + 2.0 * search.trial_decode_cost()
-        if search.deadline - now < reserve:
-            report["diversification_budget_pruned"] += 1
             return search.reference
         self.last_progress = now
         self.explore_next = True
@@ -58,7 +56,11 @@ class BudgetStagnation:
             return reference
         search._activate_entry(restart)
         # A known solution's full decode is a reference capture, accounted as such (never as a rejection).
-        decoded = capture_reference(search, restart)
+        try:
+            decoded = capture_reference(search, restart)
+        except SharedSearchSkip:
+            search._activate_entry(reference)
+            raise
         if decoded is None:
             search.report["pool"]["restart_captures_failed"] += 1
             search._activate_entry(reference)

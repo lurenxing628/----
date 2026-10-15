@@ -64,7 +64,7 @@
       [adapter, runRef, catalogQuery, revision], !!runRef && !invalid && !isReference);
     const read = useRead(async signal => { const v = isReference ? await adapter.referenceWorkspace(runRef, { ...scope, selected_candidate_ref: candidateRef, comparison_mode: 'admission_official', resource_view: initialContext.resource_view, plan_ref: initialContext.plan_ref }, signal) : await adapter.workspace(candidateRef, scope, signal);
       A.check(!initialContext.run_ref || v.data.candidate.run_ref === initialContext.run_ref, '候选方案不属于所选排产记录。'); return v; },
-      [adapter, candidateRef, scope, revision, isReference, runRef], !!candidateRef && !invalid);
+      [adapter, candidateRef, scope, revision, isReference, isReference ? runRef : null], !!candidateRef && !invalid);
     const result = read.result, data = result && result.data;
     React.useEffect(() => { if (data && !runRef) setRunRef(data.candidate.run_ref); }, [data, runRef]);
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
@@ -75,7 +75,7 @@
     const historyRead = useRead(async signal => {
       if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       return adapter.adoptions(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, tab, revision, analysisPaused], !!candidateRef && !invalid && tab === 'history' && !analysisPaused && !isReference);
+    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !analysisPaused && !isReference);
     const analysis = shown && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     const ownershipError = readState => shown && readState.result && readState.result.data.run_ref !== shown.candidate.run_ref
       ? new Error('读到的数据不属于所选候选方案的排产记录。') : readState.error;

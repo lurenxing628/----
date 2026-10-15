@@ -132,7 +132,7 @@ class TaskConstraints:
         if cache_key not in self.indexes:
             projection = self.resources[kind].get(key)
             windows = available_intervals(projection, mode) if projection is not None else None
-            self.indexes[cache_key] = IntervalIndex(windows) if windows is not None else None
+            self.indexes[cache_key] = IntervalIndex.from_normalized(windows) if windows is not None else None
         index = self.indexes[cache_key]
         if index is None:
             self._add("assignment_calendar_unavailable", op_id)

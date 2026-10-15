@@ -27,7 +27,6 @@ def test_lunch_is_neither_processing_nor_capacity_and_native_slot_stops_at_noon(
     projected = policy_projection(engine, date.fromisoformat(DAY), date.fromisoformat(DAY), dt("00:00"), dt("23:59"))
     assert projected["available_hours"] == 8 and projected["effective_hours"] == 6.4
     assert len(projected["windows"]) == 2
-    assert service.certified_multi_start_snapshot() is not None
 
 
 def test_split_night_uses_explicit_next_day_without_filling_the_break(schema_conn):

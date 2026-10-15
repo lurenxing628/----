@@ -5,7 +5,16 @@
   const describe = M.describe;
   function Toolbar({ view, patch, model, data, zoom, width, onZoom, onFit, onLocate, onExport, busy }) {
     const allCollapsed = model.groups.length > 0 && model.groups.every(g => view.collapsed[g.id]);
-    const counts = Object.fromEntries(Object.keys(M.lateLabels).map(key => [key, key === 'all' ? data.items.length : data.items.filter(item => M.deadlines(item, M.wire(model.asOf))[key]).length]));
+    const counts = React.useMemo(() => {
+      const counts = { all: data.items.length, finishLate: 0, unclosed: 0, forecastLate: 0 };
+      for (const item of data.items) {
+        const late = M.deadlines(item);
+        if (late.finishLate) counts.finishLate++;
+        if (late.unclosed) counts.unclosed++;
+        if (late.forecastLate) counts.forecastLate++;
+      }
+      return counts;
+    }, [data]);
     return <div className="gb-toolbar fg-toolbar">
       <div className="fg-toolbar-main"><div className="seg" role="group" aria-label="甘特视图">
         {Object.entries(M.views).map(([key, label]) => <button type="button" key={key} className={'seg-btn' + (view.mode === key ? ' on' : '')} aria-pressed={view.mode === key} onClick={() => patch({ mode: key, collapsed: {} })}>{label}</button>)}</div>

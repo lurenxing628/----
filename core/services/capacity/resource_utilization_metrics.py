@@ -6,9 +6,10 @@ Efficiency-weighted processing hours are deliberately outside this definition.
 """
 
 from bisect import bisect_right
+from itertools import tee
 from typing import Optional
 
-from .plan_calendar_intervals import IntervalIndex, intersection, segments, union
+from .plan_calendar_intervals import IntervalIndex, _union_sorted, intersection, segments, union
 
 METRIC_VERSION = "available_occupancy_v1"
 
@@ -21,12 +22,24 @@ class _WeightedIndex:
         for start, end, count in rows:
             self.prefix.append(self.prefix[-1] + (end - start).total_seconds() * count)
 
-    def _before(self, at):
-        index = bisect_right(self.starts, at) - 1
+    def _at_index(self, index, at):
         if index < 0:
             return 0.0
         start, end, count = self.rows[index]
-        return self.prefix[index] + (min(at, end) - start).total_seconds() * count
+        if at >= end:
+            return self.prefix[index + 1]
+        return self.prefix[index] + (at - start).total_seconds() * count
+
+    def _before(self, at):
+        return self._at_index(bisect_right(self.starts, at) - 1, at)
+
+    def prefix_values_at_sorted(self, points):
+        """Consume caller-ordered points as cumulative seconds, including repeats."""
+        index = -1
+        for at in points:
+            while index + 1 < len(self.starts) and self.starts[index + 1] <= at:
+                index += 1
+            yield self._at_index(index, at)
 
     def hours_between(self, start, end):
         return (self._before(end) - self._before(start)) / 3600.0
@@ -49,9 +62,9 @@ def _available_segments(swept, available):
 class _CalendarIndexes:
     """Calendar-bound views of one resource; they exist together or not at all."""
 
-    def __init__(self, available, occupied, swept):
-        self.available = IntervalIndex(available)
-        self.occupied = IntervalIndex(intersection(occupied, self.available.intervals))
+    def __init__(self, available, occupied, swept, *, normalized_availability):
+        self.available = IntervalIndex.from_normalized(available) if normalized_availability else IntervalIndex(available)
+        self.occupied = IntervalIndex.from_normalized(intersection(occupied, self.available.intervals))
         self.load = _WeightedIndex(_available_segments(swept, self.available.intervals))
 
     def hours_between(self, start, end):
@@ -64,6 +77,16 @@ class ResourceUtilizationMetrics:
     """Build once; whole-window and daily queries use the same indexed intervals."""
 
     def __init__(self, intervals, available, *, source="planned"):
+        self._initialize(intervals, available, source=source, normalized_availability=False)
+
+    @classmethod
+    def from_normalized_availability(cls, intervals, available, *, source="planned"):
+        """Consume internal unioned availability directly; None keeps unknown capacity."""
+        metrics = cls.__new__(cls)
+        metrics._initialize(intervals, available, source=source, normalized_availability=True)
+        return metrics
+
+    def _initialize(self, intervals, available, *, source, normalized_availability):
         if source not in ("planned", "actual"):
             raise ValueError("Utilization source must be planned or actual")
         intervals = list(intervals)
@@ -72,20 +95,46 @@ class ResourceUtilizationMetrics:
         self.source = source
         occupied, swept = union(intervals), segments(intervals)
         self.segments = swept
-        self.span = IntervalIndex(occupied)
+        self.span = IntervalIndex.from_normalized(occupied)
         self.span_load = _WeightedIndex(swept)
-        self.span_overlap = IntervalIndex([(start, end) for start, end, count in swept if count > 1])
+        self.span_overlap = IntervalIndex.from_normalized(_union_sorted(
+            (start, end) for start, end, count in swept if count > 1))
         # None means the resource's calendar is unknown, never that it has zero capacity.
-        self.calendar = _CalendarIndexes(available, occupied, swept) if available is not None else None
+        self.calendar = _CalendarIndexes(available, occupied, swept,
+                                         normalized_availability=normalized_availability) if available is not None else None
 
     def window(self, start, end, *, precision: Optional[int] = 6):
         if start > end:
             raise ValueError("Invalid utilization window")
         span = self.span.hours_between(start, end)
         if self.calendar is None:
-            capacity = occupied = load = overlap = outside = ratio = None
+            capacity = occupied = load = None
         else:
             capacity, occupied, load = self.calendar.hours_between(start, end)
+        return self._window_result(span, self.span_load.hours_between(start, end), self.span_overlap.hours_between(start, end),
+                                   capacity, occupied, load, precision=precision)
+
+    def windows_at_boundaries(self, boundaries, *, precision: Optional[int] = None):
+        """Yield adjacent ordered windows from the existing cumulative-second indexes."""
+        indexes = (self.span, self.span_load, self.span_overlap)
+        if self.calendar is not None:
+            indexes += (self.calendar.available, self.calendar.occupied, self.calendar.load)
+        points = tee(boundaries, len(indexes))
+        prefixes = zip(*(index.prefix_values_at_sorted(ordered) for index, ordered in zip(indexes, points)))
+        previous = next(prefixes, None)
+        if previous is None:
+            return
+        for current in prefixes:
+            values = tuple((right - left) / 3600.0 for left, right in zip(previous, current))
+            if self.calendar is None:
+                values += (None, None, None)
+            yield self._window_result(*values, precision=precision)
+            previous = current
+
+    def _window_result(self, span, span_load, span_overlap, capacity, occupied, load, *, precision):
+        if capacity is None:
+            overlap = outside = ratio = None
+        else:
             overlap, outside = load - occupied, span - occupied
             ratio = occupied / capacity if capacity > 0 else None
         result = {
@@ -94,10 +143,11 @@ class ResourceUtilizationMetrics:
             "overlap_hours": overlap,
             "outside_calendar_hours": outside,
             "utilization_ratio": ratio,
-            "span_occupied_hours": span, "span_summed_hours": self.span_load.hours_between(start, end),
-            "span_overlap_hours": self.span_overlap.hours_between(start, end),
+            "span_occupied_hours": span, "span_summed_hours": span_load,
+            "span_overlap_hours": span_overlap,
         }
-        return {**{key: round(value, precision) if value is not None and precision is not None else value
-                   for key, value in result.items()},
-                "metric_version": METRIC_VERSION, "source": self.source,
-                "reason": "calendar_unavailable" if capacity is None else "zero_available_capacity" if capacity == 0 else None}
+        if precision is not None:
+            result = {key: round(value, precision) if value is not None else value for key, value in result.items()}
+        result.update(metric_version=METRIC_VERSION, source=self.source,
+                      reason="calendar_unavailable" if capacity is None else "zero_available_capacity" if capacity == 0 else None)
+        return result

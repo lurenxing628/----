@@ -6,11 +6,11 @@ from typing import Any, Dict
 
 from core.models.workbench_run_candidate import local_time
 from core.services.workbench.facts.candidate_tasks import operation_labels, unplanned_projection
+from core.services.workbench.facts.decision_delivery import common_delivery
+from core.services.workbench.facts.decision_metrics import operation_change_metrics
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta, delivery_summary
 from core.services.workbench.facts.operation_effort_evidence import archived_standard_effort
 
-from .decision_delivery import common_delivery
-from .decision_metrics import operation_change_metrics
 from .decision_reference import reference_delivery
 
 BATCH_CHANGES = ("all", "changed", "earlier", "later", "new_overdue", "relieved_overdue", "completion_improved", "completion_worsened", "operation_changed", "unchanged", "unknown")
@@ -155,6 +155,15 @@ def _operation_state(arrangement, *, available, deferred):
     return {"status": "deferred" if deferred else "missing",
             "reason": {"code": "material_deferred" if deferred else "operation_unscheduled",
                        "message": "排产时因缺料保留为待料未排。" if deferred else "这份归档没有给该工序安排时间。"}}
+
+
+def operation_changes(tasks, reference_tasks, operation_refs, reference_available, *, selected_available=True,
+                      deferred_refs=(), reference_deferred_refs=(), reference_groups=None,
+                      task_intervals=None, reference_task_intervals=None):
+    comparisons = (row for _ref, row in iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference_available,
+        selected_available=selected_available, deferred_refs=deferred_refs, reference_deferred_refs=reference_deferred_refs,
+        reference_groups=reference_groups, task_intervals=task_intervals, reference_task_intervals=reference_task_intervals))
+    return operation_change_metrics(comparisons, operation_refs, reference_available, selected_available=selected_available)
 
 
 def operation_comparisons(tasks, reference_tasks, operation_refs, reference_available, *, selected_available=True,

@@ -1,6 +1,7 @@
 """Saved identity, calendar versions and known/unknown day coverage contracts."""
 
 from copy import deepcopy
+from datetime import datetime
 
 import pytest
 
@@ -204,3 +205,44 @@ def test_real_run_table_archive_and_trial_dictionary_archive_never_read_live_cal
     assert current[resources[0]["ref"]]["available_hours"] == 0
     assert current[resources[1]["ref"]]["available_hours"] == 3
     assert all(row["source"]["metadata_basis"] == "current_transaction_snapshot" for row in current.values())
+
+
+def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(monkeypatch):
+    saved = archive()
+    tables = saved["tables"]
+    second_ref = "c" * 48
+    tables["WorkbenchEntityRefs"].append({"kind": "operator", "ref": second_ref, "entity_key": "O2", "active": 1})
+    tables["Operators"].append({"operator_id": "O2", "name": "乙", "status": "active"})
+    tables["WorkbenchOperatorProfiles"] = [{"operator_id": who, "shift_profile_id": "S"} for who in ("O1", "O2")]
+    tables["WorkbenchShiftProfiles"] = [{"profile_id": "S", "anchor_date": "2026-10-12", "cycle_days": 1, "status": "active"}]
+    tables["WorkbenchShiftPatternDays"] = [{"profile_id": "S", "day_offset": 0, "is_rest": 0,
+                                           "shift_start": "09:00", "shift_end": "17:00"}]
+    factory = ArchivedCalendar(saved)
+    engine = factory.engine
+    global_key = ("", "2026-10-12")
+    global_policy = engine._policy_for_date(global_key[1])
+    reads, pattern = [], engine.operator_shift_calendar.repo.pattern_day
+    monkeypatch.setattr(engine.operator_shift_calendar.repo, "pattern_day", lambda *args: (reads.append(args), pattern(*args))[1])
+    stream = factory.iter_resources([RESOURCES[1], {"kind": "operator", "ref": second_ref, "saved_id": "O2"}],
+                                    "2026-10-12T08:00:00", "2026-10-14T17:00:00")
+    _, first = next(stream)
+    assert first["state"] == "available" and "O1" in engine._policy_operator_keys
+    keys = tuple(engine._policy_operator_keys["O1"])
+    engine._sgs_policy_content_tokens.update(dict.fromkeys(keys, ()))
+    engine.working_hours_between(datetime.fromisoformat("2026-10-12T08:00:00"),
+                                 datetime.fromisoformat("2026-10-13T17:00:00"), operator_id="O1")
+    _, second = next(stream)
+    assert second["available_hours"] == first["available_hours"]
+    assert "O1" not in engine._policy_operator_keys and "O1" not in engine._segment_cache
+    assert "O1" not in engine.operator_shift_calendar._profiles
+    assert all(key[0] != "O1" for key in engine._policy_cache)
+    assert all(key[0] != "O1" for key in engine._sgs_policy_content_tokens)
+    assert all(key[0] != "O1" for key in engine._working_hours_prefix)
+    assert "O2" in engine._policy_operator_keys
+    assert engine._public_calendar_rows and len(reads) == 1
+    assert engine.operator_shift_calendar._patterns
+    assert list(stream) == []
+    assert engine._policy_operator_keys == {"": {global_key: None}}
+    assert engine._policy_cache == {global_key: global_policy}
+    engine.clear_policy_cache()
+    assert engine._policy_for_date("2026-10-12", "O1").shift_hours == pytest.approx(22 / 3)

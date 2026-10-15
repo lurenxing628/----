@@ -5,7 +5,20 @@ from typing import Any, Dict, Optional
 ROLE_ADOPTED = "adopted"
 ROLE_BASELINE_BEST = "baseline_best"
 ROLE_CRITICAL_BEST = "critical_best"
-VALID_PLAN_ROLES = (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
+ROLE_MIN_OVERDUE = "min_overdue"
+ROLE_MIN_TARDINESS = "min_tardiness"
+ROLE_MIN_CHANGEOVER = "min_changeover"
+ROLE_MIN_WEIGHTED_TARDINESS = "min_weighted_tardiness"
+VALID_PLAN_ROLES = (
+    ROLE_ADOPTED,
+    ROLE_BASELINE_BEST,
+    ROLE_CRITICAL_BEST,
+    ROLE_MIN_OVERDUE,
+    ROLE_MIN_TARDINESS,
+    ROLE_MIN_CHANGEOVER,
+    ROLE_MIN_WEIGHTED_TARDINESS,
+)
+PLAN_ROLE_ORDER = VALID_PLAN_ROLES
 
 SOURCE_SCHEDULE = "schedule"
 SOURCE_CANDIDATE_ROWS = "candidate_rows"
@@ -21,7 +34,17 @@ PLAN_ROLE_LABELS = {
     ROLE_ADOPTED: "正式采用方案",
     ROLE_BASELINE_BEST: "原算法代表方案",
     ROLE_CRITICAL_BEST: "重点工序优先代表方案",
+    ROLE_MIN_OVERDUE: "交期优先代表方案",
+    ROLE_MIN_TARDINESS: "拖期更轻代表方案",
+    ROLE_MIN_CHANGEOVER: "切换更少代表方案",
+    ROLE_MIN_WEIGHTED_TARDINESS: "加权拖期更轻代表方案",
 }
+
+
+def plan_role_order_sql(column: str = "role") -> str:
+    """Order fixed repository role columns by the same public role catalog."""
+    cases = " ".join("WHEN '" + role + "' THEN " + str(index) for index, role in enumerate(PLAN_ROLE_ORDER, 1))
+    return "CASE " + column + " " + cases + " ELSE 99 END"
 
 
 def _text(value: Any) -> str:
@@ -44,7 +67,8 @@ def is_comparison_source(source_table: Optional[str]) -> bool:
 
 
 def is_comparison_role(role: Optional[str]) -> bool:
-    return str(role or "").strip() in (ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)
+    normalized = str(role or "").strip()
+    return normalized in VALID_PLAN_ROLES and normalized != ROLE_ADOPTED
 
 
 def is_comparison_plan(
@@ -204,6 +228,8 @@ def project_plan_guard_fields(source: Dict[str, Any], overrides: Optional[Dict[s
 
 
 def plan_candidate_label(label: Optional[str], *, role: Optional[str] = None, candidate_key: Optional[str] = None) -> str:
+    if _normalize_role(role) in VALID_PLAN_ROLES[3:]:
+        return plan_role_label(role)
     text = str(label or "").strip()
     key = str(candidate_key or "").strip()
     if text and text != key:
@@ -228,9 +254,14 @@ def plan_candidate_label(label: Optional[str], *, role: Optional[str] = None, ca
 
 __all__ = [
     "PLAN_ROLE_LABELS",
+    "PLAN_ROLE_ORDER",
     "ROLE_ADOPTED",
     "ROLE_BASELINE_BEST",
     "ROLE_CRITICAL_BEST",
+    "ROLE_MIN_OVERDUE",
+    "ROLE_MIN_TARDINESS",
+    "ROLE_MIN_CHANGEOVER",
+    "ROLE_MIN_WEIGHTED_TARDINESS",
     "SOURCE_CANDIDATE_ROWS",
     "SOURCE_ADJUSTMENT_SCENARIO_ROWS",
     "SOURCE_SCHEDULE",
@@ -241,5 +272,6 @@ __all__ = [
     "plan_candidate_label",
     "project_plan_guard_fields",
     "plan_role_label",
+    "plan_role_order_sql",
     "truthy_contract_bool",
 ]

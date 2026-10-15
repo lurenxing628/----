@@ -317,7 +317,7 @@ async function contract(h, assert) {
   function dashboardTree(result, category, command = { busy: false, saved: null, storageError: null }, states = {}, detail = null) {
     let readIndex = 0;
     w.DashboardSession.useCommand = () => command;
-    w.DashboardSession.useRead = () => ({ result: ++readIndex === 1 ? result : readIndex === 2 ? detail : null, loading: false, error: null });
+    w.DashboardSession.useRead = () => ({ result: ++readIndex === 1 ? result : readIndex === 3 ? detail : null, loading: false, error: null });
     return h.render(w.WorkbenchDashboardWorkspace, { initialContext: { scope: { category }, tab: 'analysis', ...(detail ? { item_ref: detail.data.item.item_ref } : {}) } }, states);
   }
   const unavailable = dashboardFixture();

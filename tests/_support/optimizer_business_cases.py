@@ -229,12 +229,19 @@ def _oracle_report(case, payload):
 def run_case(scenario, objective):
     data = fixture_data(scenario)
     with case_environment(data, objective) as env:
-        outcome = run_candidate_comparison(schedule_input=env, run_time_budget_seconds=5.0, weight_count=3,
-                                           selection_policy="score_only", strict_mode=True)
-        baseline = next(plan for plan in outcome.candidates if plan.candidate_key == "baseline")
-        selected = outcome.selection.selected_plan
-        _audit_plan(baseline, env, data)
-        _audit_plan(selected, env, data)
-        before, after = _payload(baseline, env), _payload(selected, env)
-    return {"data": data, "outcome": outcome, "baseline": before, "selected": after,
-            "oracle": _oracle_report(data["tiny_case"], after) if "tiny_case" in data else None}
+        outcome = run_candidate_comparison(schedule_input=env, run_time_budget_seconds=5.0, strict_mode=True)
+        representatives = {}
+        for plan in outcome.candidates:
+            _audit_plan(plan, env, data)
+            representatives[plan.candidate_key] = _payload(plan, env)
+        selected = representatives[outcome.selection.selected_candidate_key]
+        winners = {target: representatives[key] for target, key in outcome.selection.objective_winners.items()}
+        oracles = ({key: _oracle_report(data["tiny_case"], payload) for key, payload in representatives.items()}
+                   if "tiny_case" in data else {})
+    process = outcome.unified_process
+    observations = [event for event in process["events"]
+                    if event["event_type"] == "archive_observation" and event["verified"] is True
+                    and process["scopes"][event["scope_ref"]]["is_complete"]]
+    return {"data": data, "outcome": outcome, "selected": selected, "winners": winners,
+            "representatives": representatives, "oracles": oracles, "observations": observations,
+            "oracle": oracles.get(outcome.selection.selected_candidate_key)}

@@ -53,7 +53,7 @@ assert.equal(M.finishDeviation(complete), '延后 20 分钟'); assert.equal(M.fi
 assert.equal(M.finishDeviation({ ...complete, deviation: { ...deviation, finish_deviation_minutes: 0, finish_late: false }, execution: { ...complete.execution, confirmed_finish: complete.task.end } }), '按计划完成');
 assert.equal(M.finishDeviation(unknown), '缺少确认完工时间，请核对现场完工记录'); assert.equal(M.finishDeviation(partial), null);
 assert(M.describe(complete, new Map()).includes('整道完工偏差：延后 20 分钟'));
-assert.deepEqual(JSON.parse(JSON.stringify(M.deadlines(partial, '2026-09-09T10:00:00'))), { finishLate: false, unclosed: true, forecastLate: true });
+assert.deepEqual(JSON.parse(JSON.stringify(M.deadlines(partial))), { finishLate: false, unclosed: true, forecastLate: true });
 assert.equal(M.metrics({ execution_summary: { scope: 'full_response_cohort', complete: 3, pending: 0, reported: 1, average_finish_deviation_minutes: 9.25, known_finish_count: 2 }, items: [complete, early, unknown, partial] }).average, 9.25);
 const boundary = { ...complete, deviation: { ...deviation, finish_deviation_minutes: 10, finish_late: false },
   execution: { ...complete.execution, confirmed_finish: '2026-09-09T09:10:00.060000' } };
@@ -66,6 +66,16 @@ const located = M.graphLocations({ rows: [
 ] }).get(complete.task.task_ref);
 assert.equal(located.start, M.instant(report.actual_start)); assert.equal(located.end, M.instant(report.actual_end));
 assert.equal(located.y, 333); assert.equal(located.reported, true);
+const equalEnd = { ...report, report_ref: 'same-end-second', actual_start: '2026-09-09T08:15:00' };
+const sameEndLocation = M.graphLocations({ rows: [
+  { kind: 'actual', top: 300, height: 88, item: complete, baseline: false, reports: [report, equalEnd] },
+  { kind: 'actual', top: 500, height: 88, item: complete, baseline: false, reports: [equalEnd] },
+  { kind: 'actual', top: 600, height: 88, item: complete, baseline: true, reports: [] }
+] }).get(complete.task.task_ref);
+assert.equal(sameEndLocation.start, M.instant(report.actual_start)); assert.equal(sameEndLocation.y, 333);
+assert.equal(sameEndLocation.reported, true, 'Equal latest ends keep the first report and prior row; an unreported baseline cannot replace it');
+const fallback = M.graphLocations({ rows: [{ kind: 'actual', top: 0, height: 88, item: complete, baseline: true, reports: [] }] }).get(complete.task.task_ref);
+assert.equal(fallback.start, M.instant(complete.task.start)); assert.equal(fallback.reported, false);
 const shortReport = { ...report, actual_start: '2026-10-12T08:00:00.000001', actual_end: '2026-10-12T08:00:00.000002' };
 const shortMark = M.marks({ kind: 'actual', item: complete, baseline: false, reports: [shortReport] })[0];
 assert.equal(shortMark.kind, 'actual'); assert(shortMark.end > shortMark.start, 'A positive microsecond report is not collapsed to a point');

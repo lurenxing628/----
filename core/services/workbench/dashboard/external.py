@@ -33,11 +33,12 @@ def summary(state, issues=None):
             "entry": {"view": "outsourcing", "target": "/api/workbench/v1/outsourcing/receipts", "enabled": connected}}
 
 
-def _receipts(reader, now, result):
+def _receipts(reader, now, result, facts, sources):
     snapshots, captured = [], {}
-    for ref in reader.refs():
-        latest = latest_fact(reader, ref)
-        captured[ref] = {"latest": latest}
+    for ref, rows in facts.items():
+        latest = latest_fact(rows["latest"])
+        header = rows["header"]
+        captured[ref] = {"latest": latest, "header": header}
         try:
             if latest["confirmed_state"] not in STATES:
                 raise WorkbenchCommandRejected("invalid_input", "外协确认状态无效。")
@@ -49,8 +50,7 @@ def _receipts(reader, now, result):
             result["evaluation_gaps"].append(gap(ref, "外协原登记", issues))
             snapshots.append({"latest": latest, "issues": issues})
             continue
-        header = reader.header(ref)
-        item, snapshot = reader.entry_from_facts(header, receipt_bounded(latest), now)
+        item, snapshot = reader.entry_from_facts(header, receipt_bounded(latest), now, sources=sources)
         captured[ref].update(header=header, receipt=item, snapshot=snapshot)
         snapshots.append({"source": snapshot, "receipt": item})
         if item["source_state"] != "current":
@@ -68,13 +68,11 @@ def _receipts(reader, now, result):
     return snapshots, captured
 
 
-def _targets(reader, result):
-    entries = reader.sources.load_targets()
+def _targets(reader, result, rows, sources):
+    entries = sources.load_target_rows(rows)
     targets = [item for item, source in entries]
     snapshots = []
     for item, source in entries:
-        if item["outsourcing_ref"] is not None:
-            continue  # Registered membership is evaluated once, at the receipt.
         result["unregistered_count"] += 1
         issues = item["issues"]
         snapshots.append({"target": item, "source": source, "issues": issues})
@@ -122,8 +120,13 @@ def load_external(conn, now):
         result = summary(state, [source_issue(exc.code, str(exc))])
         return result, {"schema": schema, "recorded": recorded, "summary": result}, {}
     result = summary("loaded")
-    receipts, captured = _receipts(reader, now, result)
-    targets = _targets(reader, result)
+    receipt_facts = reader.capture_receipts()
+    target_rows, entities = reader.sources.target_rows(unregistered_only=True)
+    source_targets = [rows["header"]["target"] for rows in receipt_facts.values()]
+    source_targets.extend(reader.sources.target_from_row(row) for row in target_rows)
+    sources = reader.sources.capture(source_targets, entities=entities)
+    receipts, captured = _receipts(reader, now, result, receipt_facts, sources)
+    targets = _targets(reader, result, target_rows, sources)
     gaps = bounded(result["evaluation_gaps"])
     result["unknown_count"] = len(gaps)
     result["source_gap_count"] = sum(item["code"] != "outsourcing_unregistered" for item in gaps)

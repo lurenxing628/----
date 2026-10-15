@@ -8,6 +8,7 @@ from core.errors import ValidationError
 
 from .candidate_payload import decoded_batch_order
 from .operation_neighbors import decoded_topological_order
+from .repair_decisions import decoded_resource_overrides
 
 
 @dataclass(frozen=True)
@@ -20,7 +21,8 @@ class _Parent:
 
 
 def _parent_from_candidate(candidate: Optional[Dict[str, Any]], *, operations: List[Any],
-                           graph_context: Dict[str, Any]) -> Optional[_Parent]:
+                           graph_context: Dict[str, Any],
+                           resource_pool: Optional[Dict[str, Any]] = None) -> Optional[_Parent]:
     if candidate is None or candidate["summary"].failed_ops or not candidate["summary"].success:
         return None
     mutable = {int(op.id) for op in operations}
@@ -36,7 +38,7 @@ def _parent_from_candidate(candidate: Optional[Dict[str, Any]], *, operations: L
     batch_order = tuple(batch for batch in decoded_batch_order(candidate["results"]) if batch in mutable_batches)
     if set(batch_order) != mutable_batches:
         return None
-    inherited = tuple(tuple(item) for item in candidate.get("repair_decision", {}).get("resource_overrides", ()))
+    inherited = decoded_resource_overrides(candidate, operations, resource_pool)
     return _Parent(decoded_topological_order(rows, predecessors), batch_order, inherited, predecessors, successors)
 
 

@@ -11,8 +11,10 @@ from typing import Any, Dict, List, Sequence
 from .base_repo import BaseRepository
 from .schedule_time_sql import overlap_or_bad_time_sql, register_schedule_time_sql_functions
 
+DOWNTIME_STATUS_SQL = "(md.status='active' OR md.status IS NULL OR md.status NOT IN ('active','cancelled'))"
+
 _DOWNTIMES_SQL = ("SELECT machine_id,start_time,end_time,status FROM MachineDowntimes md "
-                  "WHERE machine_id IN ({marks}) AND (status='active' OR status IS NULL OR status NOT IN ('active','cancelled')) "
+                  "WHERE machine_id IN ({marks}) AND " + DOWNTIME_STATUS_SQL + " "
                   "AND " + overlap_or_bad_time_sql("md") + " ORDER BY machine_id,start_time,end_time")
 
 

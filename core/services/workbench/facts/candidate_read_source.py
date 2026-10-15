@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Optional
 
+from core.models.workbench_run_candidate import reference
+
 from .candidate_effort import candidate_operation_effort_projection
 from .candidate_facts import GenerationFacts
 from .candidate_projection import dispositions, validate_manifest
@@ -48,16 +50,55 @@ def candidate_manifest(store, run_ref):
     return run, rows, dispositions(receipt), receipt
 
 
-def read_candidate_source(store, candidate_ref):
-    """Load and verify once for projections owned by this read snapshot."""
-    run_ref = store.candidate_run(candidate_ref)
-    run, rows, disposition, receipt = candidate_manifest(store, run_ref)
-    candidate = next(row for row in rows if row["candidate_ref"] == candidate_ref)
-    capture = store.capture(run_ref)
-    facts = GenerationFacts(capture)
-    raw_tasks = store.tasks(candidate_ref)
-    if len(raw_tasks) != candidate["task_count"]:
-        corrupt()
-    tasks = tasks_projection(raw_tasks, candidate, facts)
-    return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks,
-                               tasks, unplanned_projection(disposition, tasks, facts), rows, receipt=receipt)
+def read_candidate_source(store, candidate_ref, *, prepared=None):
+    """Reuse the caller's verified packet, or load an independent source once.
+
+    A prepared packet belongs to this caller's current SQLite snapshot. Its
+    run/catalog/receipt have already passed the common manifest check; raw and
+    projected tasks may also be handed over together after validation.
+    """
+    reference(candidate_ref)
+    if prepared is None:
+        run_ref = store.candidate_run(candidate_ref)
+        run, rows, disposition, receipt = candidate_manifest(store, run_ref)
+        candidate = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
+        if candidate is None:
+            corrupt()
+        capture = store.capture(run_ref)
+        facts = GenerationFacts(capture)
+        raw_tasks = store.tasks(candidate_ref)
+        tasks = None
+    else:
+        run, rows, receipt = prepared["run"], prepared["rows"], prepared["receipt"]
+        run_ref = reference(run.get("run_ref"), stored=True)
+        candidate = prepared.get("candidate")
+        if candidate is None:
+            candidate = store.candidate(candidate_ref)
+        if candidate is None or candidate.get("candidate_ref") != candidate_ref or candidate.get("run_ref") != run_ref:
+            corrupt()
+        saved = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
+        if (saved is None or saved.get("run_ref", run_ref) != run_ref or
+                any(saved.get(key) != candidate.get(key) for key in ("status", "task_count", "sequence"))):
+            corrupt()
+        capture = prepared.get("capture")
+        if capture is None:
+            capture = store.capture(run_ref)
+        facts = prepared.get("facts")
+        if facts is None:
+            facts = GenerationFacts(capture)
+        disposition = prepared["disposition"] if "disposition" in prepared else dispositions(receipt)
+        raw_tasks = prepared.get("raw_tasks")
+        tasks = prepared.get("tasks")
+        if raw_tasks is None:
+            if tasks is not None:
+                corrupt()
+            raw_tasks = store.tasks(candidate_ref)
+    if tasks is None:
+        if len(raw_tasks) != candidate["task_count"]:
+            corrupt()
+        tasks = tasks_projection(raw_tasks, candidate, facts)
+    if prepared is not None and "unplanned" in prepared:
+        unplanned = prepared["unplanned"]
+    else:
+        unplanned = unplanned_projection(disposition, tasks, facts)
+    return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks, tasks, unplanned, rows, receipt=receipt)

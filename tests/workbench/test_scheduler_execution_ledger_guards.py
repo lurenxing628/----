@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.errors import AppError
+from core.infrastructure.migrations import v42
 from core.infrastructure.transaction import TransactionManager
 from core.services.personnel.operator_machine_service import OperatorMachineService
 from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
@@ -37,7 +38,6 @@ def test_old_run_cannot_skip_partial_or_started_new_reports(tmp_path, simulate, 
     conn = raw_connection(tmp_path)
     try:
         _seed_two_operation_plan(conn)
-        conn.execute("UPDATE BatchOperations SET piece_id=NULL WHERE batch_id='B1'")
         case = install_case(conn)
         case.command("create", case.task(1, 10), payload)
         before = formal_rows(conn)
@@ -55,8 +55,9 @@ def test_complete_report_is_fixed_seed_in_real_run(tmp_path):
     try:
         _seed_two_operation_plan(conn)
         case = install_case(conn)
-        case.command("create", case.task(1, 10), case.values(1, actual_start="2026-05-01T08:20:00",
+        case.command("create", case.task(1, 10), case.values(10, actual_start="2026-05-01T08:20:00",
             actual_end="2026-05-01T08:50:00", effective_processing_hours=0.5))
+        v42.run(conn)
         old = formal_rows(conn)
         result = ScheduleService(conn).run_schedule(["B1"], start_dt="2026-05-01 08:00:00", created_by="pytest")
         row = conn.execute("SELECT * FROM Schedule WHERE version=? AND op_id=10", (result["version"],)).fetchone()

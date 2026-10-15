@@ -11,8 +11,6 @@ from core.infrastructure.safe_files import (
     create_fixed_file_exclusive,
     guard_fixed_file_replace_target,
     open_fixed_file_for_read_binary,
-    read_fixed_json,
-    stat_regular_file,
 )
 from core.models.content import content_text, same
 from core.models.workbench_command import (
@@ -58,15 +56,22 @@ class SystemMaintenanceJournal:
                 self._database_scope = self._path_scope
         return self._database_scope
 
+    def scope_from_records(self, records):
+        """Project the identity from this operation's already validated capture."""
+        return records[0]["database_scope"] if records else self._path_scope
+
     def _path(self, job_ref):
         if not isinstance(job_ref, str) or re.fullmatch(r"[a-f0-9]{32}", job_ref) is None:
             raise RuntimeError("维护操作编号不完整，须人工核查。")
         return os.path.join(self.directory, job_ref + ".json")
 
     def _read(self, path):
-        if stat_regular_file(path).st_size > 256 * 1024:
+        limit = 256 * 1024
+        with open_fixed_file_for_read_binary(path) as stream:
+            content = stream.read(limit + 1)
+        if len(content) > limit:
             raise RuntimeError("维护记录超过允许大小，须人工核查。")
-        row = self._record_content(read_fixed_json(path))
+        row = self._record_content(json.loads(content.decode("utf-8")))
         name = os.path.basename(path)
         if (row["version"] == 2 and os.path.abspath(path) != os.path.abspath(self._path(row["job_ref"]))
                 or row["version"] == 1 and re.fullmatch(r"[a-f0-9]{64}\.json", name) is None):
@@ -135,9 +140,12 @@ class SystemMaintenanceJournal:
     def admission(self, request_key):
         """Capture readiness before guards; the caller owns the maintenance window."""
         try:
-            previous = self.lookup(request_key)
+            records = self.records()
+            key = validate_request_key(request_key)
+            self._database_scope = self.scope_from_records(records)
+            previous = next((row for row in records if row["request_key"] == key), None)
             if previous is None:
-                self.assert_ready()
+                self.assert_ready(records)
         except WorkbenchCommandRejected:
             raise
         except Exception as exc:

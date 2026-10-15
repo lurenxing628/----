@@ -79,8 +79,10 @@ def graph_ready_weight_profile_summary(max_weight_profiles: int = 9) -> Dict[str
     }
 
 
-def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: int = 0, objective_name: str = "min_overdue") -> Dict[str, Any]:
-    profiles, truncated, reason = graph_ready_v2_profiles(max_candidate_profiles=max_candidate_profiles, seed=seed, objective_name=objective_name)
+def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: int = 0, objective_name: str = "min_overdue",
+                                   shared_search: bool = False) -> Dict[str, Any]:
+    profiles, truncated, reason = graph_ready_v2_profiles(max_candidate_profiles=max_candidate_profiles, seed=seed,
+                                                       objective_name=objective_name, shared_search=shared_search)
     return {
         "schema_version": 1,
         "phase": GRAPH_READY_PHASE,
@@ -93,7 +95,8 @@ def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: in
         "weight_profile_slugs": [profile.slug for profile in profiles],
         "formula_versions": sorted({profile.formula_version for profile in profiles}),
         "normalization_version": "rank_percentile_v1",
-        "ordering_policy": "baseline_micro_edd_then_feature_round_robin",
+        "ordering_policy": ("objective_successor_then_existing_portfolio" if shared_search
+                            else "baseline_micro_edd_then_feature_round_robin"),
         "feature_bases": sorted({profile.feature_basis for profile in profiles if profile.formula_version.startswith("graph_ready_v2")}),
         "truncated": bool(truncated),
         "truncation_reason": reason,
@@ -108,9 +111,12 @@ def default_weight_profiles(*, max_weight_profiles: int) -> Tuple[List[GraphRead
     return profiles, truncated, ("max_weight_profiles" if truncated else None)
 
 
-def graph_ready_v2_profiles(*, max_candidate_profiles: int, seed: int = 0, objective_name: str = "min_overdue") -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
+def graph_ready_v2_profiles(*, max_candidate_profiles: int, seed: int = 0, objective_name: str = "min_overdue",
+                           shared_search: bool = False) -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
     limit = _positive_limit(max_candidate_profiles)
     specs = _graph_ready_v2_profile_specs(seed=seed, objective_name=objective_name)
+    if shared_search:
+        specs = _shared_profile_specs(specs, objective_name=objective_name)
     profiles = [_build_profile(index, raw) for index, raw in enumerate(specs[:limit])]
     truncated = len(specs) > len(profiles)
     return profiles, truncated, ("max_candidate_profiles" if truncated else None)
@@ -203,6 +209,19 @@ def _graph_ready_v2_profile_specs(*, seed: int = 0, objective_name: str = "min_o
     for group in zip_longest(successor, v1[1:], baseline[2:]):
         portfolio.extend(item for item in group if item is not None)
     return tuple(dict(item, objective_name=objective_name) for item in portfolio)
+
+
+def _shared_profile_specs(specs: Tuple[Dict[str, Any], ...], *, objective_name: str) -> Tuple[Dict[str, Any], ...]:
+    preferred = {
+        "min_overdue": ("edd", "min_slack"),
+        "min_tardiness": ("spt", "min_slack"),
+        "min_weighted_tardiness": ("weighted_spt", "weighted_atc"),
+        "min_changeover": ("type_group", "type_group_reverse"),
+    }[normalize_objective_name(objective_name)]
+    leading = tuple(item for formula in preferred for item in specs
+                    if item.get("feature_basis") == SUCCESSOR_WORKLOAD_BASIS and item.get("formula_slug") == formula)
+    leading_slugs = {item["slug"] for item in leading}
+    return leading + tuple(item for item in specs if item["slug"] not in leading_slugs)
 
 
 def _v2_ordering_specs(seed: int) -> Tuple[Dict[str, Any], ...]:

@@ -56,12 +56,12 @@ class OperatorQualificationService:
         self.authorizations = OperatorMachineRepository(conn, logger=logger)
 
     def load(self, operator_ids: Sequence[str]) -> Dict[str, Optional[Set[str]]]:
-        ids = {_identifier(value) for value in operator_ids}
+        ids = sorted({_identifier(value) for value in operator_ids})
         try:
-            profiles, skills = self.repo.read_skill_facts(sorted(ids))
+            profiles, skills = self.repo.read_skill_facts(ids)
         except AppError as exc:
             raise _invalid_facts("人员技能或登记资料无法读取，请检查数据库；本次不会退回旧授权名单排产。") from exc
-        return self.project_facts(sorted(ids), profiles, skills)
+        return self.project_facts(ids, profiles, skills)
 
     @staticmethod
     def project_facts(operator_ids: Sequence[str], profiles: List[Dict[str, Any]],

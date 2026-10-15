@@ -68,6 +68,15 @@ def run_candidate_workspace(candidate_ref):
 
 
 @api_endpoint
+def run_candidate_identity(candidate_ref):
+    _arguments(("snapshot_ref",))
+    data, state = WorkbenchRunCandidateQueryService(g.db).identity(candidate_ref)
+    snapshot = bind_read_snapshot({"kind": "run-candidate-identity", "candidate_ref": candidate_ref},
+                                  state, request.args.get("snapshot_ref"))
+    return _response(data, snapshot)
+
+
+@api_endpoint
 def run_candidate_export(candidate_ref):
     _arguments(_WORKSPACE_ARGS + ("format",))
     fmt, token = request.args.get("format"), request.args.get("snapshot_ref")
@@ -112,6 +121,7 @@ def register_run_candidate_routes(bp):
     base = "/api/workbench/v1/scheduling/candidates/<candidate_ref>"
     bp.add_url_rule(base, endpoint="run_candidate_detail", view_func=run_candidate_workspace, methods=["GET"])
     bp.add_url_rule(base + "/workspace", view_func=run_candidate_workspace, methods=["GET"])
+    bp.add_url_rule(base + "/identity", view_func=run_candidate_identity, methods=["GET"])
     bp.add_url_rule(base + "/export", view_func=run_candidate_export, methods=["GET"])
     bp.add_url_rule(base + "/analysis", view_func=run_candidate_analysis, methods=["GET"])
     bp.add_url_rule(base + "/adoptions", view_func=run_candidate_adoptions, methods=["GET"])

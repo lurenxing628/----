@@ -1,7 +1,8 @@
 'use strict';
-const assert = require('node:assert/strict'), path = require('node:path'), { spawnSync } = require('node:child_process');
+const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), { spawnSync } = require('node:child_process');
+const { compile } = require('../../scripts/workbench/compile.cjs');
 
-// Run the delivered bundle, with HTTP and storage fixtures instead of a browser/server.
+// Run the delivered bundle, or the changed source with --source, using real HTTP/storage adapters.
 async function contract(h, assert) {
   const w = h.runtime, C = w.PreflightContract;
   const batch = h.reference(1), other = h.reference(2), inputRef = 'i'.repeat(32), writeToken = 'w'.repeat(32);
@@ -30,7 +31,7 @@ async function contract(h, assert) {
   w.crypto = { getRandomValues: bytes => { bytes.fill(7); return bytes; } };
   w.fetch = async (url, options) => {
     const request = { path: new URL(url, w.location.href).pathname, method: options.method || 'GET',
-      body: options.body ? JSON.parse(options.body) : null };
+      body: options.body ? JSON.parse(options.body) : null, signal: options.signal };
     requests.push(request); return response(await route(request), request.path.endsWith('/runs') && request.method === 'POST' ? 202 : 200);
   };
   const api = w.PreflightAPI.create();
@@ -81,14 +82,14 @@ async function contract(h, assert) {
     let cursor = 0; const slots = [], effects = [];
     const same = (a, b) => a && b && a.length === b.length && a.every((value, i) => value === b[i]);
     const memo = (fn, deps) => { const i = cursor++; if (!slots[i] || !same(slots[i].deps, deps)) slots[i] = { deps, value: fn() }; return slots[i].value; };
-    w.React.useState = initial => { const i = cursor++; if (!slots[i]) slots[i] = { value: typeof initial === 'function' ? initial() : initial };
+    const useState = initial => { const i = cursor++; if (!slots[i]) slots[i] = { value: typeof initial === 'function' ? initial() : initial };
       return [slots[i].value, value => { slots[i].value = typeof value === 'function' ? value(slots[i].value) : value; }]; };
-    w.React.useRef = value => { const i = cursor++; if (!slots[i]) slots[i] = { current: value }; return slots[i]; };
-    w.React.useMemo = memo; w.React.useCallback = (fn, deps) => memo(() => fn, deps);
-    w.React.useReducer = (fn, initial) => { const [value, set] = w.React.useState(initial); return [value, action => set(old => fn(old, action))]; };
-    w.React.useEffect = (fn, deps) => { const i = cursor++, old = slots[i]; if (!old || !same(old.deps, deps)) {
+    const useRef = value => { const i = cursor++; if (!slots[i]) slots[i] = { current: value }; return slots[i]; };
+    const useEffect = (fn, deps) => { const i = cursor++, old = slots[i]; if (!old || !same(old.deps, deps)) {
       slots[i] = { deps, cleanup: old && old.cleanup }; effects.push(() => { if (slots[i].cleanup) slots[i].cleanup(); slots[i].cleanup = fn(); }); } };
-    return { render(component, props) { cursor = 0; return component(props); },
+    const fixture = { useState, useRef, useMemo: memo, useCallback: (fn, deps) => memo(() => fn, deps), useEffect,
+      useReducer: (fn, initial) => { const [value, set] = useState(initial); return [value, action => set(old => fn(old, action))]; } };
+    return { render(component, props) { cursor = 0; Object.assign(w.React, fixture); return component(props); },
       flush() { while (effects.length) effects.shift()(); },
       unmount() { slots.forEach(slot => { if (slot.cleanup) slot.cleanup(); }); } };
   }
@@ -155,6 +156,150 @@ async function contract(h, assert) {
   assert.strictEqual(acceptedRecord.run.run_ref, runRef); assert.strictEqual(acceptedRecord.intent.run_ref, runRef);
   assert.strictEqual(acceptedRecord.verified, true, 'The 202 receipt must be confirmed and attached to its saved intent');
   panel.unmount();
+
+  const options = seconds => ({ generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue',
+    target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'], time_budget_seconds: seconds, algo_mode: 'improve', graph_analysis_mode: 'off' });
+  let checkNumber = 0;
+  function budgetChecked(value, seconds = value.time_budget_seconds === undefined ? 17 : value.time_budget_seconds) {
+    const result = checked(C.input({ ...value, time_budget_seconds: seconds }));
+    result.data.input_ref = String(++checkNumber).padStart(32, '0'); result.data.run_options = options(seconds);
+    return result;
+  }
+  const previewFor = result => envelope({ input_ref: result.data.input_ref, normalized_input: result.data.normalized_input,
+    run_options: result.data.run_options, data_context_ref: dataContext, calendar_check: 'not_evaluated', warnings: [],
+    write_context: { write_token: result.data.input_ref.replace(/^0/, 'p'), expires_at: '2026-10-11T09:00:00', capabilities: { 'scheduling.run': true }, blocked_reasons: [] } });
+  const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+  const modern = budgetChecked(input);
+  C.result(modern, input);
+  h.equal(C.input({ ...input, time_budget_seconds: 1000000 }).time_budget_seconds, 1000000);
+  for (const invalid of [true, 0, -1, 1.5, '10']) assert.throws(() => C.input({ ...input, time_budget_seconds: invalid }), /请核对/);
+  const mismatch = h.clone(modern); mismatch.data.run_options.time_budget_seconds = 30;
+  assert.throws(() => C.result(mismatch, input), /排产检查结果/);
+  const configBlocked = h.clone(modern); configBlocked.data.run_options = null;
+  configBlocked.data.blockers = [{ code: 'config_error', message: '配置读取失败。' }];
+  C.result(configBlocked, modern.data.normalized_input);
+  const blockedPreview = previewFor(configBlocked);
+  blockedPreview.data.write_context = { write_token: null, expires_at: null, capabilities: { 'scheduling.run': false }, blocked_reasons: configBlocked.data.blockers };
+  w.RunJobAPI.preview(blockedPreview, configBlocked.data.input_ref);
+  assert.throws(() => C.result({ ...configBlocked, data: { ...configBlocked.data, blockers: [] } }, modern.data.normalized_input), /排产检查结果/);
+  assert.throws(() => w.RunJobAPI.preview(previewFor(configBlocked), configBlocked.data.input_ref), /排产数据/, '成功preview必须有实际run_options');
+  const usedIntent = { input_ref: modern.data.input_ref, request_key: 'run-' + 'a'.repeat(48), run_ref: null };
+  const used = w.RunJobAPI.create(async () => ({ ok: false, status: 409, headers: { get: () => 'application/json' }, json: async () => ({
+    ok: false, committed: false, error: { code: 'input_already_used', message: '这份排产检查已受理过。', fields: [], retryable: false, request_ref: 'a'.repeat(32) }
+  }) }));
+  await assert.rejects(() => used.accept(usedIntent, writeToken), error => error.code === 'input_already_used' && w.RunJobAPI.isRejected(error), '已消费检查的新请求是确定拒绝，沿已有Panel清理pending路径');
+  assert.equal(w.RunPresentation.stage({ ...admitted, stage: 'computing', scope_summary: { ...jobScope, run_options: options(17) } }), '正在共同优化方案');
+  assert.equal(w.RunPresentation.stage({ ...admitted, stage: 'computing' }), '正在计算', 'Old saved progress keeps its original presentation');
+
+  // The actual SchedulingWorkspace callback connects the persistent parent and panel hook frames.
+  async function confirmationFlow({ preflightWait, previewWait } = {}) {
+    store.clear(); requests.length = 0;
+    const checks = new Map(), rootFrame = hooks(), parentFrame = hooks(), childFrame = hooks();
+    let parentTree, childTree;
+    route = request => {
+      if (request.path.endsWith('/preferences')) return preferences(input);
+      if (request.path.endsWith('/preflight')) {
+        const result = budgetChecked(request.body); checks.set(result.data.input_ref, result);
+        if (preflightWait && request.body.time_budget_seconds === preflightWait.seconds) { preflightWait.result = result; return preflightWait.promise; }
+        return result;
+      }
+      if (request.path.endsWith('/runs/preview')) {
+        const result = checks.get(request.body.input_ref), value = previewFor(result);
+        if (previewWait && result.data.run_options.time_budget_seconds === previewWait.seconds) { previewWait.result = value; return previewWait.promise; }
+        return value;
+      }
+      assert.equal(request.path, '/api/workbench/v1/scheduling/runs');
+      const result = checks.get(request.body.input_ref), run = { ...admitted, scope_summary: { ...jobScope, run_options: result.data.run_options } };
+      return { ok: true, result: 'accepted', job_ref: runRef, run_ref: runRef, status_target: '/api/workbench/v1/scheduling/runs/' + runRef,
+        receipt_ref: 'a'.repeat(32), replayed: false, data: run, data_context_ref: dataContext };
+    };
+    function render() {
+      const rootTree = rootFrame.render(w.RunWorkspace, { onNavigate() {} }); rootFrame.flush();
+      const parent = nodes(rootTree).find(node => node.type === w.PreflightWorkspace);
+      parentTree = parentFrame.render(w.PreflightWorkspace, parent.props); parentFrame.flush();
+      const child = nodes(parentTree).find(node => node.type === w.RunJobPanel);
+      childTree = childFrame.render(w.RunJobPanel, child.props); childFrame.flush();
+    }
+    async function settle() { for (let i = 0; i < 3; i++) { render(); await turns(); } render(); }
+    await settle();
+    return { settle, render, confirmation: () => nodes(childTree).find(node => node.type === w.RunJobControls.Confirmation),
+      parent: () => parentTree, child: () => childTree, stop() { childFrame.unmount(); parentFrame.unmount(); rootFrame.unmount(); } };
+  }
+  const firstBudget = { seconds: 30, ...deferred() }, flow = await confirmationFlow({ preflightWait: firstBudget });
+  let dialog = flow.confirmation();
+  assert(dialog); assert.equal(dialog.props.timeBudget, 17, 'The saved effective budget supplies the custom initial value');
+  assert.deepEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/preferences', '/api/workbench/v1/scheduling/preflight', '/api/workbench/v1/scheduling/runs/preview']);
+  const staleConfirm = dialog.props.onConfirm;
+  const obsoleteBudget = dialog.props.onBudgetChange(30); await flow.settle();
+  dialog = flow.confirmation();
+  assert(dialog && dialog.props.preview === null && dialog.props.busy, 'The parent clearing data preserves the same modal and retires its old preview');
+  await staleConfirm(); assert(!requests.some(row => row.path.endsWith('/runs')), 'A saved old confirm callback cannot submit its retired credential');
+  const budgetRead = requests.at(-1); assert.equal(budgetRead.body.time_budget_seconds, 30);
+  await dialog.props.onBudgetChange(10); await flow.settle();
+  dialog = flow.confirmation();
+  assert(dialog && dialog.props.preview); assert.equal(dialog.props.preview.run_options.time_budget_seconds, 10);
+  assert(budgetRead.signal.aborted, 'The newer budget cancels the parent request belonging to the old choice');
+  const newest = dialog.props.preview;
+  firstBudget.resolve(firstBudget.result); await obsoleteBudget; await flow.settle();
+  assert.equal(flow.confirmation().props.preview.input_ref, newest.input_ref, 'A late preflight cannot replace the current confirmation');
+  assert.equal(requests.filter(row => row.path.endsWith('/runs/preview')).length, 2, 'Only the initial and latest valid check obtain a preview');
+  assert.equal(requests.filter(row => row.path.endsWith('/preferences')).length, 1, 'Budget changes neither save nor reread preferences');
+  assert.equal(store.size, 0, 'Budget checks and previews create no durable pending intent');
+  h.equal(requests.filter(row => row.path.endsWith('/preflight')).at(-1).body, { ...input, time_budget_seconds: 10 });
+  await flow.confirmation().props.onConfirm();
+  const latestAccept = requests.at(-1);
+  assert.equal(latestAccept.path, '/api/workbench/v1/scheduling/runs');
+  assert.equal(latestAccept.body.input_ref, newest.input_ref); assert.equal(latestAccept.body.write_token, newest.write_context.write_token);
+  assert(/^run-[0-9a-f]{48}$/.test(latestAccept.body.request_key)); assert(store.has(w.RunJobAPI.PENDING_KEY)); flow.stop();
+
+  const closingBudget = { seconds: 30, ...deferred() }, closing = await confirmationFlow({ preflightWait: closingBudget });
+  const closedRead = closing.confirmation().props.onBudgetChange(30); await closing.settle();
+  closing.confirmation().props.onClose(); await closing.settle();
+  assert(!closing.confirmation()); assert(requests.at(-1).signal.aborted);
+  assert(!text(closing.parent()).includes('正在读取批次'), 'Closing immediately releases the parent reading state');
+  closingBudget.resolve(closingBudget.result); await closedRead; await closing.settle();
+  assert(!closing.confirmation()); assert.equal(requests.filter(row => row.path.endsWith('/runs/preview')).length, 1);
+  assert.equal(store.size, 0); closing.stop();
+
+  const latePreview = { seconds: 30, ...deferred() }, closedPreview = await confirmationFlow({ previewWait: latePreview });
+  const previewRead = closedPreview.confirmation().props.onBudgetChange(30); await closedPreview.settle();
+  assert(closedPreview.confirmation().props.preview === null);
+  closedPreview.confirmation().props.onClose(); await closedPreview.settle();
+  latePreview.resolve(latePreview.result); await previewRead; await closedPreview.settle();
+  assert(!closedPreview.confirmation(), 'A finished parent check and late preview cannot reopen the closed session');
+  assert.equal(store.size, 0); closedPreview.stop();
+
+  const unmountBudget = { seconds: 30, ...deferred() }, unmounted = await confirmationFlow({ preflightWait: unmountBudget });
+  const unmountedRead = unmounted.confirmation().props.onBudgetChange(30); await unmounted.settle(); unmounted.stop();
+  unmountBudget.resolve(unmountBudget.result); await unmountedRead; await turns();
+  assert.equal(requests.filter(row => row.path.endsWith('/runs/preview')).length, 1, 'Unmount prevents continuation from starting a preview');
+  assert.equal(store.size, 0);
+
+  // Custom input commits only on blur/Enter, and the real modal permits closing during reads.
+  const controlFrame = hooks(), controlProps = { preflight: modern.data, preview: previewFor(modern).data, timeBudget: 17,
+    effective: modern.data.effective_config, busy: true, onBudgetChange() {}, onConfirm() {}, onClose() {} };
+  let controlTree = controlFrame.render(w.RunJobControls.Confirmation, controlProps); controlFrame.flush();
+  assert.equal(controlTree.props.locked, false);
+  const footer = nodes(controlTree.props.footer);
+  assert.equal(footer.find(node => text(node) === '取消').props.disabled, false);
+  const budgetNode = nodes(controlTree).find(node => typeof node.type === 'function' && node.type.name === 'Budget');
+  const budgetFrame = hooks(), customCalls = [], budgetProps = { ...budgetNode.props, onChange: value => customCalls.push(value) };
+  let budgetTree = budgetFrame.render(budgetNode.type, budgetProps); budgetFrame.flush();
+  assert.equal(nodes(budgetTree).find(node => node.type === 'select').props.value, 'custom');
+  for (const value of ['2', '27']) {
+    nodes(budgetTree).find(node => node.type === 'input').props.onChange({ target: { value } });
+    budgetTree = budgetFrame.render(budgetNode.type, budgetProps); budgetFrame.flush();
+  }
+  assert.deepEqual(customCalls, []);
+  nodes(budgetTree).find(node => node.type === 'input').props.onBlur(); assert.deepEqual(customCalls, [27]);
+  nodes(budgetTree).find(node => node.type === 'input').props.onChange({ target: { value: '0' } });
+  budgetTree = budgetFrame.render(budgetNode.type, budgetProps);
+  nodes(budgetTree).find(node => node.type === 'input').props.onBlur(); assert.deepEqual(customCalls, [27]);
+  budgetTree = budgetFrame.render(budgetNode.type, budgetProps); assert(text(budgetTree).includes('至少 1 秒的整数'));
+  nodes(budgetTree).find(node => node.type === 'input').props.onChange({ target: { value: '1000000' } });
+  budgetTree = budgetFrame.render(budgetNode.type, budgetProps);
+  nodes(budgetTree).find(node => node.type === 'input').props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  assert.deepEqual(customCalls, [27, 1000000]); budgetFrame.unmount(); controlFrame.unmount();
 
   // Drive the actual polling effect with a virtual clock: no 32-second wall-clock sleep.
   const NativeDate = w.Date;
@@ -230,11 +375,27 @@ async function contract(h, assert) {
   assert.strictEqual(recovery.record().retryPaused, false, 'A found recovery record must not be treated as an unresolved receipt');
   assert.strictEqual(recovery.record().run.recovery_required, true); assert.strictEqual(recovery.posts.length, 0); recovery.stop();
   return { preferences: 'read/write contracts', workspace: 'restore and save-before-check', run: 'preview-before-confirmed-accept',
-    poll: { backend_finished_ms: 32000, ui_found_ms: detectedAt, unresolved: '2/4/8/16/30 seconds then paused', visibility: 'suspend/resume' }, bundle: 'static/workbench/app/main.js' };
+    budget: 'effective initial value, preflight→preview, latest owner, close/unmount isolation, completed custom input and unchanged durable protocol',
+    poll: { backend_finished_ms: 32000, ui_found_ms: detectedAt, unresolved: '2/4/8/16/30 seconds then paused', visibility: 'suspend/resume' }, runtime: h.mode || 'delivered-bundle' };
 }
 const root = path.join(__dirname, '../..');
-const result = spawnSync(process.execPath, [path.join(root, 'tests/_support/gantt_current_runtime.cjs')], {
-  cwd: root, encoding: 'utf8', timeout: 30000, input: JSON.stringify({ root, program: `return (${contract.toString()})(h, assert);` })
-});
-assert.strictEqual(result.status, 0, result.stdout + result.stderr);
-console.log(result.stdout);
+if (process.argv.includes('--source')) {
+  const document = { body: { style: {} }, documentElement: { setAttribute() {} }, addEventListener() {}, removeEventListener() {},
+    getElementById: id => id === 'workbench-boot' ? { textContent: '{}' } : { setAttribute() {}, replaceChildren() {} }, createElement: () => ({ setAttribute() {} }) };
+  const runtime = vm.createContext({ console, document, URL, URLSearchParams, Map, Set, Date, setTimeout, clearTimeout, setInterval, clearInterval, AbortController, FormData, innerWidth: 1280, innerHeight: 800 });
+  Object.assign(runtime, { window: runtime, self: runtime, addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, location: { href: 'http://localhost/workbench' },
+    CustomEvent: class { constructor(type, value) { this.type = type; this.detail = value.detail; } } });
+  for (const file of ['static/workbench/vendor/react-18.3.1.production.min.js', 'static/workbench/app/main.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), runtime, { filename: file });
+  const files = ['RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
+  for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+    sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs) vm.runInContext(output.code, runtime, { filename: output.path });
+  const h = { runtime, mode: 'current-source', reference: number => number.toString(16).padStart(48, '0'), clone: value => JSON.parse(JSON.stringify(value)),
+    equal: (left, right) => assert.equal(JSON.stringify(left), JSON.stringify(right)) };
+  contract(h, assert).then(result => console.log(JSON.stringify({ mode: 'current-source', result })), error => { console.error(error.stack); process.exitCode = 1; });
+} else {
+  const result = spawnSync(process.execPath, [path.join(root, 'tests/_support/gantt_current_runtime.cjs')], {
+    cwd: root, encoding: 'utf8', timeout: 30000, input: JSON.stringify({ root, program: `return (${contract.toString()})(h, assert);` })
+  });
+  assert.strictEqual(result.status, 0, result.stdout + result.stderr);
+  console.log(result.stdout);
+}

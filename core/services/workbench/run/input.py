@@ -43,14 +43,15 @@ class CandidateRunInput(ScheduleRunInput):
     facts_fingerprint: str = ""
 
 
-def _projection_map(execution_projections, selected_refs):
+def _projection_map(execution_projections, selected_refs, *, validated=None):
     if not isinstance(execution_projections, (list, tuple)):
         fail("execution_projection_type", "Supply AJ ExecutionProjection objects, not a reconstructed dictionary.")
     result = {}
     for projection in execution_projections:
         if not isinstance(projection, ExecutionProjection):
             fail("execution_projection_type", "Every execution item must be an AJ ExecutionProjection.")
-        validate_projection_dto(projection)
+        if validated is None or validated.get(projection.operation_ref) is not projection:
+            validate_projection_dto(projection)
         if projection.operation_ref in result:
             fail("execution_projection_duplicate", "同一道工序读到了多份报工记录，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
         result[projection.operation_ref] = projection
@@ -60,7 +61,8 @@ def _projection_map(execution_projections, selected_refs):
 
 
 def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
-                                execution_projections: Sequence[ExecutionProjection], *, capture_fingerprint=True) -> CandidateRunInput:
+                                execution_projections: Sequence[ExecutionProjection], *, capture_fingerprint=True,
+                                facts=None, config_snapshot=None, baseline=None, validated_projections=None) -> CandidateRunInput:
     """Read-only. Caller supplies AJ selected + all last-official execution scope.
 
     The worker owns the existing run lock and its admission/final revalidation.
@@ -70,28 +72,45 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
     if not settings["batch_refs"]:
         fail("empty_scope", "请先勾选要排产的批次。")
     with candidate_read_snapshot(conn):
+        if facts is not None:
+            if facts.conn is not conn or not conn.in_transaction:
+                raise RuntimeError("Prepared input requires this transaction's own production facts")
+            fingerprint = facts.capture.content() if capture_fingerprint else ""
+            return _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
+                                  config_snapshot, baseline, validated_projections)
         facts = PreflightFacts(conn)
         with facts.snapshot(fingerprint=capture_fingerprint) as fingerprint:
-            raw_batches = facts.selected(settings["batch_refs"])
-            batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
-            raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
-            operations = [operation_model(row) for row in raw_ops]
-            projections = _projection_map(execution_projections, [facts.operation_ref(row) for row in raw_ops])
-            return _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections)
+            return _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
+                                  config_snapshot, baseline, validated_projections)
 
 
-def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections, hold=None):
+def _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
+                   config_snapshot, baseline, validated_projections):
+    raw_batches = facts.selected(settings["batch_refs"])
+    batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
+    raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
+    operations = [operation_model(row) for row in raw_ops]
+    projections = _projection_map(execution_projections, [facts.operation_ref(row) for row in raw_ops],
+                                  validated=validated_projections)
+    return _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections,
+                    config_snapshot=config_snapshot, baseline=baseline)
+
+
+def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections, hold=None, *,
+             config_snapshot=None, baseline=None):
     """hold：判断哪些原安排保留时用的输入（试调采用传来源排产的起日），缺省同 settings。"""
     hold = settings if hold is None else hold
     piece_scope = input_piece_scope(operations, batches)
     if piece_scope is None:
         validate_single_chain(operations)
     svc = ScheduleService(conn)
-    base_config = configuration_snapshot(conn)
+    base_config = (configuration_snapshot(conn, rows=facts.tables["ScheduleConfig"])
+                   if config_snapshot is None else config_snapshot)
     cfg = candidate_config(conn, settings, snapshot=base_config)
     if piece_scope is not None:
         cfg = replace(cfg, dispatch_mode="sgs")
-    prev_version = svc.history_repo.get_latest_version()
+    prev_version = (max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
+                    if baseline is None else baseline["version"] or 0)
     start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     guards = execution_guards(svc, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
     execution_facts, fixed, completed, execution_seeds, revisions, snapshot = guards

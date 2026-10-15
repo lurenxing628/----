@@ -12,7 +12,7 @@ SCHEDULING_PREFERENCES_ACTION = "scheduling.preferences.save"
 SCHEDULING_PREFERENCES_SUBJECT = "scheduling-preferences"
 INPUT_FIELDS = ("batch_refs", "start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy")
 # 可选项：不带 material_strategy 按整批齐套；不带 hold_window 按交付设置推算不重排时段（见 hold_window_bounds）。
-OPTIONAL_FIELDS = frozenset(("material_strategy", "hold_window"))
+OPTIONAL_FIELDS = frozenset(("material_strategy", "hold_window", "time_budget_seconds"))
 _HOLD_MESSAGE = "不重排时段要填完整的开始和结束时刻（精确到分），开始要早于结束，并且在排产日期范围内。"
 
 
@@ -54,6 +54,8 @@ def normalize_preflight_input(value):
         reject("按工序放行和分批开工需要开启齐套检查。")
     if "hold_window" in value:
         _hold_window(value["hold_window"], start, end)
+    if "time_budget_seconds" in value and (type(value["time_budget_seconds"]) is not int or value["time_budget_seconds"] < 1):
+        reject("计算时间要填大于或等于 1 的整数秒数。")
     return {**value, "batch_refs": sorted(refs)}
 
 

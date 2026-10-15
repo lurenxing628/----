@@ -83,7 +83,7 @@ def _bounding_window_metrics(intervals, available):
     bounds = intervals + (available or [])
     first = min((low for low, _ in bounds), default=datetime.min)
     last = max((high for _, high in bounds), default=first)
-    calculator = ResourceUtilizationMetrics(intervals, available)
+    calculator = ResourceUtilizationMetrics.from_normalized_availability(intervals, available)
     conflicts = [(low, high, count) for low, high, count in calculator.calendar.load.rows if count > 1] if calculator.calendar is not None else None
     return {**calculator.window(first, last),
             "available_overlap_hours": hours([(low, high) for low, high, _count in conflicts]) if conflicts is not None else None,
@@ -107,10 +107,14 @@ def _capacity_measures(metrics):
             "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, shortage > 1e-9
 
 
-def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, calendar_facts):
+def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, calendar_facts, context=None, selected=None):
     """calendar_facts is the private result of project_plan_calendar in this read."""
-    rows, start, end, time_scope, context = selected_context(conn, entry, scope, rows, resources, plan_span)
-    if calendar_facts["context"] != context:
+    owned = selected is None and context is None
+    if selected is None:
+        selected = (context.calendar_selection(entry, scope, resources, plan_span) if context is not None else
+                    selected_context(conn, entry, scope, rows, resources, plan_span))
+    rows, start, end, time_scope, context = selected
+    if owned and calendar_facts["context"] != context:
         raise WorkbenchCommandRejected("snapshot_stale", "班表和安排的计划或时间范围不一致，请刷新后重试。")
     constraints = TaskConstraints(calendar_facts)
     groups, unknown = _occupancy_groups(rows, start, end, constraints)

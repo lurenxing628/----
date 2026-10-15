@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
+from core.models.schedule_plan_role import (
+    ROLE_MIN_CHANGEOVER as ROLE_MIN_CHANGEOVER,
+)
+from core.models.schedule_plan_role import (
+    ROLE_MIN_OVERDUE as ROLE_MIN_OVERDUE,
+)
+from core.models.schedule_plan_role import (
+    ROLE_MIN_TARDINESS as ROLE_MIN_TARDINESS,
+)
+from core.models.schedule_plan_role import (
+    ROLE_MIN_WEIGHTED_TARDINESS as ROLE_MIN_WEIGHTED_TARDINESS,
+)
 from core.services.common.plan_query import (
     ROLE_ADOPTED as ROLE_ADOPTED,
 )

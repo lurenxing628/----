@@ -13,11 +13,12 @@ import json
 import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
-from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
-from core.algorithms.evaluation import compute_metrics, objective_score
+from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, evaluation_completion
+from core.algorithms.evaluation import compute_metrics, objective_score, prepare_evaluation_context
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
 from core.algorithms.objective_specs import objective_metric_keys
 from core.services.scheduler.contracts.optimizer_public_safety import project_attempt_metrics, project_public_metrics
@@ -127,6 +128,37 @@ def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops
     assert metrics.completion.incomplete_work_weight == 2.0
     score = (float(summary.failed_ops),) + objective_score("min_tardiness", metrics)
     assert score == (1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+
+
+def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_once():
+    operations = [_op(1, "B1"), _op(2, "B1"), _op(3, "B2")]
+    batches = _batches(B1="critical", B2="normal", B3="urgent")
+    seed = _result(4, "B3", hours=0)
+    complete = [_result(1, "B1", hours=0), _result(2, "B1", hours=1), _result(3, "B2", hours=26), seed]
+    partial = [complete[0], complete[2], seed]
+    failures = [{"op_id": 2}]
+    scenarios = [(complete, []), (partial, []), (partial, failures),
+                 (partial + [_result(9, "B9", hours=1)], failures)]
+    expected_metrics = [compute_metrics(results, batches, expected_operations=operations, seed_results=[seed],
+                                       failure_details=details).to_dict() for results, details in scenarios]
+    with patch.object(evaluation_completion, "_prepare_expected_keys", wraps=evaluation_completion._prepare_expected_keys) as expected_keys, \
+            patch.object(evaluation_completion, "normalize_priority", wraps=evaluation_completion.normalize_priority) as priorities, \
+            patch.object(evaluation_completion, "_parse_due_date_state", wraps=evaluation_completion._parse_due_date_state) as due_states, \
+            patch.object(evaluation_completion, "due_exclusive", wraps=evaluation_completion.due_exclusive) as due_limits, \
+            patch.object(evaluation_completion, "_failure_batches", wraps=evaluation_completion._failure_batches) as failure_batches:
+        prepared = prepare_evaluation_context(batches=batches, expected_operations=operations, seed_results=[seed])
+        metrics = [compute_metrics(results, batches, failure_details=details, prepared=prepared)
+                   for results, details in scenarios]
+        assert [item.to_dict() for item in metrics] == expected_metrics
+        assert (expected_keys.call_count, priorities.call_count, due_states.call_count, due_limits.call_count) == (1, 3, 3, 3)
+        assert failure_batches.call_count == 2
+    assert metrics[0].completion.objective_defined
+    assert metrics[0].completion.expected_operation_count == 4
+    assert metrics[1].completion.objective_scope == "unknown"
+    assert metrics[2].completion.explained and metrics[2].completion.partial_batch_ids == ("B1",)
+    assert metrics[2].completion.incomplete_work_weight == 3.0
+    assert metrics[2].completion.failure_batch_ids == ("B1",)
+    assert metrics[3].completion.unexpected_result_count == 1 and metrics[3].completion.objective_scope == "unknown"
 
 
 @pytest.mark.parametrize("project", [project_attempt_metrics, project_public_metrics])

@@ -37,10 +37,8 @@ from .migration_state import (
     has_no_user_tables as _has_no_user_tables,
 )
 from .safe_files import (
-    UnsafeFixedFileError,
     create_fixed_file_exclusive,
     guard_fixed_file_open_target,
-    stat_regular_file,
 )
 from .schema_declaration import resolve_schema_path as _resolve_schema_path_impl
 
@@ -75,17 +73,10 @@ def _sqlite_file_uri(db_path: str) -> str:
 
 
 def _ensure_sqlite_db_target_ready(db_path: str) -> None:
-    guard_fixed_file_open_target(db_path, ensure_parent=True)
-    try:
-        stat_regular_file(db_path)
+    if guard_fixed_file_open_target(db_path, ensure_parent=True) is not None:
         return
-    except FileNotFoundError:
-        pass
     fd = create_fixed_file_exclusive(db_path, ensure_parent=True)
-    try:
-        stat_regular_file(db_path)
-    finally:
-        os.close(fd)
+    os.close(fd)
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
@@ -93,10 +84,6 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     获取 SQLite 连接（每请求一个连接，避免跨线程问题）。
     """
     is_memory_db = str(db_path or "").strip() == ":memory:"
-    # 防御：db_path 可能仅是文件名（dirname 为空串时 makedirs 会报错）
-    db_dir = os.path.dirname(db_path)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
     connect_target = db_path
     connect_kwargs = {}
     if not is_memory_db:
@@ -105,23 +92,13 @@ def get_connection(db_path: str) -> sqlite3.Connection:
         connect_kwargs["uri"] = True
     # 恢复 sqlite3 的类型探测：保持 DATE/TIMESTAMP 等隐式转换行为一致。
     # 例如：声明为 DATE 的列在查询时会自动转换为 datetime.date（而不是 str）。
+    conn = sqlite3.connect(
+        connect_target,
+        detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        check_same_thread=False,
+        **connect_kwargs,
+    )
     try:
-        conn = sqlite3.connect(
-            connect_target,
-            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-            check_same_thread=False,
-            **connect_kwargs,
-        )
-    except sqlite3.OperationalError as exc:
-        if not is_memory_db:
-            try:
-                stat_regular_file(db_path)
-            except UnsafeFixedFileError as guard_exc:
-                raise guard_exc from exc
-        raise
-    try:
-        if not is_memory_db:
-            stat_regular_file(db_path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON;")
         return conn

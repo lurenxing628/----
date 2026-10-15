@@ -1,14 +1,19 @@
 """Request-local completed cohorts and remaining demand from archived facts."""
 
-from core.services.workbench.facts.completion_scope import completion_groups, project_completion_scope
+from core.services.workbench.facts.completion_scope import (
+    attach_remaining_operations,
+    completion_groups,
+    project_completion_summary,
+)
+from core.services.workbench.facts.decision_delivery import common_delivery
+from core.services.workbench.facts.decision_preparation import preparation_work_items
 from core.services.workbench.facts.preparation_projection import public_preparation_metrics
-
-from .decision_delivery import common_delivery
 
 
 class DecisionCompletion:
     def __init__(self, source):
         self.source, self._delivery, self._scopes, self._remaining = source, {}, {}, {}
+        self._work = {}
 
     def delivery(self, key):
         if key == "reference" and self.source.comparison_mode == "candidates" and self.source.reference_ref:
@@ -17,15 +22,28 @@ class DecisionCompletion:
             self._delivery[key] = self.source.delivery(key)
         return self._delivery[key]
 
-    def scope(self, key, coverage=None):
-        if key not in self._scopes:
+    def scope(self, key, coverage=None, *, details=False):
+        key = self.source.computation_key(key)
+        cache_key = key, details
+        if cache_key not in self._scopes:
             source = self.source
-            work = [{**source.preparation.labels[row["operation_ref"]], **row,
-                     "disposition": (source.disposition or {}).get(row["operation_ref"], {})}
-                    for row in source.preparation.rows(key) if source.preparation.available(key) and not row["arranged"]]
-            self._scopes[key] = project_completion_scope(self.delivery(key), work,
-                available=source.preparation.available(key), schedulable_coverage=coverage)
-        return self._scopes[key]
+            if not details and (key != "reference" or not source.official_changed):
+                self._scopes[cache_key] = source.saved_projection(key, "completion")
+                return self._scopes[cache_key]
+            if details:
+                self._scopes[cache_key] = attach_remaining_operations(self.scope(key, coverage), self.work_items(key))
+            else:
+                self._scopes[cache_key] = project_completion_summary(self.delivery(key), self.work_items(key),
+                    available=source.preparation.available(key), schedulable_coverage=coverage)
+        return self._scopes[cache_key]
+
+    def work_items(self, key):
+        if key not in self._work:
+            source = self.source
+            available = source.preparation.available(key)
+            self._work[key] = preparation_work_items(source.facts, source.preparation.rows(key), source.disposition,
+                available=available, labels=source.preparation.labels if available else None)
+        return self._work[key]
 
     def groups(self, candidates):
         rows = [{"candidate_ref": row["candidate_ref"], "persisted_status": row["persisted_status"],

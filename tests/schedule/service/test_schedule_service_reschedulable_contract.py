@@ -1,13 +1,18 @@
 """回归测试：ScheduleService.run_schedule 的可重排范围收口契约——completed/skipped 工序不进入算法输入、freeze seed 与持久化结果集，total_ops 只统计可重排工序；优化器结果若逃出可重排范围则抛 ValidationError（out_of_scope_schedule_rows）且不落库；completed/cancelled 批次在服务层 fail-fast（「不允许排产」）不再读取工序。"""
 
+from dataclasses import replace
 from datetime import datetime, timedelta
+from functools import partial
 from types import SimpleNamespace
-from typing import Any, cast
 
 
 def _patch_schedule_module(monkeypatch, schedule_service_mod, captured):
+    from core.algorithms import GreedyScheduler, ScheduleResult, ScheduleSummary, SortStrategy
     from core.services.common.build_outcome import BuildOutcome
-    from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
+    from core.services.scheduler.run import schedule_orchestrator
+    from core.services.scheduler.run.optimizer.runtime import _default_runtime
+    from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
+    from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
 
     def _stub_build_algo_operations(_svc, ops, *, strict_mode=False, return_outcome=False):
         captured["algo_input_ids"] = [int(op.id) for op in ops]
@@ -48,54 +53,48 @@ def _patch_schedule_module(monkeypatch, schedule_service_mod, captured):
     def _stub_extend_downtime_map_for_resource_pool(_svc, *, downtime_map, **_kw):
         return downtime_map
 
-    def _stub_optimize_schedule(*, algo_ops_to_schedule, **_kwargs):
-        captured["algo_ops_to_schedule_ids"] = [int(op.id) for op in algo_ops_to_schedule]
-        override_results = captured.get("optimizer_results_override")
-        if override_results is not None:
-            results = list(override_results)
-        else:
-            base_dt = datetime(2026, 1, 1, 8, 0, 0)
-            results = []
-            for idx, op in enumerate(algo_ops_to_schedule):
-                st = base_dt + timedelta(hours=idx)
-                et = st + timedelta(hours=1)
-                results.append(
-                    SimpleNamespace(
-                        op_id=int(op.id),
-                        op_code=op.op_code,
-                        batch_id=op.batch_id,
-                        seq=int(op.seq or 0),
-                        machine_id="MC001",
-                        operator_id="OP001",
-                        start_time=st,
-                        end_time=et,
-                        source=op.source,
-                        op_type_name=getattr(op, "op_type_name", None),
+    class ContractScheduler(GreedyScheduler):
+        def schedule(self, *, operations, **kwargs):
+            captured["algo_ops_to_schedule_ids"] = [int(op.id) for op in operations]
+            override_results = captured.get("optimizer_results_override")
+            if override_results is not None:
+                results = [ScheduleResult(**vars(row)) for row in override_results]
+            else:
+                base_dt = datetime(2026, 1, 1, 8, 0, 0)
+                results = []
+                for idx, op in enumerate(operations):
+                    st = base_dt + timedelta(hours=idx)
+                    et = st + timedelta(hours=1)
+                    results.append(
+                        ScheduleResult(
+                            op_id=int(op.id),
+                            op_code=op.op_code,
+                            batch_id=op.batch_id,
+                            seq=int(op.seq or 0),
+                            machine_id="MC001",
+                            operator_id="OP001",
+                            start_time=st,
+                            end_time=et,
+                            source=op.source,
+                            op_type_name=getattr(op, "op_type_name", None),
+                        )
                     )
-                )
-        summary = SimpleNamespace(
-            success=True,
-            total_ops=len(algo_ops_to_schedule),
-            scheduled_ops=len(results),
-            failed_ops=0,
-            warnings=[],
-            errors=[],
-            duration_seconds=0.0,
-        )
-        return OptimizationOutcome(
-            results=results,
-            summary=summary,
-            used_strategy=cast(Any, SimpleNamespace(value="priority_first")),
-            used_params={},
-            metrics=None,
-            best_score=(0.0, 0.0),
-            best_order=[],
-            attempts=[],
-            improvement_trace=[],
-            algo_mode="greedy",
-            objective_name="min_overdue",
-            time_budget_seconds=1,
-            algo_stats={},
+            summary = ScheduleSummary(
+                success=True, total_ops=len(operations), scheduled_ops=len(results), failed_ops=0,
+                warnings=[], errors=[], duration_seconds=0.0,
+            )
+            return results, summary, SortStrategy.PRIORITY_FIRST, {
+                "dispatch_mode": kwargs["dispatch_mode"], "dispatch_rule": kwargs["dispatch_rule"],
+            }
+
+    def _contract_comparison(*, schedule_input, **kwargs):
+        # Scope guards consume one real shared decode; graph policies have their own contract tests.
+        schedule_input = replace(schedule_input, cfg=replace(schedule_input.cfg, algo_mode="greedy", graph_analysis_mode="off"))
+        return run_candidate_comparison(
+            schedule_input=schedule_input,
+            optimize_shared_schedule_fn=partial(optimize_shared_schedule,
+                _runtime=replace(_default_runtime(), scheduler_factory=ContractScheduler)),
+            **kwargs,
         )
 
     def _stub_build_result_summary(*args, **kwargs):
@@ -119,7 +118,7 @@ def _patch_schedule_module(monkeypatch, schedule_service_mod, captured):
     monkeypatch.setattr(schedule_service_mod, "load_machine_downtimes", _stub_load_machine_downtimes)
     monkeypatch.setattr(schedule_service_mod, "build_resource_pool", _stub_build_resource_pool)
     monkeypatch.setattr(schedule_service_mod, "extend_downtime_map_for_resource_pool", _stub_extend_downtime_map_for_resource_pool)
-    monkeypatch.setattr(schedule_service_mod, "optimize_schedule", _stub_optimize_schedule)
+    monkeypatch.setattr(schedule_orchestrator, "run_candidate_comparison", _contract_comparison)
     monkeypatch.setattr(schedule_service_mod, "build_result_summary", _stub_build_result_summary)
     monkeypatch.setattr(schedule_service_mod, "persist_schedule", _stub_persist_schedule)
 

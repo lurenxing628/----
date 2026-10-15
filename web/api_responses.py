@@ -11,20 +11,28 @@ from typing import Literal, Union
 from flask import jsonify, url_for
 
 
-def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None, request_key=None):
+def failure_payload(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None, request_key=None):
     reference = uuid.uuid4().hex
     error = {"code": code, "message": message, "fields": fields or [],
              "retryable": status >= 500, "request_ref": reference}
     if request_key is not None:
         error["request_key"] = request_key
         error["result_target"] = url_for("workbench.command_receipt", request_key=request_key)
-    response = jsonify({"ok": False, "committed": committed, "error": error})
+    return {"ok": False, "committed": committed, "error": error}
+
+
+def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None, request_key=None):
+    response = jsonify(failure_payload(code, message, status, committed=committed, fields=fields, request_key=request_key))
     response.status_code = status
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
+def query_payload(data, snapshot, warnings=()):
+    return {"ok": True, "schema_version": 1, "data": data,
+            "meta": {"request_ref": uuid.uuid4().hex, "source": "production",
+                     "time_basis": "factory_local", **snapshot}, "warnings": list(warnings)}
+
+
 def query_success(data, snapshot, warnings=()):
-    return jsonify({"ok": True, "schema_version": 1, "data": data,
-                    "meta": {"request_ref": uuid.uuid4().hex, "source": "production",
-                             "time_basis": "factory_local", **snapshot}, "warnings": list(warnings)})
+    return jsonify(query_payload(data, snapshot, warnings))

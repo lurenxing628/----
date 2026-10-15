@@ -2953,6 +2953,98 @@ function SMExport({
   'use strict';
 
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const text = value => typeof value === 'string',
+    nonempty = value => text(value) && value.length > 0;
+  const count = value => Number.isSafeInteger(value) && value >= 0;
+  const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  const ref = value => text(value) && /^[a-f0-9]{48}$/.test(value);
+  const refs = values => Array.isArray(values) && values.every(ref) && new Set(values).size === values.length;
+  const shape = (value, required, optional = []) => object(value) && required.every(key => Object.prototype.hasOwnProperty.call(value, key)) && Object.keys(value).every(key => required.concat(optional).includes(key));
+  const labels = {
+    min_overdue: '交期优先',
+    min_tardiness: '拖期更轻',
+    min_changeover: '切换更少',
+    min_weighted_tardiness: '加权拖期更轻'
+  };
+  const fieldOrders = {
+    min_overdue: ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
+    min_tardiness: ['failed_ops', 'total_tardiness_hours', 'overdue_count', 'weighted_tardiness_hours', 'makespan_hours', 'changeover_count'],
+    min_weighted_tardiness: ['failed_ops', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
+    min_changeover: ['failed_ops', 'changeover_count', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours', 'makespan_hours']
+  };
+  const metadataKeys = ['generation_policy_version', 'representative_objectives', 'evaluations', 'origin', 'first_found_elapsed_ms', 'search_evidence_ref'];
+  const unified = value => object(value) && value.generation_policy_version === 'unified_search_v1';
+  const budget = value => Number.isInteger(value) && value >= 1;
+  const objective = value => text(value) && Object.prototype.hasOwnProperty.call(labels, value);
+  const objectiveLabel = value => labels[value] || value;
+  const sameArray = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((value, index) => value === b[index]);
+  const targets = primary => [primary, ...['min_overdue', primary === 'min_weighted_tardiness' ? primary : 'min_tardiness', 'min_changeover'].filter(value => value !== primary)];
+  const objectives = values => Array.isArray(values) && values.every(objective) && new Set(values).size === values.length;
+  const score = values => Array.isArray(values) && values.every(value => value === null || typeof value === 'number' && Number.isFinite(value));
+  function runOptions(value) {
+    return shape(value, ['generation_policy_version', 'primary_objective', 'target_objectives', 'time_budget_seconds', 'algo_mode', 'graph_analysis_mode']) && unified(value) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective)) && budget(value.time_budget_seconds) && ['greedy', 'improve'].includes(value.algo_mode) && ['off', 'report', 'on'].includes(value.graph_analysis_mode);
+  }
+  function scoringScope(value) {
+    return shape(value, ['scheduled_operation_refs', 'complete_batch_refs', 'objective_scope', 'components_known', 'is_complete']) && refs(value.scheduled_operation_refs) && refs(value.complete_batch_refs) && ['all_batches', 'completed_batches_only', 'unknown'].includes(value.objective_scope) && typeof value.components_known === 'boolean' && typeof value.is_complete === 'boolean';
+  }
+  function evaluations(value) {
+    return object(value) && Object.keys(value).length > 0 && Object.entries(value).every(([name, item]) => objective(name) && shape(item, ['field_order', 'score', 'scoring_scope']) && sameArray(item.field_order, fieldOrders[name]) && score(item.score) && item.score.length === item.field_order.length && scoringScope(item.scoring_scope));
+  }
+  function origin(value) {
+    return shape(value, ['search_objective', 'phase', 'origin', 'dispatch_mode', 'dispatch_rule', 'strategy', 'repair_decision'], ['request_id', 'source_event_ref', 'execution_kind', 'graph_ready_profile']) && objective(value.search_objective) && ['phase', 'origin', 'strategy'].every(key => nonempty(value[key])) && ['dispatch_mode', 'dispatch_rule'].every(key => value[key] === null || text(value[key])) && (value.repair_decision === null || object(value.repair_decision) || text(value.repair_decision)) && ['request_id', 'source_event_ref'].every(key => value[key] === undefined || value[key] === null || count(value[key])) && (value.execution_kind === undefined || nonempty(value.execution_kind)) && (value.graph_ready_profile === undefined || object(value.graph_ready_profile));
+  }
+  function evidence(value, runRef) {
+    return shape(value, ['run_ref', 'source_event_id']) && ref(value.run_ref) && (!runRef || value.run_ref === runRef) && (value.source_event_id === null || count(value.source_event_id) && value.source_event_id > 0);
+  }
+  function metadata(value, runRef) {
+    return unified(value) && metadataKeys.every(key => Object.prototype.hasOwnProperty.call(value, key)) && objectives(value.representative_objectives) && evaluations(value.evaluations) && value.representative_objectives.every(name => Object.prototype.hasOwnProperty.call(value.evaluations, name)) && origin(value.origin) && number(value.first_found_elapsed_ms) && evidence(value.search_evidence_ref, runRef);
+  }
+  function catalogElapsed(value) {
+    return shape(value, ['value', 'state', 'reason']) && value.value === null && value.state === 'not_applicable' && shape(value.reason, ['field', 'code', 'message']) && value.reason.field === 'elapsed_seconds' && value.reason.code === 'shared_run_time' && text(value.reason.message);
+  }
+  function algorithm(value, runRef) {
+    const fields = ['mode', 'mode_label', 'strategy', 'strategy_label'],
+      current = unified(value);
+    return shape(value, fields.concat(current ? metadataKeys.concat(['primary_objective', 'target_objectives']) : [])) && fields.every(key => value[key] === null || text(value[key])) && (!current || metadata(value, runRef) && objective(value.primary_objective) && sameArray(value.target_objectives, targets(value.primary_objective)));
+  }
+  function selectionBasis(value, candidates) {
+    const fields = ['generation_policy_version', 'selection_policy_version', 'primary_objective', 'target_objectives', 'selected_candidate_ref', 'objective_winners', 'objective_winner_reasons', 'objective_field_order', 'selected_score', 'reason_code', 'scoring_scope', 'evidence_state', 'objective_name', 'raw_score_best_candidate_ref', 'health_reference_candidate_ref', 'selection_policy', 'overdue_tolerance_count', 'tardiness_tolerance_ratio', 'raw_score_comparison', 'health_comparison', 'selection_evidence_version', 'decision_evidence', 'health_decision_evidence', 'explanation'];
+    if (!shape(value, fields) || !unified(value) || value.selection_policy_version !== 'business_objectives_v1' || !objective(value.primary_objective) || !sameArray(value.target_objectives, targets(value.primary_objective)) || !ref(value.selected_candidate_ref) || value.objective_name !== value.primary_objective || value.raw_score_best_candidate_ref !== value.selected_candidate_ref || value.selection_policy !== 'business_objectives_v1' || value.selection_evidence_version !== 'business_objectives_v1' || !['complete', 'partial'].includes(value.evidence_state) || !['primary_objective_best_found', 'primary_objective_best_in_completed_scope', 'partial_scope_score_unavailable'].includes(value.reason_code) || !scoringScope(value.scoring_scope) || !score(value.selected_score) || !object(value.explanation) || !['health_reference_candidate_ref', 'overdue_tolerance_count', 'tardiness_tolerance_ratio', 'raw_score_comparison', 'health_comparison', 'decision_evidence', 'health_decision_evidence'].every(key => value[key] === null) || !shape(value.objective_winners, value.target_objectives) || !shape(value.objective_winner_reasons, value.target_objectives) || !shape(value.objective_field_order, value.target_objectives)) return false;
+    const known = new Set(candidates.map(candidate => candidate.candidate_ref));
+    return known.has(value.selected_candidate_ref) && value.target_objectives.every(name => {
+      const winner = value.objective_winners[name],
+        reason = value.objective_winner_reasons[name];
+      return (winner === null || ref(winner) && known.has(winner)) && (reason === null || nonempty(reason)) && sameArray(value.objective_field_order[name], fieldOrders[name]);
+    }) && value.selected_score.length === value.objective_field_order[value.primary_objective].length;
+  }
+  window.RunGenerationContract = {
+    metadataKeys,
+    unified,
+    budget,
+    objective,
+    objectives,
+    objectiveLabel,
+    targets,
+    fieldOrders,
+    sameArray,
+    score,
+    runOptions,
+    scoringScope,
+    evaluations,
+    origin,
+    evidence,
+    metadata,
+    catalogElapsed,
+    algorithm,
+    selectionBasis
+  };
+})();
+
+;
+(function () {
+  'use strict';
+
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const fields = (value, keys) => object(value) && keys.every(key => Object.prototype.hasOwnProperty.call(value, key));
   const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
   const count = value => Number.isSafeInteger(value) && value >= 0;
@@ -4661,6 +4753,7 @@ function SMExport({
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const ref = value => typeof value === 'string' && /^[a-f0-9]{48}$/.test(value);
   const edgeKey = edge => edge.from_task_ref + ':' + edge.to_task_ref + ':' + edge.edge_type;
+  const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
   // Both workspaces validate this shared graph once, at their existing API boundary.
   function validate(graph, {
     scope,
@@ -4698,16 +4791,78 @@ function SMExport({
     return edgesValid(graph.edges, ['process']) && edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
   }
   function create(graph) {
-    const nodes = new Map(graph.nodes.map(node => [node.task_ref, node])),
-      batches = new Map();
-    for (const node of graph.nodes) {
-      if (!batches.has(node.batch_id)) batches.set(node.batch_id, []);
-      batches.get(node.batch_id).push(node);
+    const nodes = new Map(),
+      batches = new Map(),
+      batchFacts = new Map();
+    for (const [order, node] of graph.nodes.entries()) {
+      nodes.set(node.task_ref, node);
+      if (!batchFacts.has(node.batch_id)) {
+        const facts = {
+          nodes: [],
+          pieces: new Map(),
+          edges: [],
+          commonEdges: [],
+          pieceEdges: new Map(),
+          previous: new Map(),
+          route: null
+        };
+        batchFacts.set(node.batch_id, facts);
+        batches.set(node.batch_id, facts.nodes);
+      }
+      const facts = batchFacts.get(node.batch_id);
+      facts.nodes.push(node);
+      facts.previous.set(node.task_ref, []);
+      if (!facts.pieces.has(node.piece_id)) facts.pieces.set(node.piece_id, []);
+      facts.pieces.get(node.piece_id).push({
+        node,
+        order
+      });
     }
+    for (const [order, edge] of graph.edges.entries()) {
+      const from = nodes.get(edge.from_task_ref),
+        to = nodes.get(edge.to_task_ref),
+        facts = batchFacts.get(to.batch_id);
+      facts.previous.get(to.task_ref).push(from);
+      if (from.batch_id !== to.batch_id) continue;
+      const record = {
+        edge,
+        order
+      };
+      facts.edges.push(record);
+      if (from.piece_id === null && to.piece_id === null) facts.commonEdges.push(record);else if (from.piece_id === null || to.piece_id === null || from.piece_id === to.piece_id) {
+        const piece = from.piece_id === null ? to.piece_id : from.piece_id;
+        if (!facts.pieceEdges.has(piece)) facts.pieceEdges.set(piece, []);
+        facts.pieceEdges.get(piece).push(record);
+      }
+    }
+    const criticalEdges = new Map();
+    graph.critical_edges.forEach(edge => criticalEdges.set(connection(edge), {
+      ...edge,
+      kind: 'critical'
+    }));
     return {
       graph,
       nodes,
-      batches
+      batches,
+      batchFacts,
+      critical: new Set(graph.critical_task_refs),
+      global: edgeFacts(Array.from(criticalEdges.values())),
+      empty: edgeFacts([]),
+      selected: null
+    };
+  }
+  function edgeFacts(edges) {
+    const adjacency = new Map();
+    edges.forEach((edge, order) => {
+      if (!adjacency.has(edge.from_task_ref)) adjacency.set(edge.from_task_ref, []);
+      adjacency.get(edge.from_task_ref).push({
+        edge,
+        order
+      });
+    });
+    return {
+      edges,
+      adjacency
     };
   }
   function selection(index, {
@@ -4718,40 +4873,59 @@ function SMExport({
         graph
       } = index,
       target = index.nodes.get(targetRef) || null;
-    const critical = new Set(graph.critical_task_refs),
-      related = new Set(),
-      edges = new Map();
-    const connection = edge => edge.from_task_ref + ':' + edge.to_task_ref;
-    if (enabled && !target) graph.critical_edges.forEach(edge => edges.set(connection(edge), {
-      ...edge,
-      kind: 'critical'
-    }));
-    if (target) {
+    if (!target) return {
+      graph,
+      target,
+      critical: index.critical,
+      related: index.emptyRelated || (index.emptyRelated = new Set()),
+      ...(enabled ? index.global : index.empty)
+    };
+    let selected = index.selected;
+    if (!selected || selected.batch !== target.batch_id || selected.piece !== target.piece_id) {
+      const facts = index.batchFacts.get(target.batch_id),
+        related = new Set(),
+        edges = new Map();
       // A piece shares its common operations, but those operations must not lead into sibling pieces.
-      for (const node of index.batches.get(target.batch_id)) if (target.piece_id === null || node.piece_id === null || node.piece_id === target.piece_id) related.add(node.task_ref);
-      graph.edges.forEach(edge => {
-        if (related.has(edge.from_task_ref) && related.has(edge.to_task_ref)) edges.set(connection(edge), {
-          ...edge,
-          kind: 'related'
-        });
-      });
+      const members = target.piece_id === null ? facts.nodes : [...(facts.pieces.get(null) || []), ...facts.pieces.get(target.piece_id)].sort((a, b) => a.order - b.order).map(item => item.node);
+      members.forEach(node => related.add(node.task_ref));
+      const selectedEdges = target.piece_id === null ? facts.edges : [...facts.commonEdges, ...(facts.pieceEdges.get(target.piece_id) || [])].sort((a, b) => a.order - b.order);
+      selectedEdges.forEach(({
+        edge
+      }) => edges.set(connection(edge), {
+        ...edge,
+        kind: 'related'
+      }));
+      selected = {
+        batch: target.batch_id,
+        piece: target.piece_id,
+        related,
+        ...edgeFacts(Array.from(edges.values()))
+      };
+      index.selected = selected;
     }
     return {
       graph,
       target,
-      critical,
-      related,
-      edges: Array.from(edges.values())
+      critical: index.critical,
+      related: selected.related,
+      edges: selected.edges,
+      adjacency: selected.adjacency
     };
   }
   function route(index, targetRef) {
     const target = index.nodes.get(targetRef);
     if (!target) return null;
-    const nodes = index.batches.get(target.batch_id),
-      previous = new Map(nodes.map(node => [node.task_ref, []]));
-    const next = new Map(nodes.map(node => [node.task_ref, []])),
+    const facts = index.batchFacts.get(target.batch_id);
+    if (facts.route) return {
+      target,
+      ...facts.route
+    };
+    const {
+        nodes,
+        previous
+      } = facts,
+      next = new Map(nodes.map(node => [node.task_ref, []])),
       groups = new Map();
-    for (const edge of index.graph.edges) if (previous.has(edge.to_task_ref)) previous.get(edge.to_task_ref).push(index.nodes.get(edge.from_task_ref));
     for (const node of nodes) for (const parent of previous.get(node.task_ref)) next.get(parent.task_ref).push(node);
     const pending = new Map(nodes.map(node => [node.task_ref, previous.get(node.task_ref).length]));
     const sequence = node => node.sequence === null ? Infinity : Number(node.sequence);
@@ -4772,8 +4946,7 @@ function SMExport({
       }
       layer = following;
     }
-    return {
-      target,
+    facts.route = {
       count: nodes.length,
       previous,
       groups: Array.from(groups, ([pieceId, items]) => ({
@@ -4782,6 +4955,10 @@ function SMExport({
       })).sort((a, b) => a.pieceId === null ? -1 : b.pieceId === null ? 1 : a.pieceId.localeCompare(b.pieceId, 'zh-CN', {
         numeric: true
       }))
+    };
+    return {
+      target,
+      ...facts.route
     };
   }
   function locations(model, {
@@ -4804,16 +4981,73 @@ function SMExport({
     }
     return result;
   }
+  function locationIndex(points) {
+    const buckets = new Map();
+    let order = 0;
+    for (const [ref, point] of points) {
+      if (!buckets.has(point.top)) buckets.set(point.top, {
+        top: point.top,
+        bottom: point.bottom,
+        entries: []
+      });
+      const bucket = buckets.get(point.top);
+      bucket.bottom = Math.max(bucket.bottom, point.bottom);
+      bucket.entries.push({
+        ref,
+        point,
+        order: order++
+      });
+    }
+    const rows = Array.from(buckets.values()).sort((a, b) => a.top - b.top);
+    let bottom = -Infinity;
+    for (const row of rows) {
+      bottom = Math.max(bottom, row.bottom);
+      row.lastBottom = bottom;
+    }
+    return {
+      locations: points,
+      rows
+    };
+  }
   function paths(active, model, width, viewport, options) {
-    const points = options && options.locations || locations(model, options),
+    const prepared = options && options.locationIndex || locationIndex(options && options.locations || locations(model, options));
+    const points = prepared.locations,
       visible = new Set(),
+      visibleEntries = [],
       scale = width / (model.end - model.start);
     const x = value => (value - model.start) * scale;
-    for (const [key, point] of points) {
-      const pad = point.start === point.end ? 12 : 0;
-      if (point.bottom > viewport.top && point.top < viewport.top + viewport.height && x(point.end) + pad >= viewport.left && x(point.start) - pad <= viewport.left + viewport.width) visible.add(key);
+    let low = 0,
+      high = prepared.rows.length;
+    while (low < high) {
+      const mid = low + high >> 1;
+      if (prepared.rows[mid].lastBottom <= viewport.top) low = mid + 1;else high = mid;
     }
-    const drawn = active.edges.filter(edge => visible.has(edge.from_task_ref) && visible.has(edge.to_task_ref)).map(edge => {
+    for (let row = low; row < prepared.rows.length && prepared.rows[row].top < viewport.top + viewport.height; row++) {
+      for (const entry of prepared.rows[row].entries) {
+        const {
+            point
+          } = entry,
+          pad = point.start === point.end ? 12 : 0;
+        if (point.bottom > viewport.top && point.top < viewport.top + viewport.height && x(point.end) + pad >= viewport.left && x(point.start) - pad <= viewport.left + viewport.width) visibleEntries.push(entry);
+      }
+    }
+    visibleEntries.sort((a, b) => a.order - b.order);
+    let criticalVisible = 0,
+      relatedVisible = 0;
+    for (const {
+      ref
+    } of visibleEntries) {
+      visible.add(ref);
+      if (active.critical.has(ref)) criticalVisible++;
+      if (active.related.has(ref)) relatedVisible++;
+    }
+    const adjacency = active.adjacency || edgeFacts(active.edges).adjacency,
+      drawnEdges = [];
+    for (const ref of visible) for (const edge of adjacency.get(ref) || []) if (visible.has(edge.edge.to_task_ref)) drawnEdges.push(edge);
+    drawnEdges.sort((a, b) => a.order - b.order);
+    const drawn = drawnEdges.map(({
+      edge
+    }) => {
       const from = points.get(edge.from_task_ref),
         to = points.get(edge.to_task_ref),
         a = x(from.end),
@@ -4853,12 +5087,11 @@ function SMExport({
         bottom: Math.max(from.bottom, to.bottom)
       };
     });
-    const count = refs => Array.from(refs).filter(key => visible.has(key)).length;
     return {
       paths: drawn,
       visible,
-      criticalVisible: count(active.critical),
-      relatedVisible: count(active.related),
+      criticalVisible,
+      relatedVisible,
       focused: !!active.target
     };
   }
@@ -4868,6 +5101,7 @@ function SMExport({
     selection,
     route,
     locations,
+    locationIndex,
     paths
   };
 })();
@@ -5140,7 +5374,7 @@ function SMExport({
     if (value.state === 'unavailable') return label(value.reason) && ['source_kind', 'source_ref', 'source_label', 'run_ref', 'accepted_at', 'finished_at', 'adopted_at', 'algorithm', 'baseline'].every(key => value[key] === null);
     const origin = value.baseline,
       algorithm = value.algorithm;
-    return value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.source_kind) && ref(value.source_ref) && nullableRef(value.run_ref) && nullableLabel(value.source_label) && ['accepted_at', 'finished_at', 'adopted_at'].every(key => nullableLabel(value[key])) && exact(origin, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && nullableRef(origin.baseline_ref) && (origin.version === null || int64(origin.version)) && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at) && (origin.captured_task_count === null || count(origin.captured_task_count)) && (algorithm === null ? value.source_kind === 'trial_adoption' : exact(algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(algorithm).every(nullableLabel));
+    return value.reason === null && ['candidate_adoption', 'trial_adoption'].includes(value.source_kind) && ref(value.source_ref) && nullableRef(value.run_ref) && nullableLabel(value.source_label) && ['accepted_at', 'finished_at', 'adopted_at'].every(key => nullableLabel(value[key])) && exact(origin, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && nullableRef(origin.baseline_ref) && (origin.version === null || int64(origin.version)) && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at) && (origin.captured_task_count === null || count(origin.captured_task_count)) && (algorithm === null ? value.source_kind === 'trial_adoption' : window.RunGenerationContract.algorithm(algorithm, value.run_ref));
   }
   function workspace(result, planRef, scope = {}) {
     const query = workspaceScope(planRef, scope);
@@ -5252,21 +5486,32 @@ function SMExport({
       error: null
     });
     const [revision, setRevision] = React.useState(0);
-    const requested = React.useRef(null);
-    const identity = React.useMemo(() => ({}), dependencies.concat([revision, enabled]));
+    const requested = React.useRef(null),
+      completed = React.useRef(null);
+    const identity = React.useMemo(() => ({}), dependencies.concat([revision]));
     React.useEffect(() => {
       let active = true;
       const controller = new AbortController(),
         next = requested.current;
       requested.current = null;
+      const previous = completed.current && completed.current.identity === identity ? completed.current : null;
       if (!enabled) {
         setState({
           identity,
           loading: false,
-          result: null,
+          result: previous ? previous.result : null,
           error: null
         });
         if (next) next.reject(new DOMException('读取已取消', 'AbortError'));
+        return () => controller.abort();
+      }
+      if (previous) {
+        setState({
+          identity,
+          loading: false,
+          result: previous.result,
+          error: null
+        });
         return () => controller.abort();
       }
       setState({
@@ -5277,6 +5522,10 @@ function SMExport({
       });
       Promise.resolve().then(() => (next ? next.load : load)(controller.signal)).then(result => {
         if (active) {
+          completed.current = {
+            identity,
+            result
+          };
           setState({
             identity,
             loading: false,
@@ -5301,7 +5550,7 @@ function SMExport({
         controller.abort();
         if (next) next.reject(new DOMException('读取已取消', 'AbortError'));
       };
-    }, [identity]);
+    }, [identity, enabled]);
     React.useEffect(() => () => {
       const next = requested.current;
       requested.current = null;
@@ -12358,7 +12607,10 @@ function SMExport({
     const startNode = target.node || initialNode;
     const readView = target.context && !['part', 'calendar'].includes(target.context.kind) && target.context.read_view;
     const [node, setNode] = React.useState(startNode),
-      [scope, setScope] = React.useState(() => readView ? readView.scope : scopeFor(startNode));
+      [request, setRequest] = React.useState(() => ({
+        scope: readView ? readView.scope : scopeFor(startNode),
+        externalRevision
+      }));
     const [sortActive, setSortActive] = React.useState(!!readView && readView.sort_active);
     const [selected, setSelected] = React.useState(() => readView ? readView.selected_refs : []),
       [revision, setRevision] = React.useState(0);
@@ -12379,7 +12631,24 @@ function SMExport({
     React.useEffect(() => {
       if (basic && onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle' && !external.busy);
     }, [basic, dialog, command.phase, external.busy, onNavigationReady]);
-    const list = S.useQuery(signal => readList(adapter, config.kind, scope, signal), [adapter, node, scope, revision, externalRevision], basic);
+    // External writes restart from the latest committed view of this request.
+    const lastScope = React.useRef(null);
+    const requestScope = React.useMemo(() => request.externalRevision === externalRevision ? request.scope : {
+      ...(lastScope.current && lastScope.current.request === request ? lastScope.current.scope : request.scope),
+      snapshot_ref: undefined
+    }, [request, externalRevision]);
+    const list = S.useQuery(signal => readList(adapter, config.kind, requestScope, signal), [adapter, node, requestScope, revision, externalRevision], basic);
+    const effectiveScope = React.useMemo(() => list.result ? {
+      ...requestScope,
+      page: list.result.data.page.number,
+      snapshot_ref: list.result.meta.snapshot_ref
+    } : requestScope, [requestScope, list.result]);
+    React.useLayoutEffect(() => {
+      if (list.result) lastScope.current = {
+        request,
+        scope: effectiveScope
+      };
+    }, [request, effectiveScope, list.result]);
     const detail = S.useQuery(async signal => {
       if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
       const result = C.query(await adapter.detail(dialog.kind, dialog.ref, signal), 'entity');
@@ -12395,7 +12664,7 @@ function SMExport({
         category: dialog.category
       } : {})
     } : null;
-    const savedScope = Object.fromEntries(readScopeKeys.filter(key => scope[key] !== undefined).map(key => [key, scope[key]]));
+    const savedScope = Object.fromEntries(readScopeKeys.filter(key => effectiveScope[key] !== undefined).map(key => [key, effectiveScope[key]]));
     window.WorkbenchPageContext.useSnapshot({
       source: 'production',
       kind: config && config.kind,
@@ -12409,13 +12678,6 @@ function SMExport({
         detail: savedDetail
       }
     }, rememberEnabled && basic && !!data && !list.loading && !list.error && !navigationError && !deferred && command.phase === 'idle' && !external.busy && list.result.meta.source === 'production' && (!dialog || dialog.action === 'view' && !!detail.result && !detail.loading && !detail.error));
-    React.useEffect(() => {
-      if (data && data.page.number < scope.page) setScope(current => current === scope ? {
-        ...current,
-        page: data.page.number,
-        snapshot_ref: list.result.meta.snapshot_ref
-      } : current);
-    }, [list.result, scope]);
     const refreshGeneration = React.useRef(0),
       mounted = React.useRef(true);
     React.useEffect(() => {
@@ -12425,17 +12687,23 @@ function SMExport({
         refreshGeneration.current++;
       };
     }, []);
+    function setRequestScope(scope) {
+      setRequest({
+        scope,
+        externalRevision
+      });
+    }
     function refresh() {
-      setScope(current => ({
-        ...current,
+      setRequestScope({
+        ...effectiveScope,
         snapshot_ref: undefined
-      }));
+      });
       setRevision(value => value + 1);
     }
     function navigate(next) {
       if (blocked || dialog) return;
       setNode(next);
-      setScope(scopeFor(next));
+      setRequestScope(scopeFor(next));
       setSortActive(false);
       setSelected([]);
       setContextError(null);
@@ -12445,29 +12713,27 @@ function SMExport({
       });
     }
     function filter(patch) {
-      if (!blocked) setScope(current => ({
-        ...current,
+      if (!blocked) setRequestScope({
+        ...effectiveScope,
         ...patch,
         page: 1,
         snapshot_ref: undefined
-      }));
+      });
     }
     function columnFilter(key, rule) {
       if (blocked) return;
-      setScope(current => {
-        const column_filters = {
-          ...(current.column_filters || {})
-        };
-        if (rule === null || rule.mode === 'exclude' && !rule.values.length) delete column_filters[key];else column_filters[key] = {
-          mode: rule.mode,
-          values: rule.values.slice()
-        };
-        return {
-          ...current,
-          column_filters,
-          page: 1,
-          snapshot_ref: undefined
-        };
+      const column_filters = {
+        ...(effectiveScope.column_filters || {})
+      };
+      if (rule === null || rule.mode === 'exclude' && !rule.values.length) delete column_filters[key];else column_filters[key] = {
+        mode: rule.mode,
+        values: rule.values.slice()
+      };
+      setRequestScope({
+        ...effectiveScope,
+        column_filters,
+        page: 1,
+        snapshot_ref: undefined
       });
     }
     function sortColumn(sort, direction) {
@@ -12483,11 +12749,10 @@ function SMExport({
     }
     function changePage(page) {
       if (blocked || !list.result) return;
-      setScope(current => ({
-        ...current,
-        page,
-        snapshot_ref: list.result.meta.snapshot_ref
-      }));
+      setRequestScope({
+        ...effectiveScope,
+        page
+      });
     }
     function open(action, ref = null, related = null) {
       if (blocked) return;
@@ -12545,7 +12810,7 @@ function SMExport({
       setNavigationError(null);
       setDeferred(false);
       setNode(target.node);
-      setScope(readView ? readView.scope : scopeFor(target.node));
+      setRequestScope(readView ? readView.scope : scopeFor(target.node));
       if (readView) {
         setSelected(readView.selected_refs);
         setSortActive(readView.sort_active);
@@ -12560,7 +12825,7 @@ function SMExport({
       try {
         let result;
         if (dialog.ref) result = C.query(await adapter.detail(dialog.kind, dialog.ref, new AbortController().signal), 'entity');else result = C.query(await adapter.list(dialog.kind, {
-          ...scope,
+          ...effectiveScope,
           page: 1,
           snapshot_ref: undefined
         }, new AbortController().signal), 'list');
@@ -12596,7 +12861,7 @@ function SMExport({
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
         const sameView = config && config.kind === intent.kind && (intent.kind !== 'op_type' || config.category === intent.category);
         const readScope = {
-          ...(sameView ? scope : scopeFor(intentNode)),
+          ...(sameView ? effectiveScope : scopeFor(intentNode)),
           snapshot_ref: undefined
         };
         if (intent.kind === 'op_type') {
@@ -12605,10 +12870,10 @@ function SMExport({
         }
         let refreshedList;
         if (sameView) {
-          setScope(readScope);
+          setRequestScope(readScope);
           refreshedList = await list.reloadAndWait(signal => readList(adapter, intent.kind, readScope, signal));
         } else {
-          list.reload();
+          refresh();
           refreshedList = await readList(adapter, intent.kind, readScope, new AbortController().signal);
         }
         let fresh = null;
@@ -12666,9 +12931,8 @@ function SMExport({
         const result = await adapter[name](config.kind, {
           refs: selected.slice(),
           scope: {
-            ...scope,
-            source: list.result && list.result.meta.source,
-            snapshot_ref: list.result && list.result.meta.snapshot_ref
+            ...effectiveScope,
+            source: list.result && list.result.meta.source
           },
           ...extra,
           onCommitted
@@ -12770,7 +13034,7 @@ function SMExport({
       "data-resource-selection-count": true
     }, selected.length), " \u6761", data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 ", /*#__PURE__*/React.createElement("span", null, "\u542B\u975E\u5F53\u524D\u9875\u8BB0\u5F55"))), /*#__PURE__*/React.createElement(Toolbar, {
       config: config,
-      scope: scope,
+      scope: effectiveScope,
       onFilter: filter,
       loading: list.loading,
       disabled: blocked,
@@ -12797,7 +13061,7 @@ function SMExport({
       loading: list.loading,
       error: list.error,
       adapter: adapter,
-      scope: scope,
+      scope: effectiveScope,
       matchingCount: data && data.page.total,
       onRetry: refresh,
       onClear: () => filter({
@@ -12809,8 +13073,8 @@ function SMExport({
       }),
       onOpen: ref => open('view', ref),
       onDelete: ref => open('delete', ref),
-      sort: scope.sort,
-      direction: scope.direction,
+      sort: effectiveScope.sort,
+      direction: effectiveScope.direction,
       sortActive: sortActive,
       onSort: sortColumn,
       onColumnFilter: columnFilter
@@ -21142,20 +21406,9 @@ function SMExport({
   const readScopeKeys = window.APSProcessReadView.scopeKeys;
   async function readList(adapter, scope, signal) {
     if (!adapter || typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.list');
-    let request = scope;
-    if (scope.page > 1 && !scope.snapshot_ref) {
-      const firstScope = {
-          ...scope,
-          page: 1
-        },
-        first = P.list(await adapter.list('part', firstScope, signal), firstScope);
-      if (first.meta.source !== 'production') throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
-      request = {
-        ...scope,
-        snapshot_ref: first.meta.snapshot_ref
-      };
-    }
-    return P.list(await adapter.list('part', request, signal), request);
+    const result = P.list(await adapter.list('part', scope, signal), scope);
+    if (scope.page > 1 && !scope.snapshot_ref && result.meta.source !== 'production') throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
+    return result;
   }
   function Pipeline({
     entity
@@ -24643,11 +24896,14 @@ function SMExport({
       end: end + pad
     };
   }
-  function tracks(items, start, end, width) {
+  function prepareTracks(items) {
+    return items.slice().sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)));
+  }
+  function layoutTracks(items, start, end, width) {
     const lanes = [],
       heap = [],
       scale = Math.max(1, width) / (end - start);
-    for (const item of items.slice().sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)))) {
+    for (const item of items) {
       const x = (item.start - start) * scale;
       let slot;
       if (heap.length && heap[0].end <= x) {
@@ -24683,6 +24939,9 @@ function SMExport({
       heap[i] = slot;
     }
     return lanes;
+  }
+  function tracks(items, start, end, width) {
+    return layoutTracks(prepareTracks(items), start, end, width);
   }
   function visible(items, start, end, scale) {
     const pad = hitSize / 2 / scale;
@@ -24768,6 +25027,8 @@ function SMExport({
   }
   window.PointGanttModel = {
     bounds,
+    prepareTracks,
+    layoutTracks,
     tracks,
     visible,
     hit,
@@ -24916,7 +25177,7 @@ function SMExport({
     }
     return result;
   }
-  function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
+  function prepare(data, mode, query, baseline, changedOnly = false) {
     const labels = names(data),
       needle = query.trim().toLocaleLowerCase();
     const directory = new Map(data.resources.map(row => [row.ref, row]));
@@ -24924,10 +25185,9 @@ function SMExport({
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const matches = task => (!changedOnly || changed.has(task.operation_ref)) && (!needle || searchText(task, labels).includes(needle));
     const selected = data.tasks.filter(matches),
+      selectedTasks = new Set(selected),
       groups = new Map(),
-      conflicts = new Set(),
-      locations = new Map(),
-      baselineLocations = new Map();
+      conflicts = new Set();
     let start = instant(data.plan_span.start),
       end = instant(data.plan_span.end);
     const add = (task, before) => {
@@ -24964,14 +25224,18 @@ function SMExport({
     const bounds = G.bounds(start, end, Array.from(groups.values()).some(g => [...g.tasks, ...g.before].some(i => P.isPoint(i.task))));
     start = bounds.start;
     end = bounds.end;
-    let top = 0;
-    const rows = [];
     const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref, row]));
+    const preparedGroups = [];
     for (const group of groups.values()) {
       const overlap = new Set();
-      const split = (items, conflicts) => [...tracks(items.filter(i => !P.isPoint(i.task)), conflicts), ...G.tracks(items.filter(i => P.isPoint(i.task)), start, end, width)];
-      const current = split(group.tasks, overlap),
-        old = split(group.before, new Set());
+      const shown = new Set(group.tasks.filter(item => selectedTasks.has(item.task)));
+      group.before.forEach(item => {
+        if (matches(item.task)) shown.add(item);
+      });
+      const currentNormal = tracks(group.tasks.filter(i => !P.isPoint(i.task)), overlap);
+      const oldNormal = tracks(group.before.filter(i => !P.isPoint(i.task)), new Set());
+      const currentPoints = G.prepareTracks(group.tasks.filter(i => P.isPoint(i.task)));
+      const oldPoints = G.prepareTracks(group.before.filter(i => P.isPoint(i.task)));
       // Visual overlap splits tracks; actual conflict color comes from the same server occupancy snapshot.
       const resourceOccupancy = occupancy.get(group.id);
       const segments = resourceOccupancy ? resourceOccupancy.segments.filter(item => item.concurrent_operations > 1).map(item => ({
@@ -24983,23 +25247,68 @@ function SMExport({
         const hit = firstIntersecting(segments, item.start);
         if (hit < segments.length && segments[hit].start < item.end) conflicts.add(item.task.task_ref);
       }
-      [...current, ...old].forEach((all, index) => {
-        const items = all.filter(item => matches(item.task));
+      preparedGroups.push({
+        group,
+        shown,
+        currentNormal: currentNormal.map(lane => lane.filter(item => shown.has(item))),
+        oldNormal: oldNormal.map(lane => lane.filter(item => shown.has(item))),
+        currentPoints,
+        oldPoints,
+        overlap: overlap.size,
+        occupancy: resourceOccupancy
+      });
+    }
+    return {
+      mode,
+      labels,
+      groups: preparedGroups,
+      start,
+      end,
+      conflicts,
+      tasks: selected
+    };
+  }
+  function layoutPrepared(prepared, width = 1000) {
+    const {
+      mode,
+      labels,
+      start,
+      end,
+      conflicts,
+      tasks
+    } = prepared;
+    const rows = [],
+      locations = new Map(),
+      baselineLocations = new Map(),
+      G = window.PointGanttModel;
+    let top = 0,
+      groupCount = 0;
+    for (const fact of prepared.groups) {
+      const {
+          group,
+          shown,
+          currentNormal,
+          oldNormal
+        } = fact,
+        firstRow = rows.length;
+      const currentPoints = fact.currentPoints.length ? G.layoutTracks(fact.currentPoints, start, end, width) : [];
+      const oldPoints = fact.oldPoints.length ? G.layoutTracks(fact.oldPoints, start, end, width) : [];
+      const currentCount = currentNormal.length + currentPoints.length;
+      function append(items, before, point, track, trackCount, subrow, index) {
         if (!items.length) return;
-        const before = index >= current.length,
-          height = before ? 26 : 56;
+        const height = before ? 26 : 56;
         const row = {
           ...group,
           items,
           top,
           height,
           before,
-          occupancy: before ? null : resourceOccupancy,
-          point: P.isPoint(items[0].task),
-          track: before ? index - current.length : index,
-          trackCount: (before ? old : current).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length,
-          subrow: (before ? old : current).slice(0, before ? index - current.length : index).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length + 1,
-          overlap: P.isPoint(items[0].task) ? 0 : overlap.size,
+          occupancy: before ? null : fact.occupancy,
+          point,
+          track,
+          trackCount,
+          subrow,
+          overlap: point ? 0 : fact.overlap,
           key: group.id + ':' + index
         };
         items.forEach(item => (before ? baselineLocations : locations).set(item.task.task_ref, {
@@ -25009,7 +25318,12 @@ function SMExport({
         }));
         rows.push(row);
         top += height;
-      });
+      }
+      currentNormal.forEach((items, lane) => append(items, false, false, lane, currentNormal.length, lane + 1, lane));
+      currentPoints.forEach((items, lane) => append(items.filter(item => shown.has(item)), false, true, currentNormal.length + lane, currentPoints.length, lane + 1, currentNormal.length + lane));
+      oldNormal.forEach((items, lane) => append(items, true, false, lane, oldNormal.length, lane + 1, currentCount + lane));
+      oldPoints.forEach((items, lane) => append(items.filter(item => shown.has(item)), true, true, oldNormal.length + lane, oldPoints.length, lane + 1, currentCount + oldNormal.length + lane));
+      if (rows.length > firstRow) groupCount++;
     }
     return {
       mode,
@@ -25021,9 +25335,12 @@ function SMExport({
       conflicts,
       locations,
       baselineLocations,
-      tasks: selected,
-      groupCount: new Set(rows.map(row => row.id)).size
+      tasks,
+      groupCount
     };
+  }
+  function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
+    return layoutPrepared(prepare(data, mode, query, baseline, changedOnly), width);
   }
   function firstIntersecting(items, start) {
     let low = 0,
@@ -25086,6 +25403,8 @@ function SMExport({
     names,
     resourceLabel,
     searchText,
+    prepare,
+    layoutPrepared,
     layout,
     visibleItems,
     visibleRows,
@@ -25481,7 +25800,8 @@ function SMExport({
     collapsible = false,
     children
   }) {
-    const route = React.useMemo(() => G.route(G.create(graph), targetRef), [graph, targetRef]);
+    const index = React.useMemo(() => G.create(graph), [graph]);
+    const route = React.useMemo(() => G.route(index, targetRef), [index, targetRef]);
     return /*#__PURE__*/React.createElement("section", {
       className: "gantt-route",
       "aria-label": "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"
@@ -25696,41 +26016,71 @@ function SMExport({
   function Overview({
     model,
     tasks,
+    cache,
     width,
     viewport,
     left,
     onPan
   }) {
     const ref = React.useRef(null);
-    usePaint(ref, (ctx, w, h, colors) => {
-      const bins = new Float64Array(Math.max(1, Math.ceil(w)) + 1);
+    if (!cache.current || cache.current.tasks !== tasks) {
+      const intervals = [],
+        points = [];
       for (const task of tasks) {
-        if (window.PointContract.isPoint(task)) continue;
-        const start = Math.max(0, Math.floor((M.instant(task.start) - model.start) / (model.end - model.start) * w));
-        const end = Math.min(bins.length - 1, Math.max(start + 1, Math.ceil((M.instant(task.end) - model.start) / (model.end - model.start) * w)));
-        bins[start]++;
-        bins[end]--;
+        if (window.PointContract.isPoint(task)) points.push(M.instant(task.start));else intervals.push({
+          start: M.instant(task.start),
+          end: M.instant(task.end)
+        });
       }
-      let max = 1,
-        count = 0;
-      for (let x = 0; x < bins.length; x++) {
-        count += bins[x];
-        bins[x] = count;
-        max = Math.max(max, count);
+      cache.current = {
+        tasks,
+        intervals,
+        points,
+        histogram: null
+      };
+    }
+    const prepared = cache.current;
+    usePaint(ref, (ctx, w, h, colors) => {
+      let facts = prepared.histogram;
+      if (!facts || facts.start !== model.start || facts.end !== model.end || facts.cssWidth !== w) {
+        const bins = new Float64Array(Math.max(1, Math.ceil(w)) + 1),
+          bars = [];
+        for (const item of prepared.intervals) {
+          const start = Math.max(0, Math.floor((item.start - model.start) / (model.end - model.start) * w));
+          const end = Math.min(bins.length - 1, Math.max(start + 1, Math.ceil((item.end - model.start) / (model.end - model.start) * w)));
+          bins[start]++;
+          bins[end]--;
+        }
+        let max = 1,
+          count = 0;
+        for (let x = 0; x < bins.length; x++) {
+          count += bins[x];
+          bins[x] = count;
+          max = Math.max(max, count);
+        }
+        for (let x = 0; x < bins.length; x++) if (bins[x]) bars.push({
+          x,
+          ratio: bins[x] / max
+        });
+        facts = {
+          start: model.start,
+          end: model.end,
+          cssWidth: w,
+          bars,
+          points: prepared.points.map(at => (at - model.start) / (model.end - model.start) * w)
+        };
+        prepared.histogram = facts;
       }
       ctx.fillStyle = colors.primary.edge;
-      for (let x = 0; x < bins.length; x++) if (bins[x]) {
-        const barHeight = 3 + bins[x] / max * (h - 8);
-        ctx.fillRect(x, h - barHeight, 1, barHeight);
+      for (const bar of facts.bars) {
+        const barHeight = 3 + bar.ratio * (h - 8);
+        ctx.fillRect(bar.x, h - barHeight, 1, barHeight);
       }
-      for (const task of tasks) if (window.PointContract.isPoint(task)) {
-        const x = (M.instant(task.start) - model.start) / (model.end - model.start) * w;
-        window.PointGanttModel.paint(ctx, x, 8, colors.plan.fill, colors.plan.edge, false);
-      }
+      for (const x of facts.points) window.PointGanttModel.paint(ctx, x, 8, colors.plan.fill, colors.plan.edge, false);
       ctx.strokeStyle = colors.gold;
       ctx.lineWidth = 2;
       ctx.strokeRect(left / width * w + 1, 1, Math.max(1, Math.min(w - 2, viewport / width * w - 2)), h - 2);
-    }, [model.start, model.end, tasks, width, left, viewport]);
+    }, [model.start, model.end, prepared, width, left, viewport]);
     return /*#__PURE__*/React.createElement("div", {
       className: "plan-global"
     }, /*#__PURE__*/React.createElement("div", {
@@ -25975,7 +26325,8 @@ function SMExport({
     const board = React.useRef(null),
       search = React.useRef(null),
       pending = React.useRef(null),
-      frame = React.useRef(null);
+      frame = React.useRef(null),
+      overviewCache = React.useRef(null);
     const printState = React.useRef(false),
       printPosition = React.useRef(null),
       restorePosition = React.useRef(null);
@@ -25994,19 +26345,24 @@ function SMExport({
       selectedRef = selected && selected.task.task_ref;
     const renderLeft = printing ? 0 : position.left,
       renderViewport = printing ? width : viewport;
-    const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
+    const prepared = React.useMemo(() => M.prepare(data, mode, query, displayBaseline, displayChangedOnly), [data, mode, query, displayBaseline, displayChangedOnly]);
+    const model = React.useMemo(() => M.layoutPrepared(prepared, width), [prepared, width]);
     const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
     const targetRef = hover && !hover.before ? hover.task.task_ref : selected && !selected.before ? selectedRef : null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, {
       enabled: chainEnabled,
       targetRef
     }), [graph, chainEnabled, targetRef]);
+    const graphLocations = React.useMemo(() => window.GanttGraph.locations(model), [model]);
+    const locationIndex = React.useMemo(() => window.GanttGraph.locationIndex(graphLocations), [graphLocations]);
     const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
       left: renderLeft,
       top: printing ? 0 : position.top,
       width: renderViewport,
       height: printing ? model.height : position.height - 52
-    }), [active, model, width, renderLeft, renderViewport, position.top, position.height, printing]);
+    }, {
+      locationIndex
+    }), [active, model, width, renderLeft, renderViewport, position.top, position.height, printing, locationIndex]);
     const printItems = printing ? model.rows.flatMap(row => row.items) : [];
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
@@ -26238,6 +26594,7 @@ function SMExport({
     }, !printing && width > viewport && /*#__PURE__*/React.createElement(Overview, {
       model: model,
       tasks: data.tasks,
+      cache: overviewCache,
       width: width,
       viewport: renderViewport,
       left: renderLeft,
@@ -28067,7 +28424,6 @@ function SMExport({
     if (input.page !== undefined && (!Number.isInteger(input.page) || input.page < 1 || input.page > 100000)) throw window.APSResourceContract.failure('现场原页码无效，未切换到其他页。');
     if (input.task_ref) {
       // The backend locates the task within this one freshly captured scope.
-      // Start at page 1 because an unbound explicit later page requires a snapshot.
       const query = {
         ...input,
         page: 1
@@ -28078,23 +28434,14 @@ function SMExport({
       if (input.page !== undefined && result.data.page.number !== input.page || !original || input.operation_ref && original.operation_ref !== input.operation_ref || !taskScopeMatches(result.data.scope, input)) throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
       return result;
     }
-    const firstQuery = {
-      ...input,
-      page: 1
+    const query = {
+      ...input
     };
-    delete firstQuery.snapshot_ref;
-    delete firstQuery.task_ref;
-    delete firstQuery.operation_ref;
-    const first = checked(await api.list(firstQuery, signal), firstQuery);
-    if (input.page === undefined || input.page === 1) return first;
-    const bound = {
-      ...first.data.scope,
-      page: input.page || 1,
-      size: input.size,
-      snapshot_ref: first.meta.snapshot_ref
-    };
-    const result = checked(await api.list(bound, signal), bound);
-    if (JSON.stringify(result.data.scope) !== JSON.stringify(first.data.scope)) throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
+    delete query.snapshot_ref;
+    delete query.task_ref;
+    delete query.operation_ref;
+    const result = checked(await api.list(query, signal), input);
+    if (!taskScopeMatches(result.data.scope, input)) throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
     return result;
   }
   function create() {
@@ -29849,7 +30196,7 @@ function SMExport({
   }
   function filter(data, view, asOf, labels = names(data)) {
     const query = view.query.trim().toLowerCase();
-    return data.items.filter(item => (!query || searchText(item, labels).includes(query)) && (view.late === 'all' || deadlines(item, asOf)[view.late]) && (!view.onlySelected || item.task.task_ref === view.selected));
+    return data.items.filter(item => (!query || searchText(item, labels).includes(query)) && (view.late === 'all' || deadlines(item)[view.late]) && (!view.onlySelected || item.task.task_ref === view.selected));
   }
   function push(heap, item) {
     let at = heap.length;
@@ -30061,9 +30408,10 @@ function SMExport({
     const result = new Map();
     for (const row of model.rows) {
       if (row.kind !== 'actual') continue;
-      const candidates = marks(row),
-        reports = candidates.filter(mark => mark.report);
-      const mark = reports.sort((a, b) => b.end - a.end)[0] || candidates[0];
+      const candidates = marks(row);
+      let mark = null;
+      for (const candidate of candidates) if (candidate.report && (!mark || candidate.end > mark.end)) mark = candidate;
+      mark = mark || candidates[0];
       if (!mark) continue;
       const ref = row.item.task.task_ref,
         previous = result.get(ref),
@@ -30496,7 +30844,21 @@ function SMExport({
     busy
   }) {
     const allCollapsed = model.groups.length > 0 && model.groups.every(g => view.collapsed[g.id]);
-    const counts = Object.fromEntries(Object.keys(M.lateLabels).map(key => [key, key === 'all' ? data.items.length : data.items.filter(item => M.deadlines(item, M.wire(model.asOf))[key]).length]));
+    const counts = React.useMemo(() => {
+      const counts = {
+        all: data.items.length,
+        finishLate: 0,
+        unclosed: 0,
+        forecastLate: 0
+      };
+      for (const item of data.items) {
+        const late = M.deadlines(item);
+        if (late.finishLate) counts.finishLate++;
+        if (late.unclosed) counts.unclosed++;
+        if (late.forecastLate) counts.forecastLate++;
+      }
+      return counts;
+    }, [data]);
     return /*#__PURE__*/React.createElement("div", {
       className: "gb-toolbar fg-toolbar"
     }, /*#__PURE__*/React.createElement("div", {
@@ -31123,7 +31485,7 @@ function SMExport({
       });
       const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '剩余数量还没安排';
       const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
-      const timing = M.deadlines(item, M.wire(model.asOf));
+      const timing = M.deadlines(item);
       const deviation = M.finishDeviation(item);
       return /*#__PURE__*/React.createElement("div", {
         key: row.key,
@@ -31595,14 +31957,15 @@ function SMExport({
       targetRef
     }) : null, [graph, view.chain, targetRef]);
     const graphLocations = React.useMemo(() => model ? M.graphLocations(model) : null, [model]);
+    const locationIndex = React.useMemo(() => graphLocations ? window.GanttGraph.locationIndex(graphLocations) : null, [graphLocations]);
     const geometry = React.useMemo(() => model ? window.GanttGraph.paths(active, model, width, {
       top: Math.max(0, position.top - 52),
       height: position.height,
       left: position.left,
       width: viewport
     }, {
-      locations: graphLocations
-    }) : null, [active, model, width, position.top, position.left, position.height, viewport, graphLocations]);
+      locationIndex
+    }) : null, [active, model, width, position.top, position.left, position.height, viewport, locationIndex]);
     function clearTarget() {
       setHover(null);
       setChainTarget(null);
@@ -32035,6 +32398,7 @@ function SMExport({
     }) + ' 秒';
   }
   function stage(run) {
+    if (run.stage === 'computing' && window.RunGenerationContract.unified(run.scope_summary && run.scope_summary.run_options)) return '正在共同优化方案';
     return stages[run.stage] || '排产阶段未知';
   }
   window.RunPresentation = {
@@ -32101,10 +32465,12 @@ function SMExport({
       };
       delete value.hold_window;
     }
-    const keys = object(value) && own(value, 'hold_window') ? fields.concat(['hold_window']) : fields;
-    if (!object(value) || Object.keys(value).length !== keys.length || !keys.every(key => own(value, key)) || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date || !['strict', 'stage', 'split'].includes(value.material_strategy) || value.material_strategy !== 'strict' && !value.ready_check || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals') throw fail('请核对已选批次、排产日期范围和本次排产规则。');
+    const optional = ['hold_window', 'time_budget_seconds'].filter(key => object(value) && own(value, key)),
+      keys = fields.concat(optional);
+    if (!object(value) || Object.keys(value).length !== keys.length || !keys.every(key => own(value, key)) || !refs(value.batch_refs) || !date(value.start_date) || !date(value.end_date) || value.start_date > value.end_date || !['strict', 'stage', 'split'].includes(value.material_strategy) || value.material_strategy !== 'strict' && !value.ready_check || typeof value.ready_check !== 'boolean' || !['auto_assign', 'exclude'].includes(value.missing_resource_policy) || value.completed_policy !== 'preserve_actuals' || own(value, 'time_budget_seconds') && !window.RunGenerationContract.budget(value.time_budget_seconds)) throw fail('请核对已选批次、排产日期范围和本次排产规则。');
     const normalized = Object.fromEntries(fields.map(key => [key, key === 'batch_refs' ? value[key].slice().sort() : value[key]]));
-    if (keys !== fields) normalized.hold_window = holdWindow(value.hold_window, value.start_date, value.end_date);
+    if (own(value, 'hold_window')) normalized.hold_window = holdWindow(value.hold_window, value.start_date, value.end_date);
+    if (own(value, 'time_budget_seconds')) normalized.time_budget_seconds = value.time_budget_seconds;
     return normalized;
   }
   function defaults() {
@@ -32129,11 +32495,11 @@ function SMExport({
   }
   function initial(context) {
     if (context === undefined) return defaults();
-    if (!object(context) || Object.keys(context).some(key => !fields.concat(['hold_window', 'scope', 'entity_ref', 'return_to']).includes(key))) throw fail('传入的排产范围无效或已过期，未自动扩大为全部批次。');
+    if (!object(context) || Object.keys(context).some(key => !fields.concat(['hold_window', 'time_budget_seconds', 'scope', 'entity_ref', 'return_to']).includes(key))) throw fail('传入的排产范围无效或已过期，未自动扩大为全部批次。');
     const value = {
       ...defaults()
     };
-    fields.concat(['hold_window']).forEach(key => {
+    fields.concat(['hold_window', 'time_budget_seconds']).forEach(key => {
       if (own(context, key)) value[key] = context[key];
     });
     if (context.scope !== undefined) {
@@ -32173,8 +32539,10 @@ function SMExport({
   function result(envelope, expected) {
     const d = envelope && envelope.data,
       normalized = input(expected),
+      actual = d && input(d.normalized_input),
       scope = new Set(normalized.batch_refs);
-    if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key])) || JSON.stringify(input(d.normalized_input)) !== JSON.stringify(normalized) || !Array.isArray(d.tasks) || !d.tasks.every(row => object(row) && ref(row.operation_ref) && scope.has(row.batch_ref) && typeof row.batch_id === 'string' && typeof row.label === 'string' && taskStates.includes(row.status) && typeof row.has_execution_facts === 'boolean' && issues(row.issues) && Array.isArray(row.predecessor_refs) && row.predecessor_refs.every(ref) && execution(row.execution) && own(row, 'held') && held(row.held)) || new Set(d.tasks.map(row => row.operation_ref)).size !== d.tasks.length || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true || !object(d.write_context) || !object(d.write_context.capabilities) || d.write_context.capabilities['scheduling.run'] !== false || d.write_context.write_token !== null || !Array.isArray(d.no_route_batches) || !Array.isArray(d.unready_batches) || !Array.isArray(d.included_batches) || !Array.isArray(d.excluded_batches) || !object(d.scope) || d.scope.source !== 'production' || !refs(d.scope.batch_refs) || JSON.stringify(d.scope.batch_refs) !== JSON.stringify(normalized.batch_refs) || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key]) || !effectiveHold(d.effective_config, normalized) || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
+    if (actual && normalized.time_budget_seconds === undefined && actual.time_budget_seconds !== undefined) normalized.time_budget_seconds = actual.time_budget_seconds;
+    if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key])) || JSON.stringify(actual) !== JSON.stringify(normalized) || own(d, 'run_options') && (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds) || !Array.isArray(d.tasks) || !d.tasks.every(row => object(row) && ref(row.operation_ref) && scope.has(row.batch_ref) && typeof row.batch_id === 'string' && typeof row.label === 'string' && taskStates.includes(row.status) && typeof row.has_execution_facts === 'boolean' && issues(row.issues) && Array.isArray(row.predecessor_refs) && row.predecessor_refs.every(ref) && execution(row.execution) && own(row, 'held') && held(row.held)) || new Set(d.tasks.map(row => row.operation_ref)).size !== d.tasks.length || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true || !object(d.write_context) || !object(d.write_context.capabilities) || d.write_context.capabilities['scheduling.run'] !== false || d.write_context.write_token !== null || !Array.isArray(d.no_route_batches) || !Array.isArray(d.unready_batches) || !Array.isArray(d.included_batches) || !Array.isArray(d.excluded_batches) || !object(d.scope) || d.scope.source !== 'production' || !refs(d.scope.batch_refs) || JSON.stringify(d.scope.batch_refs) !== JSON.stringify(normalized.batch_refs) || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key]) || !effectiveHold(d.effective_config, normalized) || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
     const c = d.counts,
       heldRows = d.tasks.filter(row => row.held !== null);
     ['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks'].forEach((key, index) => {
@@ -33152,13 +33520,43 @@ function SMExport({
         if (serial.current === id) setBusy(false);
       }
     }
-    async function read(input, controller, id) {
+    async function read(input, controller, id, confirmationOwner = null) {
       const response = await adapter.preflight(input, controller.signal);
-      C.result(response, input);
-      if (serial.current === id) {
-        setResult(response);
+      if (serial.current === id && !controller.signal.aborted) {
+        setResult({
+          response,
+          confirmationOwner
+        });
         setNeedsRecheck(false);
         rememberHold(input, response.data.effective_config);
+        return response.data;
+      }
+      return null;
+    }
+    async function recheckForRun(input, signal, confirmationOwner) {
+      invalidate();
+      const id = ++serial.current,
+        controller = new AbortController();
+      active.current = controller;
+      const cancel = () => {
+        controller.abort();
+        if (serial.current === id) {
+          serial.current++;
+          setBusy(false);
+        }
+      };
+      setBusy(true);
+      if (signal.aborted) cancel();else signal.addEventListener('abort', cancel, {
+        once: true
+      });
+      try {
+        return await read(C.input(input), controller, id, confirmationOwner);
+      } catch (problem) {
+        if (serial.current === id && !controller.signal.aborted) setError(problem);
+        throw problem;
+      } finally {
+        signal.removeEventListener('abort', cancel);
+        if (serial.current === id) setBusy(false);
       }
     }
     function rememberHold(input, config) {
@@ -33168,7 +33566,7 @@ function SMExport({
       });
     }
     const effectiveHold = holdDefault && holdDefault.start_date === value.start_date ? holdDefault : null;
-    const data = result && result.data,
+    const data = result && result.response.data,
       counts = data && data.counts,
       currentStep = window.RunPresentation.step(remembered, data);
     const runBlocked = !data || data.write_context.capabilities['scheduling.run'] !== true || typeof adapter.run !== 'function';
@@ -33306,7 +33704,7 @@ function SMExport({
     }, "\u6B63\u5728\u8BFB\u53D6\u6279\u6B21\u3001\u8BBE\u5907\u4EBA\u5458\u548C\u62A5\u5DE5\u8BB0\u5F55\uFF0C\u8FD8\u6CA1\u5F00\u59CB\u6392\u4EA7\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "pf-muted",
       role: "status"
-    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.meta.as_of), " \xB7 \u7ED3\u679C\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.input_expires_at), " \xB7 \u73ED\u8868\u672A\u6838\u5BF9"), /*#__PURE__*/React.createElement(HoldSummary, {
+    }, "\u68C0\u67E5\u65F6\u95F4\uFF1A", window.WorkbenchFormat.dateTime(result.response.meta.as_of), " \xB7 \u7ED3\u679C\u6709\u6548\u81F3 ", window.WorkbenchFormat.dateTime(data.input_expires_at), " \xB7 \u73ED\u8868\u672A\u6838\u5BF9"), /*#__PURE__*/React.createElement(HoldSummary, {
       key: 'hold-' + data.input_ref,
       data: data
     }), /*#__PURE__*/React.createElement(Details, {
@@ -33336,7 +33734,10 @@ function SMExport({
       className: currentStep === 3 ? 'btn primary' : 'btn',
       disabled: runBlocked,
       reason: runReason
-    }, "\u5F00\u59CB\u6392\u4EA7")))), renderRunPanel && renderRunPanel(data));
+    }, "\u5F00\u59CB\u6392\u4EA7")))), renderRunPanel && renderRunPanel(data, {
+      onRecheck: recheckForRun,
+      confirmationOwner: result && result.confirmationOwner
+    }));
   }
   window.PreflightWorkspace = PreflightWorkspace;
 })();
@@ -33388,7 +33789,7 @@ function SMExport({
   const minute = v => text(v) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v) && date(v.slice(0, 10));
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   function input(v) {
-    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window']) && (v.material_strategy === undefined || ['strict', 'stage', 'split'].includes(v.material_strategy)) && holdWindow(v.hold_window) && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');
+    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (v.material_strategy === undefined || ['strict', 'stage', 'split'].includes(v.material_strategy)) && holdWindow(v.hold_window) && (v.time_budget_seconds === undefined || window.RunGenerationContract.budget(v.time_budget_seconds)) && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');
     return v;
   }
   function envelope(v) {
@@ -33397,16 +33798,20 @@ function SMExport({
   }
   function preview(v, inputRef) {
     const d = envelope(v);
-    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef && d.calendar_check === 'not_evaluated' && issues(d.warnings));
+    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref'], ['run_options']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef && d.calendar_check === 'not_evaluated' && issues(d.warnings));
     input(d.normalized_input);
     const c = d.write_context;
+    check(d.run_options === undefined || (d.run_options === null ? object(c) && c.capabilities && c.capabilities['scheduling.run'] === false && Array.isArray(c.blocked_reasons) && c.blocked_reasons.some(row => row.code === 'config_error') : window.RunGenerationContract.runOptions(d.run_options) && d.run_options.time_budget_seconds === d.normalized_input.time_budget_seconds));
     check(shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, ['scheduling.run']) && issues(c.blocked_reasons));
     check(c.capabilities['scheduling.run'] === true ? token(c.write_token) && time(c.expires_at) && c.blocked_reasons.length === 0 && d.normalized_input.batch_refs.length > 0 : c.capabilities['scheduling.run'] === false && c.write_token === null && c.expires_at === null && c.blocked_reasons.length > 0);
+    check(c.capabilities['scheduling.run'] !== true || d.normalized_input.time_budget_seconds === undefined || d.run_options !== undefined);
     return d;
   }
   function run(v, expectedRef) {
     check(shape(v, ['run_ref', 'job_ref', 'state', 'stage', 'progress', 'plans', 'plan_catalog_connected', 'candidates', 'result_persisted', 'accepted_at', 'started_at', 'finished_at', 'receipt_ref', 'error', 'recovery_required', 'scope_summary']) && ref(v.run_ref) && v.job_ref === v.run_ref && (!expectedRef || v.run_ref === expectedRef) && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(v.state) && (v.progress === null || v.state === 'running' && v.stage === 'computing' && progress(v.progress)) && Array.isArray(v.plans) && v.plans.length === 0 && v.plan_catalog_connected === false && Array.isArray(v.candidates) && time(v.accepted_at) && (v.started_at === null || time(v.started_at)) && (v.finished_at === null || time(v.finished_at)) && (v.error === null || shape(v.error, ['code', 'message']) && issue(v.error)));
     runScope(v.scope_summary);
+    const unified = v.scope_summary.run_options && v.scope_summary.run_options.generation_policy_version === 'unified_search_v1';
+    check(!unified || v.progress === null && v.candidates.length <= 3 && v.candidates.every(candidate => candidate.status === 'completed'));
     const done = terminal(v),
       saved = ['complete', 'partial'].includes(v.state);
     check(v.result_persisted === saved && v.recovery_required === (v.stage === 'awaiting_reconciliation') && (done ? v.stage === 'finished' && ref(v.receipt_ref) && time(v.finished_at) : v.receipt_ref === null && v.finished_at === null && [v.state === 'queued' ? 'queued' : 'computing', 'awaiting_reconciliation'].includes(v.stage)) && (v.state === 'queued' ? v.started_at === null : v.state === 'running' || saved ? time(v.started_at) : true) && (saved || !done ? v.error === null : v.error !== null) && v.candidates.every(c => shape(c, ['candidate_ref', 'label', 'status', 'task_count', 'selected']) && ref(c.candidate_ref) && text(c.label) && ['completed', 'failed', 'skipped'].includes(c.status) && count(c.task_count) && typeof c.selected === 'boolean' && (c.status === 'completed' || c.task_count === 0 && c.selected === false)) && new Set(v.candidates.map(c => c.candidate_ref)).size === v.candidates.length && (saved ? v.candidates.length > 0 && v.candidates.filter(c => c.selected).length === 1 : v.candidates.length === 0));
@@ -33415,7 +33820,7 @@ function SMExport({
   function runScope(value) {
     const nullableText = item => item === null || text(item),
       nullableCount = item => item === null || count(item);
-    check(shape(value, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count', 'selection', 'basis', 'data_gaps', 'operation_count', 'batches', 'objective', 'objective_label'], ['material_strategy', 'hold_window']) && value.selection === 'explicit_batches' && value.basis === 'captured_at_run_admission' && ['start_date', 'end_date'].every(field => value[field] === null || date(value[field])) && (value.start_date === null || value.end_date === null || value.start_date <= value.end_date) && (value.ready_check === null || typeof value.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(value.missing_resource_policy) && [null, 'preserve_actuals'].includes(value.completed_policy) && (value.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(value.material_strategy)) && holdWindow(value.hold_window) && nullableCount(value.batch_count) && nullableCount(value.operation_count) && nullableText(value.objective) && nullableText(value.objective_label) && gaps(value.data_gaps) && Array.isArray(value.batches) && value.batches.every(row => shape(row, ['batch_ref', 'batch_id', 'part_no', 'part_label']) && ref(row.batch_ref) && ['batch_id', 'part_no', 'part_label'].every(field => nullableText(row[field]))));
+    check(shape(value, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count', 'selection', 'basis', 'data_gaps', 'operation_count', 'batches', 'objective', 'objective_label'], ['material_strategy', 'hold_window', 'run_options']) && value.selection === 'explicit_batches' && value.basis === 'captured_at_run_admission' && ['start_date', 'end_date'].every(field => value[field] === null || date(value[field])) && (value.start_date === null || value.end_date === null || value.start_date <= value.end_date) && (value.ready_check === null || typeof value.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(value.missing_resource_policy) && [null, 'preserve_actuals'].includes(value.completed_policy) && (value.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(value.material_strategy)) && holdWindow(value.hold_window) && nullableCount(value.batch_count) && nullableCount(value.operation_count) && (value.run_options === undefined || window.RunGenerationContract.runOptions(value.run_options)) && nullableText(value.objective) && nullableText(value.objective_label) && gaps(value.data_gaps) && Array.isArray(value.batches) && value.batches.every(row => shape(row, ['batch_ref', 'batch_id', 'part_no', 'part_label']) && ref(row.batch_ref) && ['batch_id', 'part_no', 'part_label'].every(field => nullableText(row[field]))));
     return value;
   }
   function accepted(v) {
@@ -33432,12 +33837,6 @@ function SMExport({
   const gaps = v => Array.isArray(v) && v.every(g => shape(g, ['field', 'code', 'message']) && [g.field, g.code, g.message].every(text));
   const capabilities = v => shape(v, ['view', 'export', 'edit_draft', 'adopt', 'report_actual']) && v.view === true && v.export === true && v.edit_draft === false && v.adopt === false && v.report_actual === false;
   const blocked = v => Array.isArray(v) && v.every(r => shape(r, ['capability', 'code', 'message']) && ['adopt', 'edit_draft', 'report_actual', 'preview'].includes(r.capability) && text(r.code) && text(r.message)) && ['adopt', 'edit_draft', 'report_actual'].every(c => v.some(r => r.capability === c));
-  const metricKeys = ['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'changeover_count', 'weighted_tardiness_hours', 'machine_used_count', 'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg', 'elapsed_seconds'];
-  function metric(v) {
-    if (!shape(v, ['value', 'reason'])) return false;
-    if (v.value === null) return v.reason !== null && gaps([v.reason]);
-    return v.reason === null && (typeof v.value === 'number' && Number.isFinite(v.value) && v.value >= 0 || text(v.value) && /^[1-9]\d{15,}$/.test(v.value) && (v.value.length > 16 || v.value > '9007199254740991'));
-  }
   function catalogScope(v = {}) {
     check(shape(v, [], ['page', 'snapshot_ref']) && (v.page === undefined || Number.isInteger(v.page) && v.page >= 1 && v.page <= 256) && (v.snapshot_ref === undefined || token(v.snapshot_ref)));
     return {
@@ -33455,11 +33854,13 @@ function SMExport({
     const d = envelope(v),
       scope = catalogScope(query);
     check(shape(d, ['run_ref', 'run_state', 'candidates', 'page', 'candidate_count', 'catalog_complete', 'capabilities', 'blocked_reasons']) && ref(runRef) && d.run_ref === runRef && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(d.run_state) && count(d.candidate_count) && d.candidate_count <= 256 && d.catalog_complete === !['queued', 'running'].includes(d.run_state) && capabilities(d.capabilities) && blocked(d.blocked_reasons) && shape(d.page, ['number', 'size', 'total', 'has_more']) && d.page.number === scope.page && d.page.size === 20 && count(d.page.total) && d.page.total === d.candidate_count && d.page.has_more === scope.page * 20 < d.page.total && (!scope.snapshot_ref || v.meta.snapshot_ref === scope.snapshot_ref) && Array.isArray(d.candidates) && d.candidates.length === Math.min(20, Math.max(0, d.page.total - (scope.page - 1) * 20)));
-    check(d.candidates.every(c => shape(c, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps']) && ref(c.candidate_ref) && c.run_ref === runRef && (c.label === null || text(c.label)) && count(c.task_count) && ['completed', 'failed', 'skipped'].includes(c.persisted_status) && ['complete', 'partial', 'unknown', 'no_result'].includes(c.completeness) && c.status === (c.persisted_status === 'completed' && c.completeness === 'partial' ? 'partial' : c.persisted_status) && (c.persisted_status === 'completed' ? c.completeness !== 'no_result' : c.completeness === 'no_result' && c.task_count === 0) && shape(c.metrics, metricKeys) && metricKeys.every(k => metric(c.metrics[k])) && shape(c.metric_scopes, ['delivery', 'resources']) && c.metric_scopes.delivery === 'completed_batches_only' && c.metric_scopes.resources === 'scheduled_results_only' && capabilities(c.capabilities) && blocked(c.blocked_reasons) && gaps(c.data_gaps)) && new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
+    d.candidates.forEach(candidate => window.RunCandidateAPI.summary(candidate, runRef));
+    check(d.candidates.every(candidate => capabilities(candidate.capabilities) && blocked(candidate.blocked_reasons)) && new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
     return d;
   }
   const OUTCOMES = window.WorkbenchTerms.outcomes;
   const messages = {
+    input_already_used: '这份检查结果已经开始过排产，请重新检查后再开始下一次。',
     run_schema_unavailable: '排产记录还没准备好，暂时不能开始排产。请联系维护人员升级数据库。',
     run_worker_not_connected: '排产计算程序没有启动，暂时不能开始排产。请联系维护人员。',
     execution_ledger_unavailable: '报工记录还没准备好，请联系维护人员升级数据库。',
@@ -33504,7 +33905,7 @@ function SMExport({
     const error = new Error(valid ? message(e) : '读到的排产数据不完整，请刷新重试。');
     error.code = valid ? e.code : 'invalid_response';
     error.status = status;
-    error.rejected = valid && v.committed === false && ([400, 409, 422].includes(status) && ['invalid_input', 'snapshot_stale', 'stale_write', 'constraint_conflict'].includes(e.code) || status === 503 && ['run_schema_unavailable', 'run_worker_not_connected', 'request_lifecycle_stopping'].includes(e.code));
+    error.rejected = valid && v.committed === false && ([400, 409, 422].includes(status) && ['invalid_input', 'snapshot_stale', 'stale_write', 'constraint_conflict', 'input_already_used'].includes(e.code) || status === 503 && ['run_schema_unavailable', 'run_worker_not_connected', 'request_lifecycle_stopping'].includes(e.code));
     if (error.rejected) rejections.add(error);
     return error;
   }
@@ -33519,14 +33920,13 @@ function SMExport({
         throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。');
       }
     }
-    const same = (a, b) => validIntent(a) && validIntent(b) && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
+    const same = (a, b) => !!a && !!b && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
     function save(v) {
       try {
         storage.setItem(PENDING_KEY, JSON.stringify(v));
       } catch (_) {
         throw new Error('存不下这次排产的操作记录，没有开始排产。请重新打开页面。');
       }
-      check(same(read(), v), '上次操作记录没能保存，这次不能开始排产。');
       return v;
     }
     function read() {
@@ -33564,6 +33964,7 @@ function SMExport({
       begin(inputRef, previous = null, dataContext = null) {
         check(token(inputRef), '排产检查已失效，请重新做排产检查。');
         const current = read();
+        check(previous === null || validIntent(previous));
         check(previous ? same(current, previous) : current === null, '上次排产还没确认结果，不能重做。请先点「查询结果」。');
         const bytes = new Uint8Array(24);
         window.crypto.getRandomValues(bytes);
@@ -33580,7 +33981,7 @@ function SMExport({
       },
       attach(intent, runRef) {
         const current = read();
-        check(validIntent(intent) && validIntent(current) && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref && (!intent.run_ref || intent.run_ref === runRef) && (!current.run_ref || current.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
+        check(validIntent(intent) && current !== null && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref && (!intent.run_ref || intent.run_ref === runRef) && (!current.run_ref || current.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
         if (current.run_ref === runRef) return current;
         return save({
           ...intent,
@@ -33597,18 +33998,16 @@ function SMExport({
           intent,
           resolution
         }));
-        check(same(recent().intent, intent), '最近排产记录没能保存。');
         storage.removeItem(PENDING_KEY);
-        check(read() === null, '本机无法更新上次操作记录。');
       },
       reject(intent) {
+        check(validIntent(intent));
         check(same(read(), intent), '上次操作记录已变化，没有删除其他记录。');
         try {
           storage.removeItem(PENDING_KEY);
         } catch (_) {
           throw new Error('本机无法更新上次操作记录。请不要再操作，联系维护人员。');
         }
-        check(read() === null, '上次操作记录没能更新。请不要再操作，联系维护人员。');
       }
     };
   }
@@ -33729,7 +34128,7 @@ function SMExport({
       }, 1000);
       return () => clearInterval(timer);
     }, [run.run_ref, run.finished_at]);
-    const progress = run.progress,
+    const progress = window.RunGenerationContract.unified(run.scope_summary.run_options) ? null : run.progress,
       computing = !A.terminal(run) && !run.recovery_required;
     const percent = progress && progress.total > 0 ? Math.round(progress.done / progress.total * 100) : null;
     return /*#__PURE__*/React.createElement("div", {
@@ -33769,17 +34168,28 @@ function SMExport({
     if (value.hold_window === undefined && effective && effective.hold_window_source === 'default') return '按交付设置：' + T.hold_window(effective.hold_window);
     return T.hold_window(value.hold_window);
   }
+  function RunOptions({
+    value,
+    timeBudget = value.time_budget_seconds
+  }) {
+    const G = window.RunGenerationContract;
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E3B\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, G.objectiveLabel(value.primary_objective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u540C\u65F6\u63A2\u7D22"), /*#__PURE__*/React.createElement("dd", null, value.target_objectives.map(G.objectiveLabel).join(' · '))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u9884\u7B97"), /*#__PURE__*/React.createElement("dd", null, timeBudget, " \u79D2")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u751F\u6210\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, value.algo_mode === 'greedy' ? '快速生成' : '共同优化')));
+  }
   function Scope({
     preview,
     effective,
-    operationCount
+    operationCount,
+    timeBudget
   }) {
     const value = preview.normalized_input;
     return /*#__PURE__*/React.createElement("dl", {
       className: "rj-scope"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, value.batch_refs.length, " \u6279", operationCount !== undefined && ' · ' + operationCount + ' 道工序')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, value.start_date, " \u81F3 ", value.end_date)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, value.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8D44\u6E90\u5DE5\u5E8F"), /*#__PURE__*/React.createElement("dd", null, value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", {
       "data-hold-window": true
-    }, holdText(value, effective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u6709\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u5F00\u5DE5\u548C\u5DF2\u5B8C\u5DE5\u7684\u8BB0\u5F55")));
+    }, holdText(value, effective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u6709\u62A5\u5DE5"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u5F00\u5DE5\u548C\u5DF2\u5B8C\u5DE5\u7684\u8BB0\u5F55")), value && preview.run_options && /*#__PURE__*/React.createElement(RunOptions, {
+      value: preview.run_options,
+      timeBudget: timeBudget
+    }));
   }
   function Reasons({
     rows
@@ -33828,42 +34238,144 @@ function SMExport({
   }) {
     return /*#__PURE__*/React.createElement("dl", {
       className: "rj-business-scope"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, value.batch_count === null ? '批次数未保存' : value.batch_count + ' 批', " \xB7 ", value.operation_count === null ? '工序数未保存' : value.operation_count + ' 道工序')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, value.start_date && value.end_date ? window.WorkbenchFormat.date(value.start_date) + ' 至 ' + window.WorkbenchFormat.date(value.end_date) : '日期范围未保存')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, value.objective_label || '目标说明未保存')));
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, value.batch_count === null ? '批次数未保存' : value.batch_count + ' 批', " \xB7 ", value.operation_count === null ? '工序数未保存' : value.operation_count + ' 道工序')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, value.start_date && value.end_date ? window.WorkbenchFormat.date(value.start_date) + ' 至 ' + window.WorkbenchFormat.date(value.end_date) : '日期范围未保存')), value.run_options ? /*#__PURE__*/React.createElement(RunOptions, {
+      value: value.run_options
+    }) : /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6392\u4EA7\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, value.objective_label || '目标说明未保存')));
+  }
+  function Budget({
+    value,
+    disabled,
+    onChange,
+    onEditing
+  }) {
+    const modeFor = value => value === 10 ? '10' : value === 30 ? '30' : 'custom';
+    const [mode, setMode] = React.useState(() => modeFor(value)),
+      [draft, setDraft] = React.useState(String(value)),
+      [error, setError] = React.useState('');
+    React.useEffect(() => {
+      setMode(modeFor(value));
+      setDraft(String(value));
+      setError('');
+      onEditing(false);
+    }, [value]);
+    function commit() {
+      const next = /^\d+$/.test(draft.trim()) ? Number(draft.trim()) : null;
+      if (!window.RunGenerationContract.budget(next)) {
+        setError('请输入至少 1 秒的整数。');
+        onEditing(true);
+        return;
+      }
+      setError('');
+      onEditing(false);
+      if (next !== value) onChange(next);
+    }
+    return /*#__PURE__*/React.createElement("div", {
+      className: "rj-tools"
+    }, /*#__PURE__*/React.createElement("label", null, "\u8BA1\u7B97\u65F6\u95F4", /*#__PURE__*/React.createElement("select", {
+      "aria-label": "\u8BA1\u7B97\u65F6\u95F4",
+      value: mode,
+      disabled: disabled,
+      onChange: event => {
+        const next = event.target.value;
+        setMode(next);
+        setError('');
+        if (next === 'custom') {
+          setDraft('');
+          onEditing(true);
+        } else {
+          onEditing(false);
+          onChange(Number(next));
+        }
+      }
+    }, /*#__PURE__*/React.createElement("option", {
+      value: "10"
+    }, "\u5E38\u89C4 \xB7 10 \u79D2"), /*#__PURE__*/React.createElement("option", {
+      value: "30"
+    }, "\u6DF1\u5165 \xB7 30 \u79D2"), /*#__PURE__*/React.createElement("option", {
+      value: "custom"
+    }, "\u81EA\u5B9A\u4E49\u79D2\u6570"))), mode === 'custom' && /*#__PURE__*/React.createElement("label", null, "\u81EA\u5B9A\u4E49\u79D2\u6570", /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      inputMode: "numeric",
+      "aria-label": "\u81EA\u5B9A\u4E49\u8BA1\u7B97\u79D2\u6570",
+      value: draft,
+      disabled: disabled,
+      onChange: event => {
+        setDraft(event.target.value);
+        setError('');
+        onEditing(true);
+      },
+      onBlur: commit,
+      onKeyDown: event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commit();
+        }
+      }
+    })), error && /*#__PURE__*/React.createElement("span", {
+      role: "alert"
+    }, error));
   }
   function Confirmation({
     preview,
+    preflight,
     effective,
     batches = [],
     operationCount,
+    timeBudget,
+    onBudgetChange,
     busy,
+    submitting = false,
+    error,
     onConfirm,
-    onClose
+    onClose,
+    onRetry
   }) {
-    const [page, setPage] = React.useState(1),
-      values = preview.normalized_input.batch_refs,
+    const checked = preflight || preview,
+      [page, setPage] = React.useState(1),
+      [editingBudget, setEditingBudget] = React.useState(false),
+      values = checked.normalized_input.batch_refs,
       pages = Math.max(1, Math.ceil(values.length / 20));
-    const labels = new Map(batches.map(row => [row.batch_ref, row]));
+    const labels = new Map(batches.map(row => [row.batch_ref, row])),
+      warnings = preview ? preview.warnings : checked.warnings;
     return /*#__PURE__*/React.createElement(Modal, {
       title: "\u786E\u8BA4\u672C\u6B21\u5019\u9009\u6392\u4EA7",
       icon: "play",
       onClose: onClose,
-      locked: busy,
+      locked: submitting,
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         onClick: onClose,
-        disabled: busy
-      }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
+        disabled: submitting
+      }, "\u53D6\u6D88"), !preview && !busy && onRetry && /*#__PURE__*/React.createElement(Button, {
+        icon: "refresh-cw",
+        disabled: editingBudget,
+        onClick: onRetry
+      }, "\u91CD\u65B0\u6838\u5BF9"), /*#__PURE__*/React.createElement(Button, {
         icon: "play",
         className: "btn primary",
         busy: busy,
+        disabled: !preview || editingBudget,
         onClick: onConfirm
       }, "\u786E\u8BA4\u5F00\u59CB\u6392\u4EA7"))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-body run-job-panel rj-confirm"
     }, /*#__PURE__*/React.createElement(Scope, {
-      preview: preview,
+      preview: checked,
       effective: effective,
-      operationCount: operationCount
-    }), /*#__PURE__*/React.createElement("p", {
+      operationCount: operationCount,
+      timeBudget: timeBudget
+    }), checked.run_options && onBudgetChange && /*#__PURE__*/React.createElement(Budget, {
+      value: timeBudget,
+      disabled: submitting,
+      onChange: onBudgetChange,
+      onEditing: setEditingBudget
+    }), checked.run_options && /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted"
+    }, "\u9884\u7B97\u7528\u4E8E\u4E00\u6B21\u5171\u540C\u4F18\u5316\uFF1B\u7ED3\u679C\u6709 1\u20143 \u4EFD\uFF0C\u5B9E\u9645\u76F8\u540C\u65B9\u6848\u4F1A\u5408\u5E76\u3002", checked.run_options.algo_mode === 'greedy' && '快速生成可能得到一份方案。'), busy && !submitting && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "\u6B63\u5728\u6309\u672C\u6B21\u9884\u7B97\u91CD\u65B0\u68C0\u67E5\u5E76\u6838\u5BF9\u6392\u4EA7\u6761\u4EF6\u3002"), error && /*#__PURE__*/React.createElement("div", {
+      className: "rj-notice",
+      role: "alert"
+    }, error), /*#__PURE__*/React.createElement("p", {
       className: "rj-muted"
     }, "\u8BA1\u7B97\u5B8C\u6210\u540E\u53EF\u6BD4\u8F83\u5019\u9009\u65B9\u6848\uFF0C\u518D\u9009\u62E9\u662F\u5426\u91C7\u7528\u4E3A\u6B63\u5F0F\u8BA1\u5212\u3002"), /*#__PURE__*/React.createElement("h3", null, "\u672C\u6B21\u9009\u4E2D\u7684\u6279\u6B21"), /*#__PURE__*/React.createElement("ol", {
       className: "rj-confirm-batches",
@@ -33881,8 +34393,8 @@ function SMExport({
       unit: "\u6279",
       label: "\u6279\u6B21",
       onPage: setPage
-    }), !!preview.warnings.length && /*#__PURE__*/React.createElement(Reasons, {
-      rows: preview.warnings
+    }), !!warnings.length && /*#__PURE__*/React.createElement(Reasons, {
+      rows: warnings
     })));
   }
   function Record({
@@ -33925,7 +34437,9 @@ function SMExport({
       value: run.scope_summary
     }), /*#__PURE__*/React.createElement(Progress, {
       run: run
-    }), run.recovery_required && /*#__PURE__*/React.createElement("p", {
+    }), saved && window.RunGenerationContract.unified(run.scope_summary.run_options) && /*#__PURE__*/React.createElement("p", {
+      className: "rj-muted"
+    }, "\u672C\u6B21\u4FDD\u5B58 ", run.candidates.length, " \u4EFD\u65B9\u6848\u3002"), run.recovery_required && /*#__PURE__*/React.createElement("p", {
       className: "rj-notice"
     }, "\u6B63\u5728\u6838\u5BF9\u4E0A\u6B21\u7684\u6392\u4EA7\u8BB0\u5F55\uFF0C\u7ED3\u679C\u8FD8\u6CA1\u786E\u8BA4\uFF0C\u6CA1\u6709\u91CD\u65B0\u8BA1\u7B97\u3002"), run.error && /*#__PURE__*/React.createElement("div", {
       className: "rj-notice",
@@ -33996,6 +34510,8 @@ function SMExport({
   }
   function RunJobPanel({
     preflight,
+    preflightOwner,
+    onRecheck,
     onNavigate,
     adapter
   }) {
@@ -34020,6 +34536,9 @@ function SMExport({
     const [run, setRun] = React.useState(null),
       [preview, setPreview] = React.useState(null),
       [confirming, setConfirming] = React.useState(false);
+    const [confirmationData, setConfirmationData] = React.useState(null),
+      [timeBudget, setTimeBudget] = React.useState(null),
+      [submitting, setSubmitting] = React.useState(false);
     const [error, setError] = React.useState(''),
       [errorDetails, setErrorDetails] = React.useState(null),
       [notice, setNotice] = React.useState(''),
@@ -34041,39 +34560,56 @@ function SMExport({
     const alive = React.useRef(false),
       locked = React.useRef(false),
       previewRequest = React.useRef(null),
+      confirmationSession = React.useRef(null),
+      currentPreview = React.useRef(null),
       activeInput = React.useRef(null),
       activeIntent = React.useRef(intent);
     const inputRef = preflight && A.token(preflight.input_ref) ? preflight.input_ref : null;
     activeInput.current = inputRef;
     activeIntent.current = intent;
+    function closeConfirmation() {
+      if (locked.current) return;
+      confirmationSession.current = null;
+      currentPreview.current = null;
+      if (previewRequest.current) previewRequest.current.abort();
+      previewRequest.current = null;
+      setPreview(null);
+      setConfirming(false);
+      setConfirmationData(null);
+      setBusy(false);
+    }
     React.useEffect(() => {
       alive.current = true;
       return () => {
         alive.current = false;
+        confirmationSession.current = null;
+        currentPreview.current = null;
         if (previewRequest.current) previewRequest.current.abort();
       };
     }, []);
     React.useEffect(() => {
-      setPreview(null);
-      setConfirming(false);
+      // A budget check continues the same confirmation even while the parent clears its old result.
+      // Its owner also prevents a closed confirmation from reopening when a check has already finished.
+      if (preflightOwner) {
+        if (confirmationSession.current !== preflightOwner || preflightOwner.api !== api) closeConfirmation();
+        return;
+      }
+      if (!inputRef && confirmationSession.current && confirmationSession.current.rechecking) return;
+      closeConfirmation();
       setUnavailable('');
-      if (previewRequest.current) previewRequest.current.abort();
-    }, [inputRef, api]);
-    React.useEffect(() => {
       if (inputRef && !storageError && !pendingActive) inspect();
-    }, [inputRef, api]);
+    }, [inputRef, preflightOwner, api]);
     React.useEffect(() => {
       function changed(event) {
         if (![A.PENDING_KEY, A.RECENT_KEY, null].includes(event.key)) return;
         try {
           const saved = savedRecord();
+          closeConfirmation();
           setIntent(saved.intent);
           setPendingActive(saved.pending);
           setResolution(saved.resolution || 'unresolved');
           setRun(null);
           setVerified(false);
-          setPreview(null);
-          setConfirming(false);
           setStorageError('');
           refresh();
         } catch (e) {
@@ -34188,39 +34724,86 @@ function SMExport({
         document.removeEventListener('visibilitychange', visibility);
       };
     }, [api, intent && intent.request_key, revision, storageError]);
-    async function inspect() {
-      if (locked.current && !(previewRequest.current && previewRequest.current.signal.aborted) || storageError || !inputRef || pendingActive) return;
-      locked.current = true;
+    function beginPreviewRequest() {
+      if (previewRequest.current) previewRequest.current.abort();
+      const controller = new AbortController();
+      previewRequest.current = controller;
+      currentPreview.current = null;
       setBusy(true);
       clearError();
       setNotice('');
       setPreview(null);
       setUnavailable('');
-      const original = inputRef,
-        controller = new AbortController();
-      previewRequest.current = controller;
+      return controller;
+    }
+    function ownsPreview(owner, controller) {
+      return alive.current && confirmationSession.current === owner && owner.api === api && previewRequest.current === controller && !controller.signal.aborted;
+    }
+    async function readPreview(checked, owner, controller) {
+      const value = A.preview(await api.preview(checked.input_ref, controller.signal), checked.input_ref);
+      if (!ownsPreview(owner, controller)) return;
+      if (JSON.stringify(window.PreflightContract.input(value.normalized_input)) !== JSON.stringify(window.PreflightContract.input(checked.normalized_input)) || checked.run_options && (!value.run_options || Object.keys(checked.run_options).some(key => JSON.stringify(checked.run_options[key]) !== JSON.stringify(value.run_options[key])))) throw window.PreflightContract.fail('核对结果与本次排产检查不一致，请重新检查。');
+      currentPreview.current = value;
+      setPreview(value);
+      setConfirming(value.write_context.capabilities['scheduling.run']);
+      if (!value.write_context.capabilities['scheduling.run']) setUnavailable(value.write_context.blocked_reasons[0].message || A.message(value.write_context.blocked_reasons[0]));
+    }
+    function previewFailure(error, owner, controller) {
+      if (!ownsPreview(owner, controller)) return;
+      fail(error, A.previewMessage(error));
+      if (['run_schema_unavailable', 'run_worker_not_connected'].includes(error.code)) setUnavailable(A.message(error));
+    }
+    function finishPreview(owner, controller) {
+      if (previewRequest.current !== controller) return;
+      previewRequest.current = null;
+      owner.rechecking = false;
+      if (alive.current) setBusy(false);
+    }
+    async function inspect() {
+      if (locked.current || previewRequest.current || storageError || !inputRef || pendingActive) return;
+      const owner = {
+        preflight,
+        api,
+        rechecking: false
+      };
+      confirmationSession.current = owner;
+      setConfirmationData(preflight);
+      setTimeBudget(preflight.run_options ? preflight.run_options.time_budget_seconds : null);
+      setConfirming(false);
+      const controller = beginPreviewRequest();
       try {
-        const value = A.preview(await api.preview(original, controller.signal), original);
-        if (!alive.current || controller.signal.aborted || activeInput.current !== original) return;
-        setPreview(value);
-        setConfirming(value.write_context.capabilities['scheduling.run']);
-        if (!value.write_context.capabilities['scheduling.run']) setUnavailable(value.write_context.blocked_reasons[0].message || A.message(value.write_context.blocked_reasons[0]));
+        await readPreview(preflight, owner, controller);
       } catch (e) {
-        if (alive.current && !controller.signal.aborted) {
-          fail(e, A.previewMessage(e));
-          if (['run_schema_unavailable', 'run_worker_not_connected'].includes(e.code)) setUnavailable(A.message(e));
-        }
+        previewFailure(e, owner, controller);
       } finally {
-        if (previewRequest.current === controller) {
-          previewRequest.current = null;
-          locked.current = false;
-          if (alive.current) setBusy(false);
-        }
+        finishPreview(owner, controller);
+      }
+    }
+    async function recheckBudget(seconds) {
+      const owner = confirmationSession.current;
+      if (locked.current || !owner || typeof onRecheck !== 'function' || !window.RunGenerationContract.budget(seconds) || pendingActive || storageError) return;
+      owner.rechecking = true;
+      setTimeBudget(seconds);
+      const controller = beginPreviewRequest();
+      try {
+        const checked = await onRecheck({
+          ...owner.preflight.normalized_input,
+          time_budget_seconds: seconds
+        }, controller.signal, owner);
+        if (!checked || !ownsPreview(owner, controller)) return;
+        owner.preflight = checked;
+        setConfirmationData(checked);
+        await readPreview(checked, owner, controller);
+      } catch (e) {
+        previewFailure(e, owner, controller);
+      } finally {
+        finishPreview(owner, controller);
       }
     }
     async function submit() {
-      if (locked.current || !preview || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;
+      if (locked.current || !confirmationSession.current || confirmationSession.current.rechecking || !preview || currentPreview.current !== preview || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;
       locked.current = true;
+      setSubmitting(true);
       setBusy(true);
       clearError();
       let original;
@@ -34231,9 +34814,11 @@ function SMExport({
           ifAvailable: true
         }, async lock => {
           if (!lock) throw new Error('另一个页面正在提交排产，请稍后点「查询结果」。');
-          if (!alive.current || preview.input_ref !== activeInput.current) return;
+          if (!alive.current || currentPreview.current !== preview || preview.input_ref !== activeInput.current) return;
           if (pendingActive) throw new Error('上次排产还没确认结果，不能开始下一次排产。');
           original = A.pending().begin(preview.input_ref, null, preview.data_context_ref);
+          confirmationSession.current = null;
+          currentPreview.current = null;
           activeIntent.current = original;
           setIntent(original);
           setPendingActive(true);
@@ -34269,6 +34854,7 @@ function SMExport({
       } finally {
         locked.current = false;
         if (alive.current) {
+          setSubmitting(false);
           setBusy(false);
           setPreview(null);
           setConfirming(false);
@@ -34361,19 +34947,20 @@ function SMExport({
       verified: verified,
       api: api,
       onNavigate: onNavigate
-    }), confirming && preview && /*#__PURE__*/React.createElement(U.Confirmation, {
+    }), confirming && confirmationData && /*#__PURE__*/React.createElement(U.Confirmation, {
       preview: preview,
-      effective: effective,
-      batches: batches,
-      operationCount: operationCount,
+      preflight: confirmationData,
+      effective: confirmationData.effective_config,
+      batches: confirmationData.included_batches.concat(confirmationData.excluded_batches),
+      operationCount: confirmationData.counts.selected_tasks,
+      timeBudget: timeBudget,
+      onBudgetChange: typeof onRecheck === 'function' ? recheckBudget : undefined,
       busy: busy,
+      submitting: submitting,
+      error: error,
       onConfirm: submit,
-      onClose: () => {
-        if (!locked.current) {
-          setConfirming(false);
-          setPreview(null);
-        }
-      }
+      onClose: closeConfirmation,
+      onRetry: () => recheckBudget(timeBudget)
     }));
   }
   window.RunJobPanel = RunJobPanel;
@@ -34498,17 +35085,16 @@ function SMExport({
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     function save(value, previous) {
       check(same(read(), previous), '上次采用记录已变化，没有覆盖其他操作。');
+      check(value === null || validIntent(value));
       try {
         if (value === null) storage.removeItem(PENDING_KEY);else storage.setItem(PENDING_KEY, JSON.stringify(value));
       } catch (_) {
         throw new Error('存不下采用的操作记录，没有开始新的采用。请重新打开页面。');
       }
-      const stored = read();
-      check(same(stored, value), '采用的操作记录没有保存，不要重新采用。');
       window.dispatchEvent(new CustomEvent(EVENT, {
-        detail: stored
+        detail: value
       }));
-      return stored;
+      return value;
     }
     return {
       read,
@@ -34866,8 +35452,7 @@ function SMExport({
     function readStorage(event) {
       try {
         const saved = event && event.type === A.EVENT ? event.detail : A.pending().read();
-        if (event && event.type === A.EVENT && saved !== null && !A.validIntent(saved)) throw new Error('本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。');
-        if (JSON.stringify(saved) !== JSON.stringify(active.current)) {
+        if (saved !== active.current && JSON.stringify(saved) !== JSON.stringify(active.current)) {
           active.current = saved;
           setIntent(saved);
           setResult(null);
@@ -35155,12 +35740,19 @@ function SMExport({
     return shape(v, ['value', 'reason']) && (v.value === null ? gap(v.reason) : number(v.value) && v.reason === null);
   }
   function summary(v, runRef) {
-    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps']) && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000 && ['completed', 'failed', 'skipped'].includes(v.persisted_status) && ['complete', 'partial', 'unknown', 'no_result'].includes(v.completeness) && v.status === (v.persisted_status === 'completed' && v.completeness === 'partial' ? 'partial' : v.persisted_status) && (v.persisted_status === 'completed' ? v.completeness !== 'no_result' : v.completeness === 'no_result' && v.task_count === 0) && shape(v.metrics, metricKeys) && metricKeys.every(k => metric(v.metrics[k])) && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only' && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps));
+    const unified = v && v.generation_policy_version === 'unified_search_v1',
+      G = window.RunGenerationContract;
+    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(unified ? G.metadataKeys : [])) && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000 && ['completed', 'failed', 'skipped'].includes(v.persisted_status) && ['complete', 'partial', 'unknown', 'no_result'].includes(v.completeness) && v.status === (v.persisted_status === 'completed' && v.completeness === 'partial' ? 'partial' : v.persisted_status) && (v.persisted_status === 'completed' ? v.completeness !== 'no_result' : v.completeness === 'no_result' && v.task_count === 0) && shape(v.metrics, metricKeys) && metricKeys.every(k => unified && k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k])) && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only' && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps) && (!unified || v.persisted_status === 'completed' && G.metadata(v, v.run_ref)));
     return v;
   }
   function envelope(v) {
     check(shape(v, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && v.ok === true && v.schema_version === 1 && shape(v.meta, ['request_ref', 'source', 'time_basis', 'snapshot_ref', 'as_of']) && /^[a-f0-9]{32}$/.test(v.meta.request_ref) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of) && Array.isArray(v.warnings) && v.warnings.every(r => object(r) && text(r.code) && text(r.message)));
     return v.data;
+  }
+  function identity(v, candidateRef) {
+    const data = envelope(v);
+    check(shape(data, ['candidate_ref', 'run_ref', 'label', 'status']) && ref(candidateRef) && data.candidate_ref === candidateRef && ref(data.run_ref) && nullableText(data.label) && ['completed', 'failed', 'skipped'].includes(data.status), '候选身份与所选方案不一致，请重新打开。');
+    return data;
   }
   function catalogScope(query = {}) {
     check(shape(query, [], ['page', 'size', 'status', 'sort', 'order', 'snapshot_ref']));
@@ -35280,8 +35872,9 @@ function SMExport({
         seen.add(t.operation_ref);
       });
     }
-    const g = d.generation;
-    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window']) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && shape(g.algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(g.algorithm).every(nullableText) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
+    const g = d.generation,
+      G = window.RunGenerationContract;
+    check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds)) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && window.RunGenerationContract.algorithm(g.algorithm, g.run_ref) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
     delivery(d.delivery_risks, d, q);
     check(window.GanttGraph.validate(d.gantt_graph, {
       scope: 'full_candidate',
@@ -35355,6 +35948,12 @@ function SMExport({
       }
     }
     return window.APSReadBoundary.verified({
+      async identity(candidateRef, signal) {
+        check(ref(candidateRef));
+        const value = await request('/candidates/' + candidateRef + '/identity', signal);
+        identity(value, candidateRef);
+        return value;
+      },
       async catalog(runRef, query = {}, signal) {
         check(ref(runRef));
         const q = catalogScope(query);
@@ -35379,10 +35978,11 @@ function SMExport({
           format: fmt
         }), signal, fmt);
       }
-    }, ['catalog', 'workspace']);
+    }, ['identity', 'catalog', 'workspace']);
   }
   function adapter(value) {
     return window.APSReadBoundary.checked(value, {
+      identity: (result, candidateRef) => identity(result, candidateRef),
       catalog: (result, runRef, query) => catalog(result, runRef, query),
       workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
     });
@@ -35396,6 +35996,8 @@ function SMExport({
     version,
     shape,
     envelope,
+    summary,
+    identity,
     catalog,
     catalogScope,
     workspace,
@@ -35581,10 +36183,8 @@ function SMExport({
     }
     return lanes;
   }
-  function layout(data, mode, query, width = 1000, operationRefs = null) {
-    const groups = new Map(),
-      rows = [],
-      locations = new Map();
+  function prepare(data, mode, query, operationRefs = null) {
+    const groups = new Map();
     const matched = matching(data.tasks, query).filter(task => !operationRefs || operationRefs.has(task.operation_ref)),
       tasks = [],
       unplottableTasks = [];
@@ -35613,42 +36213,77 @@ function SMExport({
         end
       });
     }
-    let top = 0;
     for (const group of groups.values()) {
-      const normal = tracks(group.items.filter(i => !P.isPoint(i.task)));
-      const lanes = [...normal, ...G.tracks(group.items.filter(i => P.isPoint(i.task)), bounds.start, bounds.end, width)];
-      lanes.forEach((items, lane) => {
-        const row = {
-          id: group.id,
-          key: group.id + ':' + lane,
-          label: group.label,
-          items,
-          top,
-          height: 56,
-          lane,
-          laneCount: lanes.length,
-          normalLaneCount: normal.length,
-          point: P.isPoint(items[0].task)
-        };
-        items.forEach(item => locations.set(item.task.row_ref, {
-          row: rows.length,
-          top,
-          item
-        }));
-        rows.push(row);
-        top += row.height;
-      });
+      group.normal = tracks(group.items.filter(i => !P.isPoint(i.task)));
+      group.points = G.prepareTracks(group.items.filter(i => P.isPoint(i.task)));
     }
     return {
-      rows,
-      height: top,
-      locations,
+      groups,
       tasks,
       unplottableTasks,
       groupCount: groups.size,
       start: bounds.start,
       end: bounds.end
     };
+  }
+  function groupRows(group, start, end, width, pointRows = false) {
+    const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width) : [];
+    const laneCount = group.normal.length + points.length,
+      rows = [];
+    group.normal.forEach((items, lane) => rows.push({
+      id: group.id,
+      key: group.id + ':' + lane,
+      label: group.label,
+      items,
+      height: 56,
+      lane,
+      laneCount,
+      normalLaneCount: group.normal.length,
+      point: false
+    }));
+    points.forEach((items, lane) => rows.push({
+      id: group.id,
+      key: group.id + (pointRows ? ':point:' + lane : ':' + (group.normal.length + lane)),
+      label: group.label,
+      items,
+      height: 56,
+      lane: pointRows ? lane : group.normal.length + lane,
+      laneCount: pointRows ? points.length : laneCount,
+      normalLaneCount: group.normal.length,
+      point: true
+    }));
+    return rows;
+  }
+  function layoutPrepared(prepared, width = 1000) {
+    const rows = [],
+      locations = new Map();
+    let top = 0;
+    for (const group of prepared.groups.values()) for (const source of groupRows(group, prepared.start, prepared.end, width)) {
+      const row = {
+        ...source,
+        top
+      };
+      row.items.forEach(item => locations.set(item.task.row_ref, {
+        row: rows.length,
+        top,
+        item
+      }));
+      rows.push(row);
+      top += row.height;
+    }
+    return {
+      rows,
+      height: top,
+      locations,
+      tasks: prepared.tasks,
+      unplottableTasks: prepared.unplottableTasks,
+      groupCount: prepared.groupCount,
+      start: prepared.start,
+      end: prepared.end
+    };
+  }
+  function layout(data, mode, query, width = 1000, operationRefs = null) {
+    return layoutPrepared(prepare(data, mode, query, operationRefs), width);
   }
   window.RunCandidateModel = {
     instant,
@@ -35661,6 +36296,9 @@ function SMExport({
     visibleRows,
     ticks,
     matching,
+    prepare,
+    groupRows,
+    layoutPrepared,
     layout,
     title,
     laneLabel,
@@ -35849,11 +36487,64 @@ function SMExport({
     suffix = '',
     kind
   }) {
+    if (metric.state === 'not_applicable' && metric.reason && metric.reason.code === 'shared_run_time') return /*#__PURE__*/React.createElement("details", {
+      className: "rc-metric rc-muted",
+      "data-metric-state": "not_applicable"
+    }, /*#__PURE__*/React.createElement("summary", {
+      title: metric.reason.message
+    }, "N/A"), /*#__PURE__*/React.createElement("small", null, metric.reason.message));
     return metric.value === null ? /*#__PURE__*/React.createElement("details", {
       className: "rc-metric rc-muted"
     }, /*#__PURE__*/React.createElement("summary", {
       title: metric.reason.message
     }, "\u672A\u77E5"), /*#__PURE__*/React.createElement("small", null, metric.reason.message)) : /*#__PURE__*/React.createElement("span", null, ['machine_util_avg', 'operator_util_avg'].includes(kind) ? window.RunCandidateModel.percent(metric.value) : window.RunCandidateModel.number(metric.value), suffix);
+  }
+  function ScoringScope({
+    value
+  }) {
+    const labels = {
+      all_batches: '本次参与计算的全部批次',
+      completed_batches_only: '本次计算范围内工序已排齐的批次',
+      unknown: '评分范围待确认'
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      className: "rc-scoring-scope",
+      "data-scoring-scope": value.objective_scope
+    }, /*#__PURE__*/React.createElement("span", null, "\u5DF2\u5B89\u6392 ", window.RunCandidateModel.number(value.scheduled_operation_refs.length), " \u9053\u5DE5\u5E8F\uFF0C\u5DF2\u6392\u9F50 ", window.RunCandidateModel.number(value.complete_batch_refs.length), " \u6279"), /*#__PURE__*/React.createElement("small", null, labels[value.objective_scope], " \xB7 ", value.is_complete ? '完整安排范围' : '部分安排范围', " \xB7 ", value.components_known ? '评分分量已知' : '评分分量待确认'));
+  }
+  function GenerationMetadata({
+    value,
+    runRef
+  }) {
+    const G = window.RunGenerationContract,
+      origin = value.origin,
+      evidence = value.search_evidence_ref;
+    const elapsed = window.WorkbenchFormat.number(value.first_found_elapsed_ms / 1000, {
+      digits: 6,
+      trim: true
+    });
+    return /*#__PURE__*/React.createElement("dl", {
+      className: "rc-meta",
+      "data-generation-policy": value.generation_policy_version
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u641C\u7D22\u6765\u6E90"), /*#__PURE__*/React.createElement("dd", null, "\u672C\u8F6E\u5171\u540C\u4F18\u5316", /*#__PURE__*/React.createElement("small", null, "\u7531\u201C", G.objectiveLabel(origin.search_objective), "\u201D\u65B9\u5411\u53D1\u73B0"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4EE3\u8868\u65B9\u5411"), /*#__PURE__*/React.createElement("dd", null, value.representative_objectives.map(G.objectiveLabel).join(' · ') || '本方案未标记代表方向')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9996\u6B21\u53D1\u73B0"), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement("span", {
+      title: value.first_found_elapsed_ms + ' ms',
+      "data-first-found-elapsed-ms": value.first_found_elapsed_ms
+    }, "\u672C\u8F6E\u5F00\u59CB\u540E ", elapsed, " \u79D2"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u751F\u6210\u4E0E\u6D3E\u5DE5\u8BB0\u5F55"), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u67E5\u770B\u5B9E\u9645\u6765\u6E90\u8BB0\u5F55",
+      entries: {
+        '运行永久编号': runRef || evidence.run_ref,
+        '来源事件编号': evidence.source_event_id,
+        '来源类型': origin.origin,
+        '生成阶段': origin.phase,
+        '生成策略': origin.strategy,
+        '派工模式': origin.dispatch_mode,
+        '派工规则': origin.dispatch_rule,
+        '搜索方向': origin.search_objective,
+        '计算请求编号': origin.request_id,
+        '执行方式': origin.execution_kind,
+        '修整记录': origin.repair_decision
+      }
+    }), evidence.source_event_id === null && /*#__PURE__*/React.createElement("small", null, "\u6765\u6E90\u4E8B\u4EF6\u672A\u8BB0\u5F55"))));
   }
   function Status({
     candidate
@@ -35992,7 +36683,8 @@ function SMExport({
   }) {
     const g = data.generation,
       input = g.input,
-      M = window.RunCandidateModel;
+      M = window.RunCandidateModel,
+      unified = window.RunGenerationContract.unified(g.algorithm);
     return /*#__PURE__*/React.createElement("div", {
       className: "rc-source-summary",
       "aria-label": "\u5168\u65B9\u6848\u8D44\u6599"
@@ -36002,12 +36694,15 @@ function SMExport({
       className: "rc-meta"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5168\u65B9\u6848\u6392\u4EA7\u65E5\u671F"), /*#__PURE__*/React.createElement("dd", null, input.start_date || '未记录', " \u81F3 ", input.end_date || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63D0\u4EA4 / \u7ED3\u675F\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(g.accepted_at), /*#__PURE__*/React.createElement("small", null, M.timeLabel(g.finished_at)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BA1\u7B97\u72B6\u6001"), /*#__PURE__*/React.createElement("dd", {
       "data-candidate-persisted-status": data.candidate.persisted_status
-    }, window.WorkbenchTerms.candidate_statuses[data.candidate.persisted_status] || '未记录')), meta && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u5237\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(meta.as_of))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BA1\u7B97\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, [g.algorithm.mode_label, g.algorithm.strategy_label].filter(Boolean).join(' · ') || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategy(input.material_strategy, input.ready_check))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", {
+    }, window.WorkbenchTerms.candidate_statuses[data.candidate.persisted_status] || '未记录')), meta && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u6B21\u5237\u65B0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(meta.as_of))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BA1\u7B97\u65B9\u5F0F"), /*#__PURE__*/React.createElement("dd", null, [g.algorithm.mode_label, g.algorithm.strategy_label].filter(Boolean).join(' · ') || '未记录')), unified && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E3B\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, window.RunGenerationContract.objectiveLabel(g.algorithm.primary_objective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u540C\u65F6\u63A2\u7D22"), /*#__PURE__*/React.createElement("dd", null, g.algorithm.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · '))), input.time_budget_seconds !== undefined && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u9884\u7B97"), /*#__PURE__*/React.createElement("dd", null, M.number(input.time_budget_seconds), " \u79D2"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategy(input.material_strategy, input.ready_check))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", {
       "data-hold-window": true
     }, window.WorkbenchTerms.hold_window(input.hold_window, g.data_gaps.some(gap => gap.field === 'input.hold_window')))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5 / \u7F3A\u8D44\u6E90"), /*#__PURE__*/React.createElement("dd", null, input.ready_check === null ? '未记录' : input.ready_check ? '开启' : '关闭', " / ", {
       auto_assign: '自动分配',
       exclude: '暂不排'
-    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\uFF1A", g.baseline.version === null ? '提交试排时没有正式计划' : '提交试排时保存的正式 v' + M.number(g.baseline.version) + ' · ' + M.timeLabel(g.baseline.captured_at)), /*#__PURE__*/React.createElement("div", {
+    }[input.missing_resource_policy] || '未记录')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, '已有执行 / ' + window.WorkbenchTerms.baseline_plan), /*#__PURE__*/React.createElement("dd", null, input.completed_policy === 'preserve_actuals' ? '保留已有开工和完工记录' : '执行规则未记录', /*#__PURE__*/React.createElement("small", null, g.baseline.captured_task_count === null ? '正式计划安排数未记录' : '已保留 ' + g.baseline.captured_task_count + ' 道正式计划安排')))), unified && /*#__PURE__*/React.createElement(GenerationMetadata, {
+      value: g.algorithm,
+      runRef: g.run_ref
+    }), /*#__PURE__*/React.createElement("div", null, "\u539F\u5B89\u6392\uFF1A", g.baseline.version === null ? '提交试排时没有正式计划' : '提交试排时保存的正式 v' + M.number(g.baseline.version) + ' · ' + M.timeLabel(g.baseline.captured_at)), /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
     }, "\u751F\u6210\u8D44\u6599\uFF1A\u63D0\u4EA4\u8BD5\u6392\u65F6\u4FDD\u5B58\u3002", analysis && analysis.baseline.reason && analysis.baseline.reason.message), /*#__PURE__*/React.createElement("div", {
       className: "rc-muted"
@@ -36191,6 +36886,8 @@ function SMExport({
     Reasons,
     Pager,
     Metric,
+    ScoringScope,
+    GenerationMetadata,
     Status,
     Catalog,
     Generation,
@@ -36574,6 +37271,7 @@ function SMExport({
     const value = data.recommendation,
       basis = data.selection_basis,
       comparison = value && value.current_comparison;
+    if (basis && basis.selection_policy_version === 'business_objectives_v1') check(window.RunGenerationContract.selectionBasis(basis, data.candidates), '保存的共同优化选择资料不完整，请点“刷新方案对比”。');
     check(object(basis) && ['selected_candidate_ref', 'raw_score_best_candidate_ref', 'health_reference_candidate_ref'].every(key => basis[key] === null || ref(basis[key]) && data.candidates.some(row => row.candidate_ref === basis[key])) && ['complete', 'partial', 'unavailable'].includes(basis.evidence_state) && object(value) && value.recommendation_version === 'decision-recommendation-v1' && ['available', 'unavailable'].includes(value.state) && value.candidate_ref === basis.selected_candidate_ref && (value.state === 'available' ? ref(value.candidate_ref) : value.candidate_ref === null) && value.viewed_candidate_ref === data.scope.selected_candidate_ref && typeof value.headline === 'string' && (value.state === 'available' ? ['complete', 'schedulable_scope', 'partial'].includes(value.recommendation_type) : value.recommendation_type === null), '推荐方案或推荐理由已变化，请点“刷新方案对比”。');
     check(object(basis.explanation) && typeof basis.explanation.headline === 'string' && Array.isArray(basis.explanation.entries) && basis.explanation.entries.every(entry => object(entry) && ['key', 'label', 'text', 'state', 'source', 'scope'].every(key => typeof entry[key] === 'string') && (entry.unit === null || typeof entry.unit === 'string') && (entry.tolerance_unit === null || typeof entry.tolerance_unit === 'string') && ['reference_value', 'selected_value', 'value', 'limit', 'tolerance'].every(key => numeric(entry[key]))) && Array.isArray(basis.explanation.issues) && basis.explanation.issues.every(issue), '推荐理由资料不完整，请点“刷新方案对比”。');
     if (basis.decision_evidence !== null) check(object(basis.decision_evidence) && basis.selection_evidence_version === 'candidate-selection-evidence-v1' && basis.decision_evidence.version === basis.selection_evidence_version && object(basis.decision_evidence.anchors) && object(basis.decision_evidence.selected) && basis.decision_evidence.selected.candidate_ref === basis.selected_candidate_ref && object(basis.decision_evidence.anchors.raw_score_best) && basis.decision_evidence.anchors.raw_score_best.candidate_ref === basis.raw_score_best_candidate_ref && (basis.decision_evidence.anchors.health_reference === null ? basis.health_reference_candidate_ref === null : object(basis.decision_evidence.anchors.health_reference) && basis.decision_evidence.anchors.health_reference.candidate_ref === basis.health_reference_candidate_ref), '推荐理由与本次选择的方案不一致，请点“刷新方案对比”。');
@@ -36610,6 +37308,10 @@ function SMExport({
     data.candidates.forEach(row => {
       check(ref(row.candidate_ref) && !candidates.has(row.candidate_ref) && object(row.coverage) && ['schedulable', 'delivery', 'search'].every(key => object(row.coverage[key])) && row.metrics && row.deltas && Array.isArray(row.selection_role), '方案的比较资料不完整，请点“刷新方案对比”。');
       candidates.add(row.candidate_ref);
+      if (row.generation_policy_version !== undefined) {
+        const G = window.RunGenerationContract;
+        check(A.shape(row, ['candidate_ref', 'label', 'kind', 'status', 'persisted_status', 'task_count', 'completeness', 'coverage', 'metrics', 'capabilities', 'selection_role', 'equivalent_source_ref', 'source', 'deltas'].concat(G.metadataKeys)) && G.metadata(row, runRef) && row.kind === 'business_objective' && row.persisted_status === 'completed' && ['completed', 'partial'].includes(row.status) && row.equivalent_source_ref === null && new Set(row.selection_role).size === row.selection_role.length && row.selection_role.every(role => role === 'recommended' || G.objective(role)), '业务方向候选的保存资料不完整，请点“刷新方案对比”。');
+      }
       coreMetricKeys.forEach(key => {
         const metric = data.metric_definitions.find(definition => definition.key === key);
         check(metric && window.EffortProjectionContract.metric(row.metrics[key]) && row.metrics[key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[key]), '方案核心指标资料不完整，请点“刷新方案对比”。');
@@ -36620,6 +37322,7 @@ function SMExport({
     if (q.comparison_mode === 'candidates' && data.scope.reference_state === 'available') check(data.scope.reference && candidates.has(data.scope.reference.candidate_ref), '比较基准已不在这次排产中，请点“刷新方案对比”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '比较基准已变化，请点“刷新方案对比”。');
     if (q.comparison_mode === 'admission_official') check(data.scope.reference && data.scope.reference.kind === 'admission_official', '比较基准的正式计划资料已变化，请点“刷新方案对比”。');
+    if (data.scope.run_options !== undefined) check(window.RunGenerationContract.runOptions(data.scope.run_options), '本次保存的优化选项不完整，请点“刷新方案对比”。');
     bindScope(payload, data, q);
     recommendation(data);
     if (data.difference_summary !== undefined) {
@@ -36712,12 +37415,13 @@ function SMExport({
       page: 1,
       size: 20
     };
-    ['process_candidate_ref', 'record_kind', 'sort', 'order', 'page', 'size'].forEach(key => {
+    ['process_candidate_ref', 'objective', 'record_kind', 'sort', 'order', 'page', 'size'].forEach(key => {
       if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
     });
     if (value.process_candidate_ref === undefined && value.selected_candidate_ref) value.process_candidate_ref = value.selected_candidate_ref;
     if (value.sort === undefined) value.sort = value.record_kind === 'progress' ? 'elapsed_ms' : 'rank';
     check(value.process_candidate_ref === undefined || ref(value.process_candidate_ref), '优化过程的方案选择已失效，请重新选择方案。');
+    check(value.objective === undefined || window.RunGenerationContract.objective(value.objective), '请选择有效的优化方向。');
     check(['attempts', 'progress'].includes(value.record_kind) && (value.record_kind === 'progress' ? ['event_index', 'elapsed_ms', 'primary_value'] : ['rank', 'elapsed_ms', 'primary_value']).includes(value.sort) && ['asc', 'desc'].includes(value.order), '优化过程的筛选或排序条件无效，请重新选择。');
     check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '优化过程每页支持 20 或 50 条，请重新选择页码。');
     return value;
@@ -36727,9 +37431,58 @@ function SMExport({
   const processMetricKeys = ['changeover_count', 'makespan_hours', 'overdue_count', 'total_tardiness_hours', 'weighted_tardiness_hours'];
   const processComparisonMetricKeys = ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'];
   const processMemberKeys = ['candidate_ref', 'label', 'status', 'persisted_status', 'kind', 'algo_mode', 'used_strategy', 'dispatch_mode', 'configured_dispatch_rule', 'adopted_dispatch_rule', 'source_kind', 'source_candidate_ref', 'own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'stop_reason', 'final_metrics', 'completion', 'algorithm_profile', 'legacy_best_updates', 'evidence_state', 'evidence_version'];
+  function unifiedProcessDetails(payload, data, runRef, q) {
+    const G = window.RunGenerationContract,
+      nullableText = value => value === null || typeof value === 'string';
+    const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+    const optionalAmount = value => value === null || amount(value),
+      positive = value => count(value) && value > 0;
+    const numbers = value => object(value) && Object.values(value).every(amount);
+    const integers = value => object(value) && Object.values(value).every(count);
+    const descriptors = ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields'];
+    const fields = ['run_ref', 'capture_ref', 'scope', 'baseline', 'process_version', 'summary', 'counts', 'budget', 'stop_reason', 'bridges', 'objectives', 'selected_objective', 'progress', 'scopes', 'actions', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
+    check(A.shape(data, fields) && data.run_ref === runRef && data.capture_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref)) && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
+    bindScope(payload, data, q);
+    if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '过程的查看基准已变化，请点“刷新优化过程”。');
+    const names = data.scope.run_options.target_objectives;
+    const descriptor = value => A.shape(value, descriptors) && G.objective(value.name) && ['label', 'primary_metric_key', 'primary_metric_label', 'unit'].every(key => typeof value[key] === 'string') && Array.isArray(value.score_fields) && G.sameArray(value.score_fields.map(field => field.key), G.fieldOrders[value.name]) && value.score_fields.every((field, index) => A.shape(field, ['index', 'key', 'label', 'unit', 'direction']) && field.index === index && field.direction === 'lower' && ['key', 'label', 'unit'].every(key => typeof field[key] === 'string'));
+    check(Array.isArray(data.objectives) && G.sameArray(data.objectives.map(value => value.name), names) && data.objectives.every(descriptor) && descriptor(data.selected_objective) && names.includes(data.selected_objective.name) && data.selected_objective.name === (q.objective || data.scope.run_options.primary_objective) && JSON.stringify(data.selected_objective) === JSON.stringify(data.objectives.find(value => value.name === data.selected_objective.name)), '过程的优化方向或评分字段已变化，请点“刷新优化过程”。');
+    const selectedObjective = data.selected_objective.name,
+      summary = data.summary;
+    check(A.shape(summary, ['elapsed_ms', 'first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms']) && amount(summary.elapsed_ms) && ['first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms'].every(key => optionalAmount(summary[key]) && (summary[key] === null || summary[key] <= summary.elapsed_ms)) && (summary.first_improvement_elapsed_ms === null ? summary.last_improvement_elapsed_ms === null : summary.last_improvement_elapsed_ms !== null && summary.first_improvement_elapsed_ms <= summary.last_improvement_elapsed_ms) && nullableText(data.stop_reason), '共同优化的真实用时或改善时刻不完整，请点“刷新优化过程”。');
+    check(A.shape(data.counts, ['actual_decoder_calls', 'new_decisions', 'decision_reuses', 'skipped_requests', 'failed_decoder_calls', 'request_count', 'execution_counts']) && ['actual_decoder_calls', 'new_decisions', 'decision_reuses', 'skipped_requests', 'failed_decoder_calls', 'request_count'].every(key => count(data.counts[key])) && integers(data.counts.execution_counts), '共同优化的实际计算次数不完整，请点“刷新优化过程”。');
+    const goalFields = ['objective_status', 'weight', 'elapsed_seconds', 'charged_seconds', 'preparation_seconds', 'action_count', 'new_decisions', 'reused_decisions', 'probe_decisions', 'minimum_opportunity', 'improvement_action_count', 'has_gain', 'feedback_rate', 'feedback_bonus', 'unavailable_reason', 'budget_reason', 'phase_elapsed_seconds'];
+    const goals = data.budget && data.budget.objectives;
+    check(object(data.budget) && amount(data.budget.configured_seconds) && data.budget.configured_seconds > 0 && A.shape(goals, names) && names.every(name => {
+      const value = goals[name];
+      return A.shape(value, goalFields) && ['searched', 'paused_no_gain', 'not_searched_budget', 'not_applicable'].includes(value.objective_status) && ['weight', 'elapsed_seconds', 'charged_seconds', 'preparation_seconds', 'feedback_rate', 'feedback_bonus'].every(key => amount(value[key])) && ['action_count', 'new_decisions', 'reused_decisions', 'probe_decisions', 'improvement_action_count'].every(key => count(value[key])) && ['minimum_opportunity', 'has_gain'].every(key => typeof value[key] === 'boolean') && nullableText(value.unavailable_reason) && nullableText(value.budget_reason) && numbers(value.phase_elapsed_seconds);
+    }), '各优化方向的实际预算机会不完整，请点“刷新优化过程”。');
+    check(object(data.scopes) && Object.entries(data.scopes).every(([key, value]) => /^[1-9]\d*$/.test(key) && G.scoringScope(value)), '过程的完整评价范围不完整，请点“刷新优化过程”。');
+    const memberFields = ['candidate_ref', 'label', 'status', 'representative_objectives', 'origin', 'first_found_elapsed_ms', 'search_evidence_ref'];
+    const member = value => A.shape(value, memberFields) && ref(value.candidate_ref) && nullableText(value.label) && ['completed', 'partial'].includes(value.status) && G.objectives(value.representative_objectives) && value.representative_objectives.every(name => names.includes(name)) && G.origin(value.origin) && amount(value.first_found_elapsed_ms) && G.evidence(value.search_evidence_ref, runRef);
+    check(Array.isArray(data.candidates) && data.candidates.length >= 1 && data.candidates.length <= 3 && data.candidates.every(member) && new Set(data.candidates.map(value => value.candidate_ref)).size === data.candidates.length && member(data.candidate), '过程来源候选的保存身份不完整，请点“刷新优化过程”。');
+    const catalog = new Map(data.candidates.map(value => [value.candidate_ref, value]));
+    const anchor = q.process_candidate_ref || data.scope.selected_candidate_ref || data.candidates[0].candidate_ref;
+    check(data.candidate.candidate_ref === anchor && catalog.has(anchor) && JSON.stringify(data.candidate) === JSON.stringify(catalog.get(anchor)) && (data.scope.selected_candidate_ref === null || catalog.has(data.scope.selected_candidate_ref)), '过程来源定位已变化，请点“刷新优化过程”。');
+    check(data.source_event === null || object(data.source_event) && positive(data.source_event.event_id) && data.source_event.event_id === data.candidate.search_evidence_ref.source_event_id && amount(data.source_event.elapsed_ms) && typeof data.source_event.phase === 'string' && typeof data.source_event.verified === 'boolean' && (data.source_event.scope_ref === undefined || Object.prototype.hasOwnProperty.call(data.scopes, data.source_event.scope_ref)), '候选的真实来源事件不一致，请点“刷新优化过程”。');
+    const pointFields = ['elapsed_ms', 'entry_id', 'source_event_id', 'search_objective', 'origin', 'score', 'field_order', 'scope_ref', 'segment', 'flags', 'phase', 'verified', 'primary_value'];
+    const mandatoryFlags = ['first_valid', 'first_expected_complete', 'final'],
+      pointFlags = [...mandatoryFlags, 'strict_improvement'];
+    const point = value => A.shape(value, pointFields) && amount(value.elapsed_ms) && positive(value.entry_id) && positive(value.source_event_id) && names.includes(value.search_objective) && nullableText(value.origin) && typeof value.phase === 'string' && typeof value.verified === 'boolean' && G.score(value.score) && G.sameArray(value.field_order, G.fieldOrders[selectedObjective]) && value.score.length === value.field_order.length && Object.prototype.hasOwnProperty.call(data.scopes, value.scope_ref) && count(value.segment) && Array.isArray(value.flags) && value.flags.every(flag => pointFlags.includes(flag)) && new Set(value.flags).size === value.flags.length && value.primary_value === value.score[value.field_order.indexOf(data.selected_objective.primary_metric_key)];
+    const sampling = data.progress && data.progress.sampling;
+    check(A.shape(data.progress, ['points', 'sampling']) && Array.isArray(data.progress.points) && data.progress.points.length <= 200 && data.progress.points.every(point) && A.shape(sampling, ['policy', 'point_budget', 'event_total_count', 'retained_point_count', 'bucket_count', 'bucket_width_ms', 'mandatory']) && sampling.policy === 'elapsed_equal_width_bucket_end_best_v1' && sampling.point_budget === 200 && ['event_total_count', 'retained_point_count', 'bucket_count'].every(key => count(sampling[key])) && sampling.retained_point_count === data.progress.points.length && optionalAmount(sampling.bucket_width_ms) && G.sameArray(sampling.mandatory, mandatoryFlags), '所选方向的进步事件或采样资料不完整，请点“刷新优化过程”。');
+    const actionFields = ['action_id', 'search_objective', 'phase', 'initial_construction', 'started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms', 'evaluation_count', 'verified_evaluation_count', 'new_decisions', 'reused_decisions', 'skip_reason', 'improved_objectives'];
+    const counters = ['evaluation_count', 'verified_evaluation_count', 'new_decisions', 'reused_decisions'];
+    const action = value => A.shape(value, actionFields) && positive(value.action_id) && value.search_objective === selectedObjective && typeof value.phase === 'string' && typeof value.initial_construction === 'boolean' && ['started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms'].every(key => amount(value[key])) && value.started_elapsed_ms <= value.finished_elapsed_ms && counters.every(key => count(value[key])) && value.verified_evaluation_count <= value.evaluation_count && nullableText(value.skip_reason) && G.objectives(value.improved_objectives) && value.improved_objectives.every(name => names.includes(name));
+    check(Array.isArray(data.actions) && data.actions.every(action) && new Set(data.actions.map(value => value.action_id)).size === data.actions.length && Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'action_count', ...counters]) && typeof value.phase === 'string' && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => optionalAmount(value[key])) && count(value.action_count) && counters.every(key => count(value[key]))), '实际搜索动作或阶段统计不完整，请点“刷新优化过程”。');
+    check(Array.isArray(data.bridges) && data.bridges.every(value => A.shape(value, ['search_objective', 'phase', 'before_entry_id', 'after_entry_id', 'elapsed_ms', 'started_elapsed_ms', 'finished_elapsed_ms', 'same_arrangement', 'decoder_executed', 'reference_kind', 'source_event_id']) && names.includes(value.search_objective) && ['phase', 'reference_kind'].every(key => typeof value[key] === 'string') && ['before_entry_id', 'after_entry_id'].every(key => value[key] === null || positive(value[key])) && ['elapsed_ms', 'started_elapsed_ms', 'finished_elapsed_ms'].every(key => amount(value[key])) && (value.same_arrangement === null || typeof value.same_arrangement === 'boolean') && typeof value.decoder_executed === 'boolean' && positive(value.source_event_id)), '共同优化的实际接续记录不完整，请点“刷新优化过程”。');
+    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'objective', 'record_kind', 'sort', 'order']) && data.filters.section === 'process' && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]) && (q.record_kind !== 'attempts' || ['rank', 'elapsed_ms'].includes(q.sort)) && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : data.actions.length) && data.page.has_more === q.page * q.size < data.page.total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size)) && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
+    return data;
+  }
   function processDetails(payload, runRef, query = {}) {
     const data = envelope(payload),
       q = processScope(runRef, query);
+    if (data.process_version === 'unified-optimization-process-v1') return unifiedProcessDetails(payload, data, runRef, q);
     const nullableText = value => value === null || typeof value === 'string';
     const amount = value => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0;
     const nullableCount = value => value === null || count(value);
@@ -36904,9 +37657,8 @@ function SMExport({
     bindSnapshot(payload, query);
     return data;
   }
-  function resourceScope(runRef, query = {}, section = 'resources') {
+  function resourceFilters(query = {}, section = 'resources') {
     const value = {
-      ...scope(runRef, query),
       resource_kind: 'machine',
       grain: 'day',
       pressure_threshold: 0.9,
@@ -36927,7 +37679,7 @@ function SMExport({
     keys.forEach(key => {
       if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
     });
-    check(ref(value.selected_candidate_ref) && ['machine', 'operator'].includes(value.resource_kind), '请选择查看方案及设备或人员。');
+    check(['machine', 'operator'].includes(value.resource_kind), '请选择设备或人员。');
     check(value.resource_ref === undefined || ref(value.resource_ref), '设备或人员选择已失效，请重新选择。');
     check(['hour', 'shift', 'day', 'week'].includes(value.grain) && typeof value.pressure_threshold === 'number' && Number.isFinite(value.pressure_threshold) && value.pressure_threshold > 0 && value.pressure_threshold <= 1, '请选择时间粒度与有效的高负荷关注线。');
     const rangeKeys = section === 'resources' ? ['display_start', 'display_end'] : ['bucket_start', 'bucket_end'];
@@ -36936,7 +37688,95 @@ function SMExport({
     if (section === 'resource-days') check(ref(value.resource_ref), '请选择要查看逐日明细的设备或人员。');
     check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '资源明细每页支持 20 或 50 条，请重新选择。');
     if (section === 'resources') check(Number.isInteger(value.heatmap_page) && value.heatmap_page > 0 && [7, 14, 31].includes(value.heatmap_size), '热力图每页支持 7、14 或 31 天，请重新选择。');
+    if (query.snapshot_ref !== undefined && query.snapshot_ref !== null && query.snapshot_ref !== '') value.snapshot_ref = query.snapshot_ref;
     return value;
+  }
+  function resourceScope(runRef, query = {}, section = 'resources') {
+    const value = {
+      ...scope(runRef, query),
+      ...resourceFilters(query, section)
+    };
+    check(ref(value.selected_candidate_ref), '请选择查看方案及设备或人员。');
+    return value;
+  }
+  function savedResourceView(query, cohort, comparison) {
+    const next = {
+        ...query
+      },
+      refs = cohort[next.resource_kind || 'machine'];
+    if (next.resource_ref && !refs.includes(next.resource_ref)) {
+      delete next.resource_ref;
+      delete next.snapshot_ref;
+      next.page = 1;
+    }
+    if (comparison && next.display_start && (timeKey(next.display_start) < timeKey(comparison.range_start) || timeKey(next.display_end) > timeKey(comparison.range_end))) {
+      delete next.display_start;
+      delete next.display_end;
+      delete next.snapshot_ref;
+      next.heatmap_page = 1;
+    }
+    return next;
+  }
+  function resourceWorkspaceScope(runRef, query = {}, savedQuery = {}) {
+    const filters = resourceFilters(savedQuery),
+      resourceSnapshot = filters.snapshot_ref;
+    delete filters.snapshot_ref;
+    return {
+      ...scope(runRef, query),
+      ...filters,
+      ...(resourceSnapshot !== undefined ? {
+        resource_snapshot_ref: resourceSnapshot
+      } : {})
+    };
+  }
+  function resourceError(value) {
+    return Object.assign(new Error(value.error.message), value.error, {
+      status: value.status,
+      committed: value.committed
+    });
+  }
+  function resourceWorkspace(payload, runRef, query = {}, savedQuery = {}) {
+    check(A.shape(payload, ['ok', 'schema_version', 'data', 'meta', 'warnings', 'resource_result', 'resource_query']), '资源首屏的共同读取资料不完整，请刷新方案对比。');
+    const {
+      resource_result: resources,
+      resource_query: effective,
+      ...summary
+    } = payload;
+    const data = decisionSummary(summary, runRef, query),
+      cohort = data.scope.resource_refs;
+    check(object(cohort) && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请刷新方案对比。');
+    const filterKeys = ['resource_kind', 'grain', 'pressure_threshold', 'page', 'size', 'pressure_filter', 'sort', 'order', 'heatmap_page', 'heatmap_size'];
+    check(A.shape(effective, filterKeys, ['resource_ref', 'display_start', 'display_end', 'snapshot_ref']), '恢复的资源筛选资料不完整，请刷新方案对比。');
+    const expected = resourceFilters(savedResourceView(resourceFilters(savedQuery), cohort, data.scope)),
+      actual = resourceFilters(effective);
+    check(JSON.stringify(actual) === JSON.stringify(expected) && Object.keys(effective).length === Object.keys(actual).length, '恢复的资源筛选与当前范围不一致，请刷新方案对比。');
+    const candidate = data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
+    if (!candidate || candidate.persisted_status !== 'completed') {
+      check(resources === null, '当前方案没有可查看的资源结果，请刷新方案对比。');
+      return data;
+    }
+    check(object(resources), '资源读取结果未记录，请刷新方案对比。');
+    if (resources.ok === true) {
+      const comparison = {
+        comparison_mode: data.scope.comparison_mode,
+        resource_view: data.scope.resource_view,
+        selected_candidate_ref: data.scope.selected_candidate_ref,
+        range_start: data.scope.range_start,
+        range_end: data.scope.range_end,
+        ...(data.scope.comparison_mode === 'candidates' ? {
+          reference_candidate_ref: data.scope.reference.candidate_ref
+        } : {})
+      };
+      resourceDetails(resources, runRef, {
+        ...comparison,
+        ...actual,
+        expected_resource_refs: cohort
+      });
+    } else {
+      const error = resources.error;
+      check(A.shape(resources, ['ok', 'committed', 'error', 'status']) && resources.ok === false && resources.committed === false && Number.isInteger(resources.status) && resources.status >= 400 && resources.status <= 599 && A.shape(error, ['code', 'message', 'fields', 'retryable', 'request_ref']) && typeof error.code === 'string' && error.code.length > 0 && typeof error.message === 'string' && typeof error.retryable === 'boolean' && /^[a-f0-9]{32}$/.test(error.request_ref) && Array.isArray(error.fields) && error.fields.every(field => A.shape(field, ['path', 'message']) && typeof field.path === 'string' && typeof field.message === 'string'), '资源读取失败的资料不完整，请刷新方案对比。');
+    }
+    return data;
   }
   function resourceDetails(payload, runRef, query, section = 'resources') {
     const data = envelope(payload),
@@ -37034,6 +37874,12 @@ function SMExport({
         decisionSummary(value, runRef, q);
         return value;
       },
+      async resourceWorkspace(runRef, query = {}, savedQuery = {}, signal) {
+        const q = resourceWorkspaceScope(runRef, query, savedQuery),
+          value = await request(runRef, q, signal, null, '/resource-workspace');
+        resourceWorkspace(value, runRef, query, savedQuery);
+        return value;
+      },
       async decisionDetails(runRef, query, section, signal) {
         const q = detailScope(runRef, query, section),
           value = await request(runRef, q, signal, null, '/' + section);
@@ -37112,12 +37958,13 @@ function SMExport({
           section
         }, signal, format);
       }
-    }, ['decision', 'decisionSummary', 'decisionDetails', 'completionBatches', 'process', 'referenceWorkspace', 'resources', 'resourceDays', 'preparation', 'changeovers']);
+    }, ['decision', 'decisionSummary', 'resourceWorkspace', 'decisionDetails', 'completionBatches', 'process', 'referenceWorkspace', 'resources', 'resourceDays', 'preparation', 'changeovers']);
   }
   function adapter(value) {
     return window.APSReadBoundary.checked(value, {
       decision,
       decisionSummary,
+      resourceWorkspace,
       decisionDetails: (payload, runRef, query, section) => details(payload, runRef, query, section),
       completionBatches,
       process: processDetails,
@@ -37133,6 +37980,11 @@ function SMExport({
     adapter,
     decision,
     decisionSummary,
+    resourceWorkspace,
+    resourceWorkspaceScope,
+    resourceFilters,
+    savedResourceView,
+    resourceError,
     details,
     scope,
     detailScope,
@@ -37265,9 +38117,39 @@ function SMExport({
       const row = data.candidates.find(candidate => candidate.candidate_ref === reference);
       return row ? row.label || '候选名称未填写' : '资料未记录';
     };
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, "\u6392\u4EA7\u65F6\u7684\u63A8\u8350\u89C4\u5219\u4E0E\u6570\u503C"), /*#__PURE__*/React.createElement("dl", {
+    const unified = window.RunGenerationContract.unified(basis),
+      G = window.RunGenerationContract;
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", null, unified ? '共同优化的推荐规则与数值' : '排产时的推荐规则与数值'), /*#__PURE__*/React.createElement("dl", {
       className: "rd-selection-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u76EE\u6807\u6700\u4F18\u5019\u9009"), /*#__PURE__*/React.createElement("dd", null, name(basis.raw_score_best_candidate_ref))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5065\u5EB7\u6BD4\u8F83\u539F\u65B9\u6848"), /*#__PURE__*/React.createElement("dd", null, name(basis.health_reference_candidate_ref))), basis.explanation.entries.map(entry => /*#__PURE__*/React.createElement("div", {
+    }, unified ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E3B\u76EE\u6807"), /*#__PURE__*/React.createElement("dd", null, G.objectiveLabel(basis.primary_objective))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u672C\u8F6E\u63A8\u8350"), /*#__PURE__*/React.createElement("dd", null, name(basis.selected_candidate_ref), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: basis.selected_candidate_ref,
+      label: "\u5019\u9009\u6C38\u4E45\u7F16\u53F7"
+    }))), basis.target_objectives.map(objective => {
+      const reference = basis.objective_winners[objective],
+        reason = basis.objective_winner_reasons[objective];
+      return /*#__PURE__*/React.createElement("div", {
+        key: objective,
+        "data-selection-objective": objective
+      }, /*#__PURE__*/React.createElement("dt", null, G.objectiveLabel(objective), "\u4EE3\u8868"), /*#__PURE__*/React.createElement("dd", null, reference === null ? '本轮未保存该方向代表' : name(reference), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+        label: "\u65B9\u5411\u4EE3\u8868\u8BB0\u5F55",
+        entries: {
+          '业务方向': objective,
+          '候选永久编号': reference,
+          '代表缺项说明': reason
+        }
+      })));
+    }), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u63A8\u8350\u8BC4\u5206\u8303\u56F4"), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(C.ScoringScope, {
+      value: basis.scoring_scope
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9009\u62E9\u8BB0\u5F55"), /*#__PURE__*/React.createElement("dd", null, basis.evidence_state === 'complete' ? '已保存完整评分依据' : '已保存部分评分依据', /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u67E5\u770B\u4FDD\u5B58\u7684\u9009\u62E9\u4F9D\u636E",
+      entries: {
+        '生成策略版本': basis.generation_policy_version,
+        '选择规则版本': basis.selection_policy_version,
+        '选择原因': basis.reason_code,
+        '主目标指标顺序': basis.objective_field_order[basis.primary_objective],
+        '主目标保存评分': basis.selected_score
+      }
+    })))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u76EE\u6807\u6700\u4F18\u5019\u9009"), /*#__PURE__*/React.createElement("dd", null, name(basis.raw_score_best_candidate_ref))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5065\u5EB7\u6BD4\u8F83\u539F\u65B9\u6848"), /*#__PURE__*/React.createElement("dd", null, name(basis.health_reference_candidate_ref)))), basis.explanation.entries.map(entry => /*#__PURE__*/React.createElement("div", {
       key: entry.key,
       "data-selection-evidence": entry.key
     }, /*#__PURE__*/React.createElement("dt", null, entry.label), /*#__PURE__*/React.createElement("dd", null, entry.text, /*#__PURE__*/React.createElement("small", {
@@ -37432,7 +38314,8 @@ function SMExport({
 
   const A = window.RunCandidateAPI,
     C = window.RunCandidateControls,
-    M = window.RunCandidateModel;
+    M = window.RunCandidateModel,
+    G = window.RunGenerationContract;
   const roles = {
     recommended: '计算时推荐',
     algorithm_baseline: '原算法',
@@ -37510,7 +38393,7 @@ function SMExport({
     const operations = ['admission', 'candidate_tasks', 'candidate_comparison', 'runtime_operation_effort', 'archived_changeover_events'];
     const resourceUnit = resource === 'machine' ? '台设备' : resource === 'operator' ? '人' : '项资源';
     const unit = Array.isArray(metric.covered_batch_refs) ? '批' : Array.isArray(metric.covered_operation_refs) ? '道工序' : Array.isArray(metric.covered_resource_refs) ? resourceUnit : definition.source === 'archived_delivery' ? '批' : operations.includes(definition.source) ? '道工序' : definition.source === 'archived_resource_calendar' ? resourceUnit : '份统计记录';
-    const label = definition.key === 'overdue_count' ? '超期' : definition.key === 'total_tardiness_hours' ? '拖期' : definition.key && definition.key.includes('setup_hours') ? '准备' : definition.key && definition.key.includes('processing_hours') ? '加工' : definition.label || '小计';
+    const label = definition.key === 'weighted_tardiness_hours' ? '加权拖期' : definition.key === 'overdue_count' ? '超期' : definition.key === 'total_tardiness_hours' ? '拖期' : definition.key && definition.key.includes('setup_hours') ? '准备' : definition.key && definition.key.includes('processing_hours') ? '加工' : definition.label || '小计';
     return {
       unit,
       pending: metric.unknown_count > 0 ? countText(metric.unknown_count) + ' ' + unit + '待确认' : metricText(metric, definition),
@@ -37658,9 +38541,12 @@ function SMExport({
     onSelect,
     busy
   }) {
-    const definitions = ['overdue_count', 'total_tardiness_hours'].map(key => data.metric_definitions.find(row => row.key === key)).filter(Boolean);
+    const unified = G.unified(data.selection_basis),
+      weighted = unified && data.selection_basis.primary_objective === 'min_weighted_tardiness';
+    const definitions = (weighted ? ['weighted_tardiness_hours', 'overdue_count', 'total_tardiness_hours'] : ['overdue_count', 'total_tardiness_hours']).map(key => data.metric_definitions.find(row => row.key === key)).filter(Boolean);
     return /*#__PURE__*/React.createElement("div", {
       className: "rd-candidate-grid",
+      "data-unified-candidates": unified ? data.candidates.length : undefined,
       "aria-label": "\u672C\u6B21\u5168\u90E8\u5019\u9009\u65B9\u6848"
     }, data.candidates.map(candidate => {
       const {
@@ -37685,7 +38571,7 @@ function SMExport({
         onClick: () => onSelect(candidate)
       }, /*#__PURE__*/React.createElement("span", {
         className: "rd-candidate-choice-heading"
-      }, /*#__PURE__*/React.createElement("strong", null, candidate.label || '候选名称未填写'), (fixed || recommended) && /*#__PURE__*/React.createElement("span", {
+      }, /*#__PURE__*/React.createElement("strong", null, unified && candidate.representative_objectives.length ? candidate.representative_objectives.map(G.objectiveLabel).join(' · ') : candidate.label || '候选名称未填写'), (fixed || recommended) && /*#__PURE__*/React.createElement("span", {
         className: "rd-candidate-identities"
       }, fixed && /*#__PURE__*/React.createElement("span", {
         className: "rd-badge rd-reference"
@@ -37697,7 +38583,7 @@ function SMExport({
         const metric = candidate.metrics[definition.key],
           known = metric.value === null && metric.known_count > 0 && metric.known_subtotal !== null,
           coverage = metricCoverage(metric, definition);
-        const label = known ? definition.key === 'overdue_count' ? '已知超期' : '已知拖期' : definition.label;
+        const label = known ? definition.key === 'overdue_count' ? '已知超期' : definition.key === 'weighted_tardiness_hours' ? '已知加权拖期' : '已知拖期' : definition.label;
         const value = known ? metric.known_subtotal : metric.value;
         return /*#__PURE__*/React.createElement("span", {
           key: definition.key,
@@ -37718,7 +38604,9 @@ function SMExport({
           unit: ''
         }), /*#__PURE__*/React.createElement("span", {
           className: "rd-card-unit"
-        }, definition.unit)))));
+        }, definition.unit)))), weighted && definition.key === 'weighted_tardiness_hours' && /*#__PURE__*/React.createElement("small", {
+          className: "rd-weighted-basis"
+        }, "\u6309\u8BA1\u7B97\u65F6\u4FDD\u5B58\u7684\u6279\u6B21\u4F18\u5148\u7EA7\u52A0\u6743 \xB7 \u5DF2\u77E5 ", countText(metric.known_count), " / ", countText(metric.total_count), " \u6279", metric.unknown_count > 0 && ' · ' + countText(metric.unknown_count) + ' 批待确认'));
       })), /*#__PURE__*/React.createElement("span", {
         className: "rd-card-completion"
       }, candidate.persisted_status === 'completed' ? completion : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.Status, {
@@ -37735,9 +38623,17 @@ function SMExport({
     return candidate ? /*#__PURE__*/React.createElement("section", {
       className: "rd-candidate-facts",
       "aria-label": "\u5F53\u524D\u5019\u9009\u7684\u5B8C\u6574\u4FDD\u5B58\u4F9D\u636E"
-    }, /*#__PURE__*/React.createElement("h3", null, candidate.label || '当前候选', " \xB7 \u4FDD\u5B58\u4F9D\u636E"), /*#__PURE__*/React.createElement("p", null, candidate.selection_role.map(role => roles[role]).filter(Boolean).join(' · ')), /*#__PURE__*/React.createElement(Coverage, {
+    }, /*#__PURE__*/React.createElement("h3", null, candidate.label || '当前候选', " \xB7 \u4FDD\u5B58\u4F9D\u636E"), /*#__PURE__*/React.createElement("p", null, candidate.selection_role.map(role => roles[role] || (G.objective(role) ? G.objectiveLabel(role) + '代表方案' : null)).filter(Boolean).join(' · ')), G.unified(candidate) && /*#__PURE__*/React.createElement(C.GenerationMetadata, {
+      value: candidate,
+      runRef: data.run.run_ref
+    }), /*#__PURE__*/React.createElement(Coverage, {
       candidate: candidate
-    }), candidate.source && candidate.source.reason && /*#__PURE__*/React.createElement("p", null, candidate.source.reason.message), /*#__PURE__*/React.createElement(CandidateBasis, {
+    }), candidate.source && candidate.source.reason && /*#__PURE__*/React.createElement("p", null, candidate.source.reason.message), G.unified(candidate) && candidate.representative_objectives.map(name => /*#__PURE__*/React.createElement("div", {
+      key: name,
+      className: "rd-saved-score-scope"
+    }, /*#__PURE__*/React.createElement("strong", null, G.objectiveLabel(name), "\u7684\u4FDD\u5B58\u8BC4\u4EF7\u8303\u56F4"), /*#__PURE__*/React.createElement(C.ScoringScope, {
+      value: candidate.evaluations[name].scoring_scope
+    }))), /*#__PURE__*/React.createElement(CandidateBasis, {
       candidate: candidate,
       definitions: data.metric_definitions,
       onCompletion: onCompletion,
@@ -37837,6 +38733,8 @@ function SMExport({
         process: '优化过程'
       },
       runRef = data.run_ref || data.run.run_ref;
+    const sharedProcess = data.process_version === 'unified-optimization-process-v1' || G.unified(data.selection_basis);
+    const description = section === 'all' && sharedProcess ? '导出整份方案对照与本轮全部优化目标的过程记录，保留当前候选来源定位。' : initialSection === 'process' ? sharedProcess ? '导出本轮共同优化的摘要、当前方向曲线、阶段和全部实际动作，保留候选来源定位。' : '导出当前过程候选的计算摘要、进展、阶段和全部代表尝试。' : section === 'recommendation' ? '导出推荐原因、相对当前基准的差值、批次工序安排和未安排工时。' : initialSection === 'overview' ? '导出本次全部 ' + data.candidates.length + ' 个候选和 ' + data.metric_definitions.length + ' 项指标。' : '导出当前筛选的全部明细。';
     React.useEffect(() => () => {
       if (active.current) active.current.abort();
     }, []);
@@ -37906,7 +38804,7 @@ function SMExport({
       }, "\u4E0B\u8F7D ", format.toUpperCase()))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b"
-    }, /*#__PURE__*/React.createElement("p", null, initialSection === 'process' ? '导出当前过程候选的计算摘要、进展、阶段和全部代表尝试。' : section === 'recommendation' ? '导出推荐原因、相对当前基准的差值、批次工序安排和未安排工时。' : initialSection === 'overview' ? '导出本次全部 ' + data.candidates.length + ' 个候选和 ' + data.metric_definitions.length + ' 项指标。' : '导出当前筛选的全部明细。'), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("p", null, description), /*#__PURE__*/React.createElement("div", {
       className: "rc-tools",
       role: "radiogroup",
       "aria-label": "\u65B9\u6848\u5BF9\u6BD4\u5BFC\u51FA\u683C\u5F0F"
@@ -37936,7 +38834,7 @@ function SMExport({
       value: "all"
     }, "\u6574\u4EFD\u5BF9\u7167\uFF1A\u63A8\u8350\u4E0E\u5168\u90E8\u65B9\u6848\u660E\u7EC6"))), section === 'all' && initialSection !== 'overview' && /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
-    }, initialSection === 'process' ? '过程记录与其他结果均采用当前方案，比较结果保留固定对照。' : ['preparation', 'changeovers'].includes(initialSection) ? '当前明细保留筛选；另一张表按当前设备导出。' : ['resources', 'resource-days'].includes(initialSection) ? '资源明细保留当前粒度、关注线与时段筛选。' : '当前明细保留筛选，批次条件同时应用于批次和工序明细。'), /*#__PURE__*/React.createElement(C.ErrorBox, {
+    }, initialSection === 'process' ? data.process_version === 'unified-optimization-process-v1' ? '整份导出包含本轮全部优化目标，保留当前候选来源和固定对照。优化方向筛选只用于单张过程导出。' : '过程记录与其他结果均采用当前方案，比较结果保留固定对照。' : ['preparation', 'changeovers'].includes(initialSection) ? '当前明细保留筛选；另一张表按当前设备导出。' : ['resources', 'resource-days'].includes(initialSection) ? '资源明细保留当前粒度、关注线与时段筛选。' : '当前明细保留筛选，批次条件同时应用于批次和工序明细。'), /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: error
     }))));
   }
@@ -38043,7 +38941,7 @@ function SMExport({
       rangeReturnFocus = React.useRef(null),
       referenceChoice = React.useRef(null);
     const metricView = initialContext.metric_view === 'all' ? 'all' : 'common';
-    const [tab, setTab] = React.useState(() => {
+    const [tab, updateTab] = React.useState(() => {
       const requested = tabAliases[initialContext.comparison_tab] || initialContext.comparison_tab;
       const leaves = initialContext.detail_queries || {},
         legacyOverview = !initialContext.comparison_tab || initialContext.comparison_tab === 'overview';
@@ -38051,6 +38949,11 @@ function SMExport({
       if (legacyOverview && leaves['completion-batches'] && leaves['completion-batches'].open) return 'completion';
       return [...comparisonTabs, ...secondaryTabs, ['changeovers']].some(row => row[0] === requested) ? requested : 'delivery';
     });
+    const [visitedPanels, setVisitedPanels] = React.useState(() => [tab]);
+    function setTab(value) {
+      updateTab(value);
+      setVisitedPanels(current => current.includes(value) ? current : [...current, value]);
+    }
     const [selectedBatchRef, setSelectedBatchRef] = React.useState(initialContext.selected_batch_ref || initialContext.batch_ref || null);
     const [detailQueries, setDetailQueries] = React.useState(() => {
       const initial = initialContext.detail_queries || {},
@@ -38079,7 +38982,7 @@ function SMExport({
       const leaves = {
         ...initial
       };
-      for (const [section, field] of [['process', 'process_candidate_ref'], ['completion-batches', 'completion_candidate_ref']]) if (leaves[section]) {
+      for (const [section, field] of [['completion-batches', 'completion_candidate_ref']]) if (leaves[section]) {
         leaves[section] = {
           ...leaves[section]
         };
@@ -38118,11 +39021,11 @@ function SMExport({
         } : {})
       };
     });
-    const lookup = window.APSResourceSession.useQuery(signal => adapter.workspace(initialContext.candidate_ref, {}, signal), [adapter, initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
+    const lookup = window.APSResourceSession.useQuery(signal => adapter.identity(initialContext.candidate_ref, signal), [adapter, initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
     React.useEffect(() => {
-      if (lookup.result) setRunRef(lookup.result.data.candidate.run_ref);
+      if (lookup.result) setRunRef(lookup.result.data.run_ref);
     }, [lookup.result]);
-    const read = window.APSResourceSession.useQuery(signal => adapter.decisionSummary(runRef, query, signal), [adapter, runRef, query, revision], A.ref(runRef));
+    const read = window.APSResourceSession.useQuery(signal => tab === 'resources' ? adapter.resourceWorkspace(runRef, query, detailQueries.resources || {}, signal) : adapter.decisionSummary(runRef, query, signal), [adapter, runRef, query, revision], A.ref(runRef));
     const result = read.result,
       data = result && result.data,
       selected = data && data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
@@ -38137,7 +39040,7 @@ function SMExport({
         reference_candidate_ref: data.scope.reference.candidate_ref
       } : {})
     };
-    const fullRead = window.APSResourceSession.useQuery(signal => adapter.decision(runRef, fullQuery, signal), [adapter, runRef, JSON.stringify(query), JSON.stringify(fullQuery), revision, fullPaused], !!data && (tab === 'metrics' || sourceOpen) && !fullPaused);
+    const fullRead = window.APSResourceSession.useQuery(signal => adapter.decision(runRef, fullQuery, signal), [adapter, runRef, JSON.stringify(query), JSON.stringify(fullQuery), revision], !!data && (tab === 'metrics' || sourceOpen) && !fullPaused);
     const fullData = fullRead.result && fullRead.result.data,
       fullSelected = fullData && fullData.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
     React.useEffect(() => {
@@ -38167,13 +39070,29 @@ function SMExport({
         if (entry) entry.focus();
       }
     }, [data, read.error, tab]);
-    const history = window.APSResourceSession.useQuery(signal => adapter.adoptions(selected.candidate_ref, runRef, signal), [adapter, selected && selected.candidate_ref, runRef, revision], !!selected && selected.persisted_status === 'completed' && historyOpen);
+    const history = window.APSResourceSession.useQuery(signal => adapter.adoptions(selected.candidate_ref, runRef, signal), [adapter, selected && selected.candidate_ref, runRef, revision, result && result.meta.snapshot_ref], !!selected && selected.persisted_status === 'completed' && historyOpen);
+    const unified = data && G.unified(data.selection_basis),
+      processQuery = {
+        ...detailQueries.process
+      };
+    if (!unified && processQuery.process_candidate_ref) {
+      if (processQuery.process_candidate_ref !== (data ? data.scope.selected_candidate_ref : initialContext.candidate_ref)) {
+        processQuery.page = 1;
+        delete processQuery.snapshot_ref;
+      }
+      delete processQuery.process_candidate_ref;
+    }
     const remembered = data ? comparisonContext(data, {
       ...initialContext,
       metric_view: metricView,
       comparison_tab: tab,
       selected_batch_ref: selectedBatchRef,
-      detail_queries: detailQueries
+      detail_queries: {
+        ...detailQueries,
+        ...(detailQueries.process ? {
+          process: processQuery
+        } : {})
+      }
     }) : initialContext;
     window.WorkbenchPageContext.useSnapshot(remembered, !!data);
     window.WorkbenchCaption.useCaption(data && selected ? {
@@ -38195,7 +39114,7 @@ function SMExport({
       setFullPaused(false);
       setDetailQueries(values => {
         const next = freshDetailQueries(values);
-        if (next.process) delete next.process.process_candidate_ref;
+        if (next.process && !unified) delete next.process.process_candidate_ref;
         if (next['completion-batches']) delete next['completion-batches'].completion_candidate_ref;
         return next;
       });
@@ -38293,16 +39212,16 @@ function SMExport({
         return_recommendation_context: remembered
       });
     }
-    function detailQuery(value) {
+    function detailQuery(section, value) {
       setDetailQueries(queries => ({
         ...queries,
-        [tab]: value
+        [section]: value
       }));
     }
-    function chainQuery(value) {
+    function chainQuery(section, value) {
       setDetailQueries(queries => ({
         ...queries,
-        [tab === 'differences' ? 'difference-chain' : 'delivery-chain']: value
+        [section === 'differences' ? 'difference-chain' : 'delivery-chain']: value
       }));
     }
     const completionQuery = detailQueries['completion-batches'] || {};
@@ -38335,7 +39254,6 @@ function SMExport({
       });
       setTab('completion');
     }
-    const processQuery = detailQueries.process || {};
     function processQueryChange(value) {
       setDetailQueries(queries => ({
         ...queries,
@@ -38346,13 +39264,15 @@ function SMExport({
       }));
     }
     function openProcess(candidate) {
-      choose(candidate);
+      if (!unified) choose(candidate);
       setDetailQueries(queries => {
         const next = {
           ...queries.process,
-          open: true
+          open: true,
+          page: 1
         };
-        delete next.process_candidate_ref;
+        delete next.snapshot_ref;
+        if (unified) next.process_candidate_ref = candidate.candidate_ref;else delete next.process_candidate_ref;
         return {
           ...queries,
           process: next
@@ -38636,7 +39556,11 @@ function SMExport({
       onClick: () => setTab(value)
     }, label))), tab === 'differences' && !sameCandidate && /*#__PURE__*/React.createElement(DifferenceSummary, {
       data: data
-    }), tab === 'metrics' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(FullReadStatus, {
+    }), [...comparisonTabs, ...secondaryTabs, ['changeovers']].filter(([panel]) => visitedPanels.includes(panel)).map(([panel]) => /*#__PURE__*/React.createElement("div", {
+      key: panel + ':' + (data.scope.selected_candidate_ref || 'no-candidate') + ':' + data.scope.comparison_mode,
+      hidden: tab !== panel,
+      "data-decision-panel": panel
+    }, panel === 'metrics' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(FullReadStatus, {
       read: fullRead,
       paused: fullPaused,
       onCancel: () => setFullPaused(true),
@@ -38644,60 +39568,58 @@ function SMExport({
     }), fullData && /*#__PURE__*/React.createElement(Details, {
       data: fullData,
       selectedRef: data.scope.selected_candidate_ref
-    })) : tab === 'process' ? /*#__PURE__*/React.createElement(window.RunDecisionProcess.Pane, {
-      key: data.scope.selected_candidate_ref || 'no-candidate',
+    })) : panel === 'process' ? /*#__PURE__*/React.createElement(window.RunDecisionProcess.Pane, {
       adapter: adapter,
       result: result,
       query: processQuery,
       onQuery: processQueryChange,
       onSelectCandidate: choose,
-      enabled: true
-    }) : tab === 'completion' ? selected ? /*#__PURE__*/React.createElement(window.RunDecisionCompletion.Pane, {
-      key: selected.candidate_ref,
+      enabled: tab === panel
+    }) : panel === 'completion' ? selected ? /*#__PURE__*/React.createElement(window.RunDecisionCompletion.Pane, {
       adapter: adapter,
       result: result,
       query: completionQuery,
       onQuery: completionQueryChange,
       onSupport: onNavigate && support,
-      enabled: true
+      enabled: tab === panel
     }) : /*#__PURE__*/React.createElement("p", {
       className: "rc-empty"
-    }, "\u9009\u62E9\u5F53\u524D\u65B9\u6848\u67E5\u770B\u5DE5\u5E8F\u5B89\u6392\u3002") : selected && selected.persisted_status === 'completed' ? tab === 'resources' ? /*#__PURE__*/React.createElement(window.RunDecisionResources.Pane, {
-      key: tab + ':' + selected.candidate_ref + ':' + data.scope.comparison_mode,
+    }, "\u9009\u62E9\u5F53\u524D\u65B9\u6848\u67E5\u770B\u5DE5\u5E8F\u5B89\u6392\u3002") : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? /*#__PURE__*/React.createElement(window.RunDecisionResources.Pane, {
       adapter: adapter,
       result: result,
-      query: detailQueries[tab] || {},
-      onQuery: detailQuery,
+      query: detailQueries[panel] || {},
+      onQuery: value => detailQuery(panel, value),
       onView: resourceView,
       onRange: changeRange,
-      onDrill: onNavigate && drill
-    }) : ['preparation', 'changeovers'].includes(tab) ? /*#__PURE__*/React.createElement(window.RunDecisionPreparation.Pane, {
-      key: tab + ':' + selected.candidate_ref + ':' + data.scope.comparison_mode,
+      onDrill: onNavigate && drill,
+      enabled: tab === panel
+    }) : ['preparation', 'changeovers'].includes(panel) ? /*#__PURE__*/React.createElement(window.RunDecisionPreparation.Pane, {
       adapter: adapter,
       result: result,
-      section: tab,
-      query: detailQueries[tab] || {},
-      onQuery: detailQuery,
-      onDrill: onNavigate && drill
+      section: panel,
+      query: detailQueries[panel] || {},
+      onQuery: value => detailQuery(panel, value),
+      onDrill: onNavigate && drill,
+      enabled: tab === panel
     }) : /*#__PURE__*/React.createElement(window.RunDecisionDetails.Pane, {
-      key: tab + ':' + selected.candidate_ref + ':' + data.scope.comparison_mode,
       adapter: adapter,
       result: result,
-      section: tab === 'differences' ? 'differences' : 'delivery',
-      query: detailQueries[tab] || {},
-      onQuery: detailQuery,
+      section: panel === 'differences' ? 'differences' : 'delivery',
+      query: detailQueries[panel] || {},
+      onQuery: value => detailQuery(panel, value),
       selectedBatchRef: selectedBatchRef,
       onSelectBatch: setSelectedBatchRef,
-      chainQuery: detailQueries[tab === 'differences' ? 'difference-chain' : 'delivery-chain'] || {},
-      onChainQuery: chainQuery,
+      chainQuery: detailQueries[panel === 'differences' ? 'difference-chain' : 'delivery-chain'] || {},
+      onChainQuery: value => chainQuery(panel, value),
       onDrill: onNavigate && drill,
       onChooseReference: () => {
         const target = referenceChoice.current && referenceChoice.current.querySelector('select');
         if (target) target.focus();
-      }
+      },
+      enabled: tab === panel
     }) : /*#__PURE__*/React.createElement("div", {
       className: "rc-empty"
-    }, /*#__PURE__*/React.createElement("p", null, selected ? (selected.label || '当前候选') + '：' + window.WorkbenchTerms.candidate_statuses[selected.persisted_status] : '请选择候选查看明细。'), selected && selected.source && selected.source.reason && /*#__PURE__*/React.createElement("p", null, selected.source.reason.message)))), selected && selected.persisted_status === 'completed' && /*#__PURE__*/React.createElement("details", {
+    }, /*#__PURE__*/React.createElement("p", null, selected ? (selected.label || '当前候选') + '：' + window.WorkbenchTerms.candidate_statuses[selected.persisted_status] : '请选择候选查看明细。'), selected && selected.source && selected.source.reason && /*#__PURE__*/React.createElement("p", null, selected.source.reason.message)))))), selected && selected.persisted_status === 'completed' && /*#__PURE__*/React.createElement("details", {
       className: "rd-official",
       open: historyOpen,
       onToggle: event => setHistoryOpen(event.currentTarget.open)
@@ -39137,6 +40059,9 @@ function SMExport({
     }
   }
   function sameScope(left, right) {
+    if (left.scope_ref !== undefined || right.scope_ref !== undefined) {
+      return left.scope_ref === right.scope_ref && left.shared_scope && right.shared_scope && left.shared_scope.components_known && right.shared_scope.components_known;
+    }
     const scopeKeys = ['source_candidate_ref', 'objective_scope'];
     const before = left.evaluation_scope,
       after = right.evaluation_scope;
@@ -39174,8 +40099,12 @@ function SMExport({
       if (knownDimension(before.phase) && knownDimension(point.phase) && before.phase !== point.phase) changes.push('phase');
       if (knownDimension(before.phase) && before.phase === point.phase && known(before.phase_visit) && known(point.phase_visit) && before.phase_visit !== point.phase_visit) changes.push('phase_visit');
       if (knownDimension(before.segment) && knownDimension(point.segment) && before.segment !== point.segment) changes.push('segment');
-      if (before.evaluation_scope && point.evaluation_scope && (before.evaluation_scope.incomplete_batch_ids.length !== point.evaluation_scope.incomplete_batch_ids.length || before.evaluation_scope.incomplete_batch_ids.some((batch, member) => batch !== point.evaluation_scope.incomplete_batch_ids[member]))) changes.push('evaluation_scope');
-      if (completionKeys.every(key => known(before.completion[key]) && known(point.completion[key])) && completionKeys.some(key => before.completion[key] !== point.completion[key])) changes.push('completion');
+      if (before.scope_ref !== undefined || point.scope_ref !== undefined) {
+        if (before.scope_ref !== point.scope_ref) changes.push('scope');
+      } else {
+        if (before.evaluation_scope && point.evaluation_scope && (before.evaluation_scope.incomplete_batch_ids.length !== point.evaluation_scope.incomplete_batch_ids.length || before.evaluation_scope.incomplete_batch_ids.some((batch, member) => batch !== point.evaluation_scope.incomplete_batch_ids[member]))) changes.push('evaluation_scope');
+        if (completionKeys.every(key => known(before.completion[key]) && known(point.completion[key])) && completionKeys.some(key => before.completion[key] !== point.completion[key])) changes.push('completion');
+      }
       if (changes.length) result.push({
         before,
         point,
@@ -39196,10 +40125,14 @@ function SMExport({
       complete_batch_count: '计算范围内已排齐批次',
       incomplete_batch_count: '计算范围内未排齐批次'
     };
-    const descriptions = changes.map(change => change === 'phase' ? '阶段：' + phaseText(before.phase) + ' → ' + phaseText(point.phase) : change === 'phase_visit' ? '搜索次数：' + phaseText(point.phase) + '，' + before.phase_visit + ' → ' + point.phase_visit : change === 'segment' ? '开始新的比较' : change === 'evaluation_scope' ? '评价排除批次：' + (before.evaluation_scope.incomplete_batch_ids.join('、') || '无') + ' → ' + (point.evaluation_scope.incomplete_batch_ids.join('、') || '无') : '工序安排：' + completionKeys.filter(key => before.completion[key] !== point.completion[key]).map(key => labels[key] + ' ' + before.completion[key] + ' → ' + point.completion[key]).join('、'));
+    const descriptions = changes.map(change => change === 'phase' ? '阶段：' + phaseText(before.phase) + ' → ' + phaseText(point.phase) : change === 'phase_visit' ? '搜索次数：' + phaseText(point.phase) + '，' + before.phase_visit + ' → ' + point.phase_visit : change === 'segment' ? '开始新的比较' : change === 'scope' ? '评价范围：' + sharedScopeText(before.shared_scope) + ' → ' + sharedScopeText(point.shared_scope) : change === 'evaluation_scope' ? '评价排除批次：' + (before.evaluation_scope.incomplete_batch_ids.join('、') || '无') + ' → ' + (point.evaluation_scope.incomplete_batch_ids.join('、') || '无') : '工序安排：' + completionKeys.filter(key => before.completion[key] !== point.completion[key]).map(key => labels[key] + ' ' + before.completion[key] + ' → ' + point.completion[key]).join('、'));
     return '事件 ' + number(point.event_index) + '，累计求解 ' + elapsed(point.elapsed_ms) + '（' + point.elapsed_ms + ' ms）；' + descriptions.join('；') + '。';
   }
+  function sharedScopeText(scope) {
+    return scopeText(scope.objective_scope) + '；已安排 ' + number(scope.scheduled_operation_refs.length) + ' 道工序，已排齐 ' + number(scope.complete_batch_refs.length) + ' 批；' + (scope.is_complete ? '完整安排范围' : '部分安排范围') + '；' + (scope.components_known ? '评分已知' : '评分缺项');
+  }
   function pointText(point, index, total, objective) {
+    if (point.shared_scope) return '第 ' + (index + 1) + ' / ' + total + ' 个保存点，来源事件 ' + number(point.source_event_id) + '；累计计算 ' + elapsed(point.elapsed_ms) + '；' + metricLabel(objective) + ' ' + metricValue(point.primary_value, objective) + '；' + sharedScopeText(point.shared_scope) + '；阶段 ' + phaseText(point.phase) + '；' + verifiedLabel(point) + (point.flags.length ? '；事件标记：' + flagsText(point) : '') + '。';
     const completion = point.completion,
       scopeDescription = scopeText(point.objective_scope);
     return '第 ' + (index + 1) + ' / ' + total + ' 个保存点，事件 ' + number(point.event_index) + '；累计计算 ' + elapsed(point.elapsed_ms) + (known(point.elapsed_ms) ? '（' + point.elapsed_ms + ' ms）' : '') + '；' + metricLabel(objective) + ' ' + metricValue(point.primary_value, objective) + '；' + (scopeDescription.startsWith('评价范围') ? scopeDescription : '评价范围：' + scopeDescription) + '；评价集合：' + (point.evaluation_scope ? point.evaluation_scope.incomplete_batch_ids.length ? '排除批次 ' + point.evaluation_scope.incomplete_batch_ids.join('、') : '没有排除批次' : '未记录') + '；阶段 ' + phaseText(point.phase) + '；本次参与计算 ' + number(completion.expected_operation_count) + ' 道工序，其中未安排 ' + number(completion.missing_operation_count) + ' 道；本次计算范围内已排齐 ' + number(completion.complete_batch_count) + ' 批、未排齐 ' + number(completion.incomplete_batch_count) + ' 批；本次计算范围外结果 ' + number(completion.unexpected_result_count) + '；' + verifiedLabel(point) + (point.flags.length ? '；事件标记：' + flagsText(point) : '') + '。';
@@ -39225,7 +40158,9 @@ function SMExport({
     }))];
   }
   function savedValue(point, definition) {
-    return definition.primary ? point.primary_value : Number.isInteger(definition.index) && known(point.score[definition.index]) ? point.score[definition.index] : null;
+    if (definition.primary) return point.primary_value;
+    const index = point.field_order ? point.field_order.indexOf(definition.key) : definition.index;
+    return Number.isInteger(index) && index >= 0 && known(point.score[index]) ? point.score[index] : null;
   }
   function pointName(point, index, mode) {
     if (point.flags.includes('first_valid') && point.flags.includes('final')) return '首个有效方案 / 最终结果';
@@ -39234,14 +40169,16 @@ function SMExport({
     if (point.flags.includes('strict_improvement')) return '评分改善';
     return (mode === 'discrete' ? '旧保存点 ' : '保存点 ') + (index + 1);
   }
-  function timeRange(progress, elapsedMs) {
+  function timeRange(progress, elapsedMs, lastImprovementElapsedMs) {
     const times = progress.points.map(point => point.elapsed_ms).filter(known);
     const full = Math.max(0, ...(known(elapsedMs) ? [elapsedMs] : []), ...times);
-    const last = progress.points.filter(point => point.flags.includes('strict_improvement') && known(point.elapsed_ms)).slice(-1)[0];
+    const explicit = lastImprovementElapsedMs !== undefined;
+    const last = explicit ? null : progress.points.filter(point => point.flags.includes('strict_improvement') && known(point.elapsed_ms)).slice(-1)[0];
+    const lastElapsedMs = explicit ? lastImprovementElapsedMs : last ? last.elapsed_ms : null;
     return {
       full,
-      improvements: last && last.elapsed_ms > 0 ? Math.min(full, last.elapsed_ms * 1.5) : full,
-      lastImprovement: last || null
+      improvements: lastElapsedMs !== null && (explicit || lastElapsedMs > 0) ? Math.min(full, lastElapsedMs * (explicit ? 1 : 1.5)) : full,
+      lastImprovementElapsedMs: lastElapsedMs
     };
   }
   function nearestPoint(plotted, value, xValue) {
@@ -39272,17 +40209,34 @@ function SMExport({
     return range.min === range.max ? 0.5 : (value - range.min) / (range.max - range.min);
   }
   function Chart({
-    progress,
+    progress: savedProgress,
     objective,
     elapsedMs = null,
-    attempts = []
+    attempts = [],
+    scopes = null,
+    sourceEventId = null,
+    lastImprovementElapsedMs
   }) {
+    const progress = React.useMemo(() => scopes === null ? savedProgress : {
+      ...savedProgress,
+      mode: savedProgress.points.length ? 'curve' : 'none',
+      points: savedProgress.points.map(point => ({
+        ...point,
+        event_index: point.source_event_id,
+        shared_scope: scopes[point.scope_ref]
+      }))
+    }, [savedProgress, scopes]);
+    const shared = scopes !== null;
     const id = React.useId(),
       svg = React.useRef(null),
       [selection, setSelection] = React.useState(null),
-      [metricKey, setMetricKey] = React.useState(objective.primary_metric_key),
+      [metricSelection, setMetricSelection] = React.useState({
+        objective: objective.name,
+        key: objective.primary_metric_key
+      }),
       [windowMode, setWindowMode] = React.useState('full'),
       [showAttempts, setShowAttempts] = React.useState(false);
+    const metricKey = metricSelection.objective === objective.name ? metricSelection.key : objective.primary_metric_key;
     const points = progress.points,
       mode = progress.mode,
       definitions = metricChoices(objective),
@@ -39295,8 +40249,9 @@ function SMExport({
       };
     const eventAxis = mode === 'discrete' && points.length > 0 && points.every(point => !known(point.elapsed_ms));
     const xValue = point => eventAxis ? point.event_index : point.elapsed_ms,
-      range = timeRange(progress, elapsedMs),
-      activeWindow = mode === 'curve' && range.lastImprovement ? windowMode : 'full',
+      range = timeRange(progress, elapsedMs, lastImprovementElapsedMs),
+      hasImprovement = range.lastImprovementElapsedMs !== null;
+    const activeWindow = mode === 'curve' && hasImprovement ? windowMode : 'full',
       limit = activeWindow === 'improvements' ? range.improvements : range.full;
     const plotted = mode === 'none' ? [] : points.map((point, index) => ({
       point,
@@ -39312,7 +40267,8 @@ function SMExport({
       max: limit || 1
     };
     const yDomain = domain([...plotted.map(item => value(item.point)), ...scatter.map(value)]);
-    const cursor = selection && selection.progress === progress ? Math.min(selection.index, Math.max(0, points.length - 1)) : 0,
+    const sourceIndex = shared && sourceEventId !== null ? points.findIndex(point => point.source_event_id === sourceEventId) : -1;
+    const cursor = selection && selection.progress === progress ? Math.min(selection.index, Math.max(0, points.length - 1)) : Math.max(0, sourceIndex),
       selected = points[cursor];
     const x = point => 8 + ratio(xValue(point), xDomain) * 784,
       y = point => 232 - ratio(value(point), yDomain) * 224;
@@ -39368,7 +40324,10 @@ function SMExport({
     }, mode === 'curve' ? '保留方案的计算过程' : '已保存过程记录'), /*#__PURE__*/React.createElement("label", null, "\u89C2\u5BDF\u6307\u6807", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u8BA1\u7B97\u8FC7\u7A0B\u89C2\u5BDF\u6307\u6807",
       value: definition.key || '',
-      onChange: event => setMetricKey(event.target.value)
+      onChange: event => setMetricSelection({
+        objective: objective.name,
+        key: event.target.value
+      })
     }, definitions.map(field => /*#__PURE__*/React.createElement("option", {
       key: field.key || 'unknown',
       value: field.key || ''
@@ -39386,9 +40345,11 @@ function SMExport({
     } : final || {
       primary_value: null,
       score: []
-    }))), definition.unit && ' ' + definition.unit), range.lastImprovement && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, "\u6700\u540E\u4E00\u6B21\u8BC4\u5206\u6539\u5584"), /*#__PURE__*/React.createElement("strong", null, number(range.lastImprovement.elapsed_ms / 1000)), " \u79D2")), mode !== 'curve' && /*#__PURE__*/React.createElement("p", {
+    }))), definition.unit && ' ' + definition.unit), hasImprovement && /*#__PURE__*/React.createElement("div", {
+      "data-process-last-improvement-ms": range.lastImprovementElapsedMs
+    }, /*#__PURE__*/React.createElement("span", null, "\u6700\u540E\u4E00\u6B21\u8BC4\u5206\u6539\u5584"), shared ? /*#__PURE__*/React.createElement("strong", null, elapsed(range.lastImprovementElapsedMs)) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("strong", null, number(range.lastImprovementElapsedMs / 1000)), " \u79D2"))), mode !== 'curve' && /*#__PURE__*/React.createElement("p", {
       className: "rd-process-chart-note"
-    }, mode === 'discrete' ? '旧记录按已保存的离散结果点显示，首末点按保存顺序表示。' : '计算进展未保存。'), mode === 'curve' && points.some(point => !point.evaluation_scope) && /*#__PURE__*/React.createElement("p", {
+    }, mode === 'discrete' ? '旧记录按已保存的离散结果点显示，首末点按保存顺序表示。' : '计算进展未保存。'), mode === 'curve' && points.some(point => shared ? !point.shared_scope : !point.evaluation_scope) && /*#__PURE__*/React.createElement("p", {
       className: "rd-process-chart-note",
       "data-process-scope-missing": true
     }, "\u90E8\u5206\u4FDD\u5B58\u70B9\u7684\u8BC4\u4EF7\u96C6\u5408\u672A\u8BB0\u5F55\uFF0C\u6309\u79BB\u6563\u70B9\u663E\u793A\uFF1B\u4FDD\u5B58\u4E8B\u4EF6\u6761\u6570\u548C\u91C7\u6837\u8986\u76D6\u5728\u8BB0\u5F55\u8BF4\u660E\u4E2D\u5355\u5217\u3002"), (mode === 'curve' || !eventAxis && attempts.some(point => known(point.elapsed_ms))) && /*#__PURE__*/React.createElement("div", {
@@ -39400,9 +40361,9 @@ function SMExport({
     }, [['improvements', '改善阶段', range.improvements], ['full', '全过程', range.full]].map(([key, label, end]) => /*#__PURE__*/React.createElement(window.RunCandidateControls.Button, {
       key: key,
       "aria-pressed": activeWindow === key,
-      disabled: key === 'improvements' && !range.lastImprovement,
+      disabled: key === 'improvements' && !hasImprovement,
       onClick: () => setWindowMode(key)
-    }, label, " \xB7 ", key === 'improvements' && !range.lastImprovement ? '无改善记录' : elapsed(end)))) : /*#__PURE__*/React.createElement("span", null, "\u6309\u771F\u5B9E\u4FDD\u5B58\u65F6\u523B\u663E\u793A"), attempts.length > 0 && /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
+    }, label, " \xB7 ", key === 'improvements' && !hasImprovement ? '无改善记录' : elapsed(end)))) : /*#__PURE__*/React.createElement("span", null, "\u6309\u771F\u5B9E\u4FDD\u5B58\u65F6\u523B\u663E\u793A"), attempts.length > 0 && /*#__PURE__*/React.createElement("label", null, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       checked: showAttempts,
       onChange: event => setShowAttempts(event.target.checked)
@@ -39555,7 +40516,7 @@ function SMExport({
       key: field.key || 'unknown'
     }, /*#__PURE__*/React.createElement("span", null, field.label), /*#__PURE__*/React.createElement("strong", {
       title: known(savedValue(selected, field)) ? String(savedValue(selected, field)) : undefined
-    }, number(savedValue(selected, field)), known(savedValue(selected, field)) && field.unit && ' ' + field.unit)))), /*#__PURE__*/React.createElement("small", null, "\u672C\u6B21\u8BA1\u7B97\u8303\u56F4\uFF1A", number(selected.completion.expected_operation_count), " \u9053\u53C2\u4E0E\u5DE5\u5E8F\uFF0C\u5176\u4E2D\u672A\u5B89\u6392 ", number(selected.completion.missing_operation_count), " \u9053\uFF1B", scopeText(selected.objective_scope), "\u3002\u5B8C\u6574\u4EA4\u4ED8\u548C\u5F85\u6599\u5DE5\u5E8F\u5728\u201C\u4EA4\u671F\u4E0E\u672A\u6392\u201D\u4E2D\u67E5\u770B\u3002")), /*#__PURE__*/React.createElement("p", {
+    }, number(savedValue(selected, field)), known(savedValue(selected, field)) && field.unit && ' ' + field.unit)))), /*#__PURE__*/React.createElement("small", null, shared ? sharedScopeText(selected.shared_scope) : /*#__PURE__*/React.createElement(React.Fragment, null, "\u672C\u6B21\u8BA1\u7B97\u8303\u56F4\uFF1A", number(selected.completion.expected_operation_count), " \u9053\u53C2\u4E0E\u5DE5\u5E8F\uFF0C\u5176\u4E2D\u672A\u5B89\u6392 ", number(selected.completion.missing_operation_count), " \u9053\uFF1B", scopeText(selected.objective_scope), "\u3002"), "\u5B8C\u6574\u4EA4\u4ED8\u548C\u5F85\u6599\u5DE5\u5E8F\u5728\u201C\u4EA4\u671F\u4E0E\u672A\u6392\u201D\u4E2D\u67E5\u770B\u3002")), /*#__PURE__*/React.createElement("p", {
       className: "rd-process-selected wb-visually-hidden",
       id: id + '-selected',
       "aria-live": "polite",
@@ -39570,6 +40531,7 @@ function SMExport({
     markers,
     flagLabels,
     scopeText,
+    sharedScopeText,
     phaseText,
     stepPath
   };
@@ -39581,7 +40543,8 @@ function SMExport({
 
   const C = window.RunCandidateControls,
     D = window.RunDecisionComparison;
-  const queryKeys = ['process_candidate_ref', 'record_kind', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
+  const queryKeys = ['process_candidate_ref', 'objective', 'record_kind', 'sort', 'order', 'page', 'size', 'snapshot_ref'];
+  const unifiedVersion = 'unified-optimization-process-v1';
   const countLabels = [['decoder_invocations', '排法计算次数'], ['evaluated', '尝试评估次数'], ['accepted', '搜索保留次数'], ['current_accepted', '更新搜索当前排法次数'], ['strict_improvements', '评分改善次数'], ['rejected', '搜索拒绝次数'], ['unverified_trials', '未核验尝试次数']];
   const metricLabels = {
     overdue_count: ['超期批次', '批'],
@@ -39690,12 +40653,13 @@ function SMExport({
   }
   function Score({
     value,
-    objective
+    objective,
+    fieldOrder = null
   }) {
     return /*#__PURE__*/React.createElement("details", {
       className: "rd-process-facts"
     }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u8BC4\u5206 \xB7 ", value.length, " \u9879"), /*#__PURE__*/React.createElement("dl", null, value.map((item, index) => {
-      const definition = objective.score_fields.find(field => field.index === index);
+      const definition = objective.score_fields.find(field => fieldOrder ? field.key === fieldOrder[index] : field.index === index);
       return /*#__PURE__*/React.createElement("div", {
         key: index
       }, /*#__PURE__*/React.createElement("dt", null, definition ? definition.label : '分量 ' + (index + 1)), /*#__PURE__*/React.createElement("dd", {
@@ -39771,6 +40735,12 @@ function SMExport({
     anchorRef,
     onAnchor
   }) {
+    if (data.process_version === unifiedVersion) return /*#__PURE__*/React.createElement(UnifiedCandidates, {
+      data: data,
+      overview: overview,
+      anchorRef: anchorRef,
+      onAnchor: onAnchor
+    });
     return /*#__PURE__*/React.createElement("div", {
       className: "rc-table wb-table-frame rd-process-candidate-frame",
       "data-sticky-head": true,
@@ -39834,6 +40804,18 @@ function SMExport({
   function Coverage({
     data
   }) {
+    if (data.process_version === unifiedVersion) {
+      const sampling = data.progress.sampling;
+      return /*#__PURE__*/React.createElement("div", {
+        className: "rd-process-coverage"
+      }, /*#__PURE__*/React.createElement("span", null, "\u5F53\u524D\u65B9\u5411\u4FDD\u7559 ", number(data.progress.points.length), " \u4E2A\u70B9 \xB7 \u539F\u8FDB\u5C55 ", number(sampling.event_total_count), " \u4E2A\u4E8B\u4EF6"), /*#__PURE__*/React.createElement("details", {
+        className: "rd-process-facts"
+      }, /*#__PURE__*/React.createElement("summary", null, "\u8FDB\u5C55\u8BB0\u5F55\u8BF4\u660E"), /*#__PURE__*/React.createElement("p", null, "\u6309\u8BA1\u7B97\u8017\u65F6\u5206\u6BB5\u4FDD\u7559\u6700\u597D\u7ED3\u679C\uFF0C\u5E76\u4FDD\u7559\u5173\u952E\u9996\u5C3E\u8BB0\u5F55\uFF1B\u6700\u591A\u4FDD\u7559 ", sampling.point_budget, " \u4E2A\u70B9\u3002"), /*#__PURE__*/React.createElement("p", null, "\u8BC4\u4EF7\u8303\u56F4\u53D8\u5316\u65F6\u5206\u6BB5\u663E\u793A\uFF1B\u8BC4\u5206\u7F3A\u9879\u4FDD\u7559\u672A\u77E5\u503C\u3002"), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+        entries: {
+          '保存方式': sampling.policy
+        }
+      })));
+    }
     const summary = data.summary,
       sampling = summary.sampling,
       endpoints = data.progress.coverage.endpoint_coverage;
@@ -39929,6 +40911,9 @@ function SMExport({
   function Records({
     data
   }) {
+    if (data.process_version === unifiedVersion) return /*#__PURE__*/React.createElement(UnifiedRecords, {
+      data: data
+    });
     const progress = data.filters.record_kind === 'progress',
       objective = data.objective;
     const fields = progress ? [['elapsed_ms', '累计计算耗时'], ['primary_value', '主目标值'], ['verified', '核验状态']] : [['event_index', '计算事件'], ['elapsed_ms', '累计计算耗时'], ['primary_value', '主目标值'], ['accepted', '搜索保留情况'], ['verified', '核验状态'], ['strict_improved', '评分改善判断'], ['comparison', '当时比较资料']];
@@ -39998,6 +40983,237 @@ function SMExport({
       objective: objective
     })))))))));
   }
+  const unifiedCountLabels = [['actual_decoder_calls', '真实排法计算次数'], ['new_decisions', '新排法决策'], ['decision_reuses', '复用已核验决策'], ['skipped_requests', '跳过执行次数'], ['failed_decoder_calls', '计算失败次数'], ['request_count', '不同计算请求']];
+  const opportunityLabels = {
+    searched: '已探索',
+    paused_no_gain: '已暂停暂无改善的探索',
+    not_searched_budget: '本次预算内未探索此方向',
+    not_applicable: '该方向当前不适用'
+  };
+  const skipLabels = {
+    ...stopLabels,
+    estimated_decode_cost: '剩余预算不足以执行下一次计算',
+    waiting_for_parent: '等待可继续探索的排法',
+    stagnation: '当前探索暂无进一步改善'
+  };
+  const objectiveLabel = (data, name) => {
+    const descriptor = data.objectives.find(value => value.name === name);
+    return descriptor ? descriptor.label : '方向未记录';
+  };
+  function UnifiedScope({
+    scope,
+    scopeRef
+  }) {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, window.RunDecisionProcessChart.sharedScopeText(scope)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '评价范围编号': scopeRef
+      }
+    }));
+  }
+  function UnifiedOrigin({
+    origin,
+    data
+  }) {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, phaseText(origin.phase), " \xB7 ", objectiveLabel(data, origin.search_objective)), /*#__PURE__*/React.createElement("details", {
+      className: "rd-process-facts"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5B9E\u9645\u751F\u6210\u4E0E\u6D3E\u5DE5"), /*#__PURE__*/React.createElement("dl", null, [['strategy', '生成策略'], ['dispatch_mode', '派工模式'], ['dispatch_rule', '派工规则']].map(([key, label]) => /*#__PURE__*/React.createElement("div", {
+      key: key
+    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, savedText(origin[key]))))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '来源类型': origin.origin,
+        '搜索阶段': origin.phase,
+        '搜索方向': origin.search_objective
+      }
+    })));
+  }
+  function UnifiedCandidates({
+    data,
+    overview,
+    anchorRef,
+    onAnchor
+  }) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "rc-table wb-table-frame rd-process-candidate-frame",
+      "data-sticky-head": true,
+      "data-sticky-key": true,
+      "data-sticky-actions": true,
+      "data-wb-scroll-key": "decision-process-candidates"
+    }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table rd-process-source-table",
+      "aria-label": "\u672C\u6B21\u5019\u9009\u6765\u6E90\u5B9A\u4F4D"
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['候选 / 业务方向', '首次发现', '实际生成来源', '来源定位'].map(label => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      key: label
+    }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.candidates.map(candidate => /*#__PURE__*/React.createElement("tr", {
+      key: candidate.candidate_ref,
+      "data-process-candidate": candidate.candidate_ref,
+      "data-selected": candidate.candidate_ref === anchorRef || undefined
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, candidate.label), /*#__PURE__*/React.createElement("small", null, candidate.representative_objectives.map(name => objectiveLabel(data, name)).join(' · ')), candidate.candidate_ref === overview.recommendation.candidate_ref && /*#__PURE__*/React.createElement("small", null, "\u63A8\u8350")), /*#__PURE__*/React.createElement("td", null, "\u9996\u6B21\u53D1\u73B0\u4E8E ", /*#__PURE__*/React.createElement(Elapsed, {
+      value: candidate.first_found_elapsed_ms
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(UnifiedOrigin, {
+      origin: candidate.origin,
+      data: data
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(C.Button, {
+      className: "btn link",
+      disabled: !onAnchor,
+      "aria-pressed": candidate.candidate_ref === anchorRef,
+      onClick: () => onAnchor(candidate.candidate_ref)
+    }, candidate.candidate_ref === anchorRef ? '当前来源' : '定位来源')))))));
+  }
+  function UnifiedSummary({
+    data
+  }) {
+    const direction = data.budget.objectives[data.selected_objective.name];
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "rd-process-heading"
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5171\u540C\u4F18\u5316\u8FC7\u7A0B")), /*#__PURE__*/React.createElement("dl", {
+      className: "rd-process-run-summary",
+      "aria-label": "\u672C\u6B21\u5171\u540C\u4F18\u5316\u7EDF\u8BA1"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u7528\u65F6"), /*#__PURE__*/React.createElement("dd", null, /*#__PURE__*/React.createElement(Elapsed, {
+      value: data.summary.elapsed_ms
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9996\u4E2A\u5B8C\u6574\u89E3"), /*#__PURE__*/React.createElement("dd", null, data.summary.first_complete_elapsed_ms === null ? '本次未产生完整解' : /*#__PURE__*/React.createElement(Elapsed, {
+      value: data.summary.first_complete_elapsed_ms
+    }))), /*#__PURE__*/React.createElement("div", {
+      "data-process-first-improvement-ms": data.summary.first_improvement_elapsed_ms
+    }, /*#__PURE__*/React.createElement("dt", null, "\u5F53\u524D\u65B9\u5411\u9996\u6B21\u8BC4\u5206\u6539\u5584"), /*#__PURE__*/React.createElement("dd", null, data.summary.first_improvement_elapsed_ms === null ? '本方向未发生评分改善' : /*#__PURE__*/React.createElement(Elapsed, {
+      value: data.summary.first_improvement_elapsed_ms
+    }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u603B\u8BA1\u7B97\u9884\u7B97"), /*#__PURE__*/React.createElement("dd", null, number(data.budget.configured_seconds), " \u79D2")), unifiedCountLabels.map(([key, label]) => /*#__PURE__*/React.createElement("div", {
+      key: key,
+      "data-unified-count": key
+    }, /*#__PURE__*/React.createElement("dt", null, label), /*#__PURE__*/React.createElement("dd", null, number(data.counts[key]))))), /*#__PURE__*/React.createElement("p", {
+      className: "rd-process-chart-note"
+    }, skipLabels[data.stop_reason] || '停止原因已保存', /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '停止原因': data.stop_reason
+      }
+    })), /*#__PURE__*/React.createElement("p", {
+      className: "rd-process-chart-note",
+      "data-process-opportunity": direction.objective_status
+    }, opportunityLabels[direction.objective_status], direction.budget_reason && /*#__PURE__*/React.createElement("small", null, skipLabels[direction.budget_reason] || '预算原因已保存')));
+  }
+  function UnifiedRecords({
+    data
+  }) {
+    const progress = data.filters.record_kind === 'progress',
+      objective = data.selected_objective;
+    return /*#__PURE__*/React.createElement("div", {
+      className: "rc-table wb-table-frame rd-process-frame",
+      "data-sticky-head": true,
+      "data-wb-scroll-key": "decision-process-records"
+    }, /*#__PURE__*/React.createElement("table", {
+      className: 'wb-table rd-process-record-table ' + (progress ? 'rd-process-point-table' : 'rd-process-action-table'),
+      "aria-label": progress ? '进步曲线数值等价表' : '保存的搜索动作'
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, (progress ? ['来源事件 / 阶段', '累计计算耗时', objective.primary_metric_label, '评价范围', '核验 / 评分'] : ['动作 / 阶段', '实际起止 / 耗时', '评估 / 已核验', '新决策 / 复用', '实际结果']).map(label => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      key: label
+    }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.items.map((row, index) => progress ? /*#__PURE__*/React.createElement("tr", {
+      key: row.source_event_id + ':' + row.elapsed_ms + ':' + index,
+      "data-process-point": row.source_event_id
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, "\u6765\u6E90\u4E8B\u4EF6 ", row.source_event_id), /*#__PURE__*/React.createElement("small", null, phaseText(row.phase)), row.flags.length > 0 && /*#__PURE__*/React.createElement("small", null, row.flags.map(flag => flagLabels[flag] || flag).join(' · '))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
+      value: row.elapsed_ms
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Primary, {
+      value: row.primary_value,
+      objective: objective
+    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(UnifiedScope, {
+      scope: data.scopes[row.scope_ref],
+      scopeRef: row.scope_ref
+    })), /*#__PURE__*/React.createElement("td", null, row.verified ? '已核验' : '未核验', /*#__PURE__*/React.createElement(Score, {
+      value: row.score,
+      objective: objective,
+      fieldOrder: row.field_order
+    }))) : /*#__PURE__*/React.createElement("tr", {
+      key: row.action_id,
+      "data-process-action": row.action_id
+    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("strong", null, "\u52A8\u4F5C ", row.action_id), /*#__PURE__*/React.createElement("small", null, phaseText(row.phase)), row.initial_construction && /*#__PURE__*/React.createElement("small", null, "\u6784\u5EFA\u8D77\u59CB\u6392\u6CD5")), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
+      value: row.started_elapsed_ms
+    }), /*#__PURE__*/React.createElement("small", null, "\u81F3 ", /*#__PURE__*/React.createElement(Elapsed, {
+      value: row.finished_elapsed_ms
+    })), /*#__PURE__*/React.createElement("small", null, "\u52A8\u4F5C\u8017\u65F6 ", /*#__PURE__*/React.createElement(Elapsed, {
+      value: row.elapsed_ms
+    }))), /*#__PURE__*/React.createElement("td", null, number(row.evaluation_count), " / ", number(row.verified_evaluation_count)), /*#__PURE__*/React.createElement("td", null, number(row.new_decisions), " / ", number(row.reused_decisions)), /*#__PURE__*/React.createElement("td", null, row.skip_reason ? skipLabels[row.skip_reason] || '动作未执行' : row.improved_objectives.length ? '改善：' + row.improved_objectives.map(name => objectiveLabel(data, name)).join(' · ') : '本动作未带来评分改善', row.skip_reason && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '动作未执行原因': row.skip_reason
+      }
+    })))))));
+  }
+  function UnifiedStages({
+    values
+  }) {
+    return /*#__PURE__*/React.createElement("details", {
+      className: "rd-process-stages"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u524D\u65B9\u5411\u9636\u6BB5 \xB7 ", values.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
+      className: "rc-table wb-table-frame rd-process-frame",
+      "data-sticky-head": true,
+      "data-wb-scroll-key": "decision-process-stages"
+    }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table rd-process-stage-table",
+      "aria-label": "\u5171\u540C\u4F18\u5316\u65B9\u5411\u7684\u9636\u6BB5\u4E8B\u5B9E"
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['阶段', '实际开始 / 结束', '耗时 / 动作数', '评估 / 已核验', '新决策 / 复用'].map(label => /*#__PURE__*/React.createElement("th", {
+      scope: "col",
+      key: label
+    }, label)))), /*#__PURE__*/React.createElement("tbody", null, values.map(stage => /*#__PURE__*/React.createElement("tr", {
+      key: stage.phase,
+      "data-process-phase": stage.phase
+    }, /*#__PURE__*/React.createElement("td", null, phaseText(stage.phase)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
+      value: stage.start_elapsed_ms
+    }), /*#__PURE__*/React.createElement("small", null, "\u81F3 ", /*#__PURE__*/React.createElement(Elapsed, {
+      value: stage.end_elapsed_ms
+    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
+      value: stage.elapsed_ms
+    }), /*#__PURE__*/React.createElement("small", null, number(stage.action_count), " \u4E2A\u52A8\u4F5C")), /*#__PURE__*/React.createElement("td", null, number(stage.evaluation_count), " / ", number(stage.verified_evaluation_count)), /*#__PURE__*/React.createElement("td", null, number(stage.new_decisions), " / ", number(stage.reused_decisions))))))));
+  }
+  function UnifiedSource({
+    data
+  }) {
+    const source = data.source_event,
+      candidate = data.candidate;
+    return /*#__PURE__*/React.createElement("details", {
+      className: "rd-process-facts"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5F53\u524D\u5019\u9009\u6765\u6E90\u4E0E\u65B9\u5411\u8BB0\u5F55"), /*#__PURE__*/React.createElement("p", null, candidate.label, " \xB7 \u9996\u6B21\u53D1\u73B0\u4E8E ", /*#__PURE__*/React.createElement(Elapsed, {
+      value: candidate.first_found_elapsed_ms
+    })), /*#__PURE__*/React.createElement(UnifiedOrigin, {
+      origin: candidate.origin,
+      data: data
+    }), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '来源候选': candidate.candidate_ref,
+        '来源事件': source && source.event_id,
+        '排产记录': data.run_ref
+      }
+    }), source && /*#__PURE__*/React.createElement("p", null, "\u6765\u6E90\u4E8B\u4EF6 ", source.event_id, " \xB7 \u4FDD\u5B58\u4E8E ", /*#__PURE__*/React.createElement(Elapsed, {
+      value: source.elapsed_ms
+    }), " \xB7 ", source.verified ? '已核验' : '未核验'), /*#__PURE__*/React.createElement("h4", null, "\u5404\u65B9\u5411\u5B9E\u9645\u63A2\u7D22"), /*#__PURE__*/React.createElement("dl", null, data.objectives.map(descriptor => {
+      const goal = data.budget.objectives[descriptor.name];
+      return /*#__PURE__*/React.createElement("div", {
+        key: descriptor.name
+      }, /*#__PURE__*/React.createElement("dt", null, descriptor.label), /*#__PURE__*/React.createElement("dd", null, opportunityLabels[goal.objective_status], " \xB7 ", number(goal.action_count), " \u4E2A\u52A8\u4F5C"));
+    })), data.bridges.length > 0 && /*#__PURE__*/React.createElement("details", {
+      className: "rd-process-facts"
+    }, /*#__PURE__*/React.createElement("summary", null, "\u53C2\u8003\u6392\u6CD5\u63A5\u7EED \xB7 ", data.bridges.length, " \u9879"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-table-frame"
+    }, /*#__PURE__*/React.createElement("table", {
+      className: "wb-table rd-process-bridge-table",
+      "aria-label": "\u4FDD\u5B58\u7684\u53C2\u8003\u6392\u6CD5\u63A5\u7EED"
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, ['方向 / 阶段', '实际起止', '接续耗时', '原排法 / 计算事实'].map(label => /*#__PURE__*/React.createElement("th", {
+      key: label,
+      scope: "col"
+    }, label)))), /*#__PURE__*/React.createElement("tbody", null, data.bridges.map(bridge => /*#__PURE__*/React.createElement("tr", {
+      key: bridge.source_event_id
+    }, /*#__PURE__*/React.createElement("td", null, objectiveLabel(data, bridge.search_objective), /*#__PURE__*/React.createElement("small", null, phaseText(bridge.phase))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
+      value: bridge.started_elapsed_ms
+    }), /*#__PURE__*/React.createElement("small", null, "\u81F3 ", /*#__PURE__*/React.createElement(Elapsed, {
+      value: bridge.finished_elapsed_ms
+    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Elapsed, {
+      value: bridge.elapsed_ms
+    })), /*#__PURE__*/React.createElement("td", null, bridge.same_arrangement === null ? '原排法对应关系未记录' : bridge.same_arrangement ? '保留同一排法' : '取得另一排法', /*#__PURE__*/React.createElement("small", null, bridge.decoder_executed ? '实际执行计算' : '未执行计算'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      entries: {
+        '来源事件': bridge.source_event_id,
+        '接续前排法': bridge.before_entry_id,
+        '接续后排法': bridge.after_entry_id,
+        '参考方式': bridge.reference_kind
+      }
+    })))))))));
+  }
   function Pane({
     adapter,
     result,
@@ -40009,12 +41225,16 @@ function SMExport({
     const overview = result.data,
       scope = overview.scope,
       runRef = overview.run.run_ref;
+    const unified = !!overview.selection_basis && overview.selection_basis.generation_policy_version === 'unified_search_v1';
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key)));
-    if (stored.process_candidate_ref && stored.process_candidate_ref !== scope.selected_candidate_ref) {
-      stored.page = 1;
-      delete stored.snapshot_ref;
+    if (!unified) {
+      if (stored.process_candidate_ref && stored.process_candidate_ref !== scope.selected_candidate_ref) {
+        stored.page = 1;
+        delete stored.snapshot_ref;
+      }
+      delete stored.process_candidate_ref;
+      delete stored.objective;
     }
-    delete stored.process_candidate_ref;
     const shared = {
       comparison_mode: scope.comparison_mode,
       resource_view: scope.resource_view,
@@ -40028,11 +41248,11 @@ function SMExport({
     const q = window.RunDecisionAPI.processScope(runRef, {
         ...stored,
         ...shared,
-        process_candidate_ref: scope.selected_candidate_ref || undefined
+        process_candidate_ref: unified && stored.process_candidate_ref || scope.selected_candidate_ref || undefined
       }),
       key = JSON.stringify(q);
     const [paused, setPaused] = React.useState(false);
-    const read = window.APSResourceSession.useQuery(signal => adapter.process(runRef, q, signal), [adapter, runRef, key, result.meta.snapshot_ref, paused], enabled && !paused);
+    const read = window.APSResourceSession.useQuery(signal => adapter.process(runRef, q, signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused);
     const detail = read.result && (!q.process_candidate_ref || read.result.data.candidate.candidate_ref === q.process_candidate_ref) ? read.result : null,
       data = detail && detail.data;
     function update(change, paging = false) {
@@ -40042,7 +41262,7 @@ function SMExport({
         page: paging ? change.page : 1
       };
       delete next.snapshot_ref;
-      delete next.process_candidate_ref;
+      if (!unified) delete next.process_candidate_ref;else if (data && !next.objective) next.objective = data.selected_objective.name;
       if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;
       setPaused(false);
       onQuery(Object.fromEntries(Object.entries(next).filter(([name]) => queryKeys.includes(name))));
@@ -40055,7 +41275,10 @@ function SMExport({
     }
     function selectCandidate(candidateRef) {
       const candidate = overview.candidates.find(row => row.candidate_ref === candidateRef);
-      if (candidate && onSelectCandidate) {
+      if (!candidate) return;
+      if (unified) update({
+        process_candidate_ref: candidateRef
+      });else if (onSelectCandidate) {
         setPaused(false);
         onSelectCandidate(candidate);
       }
@@ -40065,7 +41288,7 @@ function SMExport({
       read.reload();
     }
     if (!enabled) return null;
-    const sorts = q.record_kind === 'progress' ? [['elapsed_ms', '累计耗时'], ['event_index', '保存事件顺序'], ['primary_value', '主目标值']] : [['rank', '代表排名'], ['elapsed_ms', '尝试耗时'], ['primary_value', '主目标值']];
+    const sorts = q.record_kind === 'progress' ? [['elapsed_ms', '累计耗时'], ['event_index', '保存事件顺序'], ['primary_value', '主目标值']] : unified ? [['rank', '动作顺序'], ['elapsed_ms', '动作耗时']] : [['rank', '代表排名'], ['elapsed_ms', '尝试耗时'], ['primary_value', '主目标值']];
     return /*#__PURE__*/React.createElement("section", {
       className: "rd-process",
       "aria-label": "\u5019\u9009\u4F18\u5316\u8FC7\u7A0B",
@@ -40100,19 +41323,38 @@ function SMExport({
     }, "\u53D6\u6D88\u8BFB\u53D6")), paused && /*#__PURE__*/React.createElement("p", {
       className: "rc-muted",
       role: "status"
-    }, "\u8FC7\u7A0B\u8BFB\u53D6\u5DF2\u53D6\u6D88\uFF0C\u70B9\u51FB\u5237\u65B0\u7EE7\u7EED\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }, "\u8FC7\u7A0B\u8BFB\u53D6\u5DF2\u53D6\u6D88\uFF0C\u70B9\u51FB\u5237\u65B0\u7EE7\u7EED\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, unified ? /*#__PURE__*/React.createElement(UnifiedSummary, {
+      data: data
+    }) : /*#__PURE__*/React.createElement("div", {
       className: "rd-process-heading"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "\u8BA1\u7B97\u8FDB\u5C55"), /*#__PURE__*/React.createElement("span", null, "\u672C\u8F6E\u76EE\u6807\uFF1A", data.objective.label || '计算目标未记录', " \xB7 \u6765\u6E90\u8BA1\u7B97 ", /*#__PURE__*/React.createElement(Elapsed, {
       value: data.summary.source_solver_elapsed_ms
     }), data.summary.solver_counts.evaluated !== null && ' · 已评估 ' + number(data.summary.solver_counts.evaluated) + ' 次'))), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: detail.warnings
-    }), data.source.kind === 'reused' && /*#__PURE__*/React.createElement("p", {
+    }), unified && /*#__PURE__*/React.createElement("div", {
+      className: "rd-process-objective"
+    }, /*#__PURE__*/React.createElement("label", null, "\u4F18\u5316\u65B9\u5411", /*#__PURE__*/React.createElement("select", {
+      "aria-label": "\u4F18\u5316\u65B9\u5411",
+      value: data.selected_objective.name,
+      onChange: event => update({
+        objective: event.target.value
+      })
+    }, data.objectives.map(descriptor => /*#__PURE__*/React.createElement("option", {
+      key: descriptor.name,
+      value: descriptor.name
+    }, descriptor.label))))), !unified && data.source.kind === 'reused' && /*#__PURE__*/React.createElement("p", {
       className: "rd-process-chart-note"
     }, "\u6B64\u65B9\u6848\u6CBF\u7528 ", (overview.candidates.find(row => row.candidate_ref === data.source.source_candidate_ref) || data.candidates.find(row => row.candidate_ref === data.source.source_candidate_ref) || {}).label || '已保存方案', " \u7684\u8BA1\u7B97\u7ED3\u679C\u3002"), /*#__PURE__*/React.createElement(window.RunDecisionProcessChart.Chart, {
+      key: unified ? data.selected_objective.name : undefined,
       progress: data.progress,
-      objective: data.objective,
-      elapsedMs: data.summary.source_solver_elapsed_ms,
-      attempts: data.attempts
+      objective: unified ? data.selected_objective : data.objective,
+      elapsedMs: unified ? data.summary.elapsed_ms : data.summary.source_solver_elapsed_ms,
+      attempts: unified ? undefined : data.attempts,
+      scopes: unified ? data.scopes : null,
+      sourceEventId: unified && data.source_event ? data.source_event.event_id : null,
+      ...(unified ? {
+        lastImprovementElapsedMs: data.summary.last_improvement_elapsed_ms
+      } : {})
     }), /*#__PURE__*/React.createElement(Coverage, {
       data: data
     }), /*#__PURE__*/React.createElement("details", {
@@ -40123,7 +41365,7 @@ function SMExport({
       className: "rc-tabs",
       role: "group",
       "aria-label": "\u4F18\u5316\u8FC7\u7A0B\u8BB0\u5F55\u89C6\u56FE"
-    }, [['attempts', '已保存代表尝试'], ['progress', '曲线数据']].map(([value, label]) => /*#__PURE__*/React.createElement(C.Button, {
+    }, [['attempts', unified ? '搜索动作' : '已保存代表尝试'], ['progress', '曲线数据']].map(([value, label]) => /*#__PURE__*/React.createElement(C.Button, {
       key: value,
       "aria-pressed": q.record_kind === value,
       onClick: () => recordKind(value)
@@ -40150,7 +41392,7 @@ function SMExport({
       data: data
     }) : /*#__PURE__*/React.createElement("p", {
       className: "rc-empty"
-    }, "\u8FD9\u4E2A\u5019\u9009\u6CA1\u6709\u4FDD\u5B58\u5F53\u524D\u7C7B\u522B\u7684\u8FC7\u7A0B\u8BB0\u5F55\u3002"), /*#__PURE__*/React.createElement("div", {
+    }, unified ? '这个方向没有保存当前类别的过程记录。' : '这个候选没有保存当前类别的过程记录。'), /*#__PURE__*/React.createElement("div", {
       className: "rc-heading rd-detail-pages"
     }, /*#__PURE__*/React.createElement("span", {
       className: "rc-muted"
@@ -40176,12 +41418,16 @@ function SMExport({
       }, true)
     }))), /*#__PURE__*/React.createElement("details", {
       className: "rd-process-catalog"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u5168\u90E8\u5019\u9009\u7684\u8BA1\u7B97\u6765\u6E90\u4E0E\u7ED3\u679C \xB7 ", data.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(CandidateTable, {
+    }, /*#__PURE__*/React.createElement("summary", null, unified ? '全部候选的来源定位' : '全部候选的计算来源与结果', " \xB7 ", data.candidates.length, " \u9879"), /*#__PURE__*/React.createElement(CandidateTable, {
       data: data,
       overview: overview,
       anchorRef: data.candidate.candidate_ref,
-      onAnchor: onSelectCandidate && selectCandidate
-    })), /*#__PURE__*/React.createElement(Stages, {
+      onAnchor: unified || onSelectCandidate ? selectCandidate : undefined
+    })), unified ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(UnifiedStages, {
+      values: data.stages
+    }), /*#__PURE__*/React.createElement(UnifiedSource, {
+      data: data
+    })) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Stages, {
       values: data.stages
     }), /*#__PURE__*/React.createElement(Counts, {
       summary: data.summary
@@ -40205,7 +41451,7 @@ function SMExport({
       key: key
     }, /*#__PURE__*/React.createElement("dt", null, key), /*#__PURE__*/React.createElement("dd", null, value === null ? '未记录' : typeof value === 'object' ? JSON.stringify(value) : typeof value === 'boolean' ? value ? '是' : '否' : String(value))))) : /*#__PURE__*/React.createElement("p", {
       className: "rc-muted"
-    }, "\u6CA1\u6709\u4FDD\u5B58\u641C\u7D22\u914D\u7F6E\u3002")))));
+    }, "\u6CA1\u6709\u4FDD\u5B58\u641C\u7D22\u914D\u7F6E\u3002"))))));
   }
   window.RunDecisionProcess = {
     Pane,
@@ -40219,7 +41465,13 @@ function SMExport({
     Score,
     AttemptComparison,
     Elapsed,
-    Primary
+    Primary,
+    UnifiedSummary,
+    UnifiedRecords,
+    UnifiedCandidates,
+    UnifiedStages,
+    UnifiedSource,
+    UnifiedScope
   };
 })();
 
@@ -40732,7 +41984,8 @@ function SMExport({
     query,
     onQuery,
     onDrill,
-    headingRef
+    headingRef,
+    enabled = true
   }) {
     const scope = result.data.scope,
       runRef = result.data.run.run_ref;
@@ -40754,7 +42007,7 @@ function SMExport({
     }, 'operations');
     const [paused, setPaused] = React.useState(false),
       key = JSON.stringify(q);
-    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'operations', signal), [adapter, runRef, key, paused], !paused),
+    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'operations', signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused),
       detailResult = read.result,
       data = detailResult && detailResult.data;
     function update(change, paging = false) {
@@ -40900,7 +42153,8 @@ function SMExport({
     chainQuery = {},
     onChainQuery,
     onDrill,
-    onChooseReference
+    onChooseReference,
+    enabled = true
   }) {
     const overview = result.data,
       scope = overview.scope,
@@ -40933,7 +42187,7 @@ function SMExport({
     const [paused, setPaused] = React.useState(false),
       headingRef = React.useRef(null),
       focusRequested = React.useRef(false);
-    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'batches', signal), [adapter, runRef, key, section, paused], !paused && !sameCandidate);
+    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'batches', signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused && !sameCandidate);
     const detailResult = read.result,
       data = detailResult && detailResult.data,
       options = data && data.filter_options;
@@ -40943,14 +42197,14 @@ function SMExport({
       selectedRef = selected && selected.batch_ref;
     const retained = selected && !data.items.some(row => row.batch_ref === selectedRef);
     React.useEffect(() => {
-      if (!selectedBatchRef && selectedRef && onSelectBatch) onSelectBatch(selectedRef);
-    }, [selectedBatchRef, selectedRef, onSelectBatch]);
+      if (enabled && !selectedBatchRef && selectedRef && onSelectBatch) onSelectBatch(selectedRef);
+    }, [enabled, selectedBatchRef, selectedRef, onSelectBatch]);
     React.useEffect(() => {
-      if (focusRequested.current && headingRef.current) {
+      if (enabled && focusRequested.current && headingRef.current) {
         headingRef.current.focus();
         focusRequested.current = false;
       }
-    }, [selectedRef, chainQuery.batch_ref, chainQuery.change_kind]);
+    }, [enabled, selectedRef, chainQuery.batch_ref, chainQuery.change_kind]);
     function selectBatch(ref) {
       focusRequested.current = true;
       if (onChainQuery && (chainQuery.batch_ref !== ref || arrangementsEqual && chainQuery.change_kind !== 'all')) onChainQuery({
@@ -41144,7 +42398,8 @@ function SMExport({
       } : chainQuery,
       onQuery: onChainQuery,
       onDrill: onDrill,
-      headingRef: headingRef
+      headingRef: headingRef,
+      enabled: enabled
     })), /*#__PURE__*/React.createElement("details", {
       className: "rd-delivery-source"
     }, /*#__PURE__*/React.createElement("summary", null, "\u6570\u636E\u6765\u6E90"), /*#__PURE__*/React.createElement(Summary, {
@@ -41183,15 +42438,8 @@ function SMExport({
   const grains = [['hour', '小时'], ['shift', '班次'], ['day', '天'], ['week', '周']];
   function storedQuery(query, cohort, scope) {
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))),
-      next = {
-        ...stored
-      },
+      next = A.savedResourceView(stored, cohort, scope),
       refs = cohort[next.resource_kind || 'machine'];
-    if (next.resource_ref && !refs.includes(next.resource_ref)) {
-      delete next.resource_ref;
-      delete next.snapshot_ref;
-      next.page = 1;
-    }
     if (next.day_resource_ref && !refs.includes(next.day_resource_ref)) {
       delete next.day_resource_ref;
       delete next.day_snapshot_ref;
@@ -41208,12 +42456,6 @@ function SMExport({
       delete next.day_snapshot_ref;
       delete next.heatmap_focus;
       next.day_page = 1;
-    }
-    if (scope && next.display_start && (next.display_start < scope.range_start || next.display_end > scope.range_end)) {
-      delete next.display_start;
-      delete next.display_end;
-      delete next.snapshot_ref;
-      next.heatmap_page = 1;
     }
     return next;
   }
@@ -41665,7 +42907,8 @@ function SMExport({
     onQuery,
     onClose,
     onWhole,
-    onDrill
+    onDrill,
+    enabled = true
   }) {
     const data = result.data,
       cell = whole ? {
@@ -41678,7 +42921,7 @@ function SMExport({
     const periods = whole ? data.items : [cell],
       hasTasks = periods.some(period => period.after.tasks.length > 0);
     React.useEffect(() => {
-      if (heading.current) {
+      if (enabled && heading.current) {
         heading.current.focus({
           preventScroll: true
         });
@@ -41686,7 +42929,7 @@ function SMExport({
           block: 'start'
         });
       }
-    }, [data.resource.ref, cell.start, cell.end, whole]);
+    }, [enabled, data.resource.ref, cell.start, cell.end, whole]);
     return /*#__PURE__*/React.createElement("section", {
       className: "rres-selected-window",
       "aria-label": "\u6240\u9009\u8D44\u6E90\u65F6\u6BB5\u5B89\u6392"
@@ -41922,7 +43165,8 @@ function SMExport({
     onQuery,
     onView,
     onRange,
-    onDrill
+    onDrill,
+    enabled = true
   }) {
     const overview = result.data,
       scope = overview.scope,
@@ -41945,15 +43189,29 @@ function SMExport({
         ...shared
       });
     React.useEffect(() => {
+      if (!enabled) return;
       const prior = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key)));
       if (JSON.stringify(prior) !== JSON.stringify(stored)) onQuery(stored);
-    }, [JSON.stringify(stored), JSON.stringify(query)]);
+    }, [enabled, JSON.stringify(stored), JSON.stringify(query)]);
     const [paused, setPaused] = React.useState(false),
       [daysPaused, setDaysPaused] = React.useState(false);
-    const read = window.APSResourceSession.useQuery(signal => adapter.resources(runRef, {
-      ...q,
-      expected_resource_refs: scope.resource_refs
-    }, signal), [adapter, runRef, JSON.stringify(q), paused], !paused);
+    const consumed = React.useRef(null),
+      qKey = JSON.stringify(q);
+    const read = window.APSResourceSession.useQuery(signal => {
+      if (signal && signal.aborted) throw new DOMException('读取已取消', 'AbortError');
+      if (result.resource_result && consumed.current !== result && JSON.stringify(A.resourceScope(runRef, {
+        ...result.resource_query,
+        ...shared
+      })) === qKey) {
+        consumed.current = result;
+        if (result.resource_result.ok === false) throw A.resourceError(result.resource_result);
+        return result.resource_result;
+      }
+      return adapter.resources(runRef, {
+        ...q,
+        expected_resource_refs: scope.resource_refs
+      }, signal);
+    }, [adapter, runRef, qKey, result], enabled && !paused);
     const data = read.result && read.result.data;
     const activeFilters = [q.resource_ref && data && data.filter_options.resources.find(row => row.ref === q.resource_ref)?.label, !['all', 'high_pressure', 'conflicts'].includes(q.pressure_filter) && pressureFilters.find(row => row[0] === q.pressure_filter)[1]].filter(Boolean);
     const dayRef = stored.day_resource_ref,
@@ -41972,7 +43230,7 @@ function SMExport({
     const days = window.APSResourceSession.useQuery(signal => adapter.resourceDays(runRef, {
       ...dayQ,
       expected_resource_refs: scope.resource_refs
-    }, signal), [adapter, runRef, JSON.stringify(dayQ), daysPaused], !!dayQ && !daysPaused);
+    }, signal), [adapter, runRef, JSON.stringify(dayQ), result], enabled && !!dayQ && !daysPaused);
     function change(value, type = 'filter') {
       const next = {
         ...stored,
@@ -42326,7 +43584,8 @@ function SMExport({
       onQuery: dayQuery,
       onClose: closeDays,
       onWhole: wholeDays,
-      onDrill: onDrill
+      onDrill: onDrill,
+      enabled: enabled
     }), data && /*#__PURE__*/React.createElement("details", {
       className: "rres-statistics"
     }, /*#__PURE__*/React.createElement("summary", null, "\u6570\u636E\u6765\u6E90"), /*#__PURE__*/React.createElement("div", {
@@ -43088,7 +44347,8 @@ function SMExport({
     section,
     query,
     onQuery,
-    onDrill
+    onDrill,
+    enabled = true
   }) {
     const overview = result.data,
       scope = overview.scope,
@@ -43111,7 +44371,7 @@ function SMExport({
       }, section);
     const [paused, setPaused] = React.useState(false),
       key = JSON.stringify(q);
-    const read = window.APSResourceSession.useQuery(signal => adapter[section](runRef, q, signal), [adapter, runRef, key, section, paused], !paused),
+    const read = window.APSResourceSession.useQuery(signal => adapter[section](runRef, q, signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused),
       detail = read.result,
       data = detail && detail.data;
     function update(change, paging = false) {
@@ -43536,26 +44796,33 @@ function SMExport({
     }
     return rows;
   }
-  function compose(candidate, baseline, mode, query, operationRefs = null, width = 1000) {
-    if (!baseline) return candidate;
-    const groups = new Map(),
-      rows = [],
-      locations = new Map(),
-      baselineLocations = new Map();
-    const comparisons = matching(baseline.comparisons, query).filter(row => !operationRefs || operationRefs.has(row.operation_ref));
+  function prepare(candidate, baseline, mode, query, operationRefs = null) {
+    const groups = new Map();
+    const comparisons = baseline ? matching(baseline.comparisons, query).filter(row => !operationRefs || operationRefs.has(row.operation_ref)) : [];
     const included = new Set(comparisons.map(r => r.operation_ref));
-    for (const row of candidate.rows) {
-      if (!groups.has(row.id)) groups.set(row.id, {
-        label: row.label,
-        current: [],
+    // compose() also accepts its existing, already-laid-out candidate argument.
+    if (candidate.rows) {
+      for (const row of candidate.rows) {
+        if (!groups.has(row.id)) groups.set(row.id, {
+          id: row.id,
+          label: row.label,
+          current: [],
+          before: []
+        });
+        groups.get(row.id).current.push(row);
+      }
+    } else {
+      for (const group of candidate.groups.values()) groups.set(group.id, {
+        id: group.id,
+        label: group.label,
+        candidate: group,
         before: []
       });
-      groups.get(row.id).current.push(row);
     }
     let start = candidate.start,
       end = candidate.end,
       hasPoints = false;
-    for (const comparison of baseline.comparisons) for (const segment of comparison.baseline_segments) {
+    for (const comparison of baseline ? baseline.comparisons : []) for (const segment of comparison.baseline_segments) {
       if (!segment.interval_comparable) continue;
       const item = {
         comparison,
@@ -43573,6 +44840,7 @@ function SMExport({
       } : segment[mode];
       const id = resource && resource.ref || 'baseline-missing:' + segment.row_ref;
       if (!groups.has(id)) groups.set(id, {
+        id,
         label: mode === 'batch' ? resource.label || '批次未记录' : resourceLabel(segment, mode),
         current: [],
         before: []
@@ -43583,59 +44851,83 @@ function SMExport({
       start,
       end
     } = window.PointGanttModel.bounds(start, end, true));
-    let top = 0;
-    for (const [id, group] of groups) {
-      for (const original of group.current) {
-        const row = {
-          ...original,
-          top
-        };
-        row.items.forEach(item => locations.set(item.task.row_ref, {
-          row: rows.length,
-          top,
-          item
-        }));
-        rows.push(row);
-        top += row.height;
-      }
+    for (const group of groups.values()) {
       const isPoint = item => window.PointContract.isPoint(item.segment);
-      const intervals = tracks(group.before.filter(item => !isPoint(item)));
-      const points = window.PointGanttModel.tracks(group.before.filter(isPoint), start, end, width);
-      for (const [baselinePoint, lanes] of [[false, intervals], [true, points]]) lanes.forEach((items, lane) => {
-        const row = {
-          id,
-          key: 'baseline:' + id + ':' + (baselinePoint ? 'point:' : '') + lane,
-          label: group.label,
-          items,
-          top,
-          height: 30,
-          lane,
-          laneCount: lanes.length,
-          baseline: true,
-          baselinePoint
-        };
-        items.forEach(item => baselineLocations.set(item.segment.row_ref, {
-          row: rows.length,
-          top,
-          item
-        }));
-        rows.push(row);
-        top += row.height;
-      });
+      group.intervals = tracks(group.before.filter(item => !isPoint(item)));
+      group.points = window.PointGanttModel.prepareTracks(group.before.filter(isPoint));
     }
     return {
-      ...candidate,
+      candidate,
+      groups,
+      start,
+      end,
+      comparisons,
+      hasBaseline: !!baseline
+    };
+  }
+  function layoutPrepared(prepared, width = 1000) {
+    const {
+      candidate,
+      start,
+      end
+    } = prepared;
+    const rows = [],
+      locations = new Map(),
+      baselineLocations = new Map();
+    let top = 0;
+    function append(source) {
+      const row = {
+        ...source,
+        top
+      };
+      row.items.forEach(item => (row.baseline ? baselineLocations : locations).set(row.baseline ? item.segment.row_ref : item.task.row_ref, {
+        row: rows.length,
+        top,
+        item
+      }));
+      rows.push(row);
+      top += row.height;
+    }
+    for (const [id, group] of prepared.groups) {
+      const current = group.candidate ? M.groupRows(group.candidate, start, end, width, true) : group.current;
+      current.forEach(append);
+      const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width) : [];
+      for (const [baselinePoint, lanes] of [[false, group.intervals], [true, points]]) lanes.forEach((items, lane) => append({
+        id,
+        key: 'baseline:' + id + ':' + (baselinePoint ? 'point:' : '') + lane,
+        label: group.label,
+        items,
+        height: 30,
+        lane,
+        laneCount: lanes.length,
+        baseline: true,
+        baselinePoint
+      }));
+    }
+    const facts = candidate.rows ? candidate : {
+      tasks: candidate.tasks,
+      unplottableTasks: candidate.unplottableTasks
+    };
+    return {
+      ...facts,
       rows,
       height: top,
       locations,
       baselineLocations,
       start,
       end,
-      groupCount: groups.size,
-      comparisons
+      groupCount: prepared.groups.size,
+      ...(prepared.hasBaseline ? {
+        comparisons: prepared.comparisons
+      } : {})
     };
   }
+  function compose(candidate, baseline, mode, query, operationRefs = null, width = 1000) {
+    return baseline ? layoutPrepared(prepare(candidate, baseline, mode, query, operationRefs), width) : candidate;
+  }
   window.RunBaselineModel = {
+    prepare,
+    layoutPrepared,
     compose,
     matching,
     title,
@@ -43659,59 +44951,19 @@ function SMExport({
     return window.WorkbenchControls.usePrintLayout();
   }
   function useBaseline(data, available) {
-    const [enabled, setEnabled] = React.useState(false),
-      [revision, refresh] = React.useReducer(v => v + 1, 0);
-    const [state, setState] = React.useState({
-        result: null,
-        error: null,
-        busy: false
-      }),
-      request = React.useRef(null);
+    const [enabled, setEnabled] = React.useState(false);
     const active = enabled && available;
-    const identity = React.useMemo(() => ({}), [data, active, revision]);
-    React.useLayoutEffect(() => {
-      const controller = new AbortController();
-      request.current = controller;
-      setState({
-        identity,
-        result: null,
-        error: null,
-        busy: active
-      });
-      if (active) window.RunBaselineAPI.create().read(data, controller.signal).then(result => {
-        if (!controller.signal.aborted) setState({
-          identity,
-          result,
-          error: null,
-          busy: false
-        });
-      }).catch(error => {
-        if (!controller.signal.aborted) setState({
-          identity,
-          result: null,
-          error: new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message),
-          busy: false
-        });
-      });
-      return () => controller.abort();
-    }, [identity]);
-    function toggle(value) {
-      if (request.current) request.current.abort();
-      setEnabled(value);
-    }
-    function retry() {
-      if (request.current) request.current.abort();
-      refresh();
-    }
+    const read = window.APSResourceSession.useQuery(signal => window.RunBaselineAPI.create().read(data, signal).catch(error => {
+      throw new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message);
+    }), [data], active);
     return {
-      ...(state.identity === identity ? state : {
-        result: null,
-        error: null,
-        busy: active
-      }),
+      ...read,
+      result: active ? read.result : null,
+      error: active ? read.error : null,
+      busy: active && read.loading,
       enabled: active,
-      toggle,
-      retry
+      toggle: setEnabled,
+      retry: read.reload
     };
   }
   function Toggle({
@@ -44347,10 +45599,10 @@ function SMExport({
     // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
     const labelWidth = 156,
       width = printing ? 640 : Math.max(1, viewport) * zoom;
-    const candidate = React.useMemo(() => M.layout(resourceFocus ? {
+    const candidate = React.useMemo(() => M.prepare(resourceFocus ? {
       ...data,
       tasks: data.tasks.filter(task => M.resourceMatches(task, resourceFocus))
-    } : data, mode, query, width, operationRefs), [data, mode, query, width, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    } : data, mode, query, operationRefs), [data, mode, query, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
     const displayedBaseline = React.useMemo(() => result && resourceFocus ? {
       ...result.data,
       comparisons: result.data.comparisons.map(row => ({
@@ -44358,7 +45610,8 @@ function SMExport({
         baseline_segments: row.baseline_segments.filter(segment => M.resourceMatches(segment, resourceFocus))
       }))
     } : result && result.data, [result, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
-    const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, displayedBaseline, mode, query, operationRefs, width), width), [candidate, displayedBaseline, mode, query, width, operationRefs]);
+    const prepared = React.useMemo(() => B.prepare(candidate, displayedBaseline, mode, query, operationRefs), [candidate, displayedBaseline, mode, query, operationRefs]);
+    const model = React.useMemo(() => B.layoutPrepared(prepared, width), [prepared, width]);
     const risks = React.useMemo(() => new Map(data.delivery_risks.items.map(row => [row.batch_ref, row.risk])), [data]);
     const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
     const targetRef = hover && hover.taskRef || !chosen && selected && selected.row_ref || null;
@@ -44366,6 +45619,10 @@ function SMExport({
       enabled: chainEnabled,
       targetRef
     }), [graph, chainEnabled, targetRef]);
+    const graphLocations = React.useMemo(() => window.GanttGraph.locations(model, {
+      candidate: true
+    }), [model]);
+    const locationIndex = React.useMemo(() => window.GanttGraph.locationIndex(graphLocations), [graphLocations]);
     function selectBaseline(item) {
       setSelection(item ? {
         item,
@@ -44504,8 +45761,8 @@ function SMExport({
       width: renderViewport,
       height: printing ? model.height : viewportHeight
     }, {
-      candidate: true
-    }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing]);
+      locationIndex
+    }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing, locationIndex]);
     const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
     const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
     const axis = window.GanttPresentation.axis({
@@ -44911,7 +46168,7 @@ function SMExport({
       }, signal) : await adapter.workspace(candidateRef, scope, signal);
       A.check(!initialContext.run_ref || v.data.candidate.run_ref === initialContext.run_ref, '候选方案不属于所选排产记录。');
       return v;
-    }, [adapter, candidateRef, scope, revision, isReference, runRef], !!candidateRef && !invalid);
+    }, [adapter, candidateRef, scope, revision, isReference, isReference ? runRef : null], !!candidateRef && !invalid);
     const result = read.result,
       data = result && result.data;
     React.useEffect(() => {
@@ -44925,7 +46182,7 @@ function SMExport({
     const historyRead = useRead(async signal => {
       if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       return adapter.adoptions(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, tab, revision, analysisPaused], !!candidateRef && !invalid && tab === 'history' && !analysisPaused && !isReference);
+    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !analysisPaused && !isReference);
     const analysis = shown && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     const ownershipError = readState => shown && readState.result && readState.result.data.run_ref !== shown.candidate.run_ref ? new Error('读到的数据不属于所选候选方案的排产记录。') : readState.error;
     window.WorkbenchCaption.useCaption(shown && !read.busy && !read.error && shown.candidate.label ? {
@@ -45457,9 +46714,10 @@ function SMExport({
   function admission(s) {
     const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'].concat(s.material_strategy === undefined ? [] : ['material_strategy']);
     const recorded = keys.concat(s.hold_window === undefined ? [] : ['hold_window']);
-    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission' && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code)) && holdWindow(s.hold_window) && s.data_gaps.filter(g => g.field === 'hold_window').length <= (s.hold_window === null ? 1 : 0));
+    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'], s.run_options === undefined ? [] : ['run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission' && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code)) && holdWindow(s.hold_window) && s.data_gaps.filter(g => g.field === 'hold_window').length <= (s.hold_window === null ? 1 : 0));
     check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date) && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy) && (s.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(s.material_strategy)) && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0));
     check(keys.every(k => s.data_gaps.filter(g => g.field === k).length === (s[k] === null ? 1 : 0)));
+    check(s.run_options === undefined || window.RunGenerationContract.runOptions(s.run_options));
   }
   function run(v) {
     check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final', 'scope_summary', 'recovery_required', 'recovery_reason', 'error', 'completion_semantics', 'constraint_verification', 'task_content_verification']) && ref(v.run_ref) && states.includes(v.state) && time(v.accepted_at) && ['started_at', 'finished_at'].every(k => v[k] === null || time(v[k])) && count(v.candidate_count) && count(v.task_count) && v.task_count_basis === 'persisted_rows_across_candidates' && v.completion_semantics === 'execution_state_only' && v.constraint_verification === 'not_checked_by_history' && v.task_content_verification === 'candidate_workspace_required');
@@ -45741,12 +46999,17 @@ function SMExport({
   function ScopeSummary({
     value
   }) {
-    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219\uFF1A", window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
+    const options = value.run_options;
+    return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", null, value.start_date || '起日未记录', " \u81F3 ", value.end_date || '止日未记录'), /*#__PURE__*/React.createElement("small", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219\uFF1A", window.WorkbenchTerms.material_strategy(value.material_strategy, value.ready_check)), /*#__PURE__*/React.createElement("small", null, "\u9009\u6279 ", value.batch_count === null ? '未记录' : number(value.batch_count) + ' 批', " \xB7 \u9F50\u5957", value.ready_check === null ? '未记录' : value.ready_check ? '开启' : '关闭'), options && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("small", null, "\u4E3B\u76EE\u6807\uFF1A", window.RunGenerationContract.objectiveLabel(options.primary_objective)), /*#__PURE__*/React.createElement("small", null, "\u540C\u65F6\u63A2\u7D22\uFF1A", options.target_objectives.map(window.RunGenerationContract.objectiveLabel).join(' · ')), /*#__PURE__*/React.createElement("small", null, "\u603B\u8BA1\u7B97\u9884\u7B97\uFF1A", number(options.time_budget_seconds), " \u79D2 \xB7 ", options.algo_mode === 'greedy' ? '快速生成' : '共同优化')), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("small", null, "\u7F3A\u8D44\u6E90\uFF1A", {
       auto_assign: '自动分配',
       exclude: '暂不排'
     }[value.missing_resource_policy] || '未记录', " \xB7 ", value.completed_policy === 'preserve_actuals' ? '保留开工和完工记录' : '执行规则未记录'), /*#__PURE__*/React.createElement("small", {
       "data-hold-window": true
-    }, "\u4E0D\u91CD\u6392\u65F6\u6BB5\uFF1A", window.WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window')))), !!value.data_gaps.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
+    }, "\u4E0D\u91CD\u6392\u65F6\u6BB5\uFF1A", window.WorkbenchTerms.hold_window(value.hold_window, value.data_gaps.some(g => g.field === 'hold_window'))), options && /*#__PURE__*/React.createElement("small", null, "\u751F\u6210\u7B56\u7565\uFF1A", options.generation_policy_version, " \xB7 \u56FE\u5206\u6790\uFF1A", {
+      off: '关闭',
+      report: '诊断报告',
+      on: '参与优化'
+    }[options.graph_analysis_mode])), !!value.data_gaps.length && /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", {
       className: "rh-warning"
     }, "\u6392\u4EA7\u65F6\u8D44\u6599\u7F3A\u9879 ", value.data_gaps.length), value.data_gaps.map(g => /*#__PURE__*/React.createElement("small", {
       key: g.field
@@ -46210,18 +47473,89 @@ function SMExport({
   const ticks = domain => domain.max === 0 ? [0] : Array.from({
     length: Math.round(domain.max / domain.step) + 1
   }, (_, index) => index * domain.step);
-  function plotSegments(points, plotted, metricKey) {
-    return plotted.slice(1).flatMap((point, index) => {
-      const before = plotted[index],
-        between = points.slice(points.indexOf(before), points.indexOf(point) + 1),
-        basis = before.metrics[metricKey];
-      if (between.some(row => !known(M.instant(row.occurred_at)) || !A.sameMetricDefinition(basis, row.metrics[metricKey]))) return [];
-      return [{
-        from: index,
-        to: index + 1,
-        gap: between.slice(1, -1).filter(row => !hasValue(row.metrics[metricKey])).length
-      }];
+  function prepare(data, metricKey) {
+    const points = data.trend.points,
+      definition = data.metric_definitions.find(item => item.key === metricKey);
+    const entries = new Map(data.entries.map(entry => [entry.entry_ref, entry])),
+      indexes = new Map(),
+      labels = new Map(),
+      units = new Map();
+    const plotted = [],
+      missing = [],
+      untimed = [],
+      untimedPrefix = [0],
+      changedPrefix = [0],
+      missingPrefix = [0];
+    points.forEach((point, index) => {
+      const metric = point.metrics[metricKey],
+        timed = known(M.instant(point.occurred_at)),
+        value = hasValue(metric);
+      if (!indexes.has(point.entry_ref)) indexes.set(point.entry_ref, index);
+      labels.set(point.entry_ref, pointText(point, metricKey, definition));
+      untimedPrefix.push(untimedPrefix[index] + Number(!timed));
+      changedPrefix.push(changedPrefix[index] + Number(index > 0 && !A.sameMetricDefinition(points[index - 1].metrics[metricKey], metric)));
+      missingPrefix.push(missingPrefix[index] + Number(!value));
+      if (!value) missing.push(point);else if (!timed) untimed.push(point);else {
+        plotted.push(point);
+        if (!units.has(metric.unit)) units.set(metric.unit, []);
+        units.get(metric.unit).push({
+          point,
+          index
+        });
+      }
     });
+    const series = [];
+    let hasGaps = false;
+    for (const [unit, records] of units) {
+      const unitPoints = records.map(record => record.point),
+        segments = [];
+      for (let index = 1; index < records.length; index++) {
+        const from = records[index - 1].index,
+          to = records[index].index;
+        if (untimedPrefix[to + 1] - untimedPrefix[from] || changedPrefix[to + 1] - changedPrefix[from + 1]) continue;
+        segments.push({
+          from: index - 1,
+          to: index,
+          gap: missingPrefix[to] - missingPrefix[from + 1]
+        });
+      }
+      const gaps = segments.filter(segment => segment.gap > 0),
+        domain = valueDomain(unitPoints.map(point => point.metrics[metricKey].value), definition.precision === 0 && unit !== '%');
+      const y = value => domain.max === 0 ? 210 : 210 - value / domain.max * 180;
+      const tickRows = ticks(domain).map(value => ({
+        value,
+        y: y(value),
+        title: A.numberText(value, unit, definition.precision),
+        text: unit === '%' ? F.percent(value, {
+          digits: definition.precision,
+          trim: true
+        }) : F.number(value, {
+          digits: definition.precision,
+          trim: true
+        })
+      }));
+      series.push({
+        unit,
+        points: unitPoints,
+        segments,
+        gaps,
+        ticks: tickRows,
+        ys: unitPoints.map(point => y(point.metrics[metricKey].value))
+      });
+      hasGaps = hasGaps || gaps.length > 0;
+    }
+    return {
+      points,
+      definition,
+      entries,
+      indexes,
+      labels,
+      plotted,
+      missing,
+      untimed,
+      series,
+      hasGaps
+    };
   }
   function Chart({
     data,
@@ -46233,16 +47567,21 @@ function SMExport({
     onMissingToggle
   }) {
     const id = React.useId(),
-      points = data.trend.points,
-      definition = data.metric_definitions.find(item => item.key === metricKey);
-    const entries = new Map(data.entries.map(entry => [entry.entry_ref, entry])),
-      selectedIndex = points.findIndex(point => point.entry_ref === selectedEntryRef),
+      prepared = React.useMemo(() => prepare(data, metricKey), [data, metricKey]);
+    const {
+      points,
+      definition,
+      entries,
+      indexes,
+      labels,
+      plotted,
+      missing,
+      untimed,
+      series,
+      hasGaps
+    } = prepared;
+    const selectedIndex = indexes.get(selectedEntryRef) ?? -1,
       selected = points[selectedIndex];
-    const plotted = points.filter(point => known(M.instant(point.occurred_at)) && hasValue(point.metrics[metricKey])),
-      missing = points.filter(point => !hasValue(point.metrics[metricKey])),
-      untimed = points.filter(point => !known(M.instant(point.occurred_at)) && hasValue(point.metrics[metricKey]));
-    const units = [...new Set(plotted.map(point => point.metrics[metricKey].unit))];
-    const hasGaps = units.some(unit => plotSegments(points, plotted.filter(point => point.metrics[metricKey].unit === unit), metricKey).some(segment => segment.gap > 0));
     function choose(index, reveal = false) {
       if (!busy && typeof onSelect === 'function' && points[index]) onSelect(entries.get(points[index].entry_ref), reveal);
     }
@@ -46250,7 +47589,7 @@ function SMExport({
       if (event.defaultPrevented || busy || !points.length || event.altKey || event.ctrlKey || event.metaKey) return;
       const button = event.target && event.target.closest && event.target.closest('[data-dh-chart-choice]');
       if (event.target && event.target !== event.currentTarget && !button) return;
-      const current = button ? points.findIndex(point => point.entry_ref === button.getAttribute('data-dh-chart-choice')) : selectedIndex;
+      const current = button ? indexes.get(button.getAttribute('data-dh-chart-choice')) ?? -1 : selectedIndex;
       let next;
       if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = Math.min(current + 1, points.length - 1);else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = current < 0 ? points.length - 1 : Math.max(current - 1, 0);else if (event.key === 'Home') next = 0;else if (event.key === 'End') next = points.length - 1;else if (event.key === 'Enter') next = current < 0 ? 0 : current;else return;
       event.preventDefault();
@@ -46270,7 +47609,7 @@ function SMExport({
       className: "dh-muted"
     }, "\u672C\u9875 ", points.length, " \u6761\u8BB0\u5F55 \xB7 \u56FE\u4E2D ", plotted.length, " \u6761\u6709\u6570\u503C")), /*#__PURE__*/React.createElement("p", {
       className: "dh-chart-note"
-    }, "\u6709\u6570\u503C\u7684\u8BB0\u5F55 \xB7 \u6309\u53D1\u751F\u987A\u5E8F\u6392\u5217"), units.length > 1 && /*#__PURE__*/React.createElement("p", {
+    }, "\u6709\u6570\u503C\u7684\u8BB0\u5F55 \xB7 \u6309\u53D1\u751F\u987A\u5E8F\u6392\u5217"), series.length > 1 && /*#__PURE__*/React.createElement("p", {
       className: "dh-chart-note"
     }, "\u8BB0\u5F55\u5355\u4F4D\u4E0D\u540C\uFF0C\u5404\u56FE\u4FDD\u7559\u5BF9\u5E94\u5355\u4F4D\u7684\u539F\u503C\u3002"), /*#__PURE__*/React.createElement("div", {
       className: "dh-chart-keyboard",
@@ -46280,18 +47619,14 @@ function SMExport({
       "aria-describedby": id + '-keys ' + id + '-selected',
       "aria-disabled": busy || undefined,
       onKeyDown: keyboard
-    }, units.map(unit => {
-      const unitPoints = plotted.filter(point => point.metrics[metricKey].unit === unit),
-        segments = plotSegments(points, unitPoints, metricKey),
-        domain = valueDomain(unitPoints.map(point => point.metrics[metricKey].value), definition.precision === 0 && unit !== '%');
-      const y = value => domain.max === 0 ? 210 : 210 - value / domain.max * 180,
-        tickText = value => unit === '%' ? F.percent(value, {
-          digits: definition.precision,
-          trim: true
-        }) : F.number(value, {
-          digits: definition.precision,
-          trim: true
-        });
+    }, series.map(({
+      unit,
+      points: unitPoints,
+      segments,
+      gaps,
+      ticks,
+      ys
+    }) => {
       return /*#__PURE__*/React.createElement("div", {
         className: "dh-chart-series",
         key: unit,
@@ -46305,13 +47640,13 @@ function SMExport({
       }, /*#__PURE__*/React.createElement("div", {
         className: "dh-chart-y-axis",
         "aria-hidden": "true"
-      }, ticks(domain).map(tick => /*#__PURE__*/React.createElement("span", {
-        key: tick,
+      }, ticks.map(tick => /*#__PURE__*/React.createElement("span", {
+        key: tick.value,
         style: {
-          top: y(tick)
+          top: tick.y
         },
-        title: A.numberText(tick, unit, definition.precision)
-      }, tickText(tick)))), /*#__PURE__*/React.createElement("div", {
+        title: tick.title
+      }, tick.text))), /*#__PURE__*/React.createElement("div", {
         className: "dh-chart-grid",
         style: {
           minWidth: unitPoints.length * 80
@@ -46319,10 +47654,10 @@ function SMExport({
       }, /*#__PURE__*/React.createElement("div", {
         className: "dh-chart-gridlines",
         "aria-hidden": "true"
-      }, ticks(domain).map(tick => /*#__PURE__*/React.createElement("span", {
-        key: tick,
+      }, ticks.map(tick => /*#__PURE__*/React.createElement("span", {
+        key: tick.value,
         style: {
-          top: y(tick)
+          top: tick.y
         }
       }))), /*#__PURE__*/React.createElement("svg", {
         className: "dh-chart-lines",
@@ -46335,16 +47670,16 @@ function SMExport({
         "data-to-entry": unitPoints[segment.to].entry_ref,
         "data-gap-count": segment.gap,
         x1: segment.from * 100 + 50,
-        y1: y(unitPoints[segment.from].metrics[metricKey].value),
+        y1: ys[segment.from],
         x2: segment.to * 100 + 50,
-        y2: y(unitPoints[segment.to].metrics[metricKey].value),
+        y2: ys[segment.to],
         vectorEffect: "non-scaling-stroke"
       }))), /*#__PURE__*/React.createElement("div", {
         className: "dh-chart-records",
         style: {
           gridTemplateColumns: 'repeat(' + unitPoints.length + ', minmax(80px, 1fr))'
         }
-      }, unitPoints.map(point => /*#__PURE__*/React.createElement("button", {
+      }, unitPoints.map((point, index) => /*#__PURE__*/React.createElement("button", {
         type: "button",
         className: "dh-chart-entry",
         key: point.entry_ref,
@@ -46355,13 +47690,13 @@ function SMExport({
         "data-metric-scope": point.metrics[metricKey].scope,
         "aria-pressed": point.entry_ref === selectedEntryRef,
         disabled: busy,
-        title: pointText(point, metricKey, definition),
-        "aria-label": pointText(point, metricKey, definition),
-        onClick: () => choose(points.indexOf(point), true)
+        title: labels.get(point.entry_ref),
+        "aria-label": labels.get(point.entry_ref),
+        onClick: () => choose(indexes.get(point.entry_ref), true)
       }, /*#__PURE__*/React.createElement("span", {
         className: "dh-chart-point-space",
         style: {
-          '--dh-point-y': y(point.metrics[metricKey].value) + 'px'
+          '--dh-point-y': ys[index] + 'px'
         }
       }, /*#__PURE__*/React.createElement("span", {
         className: "dh-chart-value"
@@ -46374,9 +47709,9 @@ function SMExport({
         className: "dh-chart-scale"
       }, point.scope.batch_count === null ? '批次数待确认' : '共 ' + F.number(point.scope.batch_count, {
         digits: 0
-      }) + ' 批')))), segments.some(segment => segment.gap > 0) && /*#__PURE__*/React.createElement("div", {
+      }) + ' 批')))), gaps.length > 0 && /*#__PURE__*/React.createElement("div", {
         className: "dh-chart-gap-notes"
-      }, segments.filter(segment => segment.gap > 0).map(segment => /*#__PURE__*/React.createElement("span", {
+      }, gaps.map(segment => /*#__PURE__*/React.createElement("span", {
         key: segment.to,
         style: {
           left: segment.to / unitPoints.length * 100 + '%',
@@ -46422,8 +47757,8 @@ function SMExport({
       "data-entry-ref": point.entry_ref,
       "aria-pressed": point.entry_ref === selectedEntryRef,
       disabled: busy,
-      title: pointText(point, metricKey, definition),
-      onClick: () => choose(points.indexOf(point), true)
+      title: labels.get(point.entry_ref),
+      onClick: () => choose(indexes.get(point.entry_ref), true)
     }, /*#__PURE__*/React.createElement("span", null, point.label, /*#__PURE__*/React.createElement("small", null, point.occurred_at === null ? '发生时间未记录' : F.dateTime(point.occurred_at, {
       seconds: true,
       fractions: true
@@ -46440,8 +47775,8 @@ function SMExport({
       "data-entry-ref": point.entry_ref,
       "aria-pressed": point.entry_ref === selectedEntryRef,
       disabled: busy,
-      title: pointText(point, metricKey, definition),
-      onClick: () => choose(points.indexOf(point), true)
+      title: labels.get(point.entry_ref),
+      onClick: () => choose(indexes.get(point.entry_ref), true)
     }, /*#__PURE__*/React.createElement("span", null, point.label, /*#__PURE__*/React.createElement("small", null, "\u53D1\u751F\u65F6\u95F4\u672A\u8BB0\u5F55")), /*#__PURE__*/React.createElement("span", null, definition.label, "\uFF1A", valueText(point.metrics[metricKey], definition)), /*#__PURE__*/React.createElement("span", null, "\u67E5\u770B"))))), /*#__PURE__*/React.createElement("p", {
       className: "wb-visually-hidden",
       id: id + '-keys'
@@ -46601,6 +47936,10 @@ function SMExport({
     graph_overdue_tolerance_count: '超期批次数容差',
     graph_tardiness_tolerance_ratio: '总拖期比例容差',
     objective_name: '目标名称',
+    generation_policy_version: '候选生成策略版本',
+    selection_policy_version: '推荐选择策略版本',
+    primary_objective: '主目标',
+    target_objectives: '同时探索方向',
     algorithm_version: '算法版本',
     algorithm_profile: '算法配置',
     seed: '随机种子',
@@ -46623,7 +47962,7 @@ function SMExport({
     candidate_strategy_families: '候选策略组'
   };
   const plain = value => value === null ? '未记录' : typeof value === 'boolean' ? value ? '是' : '否' : String(value);
-  const fieldLabel = value => fieldLabels[value] || fieldLabels[value.split('.').pop().replace(/\[\d+\]$/, '')] || '保存的字段';
+  const fieldLabel = row => row.entity.key === 'run_options' && row.field === 'time_budget_seconds' ? '总计算预算（秒）' : fieldLabels[row.field] || fieldLabels[row.field.split('.').pop().replace(/\[\d+\]$/, '')] || '保存的字段';
   const number = (value, unit = '', precision = 0) => value === null ? '未知' : A.numberText(value, unit, precision);
   const localTime = value => value === null ? '未记录' : F.dateTime(value, {
     seconds: true,
@@ -46644,10 +47983,11 @@ function SMExport({
     }, JSON.stringify(value, null, 2));
   }
   function SavedSide({
-    value
+    value,
+    field
   }) {
     const saved = value.value;
-    const preview = saved === null ? '空值' : saved === false ? '否' : saved === true ? '是' : Array.isArray(saved) ? saved.length + ' 项' : typeof saved === 'object' ? '字段记录' : saved === '' ? '空文本' : String(saved);
+    const preview = saved === null ? '空值' : saved === false ? '否' : saved === true ? '是' : field === 'primary_objective' && typeof saved === 'string' ? window.RunGenerationContract.objectiveLabel(saved) : field === 'target_objectives' && Array.isArray(saved) && saved.length && saved.every(value => typeof value === 'string') ? saved.map(window.RunGenerationContract.objectiveLabel).join(' · ') : Array.isArray(saved) ? saved.length + ' 项' : typeof saved === 'object' ? '字段记录' : saved === '' ? '空文本' : String(saved);
     return /*#__PURE__*/React.createElement("div", {
       "data-history-saved-state": value.state,
       "data-history-value-present": value.present
@@ -46849,10 +48189,12 @@ function SMExport({
       className: "dh-note"
     }, names[row.category] || row.category)), /*#__PURE__*/React.createElement("th", {
       scope: "row"
-    }, fieldLabel(row.field)), compare && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(SavedSide, {
-      value: row.before
+    }, fieldLabel(row)), compare && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(SavedSide, {
+      value: row.before,
+      field: row.field
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(SavedSide, {
-      value: row.after
+      value: row.after,
+      field: row.field
     })), compare && /*#__PURE__*/React.createElement("td", null, pairLabels[row.state])))))) : /*#__PURE__*/React.createElement("p", {
       className: "dh-note"
     }, "\u672C\u9875\u6CA1\u6709", label, "\u3002");
@@ -48367,10 +49709,12 @@ function SMExport({
       initialContext: initialContext,
       onNavigate: onNavigate,
       actions: history,
-      renderRunPanel: data => /*#__PURE__*/React.createElement(window.RunJobPanel, {
+      renderRunPanel: (data, continuation) => /*#__PURE__*/React.createElement(window.RunJobPanel, {
         preflight: data,
         adapter: api,
-        onNavigate: onNavigate
+        onNavigate: onNavigate,
+        onRecheck: continuation.onRecheck,
+        preflightOwner: continuation.confirmationOwner
       })
     });
   }
@@ -48698,7 +50042,6 @@ function SMExport({
     } catch (_) {
       throw new Error('存不下上次操作记录，这次没有提交。请重新打开页面。');
     }
-    C.check(pending() === key, '上次操作记录没有存上，这次没有提交。请重新打开页面。');
     return key;
   }
   function clear(key) {
@@ -49364,11 +50707,6 @@ function SMExport({
     if (!C.object(patch) || !Object.keys(patch).every(field => fields.includes(field))) {
       throw problem('invalid_preferences', '试调查看偏好含未知的项，没有保存业务内容。');
     }
-    preferences(initial);
-    preferences({
-      ...initial,
-      ...patch
-    });
     const value = preferences({
       ...(read(target, store) || initial),
       ...patch
@@ -49383,18 +50721,12 @@ function SMExport({
     } catch (_) {
       throw problem('write_unavailable', '本次查看偏好尚未保存，本页选择已保留。');
     }
-    const saved = read(target, store);
-    if (!saved || !fields.every(field => saved[field] === value[field])) {
-      throw problem('write_unverified', '本次查看偏好没有确认存上，本页选择已保留。');
-    }
     return value;
   }
   function clear(target, store) {
     const name = key(target);
     try {
-      const targetStorage = storage(store);
-      targetStorage.removeItem(name);
-      if (targetStorage.getItem(name) !== null) throw new Error('not removed');
+      storage(store).removeItem(name);
     } catch (_) {
       throw problem('clear_unavailable', '查看偏好清除失败，请重试。');
     }
@@ -49487,8 +50819,12 @@ function SMExport({
       try {
         clear(target);
         pending.current.patch = {};
-        setState(loaded());
-        notify();
+        setState({
+          name,
+          value: initial,
+          error: null
+        });
+        notify(initial);
       } catch (error) {
         setState(previous => ({
           ...previous,
@@ -49960,6 +51296,7 @@ function SMExport({
     } = window.ResourceControls,
     ZOOM_MAX = 8,
     wall = window.PlanGanttModel.instant;
+  const EMPTY_SCOPE = {};
   const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
   const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
   function resourceNames(data) {
@@ -49967,9 +51304,8 @@ function SMExport({
     ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未填写'))));
     return ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
   }
-  function matching(data, scope, query, changed) {
-    const name = resourceNames(data),
-      needle = query.trim().toLowerCase();
+  function matching(data, scope, query, changed, name) {
+    const needle = query.trim().toLowerCase();
     return data.tasks.filter(t => (!changed || t.changed) && (!scope.range_start || window.PointContract.overlaps(t, scope.range_start, scope.range_end)) && (!scope.batch_refs || scope.batch_refs.includes(t.batch_ref)) && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref) && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
   }
   function Gantt({
@@ -50021,10 +51357,10 @@ function SMExport({
       left: 0
     });
     const [hover, setHover] = React.useState(null);
-    const scope = limit ? data.scope : {},
-      filtered = React.useMemo(() => matching(data, scope, query, changed), [data, scope, query, changed]);
-    const name = resourceNames(data),
-      key = view === 'batch' ? 'batch_ref' : view + '_ref',
+    const name = React.useMemo(() => resourceNames(data), [data.resources]);
+    const scope = limit ? data.scope : EMPTY_SCOPE,
+      filtered = React.useMemo(() => matching(data, scope, query, changed, name), [data, scope, query, changed, name]);
+    const key = view === 'batch' ? 'batch_ref' : view + '_ref',
       board = React.useRef(null),
       axisHost = React.useRef(null);
     const rows = React.useMemo(() => {
@@ -51945,12 +53281,10 @@ function SMExport({
     } catch (_) {
       throw new Error('存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。');
     }
-    const stored = read();
-    A.check(A.equal(stored, value), '这次采用操作的记录没有完整存上，不能开始提交。');
     window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: stored
+      detail: value
     }));
-    return stored;
+    return value;
   }
   function begin(preview, values, previous) {
     const scope = A.overview(preview),
@@ -52043,8 +53377,7 @@ function SMExport({
     function sync(event) {
       try {
         const value = event && event.type === EVENT ? event.detail : read();
-        if (event && event.type === EVENT) A.check(value === null || valid(value), '上次采用操作的记录不完整。请不要再操作，联系维护人员。');
-        if (!A.equal(value, active.current)) {
+        if (value !== active.current && !A.equal(value, active.current)) {
           active.current = value;
           setSaved(value);
           setPreview(null);
@@ -52540,16 +53873,8 @@ function SMExport({
   }
   async function readView(api, input, signal) {
     if (input.snapshot_ref) return api.read(input, signal);
-    const first = await api.read({
-      ...input,
-      page: 1
-    }, signal);
-    if (input.plan_ref && first.data.plan.plan_ref !== input.plan_ref || first.data.topic !== input.topic) throw new Error('刷新后的计划或专题与原查看状态不一致，没有改用其他来源。');
-    const result = input.page === 1 ? first : await api.read({
-      ...input,
-      ...scope(first.data.scope),
-      snapshot_ref: first.meta.snapshot_ref
-    }, signal);
+    const result = await api.read(input, signal);
+    if (input.plan_ref && result.data.plan.plan_ref !== input.plan_ref || result.data.topic !== input.topic) throw new Error('刷新后的计划或专题与原查看状态不一致，没有改用其他来源。');
     if (result.data.page.number !== input.page || result.data.page.size !== input.size) throw new Error('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
   }
@@ -54679,9 +56004,7 @@ function SMExport({
     return result;
   }
   function input(value = {}) {
-    const result = readInput(value);
-    if (result.page > 1 && !result.snapshot_ref) throw failure('翻页位置已失效，请回到第 1 页重新查询。', 'snapshot_required');
-    return result;
+    return readInput(value);
   }
   function restoreInitial(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
@@ -54703,18 +56026,8 @@ function SMExport({
   const initial = value => restoreInitial(value).input;
   async function readView(api, value, signal) {
     if (value.snapshot_ref) return validate(await api.read(value, signal), value);
-    const wanted = readInput(value),
-      firstQuery = {
-        ...wanted,
-        page: 1
-      };
-    const first = validate(await api.read(firstQuery, signal), firstQuery);
-    if (wanted.page === 1) return first;
-    const bound = {
-      ...wanted,
-      snapshot_ref: first.meta.snapshot_ref
-    };
-    return validate(await api.read(bound, signal), bound);
+    const wanted = readInput(value);
+    return validate(await api.read(wanted, signal), wanted);
   }
   function validRow(row, meta) {
     return object(row) && ref(row.suggestion_ref) && row.suggestion_ref === row.template_operation_ref && row.operation_ref === row.suggestion_ref && ref(row.part_ref) && ['part_no', 'part_name', 'operation_label', 'template_snapshot', 'method_version', 'generated_at'].every(key => typeof row[key] === 'string') && Number.isInteger(row.sequence) && Number.isInteger(row.template_revision) && row.template_revision > 0 && ['old_unit_hours', 'suggested_unit_hours', 'deviation_percent', 'absolute_deviation_percent'].every(key => number(row[key])) && ['sample_count', 'eligible_sample_count', 'candidate_count', 'excluded_count'].every(key => count(row[key])) && row.sample_count <= 20 && row.sample_count <= row.eligible_sample_count && row.eligible_sample_count <= row.candidate_count && row.excluded_count === row.candidate_count - row.sample_count && Array.isArray(row.sample_refs) && row.sample_refs.length === row.sample_count && row.sample_refs.every(ref) && new Set(row.sample_refs).size === row.sample_count && Array.isArray(row.sample_revisions) && row.sample_revisions.length === row.sample_count && Array.isArray(row.exclusion_reasons) && Array.isArray(row.blocked_reasons) && object(row.capabilities) && typeof row.over_20_percent === 'boolean' && ['relative', 'old_zero', 'old_unknown', 'suggestion_unavailable', 'not_representable'].includes(row.deviation_basis) && ['insufficient_data', 'suggested'].includes(row.status) && row.status === 'insufficient_data' === (row.suggested_unit_hours === null) && (row.sample_count >= 5 || row.suggested_unit_hours === null) && row.snapshot_ref === meta.snapshot_ref && row.as_of === meta.as_of;
@@ -55316,12 +56629,10 @@ function SMExport({
     } catch (_) {
       throw new Error('无法保存这次采用操作的记录，没有开始新的采用。');
     }
-    const stored = read();
-    A.check(A.equal(stored, value), '这次操作没有完整保存，不能开始新的采用。');
     window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: stored
+      detail: value
     }));
-    return stored;
+    return value;
   }
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
@@ -55394,7 +56705,6 @@ function SMExport({
     function sync(event) {
       try {
         const value = event && event.type === EVENT ? event.detail : read();
-        if (event && event.type === EVENT) A.check(value === null || valid(value), '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。');
         active.current = value;
         setSaved(value);
         setStorageError('');
@@ -56932,10 +58242,6 @@ function SMExport({
     useRef
   } = React;
   async function readList(api, scope, page, token, signal) {
-    if (page > 1 && !token) {
-      const first = await api.list(scope, 1, undefined, signal);
-      token = first.meta.snapshot_ref;
-    }
     return api.list(scope, page, token, signal);
   }
   function readContext(context) {
@@ -57871,7 +59177,6 @@ function SMExport({
           summary: actions[action]
         };
         storage.setItem(PENDING_KEY, JSON.stringify(value));
-        check(this.read().request_key === value.request_key, '操作编号没能存下来，这次没有发起操作。请刷新后重试。');
         return value;
       },
       finish(intent) {
@@ -60185,17 +61490,18 @@ function SystemLiveOverview({
   function save(v, previous) {
     C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。');
     C.check(v === null || valid(v));
+    return write(v);
+  }
+  function write(v) {
     try {
       if (v === null) localStorage.removeItem(KEY);else localStorage.setItem(KEY, JSON.stringify(v));
     } catch (_) {
       throw new Error('上次操作记录保存不了，不能开始登记。请重新打开页面。');
     }
-    const stored = read();
-    C.check(C.equal(stored, v));
     window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: stored
+      detail: v
     }));
-    return stored;
+    return v;
   }
   function useCommand(api) {
     const [initial] = React.useState(() => {
@@ -60222,7 +61528,6 @@ function SystemLiveOverview({
     function sync(event) {
       try {
         const v = event && event.type === EVENT ? event.detail : read();
-        if (event && event.type === EVENT) C.check(v === null || valid(v), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
         active.current = v;
         setSaved(v);
         setStorageError(null);
@@ -60286,7 +61591,7 @@ function SystemLiveOverview({
         await navigator.locks.request(KEY, {
           ifAvailable: true
         }, async lock => {
-          C.check(lock && read() === null, '另一个页面有还没确认的外协登记，请先在那里点「查询结果」。');
+          C.check(lock, '另一个页面有还没确认的外协登记，请先在那里点「查询结果」。');
           const d = C.preview(preview, preview.data.input).data;
           original = {
             version: 1,
@@ -60322,7 +61627,7 @@ function SystemLiveOverview({
       try {
         const v = read();
         C.check(v && v.phase !== 'pending', '上次外协登记的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
-        save(null, v);
+        write(null);
         setError(null);
         setNotice('');
         return true;
@@ -63043,17 +64348,18 @@ function SystemLiveOverview({
   function save(value, previous) {
     C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。');
     C.check(value === null || valid(value));
+    return write(value);
+  }
+  function write(value) {
     try {
       if (value === null) localStorage.removeItem(KEY);else localStorage.setItem(KEY, JSON.stringify(value));
     } catch (_) {
       throw new Error('上次操作记录保存不了，不能开始处置。请重新打开页面。');
     }
-    const stored = read();
-    C.check(C.equal(stored, value));
     window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: stored
+      detail: value
     }));
-    return stored;
+    return value;
   }
   function useCommand(api) {
     const [initial] = React.useState(() => {
@@ -63081,7 +64387,6 @@ function SystemLiveOverview({
     function sync(event) {
       try {
         const v = event && event.type === EVENT ? event.detail : read();
-        if (event && event.type === EVENT) C.check(v === null || valid(v), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
         active.current = v;
         setSaved(v);
         setStorageError(null);
@@ -63146,7 +64451,6 @@ function SystemLiveOverview({
           ifAvailable: true
         }, async acquired => {
           C.check(acquired, '另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。');
-          C.check(read() === null, '上次处置还没确认结果，不能再提交新的处置。请点「查询结果」。');
           C.check(item.write_context && item.write_context.capabilities[action] === true, '这条记录现在不能处置，请刷新后重试。');
           original = {
             version: 1,
@@ -63186,7 +64490,7 @@ function SystemLiveOverview({
       try {
         const value = read();
         C.check(value && value.phase !== 'pending', '上次处置的结果还没有确认，不能丢弃这条记录。请先点「查询结果」。');
-        save(null, value);
+        write(null);
         setError(null);
         setNotice('');
         return true;
@@ -64501,15 +65805,7 @@ function SystemLiveOverview({
     return result;
   }
   async function readList(api, query, signal) {
-    if (query.page === 1 || query.snapshot_ref) return api.list(query, signal);
-    const first = await api.list({
-      ...query,
-      page: 1
-    }, signal);
-    return api.list({
-      ...query,
-      snapshot_ref: first.meta.snapshot_ref
-    }, signal);
+    return api.list(query, signal);
   }
   function Content({
     start,
@@ -64547,9 +65843,9 @@ function SystemLiveOverview({
       snapshot_ref: snapshot
     }), [q, snapshot]);
     const handlingAvailable = q.category !== 'external' || !!data && data.categories.external.handling_supported === true;
-    const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && !!selected && !!snapshot);
-    const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage, tab], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
-    const item = detail.result && detail.result.data.item;
+    const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
+    const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
+    const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
     const handlingOpen = !!(dialog && (command.saved || item));
     function choose(ref) {
       setSelected(ref);

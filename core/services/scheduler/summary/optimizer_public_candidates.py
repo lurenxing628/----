@@ -11,6 +11,7 @@ from core.services.scheduler.contracts.optimizer_public_safety import (
     safe_bool,
     safe_metric_key,
 )
+from core.services.scheduler.run.schedule_candidate_summary import is_unified_generation
 
 PUBLIC_CANDIDATE_ROLES = {"adopted", "baseline_best", "critical_best"}
 PUBLIC_CANDIDATE_STATUSES = {"completed", "failed", "skipped"}
@@ -65,6 +66,8 @@ def _project_score_schema_item(item: Any) -> Dict[str, Any]:
 def project_candidate_comparison(value: Any) -> Dict[str, Any]:
     if not isinstance(value, dict):
         return {}
+    if is_unified_generation(value):
+        return _project_business_candidate_comparison(value)
     out: Dict[str, Any] = {}
     if "enabled" in value:
         out["enabled"] = bool(value.get("enabled"))
@@ -74,6 +77,31 @@ def project_candidate_comparison(value: Any) -> Dict[str, Any]:
     _add_candidate_comparison_selection(out, value)
     _add_candidate_comparison_candidates(out, value)
     return out
+
+
+def _project_business_candidate_comparison(value: Dict[str, Any]) -> Dict[str, Any]:
+    # This version is prepared by the shared optimizer's single public adapter.
+    # Nullable score components and the run's process are already canonical.
+    fields = (
+        "enabled", "generation_policy_version", "primary_objective", "target_objectives",
+        "planned_candidate_count", "completed_candidate_count", "failed_candidate_count",
+        "skipped_candidate_count", "reused_candidate_count", "time_budget_reached", "run_time_budget_seconds",
+        "skipped_candidate_labels", "selection_policy_version", "selection_reason_code", "selection", "unified_process",
+    )
+    out = {key: value[key] for key in fields if key in value}
+    if "candidates" in value:
+        out["candidates"] = [_project_business_candidate(candidate) for candidate in value["candidates"]]
+    return out
+
+
+def _project_business_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    fields = (
+        "label", "kind", "status", "score", "metrics", "health", "graph_enabled", "critical_weight",
+        "impact_weight", "downstream_weight", "elapsed_ms", "elapsed_seconds", "detail_saved", "roles",
+        "generation_policy_version", "representative_objectives", "evaluations", "origin", "first_found_elapsed_ms",
+        "search_evidence_ref", "adopted_dispatch_rule", "configured_dispatch_rule",
+    )
+    return {key: candidate[key] for key in fields if key in candidate}
 
 
 def _project_candidate_comparison_counts(value: Dict[str, Any]) -> Dict[str, Any]:

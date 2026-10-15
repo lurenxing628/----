@@ -15,10 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
+from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
-
-from .sgs_checkpoint_inputs import input_record, input_value
 
 CHECKPOINT_FIELD = "decode_checkpoint"
 _PROGRESS_SETS = ("completed_or_fixed_op_ids", "blocked_op_ids", "ready_op_ids")
@@ -167,7 +166,8 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
 def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any], batch_order: Dict[str, int],
                            params: Any, machine_downtimes: Any, resource_pool: Any, seed_results: Any,
                            graph_ready_context: Any, readiness_gate_enabled: bool, strict_mode: bool,
-                           calendar_signature: Any, warnings: Sequence[str] = ()) -> Tuple[Any, ...]:
+                           calendar_signature: Any, warnings: Sequence[str] = (),
+                           prepared_calendar_signature: Optional[Tuple[Any, ...]] = None) -> Tuple[Any, ...]:
     """Frozen decode inputs, except the graph priority keys a checkpoint reuse may change."""
     parts: List[Any] = [
         tuple(input_record(op, field="operations") for op in operations),
@@ -181,7 +181,8 @@ def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any]
         tuple(_seed_signature(result) for result in list(seed_results or [])),
         _context_signature(graph_ready_context),
         bool(readiness_gate_enabled), bool(strict_mode),
-        input_value(calendar_signature, field="calendar_signature"), tuple(warnings),
+        (prepared_calendar_signature if prepared_calendar_signature is not None
+         else input_value(calendar_signature, field="calendar_signature")), tuple(warnings),
     ]
     return tuple(parts)
 

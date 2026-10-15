@@ -60,7 +60,7 @@
       const renderMark = (mark, canvasPainted = false) => <Bar key={mark.key} {...{ mark, row, model, width, active, onSelect, onHover, canvasPainted }} selected={view.selected} />;
       const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '剩余数量还没安排';
       const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
-      const timing = M.deadlines(item, M.wire(model.asOf));
+      const timing = M.deadlines(item);
       const deviation = M.finishDeviation(item);
       return <div key={row.key} className={'fg-virtual-row' + (view.selected === t.task_ref ? ' is-selected' : '')} data-task-row={t.task_ref} data-kind={row.kind}
         data-gantt-critical={active.critical.has(t.task_ref) || undefined} style={style}>

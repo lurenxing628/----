@@ -1,4 +1,4 @@
-"""Scoped relation reads; SQL filtering/counting precede bounded pagination."""
+"""Capture ordered relation rows and their facts for one read snapshot."""
 
 from .base_repo import BaseRepository
 
@@ -78,15 +78,6 @@ class WorkbenchResourceRelationRepository(BaseRepository):
 
     def rows(self, code, relation):
         return self.fetchall("SELECT * FROM (" + _QUERIES[relation] + ") ORDER BY business_code", {"op_type": code})
-
-    def page(self, code, relation, query):
-        source = " FROM (" + _QUERIES[relation] + ") AS related"
-        params = {"op_type": code, "query": query.query, "size": query.size, "offset": (query.number - 1) * query.size}
-        if query.query:
-            source += " WHERE instr(lower(business_code),lower(:query))>0 OR instr(lower(name),lower(:query))>0"
-        total = int(self.fetchvalue("SELECT COUNT(*)" + source, params, default=0))
-        rows = self.fetchall("SELECT business_code" + source + " ORDER BY business_code ASC LIMIT :size OFFSET :offset", params)
-        return [row["business_code"] for row in rows], total
 
     def facts(self, relation, codes):
         queries = _OPERATOR_FACTS if relation == "operators" else _SUPPLIER_FACTS if relation == "suppliers" else {}

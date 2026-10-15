@@ -2,14 +2,15 @@
   'use strict';
   // Axis numbers encode factory-local wall-clock fields; UTC extraction must not shift them to the browser timezone.
   const U = window.TrialControls, { TimelineZoom } = window.ResourceControls, ZOOM_MAX = 8, wall = window.PlanGanttModel.instant;
+  const EMPTY_SCOPE = {};
   const pieceLabel = t => t.piece_id === null ? '共同工序' : '分件 ' + t.piece_id;
   const taskLabel = t => t.batch_id + ' · ' + t.sequence + ' ' + t.process_label + ' · ' + pieceLabel(t);
   function resourceNames(data) {
     const names = new Map(); ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未填写'))));
     return ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
   }
-  function matching(data, scope, query, changed) {
-    const name = resourceNames(data), needle = query.trim().toLowerCase();
+  function matching(data, scope, query, changed, name) {
+    const needle = query.trim().toLowerCase();
     return data.tasks.filter(t => (!changed || t.changed) && (!scope.range_start || window.PointContract.overlaps(t, scope.range_start, scope.range_end))
       && (!scope.batch_refs || scope.batch_refs.includes(t.batch_ref))
       && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref)
@@ -30,8 +31,9 @@
     const { expanded, toggle: toggleExpanded } = window.GanttPresentationUI.useExpanded();
     const [chart, setChart] = React.useState({ width: 1000, viewport: 1000, left: 0 });
     const [hover, setHover] = React.useState(null);
-    const scope = limit ? data.scope : {}, filtered = React.useMemo(() => matching(data, scope, query, changed), [data, scope, query, changed]);
-    const name = resourceNames(data), key = view === 'batch' ? 'batch_ref' : view + '_ref', board = React.useRef(null), axisHost = React.useRef(null);
+    const name = React.useMemo(() => resourceNames(data), [data.resources]);
+    const scope = limit ? data.scope : EMPTY_SCOPE, filtered = React.useMemo(() => matching(data, scope, query, changed, name), [data, scope, query, changed, name]);
+    const key = view === 'batch' ? 'batch_ref' : view + '_ref', board = React.useRef(null), axisHost = React.useRef(null);
     const rows = React.useMemo(() => {
       const entries = [];
       filtered.forEach(t => {

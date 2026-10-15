@@ -19,9 +19,7 @@
     A.check(value === null || valid(value));
     try { if (value === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(value)); }
     catch (_) { throw new Error('无法保存这次采用操作的记录，没有开始新的采用。'); }
-    const stored = read();
-    A.check(A.equal(stored, value), '这次操作没有完整保存，不能开始新的采用。');
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: stored })); return stored;
+    window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
   }
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
@@ -43,7 +41,6 @@
     React.useEffect(() => { setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, stale]);
     function sync(event) {
       try { const value = event && event.type === EVENT ? event.detail : read();
-        if (event && event.type === EVENT) A.check(value === null || valid(value), '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。');
         active.current = value; setSaved(value); setStorageError(''); }
       catch (e) { setStorageError(e.message); }
     }

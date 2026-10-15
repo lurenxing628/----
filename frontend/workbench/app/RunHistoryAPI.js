@@ -50,7 +50,7 @@
   function admission(s) {
     const keys = ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count'].concat(s.material_strategy === undefined ? [] : ['material_strategy']);
     const recorded = keys.concat(s.hold_window === undefined ? [] : ['hold_window']);
-    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission'
+    check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'], s.run_options === undefined ? [] : ['run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission'
       && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code))
       && holdWindow(s.hold_window) && s.data_gaps.filter(g => g.field === 'hold_window').length <= (s.hold_window === null ? 1 : 0));
     check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date)
@@ -58,6 +58,7 @@
       && (s.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(s.material_strategy))
       && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0));
     check(keys.every(k => s.data_gaps.filter(g => g.field === k).length === (s[k] === null ? 1 : 0)));
+    check(s.run_options === undefined || window.RunGenerationContract.runOptions(s.run_options));
   }
   function run(v) {
     check(shape(v, ['run_ref', 'state', 'stage', 'accepted_at', 'started_at', 'finished_at', 'candidate_count', 'task_count', 'task_count_basis', 'counts_final',

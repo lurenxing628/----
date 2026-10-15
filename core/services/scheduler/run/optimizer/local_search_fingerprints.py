@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional, Set, Tuple
 
 from .candidate_fingerprint import CandidateFingerprint, build_candidate_fingerprint
-from .neighborhood_moves import NeighborhoodMove
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
@@ -56,25 +55,7 @@ def local_candidate_fingerprint(
     return fingerprint_tracker.mark_evaluated(candidate)
 
 
-def move_seen_key(move: NeighborhoodMove) -> Tuple[Any, ...]:
-    if move.decision_key:
-        return tuple(move.decision_key)
-    return tuple(move.batch_order or ())
-
-
-def should_skip_seen(move: NeighborhoodMove, seen_hashes: Optional[set]) -> bool:
-    if seen_hashes is None:
-        return False
-    cand_hash = move_seen_key(move)
-    if cand_hash in seen_hashes:
-        return True
-    seen_hashes.add(cand_hash)
-    return False
-
-
 __all__ = [
     "LocalSearchFingerprintTracker",
     "local_candidate_fingerprint",
-    "move_seen_key",
-    "should_skip_seen",
 ]

@@ -9,9 +9,11 @@ from typing import Any, Dict, Union
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, local_time, reference, reject
+from core.services.capacity.plan_calendar_intervals import instant
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import bounded_size
+from core.services.workbench.facts.decision_metrics import RESOURCE_METRICS, metric_value
 from core.services.workbench.facts.official_scope_coverage import official_scope_coverage
 from core.services.workbench.facts.resource_projection import (
     RESOURCE_METRIC_VERSION,
@@ -22,7 +24,6 @@ from core.services.workbench.facts.resource_projection import (
 )
 
 from .decision_impact import _drill
-from .decision_metrics import RESOURCE_METRICS, metric_value
 from .decision_queries import _page
 
 KINDS = ("machine", "operator")
@@ -67,8 +68,15 @@ def normalize_resource_filters(section, *, resource_kind="machine", resource_ref
     if not isfinite(threshold) or not 0 < threshold <= 1:
         reject("invalid_input", "高负荷阈值请选择大于0且不超过100%的比例。", 422)
     for first, last in ((display_start, display_end), (bucket_start, bucket_end)):
-        if (first is None) != (last is None) or first is not None and local_time(first) >= local_time(last):
+        if (first is None) != (last is None):
             reject("invalid_input", "资源时段需要完整且有效的起点和终点。", 422)
+        if first is not None:
+            try:
+                ordered = local_time(first) < local_time(last)
+            except ValueError:
+                reject("invalid_input", "资源时段需要完整且有效的起点和终点。", 422)
+            if not ordered:
+                reject("invalid_input", "资源时段需要完整且有效的起点和终点。", 422)
     if display_start is not None and grain != "hour" or bucket_start is not None and section != "resource-days":
         reject("invalid_input", "当前资源页签或粒度不支持该时段筛选。", 422)
     common = {"section": section, "resource_kind": resource_kind, "resource_ref": resource_ref, "grain": grain,
@@ -87,14 +95,16 @@ class DecisionResources:
     def __init__(self, source):
         self.source = source
         self.start, self.end = source.scope["range_start"], source.scope["range_end"]
-        self.calendar = ArchivedCalendar(source.facts.archive, source_ref=source.run["run_ref"])
-        saved = {(kind, ref): key for (kind, key), ref in source.facts.entity_refs.items() if kind in KINDS}
+        self.calendar = ArchivedCalendar(source.calendar_archive, source_ref=source.run["run_ref"])
+        saved = {(item["kind"], item["ref"]): item["saved_id"] for item in source.context["resources"] if item["kind"] in KINDS}
         self.resources = [{**item, "saved_id": saved.get((item["kind"], item["ref"]))} for item in source.resource_cohort["resources"]]
         self._resource_by_ref = {row["ref"]: row for row in self.resources}
         self.tasks = {}
         self._available = {source.computation_key(row["candidate_ref"]): row["status"] == "completed" for row in source.rows}
         self._available[source.computation_key("reference")] = source.baseline["state"] == "available"
         self.indexes, self._window_rows, self._summaries, self._groups = {}, {}, {}, {}
+        self._calendars = {}
+        self._calendar_times = {}
         self.pressure_threshold = 0.9
 
     def configure(self, threshold):
@@ -108,7 +118,8 @@ class DecisionResources:
             if key not in self.tasks:
                 self.tasks[key] = self.source.resource_before_tasks if key == "reference" else self.source.resource_tasks(key)
             self.indexes[key] = ResourceTaskIndex(self.tasks[key], self.start, self.end, work_available=self._available[key],
-                                                 pressure_threshold=self.pressure_threshold, task_intervals=self.source.task_intervals(key))
+                                                 pressure_threshold=self.pressure_threshold, task_intervals=self.source.task_intervals(key),
+                                                 retain_statistics_values=False)
         return self.indexes[key]
 
     def resource(self, ref, kind):
@@ -122,12 +133,30 @@ class DecisionResources:
         pending = [resource for resource in resources if any((key, resource["ref"]) not in self._window_rows for key in keys)]
         if not pending:
             return
-        for ref, calendar in self.calendar.iter_resources(pending, self.start, self.end):
-            resource = self._resource_by_ref[ref]
-            calendar = normalize_resource_calendar(calendar, self.start, self.end)
+        self._prepare_calendars(pending)
+        for resource in pending:
+            ref, calendar = resource["ref"], self._calendars[resource["ref"]]
             for key in keys:
                 if (key, ref) not in self._window_rows:
                     self._window_rows[key, ref] = self.index(key).window(resource, calendar)
+
+    def _prepare_calendars(self, resources):
+        pending = [resource for resource in resources if resource["ref"] not in self._calendars]
+        for ref, calendar in self.calendar.iter_resources(pending, self.start, self.end):
+            self._calendars[ref] = normalize_resource_calendar(calendar, self.start, self.end, parse_time=self._calendar_time)
+
+    def _calendar_time(self, value):
+        if not isinstance(value, str):
+            return instant(value)
+        parsed = self._calendar_times.get(value)
+        if parsed is None:
+            parsed = instant(value)
+            self._calendar_times[value] = parsed
+        return parsed
+
+    def resource_calendar(self, resource):
+        self._prepare_calendars([resource])
+        return self._calendars[resource["ref"]]
 
     def prepare_keys(self, keys):
         self._ensure_windows(keys, self.resources)
@@ -195,14 +224,12 @@ class DecisionResources:
         source = self.source
         official_tasks = self._official["tasks"] if details else []
         members = source.official_members
-        full_tasks = None if key == "reference" and source.comparison_mode == "admission_official" else (
-            source.core_tasks(source.reference_ref) if key == "reference" and source.reference_ref else source.core_tasks(key) if key != "reference" else [])
         official = set(members["operation_refs"])
-        arranged = {row["operation_ref"] for row in full_tasks} if full_tasks is not None else official
+        arranged = official if key == "reference" and source.comparison_mode == "admission_official" else (
+            source.scheduled_refs(key) if key != "reference" or source.reference_ref else set())
         values = official_scope_coverage(official, arranged)
         admitted = set(source.scope["operation_refs"])
-        deferred = source.deferred_refs if key != "reference" or source.comparison_mode == "candidates" else {
-            ref for ref in admitted if source.facts.operations[ref] in source.reference_deferred_ids}
+        deferred = source.deferred_refs if key != "reference" or source.comparison_mode == "candidates" else source.reference_deferred_refs & admitted
         result = {"formal_state": members["identity"]["state"],
                   "formal_operation_count": values["official_operation_count"],
                   "covered_formal_operation_count": values["covered_official_operation_count"],
@@ -248,27 +275,41 @@ class DecisionResources:
         value.update(resource_view=source.resource_view, resource_kind=resource["kind"], resource_ref=resource["ref"], comparison_tab="resources")
         return value
 
-    def rows(self, kind):
+    def rows(self, kind, *, include_drill=True):
         resources = [resource for resource in self.resources if resource["kind"] == kind]
         self._ensure_windows([self.source.selected_ref, "reference"], resources)
         result = []
         for resource in resources:
             ref = resource["ref"]
-            result.append({"resource_ref": ref, "resource_kind": kind, "label": resource["label"], **self.pair(resource),
-                           "drill": {"selected": self.drill(self.source.selected_ref, resource), "reference": self.drill("reference", resource)}})
+            row = {"resource_ref": ref, "resource_kind": kind, "label": resource["label"], **self.pair(resource)}
+            if include_drill:
+                row["drill"] = {"selected": self.drill(self.source.selected_ref, resource), "reference": self.drill("reference", resource)}
+            result.append(row)
         return result
 
-    def periods(self, resource, *, grain="day", start=None, end=None, details=False):
+    def period_facts(self, resource, *, grain="day", start=None, end=None):
+        return self.index(self.source.selected_ref).period_facts(resource, self.resource_calendar(resource),
+            grain=grain, start=start or self.start, end=end or self.end)
+
+    def filter_summary(self, resource, *, grain, start, end, daily_peak):
+        if grain == "day" and start == self.start and end == self.end:
+            summary = self.index(self.source.selected_ref).day_filter_summary(resource, self.resource_calendar(resource))
+            if summary is not None:
+                return summary
+        return _period_summary(self.period_facts(resource, grain=grain, start=start, end=end), daily_peak)
+
+    def periods(self, resource, *, grain="day", start=None, end=None, details=False, group_keys=None):
         low, high = start or self.start, end or self.end
-        calendar = self.calendar.for_resources([resource], low, high)[resource["ref"]]
-        calendar = normalize_resource_calendar(calendar, low, high)
-        before = self.index("reference").periods(resource, calendar, grain=grain, start=low, end=high, details=details)
+        calendar = self.resource_calendar(resource)
+        before = self.index("reference").periods(resource, calendar, grain=grain, start=low, end=high,
+                                                details=details, group_keys=group_keys)
         if self.source.computation_key("reference") == self.source.computation_key(self.source.selected_ref):
             # Detailed sides receive separate public drill locations. Deep copy
             # preserves each side's task/reservation links without changing stats.
             after = deepcopy(before) if details else [dict(row) for row in before]
         else:
-            after = self.index(self.source.selected_ref).periods(resource, calendar, grain=grain, start=low, end=high, details=details)
+            after = self.index(self.source.selected_ref).periods(resource, calendar, grain=grain, start=low, end=high,
+                                                              details=details, group_keys=group_keys)
         result = []
         for previous, selected in zip(before, after):
             value = {**{key: selected[key] for key in ("key", "bucket_key", "group_key", "date", "grain", "start", "end", "placeholder")},
@@ -326,7 +367,7 @@ def _buckets(start, end, grain):
 
 
 def _period_summary(periods, daily_peak):
-    values = [row["after"] for row in periods]
+    values = periods
     state = "complete" if all(row["state"] == "complete" for row in values) else "unavailable" if all(
         row["state"] == "unavailable" for row in values) else "partial"
     result: Dict[str, Any] = {"state": state}
@@ -403,7 +444,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
             total = 1
         else:
             if grain == "shift":
-                periods = engine.periods(resource, grain=grain)
+                periods = engine.period_facts(resource, grain=grain)
                 total = len(periods)
                 selected_periods = periods if all_rows else periods[offset:offset + size]
                 items = engine.periods(resource, grain=grain, details=True) if all_rows else [
@@ -433,36 +474,43 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
     pressure_start, pressure_end = (display_start, display_end) if grain == "hour" else (start, end)
     if grain == "hour":
         filters.update(display_start=display_start, display_end=display_end)
-    periods_by_ref, rows = {}, []
-    for row in engine.rows(kind):
+    rows = []
+    for row in engine.rows(kind, include_drill=False):
         if ref is not None and row["resource_ref"] != ref:
             continue
         resource = engine.resource(row["resource_ref"], kind)
-        periods = engine.periods(resource, grain=grain, start=pressure_start, end=pressure_end) if pressure_start is not None else []
-        periods_by_ref[row["resource_ref"]] = periods
         if grain == "hour" and pressure_start is not None:
-            calendar = engine.calendar.for_resources([resource], pressure_start, pressure_end)[resource["ref"]]
+            calendar = engine.resource_calendar(resource)
             pressure_window = engine.index(source.selected_ref).window(resource, calendar, start=pressure_start, end=pressure_end)
             daily_peak = pressure_window["daily_peak_utilization"]
         else:
             daily_peak = row["after"]["daily_peak_utilization"]
-        row["filter_summary"] = _period_summary(periods, daily_peak)
+        row["filter_summary"] = engine.filter_summary(resource, grain=grain, start=pressure_start, end=pressure_end,
+                                                      daily_peak=daily_peak)
         if _resource_matches(row, filters):
             rows.append(row)
     rows = _ordered(rows, filters["sort"], filters["order"])
     visible = rows if all_rows else rows[offset:offset + size]
+    rankings = {"top_pressure": _ordered(rows, "after_peak_utilization", "desc")[:10],
+                "top_increase": _ordered(rows, "utilization_delta", "desc")[:10], "limit": 10, "total": len(rows)}
+    output_refs = {row["resource_ref"] for row in visible + rankings["top_pressure"] + rankings["top_increase"]}
+    for row in rows:
+        if row["resource_ref"] in output_refs:
+            resource = engine.resource(row["resource_ref"], kind)
+            row["drill"] = {"selected": engine.drill(source.selected_ref, resource), "reference": engine.drill("reference", resource)}
     shown_keys = {bucket["key"] for bucket in shown_buckets}
     heatmap_rows = [{"resource_ref": row["resource_ref"], "resource_kind": kind, "label": row["label"],
-                     "cells": [cell for cell in periods_by_ref[row["resource_ref"]] if cell["group_key"] in shown_keys],
-                     "continuations": _continuations(periods_by_ref[row["resource_ref"]], shown_buckets) if grain == "shift" else []}
+                     "cells": engine.periods(engine.resource(row["resource_ref"], kind), grain=grain,
+                         start=pressure_start, end=pressure_end, group_keys=shown_keys),
+                     "continuations": _continuations(engine.period_facts(engine.resource(row["resource_ref"], kind),
+                         grain=grain, start=pressure_start, end=pressure_end), shown_buckets) if grain == "shift" else []}
                     for row in visible] if not all_rows else []
     previous, selected = engine.summary("reference", kind), engine.summary(source.selected_ref, kind)
     summary_fields = DELTA_FIELDS + ("high_pressure_count", "zero_capacity_task_count", "conflict_resource_count", "unknown_day_resource_count", "balance_cv", "used_resource_count")
     return {**common, "items": visible, "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)},
             "filter_options": {"resources": [{key: row[key] for key in ("ref", "label", "kind")} for row in engine.resources if row["kind"] == kind]},
             "summary": {"before": previous, "after": selected, "deltas": resource_deltas(previous, selected, summary_fields)},
-            "rankings": {"top_pressure": _ordered(rows, "after_peak_utilization", "desc")[:10],
-                         "top_increase": _ordered(rows, "utilization_delta", "desc")[:10], "limit": 10, "total": len(rows)},
+            "rankings": rankings,
             "pressure_scope": _interval_scope(pressure_start, pressure_end, "displayed_hours" if grain == "hour" else "full_resource_window"),
             "heatmap": {"grain": grain, "buckets": shown_buckets,
                         "window_scope": _interval_scope(start, end, "full_resource_window"),

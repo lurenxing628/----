@@ -12,6 +12,7 @@ from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.infrastructure.workbench_run_schema import install_workbench_run_schema
 from core.models.workbench_command import canonical_json
+from core.models.workbench_run_job import new_run_ref
 from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.preflight import PreflightService
@@ -37,7 +38,8 @@ def service(conn, enabled=True):
 class JobCase(RunCase):
     def preflight(self, settings=None, ttl=900):
         data, fingerprint = PreflightService(self.conn).evaluate(settings or self.settings())
-        bound = {"input": data["normalized_input"], "scope": data["scope"], "fingerprint": fingerprint}
+        bound = {"input": data["normalized_input"], "scope": data["scope"], "fingerprint": fingerprint,
+                 "check_ref": new_run_ref()}
         return issue_public_token_with_expiry(INPUT_SCOPE, canonical_json(bound), ttl_seconds=ttl)[0]
 
     def intent(self, settings=None):
@@ -78,7 +80,7 @@ def job_case(schema_conn, tmp_path):
     case.path = path
     case.batch("B1")
     case.op_id = case.operation()
-    case.config(algo_mode="greedy", graph_candidate_weight_count=3, time_budget_seconds=60,
+    case.config(algo_mode="greedy", time_budget_seconds=60,
                 ortools_enabled="no", freeze_window_enabled="no")
     case.app = Flask(__name__)
     with case.app.app_context():

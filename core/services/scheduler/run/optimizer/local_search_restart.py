@@ -9,23 +9,24 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult
 
-from .deadline_guard import evaluate_optional_local_or_exhausted
+from .attempt_records import evaluate_optional_local_candidate
 from .local_search_candidate_eval import evaluate_local_search_candidate
-from .local_search_fingerprints import should_skip_seen
 from .local_search_round import stamp_decode_runtime
 from .local_search_state import LocalSearchState, resolve_current_strategy_state
 from .neighborhood_moves import NEIGHBORHOOD_MOVE_SCHEMA_VERSION, NeighborhoodMove
+from .shared_budget import SharedSearchSkip
 from .vns import VnsState
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
+    from .shared_decode import SharedDecodeSession
 
 RESTART_SHAKE = "restart_shake"
 
 
 ShakenOrderEvaluator = Callable[
     [List[str], NeighborhoodMove, Any, Dict[str, Any], str, str],
-    Tuple[Optional[Dict[str, Any]], Optional[str]],
+    Optional[Dict[str, Any]],
 ]
 
 
@@ -36,9 +37,9 @@ class RestartOutcome:
     dispatch_mode: str
     dispatch_rule: str
     decode_attempted: bool
-    budget_exhausted: Optional[str] = None
-    # The shaken order was already decoded in this search (no decode, current returns to best).
-    duplicate: bool = False
+    skip_reason: Optional[str] = None
+    request_id: Optional[int] = None
+    decode_receipt: Optional[Dict[str, Any]] = None
 
 
 def _shake_order(order: List[str], rnd: Any) -> List[str]:
@@ -114,42 +115,45 @@ def _evaluate_restart_candidate(
     attempts: List[Dict[str, Any]],
     search_report_state: Optional[OptimizationSearchReportState],
     clock: Callable[[], float],
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    decode_session: SharedDecodeSession,
+) -> Optional[Dict[str, Any]]:
     """Decode the shaken order once so current's order/score/results come from one evaluation.
 
     Failures reuse the local candidate failure path: strict mode raises, otherwise a rejected
-    attempt is recorded and ``(None, None)`` returned. A decoder refused by the budget guard
-    returns ``(None, reason)`` so the caller stops instead of looping on refusals.
+    attempt is recorded and ``None`` returned. Common-session budget skips propagate to the
+    caller with their request receipt.
     """
     best_resource_pool = local_state.best.get("resource_pool")
     candidate_resource_pool = (
         dict(best_resource_pool) if isinstance(best_resource_pool, dict) else {}
     ) or resource_pool
     decode_started = clock()
-    candidate, budget_exhausted = evaluate_optional_local_or_exhausted(
-        evaluate=partial(
-            evaluate_local_search_candidate,
-            scheduler=scheduler,
-            strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
-            strategy=strategy,
-            params=params,
-            start_dt=start_dt,
-            end_date=end_date,
-            downtime_map=downtime_map,
-            order=list(shaken_order),
-            seed_sr_list=seed_sr_list,
-            dispatch_mode=dispatch_mode,
-            dispatch_rule=dispatch_rule,
-            resource_pool=candidate_resource_pool,
-            objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
-            graph_ready_context=graph_ready_context,
-            neighborhood_move=move,
-        ),
+    evaluate = partial(
+        evaluate_local_search_candidate,
+        scheduler=scheduler,
+        strict_mode=bool(strict_mode),
+        algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches,
+        strategy=strategy,
+        params=params,
+        start_dt=start_dt,
+        end_date=end_date,
+        downtime_map=downtime_map,
+        order=list(shaken_order),
+        seed_sr_list=seed_sr_list,
+        dispatch_mode=dispatch_mode,
+        dispatch_rule=dispatch_rule,
+        resource_pool=candidate_resource_pool,
+        objective_name=objective_name,
+        optimizer_algo_stats=optimizer_algo_stats,
+        schedule_fn=schedule_fn,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
+        graph_ready_context=graph_ready_context,
+        neighborhood_move=move,
+        decode_session=decode_session,
+    )
+    candidate = evaluate_optional_local_candidate(
+        evaluate=evaluate,
         attempts=attempts,
         move=RESTART_SHAKE,
         strategy=strategy,
@@ -159,7 +163,9 @@ def _evaluate_restart_candidate(
         search_report_state=search_report_state,
     )
     stamp_decode_runtime(candidate, started_at=decode_started, clock=clock)
-    return candidate, budget_exhausted
+    if candidate is not None and search_report_state is not None:
+        search_report_state.mark_candidate_evaluated(candidate, origin="local_search_restart")
+    return candidate
 
 
 def restart_after_stall(
@@ -169,15 +175,14 @@ def restart_after_stall(
     dispatch_mode_cfg: str,
     dispatch_rule_cfg: str,
     vns_state: VnsState,
-    seen_hashes: set,
     evaluate_shaken_order: ShakenOrderEvaluator,
+    decode_session: SharedDecodeSession,
 ) -> RestartOutcome:
     """Shake the incumbent and move current onto the decoded shaken order.
 
     The shaken order is decoded for real so acceptance compares against its true score and
-    the neighborhoods target its real results (A01). ``seen_hashes`` persists across restarts:
-    a shaken order already decoded in this search is skipped as a duplicate and current returns
-    to best, instead of paying a second decode for a known result.
+    the neighborhoods target its real results (A01). The common session owns decision reuse
+    and records any skipped request.
     """
     vns_state.mark_shake()
     shaken_order = _shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
@@ -190,24 +195,26 @@ def restart_after_stall(
         dispatch_mode=best_dispatch_mode,
         dispatch_rule=best_dispatch_rule,
     )
-    decode_attempted = False
-    budget_exhausted: Optional[str] = None
-    duplicate = should_skip_seen(move, seen_hashes)
-    if duplicate:
-        # The shake is not a registered neighborhood, so it leaves no move row; the vns shake
-        # count and the caller's duplicate counter record it.
-        local_state.reset_current_to_best()
-    else:
-        candidate, budget_exhausted = evaluate_shaken_order(
+    skip_reason: Optional[str] = None
+    request_id: Optional[int] = None
+    receipt: Optional[Dict[str, Any]] = None
+    calls_before = decode_session.actual_decoder_calls
+    try:
+        candidate = evaluate_shaken_order(
             shaken_order, move, best_strat, best_params, best_dispatch_mode, best_dispatch_rule,
         )
-        decode_attempted = budget_exhausted is None
-        if candidate is not None:
-            local_state.accept_current(candidate)
-        else:
-            # Evaluation failed (strict already raised; non-strict recorded the rejection) or the
-            # budget guard refused: drop the shake, current returns to best as one aligned triplet.
-            local_state.reset_current_to_best()
+    except SharedSearchSkip as exc:
+        candidate = None
+        skip_reason, request_id, receipt = exc.reason, exc.request_id, exc.receipt
+    decode_attempted = decode_session.actual_decoder_calls > calls_before
+    if candidate is not None:
+        receipt = candidate.get("decode_receipt")
+        request_id = receipt["request_id"] if receipt is not None else None
+        local_state.accept_current(candidate)
+    elif skip_reason is None:
+        # Evaluation failed (strict already raised; non-strict recorded the rejection):
+        # drop the shake, current returns to best as one aligned triplet.
+        local_state.reset_current_to_best()
     cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
         local_state.current, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
@@ -217,8 +224,9 @@ def restart_after_stall(
         dispatch_mode=cur_dispatch_mode,
         dispatch_rule=cur_dispatch_rule,
         decode_attempted=decode_attempted,
-        budget_exhausted=budget_exhausted,
-        duplicate=duplicate,
+        skip_reason=skip_reason,
+        request_id=request_id,
+        decode_receipt=receipt,
     )
 
 

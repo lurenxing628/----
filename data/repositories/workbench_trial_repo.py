@@ -3,6 +3,7 @@
 import secrets
 
 from core.infrastructure.workbench_trial_schema import workbench_trial_contract_issues
+from core.models.workbench_trial import MAX_TRIAL_TASKS
 from core.models.workbench_trial_codec import dump, dump_document, load_object
 from core.models.workbench_trial_scenario_archive import scenario_archive
 
@@ -24,24 +25,10 @@ class WorkbenchTrialRepository:
         row = self.conn.execute("SELECT * FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft_ref,)).fetchone()
         return None if row is None else dict(row)
 
-    def draft_row_count(self, draft_ref):
-        return self.conn.execute("SELECT COUNT(*) FROM WorkbenchTrialRows WHERE draft_ref=?", (draft_ref,)).fetchone()[0]
-
-    def draft_rows(self, draft_ref):
+    def draft_rows(self, draft_ref, *, limit=MAX_TRIAL_TASKS + 1):
         """All WorkbenchTrialRows of one draft in stored ordinal order (JSON columns undecoded)."""
         return [dict(raw) for raw in self.conn.execute(
-            "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal", (draft_ref,))]
-
-    def draft_state(self, draft_ref):
-        """Current mutable header fields; the caller already holds the immutable admission."""
-        row = self.conn.execute("""SELECT revision,status,validation_json,updated_at
-            FROM WorkbenchTrialDrafts WHERE draft_ref=?""", (draft_ref,)).fetchone()
-        return None if row is None else dict(row)
-
-    def draft_arrangements(self, draft_ref):
-        """Current row arrangements, without fetching the immutable original snapshots again."""
-        return [dict(row) for row in self.conn.execute("""SELECT row_ref,ordinal,current_json
-            FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal""", (draft_ref,))]
+            "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal LIMIT ?", (draft_ref, limit))]
 
     def create(self, admission, rows, checked, request_key, actor, now):
         self._transaction()
@@ -62,7 +49,11 @@ class WorkbenchTrialRepository:
             (row_ref,task_ref,draft_ref,operation_ref,source_task_ref,source_row_ref,ordinal,
              original_json,original_hash,current_json) VALUES (?,?,?,?,?,?,?,?,?,?)""",
             stored_rows)
-        return ref
+        head = {"draft_ref": ref, "base_kind": key, "base_ref": value, "admission": admission,
+                "admission_hash": admission_hash, "row_count": len(rows), "revision": 1, "status": "editing",
+                "validation": checked, "created_at": now, "updated_at": now, "local_operator": actor,
+                "request_key": request_key}
+        return head, [dict(row, draft_ref=ref, ordinal=index) for index, row in enumerate(rows)]
 
     def change(self, head, row, before, checked, request_key, actor, now):
         """Record one arrangement change; True when the draft head advanced, False when it was stale."""
@@ -112,8 +103,11 @@ class WorkbenchTrialRepository:
 
     def scenario_rows(self, ref):
         """(row_ref, payload_json) of every permanent scenario row, payload undecoded."""
-        return [dict(row) for row in self.conn.execute(
-            "SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))]
+        return list(self.iter_scenario_rows(ref))
+
+    def iter_scenario_rows(self, ref):
+        cursor = self.conn.execute("SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))
+        return (dict(row) for row in cursor)
 
     def changes(self, draft_ref):
         result = []

@@ -96,7 +96,7 @@ def recommendation_export_records(source, data):
         contexts.append(("reference", source.baseline.get("label"), "admission_official"))
     completion, remaining = [], []
     for key, label, kind in contexts:
-        scope = source.completion.scope(key)
+        scope = source.completion.scope(key, details=True)
         identity = {"安排组号": by_candidate.get(key), "安排来源类型": kind, "候选永久编号": key if key != "reference" else None,
                     "候选名称": label, "来源可用": scope["source_available"]}
         for row in source.completion.delivery(key):

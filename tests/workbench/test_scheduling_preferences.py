@@ -119,7 +119,7 @@ def test_receipt_failure_rolls_back_preference_and_audit_in_same_transaction(pf,
 
 
 @pytest.mark.parametrize("business_change", [False, True])
-def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_freshness(job_case, business_change):
+def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_freshness(job_case, business_change, monkeypatch):
     case = job_case
     case.batch("B2")
     case.operation("B2")
@@ -140,7 +140,11 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
     original, changed = case.settings("B1"), case.settings("B2", end_date="2026-09-26")
     checked = client.post("/api/workbench/v1/scheduling/preflight", json=original)
     assert checked.status_code == 200, checked.get_json()
-    input_ref = checked.get_json()["data"]["input_ref"]
+    checked_data = checked.get_json()["data"]
+    admitted_input = checked_data["normalized_input"]
+    assert {key: admitted_input[key] for key in original} == original
+    assert admitted_input["time_budget_seconds"] == 60
+    input_ref = checked_data["input_ref"]
     token = client.get(ROOT).get_json()["data"]["write_context"]["write_token"]
     assert save(client, original, token).status_code == 200
     # Remembering the form after preflight does not invalidate its input_ref or run authorization.
@@ -155,18 +159,27 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
     assert dispatched == [ref]
     saved = []
 
-    def progress(done, total):
-        if saved:
-            return
-        assert done == 1 and total == 4  # A real candidate has already been computed.
+    persist = WorkbenchRunWorker._persist
+
+    def after_real_compute(worker, row, prepared):
+        assert row["run_ref"] == ref and 1 <= len(prepared.candidates) <= 3
+        selection = json.loads(prepared.result["result_json"])["selection"]
+        candidate_refs = {candidate["candidate_ref"] for candidate in prepared.candidates}
+        assert selection["selected_candidate_ref"] in candidate_refs
+        assert set(selection["objective_winners"]) == set(selection["target_objectives"])
+        assert set(selection["objective_winners"].values()) <= candidate_refs
+        assert not saved and not case.conn.in_transaction
         token = client.get(ROOT).get_json()["data"]["write_context"]["write_token"]
         response = save(client, changed, token, "preferences-during-real-worker")
         assert response.status_code == 200, response.get_json()
         saved.append(response.get_json())
         if business_change:
             case.config(objective="min_tardiness")
+        return persist(worker, row, prepared)
 
-    worker = WorkbenchRunWorker(case.conn, progress_sink=progress)
+    # Preference changes happen after actual computation and before the real atomic write.
+    monkeypatch.setattr(WorkbenchRunWorker, "_persist", after_real_compute)
+    worker = WorkbenchRunWorker(case.conn)
     if business_change:
         with pytest.raises(WorkbenchCommandRejected) as rejected:
             worker.execute(ref)
@@ -175,13 +188,13 @@ def test_public_preferences_during_real_worker_keep_admitted_scope_and_business_
         assert worker.execute(ref)["state"] == "complete"
     assert len(saved) == 1 and client.get(ROOT).get_json()["data"]["input"] == changed
     stored_input = case.conn.execute("SELECT normalized_input_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0]
-    assert json.loads(stored_input) == original
+    assert json.loads(stored_input) == admitted_input
     final = client.get("/api/workbench/v1/scheduling/runs/" + ref).get_json()["data"]
     if business_change:
         assert final["state"] == "failed" and final["error"]["code"] == "snapshot_stale"
         assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0] == 0
     else:
-        assert final["state"] == "complete" and final["result_persisted"] and len(final["candidates"]) == 4
+        assert final["state"] == "complete" and final["result_persisted"] and 1 <= len(final["candidates"]) <= 3
         batches = {row[0] for row in case.conn.execute("SELECT DISTINCT b.batch_id FROM WorkbenchRunCandidateTasks t "
             "JOIN WorkbenchPlanSourceRefs r ON r.ref=t.operation_ref "
             "JOIN BatchOperations b ON CAST(b.id AS TEXT)=r.source_key WHERE r.kind='operation'")}

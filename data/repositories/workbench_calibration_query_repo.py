@@ -1,5 +1,6 @@
 """Bounded original template/instance reads. This repository cannot write lineage or rule on it."""
 
+from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 
@@ -9,20 +10,23 @@ from .workbench_execution_repo import chunks
 
 class WorkbenchCalibrationQueryRepository(BaseRepository):
     def schema_installed(self):
-        return not (workbench_metadata_contract_issues(self.conn) or workbench_process_contract_issues(self.conn))
+        structure = SchemaStructure(self.conn)
+        return not (workbench_metadata_contract_issues(self.conn, structure=structure) or
+                    workbench_process_contract_issues(self.conn, structure=structure))
 
-    def part_exists(self, part_ref):
-        return self.fetchone("SELECT 1 FROM WorkbenchEntityRefs WHERE ref=? AND kind='part' AND active=1", (part_ref,)) is not None
+    def part_identity(self, part_ref):
+        """Active part identity's stored entity key, or None when the ref is no longer live."""
+        return self.fetchone("SELECT entity_key FROM WorkbenchEntityRefs WHERE ref=? AND kind='part' AND active=1", (part_ref,))
 
-    def template_rows(self, part_ref, limit):
+    def template_rows(self, part_no, limit):
         """Active templates with their permanent refs (may be NULL); reads at most limit+1 rows."""
+        where, params = (" AND o.part_no=?", (part_no,)) if part_no is not None else ("", ())
         return self.fetchall("""SELECT o.*, r.ref AS operation_ref, r.revision, p.part_name,
             pr.ref AS part_ref FROM PartOperations o LEFT JOIN Parts p ON p.part_no=o.part_no
             LEFT JOIN WorkbenchEntityRefs r ON r.kind='template_operation' AND r.active=1
                 AND r.entity_key=CAST(o.id AS TEXT)
             LEFT JOIN WorkbenchEntityRefs pr ON pr.kind='part' AND pr.active=1 AND pr.entity_key=o.part_no
-            WHERE o.status='active' AND (? IS NULL OR pr.ref=?)
-            ORDER BY o.part_no,o.seq,o.id LIMIT ?""", (part_ref, part_ref, limit + 1))
+            WHERE o.status='active'""" + where + " ORDER BY o.part_no,o.seq,o.id LIMIT ?", params + (limit + 1,))
 
     def candidate_instance_rows(self, part_numbers, limit):
         """Same-part records are audit candidates only, NOT template sample matches.

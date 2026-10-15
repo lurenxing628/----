@@ -55,8 +55,8 @@ def _seed_two_operation_plan(conn: sqlite3.Connection) -> None:
             machine_id, operator_id, setup_hours, unit_hours, status
         )
         VALUES
-            (10, 'OP10', 'B1', 'piece-a', 10, '车削', 'internal', 'M1', 'O1', 0, 1, 'scheduled'),
-            (20, 'OP20', 'B1', 'piece-b', 20, '铣削', 'internal', 'M2', 'O2', 0, 1, 'scheduled');
+            (10, 'OP10', 'B1', NULL, 10, '车削', 'internal', 'M1', 'O1', 0, 1, 'scheduled'),
+            (20, 'OP20', 'B1', NULL, 20, '铣削', 'internal', 'M2', 'O2', 0, 1, 'scheduled');
 
         INSERT INTO ScheduleVersionSeq(version) VALUES (1);
 

@@ -13,7 +13,7 @@
     const bytes = new Uint8Array(24); crypto.getRandomValues(bytes);
     const key = 'trial-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join('');
     try { localStorage.setItem(PENDING_KEY, key); } catch (_) { throw new Error('存不下上次操作记录，这次没有提交。请重新打开页面。'); }
-    C.check(pending() === key, '上次操作记录没有存上，这次没有提交。请重新打开页面。'); return key;
+    return key;
   }
   function clear(key) {
     C.check(pending() === key, '上次操作记录已变化，没有清除其他操作记录。');

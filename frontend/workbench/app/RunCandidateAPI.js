@@ -32,14 +32,16 @@
     'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg', 'elapsed_seconds'];
   function metric(v) { return shape(v, ['value', 'reason']) && (v.value === null ? gap(v.reason) : number(v.value) && v.reason === null); }
   function summary(v, runRef) {
-    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'])
+    const unified = v && v.generation_policy_version === 'unified_search_v1', G = window.RunGenerationContract;
+    check(shape(v, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'].concat(unified ? G.metadataKeys : []))
       && ref(v.candidate_ref) && ref(v.run_ref) && (!runRef || v.run_ref === runRef) && nullableText(v.label) && count(v.task_count) && v.task_count <= 20000
       && ['completed', 'failed', 'skipped'].includes(v.persisted_status) && ['complete', 'partial', 'unknown', 'no_result'].includes(v.completeness)
       && v.status === (v.persisted_status === 'completed' && v.completeness === 'partial' ? 'partial' : v.persisted_status)
       && (v.persisted_status === 'completed' ? v.completeness !== 'no_result' : v.completeness === 'no_result' && v.task_count === 0)
-      && shape(v.metrics, metricKeys) && metricKeys.every(k => metric(v.metrics[k]))
+      && shape(v.metrics, metricKeys) && metricKeys.every(k => unified && k === 'elapsed_seconds' ? G.catalogElapsed(v.metrics[k]) : metric(v.metrics[k]))
       && shape(v.metric_scopes, ['delivery', 'resources']) && v.metric_scopes.delivery === 'completed_batches_only' && v.metric_scopes.resources === 'scheduled_results_only'
-      && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps));
+      && caps(v.capabilities) && blocked(v.blocked_reasons) && gaps(v.data_gaps)
+      && (!unified || v.persisted_status === 'completed' && G.metadata(v, v.run_ref)));
     return v;
   }
   function envelope(v) {
@@ -48,6 +50,12 @@
       && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && token(v.meta.snapshot_ref) && time(v.meta.as_of)
       && Array.isArray(v.warnings) && v.warnings.every(r => object(r) && text(r.code) && text(r.message)));
     return v.data;
+  }
+  function identity(v, candidateRef) {
+    const data = envelope(v);
+    check(shape(data, ['candidate_ref', 'run_ref', 'label', 'status']) && ref(candidateRef) && data.candidate_ref === candidateRef
+      && ref(data.run_ref) && nullableText(data.label) && ['completed', 'failed', 'skipped'].includes(data.status), '候选身份与所选方案不一致，请重新打开。');
+    return data;
   }
   function catalogScope(query = {}) {
     check(shape(query, [], ['page', 'size', 'status', 'sort', 'order', 'snapshot_ref']));
@@ -204,17 +212,19 @@
       const seen = new Set(d.tasks.map(t => t.operation_ref));
       d.unplanned_operations.forEach(t => { operation(t, false); check(!seen.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref)); seen.add(t.operation_ref); });
     }
-    const g = d.generation;
+    const g = d.generation, G = window.RunGenerationContract;
     check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm'])
       && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at))
       && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
       && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps)
-      && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window']) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy)
+      && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds'])
+      && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds))
+      && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy)
         || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy'))
       && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window'))
       && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k]))
       && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean')
-      && shape(g.algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(g.algorithm).every(nullableText)
+      && window.RunGenerationContract.algorithm(g.algorithm, g.run_ref)
       && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count'])
       && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at)
       && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref))
@@ -258,6 +268,8 @@
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
     }
     return window.APSReadBoundary.verified({
+      async identity(candidateRef, signal) { check(ref(candidateRef)); const value = await request('/candidates/' + candidateRef + '/identity', signal);
+        identity(value, candidateRef); return value; },
       async catalog(runRef, query = {}, signal) { check(ref(runRef)); const q = catalogScope(query);
         const v = await request('/runs/' + runRef + '/candidates?' + new URLSearchParams(q), signal); catalog(v, runRef, q); return v; },
       async workspace(candidateRef, query = {}, signal) { const q = workspaceScope(candidateRef, query);
@@ -266,13 +278,14 @@
         check(token(snapshotRef) && ['csv', 'xlsx'].includes(fmt)); const q = workspaceScope(candidateRef, { ...query, snapshot_ref: snapshotRef });
         return request('/candidates/' + candidateRef + '/export?' + new URLSearchParams({ ...q, format: fmt }), signal, fmt);
       }
-    }, ['catalog', 'workspace']);
+    }, ['identity', 'catalog', 'workspace']);
   }
   function adapter(value) {
     return window.APSReadBoundary.checked(value, {
+      identity: (result, candidateRef) => identity(result, candidateRef),
       catalog: (result, runRef, query) => catalog(result, runRef, query),
       workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
     });
   }
-  window.RunCandidateAPI = { create, adapter, check, ref, time, version, shape, envelope, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
+  window.RunCandidateAPI = { create, adapter, check, ref, time, version, shape, envelope, summary, identity, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
 })();

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer.deadline_guard import observed_decode_seconds, prefer_ig_startup
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_BASE_ORIGIN,
     GRAPH_READY_DEFAULT_WEIGHT_PROFILES,
@@ -18,6 +18,7 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     graph_ready_v2_profile_summary,
     graph_ready_weight_profile_summary,
 )
+from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
 from .budget import GraphReadySearchBudget
 from .candidates import build_v2_common_rank_cache, evaluate_graph_ready_candidate
@@ -29,16 +30,59 @@ from .profile_selection import resolve_graph_ready_profiles_and_metrics
 from .repair import EliteRepairPool, EliteRepairRun
 from .repair_contract import EliteRepairLimits, resolve_elite_repair_limits
 from .reporting import mark_phase_skipped, record_rejected_attempt
-from .stage_scheduler import StageScheduler
 from .stages import GraphSearchState, IteratedGreedyStage, ProfileStage, RepairStage, iterated_greedy_parent_profile
 from .v2_contract import is_graph_ready_v2_contract_error
+from .v2_features import enrich_graph_ready_v2_metrics
 
 if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 
 class _GraphReadyDeadlineExhausted(RuntimeError):
     pass
+
+
+@dataclass
+class SharedGraphFeatures:
+    """One prepared, objective-independent feature set for a shared search."""
+
+    metrics_by_op_id: Dict[int, Dict[str, Any]]
+    v2_common_rank_cache: Dict[str, Dict[int, float]]
+    topology_cache: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class GraphStageBundle:
+    """Graph generators and their stable target view, without a scheduling loop."""
+
+    state: GraphSearchState
+    stages: List[SearchStage]
+
+    def finish(self) -> None:
+        for stage in self.stages:
+            stage.finish()
+
+
+def prepare_shared_graph_features(
+    *, graph_ready_context: Dict[str, Any], scheduler: Any, algo_ops_to_schedule: List[Any],
+    batches: Dict[str, Any], start_dt: datetime, downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+    seed_sr_list: List[ScheduleResult], resource_pool: Optional[Dict[str, Any]], strict_mode: bool,
+    candidate_construction: Optional[Dict[str, Any]] = None, deadline: Optional[float] = None,
+    clock: Optional[Callable[[], float]] = None,
+) -> SharedGraphFeatures:
+    """Build both existing bases and their ranks once before target stages are assembled."""
+    if deadline is not None and clock is not None:
+        _before_graph_metrics(construction=candidate_construction, deadline=deadline, clock=clock)
+    validate_graph_ready_context(graph_ready_context, algo_ops_to_schedule=algo_ops_to_schedule,
+                                 seed_sr_list=seed_sr_list)
+    metrics = enrich_graph_ready_v2_metrics(
+        graph_node_metrics_by_op_id(graph_ready_context), operations=algo_ops_to_schedule, batches=batches,
+        start_dt=start_dt, calendar_service=getattr(scheduler, "calendar", None), downtime_map=downtime_map,
+        seed_results=seed_sr_list, resource_pool=resource_pool, strict_mode=bool(strict_mode),
+        graph_ready_context=graph_ready_context, include_baseline_ordering=True, objective_name=None,
+    )
+    return SharedGraphFeatures(metrics, build_v2_common_rank_cache(metrics))
 
 
 def _before_graph_metrics(*, construction: Optional[Dict[str, Any]], deadline: float, clock: Callable[[], float]) -> None:
@@ -49,7 +93,9 @@ def _before_graph_metrics(*, construction: Optional[Dict[str, Any]], deadline: f
         raise _GraphReadyDeadlineExhausted()
 
 
-def run_graph_ready_candidates(
+
+
+def build_graph_search_stages(
     *,
     algo_mode: str,
     best: Optional[Dict[str, Any]],
@@ -82,13 +128,15 @@ def run_graph_ready_candidates(
     profiles_override: Optional[List[GraphReadyWeightProfile]] = None,
     profile_summary_override: Optional[Dict[str, Any]] = None,
     candidate_construction: Optional[Dict[str, Any]] = None,
-) -> Optional[Dict[str, Any]]:
+    prepared_features: Optional[SharedGraphFeatures] = None,
+    decode_session: SharedDecodeSession,
+) -> GraphStageBundle:
     skip_reason = _phase_skip_reason(algo_mode=algo_mode, graph_ready_context=graph_ready_context)
     if skip_reason:
         mark_phase_skipped(search_report_state, skip_reason)
-        return best
+        return GraphStageBundle(GraphSearchState(best), [])
 
-    metrics_by_op_id = _validated_context_metrics(
+    metrics_by_op_id = prepared_features.metrics_by_op_id if prepared_features is not None else _validated_context_metrics(
         graph_ready_context=graph_ready_context,
         algo_ops_to_schedule=algo_ops_to_schedule,
         seed_sr_list=seed_sr_list,
@@ -99,7 +147,7 @@ def run_graph_ready_candidates(
         search_report_state=search_report_state,
     )
     if metrics_by_op_id is None:
-        return best
+        return GraphStageBundle(GraphSearchState(best), [])
 
     try:
         profiles, profile_summary, metrics_by_op_id = resolve_graph_ready_profiles_and_metrics(
@@ -120,12 +168,13 @@ def run_graph_ready_candidates(
             objective_name=objective_name,
             graph_ready_context=graph_ready_context,
             before_metrics=partial(_before_graph_metrics, construction=candidate_construction, deadline=deadline, clock=clock),
+            prepared_metrics=prepared_features.metrics_by_op_id if prepared_features is not None else None,
         )
     except _GraphReadyDeadlineExhausted:
         mark_phase_skipped(search_report_state, "time_budget")
         if search_report_state is not None:
             search_report_state.mark_deadline_reached()
-        return best
+        return GraphStageBundle(GraphSearchState(best), [])
     except ValidationError as exc:
         if strict_mode or is_graph_ready_v2_contract_error(exc) or exc.field == "graph_ready_elite_repair":
             raise
@@ -136,7 +185,7 @@ def run_graph_ready_candidates(
             dispatch_rule_cfg=dispatch_rule_cfg,
             search_report_state=search_report_state,
         )
-        return best
+        return GraphStageBundle(GraphSearchState(best), [])
 
     _update_graph_ready_profile(search_report_state, profile_summary=profile_summary)
     order = _candidate_order(best, build_order=build_order, base_strategy=base_strategy, base_params=base_params)
@@ -147,7 +196,7 @@ def run_graph_ready_candidates(
     )
     # Iterated greedy shares the incumbent during rotation and follows the repair switch.
     iterated_greedy_limits = resolve_iterated_greedy_limits(candidate_construction, enabled=repair_limits.enabled)
-    return _run_weight_profiles(
+    return _build_weight_profile_stages(
         profiles=profiles,
         best=best,
         version=version,
@@ -178,6 +227,8 @@ def run_graph_ready_candidates(
         order=order,
         repair_limits=repair_limits,
         iterated_greedy_limits=iterated_greedy_limits,
+        prepared_features=prepared_features,
+        decode_session=decode_session,
     )
 
 
@@ -250,7 +301,7 @@ def _update_graph_ready_profile(
         search_report_state.update_candidate_profile(graph_ready_optimization=dict(profile_summary or {}))
 
 
-def _run_weight_profiles(
+def _build_weight_profile_stages(
     *,
     profiles: List[GraphReadyWeightProfile],
     best: Optional[Dict[str, Any]],
@@ -282,10 +333,13 @@ def _run_weight_profiles(
     order: List[str],
     repair_limits: EliteRepairLimits,
     iterated_greedy_limits: Optional[IteratedGreedyLimits] = None,
-) -> Optional[Dict[str, Any]]:
-    """Profiles, repair and IG share the phase through startup opportunities and bounded time feedback."""
-    budget = GraphReadySearchBudget(limits=repair_limits, deadline=deadline, clock=clock)
-    v2_common_rank_cache = build_v2_common_rank_cache(metrics_by_op_id) if _has_v2_profile(profiles) else None
+    prepared_features: Optional[SharedGraphFeatures] = None,
+    decode_session: SharedDecodeSession,
+) -> GraphStageBundle:
+    """Assemble resumable profile, repair and IG stages sharing one stable target view."""
+    budget = GraphReadySearchBudget(limits=repair_limits, deadline=deadline, clock=clock, decode_session=decode_session)
+    v2_common_rank_cache = (prepared_features.v2_common_rank_cache if prepared_features is not None
+                            else build_v2_common_rank_cache(metrics_by_op_id) if _has_v2_profile(profiles) else None)
     evaluate = partial(
         evaluate_graph_ready_candidate,
         graph_ready_context=graph_ready_context, metrics_by_op_id=metrics_by_op_id,
@@ -295,25 +349,25 @@ def _run_weight_profiles(
         resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
         schedule_fn=schedule_fn, readiness_gate_enabled=bool(readiness_gate_enabled), version=int(version),
         clock=clock, v2_common_rank_cache=v2_common_rank_cache,
-        topology_cache={},
+        topology_cache=prepared_features.topology_cache if prepared_features is not None else {},
+        decode_session=decode_session,
     )
     pool = EliteRepairPool(limits=repair_limits, objective_name=objective_name, operations=algo_ops_to_schedule,
                            metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=version,
                            best=best, report_state=search_report_state, graph_context=graph_ready_context,
-                           resource_pool=resource_pool, clock=clock, deadline=deadline)
+                           resource_pool=resource_pool, clock=clock, deadline=deadline, decode_session=decode_session)
     search = GraphReadyProfileSearch(evaluate=evaluate, pool=pool, budget=budget, profile_count=len(profiles),
-                                     initial_decode_seconds=observed_decode_seconds(best))
+                                     decode_session=decode_session)
     state = GraphSearchState(best)
-    stages: List[Any] = [ProfileStage(
+    stages: List[SearchStage] = [ProfileStage(
         profiles=profiles, search=search, pool=pool, state=state, order=order, strict_mode=bool(strict_mode),
         base_strategy=base_strategy, dispatch_rule_cfg=dispatch_rule_cfg, version=int(version), attempts=attempts,
-        improvement_trace=improvement_trace, search_report_state=search_report_state, clock=clock, t_begin=t_begin)]
-    profile_stage = stages[0]
-    early_ig = prefer_ig_startup(best, clock=clock, deadline=deadline)
+        improvement_trace=improvement_trace, search_report_state=search_report_state, clock=clock, t_begin=t_begin,
+        decode_session=decode_session)]
     if _has_v2_profile(profiles) or repair_limits.enabled:
         repair = EliteRepairRun(pool, state=state, evaluate=evaluate, budget=budget, deadline=deadline, clock=clock,
                                 t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
-                                report_state=search_report_state, strict_mode=bool(strict_mode))
+                                report_state=search_report_state, strict_mode=bool(strict_mode), decode_session=decode_session)
         stages.append(RepairStage(repair))
         if iterated_greedy_limits is not None:
             greedy = IteratedGreedyRun(
@@ -322,19 +376,9 @@ def _run_weight_profiles(
                 pool=pool, evaluate=evaluate, operations=algo_ops_to_schedule, graph_context=graph_ready_context,
                 metrics_by_op_id=metrics_by_op_id, objective_name=objective_name, start_dt=start_dt, seed=int(version),
                 deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
-                report_state=search_report_state, strict_mode=bool(strict_mode))
-            # Only expensive initial decodes need an early IG slot. Small instances keep
-            # their established profile/repair starting pool; every IG reference still uses SGS.
-            stage = IteratedGreedyStage(greedy, startup_ready=lambda: early_ig or bool(pool.elites) or not profile_stage.available())
-            if early_ig:
-                stages.insert(0, stage)
-            else:
-                stages.append(stage)
-    rotation = StageScheduler(stages, clock=clock, deadline=deadline,
-                              process_evidence=getattr(search_report_state, "process_collector", None))
-    profile_stage.extra_summary = rotation.summary
-    rotation.run()
-    return state.best
+                report_state=search_report_state, strict_mode=bool(strict_mode), decode_session=decode_session)
+            stages.append(IteratedGreedyStage(greedy, startup_ready=lambda: bool(pool.elites) or not stages[0].available()))
+    return GraphStageBundle(state, stages)
 
 
 def _has_v2_profile(profiles: List[GraphReadyWeightProfile]) -> bool:
@@ -363,5 +407,8 @@ __all__ = [
     "GRAPH_READY_WEIGHT_GRID_ORIGIN",
     "graph_ready_v2_profile_summary",
     "graph_ready_weight_profile_summary",
-    "run_graph_ready_candidates",
+    "GraphStageBundle",
+    "SharedGraphFeatures",
+    "build_graph_search_stages",
+    "prepare_shared_graph_features",
 ]

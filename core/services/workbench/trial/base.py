@@ -3,6 +3,8 @@
 from typing import Any, Dict, cast
 
 from core.models.schedule_plan_role import SOURCE_SCHEDULE
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_trial import MAX_TRIAL_TASKS, issue, reject
 from core.services.scheduler.contracts.external_context import (
@@ -15,38 +17,32 @@ from core.services.workbench.facts.candidate_archive import require_candidate_sc
 from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_tasks import tasks_projection
-from core.services.workbench.facts.candidate_values import stored_json
+from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
 from core.services.workbench.facts.decision_baseline import _same_arrangements
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.delivery_completeness import deferred_operation_evidence
 from core.services.workbench.facts.preflight_checks import stored_date
-from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, point_basis
-from core.services.workbench.plan.baseline import _complete_rows
-from core.services.workbench.plan.delivery_repository import PlanDeliveryRepository
-from core.services.workbench.plan.point_evidence import official_point_work
+from core.services.workbench.facts.zero_duration_evidence import point_basis
 from core.services.workbench.plan.projection import project_plan
-from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.run.piece_adoption_trial import trial_piece_predecessors
-from data.repositories.workbench_trial_query_repo import WorkbenchTrialQueryRepository
-from data.repositories.workbench_trial_raw_repo import WorkbenchTrialRawPlanRepository
 from data.repositories.workbench_trial_repo import new_ref
 
 from .archived_external_context import archived_contexts
 from .effort import operation_types
 from .execution_anchors import attach_execution_anchors
-from .facts import entity_maps, live_context
+from .facts import ProductionFactsCapture, entity_maps, live_context
 from .materials import plan_material_policy
 
 
-def _arrangement(payload, refs):
+def _arrangement(payload, refs, interval=None):
     from datetime import datetime
 
     result = {}
     for field, source in (("start", "start_time"), ("end", "end_time")):
         raw = payload.get(source)
         try:
-            parsed = datetime.fromisoformat(raw)
+            parsed = interval[0 if field == "start" else 1] if interval is not None else datetime.fromisoformat(raw)
             canonical = parsed.isoformat()
             accepted = {canonical}
             if parsed.second == 0 and parsed.microsecond == 0:
@@ -67,8 +63,8 @@ def _arrangement(payload, refs):
     return result
 
 
-def _row(payload, op, batch, refs, *, source_task_ref, source_row_ref, operation_ref, detail=None):
-    current = _arrangement(payload, refs)
+def _row(payload, op, batch, refs, *, source_task_ref, source_row_ref, operation_ref, detail=None, interval=None):
+    current = _arrangement(payload, refs, interval)
     return {"row_ref": new_ref(), "task_ref": new_ref(), "operation_ref": operation_ref,
             "source_task_ref": source_task_ref, "source_row_ref": source_row_ref,
             "current": current,
@@ -76,54 +72,80 @@ def _row(payload, op, batch, refs, *, source_task_ref, source_row_ref, operation
                          "detail": detail, "batch_ref": refs.get(("batch", op["batch_id"])), "predecessor_operation_refs": []}}
 
 
-def _plan(conn, ref):
-    service = WorkbenchPlanQueryService(conn)
-    with service.read_snapshot():
-        _, entry, _ = service._selected(ref)
-        repo = WorkbenchTrialRawPlanRepository(conn)
-        facts = WorkbenchTrialQueryRepository(conn)
+def _plan(conn, ref, capture):
+    try:
+        return _plan_capture(conn, ref, capture)
+    except WorkbenchPlanReferenceError as exc:
+        missing = exc.code == "reference_not_found"
+        raise WorkbenchCommandRejected("entity_not_found" if missing else exc.code,
+            "所选计划已不存在，请刷新列表后重新选择。" if missing else "计划或安排编号已失效，请刷新列表后重新选择。",
+            404 if missing else 409) from exc
+
+
+def _plan_capture(conn, ref, capture):
+    context = PlanReadContext(conn)
+    with context.read_scope():
+        locator, binding = context.references._resolved_record(ref)
+        source = binding["source_table"]
+        table, kind = {"schedule": ("Schedule", "schedule_row"),
+                       "candidate_rows": ("ScheduleCandidateRows", "candidate_row"),
+                       "adjustment_scenario_rows": ("ScheduleAdjustmentScenarioRow", "scenario_row")}[source]
+        query = {"version": locator.version, "source_table": source,
+                 "candidate_id": int(binding["owner_key"]) if source == "candidate_rows" else None,
+                 "scenario_id": locator.scenario_id}
+        if table in capture.table_names:
+            selected = [row for row in capture.table(table) if (
+                row["scenario_id"] == locator.scenario_id if source == "adjustment_scenario_rows" else
+                row["version"] == locator.version and (source != "candidate_rows" or row["candidate_id"] == query["candidate_id"]))]
+            context.seed_source_rows(selected, **query)
+        _, entry, _ = context.selected(ref)
         identity = entry.plan_identity
         if identity is None:
             reject("plan_unavailable", "所选计划的编号已失效，请刷新计划列表后重新选择。")
-        tables = {"BatchOperations": {row["id"]: row for row in facts.raw_batch_operations()},
-                  "Batches": {row["batch_id"]: row for row in facts.raw_batches()}}
-        detail = _complete_rows(repo, version=entry.locator.version, source=identity.source_table,
-                                candidate_id=identity.candidate_id, scenario_id=entry.locator.scenario_id)
-        tasks = service.references.get_task_refs(ref, detail)
-        operations = service.references.get_operation_refs(row["op_id"] for row in detail)
-        refs = entity_maps({"WorkbenchEntityRefs": facts.raw_entity_refs()})
-        raw, source_refs, table = _source_rows(facts, identity.source_table, detail)
+        tables = {"BatchOperations": capture.index("BatchOperations", "id"),
+                  "Batches": capture.index("Batches", "batch_id")}
+        detail = context.detail_rows(entry)
+        tasks = context.task_refs(ref, detail)
+        operations = context.operation_refs(row["op_id"] for row in detail)
+        refs = entity_maps({"WorkbenchEntityRefs": capture.table("WorkbenchEntityRefs")})
+        raw = capture.rows_for_ids(table, {row["schedule_id"] for row in detail})
+        source_refs = {int(row["source_key"]): row["ref"] for row in capture.table("WorkbenchPlanSourceRefs")
+                       if row["kind"] == kind and row["active"] == 1}
         result, point_work = [], None
+        intervals = context.datetime_intervals(entry)
+        parts = capture.index("Parts", "part_no")
         for item in detail:
             op = tables["BatchOperations"].get(item["op_id"])
             batch = tables["Batches"].get(item["batch_id"])
             if op is None or batch is None or item["schedule_id"] not in source_refs:
                 reject("trial_base_incomplete", "原计划工序、批次或来源行缺失。")
-            item["due_date"] = batch["due_date"]
+            item = dict(item, due_date=batch["due_date"])
             result.append(_row(raw[item["schedule_id"]], op, batch, refs, source_task_ref=tasks[item["schedule_id"]],
-                               source_row_ref=source_refs[item["schedule_id"]], operation_ref=operations[item["op_id"]], detail=item))
+                               source_row_ref=source_refs[item["schedule_id"]], operation_ref=operations[item["op_id"]],
+                               detail=item, interval=intervals[item["schedule_id"]]))
+            result[-1]["original"]["part"] = parts.get(batch["part_no"])
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
-                if identity.source_table != "schedule":
+                if source != "schedule":
                     reject("point_evidence_unproven", "这道零工时工序来自旧候选方案或模拟结果，没有可核对的依据。")
                 if point_work is None:
-                    point_work = official_point_work(conn, entry.locator.version)
+                    point_work = context.point_work(locator.version)
                 _attach_point_work(result[-1], point_work[item["op_id"]])
-        _attach_parts(facts, result)
-        operations = {int(row["source_key"]): row["ref"] for row in facts.active_operation_source_refs()}
+        operations = {int(row["source_key"]): row["ref"] for row in capture.table("WorkbenchPlanSourceRefs")
+                      if row["kind"] == "operation" and row["active"] == 1}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
-        delivery_record = (PlanDeliveryRepository(conn).completion_record(identity, None)
-                           if identity.source_table == SOURCE_SCHEDULE else {"source": identity.source_table})
+        history = context.history(locator.version) if source == SOURCE_SCHEDULE else None
+        delivery_record = ({"source": source, "summary": history["result_summary"], "result_status": history["result_status"]}
+                           if history is not None else {"source": source})
         deferred, deferred_issues = deferred_operation_evidence(conn, delivery_record)
-        runtime = _formal_effort_source(conn, ref, entry.locator.version, delivery_record, list(raw.values()))
-        slot_types = operation_types(result, refs, {row["op_type_id"]: row for row in facts.read_whole_table("OpTypes")[1]})
+        runtime = _formal_effort_source(conn, ref, locator.version, delivery_record, list(raw.values()))
+        slot_types = operation_types(result, refs, capture.index("OpTypes", "op_type_id"))
         types = runtime.get("operation_types")
         if types is None:
             types = {row["operation_ref"]: {"ref": None, "label": None} for row in result}
         return result, {"identity": project_plan(entry, ref), "source_table": table, **runtime,
                         "operation_types": types, "trial_operation_types": slot_types,
-                        "material_policy": plan_material_policy(conn, entry.locator.version),
+                        "material_policy": plan_material_policy(conn, locator.version, history=history),
                         "deferred_operation_ids": sorted(deferred), "deferred_operation_issues": deferred_issues}, tables["BatchOperations"], operations, issues
-
 
 
 def _formal_effort_source(conn, ref, version, record, rows):
@@ -148,23 +170,6 @@ def _date_issues(rows):
     return issues
 
 
-def _attach_parts(facts, rows):
-    parts = {row["part_no"]: row for row in facts.raw_parts()}
-    for row in rows:
-        row["original"]["part"] = parts.get(row["original"]["batch"]["part_no"])
-
-
-def _source_rows(facts, source, detail):
-    sources = {"schedule": ("Schedule", "schedule_row", facts.raw_schedule),
-               "candidate_rows": ("ScheduleCandidateRows", "candidate_row", facts.raw_candidate_rows),
-               "adjustment_scenario_rows": ("ScheduleAdjustmentScenarioRow", "scenario_row", facts.raw_scenario_rows)}
-    table, kind, read_rows = sources[source]
-    wanted = {row["schedule_id"] for row in detail}
-    raw = {row["id"]: row for row in read_rows() if row["id"] in wanted}
-    source_refs = {int(row["source_key"]): row["ref"] for row in facts.active_source_refs_by_kind(kind)}
-    return raw, source_refs, table
-
-
 def _candidate(conn, ref):
     store = CandidateStore(conn)
     with store.snapshot():
@@ -178,19 +183,20 @@ def _candidate(conn, ref):
         capture = store.capture(run_ref)
         facts = GenerationFacts(capture)
         rows = store.tasks(ref)
-        tasks_projection(rows, candidate, facts)
-        point_reader = CandidatePointReader(candidate, facts)
+        prepared_tasks = {}
+        validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
         result = []
         for item in rows:
-            gaps = []
-            op = facts.operation(item["operation_ref"], item["payload"], gaps)
+            prepared = prepared_tasks[item["row_ref"]]
+            op, gaps = prepared["operation"], prepared["operation_gaps"]
             batch = facts.tables["Batches"].get(op.get("batch_id"))
             if gaps or not op or batch is None:
                 reject("trial_base_incomplete", "生成候选时的工序或批次资料缺失。")
             result.append(_row(item["payload"], op, batch, facts.entity_refs, source_task_ref=None,
-                               source_row_ref=item["row_ref"], operation_ref=item["operation_ref"]))
+                               source_row_ref=item["row_ref"], operation_ref=item["operation_ref"],
+                               interval=prepared["interval"]))
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
-                _attach_point_work(result[-1], point_reader.work(item["operation_ref"], item["payload"]))
+                _attach_point_work(result[-1], prepared["point_work"])
             result[-1]["original"]["part"] = facts.tables["Parts"].get(batch["part_no"])
         scope = dispositions(receipt)
         summary = candidate_summary(candidate, scope)
@@ -201,30 +207,34 @@ def _candidate(conn, ref):
                 raise CandidateAdoptionBlocked("candidate_scope_incomplete", "候选任务范围不完整。")
         except CandidateAdoptionBlocked:
             issues.append(issue("trial_base_incomplete", "候选方案没有覆盖排产时的全部工序，没排上的工序也照样列出。"))
+        work_types = facts.tables["OpTypes"]
         extra = {"identity": {"candidate_ref": ref, "run_ref": run_ref, "kind": "candidate",
                                "display_name": summary["label"], "completeness": summary["completeness"]},
                  "capture": capture, "dispositions": scope, "operation_effort": receipt.get("operation_effort"),
-                 "trial_operation_types": operation_types(result, facts.entity_refs,
-                      {row["op_type_id"]: row for row in _table(facts.archive, "OpTypes") or []}),
-                 "operation_types": operation_types(result, facts.entity_refs,
-                      {row["op_type_id"]: row for row in _table(facts.archive, "OpTypes") or []},
+                 "trial_operation_types": operation_types(result, facts.entity_refs, work_types),
+                 "operation_types": operation_types(result, facts.entity_refs, work_types,
                       candidate["artifact"].get("results", []))}
-        return result, extra, facts.tables["BatchOperations"], {key: ref for ref, key in facts.operations.items()}, issues
+        return result, extra, facts.tables["BatchOperations"], {key: ref for ref, key in facts.operations.items()}, issues, facts
 
 
 def prepare_base(conn, intent):
     key, ref = next(iter(intent["base"].items()))
-    rows, source, all_ops, operation_refs, issues = _plan(conn, ref) if key == "plan_ref" else _candidate(conn, ref)
+    capture = ProductionFactsCapture(conn)
+    if key == "plan_ref":
+        rows, source, all_ops, operation_refs, issues = _plan(conn, ref, capture)
+        source_facts = None
+    else:
+        rows, source, all_ops, operation_refs, issues, source_facts = _candidate(conn, ref)
     if not rows:
         reject("trial_base_empty", "基础方案没有真实任务行，未从摘要重造任务。")
     if len(rows) > MAX_TRIAL_TASKS:
         reject("query_too_large", "完整基础范围超过10000条，未按可见范围截断。", 413)
     issues.extend(_date_issues(rows))
     _predecessors(rows, all_ops, operation_refs, issues)
-    live = live_context(conn, [row["operation_ref"] for row in rows])
+    live = live_context(conn, [row["operation_ref"] for row in rows], capture)
     admission = {"input": intent, "source": source, "facts": live["facts"], "facts_hash": live["facts_hash"],
                  "baseline": live["baseline"], "execution": live["execution"], "base_issues": issues}
-    _attach_original_context(rows, source, key, live)
+    _attach_original_context(rows, source, key, live, source_facts)
     issues.extend(attach_execution_anchors(conn, rows, live))
     return admission, rows, live
 
@@ -242,11 +252,10 @@ def _original_external_facts(rows, original_tables, live):
     return by_operation, member_index(by_operation, operations or [])
 
 
-def _attach_original_context(rows, source, key, live):
+def _attach_original_context(rows, source, key, live, facts=None):
     original_execution = ({row["operation_ref"]: row for row in source["capture"]["execution"]}
                           if key == "candidate_ref" else live["execution"])
-    original_tables = (stored_json(source["capture"]["facts_text"])
-                       if key == "candidate_ref" else None)
+    original_tables = facts.archive if facts is not None else None
     by_operation, members = _original_external_facts(rows, original_tables, live)
     for row in rows:
         original = row["original"]

@@ -17,10 +17,14 @@ from __future__ import annotations
 import sqlite3
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.models.schedule_plan_role import SOURCE_SCHEDULE
+from core.models.schedule_plan_role import (
+    SOURCE_ADJUSTMENT_SCENARIO_ROWS,
+    SOURCE_CANDIDATE_ROWS,
+    SOURCE_SCHEDULE,
+)
 
 from .schedule_detail_query import build_schedule_detail_sql
-from .schedule_plan_query_repo import SchedulePlanQueryRepository
+from .schedule_plan_query_repo import _SCENARIO_PLAN_ROWS_SQL, SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 from .schedule_time_sql import DETAIL_OVERLAP_OR_BAD_TIME_SQL
 
@@ -50,13 +54,20 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
     def __init__(self, conn: sqlite3.Connection, logger=None):
         super().__init__(conn, logger=logger)
         self._histories: Dict[int, Optional[Dict[str, Any]]] = {}
+        self._history_rows: Dict[int, List[Dict[str, Any]]] = {}
         self._roles: Dict[int, List[Dict[str, Any]]] = {}
-        self._scenarios: Dict[str, Dict[str, Any]] = {}
+        self._scenarios: Dict[str, Optional[Dict[str, Any]]] = {}
         self._spans: Dict[Tuple[int, str, Optional[int], Optional[str]], Optional[ScheduleTimeSpanRow]] = {}
+        self._storage_columns: Dict[str, List[str]] = {}
+        self._latest_version: Optional[int] = None
+        self._latest_version_loaded = False
 
     def latest_version(self) -> Optional[int]:
-        row = self.fetchone("SELECT version FROM ScheduleHistory WHERE version > 0 ORDER BY version DESC LIMIT 1")
-        return int(row["version"]) if row else None
+        if not self._latest_version_loaded:
+            row = self.fetchone("SELECT version FROM ScheduleHistory WHERE version > 0 ORDER BY version DESC LIMIT 1")
+            self._latest_version = int(row["version"]) if row else None
+            self._latest_version_loaded = True
+        return self._latest_version
 
     def history_page(
         self, *, page_size: int, before_version: Optional[int],
@@ -97,11 +108,19 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
 
     def get_history_identity_row(self, version: int) -> Optional[Dict[str, Any]]:
         if version not in self._histories:
-            self._histories[version] = self.fetchone(
-                "SELECT version, result_status, result_summary FROM ScheduleHistory WHERE version = ? "
-                "ORDER BY schedule_time DESC, id DESC LIMIT 1", (version,),
-            )
+            rows = self.history_rows(version)
+            self._histories[version] = {key: rows[0][key] for key in ("version", "result_status", "result_summary")} if rows else None
         return self._histories[version]
+
+    def history_rows(self, version: int) -> List[Dict[str, Any]]:
+        if version not in self._history_rows:
+            if "ScheduleHistory" not in self._storage_columns:
+                self._storage_columns["ScheduleHistory"] = [row["name"] for row in self.fetchall('PRAGMA table_info("ScheduleHistory")')]
+            selected = ",".join('CASE WHEN 1 THEN "' + name.replace('"', '""') + '" END AS "' + name.replace('"', '""') + '"'
+                                for name in self._storage_columns["ScheduleHistory"])
+            self._history_rows[version] = self.fetchall(
+                "SELECT " + selected + " FROM ScheduleHistory WHERE version=? ORDER BY schedule_time DESC,id DESC LIMIT 2", (version,))
+        return self._history_rows[version]
 
     def list_plan_role_options(self, version: int) -> List[Dict[str, Any]]:
         if version not in self._roles:
@@ -109,9 +128,19 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         return self._roles[version]
 
     def get_scenario_context(self, scenario_id: str) -> Optional[Dict[str, Any]]:
-        if scenario_id in self._scenarios:
-            return self._scenarios[scenario_id]
-        return super().get_scenario_context(scenario_id)
+        if scenario_id not in self._scenarios:
+            self._scenarios[scenario_id] = super().get_scenario_context(scenario_id)
+        return self._scenarios[scenario_id]
+
+    def _plan_rows_sql(self, *, source_table, candidate_id, scenario_id):
+        if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
+            scenario_key = str(scenario_id or "")
+            if not scenario_key:
+                raise ValueError("scenario_id is required for adjustment_scenario_rows plan")
+            return _SCENARIO_PLAN_ROWS_SQL, [scenario_key]
+        return super()._plan_rows_sql(
+            source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
+        )
 
     def get_plan_time_span(
         self, *, version: int, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
@@ -127,6 +156,31 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         raise RuntimeError("分页目录禁止调用全量历史查询。")
 
     # ---- bounded whole-plan reads (callers admit the plan by comparing len() with their cap) ----
+    def list_plan_storage_rows_bounded(
+        self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        """Capture every persisted field without declared DATE/TIMESTAMP conversion."""
+        _, extra = self._plan_rows_sql(
+            source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
+        )
+        if source_table == SOURCE_SCHEDULE:
+            table, joins, where = "Schedule", "", "r.version = ?"
+        elif source_table == SOURCE_CANDIDATE_ROWS:
+            table, joins, where = "ScheduleCandidateRows", "", "r.version = ? AND r.candidate_id = ?"
+        else:
+            table = "ScheduleAdjustmentScenarioRow"
+            joins = " JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id"
+            where = "s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'"
+        if table not in self._storage_columns:
+            self._storage_columns[table] = [row["name"] for row in self.fetchall(f'PRAGMA table_info("{table}")')]
+        expressions = []
+        for name in self._storage_columns[table]:
+            quoted = '"' + name.replace('"', '""') + '"'
+            expressions.append(f"CASE WHEN 1 THEN r.{quoted} ELSE NULL END AS {quoted}")
+        sql = "SELECT " + ", ".join(expressions) + f' FROM "{table}" r{joins} WHERE {where}'
+        return self.fetchall(sql + " ORDER BY r.id ASC, r.rowid ASC LIMIT ?", [version] + extra + [limit])
+
     def list_plan_row_ids_bounded(
         self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
         limit: int,

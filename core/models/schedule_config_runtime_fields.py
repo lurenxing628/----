@@ -8,6 +8,13 @@ from core.models.objective import objective_choice_labels
 MISSING_POLICY_ERROR = "error"
 MISSING_POLICY_FALLBACK_WITH_DEGRADATION = "fallback_with_degradation"
 
+RETIRED_CONFIG_FIELDS: Tuple[str, ...] = (
+    "graph_candidate_weight_count",
+    "graph_selection_policy",
+    "graph_overdue_tolerance_count",
+    "graph_tardiness_tolerance_ratio",
+)
+
 
 # 产品配置字段的共同语义；服务层只为这些字段补页面元数据。
 @dataclass(frozen=True)
@@ -89,7 +96,7 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         default="improve",
         choices=("greedy", "improve"),
     ),
-    RuntimeConfigFieldSpec(key="time_budget_seconds", field_type="int", default=5, min_value=1),
+    RuntimeConfigFieldSpec(key="time_budget_seconds", field_type="int", default=10, min_value=1),
     RuntimeConfigFieldSpec(
         key="objective",
         field_type="enum",
@@ -128,30 +135,6 @@ _FIELD_SPECS: Tuple[RuntimeConfigFieldSpec, ...] = (
         min_value=0,
     ),
     RuntimeConfigFieldSpec(
-        key="graph_candidate_weight_count",
-        field_type="int",
-        default=5,
-        choices=("3", "5", "7"),
-    ),
-    RuntimeConfigFieldSpec(
-        key="graph_selection_policy",
-        field_type="enum",
-        default="balanced",
-        choices=("balanced", "score_only"),
-    ),
-    RuntimeConfigFieldSpec(
-        key="graph_overdue_tolerance_count",
-        field_type="int",
-        default=1,
-        choices=("0", "1", "2"),
-    ),
-    RuntimeConfigFieldSpec(
-        key="graph_tardiness_tolerance_ratio",
-        field_type="float",
-        default=0.10,
-        choices=("0.05", "0.1", "0.2"),
-    ),
-    RuntimeConfigFieldSpec(
         key="graph_debug_export",
         field_type="yes_no",
         default="no",
@@ -183,6 +166,7 @@ def default_snapshot_values() -> Dict[str, Any]:
 __all__ = [
     "MISSING_POLICY_ERROR",
     "MISSING_POLICY_FALLBACK_WITH_DEGRADATION",
+    "RETIRED_CONFIG_FIELDS",
     "RuntimeConfigFieldSpec",
     "default_for",
     "default_snapshot_values",

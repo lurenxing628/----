@@ -9,12 +9,12 @@ from core.models.content import content_text
 from core.models.workbench_command import validate_request_key
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_codec import load_object, require_object, same
-from core.services.workbench.facts.trial_policy import load_scenario, require_trial_schema
+from core.services.workbench.facts.trial_policy import load_scenario_record, require_trial_schema
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
-from .adoption_history_policy import MAX_SCENARIO_BYTES, bound, load_history, load_receipt, load_scenario_headers
+from .adoption_history_policy import MAX_SCENARIO_BYTES, bound, load_history, load_receipt
 
 
 def invalid() -> NoReturn:
@@ -42,20 +42,16 @@ def scenario_evidence(conn, scenario_ref):
     repo = TrialAdoptionHistoryRepository(conn)
     trial_repo = WorkbenchTrialRepository(conn)
     require_trial_schema(trial_repo)
-    header, draft = load_scenario_headers(repo, scenario_ref)
-    # Bound the permanent detail too, before the existing snapshot reader loads it.
-    sizes = repo.scenario_row_sizes(scenario_ref)
-    bound(sum(size or 0 for size in sizes), MAX_SCENARIO_BYTES)
-    if len(sizes) > 10000:
-        reject("query_too_large", "试调方案的明细超过 10000 条上限，这次没有读取。请缩小范围。", 413)
-    # The immutable save receipt still contains the complete public snapshot.
-    # Bound it before reconstructing metadata plus permanent task bodies.
+    header, saved = load_scenario_record(trial_repo, scenario_ref, row_limit=10000,
+                                          byte_limit=MAX_SCENARIO_BYTES, size_check=bound)
+    draft = trial_repo.draft_header(header["draft_ref"])
+    if draft is None:
+        reject("adoption_history_invalid", "试调方案的原草稿缺失，请联系维护人员核对。")
+    raw = draft["admission_json"]
+    if type(raw) is str:
+        bound(len(raw.encode("utf-8")), MAX_SCENARIO_BYTES, "试调原始草稿内容")
+    admission = load_object(raw)
     receipt = load_receipt(repo, header["request_key"])
-    saved = load_scenario(trial_repo, scenario_ref)
-    admission_row = repo.draft_admission(draft["draft_ref"])
-    if admission_row is None:
-        invalid()
-    admission = load_object(admission_row["admission_json"])
     intent = require_object(admission.get("input"))
     baseline = require_object(admission.get("baseline"))
     source = require_object(admission.get("source"))
@@ -137,9 +133,9 @@ def _audit_lineage(audit, row, plan, saved, header, draft):
         raise ValueError("Audit lineage mismatch")
 
 
-def audit_fields(repo, row, plan, saved, header, draft):
+def audit_fields(repo, row, plan, saved, header, draft, *, context=None):
     empty = {"reason": None, "declared_operator": None, "application_operator": None, "adopted_at": None}
-    history = load_history(repo, plan["version"])
+    history = load_history(repo, plan["version"], context=context)
     if history is None:
         return empty, [gap("audit_missing", "找不到对应的正式计划历史，或同一版本有多条记录，采用信息暂时无法确认。")]
     try:

@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
-from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import capture_algo_stats
+from core.algorithms.evaluation import objective_score
 from core.errors import ValidationError
 
 from .attempt_records import attempt_decision_evidence, validation_error_origin
 from .candidate_comparison import candidate_is_preferred
-from .deadline_guard import can_afford_decode, guard_decoder, observed_decode_seconds
+from .candidate_fingerprint import score_strictly_better
 from .grasp_ig_specs import GRASP_ORIGIN, IG_ORIGIN, build_grasp_ig_candidate_specs
-from .search_budget import SearchBudgetExhausted
-from .search_state import append_unique_rejected_attempt
+from .search_stage import SearchStage
+from .search_state import OptimizerSearchState, append_unique_rejected_attempt
+from .shared_budget import SharedSearchSkip
+from .shared_decode import decode_and_metrics
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
+    from .shared_decode import SharedDecodeSession
 
 
 GRASP_IG_PHASE = "grasp_ig_candidate_construction"
@@ -60,11 +63,14 @@ def _evaluate_candidate(
     readiness_gate_enabled: bool,
     graph_ready_context: Optional[Any],
     construction: Dict[str, Any],
+    decode_session: SharedDecodeSession,
 ) -> Dict[str, Any]:
     candidate_params = dict(params or {})
     candidate_params["candidate_construction"] = dict(construction or {})
-    res, summ, used_strat, used_params = schedule_fn(
-        scheduler,
+    decoded = decode_and_metrics(
+        decode_session=decode_session, scheduler=scheduler, schedule_fn=schedule_fn,
+        expected_operations=algo_ops_to_schedule, objective_name=objective_name,
+        optimizer_algo_stats=optimizer_algo_stats,
         strict_mode=bool(strict_mode),
         operations=algo_ops_to_schedule,
         batches=batches,
@@ -81,22 +87,17 @@ def _evaluate_candidate(
         readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_ready_context=graph_ready_context,
     )
-    metrics = compute_metrics(
-        res, batches, expected_operations=algo_ops_to_schedule,
-        seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
-    )
-    algo_stats = capture_algo_stats(scheduler, optimizer_algo_stats)
-    return {
-        "results": res,
-        "summary": summ,
-        "strategy": used_strat,
-        "params": _public_candidate_params(used_params),
+    candidate = {
+        "results": decoded.results,
+        "summary": decoded.summary,
+        "strategy": decoded.used_strategy,
+        "params": _public_candidate_params(decoded.used_params),
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
         "order": list(order),
-        "metrics": metrics,
-        "score": (float(summ.failed_ops),) + objective_score(objective_name, metrics),
-        "algo_stats": algo_stats,
+        "metrics": decoded.metrics,
+        "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
+        "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
         "seed_result_count": len(seed_sr_list or []),
         "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
@@ -107,6 +108,15 @@ def _evaluate_candidate(
             "restart_index": int(construction.get("restart_index") or 0),
         },
     }
+    if decoded.receipt is not None:
+        candidate["decode_receipt"] = decoded.receipt
+        if decoded.receipt["execution_kind"] == "decision_reused":
+            source_runtime = decoded.receipt["source_runtime_ms"]
+            source_initial = decoded.receipt["source_initial_decode_runtime_ms"]
+            candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
+            candidate["initial_decode_runtime_ms"] = (
+                source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
+    return candidate
 
 
 def _append_attempt(
@@ -339,6 +349,7 @@ def _run_candidate_spec(
     search_report_state: Optional[OptimizationSearchReportState],
     clock: Callable[[], float],
     t_begin: float,
+    decode_session: SharedDecodeSession,
 ) -> Optional[Dict[str, Any]]:
     origin = str(spec["origin"])
     index = int(spec["restart_index"])
@@ -367,8 +378,15 @@ def _run_candidate_spec(
             readiness_gate_enabled=bool(readiness_gate_enabled),
             graph_ready_context=graph_ready_context,
             construction=dict(spec["construction"]),
+            decode_session=decode_session,
         )
-    except SearchBudgetExhausted:
+    except SharedSearchSkip as exc:
+        attempts.append({
+            "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
+            "source": origin, "candidate_status": "skipped", "reason": exc.reason,
+            "request_id": exc.request_id, "decode_receipt": exc.receipt,
+            "strategy": base_strategy.value, "dispatch_mode": dispatch_mode, "dispatch_rule": dispatch_rule,
+        })
         return best
     except ValidationError as exc:
         if bool(strict_mode):
@@ -387,7 +405,8 @@ def _run_candidate_spec(
         return best
     # Measured decode time travels with the candidate so a GRASP/IG incumbent can still budget
     # the local search and later guards (the key name is shared with multi-start starts).
-    candidate["initial_decode_runtime_ms"] = max((clock() - decode_started) * 1000.0, 0.0)
+    if (candidate.get("decode_receipt") or {}).get("execution_kind") != "decision_reused":
+        candidate["initial_decode_runtime_ms"] = max((clock() - decode_started) * 1000.0, 0.0)
     return _record_candidate(
         best=best,
         candidate=candidate,
@@ -401,99 +420,96 @@ def _run_candidate_spec(
     )
 
 
-def run_grasp_ig_candidates(
-    *,
-    algo_mode: str,
-    best: Optional[Dict[str, Any]],
-    version: int,
-    candidate_construction: Dict[str, Any],
-    scheduler: Any,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
-    start_dt: datetime,
-    end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
-    base_strategy: SortStrategy,
-    base_params: Dict[str, Any],
-    build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]],
-    dispatch_rule_cfg: str,
-    valid_dispatch_rules: List[str],
-    resource_pool: Optional[Dict[str, Any]],
-    objective_name: str,
-    deadline: float,
-    attempts: List[Dict[str, Any]],
-    improvement_trace: List[Dict[str, Any]],
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    t_begin: float,
-    readiness_gate_enabled: bool,
-    strict_mode: bool,
-    graph_ready_context: Optional[Any],
-    clock: Callable[[], float],
-    rng_factory: Callable[[int], Any],
-    schedule_fn: Callable[..., Any],
-    batch_order_enabled: bool = True,
-    search_report_state: Optional[OptimizationSearchReportState] = None,
-) -> Optional[Dict[str, Any]]:
-    if graph_ready_context is not None:
-        _mark_phase_skipped(search_report_state, "graph_ready_uses_graph_candidate_phase")
-        return best
-    specs = _candidate_specs_for_run(
-        algo_mode=algo_mode,
-        best=best,
-        base_strategy=base_strategy,
-        base_params=base_params,
-        build_order=build_order,
-        version=int(version),
-        candidate_construction=candidate_construction,
-        dispatch_rule_cfg=dispatch_rule_cfg,
-        valid_dispatch_rules=valid_dispatch_rules,
-        batch_order_enabled=batch_order_enabled,
-        rng_factory=rng_factory,
-        search_report_state=search_report_state,
-    )
-    if specs is None:
-        return best
+class GraspIGStage(SearchStage):
+    """Retain one set of ordinary batch-order construction specs across task rotation."""
 
-    if not can_afford_decode(best, clock=clock, deadline=deadline, search_report_state=search_report_state,
-                             phase=GRASP_IG_PHASE):
-        return best
-    schedule_fn = guard_decoder(schedule_fn, clock=clock, deadline=deadline, search_report_state=search_report_state,
-                                minimum_decode_seconds=observed_decode_seconds(best))
-    for spec in specs:
-        if _deadline_reached(clock, deadline, search_report_state):
-            break
-        best = _run_candidate_spec(
-            spec=spec,
-            best=best,
-            scheduler=scheduler,
-            strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
-            base_strategy=base_strategy,
-            base_params=base_params,
-            start_dt=start_dt,
-            end_date=end_date,
-            downtime_map=downtime_map,
-            seed_sr_list=seed_sr_list,
-            resource_pool=resource_pool,
-            objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
-            graph_ready_context=graph_ready_context,
-            attempts=attempts,
-            improvement_trace=improvement_trace,
-            search_report_state=search_report_state,
-            clock=clock,
-            t_begin=t_begin,
+    name = GRASP_IG_PHASE
+
+    def __init__(
+        self, *, algo_mode: str, version: int, candidate_construction: Dict[str, Any], scheduler: Any,
+        algo_ops_to_schedule: List[Any], batches: Dict[str, Any], start_dt: datetime, end_date: Optional[date],
+        downtime_map: Dict[str, List[Tuple[datetime, datetime]]], seed_sr_list: List[ScheduleResult],
+        base_strategy: SortStrategy, base_params: Dict[str, Any],
+        build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]], dispatch_rule_cfg: str,
+        valid_dispatch_rules: List[str], resource_pool: Optional[Dict[str, Any]], objective_name: str,
+        deadline: float, optimizer_algo_stats: Optional[Dict[str, Any]], t_begin: float,
+        readiness_gate_enabled: bool, strict_mode: bool, graph_ready_context: Optional[Any],
+        clock: Callable[[], float], rng_factory: Callable[[int], Any], schedule_fn: Callable[..., Any],
+        batch_order_enabled: bool = True,
+        search_report_state: Optional[OptimizationSearchReportState] = None,
+        state: OptimizerSearchState,
+        decode_session: SharedDecodeSession,
+    ) -> None:
+        self.state = state
+        self.clock = clock
+        self.deadline = deadline
+        self.search_report_state = search_report_state
+        self.index = 0
+        self.finished = False
+        self._stop_reason: Optional[str] = None
+        self.schedule_fn = schedule_fn
+        self.run_spec = partial(
+            _run_candidate_spec, scheduler=scheduler, strict_mode=bool(strict_mode),
+            algo_ops_to_schedule=algo_ops_to_schedule, batches=batches, base_strategy=base_strategy,
+            base_params=base_params, start_dt=start_dt, end_date=end_date, downtime_map=downtime_map,
+            seed_sr_list=seed_sr_list, resource_pool=resource_pool, objective_name=objective_name,
+            optimizer_algo_stats=optimizer_algo_stats, readiness_gate_enabled=bool(readiness_gate_enabled),
+            graph_ready_context=graph_ready_context, attempts=self.state.attempts,
+            improvement_trace=self.state.improvement_trace, search_report_state=search_report_state,
+            clock=clock, t_begin=t_begin,
+            decode_session=decode_session,
         )
-    return best
+        if graph_ready_context is not None:
+            self._stop_reason = "graph_ready_uses_graph_candidate_phase"
+            _mark_phase_skipped(search_report_state, self._stop_reason)
+            self.specs: List[Dict[str, Any]] = []
+        else:
+            specs = _candidate_specs_for_run(
+                algo_mode=algo_mode, best=self.state.best, base_strategy=base_strategy, base_params=base_params,
+                build_order=build_order, version=int(version), candidate_construction=candidate_construction,
+                dispatch_rule_cfg=dispatch_rule_cfg, valid_dispatch_rules=valid_dispatch_rules,
+                batch_order_enabled=batch_order_enabled, rng_factory=rng_factory,
+                search_report_state=search_report_state,
+            )
+            self.specs = specs if specs is not None else []
+            if specs is None:
+                self._stop_reason = "candidate_specs_unavailable"
+
+    def available(self) -> bool:
+        if self.finished or self._stop_reason is not None or self.index >= len(self.specs):
+            return False
+        if _deadline_reached(self.clock, self.deadline, self.search_report_state):
+            self._stop_reason = "time_budget"
+            return False
+        return True
+
+    def unavailable_reason(self) -> Optional[str]:
+        if self._stop_reason is not None:
+            return self._stop_reason
+        if self.index >= len(self.specs):
+            return "specs_exhausted"
+        if self.finished:
+            return "finished"
+        return None if self.available() else self._stop_reason
+
+    def run_task(self) -> int:
+        if not self.available():
+            return 0
+        spec = self.specs[self.index]
+        self.index += 1
+        previous = self.state.best
+        self.state.best = self.run_spec(spec=spec, best=previous, schedule_fn=self.schedule_fn)
+        return int(self.state.best is not previous and score_strictly_better(
+            (self.state.best or {}).get("score"), (previous or {}).get("score"),
+        ))
+
+    def finish(self) -> None:
+        self.finished = True
 
 
 __all__ = [
     "GRASP_IG_PHASE",
     "GRASP_ORIGIN",
     "IG_ORIGIN",
-    "run_grasp_ig_candidates",
+    "GraspIGStage",
 ]

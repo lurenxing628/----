@@ -2,11 +2,13 @@
 
 import pytest
 
+from core.services.process.template_hours import ProcessTemplateHours
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.file_route import ProcessRouteFileOperations
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
+from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 from tests.workbench.process_file_api_support import file_api_fixture, node_contract, uncertain_failure
-from tests.workbench.process_stage_api_support import success
+from tests.workbench.process_stage_api_support import rejected, success
 
 _fixture = file_api_fixture
 
@@ -58,3 +60,33 @@ def test_response_loss_recovers_actual_committed_receipt(file_api, monkeypatch, 
     assert receipt["result"] == "committed" and receipt["replayed"] is True
     assert success(file_api.file_post(kind, "confirm", body)) == receipt
     assert file_api.snapshot() == before
+
+
+def test_hours_batch_reads_current_once_and_rolls_back_actual_revision_change(file_api, monkeypatch):
+    preview, body = file_api.file_intent("hours")
+    before, calls, writes = file_api.snapshot(), [], []
+    current, update = ProcessTemplateHours.current, WorkbenchProcessHoursRepository.update_operation_hours
+
+    def observed(self, refs):
+        calls.append(tuple(refs))
+        return current(self, refs)
+
+    def change_before_write(self, op_id, values, *, ref, revision):
+        writes.append(op_id)
+        if len(writes) == 2:
+            self.conn.execute("UPDATE PartOperations SET unit_hours=99 WHERE id=?", (op_id,))
+        return update(self, op_id, values, ref=ref, revision=revision)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ProcessTemplateHours, "current", observed)
+        patch.setattr(WorkbenchProcessHoursRepository, "update_operation_hours", change_before_write)
+        rejected(file_api.file_post("hours", "confirm", body), "stale_write")
+    assert len(calls) == 1 and len(calls[0]) == 2 and len(writes) == 2
+    assert file_api.snapshot() == before
+    calls.clear()
+    with monkeypatch.context() as patch:
+        patch.setattr(ProcessTemplateHours, "current", observed)
+        receipt = success(file_api.file_post("hours", "confirm", body))
+    assert len(calls) == 1 and len(calls[0]) == 2
+    assert receipt["data"]["summary"]["update"] == 2
+    node_contract("receipt", receipt, "hours", body=body, preview=preview)

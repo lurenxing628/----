@@ -71,13 +71,13 @@
     }
     return result;
   }
-  function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
+  function prepare(data, mode, query, baseline, changedOnly = false) {
     const labels = names(data), needle = query.trim().toLocaleLowerCase();
     const directory = new Map(data.resources.map(row => [row.ref, row]));
     const comparison = data.projections.baseline;
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const matches = task => (!changedOnly || changed.has(task.operation_ref)) && (!needle || searchText(task, labels).includes(needle));
-    const selected = data.tasks.filter(matches), groups = new Map(), conflicts = new Set(), locations = new Map(), baselineLocations = new Map();
+    const selected = data.tasks.filter(matches), selectedTasks = new Set(selected), groups = new Map(), conflicts = new Set();
     let start = instant(data.plan_span.start), end = instant(data.plan_span.end);
     const add = (task, before) => {
       const item = { task, start: instant(task.start), end: instant(task.end), baseline: before };
@@ -94,14 +94,16 @@
     const P = window.PointContract, G = window.PointGanttModel;
     const bounds = G.bounds(start, end, Array.from(groups.values()).some(g => [...g.tasks, ...g.before].some(i => P.isPoint(i.task))));
     start = bounds.start; end = bounds.end;
-    let top = 0;
-    const rows = [];
     const occupancy = new Map(data.projections.occupancy.resources.filter(row => row.kind === mode).map(row => [row.resource_ref, row]));
+    const preparedGroups = [];
     for (const group of groups.values()) {
       const overlap = new Set();
-      const split = (items, conflicts) => [...tracks(items.filter(i => !P.isPoint(i.task)), conflicts),
-        ...G.tracks(items.filter(i => P.isPoint(i.task)), start, end, width)];
-      const current = split(group.tasks, overlap), old = split(group.before, new Set());
+      const shown = new Set(group.tasks.filter(item => selectedTasks.has(item.task)));
+      group.before.forEach(item => { if (matches(item.task)) shown.add(item); });
+      const currentNormal = tracks(group.tasks.filter(i => !P.isPoint(i.task)), overlap);
+      const oldNormal = tracks(group.before.filter(i => !P.isPoint(i.task)), new Set());
+      const currentPoints = G.prepareTracks(group.tasks.filter(i => P.isPoint(i.task)));
+      const oldPoints = G.prepareTracks(group.before.filter(i => P.isPoint(i.task)));
       // Visual overlap splits tracks; actual conflict color comes from the same server occupancy snapshot.
       const resourceOccupancy = occupancy.get(group.id);
       const segments = resourceOccupancy ? resourceOccupancy.segments.filter(item => item.concurrent_operations > 1)
@@ -111,18 +113,41 @@
         const hit = firstIntersecting(segments, item.start);
         if (hit < segments.length && segments[hit].start < item.end) conflicts.add(item.task.task_ref);
       }
-      [...current, ...old].forEach((all, index) => {
-        const items = all.filter(item => matches(item.task));
+      preparedGroups.push({ group, shown, currentNormal: currentNormal.map(lane => lane.filter(item => shown.has(item))),
+        oldNormal: oldNormal.map(lane => lane.filter(item => shown.has(item))), currentPoints, oldPoints,
+        overlap: overlap.size, occupancy: resourceOccupancy });
+    }
+    return { mode, labels, groups: preparedGroups, start, end, conflicts, tasks: selected };
+  }
+  function layoutPrepared(prepared, width = 1000) {
+    const { mode, labels, start, end, conflicts, tasks } = prepared;
+    const rows = [], locations = new Map(), baselineLocations = new Map(), G = window.PointGanttModel;
+    let top = 0, groupCount = 0;
+    for (const fact of prepared.groups) {
+      const { group, shown, currentNormal, oldNormal } = fact, firstRow = rows.length;
+      const currentPoints = fact.currentPoints.length ? G.layoutTracks(fact.currentPoints, start, end, width) : [];
+      const oldPoints = fact.oldPoints.length ? G.layoutTracks(fact.oldPoints, start, end, width) : [];
+      const currentCount = currentNormal.length + currentPoints.length;
+      function append(items, before, point, track, trackCount, subrow, index) {
         if (!items.length) return;
-        const before = index >= current.length, height = before ? 26 : 56;
-        const row = { ...group, items, top, height, before, occupancy: before ? null : resourceOccupancy, point: P.isPoint(items[0].task), track: before ? index - current.length : index,
-          trackCount: (before ? old : current).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length,
-          subrow: (before ? old : current).slice(0, before ? index - current.length : index).filter(lane => P.isPoint(lane[0].task) === P.isPoint(items[0].task)).length + 1, overlap: P.isPoint(items[0].task) ? 0 : overlap.size, key: group.id + ':' + index };
+        const height = before ? 26 : 56;
+        const row = { ...group, items, top, height, before, occupancy: before ? null : fact.occupancy, point, track,
+          trackCount, subrow, overlap: point ? 0 : fact.overlap, key: group.id + ':' + index };
         items.forEach(item => (before ? baselineLocations : locations).set(item.task.task_ref, { row: rows.length, top, item }));
         rows.push(row); top += height;
-      });
+      }
+      currentNormal.forEach((items, lane) => append(items, false, false, lane, currentNormal.length, lane + 1, lane));
+      currentPoints.forEach((items, lane) => append(items.filter(item => shown.has(item)), false, true,
+        currentNormal.length + lane, currentPoints.length, lane + 1, currentNormal.length + lane));
+      oldNormal.forEach((items, lane) => append(items, true, false, lane, oldNormal.length, lane + 1, currentCount + lane));
+      oldPoints.forEach((items, lane) => append(items.filter(item => shown.has(item)), true, true,
+        oldNormal.length + lane, oldPoints.length, lane + 1, currentCount + oldNormal.length + lane));
+      if (rows.length > firstRow) groupCount++;
     }
-    return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks: selected, groupCount: new Set(rows.map(row => row.id)).size };
+    return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks, groupCount };
+  }
+  function layout(data, mode, query, baseline, width = 1000, changedOnly = false) {
+    return layoutPrepared(prepare(data, mode, query, baseline, changedOnly), width);
   }
   function firstIntersecting(items, start) {
     let low = 0, high = items.length;
@@ -165,5 +190,5 @@
   function tone(task, risks) {
     return risks.get(task.batch_id) === 'overdue' ? 'critical' : 'primary';
   }
-  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, layout, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels, scopeCaption };
+  window.PlanGanttModel = { instant, wire, timeLabel, number, count, quantityLabel, pieceLabel, quantityReasons, names, resourceLabel, searchText, prepare, layoutPrepared, layout, visibleItems, visibleRows, tickStep, ticks, taskTitle, tone, kindLabels, scopeCaption };
 })();

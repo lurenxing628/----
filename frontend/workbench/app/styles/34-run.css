@@ -235,7 +235,7 @@
 
 /* Candidate decisions follow the workbench prototype: recommendation, tradeoffs, summaries, comparison. */
 .run-candidate-workspace.rd-workspace{padding-bottom:var(--space-4)}
-.scheduling-page-tools>.scheduling-navigation{margin-bottom:0}
+.scheduling-page-tools .scheduling-navigation{margin-bottom:0}
 body.aps-workbench :is(.run-candidate-workspace,.run-history-workspace) .scheduling-page-tools{justify-content:flex-start}
 .scheduling-page-tools>:is(.rc-tools,.rh-tools){max-width:100%}
 .rd-workspace .rd-return-tools:empty{display:none}

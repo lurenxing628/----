@@ -11,9 +11,97 @@ from web.routes.workbench.preflight import resolve_preflight_input
 
 
 @pytest.mark.parametrize("fixture_name,source", [("pf", "execution_ledger"), ("pf_legacy_schema", "legacy_guard_only")])
-def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, source):
+def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, source, monkeypatch):
+    import json
+    import sqlite3
+    from collections import Counter
+
+    from core.models.content import same
+    from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
+    from web.public_token_registry import resolve_public_token
+    from web.routes.workbench.preflight import INPUT_SCOPE
+
     pf = request.getfixturevalue(fixture_name)
+    pf.conn.execute("UPDATE Batches SET due_date='2026-9-9',ready_date='' WHERE batch_id='PF-0000'")
+    pf.conn.commit()
+    from core.infrastructure.database import get_connection
+    from core.services.workbench.facts.production_capture import (
+        NON_INPUT_RECEIPT_ACTIONS,
+        ProductionFactsCapture,
+        non_input_row,
+    )
+
+    native = get_connection(":memory:")
+    try:
+        pf.conn.backup(native)
+        native.execute("BEGIN")
+        previous = native.execute("SELECT due_date,ready_date FROM Batches WHERE batch_id='PF-0000'").fetchone()
+        capture = ProductionFactsCapture(native)
+        business = next(row for row in capture.business_table("Batches") if row["batch_id"] == "PF-0000")
+        raw = next(row for row in capture.table("Batches") if row["batch_id"] == "PF-0000")
+        assert business["due_date"] == previous[0] and previous[0].isoformat() == "2026-09-09"
+        assert business["ready_date"] is previous[1] is None
+        assert raw["due_date"] == "2026-9-9"
+        saved = next(row for row in capture.archive(named=True)["tables"]["Batches"] if row["batch_id"] == "PF-0000")
+        assert saved["due_date"] == "2026-9-9"
+        assert raw["ready_date"] == saved["ready_date"] == ""
+    finally:
+        native.close()
+    receipts = sqlite3.connect(":memory:")
+    try:
+        receipts.execute("CREATE TABLE WorkbenchCommandReceipts(request_key TEXT,action,outcome_json)")
+        actions = (*NON_INPUT_RECEIPT_ACTIONS, "trial.save", "dashboard.transition", "TRIAL.save",
+                   None, sqlite3.Binary(b"trial.save"), 7, "execution.report_correct", "unknown", "unchanged")
+        originals = [(str(index), action, '{"result":"unchanged"}' if action == "unchanged"
+                      else "not-json" if action == "unknown" else '{"result":"committed"}')
+                     for index, action in enumerate(actions)]
+        receipts.executemany("INSERT INTO WorkbenchCommandReceipts VALUES (?,?,?)", originals)
+        originals = list(WorkbenchPreflightFactsRepository(receipts).read_whole_table("WorkbenchCommandReceipts"))
+        statements = []
+        receipts.set_trace_callback(statements.append)
+        capture = ProductionFactsCapture(receipts)
+        actual = capture.archive(named=True)["tables"]["WorkbenchCommandReceipts"]
+        columns = capture.columns["WorkbenchCommandReceipts"]
+        expected = [dict(zip(columns, row)) for row in originals
+                    if not non_input_row("WorkbenchCommandReceipts", row, columns)]
+        assert same(actual, expected)
+        assert len(capture.table("WorkbenchCommandReceipts")) == len(originals) - 4
+        sql = [statement for statement in statements if statement.startswith("SELECT")
+               and 'FROM "WorkbenchCommandReceipts"' in statement]
+        assert len(sql) == 1 and "typeof(\"action\")='text'" in sql[0]
+        assert "COLLATE BINARY IN" in sql[0] and '"action" GLOB' in sql[0]
+        assert len(list(WorkbenchPreflightFactsRepository(receipts).read_whole_table(
+            "WorkbenchCommandReceipts"))) == len(originals)
+    finally:
+        receipts.close()
+    table_reads = Counter()
+    capture_table = WorkbenchPreflightFactsRepository.capture_table
+
+    def captured(repo, name):
+        table_reads[name] += 1
+        return capture_table(repo, name)
+
+    monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", captured)
     data = checked(pf)
+    first_reads = dict(table_reads)
+    assert {"Batches", "BatchOperations"} <= set(first_reads)
+    assert set(first_reads.values()) == {1}
+    table_reads.clear()
+    repeated = checked(pf)
+    assert dict(table_reads) == first_reads
+    assert repeated["input_ref"] != data["input_ref"]
+    with pf.application.app_context():
+        first_binding = json.loads(resolve_public_token(INPUT_SCOPE, data["input_ref"],
+            message="Preflight input is unavailable", field="input_ref"))
+        repeated_binding = json.loads(resolve_public_token(INPUT_SCOPE, repeated["input_ref"],
+            message="Preflight input is unavailable", field="input_ref"))
+    assert repeated_binding["fingerprint"] == first_binding["fingerprint"]
+    from core.services.workbench.facts.schema_compat import project_facts
+
+    archive = json.loads(first_binding["fingerprint"])
+    legacy = {"schema": archive["schema"], "tables": archive["tables"]}
+    assert archive["version"] == "production-facts-v2" and archive["columns"]
+    assert same(project_facts(archive), project_facts(legacy))
     assert data["counts"]["ready_tasks"] == 1
     assert data["counts"]["blocked_tasks"] == 0
     assert data["calendar_check"] == "not_evaluated"

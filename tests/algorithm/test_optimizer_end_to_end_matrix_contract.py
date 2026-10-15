@@ -1,4 +1,4 @@
-"""Three real candidate-comparison cases, including an independent tiny oracle."""
+"""Shared business representatives retain independent oracles and hard constraints."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -15,15 +15,21 @@ def tiny_rows():
     return {objective: run_case("tiny_improving", objective) for objective in OBJECTIVES}
 
 
-def test_full_entry_exercises_outer_plans_optimizer_and_four_objective_oracles(tiny_rows):
+def test_full_entry_exercises_shared_winners_and_four_objective_oracles(tiny_rows):
     for objective, row in tiny_rows.items():
-        assert len(row["outcome"].candidates) == 4
-        assert all(plan.status == "completed" for plan in row["outcome"].candidates)
-        vectors = row["selected"]["quality_vectors"]
-        assert set(vectors) == set(OBJECTIVES)
-        assert row["oracle"]["selected_vectors"] == vectors
-        assert tuple(vectors[objective]) >= tuple(row["oracle"]["optimum_vectors"][objective])
-        assert tuple(vectors[objective]) <= tuple(row["baseline"]["quality_vectors"][objective])
+        outcome = row["outcome"]
+        assert 1 <= len(outcome.candidates) <= 3
+        assert all(plan.status == "completed" for plan in outcome.candidates)
+        assert outcome.primary_objective == objective
+        assert set(row["winners"]) == set(outcome.target_objectives)
+        for key, representative in row["representatives"].items():
+            assert set(representative["quality_vectors"]) == set(OBJECTIVES)
+            assert row["oracles"][key]["selected_vectors"] == representative["quality_vectors"]
+        for target, key in outcome.selection.objective_winners.items():
+            vector = tuple(row["winners"][target]["quality_vectors"][target])
+            assert vector >= tuple(row["oracles"][key]["optimum_vectors"][target])
+            assert vector == min(tuple(event["evaluations"][target]["score"]) for event in row["observations"])
+        assert row["selected"] is row["winners"][objective]
     improving = tiny_rows["min_overdue"]
     assert tuple(improving["selected"]["quality_vectors"]["min_overdue"]) < tuple(
         improving["oracle"]["input_order_vectors"]["min_overdue"]
@@ -32,8 +38,11 @@ def test_full_entry_exercises_outer_plans_optimizer_and_four_objective_oracles(t
 
 def test_chain_legitimately_has_no_improvement():
     row = run_case("tiny_chain", "min_overdue")
-    assert row["baseline"]["quality_vectors"] == row["selected"]["quality_vectors"]
     assert row["oracle"]["selected_vectors"] == row["oracle"]["optimum_vectors"]
+    first = row["observations"][0]["evaluations"]
+    for target, winner in row["winners"].items():
+        assert first[target]["score"] == winner["quality_vectors"][target]
+        assert row["outcome"].unified_process["targets"][target]["archive_improvement_count"] == 0
 
 
 def test_frozen_readiness_external_constraints_are_effective():

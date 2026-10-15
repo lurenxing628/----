@@ -1,14 +1,14 @@
 """Mix existing batch moves with bounded operation and qualified resource moves."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from itertools import islice, zip_longest
+from dataclasses import dataclass, field
+from itertools import zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
 from .operation_neighbors import operation_repair_decisions
-from .repair_decisions import RepairDecision, iter_resource_decisions
+from .repair_decisions import RepairDecision, RepairParentPreparation, iter_resource_decisions, prepare_repair_parent
 from .repair_neighbors import RepairNeighborhood, build_repair_neighborhood
 
 
@@ -17,29 +17,37 @@ class RepairPortfolio:
     batches: RepairNeighborhood
     extras: Tuple[Tuple[str, RepairDecision], ...]
     inherited_resources: Tuple[Tuple[int, str, str], ...]
+    move_layout: Tuple[Tuple[str, int], ...] = field(init=False)
+    _batch_family_representative_indices: Tuple[int, ...] = field(init=False)
 
-    @property
-    def candidate_count(self) -> int:
-        return len(self.batches.moves) + len(self.extras)
-
-    @property
-    def batch_family_representative_indices(self) -> Tuple[int, ...]:
+    def __post_init__(self) -> None:
         first_by_kind: Dict[str, int] = {}
         for index, (kind, _source, _target) in enumerate(self.batches.moves):
             first_by_kind.setdefault(kind, index)
-        return tuple(first_by_kind.values())
-
-    def decisions(self) -> Iterator[Tuple[str, RepairDecision]]:
-        representatives = self.batch_family_representative_indices
-        for index in representatives:
-            yield self._batch_decision(index)
+        representatives = tuple(first_by_kind.values())
+        layout = [("batch", index) for index in representatives]
         selected = set(representatives)
-        batch_decisions = (self._batch_decision(index) for index in range(len(self.batches.moves))
-                           if index not in selected)
-        for group in zip_longest(batch_decisions, self.extras):
-            for item in group:
-                if item is not None:
-                    yield item
+        remaining = (index for index in range(len(self.batches.moves)) if index not in selected)
+        for batch_index, extra_index in zip_longest(remaining, range(len(self.extras))):
+            if batch_index is not None:
+                layout.append(("batch", batch_index))
+            if extra_index is not None:
+                layout.append(("extra", extra_index))
+        object.__setattr__(self, "move_layout", tuple(layout))
+        object.__setattr__(self, "_batch_family_representative_indices", representatives)
+
+    @property
+    def candidate_count(self) -> int:
+        return len(self.move_layout)
+
+    @property
+    def batch_family_representative_indices(self) -> Tuple[int, ...]:
+        return self._batch_family_representative_indices
+
+    def decisions(self, start: int = 0) -> Iterator[Tuple[str, RepairDecision]]:
+        for position in range(start, len(self.move_layout)):
+            kind, index = self.move_layout[position]
+            yield self._batch_decision(index) if kind == "batch" else self.extras[index]
 
     def _batch_decision(self, index: int) -> Tuple[str, RepairDecision]:
         # Expand only a consumed move; do not materialize all batch permutations. A batch move stays a
@@ -77,7 +85,7 @@ class ParentRepairPortfolio:
         Resuming per basis keeps a variant added mid-visit from reshuffling what the other streams yield next.
         """
         consumed = skip_by_basis or {}
-        streams = [islice(portfolio.decisions(), consumed.get(profile.feature_basis, 0), None)
+        streams = [portfolio.decisions(start=consumed.get(profile.feature_basis, 0))
                    for profile, portfolio in self.variants]
         for group in zip_longest(*streams):
             for (profile, _portfolio), item in zip(self.variants, group):
@@ -92,20 +100,25 @@ class ParentRepairPortfolio:
 
 def build_repair_portfolio(candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
                            start_dt: Any, seed: int, objective_name: str, graph_context: Optional[Dict[str, Any]],
-                           resource_pool: Optional[Dict[str, Any]]) -> RepairPortfolio:
+                           resource_pool: Optional[Dict[str, Any]],
+                           prepared_parent: Optional[RepairParentPreparation] = None) -> RepairPortfolio:
     """Neighbourhoods of one decoded parent: batch moves on its batch order, bounded operation moves on its
-    start-time order, resource moves on its explicit decision. The parent's own pick sequence is not used as a
+    start-time order, resource moves on its actual selections. The parent's own pick sequence is not used as a
     basis on purpose (2026-09-18: it cost 6% weighted tardiness on medium_shift_pool and helped nowhere)."""
-    batches = build_repair_neighborhood(candidate, operations=operations, metrics_by_op_id=metrics_by_op_id,
-                                        start_dt=start_dt, seed=seed, objective_name=objective_name)
-    inherited = tuple(tuple(item) for item in candidate.get("repair_decision", {}).get("resource_overrides", ()))
+    prepared = (prepared_parent if prepared_parent is not None else prepare_repair_parent(
+        candidate, operations, resource_pool, graph_context, resource_moves=graph_context is not None))
+    decoded_parent = dict(candidate, decoded_batch_order=prepared.decoded_batch_order)
+    batches = build_repair_neighborhood(decoded_parent, operations=operations, metrics_by_op_id=metrics_by_op_id,
+                                        start_dt=start_dt, seed=seed, objective_name=objective_name, prepared_parent=prepared)
+    inherited = prepared.inherited_resources
     if graph_context is None:
         return RepairPortfolio(batches, (), inherited)
     operation_decisions = operation_repair_decisions(
         candidate, operations=operations, graph_context=graph_context, metrics_by_op_id=metrics_by_op_id,
-        batch_order=batches.order, start_dt=start_dt, objective_name=objective_name)
+        batch_order=batches.order, start_dt=start_dt, objective_name=objective_name, resource_pool=resource_pool,
+        prepared_parent=prepared)
     resources = (("resource_alternative", decision) for decision in iter_resource_decisions(
         candidate, operations=operations, resource_pool=resource_pool, batch_order=batches.order,
-        operation_order=tuple(candidate.get("repair_decision", {}).get("operation_order", ()))))
+        operation_order=prepared.operation_order, prepared_parent=prepared))
     extras = tuple(item for group in zip_longest(operation_decisions, resources) for item in group if item is not None)
     return RepairPortfolio(batches, extras, inherited)

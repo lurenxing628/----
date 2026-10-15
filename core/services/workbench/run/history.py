@@ -1,9 +1,5 @@
-"""Exact pagination over one verified durable directory snapshot."""
+"""Exact SQL pagination over one durable directory snapshot."""
 
-from collections import defaultdict
-
-from core.models.workbench_run_history import TERMINAL_STATES, local_datetime
-from core.services.workbench.facts.run_history_projection import public_run
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 
 from .history_storage import RunHistoryStore
@@ -15,33 +11,12 @@ class WorkbenchRunHistoryQueryService:
 
     def catalog(self, scope):
         with candidate_read_snapshot(self.conn):
-            jobs, candidates = RunHistoryStore(self.conn).read()
-            by_run = defaultdict(list)
-            for row in candidates:
-                by_run[row["run_ref"]].append(row)
-            rows = [public_run(job, by_run[job["run_ref"]]) for job in jobs]
-            # Jobs are permanent, and every terminal job is immutable.
-            state = {"read_contract_version": 1, "run_count": len(jobs),
-                     "active_runs": [{key: row[key] for key in ("run_ref", "state", "stage")}
-                                     for row in sorted(jobs, key=lambda item: item["run_ref"])
-                                     if row["state"] not in TERMINAL_STATES]}
-            filtered = [row for row in rows if _matches(row, scope)]
-            dated = [row for row in filtered if row[scope.sort] is not None]
-            undated = [row for row in filtered if row[scope.sort] is None]
-            dated.sort(key=lambda row: (local_datetime(row[scope.sort]), row["run_ref"]), reverse=scope.order == "desc")
-            undated.sort(key=lambda row: row["run_ref"], reverse=scope.order == "desc")
-            filtered = dated + undated
+            rows, total, state = RunHistoryStore(self.conn).read(scope)
             offset = (scope.page - 1) * scope.size
-            return {"runs": filtered[offset:offset + scope.size],
-                    "page": {"number": scope.page, "size": scope.size, "total": len(filtered),
-                             "has_more": offset + scope.size < len(filtered)},
-                    "run_count": len(rows), "state": scope.state, "sort": scope.sort, "order": scope.order,
+            return {"runs": rows,
+                    "page": {"number": scope.page, "size": scope.size, "total": total,
+                             "has_more": offset + scope.size < total},
+                    "run_count": state["run_count"], "state": scope.state, "sort": scope.sort, "order": scope.order,
                     "nulls": "last", "tie_breaker": "run_ref_same_order",
                     "time_scope": {"accepted_from": scope.accepted_from, "accepted_to": scope.accepted_to,
                                    "field": "accepted_at", "boundary": "inclusive_dates", "time_basis": "factory_local"}}, state
-
-
-def _matches(row, scope):
-    accepted = local_datetime(row["accepted_at"]).date().isoformat()
-    return (scope.state in ("all", row["state"])
-            and (scope.accepted_from is None or scope.accepted_from <= accepted <= scope.accepted_to))

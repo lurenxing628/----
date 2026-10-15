@@ -99,8 +99,8 @@ def _next_member(search, index, features, frontier, selected):
 def joint_removed(search, reference, removed, size):
     """Return at most ``size`` (and three) mutable, related operation ids.
 
-    Call only for the large-instance resource-window generator after calculating
-    its affordable size. A one-operation budget stays a one-operation window.
+    Call only for the large-instance resource-window generator with its bounded
+    destruction size. A one-operation neighbourhood stays a one-operation window.
     """
     count = min(int(size), _MAX_JOINT_SIZE, len(reference.order) - 1)
     if count <= 0 or not removed:

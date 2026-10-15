@@ -4,10 +4,8 @@ from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
 
-from core.services.scheduler.run.schedule_candidate_runner import CandidateTrialFailure
 from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
 from core.services.workbench.facts.preparation_projection import project_operation_effort
-from core.services.workbench.run import compute as compute_module
 from core.services.workbench.run.decision import read_run_decision
 from core.services.workbench.run.decision_delivery import project_decision_delivery
 from core.services.workbench.run.decision_impact import (
@@ -85,6 +83,8 @@ def test_unspecified_due_is_excluded_while_invalid_due_keeps_delivery_unknown():
 
 
 def test_resource_reference_gap_preserves_known_operation_change_subtotal():
+    from core.services.workbench.facts.decision_read_models import Memberships
+
     template = {"start": "2026-09-09T08:00:00", "end": "2026-09-09T10:00:00", "source": "internal",
                 "machine": {"ref": "machine-a"}, "operator": {"ref": "operator-a"}, "supplier": None, "data_gaps": []}
     before = [dict(template, row_ref="before-a", operation_ref="op-a"), dict(template, row_ref="before-b", operation_ref="op-b")]
@@ -118,13 +118,14 @@ def test_resource_reference_gap_preserves_known_operation_change_subtotal():
     assert missing[0][1]["change_kinds"] == ["unknown"] and set(groups) == {"op-a", "op-b"}
     source = object.__new__(DecisionSource)
     source.comparison_mode, source.reference_ref = "candidates", "candidate-a"
-    source.before_tasks = before
+    source._analysis = {"candidate-a": before}
     assert source.computation_key("reference") == "candidate-a"
     assert source.computation_key("candidate-b") == "candidate-b"
     assert source.reference_operation_groups is source.reference_operation_groups
     source._task_intervals = {"candidate-a": before_times}
     assert source.task_intervals("reference") is source.task_intervals("candidate-a")
-    source.official = {"identity": {"state": "available"}, "tasks": before}
+    source.official = {"identity": {"state": "available"}, "tasks": before, "operation_refs": ["op-a", "op-b"]}
+    source.memberships = Memberships({"operation_refs": [], "batch_refs": [], "operation_sets": [], "batch_sets": []})
     assert source.official_members == {"identity": {"state": "available"}, "operation_refs": ["op-a", "op-b"]}
     source.comparison_mode = "admission_official"
     assert source.computation_key("reference") == "reference"
@@ -227,24 +228,13 @@ def test_budget_skipped_siblings_keep_complete_schedulable_result(candidate_case
 
 
 def test_failed_algorithm_baseline_requires_explicit_viewing_reference(candidate_case, monkeypatch):
-    compare = compute_module.run_candidate_comparison
+    from tests.workbench.legacy_run_archive_support import install_failed_baseline_archive
 
-    def fail_first_candidate(**kwargs):
-        optimize = kwargs.pop("optimize_schedule_fn")
-        first = [True]
-
-        def decode(**inputs):
-            if first[0]:
-                first[0] = False
-                raise CandidateTrialFailure("原算法候选计算失败：测试数据指定该次候选失败。")
-            return optimize(**inputs)
-
-        return compare(**kwargs, optimize_schedule_fn=decode)
-
-    monkeypatch.setattr(compute_module, "run_candidate_comparison", fail_first_candidate)
+    install_failed_baseline_archive(monkeypatch)
     candidate_case.config(graph_selection_policy="balanced")
     run_ref, _ = compute(candidate_case)
     data, _ = read_run_decision(candidate_case.conn, run_ref)
+    assert len(data["candidates"]) == 4
     assert data["selection_basis"]["selection_policy"] == "balanced"
     assert data["selection_basis"]["overdue_tolerance_count"] == 1
     assert data["selection_basis"]["tardiness_tolerance_ratio"] == 0.10
@@ -287,7 +277,10 @@ def test_failed_algorithm_baseline_requires_explicit_viewing_reference(candidate
                and row["status_changed"] is None and row["changed_fields"] == [] for row in operations["items"])
 
 
-def test_partial_worker_results_do_not_claim_shorter_span_for_different_work(candidate_case):
+def test_partial_worker_results_do_not_claim_shorter_span_for_different_work(candidate_case, monkeypatch):
+    from tests.workbench.legacy_run_archive_support import install_different_work_archive
+
+    install_different_work_archive(monkeypatch)
     case = candidate_case
     # Eleven hours of real work compete for the single captured eight-hour shift.
     case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
@@ -297,6 +290,7 @@ def test_partial_worker_results_do_not_claim_shorter_span_for_different_work(can
     case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
     run_ref, _ = compute(case, case.settings("B1", "B2", end_date="2026-09-09"))
     initial, _ = read_run_decision(case.conn, run_ref)
+    assert len(initial["candidates"]) == 4
     baseline = next(row for row in initial["candidates"] if row["kind"] == "baseline")
     graph = next(row for row in initial["candidates"] if row["kind"] == "critical_chain")
     compared, state = read_run_decision(case.conn, run_ref, reference_candidate_ref=graph["candidate_ref"])
@@ -306,8 +300,10 @@ def test_partial_worker_results_do_not_claim_shorter_span_for_different_work(can
     for key in ("makespan_hours", "changeover_count"):
         assert selected["deltas"][key]["state"] == "different_coverage"
         assert selected["deltas"][key]["value"] is None and selected["deltas"][key]["direction"] == "neutral"
-    recommendation = compared["recommendation"]
+    recommendation = initial["recommendation"]
     current = recommendation["current_comparison"]
+    assert recommendation["candidate_ref"] == graph["candidate_ref"]
+    assert current["reference"]["candidate_ref"] == baseline["candidate_ref"]
     assert recommendation["recommendation_type"] == "partial"
     assert not {"makespan_hours", "changeover_count"} & {item["metric_key"] for item in current["benefits"]}
     completion = recommendation["completion_scope"]

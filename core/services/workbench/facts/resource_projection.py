@@ -5,9 +5,10 @@ and workload availability remain independent; unknown days never become outside
 calendar time or zero capacity. All arithmetic keeps its original precision.
 """
 
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple, cast
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, hours, instant, intersection, union
@@ -118,26 +119,38 @@ class _CalendarDay(NamedTuple):
 class _ResourceCalendar:
     """One resource's calendar geometry, shared by all compared task indexes."""
 
-    def __init__(self, calendar, low, high):
+    def __init__(self, calendar, low, high, *, parse_time=None):
+        parse_time = instant if parse_time is None else parse_time
         self.days = []
         for row in _calendar_days(calendar, low, high):
-            first, last = instant(row["start"]), instant(row["end"])
+            first, last = parse_time(row["start"]), parse_time(row["end"])
             available = row["state"] == "available"
             shifts = []
             for window in row["windows"] if available else []:
                 if window["allow_normal"] or window["allow_urgent"]:
-                    start, end = instant(window["start"]), instant(window["end"])
+                    start, end = parse_time(window["start"]), parse_time(window["end"])
                     shifts.append((start, end, window.get("policy_date") or start.date().isoformat()))
             self.days.append(_CalendarDay(row["date"], first, last, available,
                 union((start, end) for start, end, _ in shifts), shifts, row.get("issues", [])))
+        self.days.sort(key=lambda day: (day.low, day.high))
+        bounds = iter(_days(low, high))
+        self.natural_day_window = low < high and all(
+            next(bounds, None) == (day.low, day.high) and day.date == day.low.date().isoformat()
+            for day in self.days) and next(bounds, None) is None
+        self.starts = [day.low for day in self.days]
+        self.ends = [day.high for day in self.days]
+        self.period_bounds = {}
         self.known_days = [day for day in self.days if day.available]
         self.windows = union(value for day in self.known_days for value in day.windows)
         self.known_coverage = union((day.low, day.high) for day in self.known_days)
 
 
-def normalize_resource_calendar(calendar, start, end):
+def normalize_resource_calendar(calendar, start, end, *, parse_time=None):
     """Normalize the common saved calendar once; raw legacy callers use this too."""
-    return calendar if isinstance(calendar, _ResourceCalendar) else _ResourceCalendar(calendar, instant(start), instant(end))
+    if isinstance(calendar, _ResourceCalendar):
+        return calendar
+    parse_time = instant if parse_time is None else parse_time
+    return _ResourceCalendar(calendar, parse_time(start), parse_time(end), parse_time=parse_time)
 
 
 class _ResourceValues(NamedTuple):
@@ -172,15 +185,17 @@ def _daily_signals(capacity, occupied, span, *, calendar_available, work_availab
 
 
 class _ResourceMeasurement:
-    def __init__(self, resource, intervals, calendar, low, high, work_available, source, threshold, unknown_issues):
+    def __init__(self, resource, intervals, calendar, low, high, work_available, source, threshold, unknown_issues,
+                 *, retain_statistics_values=True):
         self.resource, self.intervals = resource, intervals
         self.low, self.high, self.work_available, self.source = low, high, work_available, source
         self.threshold = threshold
+        self.retain_statistics_values = retain_statistics_values
         self.calendar = normalize_resource_calendar(calendar, low, high)
         self.days, self.known_days = self.calendar.days, self.calendar.known_days
         self.windows = self.calendar.windows
-        self.metrics = ResourceUtilizationMetrics(intervals.intervals, self.windows)
-        self.known_span = IntervalIndex(intersection(self.metrics.span.intervals, self.calendar.known_coverage))
+        self.metrics = ResourceUtilizationMetrics.from_normalized_availability(intervals.intervals, self.windows)
+        self.known_span = IntervalIndex.from_normalized(intersection(self.metrics.span.intervals, self.calendar.known_coverage))
         self.work_complete = work_available and not intervals.unknown
         self.work_state = "complete" if self.work_complete else "partial" if work_available and intervals.rows else "unavailable"
         self.work_issues = []
@@ -188,15 +203,42 @@ class _ResourceMeasurement:
             self.work_issues.append(_issue("arrangements_unavailable", "比较对象的安排归档缺项，占用和负荷未知。"))
         elif intervals.unknown:
             self.work_issues.extend(unknown_issues)
+        self._value_cache, self._window_statistics_cache, self._period_statistics_cache = {}, {}, {}
+        self._day_filter_summary = None
 
-    def _values(self, low, high, calendar_days, *, potential_work=None):
+    @staticmethod
+    def _day_key(calendar_days):
+        return tuple((day.date, day.low, day.high, day.available) for day in calendar_days)
+
+    def values(self, low, high, calendar_days, *, potential_work=None, prepared=None, retain=True):
+        """Reuse retained interval facts; transient folds consume the same formula."""
+        key = low, high, self._day_key(calendar_days)
+        variants = self._value_cache.get(key)
+        if variants:
+            original = next(iter(variants.values()))
+            potential_work = (original.raw["span_occupied_hours"] > 0 or not self.work_complete
+                              if potential_work is None else potential_work)
+            if potential_work in variants:
+                return variants[potential_work]
+        value = self._values(low, high, calendar_days, potential_work=potential_work, prepared=prepared)
+        if retain:
+            potential_work = (value.raw["span_occupied_hours"] > 0 or not self.work_complete
+                              if potential_work is None else potential_work)
+            self._value_cache.setdefault(key, {})[potential_work] = value
+        return value
+
+    def _values(self, low, high, calendar_days, *, potential_work=None, prepared=None):
         known_day_count = sum(day.available for day in calendar_days)
         capacity_complete = known_day_count == len(calendar_days)
-        raw = self.metrics.window(low, high, precision=None)
+        if prepared is None:
+            raw = self.metrics.window(low, high, precision=None)
+            known_span_hours = self.known_span.hours_between(low, high)
+        else:
+            raw, known_span_hours = prepared
         raw["overlap_span_hours"] = raw["span_overlap_hours"]
         raw["span_overlap_hours"] = raw["span_summed_hours"] - raw["span_occupied_hours"]
         # Only known natural-day slices support an outside-calendar conclusion.
-        raw["outside_calendar_hours"] = self.known_span.hours_between(low, high) - raw["occupied_hours"]
+        raw["outside_calendar_hours"] = known_span_hours - raw["occupied_hours"]
         known_capacity = raw["available_hours"] if known_day_count else None
         capacity = known_capacity if capacity_complete else None
         occupied, load = (raw[key] if capacity_complete and self.work_complete else None
@@ -228,7 +270,7 @@ class _ResourceMeasurement:
             task_count, operation_count = len(self.intervals.rows), len(self.intervals.operations)
         else:
             task_count, operation_count = self.intervals.counts(low, high)
-        values = self._values(low, high, calendar_days, potential_work=task_count > 0 or not self.work_complete)
+        values = self.values(low, high, calendar_days, potential_work=self.potential_work(low, high, whole=whole))
         raw, capacity_complete = values.raw, values.calendar_complete
         known_days, capacity, known_capacity = values.known_day_count, values.capacity, values.known_capacity
         result: Dict[str, Any] = {key: raw[key] if capacity_complete and self.work_complete else None for key in _INSIDE_FIELDS}
@@ -264,23 +306,61 @@ class _ResourceMeasurement:
                        "metric_version": RESOURCE_METRIC_VERSION, "source": self.source})
         return result
 
+    def potential_work(self, low, high, *, whole=False):
+        if whole:
+            task_count = len(self.intervals.rows)
+        elif low == high:
+            task_count = 0
+        else:
+            task_count = bisect_left(self.intervals.starts, high) - bisect_right(self.intervals.ends, low)
+        return task_count > 0 or not self.work_complete
+
     def _days_in(self, low, high):
+        if low == high:
+            first, last = bisect_left(self.calendar.ends, low), bisect_right(self.calendar.starts, high)
+        else:
+            first, last = bisect_right(self.calendar.ends, low), bisect_left(self.calendar.starts, high)
         return [day if low <= day.low and day.high <= high else day._replace(low=max(low, day.low), high=min(high, day.high))
-                for day in self.days if day.low < high and day.high > low
-                or low == high and day.low <= low <= day.high]
+                for day in self.days[first:last]]
 
     def window(self, low=None, high=None):
         low, high = self.low if low is None else low, self.high if high is None else high
         days = self._days_in(low, high)
         result = self.cell(low, high, days, whole=low == self.low and high == self.high)
+        result.update(self.window_statistics(low, high, days))
+        return result
+
+    def window_statistics(self, low, high, days):
+        key = low, high, self._day_key(days)
+        if key in self._window_statistics_cache:
+            return self._window_statistics_cache[key]
+        complete = all(day.available for day in days) and self.work_complete
         # Peak and pressure cover every archived day, independently of the UI page.
         peak, high_pressure, zero_capacity_task, zero_days = None, False, False, 0
         high_periods, overload_count, conflict_count = [], 0, 0
         high_unknown = overload_unknown = conflict_unknown = False
+        unknown_periods, unavailable_periods = 0, 0
         zero_capacity_reason = None
+        full_natural_window = (low < high and low == self.low and high == self.high and self.calendar.natural_day_window
+                               and days and days[0].low == low and days[-1].high == high)
+        raw_days = known_prefix = None
+        if full_natural_window and len(days) > 1:
+            boundaries = [days[0].low] + [day.high for day in days]
+            raw_days = self.metrics.windows_at_boundaries(boundaries, precision=None)
+            known_prefix = self.known_span.prefix_values_at_sorted(boundaries)
+            previous_known = next(known_prefix)
         for day in days:
             first, last = day.low, day.high
-            value = self._values(first, last, [day])
+            prepared = None
+            if raw_days is not None:
+                current_known = next(cast("Iterator[float]", known_prefix))
+                prepared = next(raw_days), (current_known - previous_known) / 3600.0
+                previous_known = current_known
+            value = self.values(first, last, [day], prepared=prepared,
+                                retain=self.retain_statistics_values if prepared is not None else True)
+            day_complete = value.calendar_complete and self.work_complete
+            unknown_periods += int(not day_complete)
+            unavailable_periods += int(not day_complete and not value.known_day_count and not self.work_available)
             ratio, pressure, zero_task = value.known_ratio, value.high_pressure, value.zero_capacity_task
             if value.zero_capacity_reason is not None:
                 zero_capacity_reason = value.zero_capacity_reason
@@ -302,16 +382,54 @@ class _ResourceMeasurement:
             if zero_task is True or zero_task is None and zero_capacity_task is False:
                 zero_capacity_task = zero_task
             zero_days += int(day.available and value.capacity == 0)
-        result.update(known_peak_utilization=peak,
-                      peak_utilization=peak if result["calendar_state"] == "complete" and self.work_complete else None,
-                      daily_peak_utilization=peak if result["calendar_state"] == "complete" and self.work_complete else None,
-                      high_pressure=high_pressure, zero_capacity_task=zero_capacity_task, zero_capacity_days=zero_days,
-                      zero_capacity_reason=zero_capacity_reason,
-                      demand_overload=True if overload_count else None if overload_unknown else False,
-                      high_pressure_period_count=None if high_unknown else len(high_periods),
-                      known_high_pressure_period_count=len(high_periods), high_pressure_periods=high_periods,
-                      demand_overload_period_count=None if overload_unknown else overload_count,
-                      conflict_period_count=None if conflict_unknown else conflict_count)
+        result = {"known_peak_utilization": peak, "peak_utilization": peak if complete else None,
+                  "daily_peak_utilization": peak if complete else None,
+                  "high_pressure": high_pressure, "zero_capacity_task": zero_capacity_task, "zero_capacity_days": zero_days,
+                  "zero_capacity_reason": zero_capacity_reason,
+                  "demand_overload": True if overload_count else None if overload_unknown else False,
+                  "high_pressure_period_count": None if high_unknown else len(high_periods),
+                  "known_high_pressure_period_count": len(high_periods), "high_pressure_periods": high_periods,
+                  "demand_overload_period_count": None if overload_unknown else overload_count,
+                  "conflict_period_count": None if conflict_unknown else conflict_count}
+        self._window_statistics_cache[key] = result
+        if full_natural_window:
+            self._day_filter_summary = {"state": "complete" if not unknown_periods else
+                "unavailable" if unavailable_periods == len(days) else "partial",
+                **{field: result[field] for field in (
+                    "high_pressure", "demand_overload", "zero_capacity_task", "high_pressure_period_count",
+                    "demand_overload_period_count", "conflict_period_count", "high_pressure_periods", "daily_peak_utilization")},
+                "conflict": True if conflict_count else None if conflict_unknown else False,
+                "period_peak_utilization": result["daily_peak_utilization"], "unknown_period_count": unknown_periods}
+        return result
+
+    def period_statistics(self, low, high, days, grain, group, *, whole=False):
+        """Light interval facts for full-scope filtering, without task/detail DTOs."""
+        key = low, high, grain, group, whole, self._day_key(days)
+        if key in self._period_statistics_cache:
+            return self._period_statistics_cache[key]
+        value = self.values(low, high, days, potential_work=self.potential_work(low, high, whole=whole))
+        complete = value.calendar_complete and self.work_complete
+        result = {"state": "complete" if complete else "partial" if value.known_day_count or self.work_available else "unavailable",
+                  "available_hours": value.capacity,
+                  "occupied_hours": value.raw["occupied_hours"] if complete else None,
+                  "summed_load_hours": value.raw["summed_load_hours"] if complete else None,
+                  "utilization_ratio": value.ratio, "demand_ratio": value.demand,
+                  "high_pressure": value.high_pressure, "demand_overload": value.demand_overload,
+                  "zero_capacity_task": value.zero_capacity_task, "conflict": value.conflict}
+        if grain == "week":
+            result.update(self.window_statistics(low, high, days))
+        else:
+            signal = {"date": group, "start": low.isoformat(), "end": high.isoformat(),
+                      **{field: result[field] for field in (
+                          "available_hours", "occupied_hours", "summed_load_hours", "utilization_ratio", "demand_ratio")}}
+            daily_peak = self.window_statistics(low, high, days)["daily_peak_utilization"] if grain == "shift" else value.ratio
+            result.update(daily_peak_utilization=daily_peak,
+                          high_pressure_period_count=None if value.high_pressure is None else int(value.high_pressure),
+                          known_high_pressure_period_count=int(value.high_pressure is True),
+                          high_pressure_periods=[signal] if value.high_pressure is True else [],
+                          demand_overload_period_count=None if value.demand_overload is None else int(value.demand_overload),
+                          conflict_period_count=None if value.conflict is None else int(value.conflict))
+        self._period_statistics_cache[key] = result
         return result
 
     def details(self, low, high, days):
@@ -346,7 +464,7 @@ class ResourceTaskIndex:
     """Normalize each task once; query one resource's window or selected days."""
 
     def __init__(self, tasks, start, end, *, work_available=True, source="archived_resource_calendar", pressure_threshold=0.9,
-                 task_intervals=None):
+                 task_intervals=None, retain_statistics_values=True):
         self.low, self.high = instant(start), instant(end)
         if self.low > self.high:
             raise WorkbenchCommandRejected("invalid_input", "资源比较窗口的结束不能早于开始。", 422)
@@ -355,6 +473,7 @@ class ResourceTaskIndex:
             raise WorkbenchCommandRejected("invalid_input", "资源比较窗口超过 3660 天，请缩小时间范围。", 422)
         self.work_available, self.source = work_available, source
         self.pressure_threshold = pressure_threshold
+        self.retain_statistics_values = retain_statistics_values
         self.identity_issues = []
         self._unknown_issues = defaultdict(list)
         rows, unknown = defaultdict(list), defaultdict(list)
@@ -379,20 +498,34 @@ class ResourceTaskIndex:
         self._resources = {key: ResourceIntervals(rows[key], unknown[key]) for key in rows.keys() | unknown.keys()}
         self._empty = ResourceIntervals([], [])
         self._last_sweep = None
+        self._measurements = {}
 
     def _measurement(self, resource, calendar):
         key = (resource["kind"], resource["ref"])
+        current = self._measurements.get(key)
+        if current is not None and current[0] is calendar:
+            self._last_sweep = key, current[1].metrics.segments
+            return current[1]
         intervals = self._resources.get(key, self._empty)
         measurement = _ResourceMeasurement(resource, intervals, calendar, self.low, self.high, self.work_available,
-                                           self.source, self.pressure_threshold, self._unknown_issues.get(key, []))
+                                           self.source, self.pressure_threshold, self._unknown_issues.get(key, []),
+                                           retain_statistics_values=self.retain_statistics_values)
         # Keep the current resource's sweep for an immediately requested legacy
         # segment DTO. Full-cohort summaries do not retain every resource sweep.
         self._last_sweep = key, measurement.metrics.segments
+        self._measurements[key] = calendar, measurement
         return measurement
 
     def window(self, resource, calendar, *, start=None, end=None):
         return self._measurement(resource, calendar).window(instant(start) if start is not None else None,
                                                             instant(end) if end is not None else None)
+
+    def day_filter_summary(self, resource, calendar):
+        """Return full natural-day filtering facts from the first window fold."""
+        measurement = self._measurement(resource, calendar)
+        if measurement._day_filter_summary is None:
+            return None
+        return dict(measurement._day_filter_summary)
 
     def segments(self, resource):
         """Known concurrency spans, reusing the same independent-operation sweep."""
@@ -410,8 +543,7 @@ class ResourceTaskIndex:
         return [row for row in self.periods(resource, calendar, grain="day", details=details)
                 if selected is None or row["date"] in selected]
 
-    def periods(self, resource, calendar, *, grain="day", start=None, end=None, details=False):
-        measurement = self._measurement(resource, calendar)
+    def _period_bounds(self, measurement, grain, start, end):
         low = max(self.low, instant(start)) if start is not None else self.low
         high = min(self.high, instant(end)) if end is not None else self.high
         if measurement.days:
@@ -419,6 +551,9 @@ class ResourceTaskIndex:
             high = min(high, measurement.days[-1].high)
         if low > high:
             return []
+        key = grain, low, high
+        if key in measurement.calendar.period_bounds:
+            return measurement.calendar.period_bounds[key]
         bounds = []
         if grain == "shift":
             groups = defaultdict(list)
@@ -434,23 +569,33 @@ class ResourceTaskIndex:
             bounds.sort(key=lambda row: (row[0], row[1]))
         else:
             bounds = [(first, last, first.date().isoformat(), None) for first, last in resource_period_bounds(low, high, grain)]
+        measurement.calendar.period_bounds[key] = bounds
+        return bounds
+
+    @staticmethod
+    def _period_identity(first, last, group, placeholder, grain):
+        key = grain + ":" + first.isoformat() + "/" + last.isoformat()
+        return {"key": key, "bucket_key": key, "group_key": group if grain == "shift" else key,
+                "date": group, "grain": grain, "start": first.isoformat(), "end": last.isoformat(), "placeholder": placeholder}
+
+    def period_facts(self, resource, calendar, *, grain="day", start=None, end=None):
+        measurement = self._measurement(resource, calendar)
+        return [{**self._period_identity(first, last, group, placeholder, grain),
+                 **measurement.period_statistics(first, last, measurement._days_in(first, last), grain, group,
+                    whole=grain == "week" and first == self.low and last == self.high)}
+                for first, last, group, placeholder in self._period_bounds(measurement, grain, start, end)]
+
+    def periods(self, resource, calendar, *, grain="day", start=None, end=None, details=False, group_keys=None):
+        measurement = self._measurement(resource, calendar)
         result = []
-        for first, last, group, placeholder in bounds:
+        for first, last, group, placeholder in self._period_bounds(measurement, grain, start, end):
+            identity = self._period_identity(first, last, group, placeholder, grain)
+            if group_keys is not None and identity["group_key"] not in group_keys:
+                continue
             days = measurement._days_in(first, last)
-            cell = measurement.window(first, last) if grain == "week" else measurement.cell(first, last, days)
-            key = grain + ":" + first.isoformat() + "/" + last.isoformat()
-            cell.update(key=key, bucket_key=key, group_key=group if grain == "shift" else key, date=group, grain=grain,
-                        start=first.isoformat(), end=last.isoformat(), placeholder=placeholder)
-            if grain != "week":
-                signal = {"date": group, "start": first.isoformat(), "end": last.isoformat(),
-                          **{field: cell[field] for field in ("available_hours", "occupied_hours", "summed_load_hours", "utilization_ratio", "demand_ratio")}}
-                daily_peak = measurement.window(first, last)["daily_peak_utilization"] if grain == "shift" else cell["peak_utilization"]
-                cell.update(daily_peak_utilization=daily_peak,
-                            high_pressure_period_count=None if cell["high_pressure"] is None else int(cell["high_pressure"]),
-                            known_high_pressure_period_count=int(cell["high_pressure"] is True),
-                            high_pressure_periods=[signal] if cell["high_pressure"] is True else [],
-                            demand_overload_period_count=None if cell["demand_overload"] is None else int(cell["demand_overload"]),
-                            conflict_period_count=None if cell["conflict"] is None else int(cell["conflict"]))
+            whole = grain == "week" and first == self.low and last == self.high
+            cell = measurement.cell(first, last, days, whole=whole)
+            cell.update(measurement.period_statistics(first, last, days, grain, group, whole=whole), **identity)
             if details:
                 cell.update(measurement.details(first, last, days) if self.work_available else
                             {"conflicts": [], "tasks": [], "reservation_overlaps": [], "reservations": [], "contribution_operation_count": None,

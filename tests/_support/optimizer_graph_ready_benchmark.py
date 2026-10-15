@@ -1,23 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from time import perf_counter
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.checkpoint_calendar import register_stateless_checkpoint_calendar
-from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
-from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import snapshot_algo_stats
+from core.algorithms import GreedyScheduler
 from core.models.schedule_config_runtime import default_snapshot_values
 from core.services.scheduler.graph.metrics import build_node_metrics
 from core.services.scheduler.graph.precedence_builder import build_precedence_graph
 from core.services.scheduler.graph.types import OperationGraphNode
-from core.services.scheduler.run.optimizer.graph.ready import run_graph_ready_candidates
-from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 
-GRAPH_READY_REAL_SGS_CASE_SLUG = "graph-ready-weight-grid-real-sgs"
-GRAPH_READY_REAL_SGS_CASE_GROUP = "graph_ready"
 GRAPH_READY_FLEXIBLE_MACHINE_CASE_SLUG = "graph-ready-flexible-machine-bottleneck-metric"
 GRAPH_READY_FLEXIBLE_MACHINE_CASE_GROUP = "graph_ready_metric"
 OBJECTIVE_NAME = "min_overdue"
@@ -26,7 +19,7 @@ BASE_BATCH_ORDER = ["B_LONG", "B_MED", "B_SHORT_A", "B_SHORT_B"]
 
 
 class BenchmarkClock:
-    """Explicit test stub only; public benchmark runners use perf_counter."""
+    """Deterministic monotonic test clock for scheduler fixtures."""
     def __init__(self) -> None:
         self.now = 1000.0
 
@@ -199,70 +192,6 @@ def run_graph_ready_flexible_machine_metric_case() -> Dict[str, Any]:
     return row
 
 
-def run_graph_ready_real_sgs_case(*, seed: int = 0, clock=None) -> Dict[str, Any]:
-    clock = perf_counter if clock is None else clock
-    started = clock()
-    scheduler = _scheduler()
-    operations = graph_ready_benchmark_operations()
-    batches = graph_ready_benchmark_batches()
-    baseline = _baseline_candidate(scheduler=scheduler, operations=operations, batches=batches)
-    state = OptimizationSearchReportState(
-        algorithm_profile="graph_ready",
-        seed=int(seed),
-        time_budget_seconds=1,
-        objective_name=OBJECTIVE_NAME,
-        started_at=started,
-        candidate_profile={"acceptance": "improve_only"},
-        strict_mode=True,
-    )
-    state.mark_candidate_accepted(baseline, origin="baseline")
-    attempts: List[Dict[str, Any]] = []
-    improvement_trace: List[Dict[str, Any]] = []
-    best = run_graph_ready_candidates(
-        algo_mode="improve",
-        best=baseline,
-        version=int(seed),
-        scheduler=scheduler,
-        algo_ops_to_schedule=operations,
-        batches=batches,
-        start_dt=START_DT,
-        end_date=None,
-        downtime_map={},
-        seed_sr_list=[],
-        base_strategy=SortStrategy.PRIORITY_FIRST,
-        base_params={},
-        build_order=lambda _strategy, _params: list(BASE_BATCH_ORDER),
-        dispatch_rule_cfg="slack",
-        resource_pool=None,
-        objective_name=OBJECTIVE_NAME,
-        deadline=started + 1.0,
-        attempts=attempts,
-        improvement_trace=improvement_trace,
-        optimizer_algo_stats=snapshot_algo_stats(scheduler),
-        t_begin=started,
-        readiness_gate_enabled=False,
-        strict_mode=True,
-        graph_ready_context=graph_ready_benchmark_context(),
-        clock=clock,
-        schedule_fn=_schedule_with_scheduler,
-        search_report_state=state,
-    )
-    if best is None:
-        raise AssertionError("graph-ready benchmark did not return a best candidate")
-    graph_attempts = [attempt for attempt in attempts if str(attempt.get("tag") or "").startswith("graph_ready:")]
-    row = _benchmark_row(
-        seed=seed,
-        baseline=baseline,
-        best=best,
-        state=state,
-        graph_attempts=graph_attempts,
-        runtime_ms=(clock() - started) * 1000.0,
-    )
-    row["clock_scope"] = "time.perf_counter" if clock is perf_counter else "test_injected_clock"
-    row["status"] = "passed" if _row_passes(row) else "failed"
-    return row
-
-
 def _operation(op_id: int, batch_id: str, *, hours: float) -> Any:
     return SimpleNamespace(
         id=int(op_id),
@@ -322,111 +251,8 @@ def _default_config() -> Any:
     return SimpleNamespace(**values)
 
 
-def _baseline_candidate(*, scheduler: GreedyScheduler, operations: List[Any], batches: Dict[str, Any]) -> Dict[str, Any]:
-    started = perf_counter()
-    results, summary, strategy, params = scheduler.schedule(
-        operations=operations,
-        batches=batches,
-        strategy=SortStrategy.PRIORITY_FIRST,
-        strategy_params={},
-        start_dt=START_DT,
-        dispatch_mode="sgs",
-        dispatch_rule="slack",
-        batch_order_override=list(BASE_BATCH_ORDER),
-        seed_results=[],
-        strict_mode=True,
-    )
-    metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=(), failure_details=summary.failure_details)
-    return {
-        "results": results,
-        "summary": summary,
-        "strategy": strategy,
-        "params": params,
-        "dispatch_mode": "sgs",
-        "dispatch_rule": "slack",
-        "order": list(BASE_BATCH_ORDER),
-        "metrics": metrics,
-        "score": (float(summary.failed_ops),) + objective_score(OBJECTIVE_NAME, metrics),
-        "algo_stats": snapshot_algo_stats(scheduler),
-        "candidate_origin": "baseline",
-        "runtime_ms": (perf_counter() - started) * 1000.0,
-    }
-
-
 def _schedule_with_scheduler(scheduler: GreedyScheduler, **kwargs: Any) -> Any:
     return scheduler.schedule(**kwargs)
-
-
-def _benchmark_row(
-    *,
-    seed: int,
-    baseline: Dict[str, Any],
-    best: Dict[str, Any],
-    state: OptimizationSearchReportState,
-    graph_attempts: Sequence[Dict[str, Any]],
-    runtime_ms: float,
-) -> Dict[str, Any]:
-    baseline_score = _score_list(baseline.get("score"))
-    best_score = _score_list(best.get("score"))
-    failed_ops = int(getattr(best.get("summary"), "failed_ops", 0) or 0)
-    baseline_failed_ops = int(getattr(baseline.get("summary"), "failed_ops", 0) or 0)
-    efficiency = state.candidate_profile["graph_ready_optimization"]["profile_efficiency"]
-    return {
-        "case_group": GRAPH_READY_REAL_SGS_CASE_GROUP,
-        "case_slug": GRAPH_READY_REAL_SGS_CASE_SLUG,
-        "algorithm_profile": "graph_ready",
-        "candidate_origin": "graph_ready_weight_grid",
-        "seed": int(seed),
-        "time_budget_seconds": 1,
-        "objective_name": OBJECTIVE_NAME,
-        "objective_score": best_score,
-        "baseline_objective_score": baseline_score,
-        "objective_score_matched": bool(tuple(best_score) <= tuple(baseline_score)),
-        "failed_ops": failed_ops,
-        "baseline_failed_ops": baseline_failed_ops,
-        "oracle_status": "not_run",
-        "gap_to_oracle_pct": None,
-        "runtime_ms": runtime_ms,
-        "candidate_profile_count": int(efficiency["configured_profiles"]),
-        "decoded_profile_count": len(graph_attempts),
-        "predecode_pruned_profiles": int(efficiency["predecode_pruned_profiles"]),
-        "evaluated_candidates": int(state.evaluated_candidates),
-        "accepted_distinct_candidates": int(len(state.accepted_fingerprints)),
-        "distinct_candidates": int(len(state.candidate_fingerprints)),
-        "same_fingerprint_rejections": int(state.rejection_summary.get("same_fingerprint") or 0),
-        "candidate_rejections": dict(state.rejection_summary),
-        "best_origin": str(state.best_origin or best.get("candidate_origin") or ""),
-        "best_candidate_id": (state.best_candidate_fingerprint or {}).get("candidate_id"),
-        "candidate_events": list(state.fingerprint_events),
-        "best_order": _result_order(best.get("results")),
-        "baseline_order": _result_order(baseline.get("results")),
-        "comparison_to_meta_baseline": {
-            "metric": "objective_score",
-            "baseline_value": baseline_score,
-            "actual_value": best_score,
-            "status": "improved" if tuple(best_score) < tuple(baseline_score) else "same",
-        },
-    }
-
-
-def _row_passes(row: Dict[str, Any]) -> bool:
-    return (
-        int(row.get("failed_ops") or 0) == 0
-        and bool(row.get("objective_score_matched"))
-        and _profile_coverage_passes(row)
-        and int(row.get("distinct_candidates") or 0) >= 3
-        and int(row.get("accepted_distinct_candidates") or 0) >= 2
-        and str(row.get("best_origin") or "") != "baseline"
-        and tuple(_score_list(row.get("objective_score"))) < tuple(_score_list(row.get("baseline_objective_score")))
-    )
-
-
-def _profile_coverage_passes(row: Dict[str, Any]) -> bool:
-    configured = int(row.get("candidate_profile_count") or 0)
-    evaluated = int(row.get("evaluated_candidates") or 0)
-    pruned = int(row.get("predecode_pruned_profiles") or 0)
-    # One evaluation belongs to the baseline; all nine profiles remain covered.
-    return configured == 9 and evaluated >= 2 and evaluated + pruned == configured + 1
 
 
 def _flexible_machine_metric_row_passes(row: Dict[str, Any]) -> bool:
@@ -439,13 +265,3 @@ def _flexible_machine_metric_row_passes(row: Dict[str, Any]) -> bool:
         and float(scores.get("flex") or 0.0) == 0.707107
         and float(scores.get("flex") or 0.0) < float(scores.get("light") or 0.0) < float(scores.get("busy") or 0.0)
     )
-
-
-def _score_list(value: Any) -> List[float]:
-    if not isinstance(value, (list, tuple)):
-        return []
-    return [float(item) for item in value]
-
-
-def _result_order(value: Any) -> List[int]:
-    return [int(getattr(item, "op_id")) for item in list(value or [])]

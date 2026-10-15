@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from flask import current_app, g, jsonify, request
 from werkzeug.exceptions import HTTPException
@@ -14,6 +15,7 @@ from core.models.workbench_preflight import (
     SCHEDULING_PREFERENCES_SUBJECT,
     normalize_preflight_input,
 )
+from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.preferences import SchedulingPreferencesService
 from core.services.workbench.run.preflight_facts import full_facts_content
 from web.api_responses import failure, query_success
@@ -22,6 +24,9 @@ from web.public_token_registry import issue_public_token_with_expiry, resolve_pu
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
+
+if TYPE_CHECKING:
+    from core.services.workbench.run.preflight import PreparedPreflight
 
 INPUT_SCOPE = "workbench-preflight-input-v1"
 
@@ -53,12 +58,21 @@ def resolve_preflight_input(conn, input_ref):
 
 def evaluate_preflight_input(conn, input_ref):
     """Admission consumes one current preflight for both business checks and freshness."""
+    prepared = evaluate_preflight_input_prepared(conn, input_ref)
+    return prepared.data, prepared.fingerprint
+
+
+def evaluate_preflight_input_prepared(conn, input_ref) -> "PreparedPreflight":
+    """Private same-transaction continuation; it never enters the public token."""
     from core.services.workbench.run.preflight import PreflightService
 
     normalized, original = _preflight_binding(conn, input_ref)
-    data, fingerprint = PreflightService(conn).evaluate(normalized)
-    _require_current(original, fingerprint)
-    return data, fingerprint
+    prepared = PreflightService(conn).evaluate_prepared(normalized)
+    _require_current(original, prepared.fingerprint)
+    return prepared
+
+
+evaluate_preflight_input.prepared = evaluate_preflight_input_prepared
 
 
 def scheduling_preflight():
@@ -68,7 +82,8 @@ def scheduling_preflight():
         if request.args or not request.is_json:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，排产检查没有执行。请刷新页面后重新点「开始排产检查」。", 400)
         data, fingerprint = PreflightService(g.db).evaluate(request.get_json())
-        binding = {"input": data["normalized_input"], "scope": data["scope"], "fingerprint": fingerprint}
+        binding = {"input": data["normalized_input"], "scope": data["scope"], "fingerprint": fingerprint,
+                   "check_ref": new_run_ref()}
         token, expires = issue_public_token_with_expiry(INPUT_SCOPE, canonical_json(binding), ttl_seconds=900)
         data.update(input_ref=token, input_expires_at=datetime.fromtimestamp(expires).strftime("%Y-%m-%dT%H:%M:%S"),
                     write_context={"write_token": None, "expires_at": None,

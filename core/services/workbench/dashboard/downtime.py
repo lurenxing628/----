@@ -25,7 +25,8 @@ def _index(raw, refs):
             by_machine[row["machine_id"]].append((low, high, row))
         except (TypeError, ValueError):
             invalid.add(row["machine_id"])
-    indexes = {key: IntervalIndex(union([(low, high) for low, high, _ in values])) for key, values in by_machine.items()}
+    indexes = {key: IntervalIndex.from_normalized(union([(low, high) for low, high, _ in values]))
+               for key, values in by_machine.items()}
     return {"identities": identities, "windows": by_machine, "invalid": invalid, "indexes": indexes,
             "all_rows": all_rows, "identity_rows": identity_rows}
 

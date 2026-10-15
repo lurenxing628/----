@@ -10,7 +10,8 @@
       : <div className="gantt-route-group"><h4>{label}</h4>{children}</div>;
   }
   function GanttRouteList({ graph, targetRef, loadedRefs, onSelect, disabled = false, collapsible = false, children }) {
-    const route = React.useMemo(() => G.route(G.create(graph), targetRef), [graph, targetRef]);
+    const index = React.useMemo(() => G.create(graph), [graph]);
+    const route = React.useMemo(() => G.route(index, targetRef), [index, targetRef]);
     return <section className="gantt-route" aria-label="完整工艺路线"><h3>完整工艺路线</h3>
       {graph.state !== 'available' ? <p className="gantt-route-summary">{graph.reason}</p> : !route ?
         <p className="gantt-route-summary">此工序未安排，暂无甘特节点。</p> : <>

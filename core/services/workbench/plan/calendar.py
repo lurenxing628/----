@@ -56,9 +56,12 @@ def _unavailable_result(scope, time_scope, context, code):
     return dto, {"context": context, "state": "unavailable", "reason": code, "sources": None, "resources": None}
 
 
-def project_plan_calendar(conn, *, entry, scope, rows, resources, plan_span):
+def project_plan_calendar(conn, *, entry, scope, rows, resources, plan_span, context=None, selected=None, captured_calendar=None):
     """rows/resources must already belong to entry, selected in this transaction."""
-    rows, start, end, time_scope, context = selected_context(conn, entry, scope, rows, resources, plan_span)
+    if selected is None:
+        selected = (context.calendar_selection(entry, scope, resources, plan_span) if context is not None else
+                    selected_context(conn, entry, scope, rows, resources, plan_span))
+    rows, start, end, time_scope, context = selected
     first, last, dates = _range_days(start, end)
     point_days = [row["_point_work"] for row in rows if row.get("_point_work")]
     if point_days:
@@ -69,7 +72,7 @@ def project_plan_calendar(conn, *, entry, scope, rows, resources, plan_span):
         return _unavailable_result(scope, time_scope, context, "calendar_range_limit")
     if dates * (1 + sum(len(value) for value in ids.values())) > MAX_POLICY_CELLS:
         return _unavailable_result(scope, time_scope, context, "calendar_cell_limit")
-    reader = CalendarFacts(conn)
+    reader = CalendarFacts(conn, captured=captured_calendar) if captured_calendar is not None else CalendarFacts(conn)
     try:
         reader.calendar(first.isoformat(), last.isoformat(), ids["operator"])
         reader.resources(ids["machine"], ids["operator"], [row["op_id"] for row in rows], start, end)

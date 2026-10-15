@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 
 from core.errors import ValidationError
+from core.models.calendar_periods import encode_periods
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import instant
@@ -34,7 +35,6 @@ class _SavedCalendarEngine(SnapshotCalendarEngine):
     def __init__(self, tables, version):
         self.tables, self.version = tables, version
         self.missing_policies = {}
-        self._saved_periods = None
         profiles = {row["profile_id"]: row for row in tables["WorkbenchShiftProfiles"] or []}
         self.members = {row["operator_id"]: row for row in tables["WorkbenchOperatorProfiles"] or []}
         selected = [{"operator_id": row["operator_id"], "shift_profile_id": row["shift_profile_id"],
@@ -82,14 +82,18 @@ class _SavedCalendarEngine(SnapshotCalendarEngine):
         return super()._default_for_date(date_str)
 
     def default_periods(self):
-        if self.version is not None and self.version < 34:
-            return [{"start": "08:00", "end": "16:00", "day_offset": 0}]
-        rows = self.tables["WorkbenchCalendarDefaults"]
-        if rows is None:
-            raise ValidationError("保存的日历资料缺少 WorkbenchCalendarDefaults。", field="WorkbenchCalendarDefaults")
-        if self._saved_periods is None:
-            self._saved_periods = default_periods_from_row(next(iter(rows), None))
-        return self._saved_periods
+        if self._default_periods is None:
+            if self.version is not None and self.version < 34:
+                periods = [{"start": "08:00", "end": "16:00", "day_offset": 0}]
+            else:
+                rows = self.tables["WorkbenchCalendarDefaults"]
+                if rows is None:
+                    raise ValidationError("保存的日历资料缺少 WorkbenchCalendarDefaults。", field="WorkbenchCalendarDefaults")
+                periods = default_periods_from_row(next(iter(rows), None))
+            self._default_periods = periods
+            self._default_periods_json = encode_periods(periods)
+            _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
+        return self._default_periods
 
 
 def _bounds(start, end):
@@ -264,10 +268,7 @@ class ArchivedCalendar:
             # Global policies remain reusable; personnel policy cells do not
             # accumulate across a complete streaming cohort.
             if self.engine is not None and resource["kind"] == "operator":
-                saved_id = resource.get("saved_id")
-                for key in tuple(self.engine._policy_cache):
-                    if key[0] == saved_id:
-                        del self.engine._policy_cache[key]
+                self.engine.discard_operator_policy(resource.get("saved_id"))
 
     def for_resources(self, resources, start, end):
         return dict(self.iter_resources(resources, start, end))

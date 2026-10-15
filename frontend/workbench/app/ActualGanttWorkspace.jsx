@@ -204,9 +204,10 @@
     const targetRef = chainTarget && chainTarget[0] || view.selected;
     const active = React.useMemo(() => graph ? window.GanttGraph.selection(graph, { enabled: view.chain, targetRef }) : null, [graph, view.chain, targetRef]);
     const graphLocations = React.useMemo(() => model ? M.graphLocations(model) : null, [model]);
+    const locationIndex = React.useMemo(() => graphLocations ? window.GanttGraph.locationIndex(graphLocations) : null, [graphLocations]);
     const geometry = React.useMemo(() => model ? window.GanttGraph.paths(active, model, width, {
       top: Math.max(0, position.top - 52), height: position.height, left: position.left, width: viewport
-    }, { locations: graphLocations }) : null, [active, model, width, position.top, position.left, position.height, viewport, graphLocations]);
+    }, { locationIndex }) : null, [active, model, width, position.top, position.left, position.height, viewport, locationIndex]);
     function clearTarget() { setHover(null); setChainTarget(null); patch({ selected: null, report: null, onlySelected: false }); }
     const hoverMark = value => { setHover(value); setChainTarget(value && value.item ? [value.item.task.task_ref] : null); };
     const viewScope = () => ({ ...scope, snapshot_ref: result.meta.snapshot_ref, format: 'csv', local_query: view.query.trim(), late_filter: view.late,

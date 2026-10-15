@@ -133,12 +133,12 @@
       </div><OperationFacts row={row} baseline={data.baseline} /></article>)}
     </div>;
   }
-  function BatchChain({ adapter, result, batch, difference, query, onQuery, onDrill, headingRef }) {
+  function BatchChain({ adapter, result, batch, difference, query, onQuery, onDrill, headingRef, enabled = true }) {
     const scope = result.data.scope, runRef = result.data.run.run_ref;
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => detailKeys.includes(key) && !['delivery_filter', 'selected_batch_ref'].includes(key)));
     const q = window.RunDecisionAPI.detailScope(runRef, { ...stored, comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}), range_start: scope.range_start, range_end: scope.range_end, batch_ref: batch.batch_ref, change_kind: difference ? stored.change_kind || 'changed' : 'all', sort: stored.sort || 'sequence', order: stored.order || 'asc' }, 'operations');
     const [paused, setPaused] = React.useState(false), key = JSON.stringify(q);
-    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'operations', signal), [adapter, runRef, key, paused], !paused), detailResult = read.result, data = detailResult && detailResult.data;
+    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'operations', signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused), detailResult = read.result, data = detailResult && detailResult.data;
     function update(change, paging = false) { const next = { ...stored, batch_ref: batch.batch_ref, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref; if (paging && detailResult) next.snapshot_ref = detailResult.meta.snapshot_ref; setPaused(false); onQuery(next); }
     return <section className="rd-batch-detail" aria-label={difference ? '选中批次的工序安排差异' : '选中批次的完整当前工序链'}><div className="rd-batch-detail-heading"><div><h3 tabIndex={-1} ref={headingRef}>{batch.batch_id} · {difference ? '工序安排差异' : '完整工序链'}</h3><p>{batch.part_no || '图号未记录'} · {batch.part_label || T.name_missing} · {amount(batch.quantity, ' 件')} · 优先级 {window.APSBatchContract.label('priority', batch.priority)}</p><small>{T.due_date(batch.due_date, batch.due_state, batch.due_issue)}</small></div><div className="rc-tools"><Locate row={batch} onDrill={onDrill} /><C.Button icon="refresh-cw" aria-label="刷新选中批次工序链" disabled={read.loading} onClick={() => { update({}); read.reload(); }} /></div></div>
       <div className="rd-batch-detail-status"><CurrentRisk row={batch} />{difference && <>{batch.operation_change_count > 0 && <span>{amount(batch.operation_change_count, ' 道工序有明确变化')}</span>}{batch.operation_unknown_count > 0 && <span>{amount(batch.operation_unknown_count, ' 道工序差值待确认')}</span>}</>}</div>
@@ -151,7 +151,7 @@
         {data.items.length > 0 && <div className="rc-heading rd-detail-pages"><span className="rc-muted">当前工序筛选 {data.page.total} 道 · 本页 {data.items.length} 道</span><label>每页<select aria-label="工序链每页条数" value={q.size} disabled={read.loading} onChange={event => update({ size: Number(event.target.value) })}><option value="20">20 条</option><option value="50">50 条</option></select></label><C.Pager label="选中批次工序链" page={data.page.number} pages={Math.max(1, Math.ceil(data.page.total / data.page.size))} disabled={read.loading} onPage={page => update({ page }, true)} /></div>}</>}
     </section>;
   }
-  function Pane({ adapter, result, section, query, onQuery, selectedBatchRef, onSelectBatch, chainQuery = {}, onChainQuery, onDrill, onChooseReference }) {
+  function Pane({ adapter, result, section, query, onQuery, selectedBatchRef, onSelectBatch, chainQuery = {}, onChainQuery, onDrill, onChooseReference, enabled = true }) {
     const overview = result.data, scope = overview.scope, runRef = overview.run.run_ref, difference = section === 'differences';
     const sameCandidate = difference && scope.comparison_mode === 'candidates' && scope.selected_candidate_ref === scope.reference.candidate_ref;
     const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, range_start: scope.range_start, range_end: scope.range_end,
@@ -159,14 +159,14 @@
     const stored = Object.fromEntries(Object.entries(query).filter(([name]) => detailKeys.includes(name)));
     const q = window.RunDecisionAPI.detailScope(runRef, { delivery_filter: difference ? 'all' : 'attention', change_kind: difference ? 'changed' : 'all', sort: 'current_priority', order: 'asc', ...stored, ...shared, ...(selectedBatchRef ? { selected_batch_ref: selectedBatchRef } : {}) }, 'batches'), key = JSON.stringify(q);
     const [paused, setPaused] = React.useState(false), headingRef = React.useRef(null), focusRequested = React.useRef(false);
-    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'batches', signal), [adapter, runRef, key, section, paused], !paused && !sameCandidate);
+    const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'batches', signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused && !sameCandidate);
     const detailResult = read.result, data = detailResult && detailResult.data, options = data && data.filter_options;
     const changed = data && data.summary.operation_changes.changed_operation_count;
     const arrangementsEqual = difference && !sameCandidate && changed && changed.scope === 'full_admission' && changed.state === 'complete' && changed.value === 0;
     const selected = data && (data.items.find(row => row.batch_ref === selectedBatchRef) || data.selected_batch || (!selectedBatchRef ? data.items[0] : null)), selectedRef = selected && selected.batch_ref;
     const retained = selected && !data.items.some(row => row.batch_ref === selectedRef);
-    React.useEffect(() => { if (!selectedBatchRef && selectedRef && onSelectBatch) onSelectBatch(selectedRef); }, [selectedBatchRef, selectedRef, onSelectBatch]);
-    React.useEffect(() => { if (focusRequested.current && headingRef.current) { headingRef.current.focus(); focusRequested.current = false; } }, [selectedRef, chainQuery.batch_ref, chainQuery.change_kind]);
+    React.useEffect(() => { if (enabled && !selectedBatchRef && selectedRef && onSelectBatch) onSelectBatch(selectedRef); }, [enabled, selectedBatchRef, selectedRef, onSelectBatch]);
+    React.useEffect(() => { if (enabled && focusRequested.current && headingRef.current) { headingRef.current.focus(); focusRequested.current = false; } }, [enabled, selectedRef, chainQuery.batch_ref, chainQuery.change_kind]);
     function selectBatch(ref) {
       focusRequested.current = true;
       if (onChainQuery && (chainQuery.batch_ref !== ref || arrangementsEqual && chainQuery.change_kind !== 'all')) onChainQuery({ ...chainQuery, batch_ref: ref,
@@ -195,7 +195,7 @@
             <C.Button onClick={() => data.page.total > 0 ? update({ page: 1 }, true) : update({ batch_ref: undefined, change_kind: missingChanges ? 'all' : difference ? 'changed' : 'all', delivery_filter: 'all' })}>{data.page.total > 0 ? '返回第 1 页' : missingChanges ? '查看全部批次' : '清除筛选'}</C.Button></div>}
           {data.items.length > 0 && <div className="rc-heading rd-detail-pages"><span className="rc-muted">当前筛选 {data.page.total} 批 · 本页 {data.items.length} 批</span><label>每页<select aria-label="影响明细每页条数" value={q.size} disabled={read.loading} onChange={event => update({ size: Number(event.target.value) })}><option value="20">20 条</option><option value="50">50 条</option></select></label><C.Pager label={difference ? '方案差异批次' : '当前交期与未排'} page={data.page.number} pages={Math.max(1, Math.ceil(data.page.total / data.page.size))} disabled={read.loading} onPage={page => update({ page }, true)} /></div>}
           {retained && <div className="rd-retained-batch"><C.Button className="btn link" onClick={() => selectBatch(selectedRef)}>当前查看：{selected.batch_id}</C.Button></div>}
-          {selected && (!arrangementsEqual || chainQuery.change_kind === 'all') && <BatchChain key={(difference ? 'difference:' : 'delivery:') + selected.batch_ref} adapter={adapter} result={result} batch={selected} difference={difference} query={chainQuery.batch_ref && chainQuery.batch_ref !== selected.batch_ref ? { ...chainQuery, page: 1, snapshot_ref: undefined } : chainQuery} onQuery={onChainQuery} onDrill={onDrill} headingRef={headingRef} />}</>}
+          {selected && (!arrangementsEqual || chainQuery.change_kind === 'all') && <BatchChain key={(difference ? 'difference:' : 'delivery:') + selected.batch_ref} adapter={adapter} result={result} batch={selected} difference={difference} query={chainQuery.batch_ref && chainQuery.batch_ref !== selected.batch_ref ? { ...chainQuery, page: 1, snapshot_ref: undefined } : chainQuery} onQuery={onChainQuery} onDrill={onDrill} headingRef={headingRef} enabled={enabled} />}</>}
         <details className="rd-delivery-source"><summary>数据来源</summary><Summary data={data} /></details></>}
     </section>;
   }

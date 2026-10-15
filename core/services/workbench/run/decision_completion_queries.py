@@ -7,11 +7,11 @@ from core.models.workbench_command import canonical_json
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES, reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import bounded_size
+from core.services.workbench.facts.decision_candidate import _candidate_reason
+from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 from core.services.workbench.facts.preparation_projection import preparation_summary, public_preparation_metrics
 
-from .decision import _candidate_reason
 from .decision_completion import compact_completion
-from .decision_metrics import METRIC_VERSION
 from .decision_queries import _page
 from .decision_recommendation import detail_drill
 from .decision_source import DecisionSource
@@ -47,8 +47,12 @@ def _remaining_drill(source, key, available, rows, *, batch_ref=None):
 def _batch_row(source, key, item, scope, reason):
     available = scope["source_available"]
     remaining = source.completion.remaining_batches(key).get(item["batch_ref"], {})
-    rows = remaining.get("operations", [])
-    metrics = preparation_summary(rows, available=available)["metrics"]
+    count = remaining.get("operation_count", 0)
+    metrics = remaining.get("metrics")
+    if metrics is None:
+        rows = remaining.get("operations", [])
+        count = len(rows)
+        metrics = preparation_summary(rows, available=available)["metrics"]
     return {"batch_ref": item["batch_ref"], "batch_label": item["batch_id"],
             "part_no": item["part_no"], "part_label": item["part_label"], "quantity": item["quantity"],
             "completion_state": item["completion_state"] if available else "unknown",
@@ -56,10 +60,10 @@ def _batch_row(source, key, item, scope, reason):
             "scheduled_operation_count": item["scheduled_operation_count"] if available else None,
             "unplanned_operation_count": len(remaining.get("unplanned_operation_refs", [])) if available else None,
             "deferred_operation_count": len(remaining.get("deferred_operation_refs", [])) if available else None,
-            "remaining_work": {"operation_count": len(rows) if available else None,
+            "remaining_work": {"operation_count": count if available else None,
                                "metrics": public_preparation_metrics(metrics)},
             "issues": list(item["issues"]) if available else [reason["code"]],
-            "remaining_drill": _remaining_drill(source, key, available, rows, batch_ref=item["batch_ref"])}
+            "remaining_drill": _remaining_drill(source, key, available, count, batch_ref=item["batch_ref"])}
 
 
 def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):

@@ -18,7 +18,6 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_reuse, sgs_handoff_scope
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
 from core.errors import ValidationError
-from core.shared.strict_parse import parse_required_int
 
 from .batch_order import _coerce_state
 from .sgs_checkpoint import (
@@ -149,6 +148,7 @@ def dispatch_sgs(
 
 
 def _group_sgs_ops(*, sorted_ops: List[Any], batches: Dict[str, Any], state: ScheduleRunState) -> Dict[str, List[Any]]:
+    """Group the operation_sort_key order supplied by the native scheduler."""
     grouped: Dict[str, List[Any]] = {}
     for op in sorted_ops:
         batch_id = str(getattr(op, "batch_id", "") or "").strip()
@@ -156,13 +156,6 @@ def _group_sgs_ops(*, sorted_ops: List[Any], batches: Dict[str, Any], state: Sch
             state.record_missing_batch(op, batch_id)
             continue
         grouped.setdefault(batch_id, []).append(op)
-    for operations in grouped.values():
-        operations.sort(
-            key=lambda item: (
-                parse_required_int(getattr(item, "seq", 0), field="seq"),
-                parse_required_int(getattr(item, "id", 0), field="id"),
-            )
-        )
     return grouped
 
 

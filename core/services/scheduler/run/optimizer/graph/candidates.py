@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
-from core.algorithms.evaluation import compute_metrics
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BASELINE_ORDERING_FIELD,
@@ -29,6 +28,9 @@ from .v2_keys import (
     _v2_priority_key_for_metric,
     validate_v2_formula,
 )
+
+if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 GRAPH_READY_V2_NORMALIZATION_VERSION = "rank_percentile_v1"
 _V2_COMMON_RANK_FIELDS = (
@@ -74,10 +76,11 @@ def evaluate_graph_ready_candidate(
     repair_order: Optional[List[str]] = None,
     repair_decision: Optional[Any] = None,
     before_decode: Optional[Callable[[], None]] = None,
-    inspect_decision: Optional[Callable[[Dict[str, Any]], None]] = None,
     decode_resume: Optional[Any] = None,
     decode_checkpoints: Optional[Any] = None,
     topology_cache: Optional[Dict[str, Any]] = None,
+    decode_session: SharedDecodeSession,
+    redecode_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
     # runtime_ms 合同语义是"该候选自身的构造+解码+评估耗时"(同分 tie-break 偏好更快候选,
     # 见 optimizer_candidate_comparison.candidate_runtime_ms 与 GRAPH_READY_SELECTION_TIEBREAKER)。
@@ -108,8 +111,6 @@ def evaluate_graph_ready_candidate(
         )
     elif repair_order is not None:
         candidate_context = repair_priority_context(candidate_context, operations=algo_ops_to_schedule, order=repair_order)
-    if inspect_decision is not None:
-        inspect_decision(candidate_context)
     if topology_cache is not None:
         from .repair_decisions import native_readonly_inputs
         if native_readonly_inputs(schedule_fn, scheduler, candidate_operations):
@@ -119,31 +120,33 @@ def evaluate_graph_ready_candidate(
                 topology = prepare_graph_ready_topology(candidate_context, candidate_operations)
                 topology_cache["topology"] = topology
             candidate_context["_prepared_graph_ready_topology"] = topology
-    if before_decode is not None:
-        before_decode()
     # Decode checkpoints are an optimizer-internal trial accelerator; only forwarded when a stage asks.
     decode_kwargs: Dict[str, Any] = {}
     if decode_resume is not None:
         decode_kwargs["decode_resume"] = decode_resume
     if decode_checkpoints is not None:
         decode_kwargs["decode_checkpoints"] = decode_checkpoints
-    res, summ, used_strat, used_params = schedule_fn(
-        scheduler, strict_mode=bool(strict_mode), operations=candidate_operations, batches=batches,
+    from core.services.scheduler.run.optimizer.shared_decode import decode_and_metrics
+
+    decoded = decode_and_metrics(
+        decode_session=decode_session, scheduler=scheduler, schedule_fn=schedule_fn,
+        expected_operations=algo_ops_to_schedule, objective_name=objective_name,
+        optimizer_algo_stats=optimizer_algo_stats,
+        before_decode=before_decode,
+        redecode_reason=redecode_reason,
+        strict_mode=bool(strict_mode), operations=candidate_operations, batches=batches,
         strategy=strategy, strategy_params=_candidate_params(params, profile=profile, version=version), start_dt=start_dt,
         end_date=end_date, machine_downtimes=downtime_map, batch_order_override=list(order), seed_results=seed_sr_list,
         dispatch_mode="sgs", dispatch_rule=dispatch_rule, resource_pool=resource_pool,
         readiness_gate_enabled=bool(readiness_gate_enabled), graph_ready_context=candidate_context, **decode_kwargs,
     )
-    metrics = compute_metrics(
-        res, batches, expected_operations=algo_ops_to_schedule, seed_results=seed_sr_list,
-        failure_details=getattr(summ, "failure_details", ()),
-    )
-    return build_graph_ready_candidate_payload(
-        res=res,
-        summ=summ,
-        used_strat=used_strat,
-        used_params=used_params,
-        metrics=metrics,
+    runtime_ms = max(int((clock() - t_candidate_begin) * 1000), 0)
+    candidate = build_graph_ready_candidate_payload(
+        res=decoded.results,
+        summ=decoded.summary,
+        used_strat=decoded.used_strategy,
+        used_params=decoded.used_params,
+        metrics=decoded.metrics,
         profile=profile,
         order=order,
         dispatch_rule=dispatch_rule,
@@ -153,9 +156,19 @@ def evaluate_graph_ready_candidate(
         resource_pool=resource_pool,
         seed_sr_list=seed_sr_list,
         version=version,
-        runtime_ms=max(int((clock() - t_candidate_begin) * 1000), 0),
+        runtime_ms=runtime_ms,
         repair_decision=repair_decision,
     )
+    candidate["algo_stats"] = decoded.algo_stats
+    if decoded.receipt is not None:
+        candidate["decode_receipt"] = decoded.receipt
+        if decoded.receipt["execution_kind"] == "decision_reused":
+            source_runtime_ms = decoded.receipt["source_runtime_ms"]
+            candidate["runtime_ms"] = (source_runtime_ms if source_runtime_ms is not None
+                                       else decoded.receipt["original_decode_ms"])
+            if decoded.receipt["source_initial_decode_runtime_ms"] is not None:
+                candidate["initial_decode_runtime_ms"] = decoded.receipt["source_initial_decode_runtime_ms"]
+    return candidate
 
 
 # Origins that decode an explicit priority decision, with the policy each one must declare.

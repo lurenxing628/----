@@ -4,9 +4,12 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import zip_longest
-from typing import Any, Dict, Iterator, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 from core.errors import ValidationError
+
+if TYPE_CHECKING:
+    from .repair_decisions import RepairParentPreparation
 
 
 @dataclass(frozen=True)
@@ -27,15 +30,18 @@ class RepairNeighborhood:
 def build_repair_neighborhood(
     candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
     start_dt: datetime, seed: int, objective_name: str = "min_overdue",
+    prepared_parent: Optional[RepairParentPreparation] = None,
 ) -> RepairNeighborhood:
-    mutable_batches = {str(op.batch_id) for op in operations}
+    mutable_batches = (prepared_parent.mutable_batch_ids if prepared_parent is not None
+                       else {str(op.batch_id) for op in operations})
     order = tuple(batch for batch in candidate["decoded_batch_order"] if batch in mutable_batches)
     if len(order) != len(set(order)) or set(order) != mutable_batches:
         raise ValidationError(
             "GraphReady repair 的已解码批次与可变范围不一致。", field="graph_ready_elite_repair",
             details={"reason": "graph_ready_repair_scope_mismatch"},
         )
-    signals = _batch_signals(candidate, operations=operations, metrics_by_op_id=metrics_by_op_id, start_dt=start_dt)
+    signals = _batch_signals(candidate, operations=operations, metrics_by_op_id=metrics_by_op_id, start_dt=start_dt,
+                            prepared_parent=prepared_parent)
     risky = _risky_batch_indices(order, signals, objective_name=objective_name)
     swaps = _adjacent_swap_moves(len(order), risky, seed=seed)
     inserts = _single_insert_moves(len(order), risky)
@@ -87,11 +93,16 @@ def repair_priority_context(context: Dict[str, Any], *, operations: List[Any], o
 
 def _batch_signals(
     candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: datetime,
+    prepared_parent: Optional[RepairParentPreparation] = None,
 ) -> Dict[str, Dict[str, float]]:
     ends: Dict[str, float] = {}
-    for result in candidate["results"]:
-        batch = str(result.batch_id)
-        ends[batch] = max(ends.get(batch, 0.0), (result.end_time - start_dt).total_seconds() / 3600.0)
+    if prepared_parent is not None:
+        ends = {batch: max((end - start_dt).total_seconds() / 3600.0, 0.0)
+                for batch, end in prepared_parent.batch_end_times.items()}
+    else:
+        for result in candidate["results"]:
+            batch = str(result.batch_id)
+            ends[batch] = max(ends.get(batch, 0.0), (result.end_time - start_dt).total_seconds() / 3600.0)
     signals: Dict[str, Dict[str, float]] = {}
     for op in operations:
         batch = str(op.batch_id)
@@ -104,7 +115,11 @@ def _batch_signals(
         row["critical"] = max(row["critical"], float(metric["is_on_critical_path"]))
         row["weighted_due_pressure"] = max(row["weighted_due_pressure"],
                                             float(metric.get("weighted_due_pressure", metric["due_pressure"])))
-    _add_changeover_signals(candidate["results"], signals)
+    if prepared_parent is not None:
+        for batch, row in signals.items():
+            row["changeovers"] = prepared_parent.changeovers_by_batch.get(batch, 0.0)
+    else:
+        _add_changeover_signals(candidate["results"], signals)
     return signals
 
 

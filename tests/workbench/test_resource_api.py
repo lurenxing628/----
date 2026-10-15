@@ -1,7 +1,23 @@
 """Real Flask resource creation, update, stale-context rejection, replay and deletion."""
-
+import sqlite3
 
 import pytest
+
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_resource_query import ResourcePageRequest
+from core.services.workbench.resource.metrics import ResourceMetricFactsError
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
+from core.services.workbench.resource.table_states import resource_table_states
+from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
+from data.repositories.workbench_resource_query_repo import WorkbenchResourceQueryRepository
+from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
+from tests.workbench.identity_metadata_support import insert_row
+from tests.workbench.resource_entity_support import (
+    create_catalog,
+    identity_for,
+    resource_database,  # noqa: F401
+    run_resource,
+)
 
 BASE = "/api/workbench/v1/entities/"
 
@@ -55,3 +71,134 @@ def test_update_delete_and_replay_are_real_for_each_kind(app_client, kind):
     deleted = _command(app_client, kind, ref, "delete", {}, key="resource-delete-000001")
     assert deleted.status_code == 200 and deleted.get_json()["result"] == "committed"
     assert app_client.get(BASE + kind + "/" + ref).status_code == 404
+
+
+def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(resource_conn, monkeypatch):
+    conn = resource_conn
+    insert_row(conn, "Machines", {"machine_id": "M2", "name": "second machine", "op_type_id": "OT1"})
+    insert_row(conn, "Machines", {"machine_id": "M3", "name": "Ä"})
+    insert_row(conn, "Operators", {"operator_id": "O2", "name": "second operator"})
+    insert_row(conn, "Suppliers", {"supplier_id": "S2", "name": "second supplier", "op_type_id": "EXT", "default_days": None})
+    conn.execute("UPDATE Suppliers SET op_type_id='EXT' WHERE supplier_id='S1'")
+    conn.execute("UPDATE Machines SET name='车床AlPhA' WHERE machine_id IN ('M1','M2')")
+    conn.commit()
+    group, shift = create_catalog(conn, "machine_group"), create_catalog(conn, "shift_profile")
+    for code in ("M1", "M2"):
+        run_resource(conn, "machine", "update", {"relationships": {"group_ref": group.ref}}, code=code)
+    for code in ("O1", "O2"):
+        run_resource(conn, "operator", "update", {"relationships": {
+            "shift_profile_ref": shift.ref, "skill_refs": [identity_for(conn, "op_type").ref],
+        }}, code=code)
+
+    counts, relations, type_counts, scopes = [], [], [], []
+    assigned_counts, page_relations = WorkbenchResourceTableRepository.assigned_counts, WorkbenchResourceTableRepository.page_relations
+    op_type_dependencies, scope_state = WorkbenchResourceMetricsRepository.op_type_dependencies, WorkbenchResourceQueryRepository.scope_state
+
+    def read_counts(repo, kind, codes):
+        counts.append((kind, tuple(codes)))
+        return assigned_counts(repo, kind, codes)
+
+    def read_relations(repo, kind, codes):
+        relations.append((kind, tuple(codes)))
+        return page_relations(repo, kind, codes)
+
+    def read_type_counts(repo, codes):
+        type_counts.append(tuple(codes))
+        return op_type_dependencies(repo, codes)
+
+    def read_scope(repo, kind):
+        scopes.append(kind)
+        return scope_state(repo, kind)
+
+    for kind in ("machine", "operator", "supplier", "op_type", "machine_group", "shift_profile"):
+        reader = WorkbenchResourceQueryService(conn, kind)
+        query = ResourcePageRequest(kind, size=20, direction="desc")
+        counts.clear()
+        relations.clear()
+        type_counts.clear()
+        scopes.clear()
+        with monkeypatch.context() as scoped:
+            scoped.setattr(WorkbenchResourceTableRepository, "assigned_counts", read_counts)
+            scoped.setattr(WorkbenchResourceTableRepository, "page_relations", read_relations)
+            scoped.setattr(WorkbenchResourceMetricsRepository, "op_type_dependencies", read_type_counts)
+            scoped.setattr(WorkbenchResourceQueryRepository, "scope_state", read_scope)
+            with reader.read_snapshot() as fingerprint:
+                rows, total = reader.repo.page(query)
+                expected = [reader.detail(row["ref"]) for row in rows]
+                expected_metrics = reader.metrics(query)
+                records, page = reader.page(query)
+                codes = tuple(row["business_code"] for row in rows)
+                assert records == expected
+                assert page["total"] == total and page["metrics"] == expected_metrics
+                assert page["number"] == query.number and page["size"] == query.size
+                assert page["sort"] == [{"field": query.sort, "direction": query.direction}]
+                assert counts == type_counts == [] and scopes == [kind]
+                assert relations == ([('supplier', codes)] if kind == "supplier" else [])
+                assert reader.state_fingerprint() == fingerprint and scopes == [kind]
+                if kind != "op_type":
+                    states = resource_table_states(reader._table_reader(), kind, codes)
+                    assert {record.identity.entity_key: record.state for record in records} == states
+                if kind == "machine":
+                    advanced, _ = reader.page(ResourcePageRequest(kind, query="车床alpha", sort="group_ref", direction="desc"))
+                    assert [record.identity.entity_key for record in advanced] == ["M1", "M2"]
+                    matched, _ = reader.page(ResourcePageRequest(kind, query="车床ALPHA", sort="label", direction="desc"))
+                    assert matched == advanced
+                    unmatched, _ = reader.page(ResourcePageRequest(kind, query="ä"))
+                    assert unmatched == [] and counts == [] and scopes == [kind]
+                if kind == "supplier":
+                    ascending, _ = reader.page(ResourcePageRequest(kind, sort="default_days"))
+                    descending, _ = reader.page(ResourcePageRequest(kind, sort="default_days", direction="desc"))
+                    assert [record.identity.entity_key for record in ascending] == ["S2", "S1"]
+                    assert [record.identity.entity_key for record in descending] == ["S1", "S2"]
+                if kind in ("operator", "op_type"):
+                    counts.clear()
+                    relations.clear()
+                    type_counts.clear()
+                    with reader.read_snapshot(capture_fingerprint=False) as inner_fingerprint:
+                        assert inner_fingerprint is None
+                        inner_records, inner_page = reader.page(query)
+                        assert inner_records == expected and inner_page == page
+                        assert counts == ([(kind, codes)] if kind == "operator" else [])
+                        assert type_counts == ([codes] if kind == "op_type" else [])
+                        assert relations == ([('shift_profile', (shift.entity_key,))] if kind == "operator" else [])
+                        assert scopes == [kind]
+                    counts.clear()
+                    relations.clear()
+                    type_counts.clear()
+                    restored, restored_page = reader.page(query)
+                    assert restored == expected and restored_page == page
+                    assert counts == relations == type_counts == [] and scopes == [kind]
+
+    memory = sqlite3.connect(":memory:")
+    memory.row_factory = sqlite3.Row
+    try:
+        conn.backup(memory)
+        insert_row(memory, "OpTypes", {"op_type_id": "", "name": "unused blank code", "category": "internal"})
+        memory.commit()
+        for kind, column in (("machine", "group_ref"), ("operator", "skill_refs")):
+            reader = WorkbenchResourceQueryService(memory, kind)
+            query = ResourcePageRequest(kind, size=20)
+            with reader.read_snapshot():
+                rows, total = reader.repo.page(query)
+                expected = [reader.detail(row["ref"]) for row in rows]
+                records, page = reader.page(query)
+                assert records == expected and page["total"] == total
+                assert page["metrics"] == reader.metrics(query)
+            with pytest.raises(ResourceMetricFactsError):
+                with reader.read_snapshot():
+                    reader.page(ResourcePageRequest(kind, sort=column))
+        memory.execute("DELETE FROM OpTypes WHERE op_type_id='OT1'")
+        memory.commit()
+        for kind in ("machine", "operator"):
+            reader = WorkbenchResourceQueryService(memory, kind)
+            query = ResourcePageRequest(kind, size=20)
+            with reader.read_snapshot():
+                rows, _ = reader.repo.page(query)
+                with pytest.raises(WorkbenchCommandRejected) as original:
+                    [reader.detail(row["ref"]) for row in rows]
+                with pytest.raises(WorkbenchCommandRejected) as batched:
+                    reader.page(query)
+                assert (batched.value.code, batched.value.status) == (original.value.code, original.value.status)
+                assert batched.value.code == "storage_failure" and batched.value.status == 500
+    finally:
+        memory.close()

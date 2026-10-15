@@ -2,11 +2,11 @@
 
 from typing import Any, Dict, cast
 
+from core.services.workbench.facts.decision_metrics import delivery_metric_values, metric_delta
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta
 
 from .decision_completion import compact_common, compact_completion
 from .decision_impact import _arrangement, _drill, _operation_delta
-from .decision_metrics import delivery_metric_values, metric_delta
 from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 
 RECOMMENDATION_VERSION = "decision-recommendation-v1"
@@ -61,8 +61,10 @@ class RecommendationSupport:
         source, key = self.source, self.key
         if source.baseline["state"] != "available":
             return []
+        if source.computation_key(key) == source.computation_key("reference"):
+            return []
         if self._operations is None:
-            old, new = source.preparation.groups("reference"), source.preparation.groups(key)
+            old, new = source.analysis_groups("reference"), source.analysis_groups(key)
             self._operations = []
             for ref in source.scope["operation_refs"]:
                 previous, current = old[ref], new[ref]
@@ -76,7 +78,7 @@ class RecommendationSupport:
         rows = [(ref, tasks, before) for ref, delta, tasks, before in self._operations
                 if metric != "machine_change_count" or delta["machine_changed"] is True]
         return [_support(source, key, "operation", ref, "operations", {}, tasks=tasks,
-                batch_ref=source.preparation.labels[ref]["batch_ref"], operation_ref=ref, before=before) for ref, tasks, before in rows[:3]]
+                batch_ref=source.operation_batch_ref(ref), operation_ref=ref, before=before) for ref, tasks, before in rows[:3]]
 
     def resources(self, definition, direction):
         source, key = self.source, self.key
@@ -107,7 +109,7 @@ class RecommendationSupport:
             remaining = source.completion.scope(key)
             allocation = "unplanned" if name == "unplanned_operation_count" else "deferred"
             refs = remaining[allocation + "_operation_refs"]
-            values = [_support(source, key, "preparation", ref, "preparation", {"work_scope": "remaining", "allocation_state": allocation, "batch_ref": source.preparation.labels[ref]["batch_ref"]}) for ref in refs[:3]]
+            values = [_support(source, key, "preparation", ref, "preparation", {"work_scope": "remaining", "allocation_state": allocation, "batch_ref": source.operation_batch_ref(ref)}) for ref in refs[:3]]
         elif group == "delivery":
             values = self.batches(delta["direction"], name)
         elif group == "stability":
@@ -115,7 +117,7 @@ class RecommendationSupport:
         elif definition["source"] == "runtime_operation_effort":
             remaining = source.completion.scope(key)
             refs = remaining["unplanned_operation_refs"] + remaining["deferred_operation_refs"]
-            values = [_support(source, key, "preparation", ref, "preparation", {"work_scope": "remaining", "batch_ref": source.preparation.labels[ref]["batch_ref"]}) for ref in refs[:3]]
+            values = [_support(source, key, "preparation", ref, "preparation", {"work_scope": "remaining", "batch_ref": source.operation_batch_ref(ref)}) for ref in refs[:3]]
         elif definition["source"] == "archived_changeover_events":
             events = source.changeovers.projection(key)["events"][:3]
             lookup = {task["row_ref"]: task for task in source.changeovers.tasks(key)}

@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -30,6 +31,8 @@ def history_case(history_template, tmp_path):
 
 def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines(history_case):
     from core.models.workbench_run_job import new_run_ref
+    from core.services.workbench.facts.decision_read_model import build_failure_read_models
+    from core.services.workbench.facts.decision_read_models import decode_model
     from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     case, refs = history_case, history_case.history_refs
@@ -37,8 +40,12 @@ def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines
     failed = case.accept(key="history-failed-run-0001")["run_ref"]
     repo = WorkbenchRunRepository(case.conn)
     repo.claim(failed, new_run_ref(), "2026-09-10T12:00:01")
-    repo.finish(failed, "failed", {"state": "failed", "result_persisted": False, "candidates": [],
-        "error": {"code": "fixture_saved_failure", "message": "Saved worker failure"}}, "2026-09-10T12:00:02")
+    failure = {"state": "failed", "result_persisted": False, "candidates": [],
+        "error": {"code": "fixture_saved_failure", "message": "Saved worker failure"}}
+    repo.finish(failed, "failed", failure, "2026-09-10T12:00:02")
+    admission = decode_model(repo.admission_read_model(failed, ("decision",)), ("decision",))["decision"]
+    models = build_failure_read_models(repo.head(failed), admission, failure)
+    repo.insert_decision_read_models(failed, models["run_model"], models["candidate_models"])
     case.conn.commit()
     client, statements = api(case)
     with retained(case.conn):
@@ -86,19 +93,30 @@ def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines
     assert not any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP")) for sql in statements)
 
 
-def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments_separate(history_case):
+def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments_separate(history_case, monkeypatch):
     from core.infrastructure.snapshot_connection import ddl_columns
     from core.infrastructure.transaction import TransactionManager
     from core.models.workbench_command import canonical_json
     from core.services.workbench.facts.candidate_facts import GenerationFacts
+    from core.services.workbench.history import conditions as condition_module
     from core.services.workbench.history.catalog import read_history_catalog
-    from core.services.workbench.history.conditions import _compare, _materials, _Projection, compare_history_conditions
+    from core.services.workbench.history.conditions import (
+        _compare,
+        _materials,
+        _Projection,
+        compare_history_conditions,
+        compare_prepared_history_conditions,
+    )
+    from core.services.workbench.history.conditions_source import ConditionSource
     from core.services.workbench.history.metrics import gate_history_metric
-    from core.services.workbench.history.reading import read_history_source
+    from core.services.workbench.history.projection import missing_packet
+    from core.services.workbench.history.reading import HistoryReader, read_history_source
 
     case, refs = history_case, history_case.history_refs
     experiment, _ = clone_run(case, "2026-09-11T12:00:00", change_artifact=lambda value: value.update(time_budget_seconds=30))
     changed, _ = clone_run(case, "2026-09-12T12:00:00", change_input=lambda value: value.update(ready_check=False))
+    for day in range(13, 25):
+        clone_run(case, "2026-09-" + str(day) + "T12:00:00")
     client, _ = api(case)
     query = {"comparison": "same_conditions", "reference_run_ref": refs["run_ref"],
              "selected_entry_ref": "run:" + experiment, "metric_keys": ["overdue_count", "makespan_hours"]}
@@ -110,7 +128,32 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         assert reference_only["entries"] and reference_only["comparison"]["conditions"]["state"] == "unknown"
         assert all(row["state"] == "unavailable" and row["value"] is None
                    for row in reference_only["comparison"]["metric_deltas"].values())
-        equal = read(client, **query)["data"]
+        counts = {key: Counter() for key in ("source", "production", "experiments")}
+        source_init, production, experiments = ConditionSource.__init__, condition_module._production, condition_module._experiments
+
+        def count_source(self, packet):
+            counts["source"][(packet["kind"], packet["ref"], packet["entry_ref"])] += 1
+            return source_init(self, packet)
+
+        def count_production(source, window):
+            counts["production"][(source.kind, source.ref, window["start"], window["end"])] += 1
+            return production(source, window)
+
+        def count_experiments(source, packet):
+            counts["experiments"][(source.kind, source.ref)] += 1
+            return experiments(source, packet)
+
+        with monkeypatch.context() as checks:
+            checks.setattr(ConditionSource, "__init__", count_source)
+            checks.setattr(condition_module, "_production", count_production)
+            checks.setattr(condition_module, "_experiments", count_experiments)
+            equal = read(client, **query)["data"]
+            assert len(equal["trend"]["points"]) == 15
+            assert sum(counts["source"].values()) == sum(counts["production"].values()) == sum(counts["experiments"].values()) == 15
+            assert all(count == 1 for values in counts.values() for count in values.values())
+            next_request = read(client, **query)["data"]
+            assert next_request == equal
+            assert all(count == 2 for values in counts.values() for count in values.values())
         assert equal["comparison"]["conditions"]["state"] == "equal"
         assert equal["comparison"]["configurations"]["state"] == "different"
         assert equal["comparison"]["objective"]["state"] == "equal"
@@ -146,6 +189,38 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
             descriptor = next(row for row in descriptors if row["entry_ref"] == "run:" + refs["run_ref"])
             packet = read_history_source(case.conn, descriptor)
         window = {"start": "2026-09-09T08:00:00", "end": "2026-09-09T16:00:00"}
+        for values in counts.values():
+            values.clear()
+        with monkeypatch.context() as checks, TransactionManager(case.conn).transaction():
+            checks.setattr(ConditionSource, "__init__", count_source)
+            checks.setattr(condition_module, "_production", count_production)
+            checks.setattr(condition_module, "_experiments", count_experiments)
+            reader = HistoryReader(case.conn)
+            source = reader.condition_source(packet)
+            side = reader.condition_side(packet, window)
+            alias = dict(packet, entry_ref="adoption:same-source")
+            assert reader.condition_source(alias) is source
+            assert reader.condition_side(alias, dict(window, cohort={"machine_refs": []})) is side
+            saved_rows, saved_families = deepcopy(side["conditions"].rows), deepcopy(side["conditions"].families)
+            compare_prepared_history_conditions(side, side)
+            assert side["conditions"].rows == saved_rows and side["conditions"].families == saved_families
+            other_window = dict(window, end="2026-09-10T16:00:00")
+            other_side = reader.condition_side(packet, other_window)
+            assert other_side is not side and other_side["configurations"] is side["configurations"]
+            assert sum(counts["source"].values()) == sum(counts["experiments"].values()) == 1
+            assert sum(counts["production"].values()) == 2
+            without_result = dict(packet, candidate=None, raw_tasks=None, entry_ref="run:without-result")
+            assert reader.condition_source(without_result) is not source
+            issues = []
+            for code in ("audit_missing", "audit_unproven"):
+                issue = {"code": code, "message": "Saved adoption audit gap"}
+                unavailable = dict(packet, entry_ref="adoption:" + code, source_issue=issue)
+                isolated = reader.condition_source(unavailable)
+                assert isolated is not source and not isolated.available and isolated.issue == issue
+                issues.append(isolated)
+            assert issues[0] is not issues[1]
+            assert reader.condition_source(missing_packet()) is not reader.condition_source(
+                missing_packet("selection_required", "请选择实际历史条目。"))
         for source, expected_state in (("internal", "unknown"), ("external", "equal")):
             hours = deepcopy(packet)
             operation = next(iter(hours["facts"].tables["BatchOperations"].values()))
@@ -161,6 +236,12 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
                 missing = compare_history_conditions(hours, hours, window)
                 assert all(row["state"] == "unknown" for row in missing["conditions"]["rows"]
                            if row["category"] == "requirements" and row["field"] in ("setup_hours", "unit_hours"))
+        saved_selection = packet["receipt"].get("selection") or {}
+        if saved_selection.get("selection_policy_version") == "business_objectives_v1":
+            primary = saved_selection["primary_objective"]
+            saved_objective = compare_history_conditions(packet, packet, window)["objective"]["before"]
+            assert saved_objective["source"]["path"] == "receipt.selection"
+            assert saved_objective["value"] == {"name": primary, "field_order": saved_selection["objective_field_order"][primary]}
         old_objective = deepcopy(packet)
         old_objective["receipt"].pop("selection", None)
         old_objective["candidate"]["artifact"]["summary"] = {}
@@ -216,6 +297,8 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
             "BatchMaterialReviews": [], "BatchMaterialStages": [],
             "BatchMaterialArrivals": [{"requirement_id": 1, "arrival_date": "2026-09-10", "quantity": quantity}
                                      for quantity in (0.1, 0.2, 0.3)]}
+        arrival_tables["BatchMaterialArrivals"].append({"requirement_id": 99, "arrival_date": None,
+                                                       "quantity": "Unconsumed malformed quantity"})
         stub = SimpleNamespace(table=lambda name: arrival_tables.get(name), original_table=lambda name: [],
             entity_refs={("material", "M0"): "a" * 48},
             source=lambda path, origin="environment": {"kind": "run", "ref": refs["run_ref"], "path": path})

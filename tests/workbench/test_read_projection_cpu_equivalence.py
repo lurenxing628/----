@@ -147,7 +147,7 @@ def test_admission_canonical_comparison_keeps_nested_storage_type_differences(ca
     assert error.value.code == "candidate_baseline_invalid"
 
 
-def test_admission_still_checks_agreeing_dtos_against_original_archived_work(candidate_case):
+def test_admission_still_checks_agreeing_dtos_against_original_archived_work(candidate_case, monkeypatch):
     case = candidate_case
     scope, capture, accepted_at = _admission(case)
     original = GenerationFacts(capture)
@@ -172,7 +172,16 @@ def test_admission_still_checks_agreeing_dtos_against_original_archived_work(can
     run_ref = case.conn.execute("SELECT run_ref FROM WorkbenchRunJobs").fetchone()[0]
     candidate = store.candidates(run_ref)[0]
     rows = store.tasks(candidate["candidate_ref"])
-    projected, intervals = tasks_projection_with_intervals(rows, candidate, original)
+    operation_calls, saved_operation = [], GenerationFacts.operation
+
+    def read_operation(*args, **kwargs):
+        operation_calls.append(args[1])
+        return saved_operation(*args, **kwargs)
+
+    with monkeypatch.context() as task_probe:
+        task_probe.setattr(GenerationFacts, "operation", read_operation)
+        projected, intervals = tasks_projection_with_intervals(rows, candidate, original)
+    assert operation_calls == [row["operation_ref"] for row in rows]
     repeated = tasks_projection(rows, candidate, original)
     assert projected == repeated
     validated, saved_intervals = validate_saved_tasks(rows, candidate, original)

@@ -7,8 +7,8 @@ from core.models.workbench_decision_history import (
     normalize_history_query,
     reject_history,
 )
+from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-from core.services.workbench.run.decision_metrics import metric_definitions
 
 from .catalog import read_history_catalog
 from .metrics import gate_history_metric
@@ -64,7 +64,7 @@ def _read(conn, values, *, all_rows):
                        reverse=query["order"] == "desc")
         rows = dated + sorted((row for row in rows if row["occurred_at"] is None), key=lambda row: row["entry_ref"])
         page_rows, page = _page(rows, query["page"], query["size"], all_rows=all_rows)
-        reader, projected, pairs = HistoryReader(conn), {}, {}
+        reader, projected, pairs = HistoryReader(conn, catalog=catalog), {}, {}
 
         def entry(descriptor):
             if descriptor is None:

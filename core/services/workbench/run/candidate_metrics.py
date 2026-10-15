@@ -2,8 +2,6 @@
 
 from core.models.workbench_run_candidate import local_time
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
-from core.services.workbench.facts.candidate_tasks import tasks_projection
-from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.changeovers import changeover_projection
 from core.services.workbench.facts.resource_pressure import pressure_from_index
 from core.services.workbench.facts.resource_projection import (
@@ -33,32 +31,21 @@ def scoped_rows(rows, batch_refs, start, end):
     return result
 
 
-def changeovers(rows, facts, available=True, *, start=None, end=None, next_operation_refs=None):
+def changeovers(rows, available=True, *, start=None, end=None, next_operation_refs=None, task_intervals=None):
     projected = changeover_projection(rows, start=start, end=end, work_available=available,
-                                     next_operation_refs=next_operation_refs)
+                                     next_operation_refs=next_operation_refs, task_intervals=task_intervals)
     reason = "；".join(item["message"] for item in projected["issues"]) if projected["count"] is None and projected["issues"] else None
     return {"value": projected["count"], "reason": reason}
 
 
-def candidate_resource_cohort(store, source, official_tasks):
-    """Fix the denominator to every saved candidate plus its formal baseline."""
-    pools = [official_tasks, source.tasks]
-    for candidate in source.catalog:
-        if candidate["candidate_ref"] == source.candidate["candidate_ref"] or candidate["status"] != "completed":
-            continue
-        raw = store.tasks(candidate["candidate_ref"])
-        if len(raw) != candidate["task_count"]:
-            corrupt()
-        pools.append(tasks_projection(raw, candidate, source.facts))
-    return resource_cohort(pools)
-
-
-def resource_comparison(before, after, capture, facts, start, end, baseline_available, cohort=None):
+def resource_comparison(before, after, start, end, baseline_available, cohort=None, *, calendar_archive,
+                        task_intervals=None, reference_task_intervals=None):
     resources = cohort if cohort is not None else resource_cohort([before, after])
-    factory = ArchivedCalendar(facts.archive)
+    factory = ArchivedCalendar(calendar_archive)
     specs = [dict(resource, saved_id=factory.bindings.get((resource["kind"], resource["ref"]))) for resource in resources]
-    indexes = [ResourceTaskIndex(tasks, start, end, work_available=enabled)
-               for tasks, enabled in ((before, baseline_available), (after, True))]
+    indexes = [ResourceTaskIndex(tasks, start, end, work_available=enabled, task_intervals=intervals)
+               for tasks, enabled, intervals in ((before, baseline_available, reference_task_intervals),
+                                                 (after, True, task_intervals))]
     result = []
     for resource, (_, calendar) in zip(resources, factory.iter_resources(specs, start, end)):
         sides = [pressure_from_index(index, resource, calendar) for index in indexes]

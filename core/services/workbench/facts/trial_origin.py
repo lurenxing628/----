@@ -48,7 +48,7 @@ def delivery_origin(admission, rows, facts=None):
     return batches, by_batch, deferred, deferred_issues
 
 
-def operation_contexts(rows, admission, facts=None):
+def operation_contexts(rows, admission, facts=None, *, origin=None):
     """Bind original arrangements to every operation in this source's batches."""
     source = admission["source"]
     if "capture" in source:
@@ -62,7 +62,7 @@ def operation_contexts(rows, admission, facts=None):
         refs = {int(row["source_key"]): row["ref"] for row in tables["WorkbenchPlanSourceRefs"]
                 if row["kind"] == "operation" and row["active"] == 1}
         execution = admission["execution"]
-    batches, by_batch, deferred, _issues = delivery_origin(admission, rows, facts)
+    batches, by_batch, deferred, _issues = delivery_origin(admission, rows, facts) if origin is None else origin
     result = {row["operation_ref"]: {"operation": row["original"]["operation"],
         "execution": row["original"].get("execution") or {}, "batch_ref": row["original"]["batch_ref"],
         "batch": row["original"]["batch"], "row": row, "arranged": True,

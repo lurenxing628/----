@@ -16,7 +16,10 @@ from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.files import WorkbenchProcessFileService
 from core.services.workbench.process.route_apply import apply_route, prepare_route
 from core.services.workbench.process.stage_apply import apply_hours, apply_source, prepare_source
+from data.repositories.process_query_repo import ProcessQueryRepository
+from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
@@ -204,3 +207,38 @@ def test_legacy_route_save_retains_hours_only_for_the_same_type(ready_adoption_c
     assert row['unit_hours'] == expected
     assert row['setup_hours'] == (0 if type_name == 'Turning' else None)
     assert service(case.conn).receipt(case.template_ref, KEY)['data'] == audit
+
+
+def test_template_ref_integer_lookup_keeps_exact_text_keys_and_missing_lineage_rows(schema_conn):
+    conn = schema_conn
+    conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('R10-P','test part')")
+    conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES ('R10-B','R10-P',1)")
+    template_id = conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_name,source,setup_hours,unit_hours) "
+                               "VALUES ('R10-P',1,'turning','internal',0,1)").lastrowid
+    operation_id = conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours) "
+                                "VALUES ('R10-O','R10-B',1,'turning','internal',0,1)").lastrowid
+    template_ref = conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='template_operation' AND entity_key=? AND active=1",
+                                (str(template_id),)).fetchone()[0]
+    operation_ref = conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+                                 (str(operation_id),)).fetchone()[0]
+    bad_templates, bad_operations = [], []
+    for index, key in enumerate(('0{}', '{}x'), 1):
+        template_bad, operation_bad = 'a' * 47 + str(index), 'b' * 47 + str(index)
+        conn.execute("INSERT INTO WorkbenchEntityRefs(ref,kind,entity_key) VALUES (?,'template_operation',?)",
+                     (template_bad, key.format(template_id)))
+        conn.execute("INSERT INTO WorkbenchPlanSourceRefs(ref,kind,source_key) VALUES (?,'operation',?)",
+                     (operation_bad, key.format(operation_id)))
+        bad_templates.append(template_bad)
+        bad_operations.append(operation_bad)
+    conn.commit()
+    rows = ProcessQueryRepository(conn).template_operations_by_refs([template_ref] + bad_templates)
+    assert [(row['ref'], row['id']) for row in rows] == [(template_ref, template_id)]
+    lineage = WorkbenchTemplateLineageRepository(conn)
+    templates = lineage.current_templates([template_ref] + bad_templates)
+    assert templates[template_ref]['id'] == template_id
+    assert all(templates[ref]['id'] is None and templates[ref]['template_operation_ref'] == ref for ref in bad_templates)
+    instances = lineage.current_instances([operation_ref] + bad_operations)
+    assert list(instances) == [operation_ref] and instances[operation_ref]['id'] == operation_id
+    adoption = WorkbenchCalibrationAdoptionRepository(conn)
+    assert adoption.template(template_ref)['id'] == template_id
+    assert all(adoption.template(ref) is None for ref in bad_templates)

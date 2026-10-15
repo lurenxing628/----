@@ -17,13 +17,10 @@ class TailCheckpointStore(CheckpointStore):
         return DecodeCheckpointRequest(positions, captured.append), captured
 
 
-def trial_request(reference, *, resume, budget):
-    if budget is not None:
-        budget.last_pick_check = 0
-    check = budget.check_pick if budget is not None else None
-    tail = DecodeTailReuse(reference.checkpoints, check_budget=check) if resume is not None else None
+def trial_request(reference, *, resume):
+    tail = DecodeTailReuse(reference.checkpoints) if resume is not None else None
     positions = [item.position for item in reference.checkpoints] or [len(reference.order)]
-    return DecodeCheckpointRequest(positions, lambda checkpoint: None, tail_reuse=tail, check_budget=check)
+    return DecodeCheckpointRequest(positions, lambda checkpoint: None, tail_reuse=tail)
 
 
 __all__ = ["TailCheckpointStore", "trial_request"]

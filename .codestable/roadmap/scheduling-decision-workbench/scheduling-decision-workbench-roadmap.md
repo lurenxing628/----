@@ -24,7 +24,7 @@ related_roadmaps: [workbench-prototype-migration, aps-three-gap-directions, tria
 
 2026-10-13 用户要求形成整体方案、作出明确决策并由独立 subAgent 审查，后续实施以审定稿为依据。本轮交付主方案、依赖清单和审查处理记录；实施状态由条目逐项维护。
 
-**方案状态：A第0—8阶段的非延期范围已通过主对话验收，并已提交推送origin/main（efe047d3）。B独立review/debug的B1—B15及用户追加同类界面修复已通过主对话非延期范围验收，当前按明确清单提交推送。** B同库正常实例为59615／PID50528，原库、Python3.8.10、Schema40保持；主对话已核对身份、真实页面与CSV。Gate04前16步通过，762收集／726通过／36跳过／0失败；第17步仅原15条Windows required setup-skipped导致failed。全部Windows验证由用户在大改后统一测试，保留失败/跳过及核销规则。用户决定性能留C收口：每候选20,000安排的4／6／8候选summary仍为3.6246／4.6823／5.2835秒，2秒目标与完整旧候选/资源窗口保持。B由主对话再次提交推送并核对远程后，新建C实施U0—U6。当前B证据覆盖dirty工作区，当前状态依据[主验收表](stage-acceptance.md)，B原件在`evidence/decision-workbench-review/2026-10-14/`，性能移交在`evidence/decision-stage-acceptance/stage-08/performance-c-handoff.json`。下列历次交付和返修段落保留过程事实。
+**方案状态：A第0—8阶段的非延期范围已通过主对话验收，并已提交推送origin/main（efe047d3）。B独立review/debug的B1—B15及同类界面修复已通过主对话非延期范围验收，82路径提交7b2697a5已推送origin/main并核对；C独立对话U0—U2已通过主验收，U3共同复用与预算正在实施。** B验收时同库正常实例为59615／PID50528（现已退出，原库保全），原库、Python3.8.10、Schema40保持；主对话已核对身份、真实页面与CSV。Gate04前16步通过，762收集／726通过／36跳过／0失败；第17步仅原15条Windows required setup-skipped导致failed。全部Windows验证由用户在大改后统一测试，保留失败/跳过及核销规则。用户决定性能留C收口：每候选20,000安排的4／6／8候选summary仍为3.6246／4.6823／5.2835秒，2秒目标与完整旧候选/资源窗口保持。C对话01a13a5e-ebf4-7bb2-abd6-ca06b29491c4/local按主对话施工稿U3.1—U3.7执行共同解码复用与预算，后续U4—U6逐段设计并验收。当前B证据覆盖dirty工作区，当前状态依据[主验收表](stage-acceptance.md)，B原件在`evidence/decision-workbench-review/2026-10-14/`，性能移交在`evidence/decision-stage-acceptance/stage-08/performance-c-handoff.json`。下列历次交付和返修段落保留过程事实。
 
 > 2026-10-13 用户追加推荐卡排版返修：原主因固定320px窄列、短清单大空白及行距过密；当前重排为全宽主因、下方收益／代价两栏，并增加正文行距和指标间隔。上一轮数学、事实、事务、原始文件与功能证据保持有效；本次结构构建及受影响页面验收进行中。第7已正式派发，先交此处更新预览再继续历史趋势。
 

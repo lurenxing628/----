@@ -4,12 +4,19 @@ from dataclasses import fields
 from datetime import datetime
 from typing import Any, Dict
 
+from core.models.content import same
 from core.models.workbench_execution import ExecutionProjection, ProductionReport
 from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.models.workbench_preflight import public_ref
 
 from .preflight_checks import number
 from .run_input_rows import fail
+
+
+def execution_snapshots_match(left, right):
+    """Compare every saved field by permanent operation identity, retaining all rows."""
+    return same(sorted(left, key=lambda row: row["operation_ref"]),
+                sorted(right, key=lambda row: row["operation_ref"]))
 
 
 def _exact_fields(value, cls) -> Dict[str, Any]:

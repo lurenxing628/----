@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 
 from .iterated_greedy_acceptance import PoolEntry
 from .iterated_greedy_contract import _BudgetExhausted
-from .iterated_greedy_reference import activate_entry, capture_reference, seed_solution_pool
+from .iterated_greedy_reference import activate_entry, capture_reference, decode_reference, seed_solution_pool
 
 
 def start_reference(search: Any) -> None:
@@ -73,9 +73,8 @@ def _due_date_reference(search: Any, source: Any) -> Optional[PoolEntry]:
     from .iterated_greedy_seed import build_due_date_seed
 
     started = search.clock()
-    # Keep at least 95% of the remaining stage time for formal SGS work. The common
-    # global deadline and the seed's 2048 distinct-probe safety cap still apply.
-    construction_deadline = started + max(search.deadline - started, 0.0) * 0.05
+    # Construction consumes the common deadline and keeps the finite 2048-probe enumeration cap.
+    construction_deadline = search.deadline
     seed["construction_time_budget_ms"] = max(int((construction_deadline - started) * 1000), 0)
     proposal = build_due_date_seed(parent=search.parent, candidate=source, metrics=search.metrics,
                                    graph_context=search.graph_context, start_dt=search.start_dt,
@@ -87,7 +86,7 @@ def _due_date_reference(search: Any, source: Any) -> Optional[PoolEntry]:
         return None
     before, improvements = search.report["decodes"], search.report["improvements"]
     try:
-        entry = search._decode_entry(order)
+        entry = decode_reference(search, order, before=source, reference_kind="due_date_seed")
     except _BudgetExhausted as exc:
         seed.update(status="skipped_by_budget", reason=exc.reason)
         raise

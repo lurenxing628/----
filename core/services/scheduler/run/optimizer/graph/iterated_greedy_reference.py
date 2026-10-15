@@ -13,6 +13,7 @@ from dataclasses import replace
 from typing import Any, Dict, Optional
 
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
 from .iterated_greedy_acceptance import PoolEntry
 from .iterated_greedy_contract import _BudgetExhausted, ig_decode_profile
@@ -27,7 +28,8 @@ def seed_solution_pool(search: Any) -> None:
     sources = [best]
     sources.extend(elite["candidate"] for elite in search.pool.elites)
     for candidate in sources:
-        parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context)
+        parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context,
+                                        resource_pool=candidate.get("resource_pool"))
         if parent is None:
             continue
         search.solution_pool.add(PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
@@ -46,12 +48,34 @@ def activate_entry(search: Any, entry: PoolEntry) -> None:
 def capture_reference(search: Any, entry: PoolEntry) -> Optional[PoolEntry]:
     """Decode a pool entry under the current context unless an equivalent decoded entry is already cached."""
     if entry.decoded_order and entry.checkpoints:
+        search._record_local_reuse("reference_reused", entry.candidate)
         return entry
     search.capturing = entry.candidate
     try:
-        return search._decode_entry(entry.order)
+        return decode_reference(search, entry.order, before=entry.candidate, reference_kind="parent_order")
     finally:
         search.capturing = None
+
+
+def decode_reference(search: Any, order: Any, *, before: Dict[str, Any], reference_kind: str) -> Optional[PoolEntry]:
+    """Record a real SGS reference decode, including the due-date starting proposal."""
+    observer = getattr(getattr(search, "report_state", None), "reference_capture_observer", None)
+    started_at = search.clock() if observer is not None else None
+    session = search.decode_session
+    before_actual = session.actual_decoder_calls
+    decoded = None
+    try:
+        reason = "capture_checkpoints" if search.capturing is not None else None
+        decoded = search._decode_entry(order, redecode_reason=reason)
+        if search.last_decode_skip is not None:
+            raise search.last_decode_skip
+        return decoded
+    finally:
+        after_actual = session.actual_decoder_calls
+        if observer is not None and after_actual > before_actual:
+            observer(before=before, after=decoded.candidate if decoded is not None else None,
+                     started_at=started_at, finished_at=search.clock(), decoder_executed=True,
+                     reference_kind=reference_kind)
 
 
 def reference_for_iteration(search: Any) -> PoolEntry:
@@ -67,7 +91,11 @@ def reference_for_iteration(search: Any) -> PoolEntry:
     if restart is None or restart.decision_key() == reference.decision_key():
         return reference
     activate_entry(search, restart)
-    decoded = capture_reference(search, restart)
+    try:
+        decoded = capture_reference(search, restart)
+    except SharedSearchSkip:
+        activate_entry(search, reference)
+        raise
     if decoded is None:
         search.report["pool"]["restart_captures_failed"] += 1
         activate_entry(search, reference)
@@ -87,7 +115,8 @@ def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[Gr
     search.best = candidate
     if search.operations is None or search.graph_context is None:
         return
-    parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context)
+    parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context,
+                                    resource_pool=candidate.get("resource_pool"))
     if parent is None:
         return
     search.report["incumbent_adoptions"] += 1
@@ -98,7 +127,7 @@ def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[Gr
     try:
         search._require_budget()
         decoded = capture_reference(search, entry)
-    except _BudgetExhausted:
+    except (_BudgetExhausted, SharedSearchSkip):
         _roll_back(search, previous_parent, previous_profile, previous_reference)
         raise
     if decoded is None:
@@ -116,4 +145,5 @@ def _roll_back(search: Any, parent: Any, profile: GraphReadyWeightProfile, refer
     search.reference = reference
 
 
-__all__ = ["activate_entry", "adopt_incumbent", "capture_reference", "reference_for_iteration", "seed_solution_pool"]
+__all__ = ["activate_entry", "adopt_incumbent", "capture_reference", "decode_reference",
+           "reference_for_iteration", "seed_solution_pool"]

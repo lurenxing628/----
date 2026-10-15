@@ -33,7 +33,7 @@ def _arguments(*, export, detail):
             raise WorkbenchCommandRejected("invalid_input", "列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
     query = CalibrationQuery(**fields)
     token = request.args.get("snapshot_ref")
-    if (export or detail or query.number > 1) and not token:
+    if (export or detail) and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     return query, token
 

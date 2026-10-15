@@ -49,6 +49,7 @@ from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
 from .run_state_setup import _prepare_run_state, replay_resumed_demand, resume_run_state
 from .schedule_params import resolve_schedule_params
+from .schedule_preparation import NativeSchedulePreparation
 from .seed import _identity_int, normalize_seed_results
 
 __all__ = [
@@ -97,6 +98,7 @@ class GreedyScheduler:
         graph_ready_context: Optional[Any] = None,
         decode_resume: Optional[DecodeCheckpoint] = None,
         decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
+        prepared_inputs: Optional[NativeSchedulePreparation] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         self._decode_invocations += 1
         self._last_sgs_reuse_stats = {"hits": 0, "misses": 0}
@@ -117,7 +119,8 @@ class GreedyScheduler:
             algo_stats=algo_stats,
         )
         batches = build_normalized_batches_map(batches, warnings=warnings)
-        machine_downtimes = _normalize_machine_downtimes(machine_downtimes)
+        machine_downtimes = (prepared_inputs.normalized_machine_downtimes
+                            if prepared_inputs is not None else _normalize_machine_downtimes(machine_downtimes))
         batch_order = _build_batch_order(
             batches,
             params,
@@ -130,11 +133,18 @@ class GreedyScheduler:
         skip_score_reuse = params.dispatch_mode_key == "sgs" and can_skip_native_sgs_reuse(sorted_ops)
         checkpoint_signature = None
         if decode_resume is not None or decode_checkpoints is not None:
+            if prepared_inputs is not None and prepared_inputs.calendar is not None:
+                calendar_signature = None
+                prepared_calendar_signature = prepared_inputs.checkpoint_calendar_component()
+            else:
+                calendar_signature = checkpoint_calendar_signature(self.calendar)
+                prepared_calendar_signature = None
             checkpoint_signature = decode_input_signature(
                 operations=sorted_ops, batches=batches, batch_order=batch_order, params=params,
                 machine_downtimes=machine_downtimes, resource_pool=resource_pool, seed_results=seed_results,
                 graph_ready_context=graph_ready_context, readiness_gate_enabled=bool(readiness_gate_enabled),
-                strict_mode=bool(strict_mode), calendar_signature=checkpoint_calendar_signature(self.calendar),
+                strict_mode=bool(strict_mode), calendar_signature=calendar_signature,
+                prepared_calendar_signature=prepared_calendar_signature,
                 warnings=warnings)
         if decode_resume is not None:
             # Resumed decode: the checkpoint already holds seeds, readiness progress and the prefix picks.
@@ -351,6 +361,16 @@ def _normalize_machine_downtimes(machine_downtimes: Optional[Dict[str, List[Tupl
         for resource_id, segments in machine_downtimes.items()
         if normalize_text_id(resource_id)
     }
+
+
+def prepare_native_schedule_inputs(
+    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], *, calendar: Any = None,
+) -> NativeSchedulePreparation:
+    return NativeSchedulePreparation(
+        input_reference=machine_downtimes,
+        normalized_machine_downtimes=_normalize_machine_downtimes(machine_downtimes),
+        calendar=calendar,
+    )
 
 
 def _build_batch_order(

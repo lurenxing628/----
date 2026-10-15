@@ -50,22 +50,15 @@
     if (!C.object(patch) || !Object.keys(patch).every(field => fields.includes(field))) {
       throw problem('invalid_preferences', '试调查看偏好含未知的项，没有保存业务内容。');
     }
-    preferences(initial); preferences({ ...initial, ...patch });
     const value = preferences({ ...(read(target, store) || initial), ...patch });
     try { storage(store).setItem(name, JSON.stringify({ schema_version: 1, kind: target.kind, ref: target.ref, preferences: value })); }
     catch (_) { throw problem('write_unavailable', '本次查看偏好尚未保存，本页选择已保留。'); }
-    const saved = read(target, store);
-    if (!saved || !fields.every(field => saved[field] === value[field])) {
-      throw problem('write_unverified', '本次查看偏好没有确认存上，本页选择已保留。');
-    }
     return value;
   }
   function clear(target, store) {
     const name = key(target);
     try {
-      const targetStorage = storage(store);
-      targetStorage.removeItem(name);
-      if (targetStorage.getItem(name) !== null) throw new Error('not removed');
+      storage(store).removeItem(name);
     } catch (_) { throw problem('clear_unavailable', '查看偏好清除失败，请重试。'); }
   }
   function useView(data) {
@@ -98,7 +91,7 @@
     }
     function reset() {
       if (active.current !== name) return;
-      try { clear(target); pending.current.patch = {}; setState(loaded()); notify(); }
+      try { clear(target); pending.current.patch = {}; setState({ name, value: initial, error: null }); notify(initial); }
       catch (error) { setState(previous => ({ ...previous, error })); }
     }
     React.useEffect(() => {

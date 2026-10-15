@@ -13,6 +13,8 @@ from .material_stages_schema import contract_issues as material_stages_contract_
 from .material_stages_schema import objects as material_stages_objects
 from .migration_common import MigrationOutcome, column_exists, fallback_log, table_exists
 from .migration_operation_execution_contract import operation_execution_event_contract_issues
+from .schedule_business_roles_schema import contract_issues as schedule_business_roles_contract_issues
+from .schedule_business_roles_schema import objects as schedule_business_roles_objects
 from .schema_declaration import declared_columns, load_schema_sql
 from .schema_structure import SchemaStructure
 from .workbench_calibration_adoption_schema import contract_issues as calibration_adoption_contract_issues
@@ -37,11 +39,13 @@ from .workbench_plan_identity_write_guard import (
 from .workbench_process_schema import process_objects, workbench_process_contract_issues
 from .workbench_process_workflow_schema import workbench_process_workflow_contract_issues, workflow_objects
 from .workbench_resource_schema import resource_objects, workbench_resource_contract_issues
+from .workbench_run_read_model_schema import contract_issues as run_read_model_contract_issues
+from .workbench_run_read_model_schema import objects as run_read_model_objects
 from .workbench_run_schema import workbench_run_contract_issues, workbench_run_objects
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
-CURRENT_SCHEMA_VERSION = 40
+CURRENT_SCHEMA_VERSION = 42
 
 
 class MigrationContractError(RuntimeError):
@@ -217,7 +221,8 @@ def detect_schema_is_current(conn: sqlite3.Connection, *, schema_sql: Optional[s
 # 有自己 DDL 模块与契约函数的子系统：它们的表/索引/触发器按“DDL 逐字相等”核对，不再重复做列级比对。
 _SUBSYSTEM_OBJECT_SOURCES = (
     metadata_objects, resource_objects, process_objects, workflow_objects, plan_identity_objects,
-    plan_identity_write_guard_objects, execution_ledger_objects, execution_void_objects, workbench_run_objects,
+    plan_identity_write_guard_objects, execution_ledger_objects, execution_void_objects, workbench_run_objects, run_read_model_objects,
+    schedule_business_roles_objects,
     template_lineage_objects, workbench_trial_objects, lineage_lookup_objects, calibration_adoption_objects,
     workbench_dashboard_objects, workbench_dashboard_external_objects, workbench_outsourcing_objects,
     workbench_outsourcing_source_objects, batch_external_context_objects, calendar_periods_objects, machine_capabilities_objects, material_stages_objects,
@@ -277,6 +282,8 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
     issues.extend(workbench_process_workflow_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(execution_ledger_contract_issues(conn, structure=structure))
     issues.extend(workbench_run_contract_issues(conn, structure=structure, allow_legacy=False))
+    issues.extend(run_read_model_contract_issues(conn, structure=structure))
+    issues.extend(schedule_business_roles_contract_issues(conn, structure=structure))
     issues.extend(template_lineage_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(workbench_trial_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(lineage_lookup_contract_issues(conn, structure=structure))

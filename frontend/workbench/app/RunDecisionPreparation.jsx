@@ -77,13 +77,13 @@
         <td className="wb-col-actions"><C.Button className="mini" data-changeover-detail={row.event_ref} aria-expanded={openEvent === row.event_ref} onClick={() => setOpenEvent(openEvent === row.event_ref ? null : row.event_ref)}>切换详情</C.Button>{onDrill && <div className="rd-locate"><C.Button icon="chart-gantt" className="mini" onClick={() => onDrill(row.drill.previous)}>看前序甘特</C.Button><C.Button icon="chart-gantt" className="mini" onClick={() => onDrill(row.drill.next)}>看后序甘特</C.Button></div>}</td></tr>
         {openEvent === row.event_ref && <tr className="rd-preparation-expanded"><td colSpan={5}><div className="rd-changeover-times"><div><h4>前一道工序</h4><EventOperation row={row.previous} start={row.previous_start} end={row.previous_end} /></div><div><h4>后一道工序</h4><EventOperation row={row.next} start={row.next_start} end={row.next_end} /></div></div><C.Reasons rows={row.data_gaps} /><window.WorkbenchReference entries={{ '设备': row.machine_ref, '前序工序': row.previous_operation_ref, '后序工序': row.next_operation_ref, '前序安排': row.previous_row_ref, '后序安排': row.next_row_ref }} /></td></tr>}</React.Fragment>)}</tbody></table></div>;
   }
-  function Pane({ adapter, result, section, query, onQuery, onDrill }) {
+  function Pane({ adapter, result, section, query, onQuery, onDrill, enabled = true }) {
     const overview = result.data, scope = overview.scope, runRef = overview.run.run_ref, preparation = section === 'preparation';
     const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, range_start: scope.range_start, range_end: scope.range_end,
       ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key))), q = window.RunDecisionAPI.preparationScope(runRef, { ...stored, ...shared }, section);
     const [paused, setPaused] = React.useState(false), key = JSON.stringify(q);
-    const read = window.APSResourceSession.useQuery(signal => adapter[section](runRef, q, signal), [adapter, runRef, key, section, paused], !paused), detail = read.result, data = detail && detail.data;
+    const read = window.APSResourceSession.useQuery(signal => adapter[section](runRef, q, signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused), detail = read.result, data = detail && detail.data;
     function update(change, paging = false) {
       const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref;
       if (paging && detail) next.snapshot_ref = detail.meta.snapshot_ref;

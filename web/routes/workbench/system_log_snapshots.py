@@ -39,7 +39,11 @@ def _windows():
 
 def _bound_scope(scope):
     event_journal = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
-    generation = restored_context_ref(event_journal.database_scope, event_journal.records()) if event_journal else restored_context_ref(database_scope(), [])
+    if event_journal is not None:
+        records = event_journal.records()
+        generation = restored_context_ref(event_journal.scope_from_records(records), records)
+    else:
+        generation = restored_context_ref(database_scope(), [])
     return {**scope, "data_context_ref": generation}
 
 

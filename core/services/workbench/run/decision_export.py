@@ -11,9 +11,10 @@ from core.models.workbench_action_values import FileDownload
 from core.models.workbench_run_candidate import reject
 from core.services.common.excel_instruction_sheet import close_write_only_sheets
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.facts.table_cells import number_text
 
-from .decision import decision_overview
+from .decision import decision_overview, decision_summary
 from .decision_preparation_export import (
     CHANGEOVER_HEADERS,
     PREPARATION_HEADERS,
@@ -202,7 +203,7 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None,
         reject("invalid_input", "导出筛选页签与当前明细不一致，请重新导出。", 422)
     filters = {key: query.pop(key) for key in ("batch_ref", "resource_ref", "change_kind", "delivery_filter", "selected_batch_ref",
         "resource_kind", "pressure_filter", "grain", "pressure_threshold", "display_start", "display_end", "bucket_start", "bucket_end",
-        "machine_ref", "allocation_state", "work_scope", "event_side", "process_candidate_ref", "record_kind", "sort", "order") if key in query}
+        "machine_ref", "allocation_state", "work_scope", "event_side", "process_candidate_ref", "objective", "record_kind", "sort", "order") if key in query}
     query.pop("heatmap_page", None)
     query.pop("heatmap_size", None)
     if filters and detail_section is None:
@@ -218,11 +219,13 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None,
         snapshot_scope = {"kind": "run-decision", **source.scope}
         if active_filters is not None:
             snapshot_scope["filters"] = active_filters
-        data = decision_overview(source)
+        data = decision_overview(source) if section in ("overview", "all") else (
+            decision_summary(source) if section == "recommendation" else _export_context(source))
         if section in ("recommendation", "all"):
             data["export_recommendation"] = recommendation_export_records(source, data)
         if section in ("process", "all"):
-            data["export_process"] = process_export_records(source, active_filters if detail_section == "process" else None)
+            data["export_process"] = process_export_records(source, active_filters if detail_section == "process" else None,
+                                                            include_all_objectives=section == "all")
         for name in ("batches", "operations"):
             if section not in (name, "all"):
                 continue
@@ -261,7 +264,7 @@ def _export_filters(section, filters):
                "resource-days": {"resource_kind", "resource_ref", "grain", "pressure_threshold", "display_start", "display_end", "bucket_start", "bucket_end"},
                "preparation": {"batch_ref", "machine_ref", "allocation_state", "work_scope", "sort", "order"},
                "changeovers": {"machine_ref", "event_side", "sort", "order"},
-               "process": {"process_candidate_ref", "record_kind", "sort", "order"}}[section]
+               "process": {"process_candidate_ref", "objective", "record_kind", "sort", "order"}}[section]
     if set(filters) - allowed:
         reject("invalid_input", "导出条件不适用于当前页签，请重新导出。", 422)
     if section in ("preparation", "changeovers"):
@@ -269,6 +272,14 @@ def _export_filters(section, filters):
     if section == "process":
         return normalize_process_filters(**filters)
     return normalize_resource_filters(section, **filters) if section in ("resources", "resource-days") else normalize_filters(section, **filters)
+
+
+def _export_context(source):
+    return {"run": source.run, "scope": source.scope, "capture_ref": source.run["run_ref"],
+            "baseline": source.baseline, "selection_basis": source.basis,
+            "metric_definitions": metric_definitions(),
+            "recommendation": {"candidate_ref": source.basis["selected_candidate_ref"],
+                               "recommendation_version": "decision-recommendation-v1"}}
 
 
 def write_run_decision_export(data, snapshot, fmt, section="overview"):

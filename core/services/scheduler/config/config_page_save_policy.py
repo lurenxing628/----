@@ -11,6 +11,7 @@ from .config_constants import (
     CONFIG_PAGE_HIDDEN_REPAIR_FIELDS,
     CONFIG_PAGE_VISIBLE_CHANGE_FIELDS,
     CONFIG_PAGE_WRITE_FIELDS,
+    RETIRED_CONFIG_FIELDS,
 )
 from .config_field_spec import field_label_for
 from .config_page_write_plan import ConfigPageWritePlan
@@ -39,6 +40,9 @@ class ConfigPageSavePolicy:
         else:
             raw_keys = []
 
+        retired = [str(key or "").strip() for key in raw_keys if str(key or "").strip() in RETIRED_CONFIG_FIELDS]
+        if retired:
+            raise ValidationError("固定图权重档已经取消，请刷新设置页面后重试。", field=retired[0])
         submitted: set[str] = set()
         allowed = set(CONFIG_PAGE_WRITE_FIELDS)
         for raw_key in raw_keys:

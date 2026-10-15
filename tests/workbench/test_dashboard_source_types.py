@@ -38,17 +38,18 @@ def frontend_data(response):
     return json.loads(result.stdout)
 
 
-def test_legacy_internal_keeps_analysis_downtime_and_execution_readable(dashboard_case, monkeypatch):
+@pytest.mark.parametrize("stored_source", [" INTERNAL ", "\u2003InTeRnAl\u00a0"])
+def test_legacy_internal_keeps_analysis_downtime_and_execution_readable(dashboard_case, monkeypatch, stored_source):
     case = dashboard_case
-    case.conn.execute("UPDATE BatchOperations SET source=' INTERNAL ' WHERE id=?", (case.op,))
+    case.conn.execute("UPDATE BatchOperations SET source=? WHERE id=?", (stored_source, case.op))
     case.conn.commit()
     reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
     with reader.read_snapshot():
         sources = reader.load()
         reader.project(sources)
     assert sources.facts.task_rows[0]["source"] == "internal"
-    assert sources.facts.raw["plan_task_sources"][0][1] == " INTERNAL "
-    assert list(sources.facts.raw["execution_operation_sources"].values()) == [" INTERNAL "]
+    assert sources.facts.raw["plan_task_sources"][0][1] == stored_source
+    assert list(sources.facts.raw["execution_operation_sources"].values()) == [stored_source]
     assert not source_gap_rows(case.conn, 1)
 
     data = frontend_data(api(case, monkeypatch).get(ROOT))
@@ -60,16 +61,17 @@ def test_legacy_internal_keeps_analysis_downtime_and_execution_readable(dashboar
     assert len(analysis["downtimes"]) == 1 and analysis["overlaps"][0]["source"]["known_overlap_hours"] == 1
     assert data["categories"]["downtime"]["unknown_count"] == 0
     assert analysis["execution"][0]["source"]["data_quality"] != "invalid"
-    assert case.conn.execute("SELECT source FROM BatchOperations WHERE id=?", (case.op,)).fetchone()[0] == " INTERNAL "
+    assert case.conn.execute("SELECT source FROM BatchOperations WHERE id=?", (case.op,)).fetchone()[0] == stored_source
     with pytest.raises(WorkbenchCommandRejected) as rejected:
         case.report()
     assert rejected.value.code == "constraint_conflict"
 
 
-def test_legacy_external_keeps_analysis_and_reports_unassessed_logistics(external_case, monkeypatch):
+@pytest.mark.parametrize("stored_source", [" EXTERNAL ", "\u2003ExTeRnAl\u00a0"])
+def test_legacy_external_keeps_analysis_and_reports_unassessed_logistics(external_case, monkeypatch, stored_source):
     case = external_case
     op = case.conn.execute("SELECT id FROM BatchOperations WHERE op_code='XO1'").fetchone()[0]
-    case.conn.execute("UPDATE BatchOperations SET source=' EXTERNAL ' WHERE id=?", (op,))
+    case.conn.execute("UPDATE BatchOperations SET source=? WHERE id=?", (stored_source, op))
     case.conn.execute("INSERT INTO Schedule(version,op_id,start_time,end_time) "
         "VALUES(1,?,'2026-09-09T08:00:00','2026-09-11T10:00:00')", (op,))
     case.conn.commit()
@@ -90,7 +92,7 @@ def test_legacy_external_keeps_analysis_and_reports_unassessed_logistics(externa
     assert rejected.value.code == "constraint_conflict"
 
 
-@pytest.mark.parametrize("stored_source", ["unknown", b"internal"])
+@pytest.mark.parametrize("stored_source", ["unknown", b"internal", None])
 def test_unknown_source_stays_unknown_and_preserves_readable_list(external_case, monkeypatch, stored_source):
     case = external_case
     case.conn.execute("UPDATE BatchOperations SET source=? WHERE id=?", (stored_source, case.op))

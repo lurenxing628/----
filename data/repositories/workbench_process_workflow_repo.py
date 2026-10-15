@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence
 
 from .base_repo import BaseRepository
+from .workbench_execution_repo import chunks
 
 WORKFLOW_STAGES = ("route", "source", "hours")
 
@@ -54,14 +55,23 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
                                + (" AND part_no=?" if part_no is not None else "") + ")",
                                (part_no,) if part_no is not None else ())
 
-    def supplier_facts(self) -> List[Dict[str, Any]]:
-        return self._dict_rows("""
+    def _supplier_rows(self, sql, supplier_ids):
+        if supplier_ids is None:
+            return self._dict_rows(sql)
+        result = []
+        for chunk in chunks(list(supplier_ids)):
+            marks = ",".join("?" for _ in chunk)
+            result.extend(self._dict_rows(sql + " WHERE s.supplier_id IN (" + marks + ")", chunk))
+        return result
+
+    def supplier_facts(self, supplier_ids: Optional[Sequence[Any]] = None) -> List[Dict[str, Any]]:
+        return self._supplier_rows("""
         SELECT s.supplier_id, s.op_type_id, s.status, r.ref, p.inactive_reason FROM Suppliers s
         LEFT JOIN WorkbenchEntityRefs r ON r.kind='supplier' AND r.active=1 AND r.entity_key=s.supplier_id
-        LEFT JOIN WorkbenchSupplierProfiles p ON p.supplier_id=s.supplier_id""")
+        LEFT JOIN WorkbenchSupplierProfiles p ON p.supplier_id=s.supplier_id""", supplier_ids)
 
-    def supplier_op_types(self) -> List[Dict[str, Any]]:
-        return self._dict_rows("SELECT supplier_id, op_type_id FROM WorkbenchSupplierOpTypes")
+    def supplier_op_types(self, supplier_ids: Optional[Sequence[Any]] = None) -> List[Dict[str, Any]]:
+        return self._supplier_rows("SELECT supplier_id, op_type_id FROM WorkbenchSupplierOpTypes s", supplier_ids)
 
     def confirmations(self, part_no: Optional[str] = None) -> List[Dict[str, Any]]:
         return self._dict_rows("SELECT c.* FROM WorkbenchProcessOperationConfirmations c" + (

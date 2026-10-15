@@ -14,7 +14,7 @@ from web.api_responses import query_success
 from web.runtime_host import restore_host
 
 from .read_context import bind_read_snapshot
-from .system_context import issue_context, journal, query_payload, system_endpoint
+from .system_context import database_scope, issue_context, journal, query_payload, system_endpoint
 from .system_log_snapshots import resolve_log_snapshot, retain_log_snapshot
 
 
@@ -63,6 +63,7 @@ def system_collection(kind):
     records = None
     if event_journal is not None:
         records = host.capture_maintenance_records() if host is not None else capture_maintenance_journal(event_journal)
+    database = (event_journal.scope_from_records(records) if event_journal is not None else database_scope()) if kind == "backups" else None
     with TransactionManager(g.db).transaction():
         rows, sources, query, snapshot = collection(kind, event_journal=event_journal, journal_records=records)
     count, size, page = len(rows), query["page_size"], query["page"]
@@ -73,14 +74,14 @@ def system_collection(kind):
     for row in rows[(page - 1) * size:page * size]:
         item = {key: value for key, value in row.items() if not key.startswith("_")}
         if kind == "backups" and row["record_kind"] == "backup_file":
-            reference = issue_context("backup", {"filename": row["filename"], "signature": row["_signature"]})
+            reference = issue_context("backup", {"filename": row["filename"], "signature": row["_signature"]}, database=database)
             item["backup_ref"] = reference
-            item["write_context"] = {"write_token": issue_context("file", reference)}
+            item["write_context"] = {"write_token": issue_context("file", reference, database=database)}
         public.append(item)
     data = {"rows": public, "page": {"number": page, "size": size, "total": count, "pages": pages},
             "sources": sources, "scope": "backup-files-and-maintenance-events" if kind == "backups" else "bounded-log-windows"}
     if kind == "backups":
-        data.update({"capabilities": file_capabilities(records), "create_context": {"write_token": issue_context("create", {})}})
+        data.update({"capabilities": file_capabilities(records), "create_context": {"write_token": issue_context("create", {}, database=database)}})
     return query_success(data, snapshot)
 
 

@@ -1,24 +1,18 @@
-"""One outer candidate's plan: the record the comparison keeps per trial and how it is built."""
+"""Business representatives and the retained shape of archived candidate records."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from .optimizer.process_evidence import non_search_evidence
-from .schedule_candidate_dedup import UNCERTIFIED_PREFIX
-from .schedule_candidate_health import CandidateHealth
-from .schedule_candidate_runtime_helpers import _candidate_score, _dict_list, _dict_or_none, _string_list
-from .schedule_candidate_specs import CandidateRunSpec
-
+# Historical stored kinds and states remain readable after their execution path retires.
+CANDIDATE_KIND_BASELINE = "baseline"
+CANDIDATE_KIND_CRITICAL_CHAIN = "critical_chain"
 CANDIDATE_STATUS_COMPLETED = "completed"
-# O25 裁定保留：FAILED 态生产不可达（生产零 raise 点）但属已落库 status 枚举契约，裸删破坏持久化兼容。
 CANDIDATE_STATUS_FAILED = "failed"
 CANDIDATE_STATUS_SKIPPED = "skipped"
-
-
-class CandidateTrialFailure(RuntimeError):
-    """单个候选方案可记录为 failed 的运行失败。"""
+UNCERTIFIED = "uncertified"
+UNCERTIFIED_PREFIX = UNCERTIFIED + ": "
 
 
 @dataclass(frozen=True)
@@ -29,13 +23,13 @@ class CandidatePlan:
     label: str
     status: str
     score: Optional[Tuple[float, ...]]
-    graph_critical_weight: int
-    graph_impact_weight: int
-    graph_downstream_weight: int
+    graph_critical_weight: Optional[int]
+    graph_impact_weight: Optional[int]
+    graph_downstream_weight: Optional[int]
     results: List[Any] = field(default_factory=list)
     summary: Any = None
     metrics: Any = None
-    health: Optional[CandidateHealth] = None
+    health: Optional[Dict[str, Any]] = None
     graph_analysis_public: Optional[Dict[str, Any]] = None
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
     used_strategy: Any = None
@@ -67,6 +61,12 @@ class CandidatePlan:
     # for plans that never enter the ledger (the baseline).
     input_certification: str = ""
     process_evidence: Optional[Dict[str, Any]] = None
+    generation_policy_version: Optional[str] = None
+    representative_objectives: List[str] = field(default_factory=list)
+    evaluations: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    origin: Optional[Dict[str, Any]] = None
+    first_found_elapsed_ms: Optional[int] = None
+    search_evidence_ref: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -83,122 +83,14 @@ class CandidateComparisonOutcome:
     skipped_candidate_labels: List[str]
     baseline_missing_or_failed: bool
     reused_count: int = 0
-
-
-@dataclass(frozen=True)
-class CandidateRunArtifacts:
-    candidate_cfg: Any
-    graph_preparation: Any
-    outcome: Any
-
-
-def adopted_dispatch_mode(outcome: Any, candidate_cfg: Any) -> str:
-    """The mode the plan really decoded with: graph tiers force sgs regardless of the configured mode."""
-    adopted = str(getattr(outcome, "dispatch_mode", None) or "").strip().lower()
-    return adopted or str(candidate_cfg.dispatch_mode)
-
-
-def candidate_plan_from_artifacts(
-    spec: CandidateRunSpec,
-    *,
-    artifacts: CandidateRunArtifacts,
-    health: CandidateHealth,
-) -> CandidatePlan:
-    candidate_cfg = artifacts.candidate_cfg
-    graph_preparation = artifacts.graph_preparation
-    outcome = artifacts.outcome
-    return CandidatePlan(
-        sequence=int(spec.sequence),
-        candidate_key=spec.candidate_key,
-        kind=spec.kind,
-        label=spec.label,
-        status=CANDIDATE_STATUS_COMPLETED,
-        score=_candidate_score(outcome),
-        graph_critical_weight=int(spec.graph_critical_weight),
-        graph_impact_weight=int(spec.graph_impact_weight),
-        graph_downstream_weight=int(spec.graph_downstream_weight),
-        results=list(outcome.results or []),
-        summary=getattr(outcome, "summary", None),
-        metrics=getattr(outcome, "metrics", None),
-        health=health,
-        graph_analysis_public=_dict_or_none(getattr(graph_preparation, "graph_analysis_public", None)),
-        graph_analysis_diagnostics=_dict_or_none(getattr(graph_preparation, "graph_analysis_diagnostics", None)),
-        used_strategy=getattr(outcome, "used_strategy", None),
-        used_params=dict(getattr(outcome, "used_params", None) or {}),
-        best_order=_string_list(getattr(outcome, "best_order", None)),
-        attempts=_dict_list(getattr(outcome, "attempts", None)),
-        improvement_trace=_dict_list(getattr(outcome, "improvement_trace", None)),
-        algo_mode=str(getattr(outcome, "algo_mode", None) or ""),
-        objective_name=str(getattr(outcome, "objective_name", None) or ""),
-        algo_stats=dict(getattr(outcome, "algo_stats", None) or {}),
-        time_budget_seconds=int(getattr(outcome, "time_budget_seconds", None) or 0),
-        search_report=dict(getattr(outcome, "search_report", None) or {}),
-        sort_strategy=str(candidate_cfg.sort_strategy),
-        dispatch_mode=adopted_dispatch_mode(outcome, candidate_cfg),
-        dispatch_rule=str(candidate_cfg.dispatch_rule),
-        objective=str(candidate_cfg.objective),
-        adopted_dispatch_rule=str(getattr(outcome, "dispatch_rule", None) or ""),
-        process_evidence=_dict_or_none(getattr(outcome, "process_evidence", None)),
-    )
-
-
-def with_input_certification(plan: CandidatePlan, certification: Optional[str], *, logger: Any) -> CandidatePlan:
-    if certification is None:
-        return plan
-    if certification.startswith(UNCERTIFIED_PREFIX) and logger is not None:
-        logger.warning("候选方案 %s 的优化器输入无法指纹化，不能复用兄弟方案：%s", plan.label, certification)
-    return replace(plan, input_certification=certification)
-
-
-def skipped_plan(spec: CandidateRunSpec, *, failure_reason: str, objective_name: str = "",
-                 known_not_started: bool = True) -> CandidatePlan:
-    return CandidatePlan(
-        sequence=int(spec.sequence),
-        candidate_key=spec.candidate_key,
-        kind=spec.kind,
-        label=spec.label,
-        status=CANDIDATE_STATUS_SKIPPED,
-        score=None,
-        graph_critical_weight=int(spec.graph_critical_weight),
-        graph_impact_weight=int(spec.graph_impact_weight),
-        graph_downstream_weight=int(spec.graph_downstream_weight),
-        failure_reason=failure_reason,
-        objective_name=objective_name,
-        process_evidence=non_search_evidence(objective_name, kind="not_started" if known_not_started else "budget_skipped",
-                                           reason=failure_reason, known_not_started=known_not_started) if objective_name else None,
-    )
-
-
-def failed_plan(spec: CandidateRunSpec, exc: Exception, *, elapsed_seconds: float, objective_name: str = "") -> CandidatePlan:
-    return CandidatePlan(
-        sequence=int(spec.sequence),
-        candidate_key=spec.candidate_key,
-        kind=spec.kind,
-        label=spec.label,
-        status=CANDIDATE_STATUS_FAILED,
-        score=None,
-        graph_critical_weight=int(spec.graph_critical_weight),
-        graph_impact_weight=int(spec.graph_impact_weight),
-        graph_downstream_weight=int(spec.graph_downstream_weight),
-        failure_reason=str(exc),
-        elapsed_seconds=float(elapsed_seconds),
-        objective_name=objective_name,
-        process_evidence=non_search_evidence(objective_name, kind="failed", reason=str(exc),
-                                           elapsed_ms=max(int(elapsed_seconds * 1000), 0)) if objective_name else None,
-    )
+    generation_policy_version: Optional[str] = None
+    primary_objective: Optional[str] = None
+    target_objectives: List[str] = field(default_factory=list)
+    unified_process: Optional[Dict[str, Any]] = None
 
 
 __all__ = [
-    "CANDIDATE_STATUS_COMPLETED",
-    "CANDIDATE_STATUS_FAILED",
-    "CANDIDATE_STATUS_SKIPPED",
-    "CandidateComparisonOutcome",
-    "CandidatePlan",
-    "CandidateRunArtifacts",
-    "CandidateTrialFailure",
-    "adopted_dispatch_mode",
-    "candidate_plan_from_artifacts",
-    "failed_plan",
-    "skipped_plan",
-    "with_input_certification",
+    "CANDIDATE_KIND_BASELINE", "CANDIDATE_KIND_CRITICAL_CHAIN",
+    "CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED",
+    "UNCERTIFIED", "UNCERTIFIED_PREFIX", "CandidateComparisonOutcome", "CandidatePlan",
 ]

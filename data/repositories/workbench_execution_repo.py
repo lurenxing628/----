@@ -6,6 +6,7 @@ core.services.execution.ledger_reader; this module only returns what is stored.
 
 import json
 
+from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.infrastructure.workbench_execution_void_schema import execution_void_contract_issues
 from data.repositories.base_repo import BaseRepository
@@ -19,7 +20,9 @@ def chunks(values, size=300):
 class WorkbenchExecutionRepository(BaseRepository):
     def schema_issues(self):
         """Ledger and void contract issues in storage order; empty when the schema is complete."""
-        return list(execution_ledger_contract_issues(self.conn)) + list(execution_void_contract_issues(self.conn))
+        structure = SchemaStructure(self.conn)
+        return (list(execution_ledger_contract_issues(self.conn, structure=structure)) +
+                list(execution_void_contract_issues(self.conn, structure=structure)))
 
     def schema_version_row(self):
         """SchemaVersion 单行（id=1）原始行；不存在时为 None。"""

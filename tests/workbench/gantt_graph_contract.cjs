@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '../..'), window = {};
 const context = vm.createContext({ window, Date, Number, Map, Set });
-for (const file of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'RunCandidateModel.js', 'GanttGraph.js'])
+for (const file of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'RunCandidateModel.js', 'RunBaselineModel.js', 'GanttGraph.js'])
   vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8'), context, { filename: file });
 const G = window.GanttGraph, ref = n => n.toString(16).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
 const at = hour => '2026-10-12T' + String(hour).padStart(2, '0') + ':00:00';
@@ -49,6 +49,11 @@ assert(!valid({ ...unavailable, nodes: graph.nodes }));
 // Selecting a middle operation includes predecessors, successors and common operations without crossing to a sibling piece.
 const index = G.create(graph), active = G.selection(index, { targetRef: ref(3) });
 const fullRoute = G.route(index, ref(3));
+const samePiece = G.selection(index, { targetRef: ref(4) }), sameBatchRoute = G.route(index, ref(1));
+assert.strictEqual(samePiece.related, active.related); assert.strictEqual(samePiece.edges, active.edges);
+assert.strictEqual(samePiece.adjacency, active.adjacency); assert.strictEqual(samePiece.critical, active.critical);
+assert.strictEqual(sameBatchRoute.groups, fullRoute.groups); assert.strictEqual(sameBatchRoute.previous, fullRoute.previous);
+assert.equal(samePiece.target.task_ref, ref(4)); assert.equal(sameBatchRoute.target.task_ref, ref(1));
 assert.deepEqual(clone(fullRoute.groups.map(group => [group.pieceId, group.nodes.map(node => node.task_ref)])),
   [[null, [ref(1), ref(6)]], ['A', [ref(2), ref(3), ref(4)]], ['B', [ref(5)]]], 'The list keeps common operations and sibling branches distinct');
 assert.deepEqual(refs(fullRoute.previous.get(ref(6)).map(node => node.task_ref)), expected([4, 5]), 'A common join shows both real branch predecessors');
@@ -99,6 +104,16 @@ for (const candidate of [false, true]) {
   const model = layout(''), options = { candidate }, viewport = { left: 0, top: 0, width, height: model.height };
   if (!candidate) assert.strictEqual(model.rows.find(row => row.id === ref(200)).occupancy, occupancy, 'Resource summary uses the existing occupancy projection');
   const rendered = G.paths(active, model, width, viewport, options), positions = G.locations(model, options);
+  const locationIndex = G.locationIndex(positions), indexed = () => G.paths(active, model, width, viewport, { locationIndex });
+  assert.deepEqual(clone(indexed().paths), clone(rendered.paths));
+  let positionScans = 0, criticalScans = 0, edgeScans = 0;
+  const positionIterator = positions[Symbol.iterator], criticalIterator = active.critical[Symbol.iterator], filter = active.edges.filter;
+  positions[Symbol.iterator] = function () { positionScans++; return positionIterator.call(this); };
+  active.critical[Symbol.iterator] = function () { criticalScans++; return criticalIterator.call(this); };
+  active.edges.filter = function (...args) { edgeScans++; return filter.apply(this, args); };
+  indexed(); G.paths(active, model, width, { ...viewport, top: 56, height: 56 }, { locationIndex });
+  delete positions[Symbol.iterator]; delete active.critical[Symbol.iterator]; delete active.edges.filter;
+  assert.equal(positionScans, 0); assert.equal(criticalScans, 0); assert.equal(edgeScans, 0);
   assert.equal(rendered.paths.length, 4); assert.equal(rendered.relatedVisible, 5); assert.equal(rendered.criticalVisible, 6);
   assert.equal(positions.get(ref(3)).start, positions.get(ref(3)).end, 'The zero-duration operation must keep its own coordinate');
   assert(rendered.paths.some(item => item.to_task_ref === ref(3)) && rendered.paths.some(item => item.from_task_ref === ref(3)),
@@ -184,4 +199,42 @@ assert.equal(P.taskLines({ sequence: 20, process: '车削', batch: 'B1', piece: 
 const changed = window.RunCandidateModel.layout(candidateData, 'machine', '', width, new Set([tasks[3].operation_ref]));
 assert.deepEqual(Array.from(changed.tasks, task => task.row_ref), [tasks[3].task_ref]);
 assert.equal(changed.start, window.RunCandidateModel.layout(candidateData, 'machine', '', width).start, 'Changed-only filtering preserves the full time range');
+
+// Width changes consume prepared ordinary lanes and sort point inputs only once.
+context.__normalSorts = 0; context.__baselineSorts = 0; context.__pointSorts = 0;
+vm.runInContext(`const originalSort = Array.prototype.sort; Array.prototype.sort = function (compare) {
+  const item = this[0], task = item && (item.task || item.segment);
+  if (task) {
+    if (window.PointContract.isPoint(task)) __pointSorts++;
+    else if (item.segment) __baselineSorts++;
+    else __normalSorts++;
+  }
+  return originalSort.call(this, compare);
+};`, context);
+const pointTask = { ...candidateData.tasks[2], row_ref: ref(900), task_ref: ref(900), operation_ref: ref(901),
+  start: '2026-10-12T10:05:00', end: '2026-10-12T10:05:00' };
+const preparedCandidate = window.RunCandidateModel.prepare({ ...candidateData, tasks: [...candidateData.tasks, pointTask] }, 'machine', '');
+const baseline = { comparisons: [{ operation_ref: candidateData.tasks[2].operation_ref, baseline_segments: [
+  { ...candidateData.tasks[2], row_ref: ref(902), interval_comparable: true, start: at(0), end: at(0) },
+  { ...pointTask, row_ref: ref(903), interval_comparable: true, start: '2026-10-12T00:05:00', end: '2026-10-12T00:05:00' },
+  { ...candidateData.tasks[3], row_ref: ref(904), interval_comparable: true, start: at(1), end: at(2) }
+] }] };
+const prepared = window.RunBaselineModel.prepare(preparedCandidate, baseline, 'machine', '');
+const sorts = [context.__normalSorts, context.__baselineSorts, context.__pointSorts], pointCalls = [], layoutTracks = window.PointGanttModel.layoutTracks;
+window.PointGanttModel.layoutTracks = (...args) => { pointCalls.push({ start: args[1], end: args[2], width: args[3] }); return layoutTracks(...args); };
+const compact = window.RunBaselineModel.layoutPrepared(prepared, 640), wide = window.RunBaselineModel.layoutPrepared(prepared, 10000);
+assert.deepEqual([context.__normalSorts, context.__baselineSorts, context.__pointSorts], sorts);
+assert.equal(pointCalls.length, 4, 'Each final width lays out current and baseline points once');
+assert(pointCalls.every(call => call.start === prepared.start && call.end === prepared.end));
+assert(compact.rows.filter(row => row.point).length > wide.rows.filter(row => row.point).length);
+assert.deepEqual(clone(compact.rows.filter(row => !row.point && !row.baseline).map(row => row.items.map(item => [item.task.row_ref, item.start, item.end, item.overlap]))),
+  clone(wide.rows.filter(row => !row.point && !row.baseline).map(row => row.items.map(item => [item.task.row_ref, item.start, item.end, item.overlap]))));
+const preparedPlan = window.PlanGanttModel.prepare(data, 'machine', 'piece-b', true), planSorts = [context.__normalSorts, context.__pointSorts];
+const hiddenLanes = window.PlanGanttModel.layoutPrepared(preparedPlan, 640), hiddenWide = window.PlanGanttModel.layoutPrepared(preparedPlan, 10000);
+assert.deepEqual([context.__normalSorts, context.__pointSorts], planSorts);
+const shown = hiddenLanes.rows.find(row => !row.before && !row.point);
+assert.equal(shown.track, 1); assert.equal(shown.subrow, 2); assert.equal(shown.trackCount, 2, 'Filtering keeps the full plan lane ordinals');
+assert.deepEqual(clone(hiddenWide.rows.map(row => [row.key, row.track, row.trackCount, row.subrow])), clone(hiddenLanes.rows.map(row => [row.key, row.track, row.trackCount, row.subrow])));
+window.PointGanttModel.layoutTracks = layoutTracks;
+vm.runInContext('Array.prototype.sort = originalSort;', context);
 console.log('Gantt graph contracts passed: source boundary, full piece routes, shared branches, zero duration, visibility and current-only geometry');

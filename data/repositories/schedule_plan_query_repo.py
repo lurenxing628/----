@@ -6,6 +6,7 @@ from core.models.schedule_plan_role import (
     SOURCE_ADJUSTMENT_SCENARIO_ROWS,
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
+    plan_role_order_sql,
 )
 from core.models.schedule_resource_filter import normalize_dispatch_resource_filter
 
@@ -179,7 +180,7 @@ class SchedulePlanQueryRepository(BaseRepository):
 
     def list_plan_role_options(self, version: int) -> List[Dict[str, Any]]:
         return self.fetchall(
-            """
+            f"""
             SELECT
                 s.role AS role,
                 s.source_table AS source_table,
@@ -196,13 +197,7 @@ class SchedulePlanQueryRepository(BaseRepository):
               ON c.id = s.candidate_id
              AND c.version = s.version
             WHERE s.version = ?
-            ORDER BY
-                CASE s.role
-                    WHEN 'adopted' THEN 1
-                    WHEN 'baseline_best' THEN 2
-                    WHEN 'critical_best' THEN 3
-                    ELSE 99
-                END
+            ORDER BY {plan_role_order_sql("s.role")}
             """,
             (int(version),),
         )

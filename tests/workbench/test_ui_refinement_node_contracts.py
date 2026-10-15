@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[2]
                                   "workbench/scheduling_preferences_contract.cjs", "workbench/gantt_graph_contract.cjs",
                                   "workbench/decision_comparison_contract.cjs", "workbench/decision_resource_contract.cjs",
                                   "workbench/decision_preparation_contract.cjs", "workbench/decision_history_contract.cjs",
-                                  "workbench/system_source_contract.cjs"))
+                                  "workbench/system_source_contract.cjs", "workbench/storage_write_contract.cjs"))
 def test_shared_ui_node_contract(name):
     result = subprocess.run([node_runtime(), str(ROOT / "tests" / name)], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr

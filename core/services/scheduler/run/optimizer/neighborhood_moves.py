@@ -8,7 +8,6 @@ from .neighborhood_move_support import (
     bottleneck_machine_rows,
     changeover_count,
     copy_resource_pool,
-    due_batch_count,
     earliest_due_pressure_batch,
     finish_by_batch,
     first_changeover_pair,
@@ -16,8 +15,9 @@ from .neighborhood_move_support import (
     most_tardy_batch,
     pick_resource_pair,
     positive_count,
+    prepare_batch_due_dates,
+    prepare_machine_rows,
     resource_pair_count,
-    tardy_batch_count,
 )
 
 NEIGHBORHOOD_MOVE_SCHEMA_VERSION = 1
@@ -142,7 +142,7 @@ def tardy_window_move(order: List[str], results: List[Any], batches: Dict[str, A
         expected_effect="reduce_tardy_window_pressure",
         reason_when_first="tardy_batch_already_first",
         reason="overdue",
-        diagnostics={"tardy_batch_count": tardy_batch_count(finish_rows, batches), "tardiness_hours": round(tardiness_hours, 4)},
+        diagnostics={"tardy_batch_count": 1, "tardiness_hours": round(tardiness_hours, 4)},
     )
 
 
@@ -165,7 +165,8 @@ def bottleneck_machine_move(order: List[str], results: List[Any]) -> Neighborhoo
 
 
 def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
-    pair = first_changeover_pair(results)
+    machine_rows = prepare_machine_rows(results)
+    pair = first_changeover_pair(results, prepared_machine_rows=machine_rows)
     if pair is None:
         fallback = critical_chain_move(order, results)
         if fallback.noop:
@@ -182,7 +183,7 @@ def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodM
         out,
         "try_reduce_machine_changeover",
         reason="changeover",
-        diagnostics={"changeover_count": changeover_count(results)},
+        diagnostics={"changeover_count": changeover_count(results, prepared_machine_rows=machine_rows)},
         selected_machine_ids=(str(getattr(current, "machine_id", "") or "").strip(),),
     )
 
@@ -222,7 +223,8 @@ def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str
 
 def time_window_move(order: List[str], results: List[Any], batches: Dict[str, Any]) -> NeighborhoodMove:
     finish_rows = finish_by_batch(results)
-    bid = earliest_due_pressure_batch(finish_by_batch_rows=finish_rows, batches=batches)
+    due_dates = prepare_batch_due_dates(batches)
+    bid = earliest_due_pressure_batch(finish_by_batch_rows=finish_rows, batches=batches, prepared_due_dates=due_dates)
     if not bid:
         return noop_move(TIME_WINDOW, reason="no_time_window_pressure", order=order, input_scope="due_window")
     return _pull_batch_earlier(
@@ -233,7 +235,7 @@ def time_window_move(order: List[str], results: List[Any], batches: Dict[str, An
         expected_effect="repair_due_window_pressure",
         reason_when_first="time_window_batch_already_first",
         reason="time_window",
-        diagnostics={"due_window_batch_count": due_batch_count(batches)},
+        diagnostics={"due_window_batch_count": sum(due is not None for _batch_id, due in due_dates)},
     )
 
 

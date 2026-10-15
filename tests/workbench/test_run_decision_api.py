@@ -64,41 +64,44 @@ def test_all_real_candidates_share_reference_and_preserve_saved_selection(candid
     run_ref, refs = compute(case, case.settings("B1", "B2"))
     client, _ = api(case)
     initial = decision(client, run_ref)["data"]
-    compared = decision(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])["data"]
-    summary = decision_summary(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])["data"]
+    compared = decision(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[0])["data"]
+    summary = decision_summary(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[0])["data"]
     _assert_summary_matches_full(summary, compared)
     recommended_ref = compared["recommendation"]["candidate_ref"]
     same_reference = decision(client, run_ref,
-        reference_candidate_ref=recommended_ref, selected_candidate_ref=refs[-2])["data"]
+        reference_candidate_ref=recommended_ref, selected_candidate_ref=refs[0])["data"]
     _assert_summary_matches_full(decision_summary(client, run_ref,
-        reference_candidate_ref=recommended_ref, selected_candidate_ref=refs[-2])["data"], same_reference)
+        reference_candidate_ref=recommended_ref, selected_candidate_ref=refs[0])["data"], same_reference)
     assert {row["candidate_ref"] for row in compared["candidates"]} == set(refs)
-    assert len(compared["candidates"]) == 4
+    assert 1 <= len(compared["candidates"]) <= 3
     assert compared["scope"]["reference"]["candidate_ref"] == refs[-1]
-    assert compared["scope"]["selected_candidate_ref"] == refs[-2]
+    assert compared["scope"]["selected_candidate_ref"] == refs[0]
     assert compared["scope"]["batch_refs"] == initial["scope"]["batch_refs"]
     assert compared["scope"]["operation_refs"] == initial["scope"]["operation_refs"]
     assert compared["selection_basis"] == initial["selection_basis"]
     assert compared["recommendation"]["candidate_ref"] == initial["recommendation"]["candidate_ref"]
     basis = compared["selection_basis"]
-    evidence = basis["decision_evidence"]
-    assert basis["selection_evidence_version"] == evidence["version"] == "candidate-selection-evidence-v1"
-    assert evidence["selected"]["candidate_ref"] == basis["selected_candidate_ref"]
-    assert evidence["anchors"]["raw_score_best"]["candidate_ref"] == basis["raw_score_best_candidate_ref"]
-    assert evidence["anchors"]["health_reference"]["candidate_ref"] == basis["health_reference_candidate_ref"]
-    assert evidence["tiebreak"]["rule"] == "full_score_baseline_sequence_v1"
-    assert "candidate_key" not in json.dumps(evidence)
+    assert basis["generation_policy_version"] == "unified_search_v1"
+    assert basis["selection_policy_version"] == basis["selection_evidence_version"] == "business_objectives_v1"
+    assert basis["decision_evidence"] is basis["health_reference_candidate_ref"] is basis["health_comparison"] is None
+    assert basis["target_objectives"] == ["min_overdue", "min_tardiness", "min_changeover"]
+    assert set(basis["objective_winners"]) == set(basis["target_objectives"])
+    assert all(winner in refs for winner in basis["objective_winners"].values())
+    assert basis["objective_winners"][basis["primary_objective"]] == basis["selected_candidate_ref"]
+    for row in compared["candidates"]:
+        assert row["kind"] == "business_objective"
+        assert "algorithm_baseline" not in row["selection_role"]
     for entry in basis["explanation"]["entries"]:
         assert all(entry[key] is None or type(entry[key]) in (int, float)
                    for key in ("reference_value", "selected_value", "value", "limit", "tolerance"))
     recommendation = compared["recommendation"]
     assert recommendation["recommendation_version"] == "decision-recommendation-v1"
     assert recommendation["recommendation_type"] == "complete"
-    assert recommendation["viewed_candidate_ref"] == refs[-2]
+    assert recommendation["viewed_candidate_ref"] == refs[0]
     assert recommendation["candidate_ref"] == basis["selected_candidate_ref"]
     comparison = recommendation["current_comparison"]
     assert comparison["candidate_ref"] == recommendation["candidate_ref"]
-    assert comparison["viewed_candidate_ref"] == refs[-2]
+    assert comparison["viewed_candidate_ref"] == refs[0]
     assert comparison["reference"]["candidate_ref"] == refs[-1]
     assert comparison["state"] == "available"
     assert len(comparison["all_differences"]) == len(compared["metric_definitions"]) == 52
@@ -129,6 +132,50 @@ def test_all_real_candidates_share_reference_and_preserve_saved_selection(candid
         delta = row["deltas"]["makespan_hours"]
         assert delta["value"] == row["metrics"]["makespan_hours"]["value"] - reference["metrics"]["makespan_hours"]["value"]
         assert row["coverage"]["schedulable"]["missing_count"] == 0
+
+
+def test_legacy_saved_selection_evidence_keeps_permanent_anchors_and_view_identity(candidate_case, monkeypatch):
+    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
+
+    # Explicit historical saved evidence, independent of current selection algorithms.
+    baseline = {"candidate_key": "baseline", "score": [0, 0, 0, 0.75, 0],
+        "failed_ops": 0, "primary_score": 0, "overdue_count": 0, "total_tardiness_hours": 0}
+    saved_evidence = {"version": "candidate-selection-evidence-v1", "state": "complete",
+        "selected": deepcopy(baseline),
+        "anchors": {"raw_score_best": deepcopy(baseline), "health_reference": deepcopy(baseline)},
+        "tiebreak": {"rule": "full_score_baseline_sequence_v1", "raw_score_best_candidate_key": "baseline",
+            "runner_up_candidate_key": "graph_w1_of_3", "decisive_step": "baseline_preference", "decisive_score_index": None,
+            "primary_tied_candidate_keys": ["baseline", "graph_w1_of_3", "graph_w2_of_3", "graph_w3_of_3"],
+            "full_score_tied_candidate_keys": ["baseline", "graph_w1_of_3", "graph_w2_of_3", "graph_w3_of_3"]},
+        "balanced_checks": {"eligible": False, "checked": False, "reason_code": "critical_health_not_better",
+            "candidate_key": "graph_w1_of_3", "reference_candidate_key": "baseline", "health_reference_candidate_key": "baseline",
+            "health_state": "same", "checks": [], "accepted": False, "override_applied": False}}
+    frozen = deepcopy(saved_evidence)
+    install_complete_legacy_archive(monkeypatch, selection_snapshot={"decision_evidence": saved_evidence})
+    run_ref, refs = compute(candidate_case)
+    client, _ = api(candidate_case)
+    initial = decision(client, run_ref)["data"]
+    compared = decision(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])["data"]
+    _assert_summary_matches_full(decision_summary(client, run_ref,
+        reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])["data"], compared)
+    assert len(compared["candidates"]) == 4
+    assert compared["scope"]["selected_candidate_ref"] == refs[-2]
+    assert compared["scope"]["reference"]["candidate_ref"] == refs[-1]
+    assert compared["selection_basis"] == initial["selection_basis"]
+    basis, evidence = compared["selection_basis"], compared["selection_basis"]["decision_evidence"]
+    assert basis["selection_evidence_version"] == evidence["version"] == "candidate-selection-evidence-v1"
+    assert evidence["selected"]["candidate_ref"] == basis["selected_candidate_ref"] == refs[0]
+    assert evidence["anchors"]["raw_score_best"]["candidate_ref"] == basis["raw_score_best_candidate_ref"] == refs[0]
+    assert evidence["anchors"]["health_reference"]["candidate_ref"] == basis["health_reference_candidate_ref"] == refs[0]
+    assert evidence["tiebreak"]["rule"] == "full_score_baseline_sequence_v1"
+    assert evidence["tiebreak"]["runner_up_candidate_ref"] == refs[1]
+    assert "candidate_key" not in json.dumps(evidence)
+    assert saved_evidence == frozen
+    assert compared["recommendation"]["candidate_ref"] == initial["recommendation"]["candidate_ref"] == refs[0]
+    assert compared["recommendation"]["viewed_candidate_ref"] == refs[-2]
+    for entry in basis["explanation"]["entries"]:
+        assert all(entry[key] is None or type(entry[key]) in (int, float)
+                   for key in ("reference_value", "selected_value", "value", "limit", "tolerance"))
 
 
 def test_candidate_scope_and_window_errors_are_rejected_before_comparison(candidate_case):
@@ -169,7 +216,10 @@ def test_candidate_scope_and_window_errors_are_rejected_before_comparison(candid
     assert valid["scope"]["range_end"] == "2026-09-12T00:00:00"
 
 
-def test_overview_exports_require_the_screen_reference_snapshot(candidate_case):
+def test_overview_exports_require_the_screen_reference_snapshot(candidate_case, monkeypatch):
+    # Fixed historical directory preserves distinct viewer/reference export risks.
+    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
+    install_complete_legacy_archive(monkeypatch)
     run_ref, refs = compute(candidate_case)
     client, _ = api(candidate_case)
 

@@ -123,7 +123,7 @@
         const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
         const value = { request_key: 'system-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''), action, summary: actions[action] };
         storage.setItem(PENDING_KEY, JSON.stringify(value));
-        check(this.read().request_key === value.request_key, '操作编号没能存下来，这次没有发起操作。请刷新后重试。'); return value;
+        return value;
       },
       finish(intent) {
         const saved = this.read(); check(!saved || saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。');

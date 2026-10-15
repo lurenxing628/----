@@ -161,6 +161,36 @@ def test_graph_priority_key_keeps_score_penalty_as_first_sort_component():
     assert unpenalized_low_graph < penalized_high_graph
 
 
+def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime():
+    start = datetime(2026, 1, 1, 8)
+    operations = [
+        SimpleNamespace(id=op_id, op_code="OP" + str(op_id), batch_id=batch_id, seq=seq,
+                        source="internal", machine_id="M1", operator_id="O1", setup_hours=1.0,
+                        unit_hours=0.0, op_type_id="OT1", op_type_name="cut")
+        for op_id, batch_id, seq in ((4, "B_A", 2), (3, "B_A", 1), (1, "B_B", 1),
+                                     (2, "B_A", 1), (5, "MISSING", 1))
+    ]
+    downtime = {" M1 ": [(start + timedelta(hours=3), start + timedelta(hours=4)),
+                        (start + timedelta(hours=1), start + timedelta(hours=2))]}
+    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_Config())
+    results, summary, _strategy, _params = scheduler.schedule(
+        operations=operations, batches={"B_A": _batch("B_A"), "B_B": _batch("B_B")},
+        start_dt=start, dispatch_mode="sgs", dispatch_rule="slack",
+        batch_order_override=["B_A", "B_B"], machine_downtimes=downtime,
+    )
+
+    assert [row.op_id for row in results] == [2, 3, 4, 1]
+    assert [(row.start_time, row.end_time) for row in results] == [
+        (start, start + timedelta(hours=1)),
+        (start + timedelta(hours=2), start + timedelta(hours=3)),
+        (start + timedelta(hours=4), start + timedelta(hours=5)),
+        (start + timedelta(hours=5), start + timedelta(hours=6)),
+    ]
+    assert (summary.total_ops, summary.scheduled_ops, summary.failed_ops) == (5, 4, 1)
+    assert summary.failure_details == [{"op_id": 5, "op_code": "OP5", "batch_id": "MISSING",
+                                        "seq": 1, "code": "missing_batch"}]
+
+
 def test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter():
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
     scheduler = GreedyScheduler(calendar_service=_Calendar(efficiency=None), config_service={"auto_assign_enabled": "yes"})  # type: ignore[arg-type]

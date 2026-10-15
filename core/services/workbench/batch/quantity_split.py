@@ -15,7 +15,6 @@ from data.repositories.batch_repo import BatchRepository
 from .bulk import WorkbenchBatchBulkService
 from .facts import BatchFacts, require_unreferenced
 from .materials import WorkbenchBatchMaterialService
-from .operations import insert_operation
 from .service import WorkbenchBatchService
 
 
@@ -103,10 +102,13 @@ class WorkbenchQuantitySplitService:
         ready_day = stored_date(batch["ready_date"])
         if batch["ready_date"] is not None and ready_day is None:
             raise WorkbenchCommandRejected("constraint_conflict", "原批次齐套日期无效，请先核对后再拆分。")
+        writer = TemplateLineageWriter(self.conn)
+        source_operations = [op for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]]
+        prepared = writer.prepare_instances(source_operations, facts=facts)
         WorkbenchBatchService(self.conn).domain.create(code, batch["part_no"], **fields, quantity=plan["quantity"],
             ready_status=child_ready, ready_date=max(filter(None, (ready_day, plan["as_of_date"]))))
-        writer = TemplateLineageWriter(self.conn)
-        mapping = {op["id"]: insert_operation(self.conn, code, op, writer=writer) for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]}
+        mapping = {op["id"]: writer.copy_prepared_instance(code, ready)
+                   for op, ready in zip(source_operations, prepared)}
         repo, stages = BatchMaterialRepository(self.conn), BatchMaterialStageRepository(self.conn)
         for index, row in enumerate(plan["materials"]):
             created = repo.add(code, row["material_id"], required_qty=row["child_required"], available_qty=row["child_available"],

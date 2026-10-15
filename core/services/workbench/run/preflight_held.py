@@ -238,14 +238,17 @@ _FREEZE_OFF = SimpleNamespace(freeze_window_enabled="no", freeze_window_days=0, 
 def _held(facts, svc, settings, version, operations, held_ids):
     models = [SimpleNamespace(**op) for op in operations]
     try:
-        cfg = candidate_config(facts.conn, settings)
+        if getattr(facts, "config_error", None) is not None:
+            raise facts.config_error
+        cfg = candidate_config(facts.conn, settings, snapshot=getattr(facts, "config_snapshot", None))
     except ValidationError:
         cfg = _FREEZE_OFF
     seeds, meta = held_arrangements(
         svc, cfg=cfg, prev_version=version,
         start_dt=datetime.combine(local_date(settings["start_date"]), datetime.min.time()),
         operations=models, reschedulable_operations=[op for op in models if op.id in held_ids],
-        hold_window=hold_window(facts.conn, settings)[0])
+        hold_window=(None if getattr(facts, "config_error", None) is not None
+                     else hold_window(facts.conn, settings, snapshot=getattr(facts, "config_snapshot", None))[0]))
     return seeds, meta
 
 

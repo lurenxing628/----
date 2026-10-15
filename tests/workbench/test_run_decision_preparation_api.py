@@ -14,8 +14,10 @@ from core.services.workbench.facts.operation_effort_evidence import archived_sta
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from tests.workbench.decision_history_support import clone_run
+from tests.workbench.legacy_run_archive_support import install_different_work_archive
 from tests.workbench.run_candidate_adoption_support import INTENT, service
-from tests.workbench.run_candidate_support import BASE, api, compute, corrupt_update, edit_artifact
+from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.run_jobs_support import service as run_service
 from tests.workbench.test_material_stage_release import add_requirement
@@ -39,11 +41,6 @@ def run(case, key, settings=None):
 
 def receipt(case, run_ref):
     return json.loads(case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])
-
-
-def replace_receipt(case, run_ref, result):
-    corrupt_update(case.conn, "WorkbenchRunReceipts", "UPDATE WorkbenchRunReceipts SET result_json=? WHERE run_ref=?",
-                   (json.dumps(result, ensure_ascii=False), run_ref))
 
 
 def by_operation(document):
@@ -109,14 +106,16 @@ def test_real_worker_saves_one_requirement_used_by_all_candidates_and_workspaces
     assert reread["data"] == preparation["data"]
 
 
-def test_unplanned_and_material_deferred_work_remain_neutral_and_old_runtime_stays_missing(candidate_case):
+def test_unplanned_and_material_deferred_work_remain_neutral_and_old_runtime_stays_missing(candidate_case, monkeypatch):
     case = candidate_case
     case.conn.execute("UPDATE Batches SET quantity=1,due_date=? WHERE batch_id='B1'", (DAY,))
     case.conn.execute("UPDATE BatchOperations SET setup_hours=2,unit_hours=3 WHERE id=?", (case.op_id,))
     case.batch("B2", quantity=1, due_date="2026-09-10")
     missing_id = case.operation("B2", setup_hours=3, unit_hours=4)
     case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
-    run_ref, refs = compute(case, case.settings("B1", "B2", end_date=DAY))
+    with monkeypatch.context() as archive_patch:
+        install_different_work_archive(archive_patch)
+        run_ref, refs = compute(case, case.settings("B1", "B2", end_date=DAY))
     client, _ = api(case)
     catalog = decision(client, run_ref)["data"]["candidates"]
     reference = next(row["candidate_ref"] for row in catalog if row["kind"] == "critical_chain")
@@ -133,12 +132,16 @@ def test_unplanned_and_material_deferred_work_remain_neutral_and_old_runtime_sta
     assert delta["value"] == -1 and delta["state"] == "different_coverage" and delta["direction"] == "neutral"
     assert row["drill"]["selected"]["operation_ref"] == operation_ref(case, missing_id)
     # A historical run without the ledger retains independently saved standards.
-    old = receipt(case, run_ref)
-    old.pop("operation_effort")
-    replace_receipt(case, run_ref, old)
-    for candidate_ref in refs:
-        edit_artifact(case, candidate_ref, lambda artifact: artifact.update(analysis_contract_version="decision-resource-v3"))
-    historical = detail(client, run_ref, "preparation", **query)
+    case.history_refs = {"run_ref": run_ref, "candidate_ref": refs[0]}
+    accepted = case.conn.execute("SELECT accepted_at FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()[0]
+    historical_run, _ = clone_run(case, accepted,
+        change_artifact=lambda artifact: artifact.update(analysis_contract_version="decision-resource-v3"),
+        change_receipt=lambda result: result.pop("operation_effort"))
+    historical_refs = [row[0] for row in case.conn.execute(
+        "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (historical_run,))]
+    historical_query = dict(query, selected_candidate_ref=historical_refs[refs.index(query["selected_candidate_ref"])],
+                            reference_candidate_ref=historical_refs[refs.index(reference)])
+    historical = detail(client, historical_run, "preparation", **historical_query)
     legacy = by_operation(historical)[operation_ref(case, case.op_id)]["after"]
     assert legacy["required_standard_hours"] is legacy["setup_standard_hours"] is None
     assert legacy["standard"]["setup_standard_hours"] == 2 and legacy["standard"]["standard_total_hours"] == 5
@@ -227,9 +230,16 @@ def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_c
     case.conn.commit()
     run_ref, refs = compute(case)
     missing_ref = operation_ref(case, ids[24])
-    old = receipt(case, run_ref)
-    old["operation_effort"]["items"] = [row for row in old["operation_effort"]["items"] if row["operation_ref"] != missing_ref]
-    replace_receipt(case, run_ref, old)
+    case.history_refs = {"run_ref": run_ref, "candidate_ref": refs[0]}
+    accepted = case.conn.execute("SELECT accepted_at FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone()[0]
+
+    def change_receipt(result):
+        result["operation_effort"]["items"] = [row for row in result["operation_effort"]["items"] if row["operation_ref"] != missing_ref]
+
+    run_ref, _ = clone_run(case, accepted, change_receipt=change_receipt)
+    refs = [row[0] for row in case.conn.execute(
+        "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (run_ref,))]
+    assert receipt(case, run_ref)["selection"]["generation_policy_version"] == "unified_search_v1"
     client, _ = api(case)
     query = dict(WINDOW, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0], machine_ref=case.ref("machine", "M1"),
                  sort="after_setup_hours", order="asc")
@@ -291,7 +301,8 @@ def test_preparation_pages_filters_snapshot_and_all_filtered_exports(candidate_c
     book = load_workbook(io.BytesIO(response.data), read_only=True, data_only=True)
     try:
         assert book.sheetnames == ["方案总览", "批次影响", "工序变化", "资源影响", "覆盖工序", "准备需求", "工种切换",
-                                  "推荐说明", "工序安排", "剩余需求", "候选计算", "进步事件", "搜索阶段", "代表尝试", "指标计算方式", "比较范围"]
+                                  "推荐说明", "工序安排", "剩余需求", "共同计算", "目标预算", "进步事件", "搜索动作", "搜索阶段",
+                                  "评价范围", "范围成员", "真实桥接", "指标计算方式", "比较范围"]
         assert len(list(book["准备需求"].iter_rows(values_only=True))) - 1 == 25
         assert int(response.headers["X-Workbench-Row-Count"]) == sum(len(list(book[name].iter_rows(values_only=True))) - 1 for name in book.sheetnames[:-2])
     finally:
@@ -309,7 +320,7 @@ def test_changeover_api_keeps_type_identity_points_predecessors_and_partial_over
     case.conn.commit()
     run_ref, refs = compute(case)
     first_ref, second_ref, third_ref, point_ref = [operation_ref(case, item) for item in (case.op_id, second_id, third_id, point_id)]
-    original_tasks = DecisionSource.tasks
+    original_tasks = DecisionSource.analysis_tasks
     overlapping = [False]
 
     def copied_arrangements(source, candidate_ref):
@@ -326,7 +337,7 @@ def test_changeover_api_keeps_type_identity_points_predecessors_and_partial_over
         source._task_intervals[candidate_ref] = {row["row_ref"]: task_interval(row) for row in copied}
         return copied
 
-    monkeypatch.setattr(DecisionSource, "tasks", copied_arrangements)
+    monkeypatch.setattr(DecisionSource, "analysis_tasks", copied_arrangements)
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[-1], "event_side": "selected",
              "range_start": DAY + "T08:00:00", "range_end": DAY + "T12:00:00"}

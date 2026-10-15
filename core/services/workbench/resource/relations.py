@@ -16,6 +16,17 @@ from data.repositories.workbench_resource_relation_repo import WorkbenchResource
 
 from .relations_projection import RELATION_BASIS, RELATION_KINDS, relation_entity
 
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
+_ASCII_LOWER_BYTES = bytes.maketrans(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ", b"abcdefghijklmnopqrstuvwxyz")
+
+
+def _matches_query(value, needle):
+    if value is None:
+        return False
+    if isinstance(value, bytes):
+        return needle.encode("utf-8") in value.translate(_ASCII_LOWER_BYTES)
+    return needle in value.translate(_ASCII_LOWER)
+
 
 def _valid_ref(ref):
     return type(ref) is str and re.fullmatch(r"[0-9a-f]{48}", ref) is not None
@@ -70,11 +81,11 @@ class WorkbenchResourceRelationService:
             identity, parent = self._parent(kind, ref, query.relation)
             rows = self.repo.rows(identity.entity_key, query.relation)
             records = self._records(rows)
-            facts = self.repo.facts(query.relation, sorted(records))
+            facts = self.repo.facts(query.relation, list(records))
             self._validate_facts(query.relation, rows, facts)
-            qualifications = self._qualifications(query.relation, sorted(records))
+            qualifications = self._qualifications(query.relation, records, facts)
             fingerprint = {"parent_identity": asdict(identity), "parent": parent, "rows": rows, "facts": facts}
-            yield fingerprint, self._page(identity, query, records, qualifications, facts)
+            yield fingerprint, self._page(identity, query, rows, qualifications, facts)
 
     def _records(self, rows):
         records = {}
@@ -108,16 +119,23 @@ class WorkbenchResourceRelationService:
                 if row["op_type_id"] is not None and not supports_source(row["work_type_category"], "internal"):
                     _invalid_facts("被授权设备的工种不存在，或者不是自制工种")
 
-    def _qualifications(self, relation, codes):
+    def _qualifications(self, relation, records, facts):
         if relation != "operators":
             return {}
+        profiles = [{"operator_id": code, "profile_operator_id": row["profile_operator_id"],
+                     "skills_declared": row["skills_declared"]} for code, row in records.items()]
         try:
-            return OperatorQualificationService(self.conn, logger=self.logger).load(codes)
+            return OperatorQualificationService.project_facts(list(records), profiles, facts["skills"])
         except OperatorQualificationError as exc:
             raise WorkbenchCommandRejected("storage_failure", "人员资格资料读不出来。请到资料总览核对后重试。", 500) from exc
 
-    def _page(self, parent, query, records, qualifications, facts):
-        codes, total = self.repo.page(parent.entity_key, query.relation, query)
+    def _page(self, parent, query, rows, qualifications, facts):
+        # rows already use SQLite's business_code ASC order; preserve its ASCII-only lower rule.
+        needle = query.query.translate(_ASCII_LOWER)
+        matching = [row for row in rows if not needle
+                    or _matches_query(row["business_code"], needle)
+                    or _matches_query(row["name"], needle)]
+        total = len(matching)
         pages = max(1, (total + query.size - 1) // query.size)
         if query.number > pages:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
@@ -128,8 +146,9 @@ class WorkbenchResourceRelationService:
         for row in facts.get("authorizations", []):
             authorizations[row["operator_id"]].append(dict(row, op_type_ids=sorted(machine_types[row["machine_id"]])))
         entities = []
-        for code in codes:
-            row = records[code]
+        start = (query.number - 1) * query.size
+        for row in matching[start:start + query.size]:
+            code = row["business_code"]
             identity = WorkbenchEntityIdentity(row["ref"], RELATION_KINDS[query.relation], code, row["revision"], True)
             entities.append(relation_entity(identity, row, query.relation, parent.entity_key, qualifications, authorizations[code]))
         return {"parent_ref": parent.ref, "parent_kind": "op_type", "relation": query.relation,

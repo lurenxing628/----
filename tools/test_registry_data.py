@@ -31,7 +31,6 @@ _SCHEDULER_TESTS = (
     'tests/algorithm/test_optimizer_end_to_end_matrix_contract.py',
     'tests/algorithm/test_optional_ready_constraint.py',
     'tests/algorithm/test_operation_effort.py',
-    'tests/algorithm/test_ortools_budget_guard_skip_when_no_time.py',
     'tests/algorithm/test_schedule_persistence_auto_assign_contract.py',
     'tests/algorithm/test_scheduler_reject_nonfinite_and_invalid_status.py',
     'tests/algorithm/test_sgs_internal_scoring_matches_execution.py',

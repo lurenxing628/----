@@ -27,7 +27,14 @@ _SOURCES = {"workbench_candidate_adoption": ("candidate_adoption", "scheduling.c
             "workbench_trial_adoption": ("trial_adoption", "trial.scenario.adopt", "scenario_ref", "draft_ref")}
 
 
-def _audit(conn, plan_ref, version, history):
+def read_adoption_record(conn, *, plan_ref, version, history, receipt=None, receipt_result=None):
+    """Verify one recorded adoption and its receipt, retaining its exact official version."""
+    raw = history.get("result_summary") if history else None
+    return verified_read(conn, ("adoption_record", plan_ref, version, raw), lambda: _read_adoption_record(
+        conn, plan_ref, version, history, receipt=receipt, receipt_result=receipt_result))
+
+
+def _read_adoption_record(conn, plan_ref, version, history, *, receipt=None, receipt_result=None):
     raw = history.get("result_summary") if history else None
     if raw is None:
         return None
@@ -48,7 +55,7 @@ def _audit(conn, plan_ref, version, history):
             and audit["is_simulation"] is False and type(audit["row_count"]) is int and audit["row_count"] > 0,
             "adoption.history_identity")
     _proof_fields(audit, basis)
-    return basis, audit, _receipt(conn, plan_ref, version, audit)
+    return basis, audit, _receipt(conn, plan_ref, version, audit, receipt=receipt, result=receipt_result)
 
 
 def _proof_fields(audit, basis):
@@ -69,14 +76,15 @@ def _proof_fields(audit, basis):
         fail("adoption_evidence_missing", "adoption.proof." + ",".join(sorted(missing)))
 
 
-def _receipt(conn, plan_ref, version, audit):
+def _receipt(conn, plan_ref, version, audit, *, receipt=None, result=None):
     _, action, context, parent = _SOURCES[audit["source"]]
     if not has_table(conn, "WorkbenchCommandReceipts"):
         fail("adoption_evidence_missing", "WorkbenchCommandReceipts")
-    receipt = WorkbenchCommandRepository(conn).get(audit["request_key"])
+    receipt = WorkbenchCommandRepository(conn).get(audit["request_key"]) if receipt is None else dict(receipt)
     if receipt is None:
         fail("adoption_evidence_missing", "adoption.command_receipt")
-    result = stored(receipt["outcome_json"])
+    require(receipt["request_key"] == audit["request_key"], "adoption.receipt_request")
+    result = stored(receipt["outcome_json"]) if result is None else result
     require(result.get("result") == "committed", "adoption.receipt_committed")
     data = result["data"]
     official = data["official_plan"]
@@ -94,23 +102,23 @@ def _receipt(conn, plan_ref, version, audit):
     return receipt
 
 
-def read_adoption_source(conn, *, plan_ref, version, history, recorded=None):
+def read_adoption_source(conn, *, plan_ref, version, history, recorded=None, context=None):
     """Reuse full adoption proof only in the existing caller-owned read snapshot.
 
     The caller's exact version and history are part of this binding; an earlier
     official plan is always a separate source, even when its operations match.
     """
-    recorded = _audit(conn, plan_ref, version, history) if recorded is None else recorded
+    recorded = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history) if recorded is None else recorded
     if recorded is None:
         return None
     key = ("adoption_source", plan_ref, version, canonical_json(recorded[1]))
     return verified_read(conn, key, lambda: _read_adoption_source(
-        conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded,
+        conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded, context=context,
     ))
 
 
-def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None):
-    recorded = _audit(conn, plan_ref, version, history) if recorded is None else recorded
+def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None, context=None):
+    recorded = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history) if recorded is None else recorded
     if recorded is None:
         return None
     basis, audit, receipt = recorded
@@ -124,22 +132,22 @@ def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None):
             "adoption.recorded_baseline")
     verify_capture(baseline, tables)
     require(len(arranged) == audit["row_count"], "adoption.complete_row_count")
-    current = verify_arranged(conn, plan_ref, version, tables, arranged)
+    current = verify_arranged(conn, plan_ref, version, tables, arranged, context=context)
     return {"basis": basis, "audit": audit, "receipt": receipt, "baseline": baseline,
             "tables": tables, "arranged": arranged, "selected": current, "generation_facts": generation,
             "provenance": {"state": "available", "reason": None, **origin, "adopted_at": audit.get("adopted_at")}}
 
 
-def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_annotator=None):
+def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_annotator=None, context=None):
     """Return captured tasks and locator, or raise a classified evidence gap."""
     try:
-        recorded = _audit(conn, plan_ref, version, history)
+        recorded = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history)
         if recorded is None:
             return None
         basis, audit, receipt = recorded
         facts["adoption"] = {"basis": basis, "audit": audit, "receipt": receipt}
         evidence = cast(dict, read_adoption_source(
-            conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded,
+            conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded, context=context,
         ))
         baseline, tables, current = evidence["baseline"], evidence["tables"], evidence["selected"]
         facts["provenance"] = evidence["provenance"]
@@ -147,7 +155,7 @@ def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_ann
         if baseline["version"] is None:
             fail("no_adoption_baseline", "recorded_empty_official_baseline")
         require(baseline["version"] < version and baseline["plan_ref"] != plan_ref, "adoption.baseline_precedes_selected")
-        before = baseline_tasks(conn, baseline, tables, facts["adoption"], point_annotator=point_annotator)
+        before = baseline_tasks(conn, baseline, tables, facts["adoption"], point_annotator=point_annotator, context=context)
         return {"basis": basis, "baseline": baseline, "tasks": before}
     except AdoptionBaselineUnavailable:
         raise

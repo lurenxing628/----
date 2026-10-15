@@ -160,6 +160,15 @@ class WorkbenchRunRuntime:
 
         claim_failures, original = 0, None
         while not self._stop.is_set():
+            # Wait without a connection. The worker owns the original
+            # non-reentrant lock, so immediately release this opportunity probe.
+            lock = RUN_SCHEDULE_LOCK
+            while not self._stop.is_set():
+                if lock.acquire(timeout=0.1):
+                    lock.release()
+                    break
+            if self._stop.is_set():
+                return
             self._verify()
             retry_claim = False
             with closing(get_connection(self.db_path)) as conn:
@@ -199,11 +208,6 @@ class WorkbenchRunRuntime:
                 if self._stop.wait(0.1 * claim_failures):
                     return
                 continue
-            # Never hold a DB transaction while waiting. The worker must acquire
-            # the original non-reentrant lock itself, so release this wait probe.
-            lock = RUN_SCHEDULE_LOCK
-            if lock.acquire(timeout=0.1):
-                lock.release()
 
     def _run_one(self, run_ref):
         from core.services.workbench.run.jobs import WorkbenchRunService

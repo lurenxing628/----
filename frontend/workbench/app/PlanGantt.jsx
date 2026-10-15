@@ -74,7 +74,7 @@
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 1000, height: 440 }), [hover, setHover] = React.useState(null);
     const [chainEnabled, setChainEnabled] = React.useState(false);
     const printing = window.WorkbenchControls.usePrintLayout();
-    const board = React.useRef(null), search = React.useRef(null), pending = React.useRef(null), frame = React.useRef(null);
+    const board = React.useRef(null), search = React.useRef(null), pending = React.useRef(null), frame = React.useRef(null), overviewCache = React.useRef(null);
     const printState = React.useRef(false), printPosition = React.useRef(null), restorePosition = React.useRef(null);
     if (printing && !printState.current) printPosition.current = position;
     if (!printing && printState.current) restorePosition.current = printPosition.current;
@@ -86,13 +86,16 @@
     // It must not inherit a wide screen or expanded board's pixel width.
     const width = printing ? 640 : viewport * zoom, selectedRef = selected && selected.task.task_ref;
     const renderLeft = printing ? 0 : position.left, renderViewport = printing ? width : viewport;
-    const model = React.useMemo(() => M.layout(data, mode, query, displayBaseline, width, displayChangedOnly), [data, mode, query, displayBaseline, width, displayChangedOnly]);
+    const prepared = React.useMemo(() => M.prepare(data, mode, query, displayBaseline, displayChangedOnly), [data, mode, query, displayBaseline, displayChangedOnly]);
+    const model = React.useMemo(() => M.layoutPrepared(prepared, width), [prepared, width]);
     const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
     const targetRef = hover && !hover.before ? hover.task.task_ref : selected && !selected.before ? selectedRef : null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, { enabled: chainEnabled, targetRef }), [graph, chainEnabled, targetRef]);
+    const graphLocations = React.useMemo(() => window.GanttGraph.locations(model), [model]);
+    const locationIndex = React.useMemo(() => window.GanttGraph.locationIndex(graphLocations), [graphLocations]);
     const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
       left: renderLeft, top: printing ? 0 : position.top, width: renderViewport, height: printing ? model.height : position.height - 52
-    }), [active, model, width, renderLeft, renderViewport, position.top, position.height, printing]);
+    }, { locationIndex }), [active, model, width, renderLeft, renderViewport, position.top, position.height, printing, locationIndex]);
     const printItems = printing ? model.rows.flatMap(row => row.items) : [];
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
@@ -183,7 +186,7 @@
       </div>
       <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={chainEnabled} onChange={setChainEnabled} active={active} geometry={geometry} onClear={() => { setHover(null); onSelect(null); }} disabled={disabled} />
       <div className="plan-board-frame">
-        {!printing && width > viewport && <Overview model={model} tasks={data.tasks} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />}
+        {!printing && width > viewport && <Overview model={model} tasks={data.tasks} cache={overviewCache} width={width} viewport={renderViewport} left={renderLeft} onPan={left => { board.current.scrollLeft = Math.max(0, left); measure(); }} />}
         <div ref={board} className="plan-board" data-plan-scroll data-wb-scroll-key="plan-board" tabIndex={0} aria-label={M.kindLabels[mode] + '甘特时间轴'} onScroll={() => {
           if (frame.current) cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure);
         }} style={{ '--plan-label': labelWidth + 'px' }}>

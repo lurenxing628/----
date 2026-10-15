@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, Iterable, Optional, Set, Tuple
+from datetime import date, datetime
+from typing import Any, Dict, FrozenSet, Iterable, Optional, Set, Tuple
 
+from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
 
 OperationKey = Tuple[str, int]
@@ -16,6 +17,90 @@ UNKNOWN_OBJECTIVE_VALUE = sys.float_info.max
 OBJECTIVE_SCOPE_ALL = "all_batches"
 OBJECTIVE_SCOPE_COMPLETED = "completed_batches_only"
 OBJECTIVE_SCOPE_UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class PreparedBatchDue:
+    batch_id: str
+    priority_weight: float
+    due_date: Optional[date]
+    due_invalid: bool
+    due_exclusive: Optional[datetime]
+    due_text: str
+
+
+@dataclass(frozen=True)
+class PreparedEvaluationContext:
+    """Static facts owned by one evaluation input set; results stay dynamic."""
+
+    expected_keys: Optional[FrozenSet[OperationKey]]
+    expected_by_batch: Dict[str, FrozenSet[OperationKey]]
+    batch_by_op_id: Dict[int, str]
+    batch_ids: FrozenSet[str]
+    priority_weights: Dict[str, float]
+    due_batches: Tuple[PreparedBatchDue, ...]
+
+
+def prepare_evaluation_context(
+    *,
+    batches: Dict[str, Any],
+    expected_operations: Optional[Iterable[Any]] = None,
+    seed_results: Optional[Iterable[Any]] = None,
+) -> PreparedEvaluationContext:
+    expected: Optional[FrozenSet[OperationKey]]
+    if expected_operations is None:
+        if seed_results is not None:
+            raise ValueError("Completion evidence requires expected_operations.")
+        expected, expected_by_batch, batch_by_op_id = None, {}, {}
+    else:
+        keys, expected_by_batch, batch_by_op_id = _prepare_expected_keys(expected_operations, seed_results or ())
+        expected = frozenset(keys)
+    priority_weights: Dict[str, float] = {}
+    due_batches = []
+    for bid0, batch in batches.items():
+        bid = str(bid0 or "").strip()
+        if not bid:
+            continue
+        priority = normalize_priority(getattr(batch, "priority", None), default="normal")
+        weight = float(PRIORITY_WEIGHT.get(priority, 1.0))
+        priority_weights[bid] = weight
+        due_raw = getattr(batch, "due_date", None)
+        due_date_value, due_invalid = _parse_due_date_state(due_raw)
+        # Due projection keeps each source row and its order, even when raw keys
+        # normalize to one ID. Completion weights retain the last such source.
+        due_batches.append(PreparedBatchDue(
+            batch_id=bid, priority_weight=weight, due_date=due_date_value, due_invalid=due_invalid,
+            due_exclusive=due_exclusive(due_date_value) if due_date_value else None, due_text=_due_text(due_raw),
+        ))
+    return PreparedEvaluationContext(
+        expected_keys=expected, expected_by_batch=expected_by_batch, batch_by_op_id=batch_by_op_id,
+        batch_ids=frozenset(priority_weights.keys() | expected_by_batch.keys()),
+        priority_weights=priority_weights, due_batches=tuple(due_batches),
+    )
+
+
+def _due_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    return str(value or "").strip()
+
+
+def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
+    if value is None:
+        return None, False
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value, False
+    if isinstance(value, datetime):
+        return value.date(), False
+    s = str(value or "").strip()
+    if not s:
+        return None, False
+    parsed = parse_date(s)
+    return parsed, parsed is None
 
 
 @dataclass(frozen=True)
@@ -82,25 +167,29 @@ def collect_batch_completion(
     results: Iterable[Any],
     batches: Dict[str, Any],
     *,
-    expected_operations: Optional[Iterable[Any]],
-    seed_results: Optional[Iterable[Any]],
-    failure_details: Optional[Iterable[Dict[str, Any]]],
+    expected_operations: Optional[Iterable[Any]] = None,
+    seed_results: Optional[Iterable[Any]] = None,
+    failure_details: Optional[Iterable[Dict[str, Any]]] = None,
+    prepared: Optional[PreparedEvaluationContext] = None,
 ) -> Optional[BatchCompletion]:
-    if expected_operations is None:
+    context = prepared if prepared is not None else prepare_evaluation_context(
+        batches=batches, expected_operations=expected_operations, seed_results=seed_results,
+    )
+    expected = context.expected_keys
+    if expected is None:
         if seed_results is not None or failure_details is not None:
             raise ValueError("Completion evidence requires expected_operations.")
         # The historical two-argument metrics API has no operation universe.
         # Production candidate scoring must supply the explicit expected set.
         return None
-    expected = _expected_keys(expected_operations, seed_results or ())
     scheduled = {_operation_key(item, result=True) for item in results if _has_time_range(item)}
     failed = list(failure_details or ())
-    failure_batches = _failure_batches(failed, expected)
-    batch_ids = {str(bid).strip() for bid in batches if str(bid or "").strip()}
-    batch_ids.update(key[0] for key in expected | scheduled)
+    failure_batches = _failure_batches(failed, context.batch_by_op_id) if failed else set()
+    batch_ids = set(context.batch_ids)
+    batch_ids.update(key[0] for key in scheduled)
     batch_ids.update(failure_batches)
     unexpected = scheduled - expected
-    incomplete = _incomplete_batch_ids(batch_ids, expected, scheduled) | failure_batches
+    incomplete = _incomplete_batch_ids(batch_ids, context.expected_by_batch, scheduled, unexpected) | failure_batches
     return BatchCompletion(
         expected_operation_count=len(expected),
         missing_operation_count=len(expected - scheduled),
@@ -111,42 +200,43 @@ def collect_batch_completion(
         failure_detail_count=len(failed),
         failure_batch_ids=tuple(sorted(failure_batches)),
         explained=bool(incomplete) and not unexpected and incomplete <= failure_batches,
-        incomplete_work_weight=_priority_weight_sum(batches, incomplete),
+        incomplete_work_weight=_priority_weight_sum(context.priority_weights, incomplete),
     )
 
 
-def _priority_weight_sum(batches: Dict[str, Any], batch_ids: Set[str]) -> float:
-    by_id = {str(bid).strip(): batch for bid, batch in batches.items() if str(bid or "").strip()}
-    total = 0.0
-    for bid in batch_ids:
-        priority = normalize_priority(getattr(by_id.get(bid), "priority", None), default="normal")
-        total += float(PRIORITY_WEIGHT.get(priority, 1.0))
-    return total
+def _priority_weight_sum(priority_weights: Dict[str, float], batch_ids: Set[str]) -> float:
+    return sum((priority_weights.get(bid, 1.0) for bid in batch_ids), 0.0)
 
 
 def _incomplete_batch_ids(
-    batch_ids: Set[str], expected: Set[OperationKey], scheduled: Set[OperationKey],
+    batch_ids: Set[str], expected_by_batch: Dict[str, FrozenSet[OperationKey]],
+    scheduled: Set[OperationKey], unexpected: Set[OperationKey],
 ) -> Set[str]:
-    expected_by_batch: Dict[str, Set[OperationKey]] = {}
-    for key in expected:
-        expected_by_batch.setdefault(key[0], set()).add(key)
     incomplete = {
         bid for bid in batch_ids
         if not expected_by_batch.get(bid) or not expected_by_batch[bid] <= scheduled
     }
-    incomplete.update(key[0] for key in scheduled - expected)
+    incomplete.update(key[0] for key in unexpected)
     return incomplete
 
 
 def _expected_keys(operations: Iterable[Any], seeds: Iterable[Any]) -> Set[OperationKey]:
+    return _prepare_expected_keys(operations, seeds)[0]
+
+
+def _prepare_expected_keys(
+    operations: Iterable[Any], seeds: Iterable[Any],
+) -> Tuple[Set[OperationKey], Dict[str, FrozenSet[OperationKey]], Dict[int, str]]:
     keys = {_operation_key(item, result=False) for item in operations}
     keys.update(_operation_key(item, result=True) for item in seeds)
     batch_by_op_id: Dict[int, str] = {}
+    expected_by_batch: Dict[str, Set[OperationKey]] = {}
     for bid, op_id in keys:
         if op_id in batch_by_op_id and batch_by_op_id[op_id] != bid:
             raise ValueError("Expected operation identity belongs to conflicting batches.")
         batch_by_op_id[op_id] = bid
-    return keys
+        expected_by_batch.setdefault(bid, set()).add((bid, op_id))
+    return keys, {bid: frozenset(batch_keys) for bid, batch_keys in expected_by_batch.items()}, batch_by_op_id
 
 
 def _operation_key(item: Any, *, result: bool) -> OperationKey:
@@ -167,8 +257,7 @@ def _has_time_range(item: Any) -> bool:
     return isinstance(start, datetime) and isinstance(end, datetime) and end >= start
 
 
-def _failure_batches(details: Iterable[Dict[str, Any]], expected: Set[OperationKey]) -> Set[str]:
-    batch_by_op_id = {op_id: bid for bid, op_id in expected}
+def _failure_batches(details: Iterable[Dict[str, Any]], batch_by_op_id: Dict[int, str]) -> Set[str]:
     batches: Set[str] = set()
     for detail in details:
         if not isinstance(detail, dict):

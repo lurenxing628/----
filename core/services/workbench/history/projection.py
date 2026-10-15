@@ -4,7 +4,7 @@ from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
-from .conditions import compare_history_conditions
+from .conditions import compare_prepared_history_conditions
 from .metrics import gate_history_metric, project_history_metrics
 
 _WINDOW_FIELDS = ("mode", "start", "end", "days", "anchor", "time_basis", "boundary", "state", "cohort")
@@ -122,7 +122,8 @@ def condition_pair(reader, before_descriptor, after_descriptor, after, query, ca
         before = reader.read(before_descriptor) if before_descriptor is not None else missing_packet()
         selected = reader.read(after_descriptor) if after_descriptor is not None else missing_packet(
             "selection_required", "请选择实际历史条目。")
-        cache[key] = compare_history_conditions(before, selected, window)
+        cache[key] = compare_prepared_history_conditions(reader.condition_side(before, window),
+                                                       reader.condition_side(selected, window))
     return cache[key]
 
 

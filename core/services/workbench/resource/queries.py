@@ -42,6 +42,7 @@ class WorkbenchResourceQueryService:
         self._table_facts = None
         self._table_indexes = None
         self._table_identities = None
+        self._snapshot_scope = None
         if kind == "supplier":
             self.domain = WorkbenchSupplierService(conn, logger=logger)
         elif kind in ("machine_group", "shift_profile"):
@@ -52,20 +53,28 @@ class WorkbenchResourceQueryService:
     @contextmanager
     def read_snapshot(self, *, capture_fingerprint=True):
         with TransactionManager(self.conn).transaction():
-            previous = (self._snapshot_metrics, self._table_facts, self._table_indexes, self._table_identities)
+            previous = (self._snapshot_metrics, self._table_facts, self._table_indexes,
+                        self._table_identities, self._snapshot_scope)
             try:
                 self._snapshot_metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
                 self._table_facts, self._table_indexes = None, {}
                 self._table_identities = self._read_identities() if capture_fingerprint else None
+                self._snapshot_scope = None
                 yield self.state_fingerprint() if capture_fingerprint else None
             finally:
-                self._snapshot_metrics, self._table_facts, self._table_indexes, self._table_identities = previous
+                (self._snapshot_metrics, self._table_facts, self._table_indexes,
+                 self._table_identities, self._snapshot_scope) = previous
 
     def _metrics_reader(self):
         return self._snapshot_metrics or WorkbenchResourceMetricsService(self.conn, self.logger)
 
     def state_fingerprint(self):
-        return {"scope": self.repo.scope_state(self.kind),
+        scope = self._snapshot_scope
+        if scope is None:
+            scope = self.repo.scope_state(self.kind)
+            if self._snapshot_metrics is not None:
+                self._snapshot_scope = scope
+        return {"scope": scope,
                 "metric_facts": self._metrics_reader().fingerprint_facts(self.kind),
                 "table_refs": self._table_identities if self._table_identities is not None else self._read_identities()}
 
@@ -124,10 +133,8 @@ class WorkbenchResourceQueryService:
         metrics = self._metrics_reader()
         if self.kind == "op_type":
             records = self._op_type_page(rows, metrics)
-        elif advanced:
-            records = self._table_page_records(rows)
         else:
-            records = [self.detail(row["ref"]) for row in rows]
+            records = self._table_page_records(rows)
         page = {"number": query.number, "size": query.size, "total": total,
                 "pages": max(1, (total + query.size - 1) // query.size), "sort": [{"field": query.sort, "direction": query.direction}],
                 "metrics": metrics.metrics(self.kind, self.matching_keys(query) if advanced else self.toolbar_matching_keys(query))}
@@ -135,7 +142,9 @@ class WorkbenchResourceQueryService:
 
     def _op_type_page(self, rows, metrics):
         metrics.op_type_records()
-        dependencies = metrics.repo.op_type_dependencies([row["business_code"] for row in rows])
+        codes = [row["business_code"] for row in rows]
+        dependencies = (metrics.repo.op_type_dependencies(codes) if self._snapshot_scope is None else
+                        self._table_reader().op_type_dependencies(codes))
         result = []
         for row in rows:
             code = row["business_code"]
@@ -151,7 +160,7 @@ class WorkbenchResourceQueryService:
         if self._table_facts is not None:
             return self._table_facts
         identities = self._table_identities if self._table_identities is not None else self._read_identities()
-        facts = ResourceTableFacts(self._metrics_reader(), identities)
+        facts = ResourceTableFacts(self._metrics_reader(), identities, scope_state=self._snapshot_scope)
         if self._table_indexes is not None:
             self._table_facts = facts
         return facts

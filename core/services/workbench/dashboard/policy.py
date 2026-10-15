@@ -52,28 +52,34 @@ def read_receipt_mappings(repo, refs):
 
 def read_stored(repo):
     """Decode and cross-check every stored handling state against its history tail and receipt."""
-    bounded(range(repo.stored_bytes()), MAX_BYTES)
-    result = bounded(repo.stored_rows(MAX_ROWS))
-    for row in result:
+    result, identities, size, count = {}, {}, 0, 0
+    for row in repo.stored_rows(MAX_ROWS):
+        count += 1
+        bounded(range(count), MAX_ROWS)
+        size += row.pop("_stored_body_bytes")
+        bounded(range(size), MAX_BYTES)
+        identity = row.pop("_identity")
+        tail_after, receipt = row.pop("_tail_after_json"), row.pop("_receipt_ref")
         row["handling"] = load_handling(row.pop("handling_json"))
         row["origin"] = json.loads(row.pop("origin_json"))
-    by_ref = {row["item_ref"]: row for row in repo.state_tails()}
-    for row in result:
-        tail = by_ref.get(row["item_ref"])
-        if (tail is None or tail["receipt_ref"] is None or tail["count"] != row["revision"] or load_handling(tail["after_json"]) != row["handling"]
+        if (receipt is None or load_handling(tail_after) != row["handling"]
                 or row["origin"].get("item_ref") != row["item_ref"] or row["origin"].get("category") != row["category"]):
             corrupt()
-    return {row["item_ref"]: row for row in result}
+        result[row["item_ref"]] = row
+        identities[row["item_ref"]] = identity
+    return result, identities
 
 
-def read_external_stored(repo):
-    stored = read_stored(repo)
-    for row in stored.values():
+def read_external_stored(repo, receipts):
+    stored, identities = read_stored(repo)
+    for ref, row in stored.items():
         source = row["origin"].get("source", {})
-        members = repo.outsourcing_member_refs(row["outsourcing_ref"])
-        if source.get("outsourcing_ref") != row["outsourcing_ref"] or source.get("operation_refs") != members or not members:
+        outsourcing_ref = identities[ref]["outsourcing_ref"]
+        captured = receipts.get(outsourcing_ref)
+        members = captured["header"]["target"]["operation_refs"] if captured is not None else []
+        if source.get("outsourcing_ref") != outsourcing_ref or source.get("operation_refs") != members or not members:
             corrupt()
-    return stored
+    return stored, identities
 
 
 def require_identity(repo, item_ref):
@@ -132,9 +138,9 @@ def history_contents(row):
     return source, before, after
 
 
-def read_entity_refs(repo, kind, keys):
+def entity_refs_from_rows(rows, keys):
     result = {}
-    for row in repo.entity_ref_rows(kind, keys):
+    for row in rows:
         if row["entity_key"] in result:
             raise WorkbenchCommandRejected("identity_missing", "来源关联资料重复，暂时无法评估，请联系维护人员核对。")
         result[row["entity_key"]] = row

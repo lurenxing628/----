@@ -34,8 +34,10 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
         raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{dst}”已存在，不能复制。")
 
     with svc.tx_manager.transaction():
-        # 只读原始 ID（仓储不经 model 转换），避免把未知值、NULL 或 BLOB 转成默认值。
-        source_ids = ScheduleBatchCopyRepository(svc.conn, logger=svc.logger).source_operation_ids(src)
+        writer = TemplateLineageWriter(svc.conn)
+        writer.require_ready()
+        source_rows = ScheduleBatchCopyRepository(svc.conn, logger=svc.logger).source_instances(src)
+        prepared = writer.prepare_instances(source_rows)
         # 创建新批次
         svc.batch_repo.create(
             {
@@ -53,8 +55,8 @@ def copy_batch(svc, source_batch_id: Any, new_batch_id: Any) -> Batch:
         )
 
         # 与批次共用事务，保留原始工序及复制时的来源版本。
-        writer = TemplateLineageWriter(svc.conn)
-        mapping = {source_id: writer.copy_instance(dst, source_id) for source_id in source_ids}
+        mapping = {source["id"]: writer.copy_prepared_instance(dst, operation)
+                   for source, operation in zip(source_rows, prepared)}
         BatchMaterialRepository(svc.conn).copy_requirements(src, dst, mapping)
 
     return svc._get_or_raise(dst)

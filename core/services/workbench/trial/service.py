@@ -4,6 +4,7 @@ import getpass
 from copy import deepcopy
 from datetime import datetime
 
+from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandOutcome, validate_request_key
 from core.models.workbench_trial import (
     ACTIONS,
@@ -20,11 +21,9 @@ from core.models.workbench_trial import (
 )
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-from core.services.workbench.facts.trial_origin import operation_contexts
 from core.services.workbench.facts.trial_policy import (
     load_draft,
     load_scenario,
-    reload_changed_draft,
     require_advanced,
     require_trial_schema,
 )
@@ -39,6 +38,7 @@ from .projection import (
     scenario_capacity,
     scenario_comparison,
     scenario_rows,
+    source_projection,
     write_snapshot,
 )
 from .validation import TrialValidator
@@ -64,31 +64,33 @@ class WorkbenchTrialService:
     def preview_create(self, value):
         intent = create_input(value)
         with candidate_read_snapshot(self.conn):
-            require_trial_schema(self.repo)
-            admission, rows, live = prepare_base(self.conn, intent)
-            checked = TrialValidator(self.conn, admission, rows, live).evaluate()
-            context = self.context_factory(next(iter(intent["base"].values())), [CREATE], self._create_snapshot(admission, rows))
-            return {"base": intent["base"], "base_identity": admission["source"]["identity"],
-                    "scope": intent["scope"], "task_count": len(rows),
-                    "tasks_complete": True, "validation": checked, "write_context": context}
+            with read_evidence_scope(self.conn):
+                require_trial_schema(self.repo)
+                admission, rows, live = prepare_base(self.conn, intent)
+                checked = TrialValidator(self.conn, admission, rows, live).evaluate()
+                context = self.context_factory(next(iter(intent["base"].values())), [CREATE], self._create_snapshot(admission, rows))
+                return {"base": intent["base"], "base_identity": admission["source"]["identity"],
+                        "scope": intent["scope"], "task_count": len(rows),
+                        "tasks_complete": True, "validation": checked, "write_context": context}
 
     def create(self, value, write_token, request_key):
         intent = create_input(value)
         base_ref = next(iter(intent["base"].values()))
 
         def guard():
-            require_trial_schema(self.repo)
-            admission, rows, live = prepare_base(self.conn, intent)
-            self.context_validator(write_token, base_ref, CREATE, self._create_snapshot(admission, rows))
-            return admission, rows, live
+            with read_evidence_scope(self.conn):
+                require_trial_schema(self.repo)
+                admission, rows, live = prepare_base(self.conn, intent)
+                self.context_validator(write_token, base_ref, CREATE, self._create_snapshot(admission, rows))
+                return admission, rows, live
 
         def mutate(prepared):
             admission, rows, live = prepared
             validator = TrialValidator(self.conn, admission, rows, live)
             checked = validator.evaluate()
-            ref = self.repo.create(admission, rows, checked, request_key, self.actor_provider(), self._now())
-            head, stored = load_draft(self.repo, ref)
-            return WorkbenchCommandOutcome("committed", self._projection(head, stored, live, (checked, validator.frozen)))
+            head, stored = self.repo.create(admission, rows, checked, request_key, self.actor_provider(), self._now())
+            return WorkbenchCommandOutcome("committed", self._projection(head, stored, live,
+                                                                         (checked, validator.frozen), changes=[]))
 
         return WorkbenchCommandService(self.conn).execute(request_key=request_key, action=CREATE,
             context_ref=base_ref, normalized_input=intent, guard=guard, mutate=mutate)
@@ -98,13 +100,14 @@ class WorkbenchTrialService:
         live = live_context(self.conn, [row["operation_ref"] for row in rows])
         return head, rows, live
 
-    def _projection(self, head, rows, live, checked=None):
+    def _projection(self, head, rows, live, checked=None, *, changes=None, source_prepared=None):
         """checked: (核对结果, 冻结的原安排)，与这些行同一次核对；不给时现核对。"""
         if checked is None:
             validator = TrialValidator(self.conn, head["admission"], rows, live)
             checked = validator.evaluate(), validator.frozen
-        result = draft_projection(head, rows, checked[0], live, self.context_factory, checked[1])
-        changes = self.repo.changes(head["draft_ref"])
+        result = draft_projection(head, rows, checked[0], live, self.context_factory, checked[1],
+                                  source_prepared=source_prepared)
+        changes = self.repo.changes(head["draft_ref"]) if changes is None else changes
         for item in changes:
             for side in ("before", "after"):
                 item[side] = {key: item[side][key] for key in ("machine_ref", "operator_ref", "start", "end")}
@@ -113,17 +116,19 @@ class WorkbenchTrialService:
 
     def get(self, draft_ref):
         with candidate_read_snapshot(self.conn):
-            return self._projection(*self._loaded(draft_ref))
+            with read_evidence_scope(self.conn):
+                return self._projection(*self._loaded(draft_ref))
 
     def _execute(self, action, ref, intent, token, key, mutate):
         reference(ref)
 
         def guard():
-            head, rows, live = self._loaded(ref)
-            self.context_validator(token, ref, action, write_snapshot(head, rows, live))
-            if head["status"] != "editing":
-                reject("draft_closed", "草稿已保存或已放弃，不能再改。")
-            return head, rows, live
+            with read_evidence_scope(self.conn):
+                head, rows, live = self._loaded(ref)
+                self.context_validator(token, ref, action, write_snapshot(head, rows, live))
+                if head["status"] != "editing":
+                    reject("draft_closed", "草稿已保存或已放弃，不能再改。")
+                return head, rows, live
 
         return WorkbenchCommandService(self.conn).execute(request_key=key, action=action, context_ref=ref,
                                                           normalized_input=intent, guard=guard, mutate=mutate)
@@ -142,9 +147,10 @@ class WorkbenchTrialService:
             checked = validator.evaluate()
             if before == row["current"]:
                 return WorkbenchCommandOutcome("unchanged", self._projection(head, rows, live, (checked, validator.frozen)))
-            require_advanced(self.repo.change(head, row, before, checked, request_key, self.actor_provider(), self._now()))
-            current_head, current_rows = reload_changed_draft(self.repo, head, rows)
-            return WorkbenchCommandOutcome("committed", self._projection(current_head, current_rows, live, (checked, validator.frozen)))
+            now = self._now()
+            require_advanced(self.repo.change(head, row, before, checked, request_key, self.actor_provider(), now))
+            current_head = dict(head, revision=head["revision"] + 1, status="editing", validation=checked, updated_at=now)
+            return WorkbenchCommandOutcome("committed", self._projection(current_head, rows, live, (checked, validator.frozen)))
 
         return self._execute(CHANGE, draft_ref, intent, write_token, request_key, mutate)
 
@@ -153,7 +159,8 @@ class WorkbenchTrialService:
 
         def mutate(prepared):
             head, rows, live = prepared
-            snapshot = deepcopy(self._projection(head, rows, live))
+            source_prepared = source_projection(rows, head["admission"])
+            snapshot = deepcopy(self._projection(head, rows, live, source_prepared=source_prepared))
             snapshot.update(scenario_ref=new_ref(), name=intent["name"], status="saved", saved_at=self._now())
             snapshot.pop("write_context")
             for item in snapshot["tasks"] + snapshot["unplanned_operations"]:
@@ -168,7 +175,8 @@ class WorkbenchTrialService:
                 row["predecessor_refs"] = [old_to_new[ref] for ref in row["predecessor_refs"]]
                 _scenario_issue_refs(row["issues"], old_to_new)
             _scenario_issue_refs(snapshot["validation"]["issues"], old_to_new)
-            apply_changeovers(snapshot["comparison"], trial_changeovers(scenario_rows(snapshot, rows), head["admission"]))
+            apply_changeovers(snapshot["comparison"], trial_changeovers(scenario_rows(snapshot, rows), head["admission"],
+                                                                        facts=source_prepared[0]))
             snapshot["preview_target"] = "/api/workbench/v1/trial/scenarios/" + snapshot["scenario_ref"]
             require_advanced(self.repo.save(head, snapshot, request_key, self.actor_provider(), snapshot["saved_at"]))
             return WorkbenchCommandOutcome("committed", snapshot)
@@ -189,27 +197,30 @@ class WorkbenchTrialService:
 
     def scenario(self, scenario_ref):
         with candidate_read_snapshot(self.conn):
-            saved = load_scenario(self.repo, reference(scenario_ref))
-            if self.repo.draft_header(saved["draft_ref"]) is None:
-                head, rows = None, []
-            else:
-                head, rows = load_draft(self.repo, saved["draft_ref"])
-            result = deepcopy(saved)
-            result["comparison"] = (result["comparison"] if "delivery_summary" in result["comparison"]
-                                    else scenario_comparison(saved, head, rows))
-            result["capacity"] = scenario_capacity(saved, head, rows)
-            if head is not None:
-                projected = scenario_rows(saved, rows)
-                contexts = operation_contexts(projected, head["admission"])
-                pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
-                    current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
-                result["unplanned_operations"] = _unplanned(contexts)
-                result["scope_complete"] = not result["unplanned_operations"]
-                apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
-                result["comparison"]["preparation_common"] = preparation
-                if "changeover_common" not in result["comparison"]:
-                    apply_changeovers(result["comparison"], trial_changeovers(projected, head["admission"]))
-            return result
+            with read_evidence_scope(self.conn):
+                saved = load_scenario(self.repo, reference(scenario_ref))
+                header = self.repo.draft_header(saved["draft_ref"])
+                if header is None:
+                    head, rows, projected, facts, archive, origin = None, [], None, None, None, None
+                else:
+                    head, rows = load_draft(self.repo, saved["draft_ref"], header=header)
+                    projected = scenario_rows(saved, rows)
+                    facts, archive, origin, contexts = source_projection(projected, head["admission"])
+                result = deepcopy(saved)
+                result["comparison"] = (result["comparison"] if "delivery_summary" in result["comparison"]
+                                        else scenario_comparison(saved, head, rows, projected=projected,
+                                                                 facts=facts, origin=origin))
+                result["capacity"] = scenario_capacity(saved, head, rows, projected=projected, archive=archive)
+                if head is not None:
+                    pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
+                        current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
+                    result["unplanned_operations"] = _unplanned(contexts)
+                    result["scope_complete"] = not result["unplanned_operations"]
+                    apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
+                    result["comparison"]["preparation_common"] = preparation
+                    if "changeover_common" not in result["comparison"]:
+                        apply_changeovers(result["comparison"], trial_changeovers(projected, head["admission"], facts=facts))
+                return result
 
     def lookup(self, request_key):
         validate_request_key(request_key)

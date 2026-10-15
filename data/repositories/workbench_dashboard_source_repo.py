@@ -3,6 +3,9 @@
 from core.models.enums import SOURCE_TYPE_VALUES, SourceType, read_source_type
 from core.models.workbench_dashboard import MAX_BYTES, MAX_FACT_ROWS, bounded
 
+from .calendar_facts_repo import DOWNTIME_STATUS_SQL
+from .schedule_time_sql import register_schedule_time_sql_functions, time_dt, valid_time_range_sql
+
 TABLES = {"SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
           "WorkbenchDashboardDowntimeRefs", "ScheduleHistory", "Schedule", "BatchOperations"}
 VERSIONED_TABLES = {"Schedule", "ScheduleHistory"}
@@ -27,11 +30,6 @@ def rows(conn, sql, params=(), *, select=None, limit=None):
     return result
 
 
-def latest_outsourcing_fact_rows(conn, ref):
-    """某条外协登记最新一条确认事实（原始存储值，最多 1 行）。"""
-    return rows(conn, "SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT 1", (ref,))
-
-
 def source_gap_rows(conn, limit):
     """Stream unknown sources and legacy external values outside canonical registration reads."""
     def selected(row):
@@ -46,6 +44,7 @@ def source_gap_rows(conn, limit):
         LEFT JOIN WorkbenchPlanSourceRefs r ON r.kind='operation' AND r.active=1 AND r.source_key=CAST(o.id AS TEXT)
         LEFT JOIN WorkbenchEntityRefs b ON b.kind='batch' AND b.active=1 AND b.entity_key=o.batch_id
         LEFT JOIN WorkbenchOutsourcingMembers m ON m.operation_ref=r.ref
+        WHERE typeof(o.source)!='text' OR o.source COLLATE BINARY NOT IN ('internal','external')
         ORDER BY o.id""", select=selected, limit=limit)
 
 
@@ -64,6 +63,46 @@ class DashboardSourceRepository:
         if name not in self.present:
             return None
         return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (limit + 1,)), limit)
+
+    def downtime_capture(self, *, machine_ids=None, limit=MAX_FACT_ROWS):
+        """Keep raw rowid order and SQLite's time/status/order facts from one SELECT."""
+        if "MachineDowntimes" not in self.present:
+            return None, None
+        register_schedule_time_sql_functions(self.conn)
+        wanted = None if machine_ids is None else frozenset(machine_ids)
+        self.conn.create_function("aps_calendar_machine_selected", 1,
+                                  lambda key: int(wanted is None or key in wanted))
+        selected = "aps_calendar_machine_selected(md.machine_id) AND " + DOWNTIME_STATUS_SQL
+        private = [DOWNTIME_STATUS_SQL + " AS __calendar_admitted",
+                   "CASE WHEN " + selected + " THEN " + valid_time_range_sql("md") + " END AS __calendar_valid",
+                   "CASE WHEN " + selected + " THEN " + time_dt("md", "start_time") + " END AS __calendar_start",
+                   "CASE WHEN " + selected + " THEN " + time_dt("md", "end_time") + " END AS __calendar_end"]
+        for field in ("start_time", "end_time"):
+            stem = "__calendar_" + field
+            private.extend(("CASE typeof(md." + field + ") WHEN 'null' THEN 0 WHEN 'integer' THEN 1 "
+                            "WHEN 'real' THEN 1 WHEN 'text' THEN 2 ELSE 3 END AS " + stem + "_rank",
+                            "CASE WHEN typeof(md." + field + ")='text' THEN CAST(md." + field + " AS BLOB) "
+                            "ELSE md." + field + " END AS " + stem + "_value"))
+        cursor = None
+        try:
+            cursor = self.conn.execute("SELECT " + self._select_list("MachineDowntimes") + "," + ",".join(private) +
+                                      " FROM MachineDowntimes md ORDER BY rowid LIMIT ?", (limit + 1,))
+            names = [column[0] for column in cursor.description]
+            boundary = len(names) - len(private)
+            captured, prepared, size = [], [], 0
+            for row in cursor:
+                raw = dict(zip(names[:boundary], row[:boundary]))
+                size += sum(len(value) if type(value) is bytes else len(value.encode("utf-8")) if type(value) is str else 16
+                            for value in row[:boundary])
+                bounded(range(size), MAX_BYTES)
+                captured.append(raw)
+                prepared.append((raw, dict(zip(names[boundary:], row[boundary:]))))
+            bounded(captured, limit)
+            return captured, prepared
+        finally:
+            if cursor is not None:
+                cursor.close()
+            self.conn.create_function("aps_calendar_machine_selected", 1, None)
 
     def selected_raw(self, name, version):
         if name not in VERSIONED_TABLES:

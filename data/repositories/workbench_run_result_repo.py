@@ -1,126 +1,18 @@
-"""Full candidate-set persistence, deliberately independent from formal Schedule."""
+"""Persist full candidate sets independently from formal Schedule."""
 
 import json
-from dataclasses import fields
 
-from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
-from core.models.objective import best_score_schema
 from core.models.workbench_command import canonical_json
-from core.models.workbench_run_compute import CandidateRunComputation
-from core.models.workbench_run_job import durable_value, new_run_ref
 
 
-def _candidate_tasks(payload, identities, computation):
-    tasks = []
-    for row in payload.schedule_rows:
-        if row.op_id not in identities:
-            raise ValueError("Candidate operation identity is missing")
-        tasks.append({"row_ref": new_run_ref(), "operation_ref": identities[row.op_id],
-                      "payload": {**durable_value(row), "locked": row.op_id in computation.schedule_input.frozen_op_ids}})
-    if len(tasks) != len(payload.scheduled_op_ids) or {row.op_id for row in payload.schedule_rows} != payload.scheduled_op_ids:
-        raise ValueError("Candidate rows and scheduled operation scope disagree")
-    return tasks
-
-
-def _prepare_candidate(candidate, computation, identities):
-    artifact = {item.name: durable_value(getattr(candidate, item.name)) for item in fields(candidate)}
-    if getattr(computation.schedule_input, "operation_efforts", None) is not None:
-        artifact["analysis_contract_version"] = "decision-preparation-v4"
-    tasks = []
-    if candidate.status == "completed":
-        payload = computation.candidate_payloads[candidate.candidate_key]
-        if payload.out_of_scope_op_ids or payload.validation_errors:
-            raise ValueError("Candidate payload contains validation errors")
-        tasks = _candidate_tasks(payload, identities, computation)
-        validated = durable_value(payload)
-        arrangement_fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
-        engine_rows = artifact.pop("results")
-        if [{key: row.get(key) for key in arrangement_fields} for row in engine_rows] != validated["schedule_rows"]:
-            raise ValueError("Candidate engine results and validated rows disagree")
-        # Permanent task rows own the arrangement. Keep only engine-specific trace
-        # fields and validation conclusions; historical artifacts retain their old shape.
-        artifact["task_payload_source"] = "candidate_tasks_v1"
-        artifact["results"] = [{key: value for key, value in row.items()
-                                if key == "op_id" or key not in arrangement_fields} for row in engine_rows]
-        artifact["validated_payload"] = {key: value for key, value in validated.items()
-                                         if key not in ("schedule_rows", "assigned_by_op_id")}
-    return {"candidate_ref": new_run_ref(), "key": candidate.candidate_key,
-            "sequence": candidate.sequence, "status": candidate.status, "label": candidate.label,
-            "artifact": artifact, "tasks": tasks}
-
-
-def prepare_run_result(computation, identities):
-    if not isinstance(computation, CandidateRunComputation) or computation.result_persisted:
-        raise TypeError("Expected an unpersisted CandidateRunComputation")
-    if computation.state not in ("complete", "partial"):
-        raise ValueError("Computation did not produce candidate results")
-    comparison = computation.orchestration.candidate_comparison
-    candidates = []
-    for candidate in comparison.candidates:
-        candidates.append(_prepare_candidate(candidate, computation, identities))
-    if len({row["key"] for row in candidates}) != len(candidates):
-        raise ValueError("Duplicate candidate identity")
-    candidate_refs = {row["key"]: row["candidate_ref"] for row in candidates}
-    for row in candidates:
-        process = row["artifact"].get("process_evidence")
-        if process is not None:
-            row["artifact"]["process_evidence"] = _evidence_references(process, candidate_refs)
-    selected = comparison.selection.selected_candidate_key
-    if not any(row["key"] == selected and row["status"] == "completed" for row in candidates):
-        raise ValueError("Selected candidate is missing")
-    result = {"result_persisted": True, "state": computation.state, "error": None,
-              "candidates": [{"candidate_ref": row["candidate_ref"], "label": row["label"], "status": row["status"],
-                              "task_count": len(row["tasks"]), "selected": row["key"] == selected} for row in candidates],
-              "selection": _selection_references(comparison.selection, candidates), "dispositions": durable_value(computation.dispositions),
-              "summary": durable_value(computation.orchestration.result_summary_obj)}
-    efforts = getattr(computation.schedule_input, "operation_efforts", None)
-    if efforts is not None:
-        items, seen = [], set()
-        for effort in efforts:
-            if effort.op_id not in identities or effort.op_id in seen:
-                raise ValueError("Runtime effort operation identity is missing or duplicated")
-            seen.add(effort.op_id)
-            items.append({**durable_value(effort.to_dict()), "operation_ref": identities[effort.op_id]})
-        result["operation_effort"] = {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": items}
-    canonical_json(result)
-    for row in candidates:
-        canonical_json(row)
-    return candidates, result
-
-
-def _selection_references(selection, candidates):
-    """Map engine keys once, beside the candidate identities allocated in this transaction."""
-    refs = {row["key"]: row["candidate_ref"] for row in candidates}
-    value = durable_value(selection.to_dict())
-    keys = {"selected_candidate_key": "selected_candidate_ref", "raw_score_best_key": "raw_score_best_candidate_ref",
-            "baseline_best_key": "health_reference_candidate_ref", "critical_best_key": "critical_best_candidate_ref",
-            "critical_health_best_key": "critical_health_best_candidate_ref"}
-    for source, target in keys.items():
-        key = value.pop(source)
-        value[target] = refs[key] if key is not None else None
-    selected = next(row for row in candidates if row["candidate_ref"] == value["selected_candidate_ref"])
-    objective = selected["artifact"].get("objective_name") or selected["artifact"].get("objective")
-    value.update(objective_name=objective, objective_field_order=[field["key"] for field in best_score_schema(objective)])
-    if "decision_evidence" in value:
-        value["decision_evidence"] = _evidence_references(value["decision_evidence"], refs)
-    return value
-
-
-def _evidence_references(value, refs):
-    """Freeze nested candidate identities alongside the existing receipt anchors."""
-    if isinstance(value, list):
-        return [_evidence_references(item, refs) for item in value]
-    if not isinstance(value, dict):
-        return value
-    result = {}
-    for key, item in value.items():
-        if key == "candidate_key" or key.endswith("_candidate_key"):
-            result[key[:-3] + "ref"] = refs[item] if item is not None else None
-        elif key == "candidate_keys" or key.endswith("_candidate_keys"):
-            result[key[:-4] + "refs"] = [refs[candidate] for candidate in item]
-        else:
-            result[key] = _evidence_references(item, refs)
-    return result
+def encode_candidate_rows(candidates):
+    """Encode each final artifact and task payload once for the owning INSERT."""
+    return [{"candidate_ref": row["candidate_ref"], "key": row["key"], "sequence": row["sequence"],
+             "status": row["status"], "task_count": len(row["tasks"]),
+             "artifact_json": canonical_json(row["artifact"]),
+             "tasks": [{"row_ref": task["row_ref"], "operation_ref": task["operation_ref"],
+                        "payload_json": canonical_json(task["payload"])} for task in row["tasks"]]}
+            for row in candidates]
 
 
 class WorkbenchRunResultRepository:
@@ -130,9 +22,9 @@ class WorkbenchRunResultRepository:
     def save(self, run_ref, candidates):
         for row in candidates:
             self.conn.execute("INSERT INTO WorkbenchRunCandidates VALUES (?,?,?,?,?,?,?)",
-                (row["candidate_ref"], run_ref, row["key"], row["sequence"], row["status"], len(row["tasks"]), canonical_json(row["artifact"])))
+                (row["candidate_ref"], run_ref, row["key"], row["sequence"], row["status"], row["task_count"], row["artifact_json"]))
             self.conn.executemany("INSERT INTO WorkbenchRunCandidateTasks VALUES (?,?,?,?,?)",
-                [(task["row_ref"], row["candidate_ref"], task["operation_ref"], ordinal, canonical_json(task["payload"]))
+                [(task["row_ref"], row["candidate_ref"], task["operation_ref"], ordinal, task["payload_json"])
                  for ordinal, task in enumerate(row["tasks"])])
 
     def consistent(self, run_ref, result):

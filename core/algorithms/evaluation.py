@@ -3,40 +3,21 @@ from __future__ import annotations
 import math
 import statistics
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import ChangeoverArrangement, project_changeover_events
-from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
-from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
-from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE, BatchCompletion, collect_batch_completion
+from core.algorithms.evaluation_completion import (
+    UNKNOWN_OBJECTIVE_VALUE,
+    BatchCompletion,
+    PreparedBatchDue,
+    PreparedEvaluationContext,
+    collect_batch_completion,
+    prepare_evaluation_context,
+)
 from core.algorithms.objective_specs import objective_metric_keys
 from core.algorithms.types import ScheduleResult
 from core.algorithms.value_domains import INTERNAL
-
-
-def _due_text(value: Any) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    return str(value or "").strip()
-
-
-def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
-    if value is None:
-        return None, False
-    if isinstance(value, date) and not isinstance(value, datetime):
-        return value, False
-    if isinstance(value, datetime):
-        return value.date(), False
-    s = str(value or "").strip()
-    if not s:
-        return None, False
-    parsed = parse_date(s)
-    return parsed, parsed is None
 
 
 @dataclass
@@ -142,19 +123,24 @@ def compute_metrics(
     expected_operations: Optional[Iterable[Any]] = None,
     seed_results: Optional[Iterable[ScheduleResult]] = None,
     failure_details: Optional[Iterable[Dict[str, Any]]] = None,
+    prepared: Optional[PreparedEvaluationContext] = None,
 ) -> ScheduleMetrics:
     """Use explicit run inputs to distinguish completion from a partial result.
 
     Two-argument legacy callers retain their result-only projection. All runtime
-    candidates must pass expected_operations, including when that list is empty.
+    candidates supply expected_operations directly or in a prepared context,
+    including when that list is empty.
     Seeds are expected output identities, not extra synthesized output records.
     """
+    context = prepared if prepared is not None else prepare_evaluation_context(
+        batches=batches, expected_operations=expected_operations, seed_results=seed_results,
+    )
     completion = collect_batch_completion(
         results, batches, expected_operations=expected_operations,
-        seed_results=seed_results, failure_details=failure_details,
+        seed_results=seed_results, failure_details=failure_details, prepared=context,
     )
     result_state = _collect_result_metric_state(results)
-    due_state = _compute_due_metrics(batches, result_state.finish_by_batch, completion=completion)
+    due_state = _compute_due_metrics(context, result_state.finish_by_batch, completion=completion)
     utilization = _build_utilization_metrics(result_state)
 
     return ScheduleMetrics(
@@ -233,16 +219,14 @@ def _record_internal_result(
 
 
 def _compute_due_metrics(
-    batches: Dict[str, Any], finish_by_batch: Dict[str, datetime], *, completion: Optional[BatchCompletion],
+    prepared: PreparedEvaluationContext, finish_by_batch: Dict[str, datetime], *, completion: Optional[BatchCompletion],
 ) -> _DueMetricState:
     state = _DueMetricState()
     incomplete = set(completion.incomplete_batch_ids) if completion is not None else set()
-    for bid0, batch in batches.items():
-        bid = str(bid0 or "").strip()
-        if not bid:
-            continue
+    for batch_due in prepared.due_batches:
+        bid = batch_due.batch_id
         _record_batch_due_state(
-            state, bid=bid, batch=batch, finish_time=finish_by_batch.get(bid), incomplete=bid in incomplete,
+            state, batch_due=batch_due, finish_time=finish_by_batch.get(bid), incomplete=bid in incomplete,
         )
     return state
 
@@ -250,47 +234,44 @@ def _compute_due_metrics(
 def _record_batch_due_state(
     state: _DueMetricState,
     *,
-    bid: str,
-    batch: Any,
+    batch_due: PreparedBatchDue,
     finish_time: Optional[datetime],
     incomplete: bool,
 ) -> None:
-    due_raw = getattr(batch, "due_date", None)
-    due_date_value, due_invalid = _parse_due_date_state(due_raw)
-    if due_invalid:
+    if batch_due.due_invalid:
         state.invalid_due_count += 1
         if len(state.invalid_due_batch_ids_sample) < 10:
-            state.invalid_due_batch_ids_sample.append(bid)
+            state.invalid_due_batch_ids_sample.append(batch_due.batch_id)
     if not finish_time:
-        _record_unscheduled_batch(state, bid=bid, due_raw=due_raw)
+        _record_unscheduled_batch(state, bid=batch_due.batch_id, due_text=batch_due.due_text)
         return
-    if due_date_value and not incomplete:
-        _record_tardiness_if_overdue(state, batch=batch, finish_time=finish_time, due_date_value=due_date_value)
+    if batch_due.due_exclusive is not None and not incomplete:
+        _record_tardiness_if_overdue(
+            state, batch_due_exclusive=batch_due.due_exclusive,
+            priority_weight=batch_due.priority_weight, finish_time=finish_time,
+        )
 
 
-def _record_unscheduled_batch(state: _DueMetricState, *, bid: str, due_raw: Any) -> None:
+def _record_unscheduled_batch(state: _DueMetricState, *, bid: str, due_text: str) -> None:
     state.unscheduled_batch_count += 1
     if len(state.unscheduled_batch_ids_sample) >= 20:
         return
-    due_text = _due_text(due_raw)
     state.unscheduled_batch_ids_sample.append(f"{bid}({due_text})" if due_text else bid)
 
 
 def _record_tardiness_if_overdue(
     state: _DueMetricState,
     *,
-    batch: Any,
+    batch_due_exclusive: datetime,
+    priority_weight: float,
     finish_time: datetime,
-    due_date_value: date,
 ) -> None:
-    batch_due_exclusive = due_exclusive(due_date_value)
     if finish_time < batch_due_exclusive:
         return
     state.overdue_count += 1
     delta_hours = (finish_time - batch_due_exclusive).total_seconds() / 3600.0
     state.tardiness_hours += float(delta_hours)
-    priority = normalize_priority(getattr(batch, "priority", None), default="normal")
-    state.weighted_tardiness_hours += float(delta_hours) * float(PRIORITY_WEIGHT.get(priority, 1.0))
+    state.weighted_tardiness_hours += float(delta_hours) * priority_weight
 
 
 def _count_changeovers(by_machine: Dict[str, List[ScheduleResult]]) -> int:

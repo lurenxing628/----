@@ -344,7 +344,7 @@
       && ['admission_official', 'trial_creation_official'].includes(origin.kind) && label(origin.captured_at)
       && (origin.captured_task_count === null || count(origin.captured_task_count))
       && (algorithm === null ? value.source_kind === 'trial_adoption'
-        : exact(algorithm, ['mode', 'mode_label', 'strategy', 'strategy_label']) && Object.values(algorithm).every(nullableLabel));
+        : window.RunGenerationContract.algorithm(algorithm, value.run_ref));
   }
   function workspace(result, planRef, scope = {}) {
     const query = workspaceScope(planRef, scope);

@@ -6,7 +6,7 @@ summary: 排产巨型模块系统地图，记录子包/业务族/主链及 A1/A3
 status: current
 created: 2026-06-28
 last_reviewed: 2026-09-20
-updated: 2026-10-14
+updated: 2026-10-15
 tags: [scheduler, core, service, 排产, architecture]
 depends_on: []
 implements: []
@@ -77,9 +77,9 @@ core/services/scheduler/
 
 ### run/ —— 排产执行引擎
 - **职责**:收集排产输入 → 跑算法 / 多候选对比 → 校验产出 → 持久化。排产主链的执行核心。
-- **核心文件**:`run/schedule_orchestrator.py:279` `orchestrate_schedule_run`(总编排,把算法和摘要函数作为参数**注入**)、`run/schedule_input_collector.py` `collect_schedule_run_input`(输入收集)、`run/schedule_optimizer.py` `optimize_schedule`(算法入口)、`run/schedule_persistence.py`(持久化)。内部成簇:`optimizer_*`(36)、`schedule_candidate_*`(9)、`schedule_graph_*`(5,graph 子包消费者)。
-- **optimizer 现状**:`run/schedule_optimizer.py` 的 improve 主链包含多起点、GRASP/IG 批次顺序候选、VNS/acceptance 局搜和 search report。GRASP/IG 生产候选只走 `batch_order` 解码，不保留不可达的 `sgs` 候选入口。局搜的 profile 默认配置六个业务邻域，但当当前 best 是 `dispatch_mode=sgs` 时，实际 effective 邻域只使用 SGS 专用 `sgs_dispatch_rule`，报告中必须分开 configured/effective，不能让页面或 diagnostics 误以为 SGS 跑了 critical_chain/tardy_window 等业务邻域。
-- **graph ready 现状**:工序图分析仍是可选基础设施。生产链遇到 `graph_ready_context` 时,会先走 GraphReady 专用候选池:保留 v1 九组图权重,并可按 `objective_aware_portfolio` 生成 v2 目标感知候选。v2 候选只改 ready 工序排序键,仍交给正式 SGS 解码,不直接写排程结果。批次交期允许为空,空交期生成 no-due 特征并后置,非空非法交期一律 fail-loud。GRASP/IG 与局搜仍不会复用批次顺序邻域处理 graph ready;需要图邻域时记录 `graph_ready_uses_graph_candidate_phase` 并跳过。
+- **核心文件**：`run/schedule_orchestrator.py` 拥有选中结果校验、版本分配与事务；`run/schedule_input_collector.py` 收集输入，`run/schedule_candidate_runner.py:run_candidate_comparison` 将一次共同优化结果发布为业务代表，`run/schedule_shared_optimizer.py:optimize_shared_schedule` 拥有真实优化执行；`run/schedule_persistence.py` 保存正式结果。工作台计算复用相同入口，在用户采用前保持正式版本不变。
+- **optimizer 现状**：`optimizer/runtime.py` 唯一拥有 scheduler_factory、clock、rng_factory、run_ortools_warmstart 及预算 clock 绑定。一次 `SharedSearchBudget`、`SharedDecodeSession` 和 `SharedScheduleArchive` 服务全部目标；共享阶段每次完成一个真实动作后交回控制权。MultiStart、LocalSearch、GRASP/IG 与图 Profile/Repair/IG 保留真实算法和业务邻域，解码、复用、成本与跳过由共同会话记录。SGS局搜实际effective邻域为`sgs_dispatch_rule`；GRASP/IG仅支持`batch_order`，配置邻域与实际执行邻域分别记录。
+- **graph ready 现状**：图特征和内部权重 profile 继续生成真实搜索动作，排序结果经共同解码与完整校验后才成为候选。外层固定3/5/7档已退出结果生成；业务代表按实际目标 winner 和取舍发布。批次空交期继续生成 no-due 特征，非法非空交期明确报错；图循环、分件 DAG、SGS 单轮评分和 decode checkpoint 各保留原职责。
 - **对外依赖**:`core.errors`/既有 infrastructure 兼容错误入口、`core.models.enums`、`core.algorithms` 根 façade，以及 `core.algorithm_contracts.*` / `core.algorithm_runtime.*` 中立叶子、`core.shared.strict_parse`、`core.services.common.build_outcome`;不直接 import `data`(经 svc 句柄)。
 - **对其它子包**:→ graph(13 处,**全是函数内延迟 import**)、→ execution(6 处)、→ contracts(4 处)、→ config(3 处)；→ summary 已为 0。
 
@@ -344,3 +344,17 @@ IG 每个试解及其必要全量验证后交回控制权，原位插回、拒�
 - `history/metrics.py:project_history_metrics`复用共同交付、资源、需求、切换及决策投影，算法保存统计和旧摘要保留自己的版本、范围与来源。资源缺省窗口从保存来源的排产起点起固定7天，可统一调整窗口天数或指定所有来源共用的绝对窗口；缺起点为窗口未知。实际起止、资源成员、占用分子和容量分母随条目返回。`gate_history_metric`依次核对生产条件、目标、指标充分性、单位／版本、范围、真实覆盖成员和资源窗／容量分母，成立时才提供同条件改善。
 - `history/queries.py`统一排序、20／50分页、过滤外选中条目及明确基准。`projection.py`生成当前页走势、范围变化标记、连接判断与成对结论；未知或口径不一致保留断点和观测原数。查询及导出共享请求内来源缓存与条件对照，分页不另建事实来源。`export.py:read_history_export/write_history_export`读取筛选全集与完整成对字段，CSV输出一个分区，XLSX追加指标口径、比较范围和数据缺项；批次总量同时保留数值、已知小计、真实覆盖成员、单位、版本和保存出处，数量缺项进入同一缺项表；原数、空值、类型和出处随文件保留。
 - 设计依据：[历史走势与同条件对照](../features/2026-10-14-decision-history-trends/decision-history-trends-design.md)。本节记录新增只读职责，求解、接收、保存归档、试调及正式采用继续沿原事务入口。
+
+## 11. 统一优化、保存读模型与历史兼容（2026-10-15）
+
+一次排产只构造一份共同输入和解码会话，目标方向分享真实已验证安排与成本。`run_candidate_comparison`发布1—3份具有实际业务取舍的代表，所选主目标与各方向winner可指向同一永久候选。新选择版本`business_objectives_v1`保存主目标、目标方向、winner及缺项原因；读取按保存版本解释，旧balanced/health/权重字段仍保持原值。旧外层固定档生成、重新选优和独立解码cache退出执行职责，内部图profile及真实搜索算法继续使用共同会话。
+
+`optimizer/runtime.py`保留四项真实运行时依赖，显式runtime优先；传入SearchBudget时仅替换clock。共同预算拥有实际成本、停止及目标机会；首次有效、首次应排完整和各目标首次发现均为实际累计时刻，总运行耗时独立保存。SGS循环覆盖在共同入口同时决定实际首解和模式池，普通SGS仍使用普通profile；piece仍要求真实DAG。
+
+v41的`decision-read-v1`在受理/完成事务或显式旧库迁移中构造不可变运行/候选读模型，v42扩展原生候选kind和目标role；保留原字段类型、永久引用及历史记录。`decision_source.py`只读加载保存投影与规范成员，公开投影维持解码形状；候选分析安排直接从同一保存源消费18列安排，避免重建整份排产输入。失败/中断无候选终态仍有真实保存原因。
+
+资源首屏由`decision_resource_workspace.py`在同一只读快照和DecisionSource内协调原summary/resources，两份信封各自绑定scope/token。每资源日历与measurement由当前请求拥有；完整窗口统计和筛选保持全范围，完整cell/明细只在实际输出时构造。资源读取仅保留整窗与可见明细的日值，旧pressure消费者默认保留完整日值；前缀批量流和单区间共用原数值公式，部分班表、未知、半开/零长及跨夜语义保持。
+
+当前配置四项`graph_candidate_weight_count/graph_selection_policy/graph_overdue_tolerance_count/graph_tardiness_tolerance_ratio`已退役，新runtime/页面写入和新preset使用有效字段；旧ScheduleConfig、preset历史和artifact保留，旧客户端提交退役字段明确要求刷新。内置常规/深入预算为10/30秒，用户明确预算及旧自定义preset预算继续保持。
+
+实现与分阶段验收见[统一优化feature](../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-design.md)。U5六项20k正式复测及主验收已保存；U6实现、整合门禁与最终验收分别记录，Windows实机验证按用户延期。

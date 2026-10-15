@@ -73,7 +73,7 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence=
         "coverage": {name: summary["coverage"] for name, summary in summaries.items()}}
 
 
-def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_refs=None):
+def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_refs=None, facts=None):
     source = admission["source"]
     types = source.get("operation_types") or {}
     slot_types = source.get("trial_operation_types")
@@ -81,8 +81,11 @@ def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_r
         tables = admission["facts"]["tables"]
         refs = {(item["kind"], item["entity_key"]): item["ref"] for item in tables["WorkbenchEntityRefs"] if item["active"] == 1}
         slot_types = operation_types(rows, refs, {item["op_type_id"]: item for item in tables["OpTypes"]})
-    machine_rows = (GenerationFacts(source["capture"]).tables["Machines"].values() if "capture" in source
-                    else admission["facts"]["tables"]["Machines"])
+    if "capture" in source:
+        facts = facts if facts is not None else GenerationFacts(source["capture"])
+        machine_rows = facts.tables["Machines"].values()
+    else:
+        machine_rows = admission["facts"]["tables"]["Machines"]
     machines = {item["machine_id"]: item.get("name") for item in machine_rows}
     projected = {}
     for side in ("original", "current"):

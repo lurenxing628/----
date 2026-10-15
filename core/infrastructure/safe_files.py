@@ -44,12 +44,13 @@ def _guard_fixed_file_parent(path_s: str, *, ensure_parent: bool = False) -> Non
     parent = os.path.dirname(os.path.abspath(path_s))
     if not parent:
         return
-    if ensure_parent:
-        os.makedirs(parent, exist_ok=True)
     try:
         st = os.lstat(parent)
     except FileNotFoundError:
-        return
+        if not ensure_parent:
+            return
+        os.makedirs(parent, exist_ok=True)
+        st = os.lstat(parent)
     if stat.S_ISLNK(st.st_mode):
         raise UnsafeFixedFileError(f"拒绝处理软链接目录中的固定文件：{path_s}")
 
@@ -140,8 +141,10 @@ def read_fixed_json(path: Any, *, encoding: str = "utf-8") -> Any:
     return json.loads(read_fixed_text(path, encoding=encoding))
 
 
-def _raise_if_existing_path_unsafe(path_s: str, *, replace_symlink: bool = False):
-    _guard_fixed_file_parent(path_s)
+def _raise_if_existing_path_unsafe(
+    path_s: str, *, ensure_parent: bool = False, replace_symlink: bool = False
+):
+    _guard_fixed_file_parent(path_s, ensure_parent=ensure_parent)
     try:
         st = os.lstat(path_s)
     except FileNotFoundError:
@@ -191,9 +194,9 @@ def open_fixed_file_for_write(
     replace_symlink: bool = False,
 ):
     path_s = _path_text(path)
-    if ensure_parent:
-        _ensure_parent(path_s)
-    expected_stat = _raise_if_existing_path_unsafe(path_s, replace_symlink=replace_symlink)
+    expected_stat = _raise_if_existing_path_unsafe(
+        path_s, ensure_parent=ensure_parent, replace_symlink=replace_symlink
+    )
     try:
         if expected_stat is None:
             fd = _open_new_fixed_file_for_write(path_s)
@@ -219,9 +222,9 @@ def open_fixed_file_for_write_binary(
     replace_symlink: bool = False,
 ):
     path_s = _path_text(path)
-    if ensure_parent:
-        _ensure_parent(path_s)
-    expected_stat = _raise_if_existing_path_unsafe(path_s, replace_symlink=replace_symlink)
+    expected_stat = _raise_if_existing_path_unsafe(
+        path_s, ensure_parent=ensure_parent, replace_symlink=replace_symlink
+    )
     try:
         if expected_stat is None:
             fd = _open_new_fixed_file_for_write(path_s)
@@ -295,21 +298,13 @@ def write_fixed_json(
 def guard_fixed_file_replace_target(path: Any, *, ensure_parent: bool = True) -> None:
     """替换固定名文件前检查目标槽位，拒绝软链接/硬链接/非普通文件占位。"""
     path_s = _path_text(path)
-    if ensure_parent:
-        _ensure_parent(path_s)
-    else:
-        _guard_fixed_file_parent(path_s)
-    _raise_if_existing_path_unsafe(path_s)
+    _raise_if_existing_path_unsafe(path_s, ensure_parent=ensure_parent)
 
 
-def guard_fixed_file_open_target(path: Any, *, ensure_parent: bool = True) -> None:
-    """打开会被程序写入的固定名文件前检查目标槽位。"""
+def guard_fixed_file_open_target(path: Any, *, ensure_parent: bool = True) -> Optional[os.stat_result]:
+    """准备固定名文件槽位，返回已有普通文件的状态；缺失时返回 None。"""
     path_s = _path_text(path)
-    if ensure_parent:
-        _ensure_parent(path_s)
-    else:
-        _guard_fixed_file_parent(path_s)
-    _raise_if_existing_path_unsafe(path_s)
+    return _raise_if_existing_path_unsafe(path_s, ensure_parent=ensure_parent)
 
 
 def create_fixed_file_exclusive(path: Any, *, ensure_parent: bool = True) -> int:

@@ -8,6 +8,7 @@ from openpyxl import load_workbook
 
 from core.services.workbench.facts.completion_scope import project_completion_scope
 from core.services.workbench.run.decision_completion_queries import completion_batches, normalize_completion_filters
+from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive, install_different_work_archive
 from tests.workbench.run_candidate_support import BASE, api, compute
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_completion_scope import batch_item
@@ -40,8 +41,10 @@ def completion_source(deliveries, pending, *, unavailable=()):
     return source
 
 
-def test_partial_completion_anchor_and_remaining_export_exclude_arranged_prefixes(candidate_case):
+def test_partial_completion_anchor_and_remaining_export_exclude_arranged_prefixes(candidate_case, monkeypatch):
     case = candidate_case
+    # Explicit old saved directories retain two genuinely different completed work sets.
+    install_different_work_archive(monkeypatch)
     case.conn.execute("UPDATE Batches SET quantity=1,due_date='2026-09-09' WHERE batch_id='B1'")
     case.conn.execute("UPDATE BatchOperations SET setup_hours=2,unit_hours=3 WHERE id=?", (case.op_id,))
     case.batch("B2", quantity=1, due_date="2026-09-10")
@@ -134,8 +137,10 @@ def test_partial_completion_anchor_and_remaining_export_exclude_arranged_prefixe
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"
 
 
-def test_completion_batches_api_paginates_all_members_under_one_snapshot(candidate_case):
+def test_completion_batches_api_paginates_all_members_under_one_snapshot(candidate_case, monkeypatch):
     case = candidate_case
+    # Multiple saved identities keep the completion-anchor snapshot rejection contract.
+    install_complete_legacy_archive(monkeypatch)
     run_ref, refs, codes = many_batches(case)
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[-2], "reference_candidate_ref": refs[0],

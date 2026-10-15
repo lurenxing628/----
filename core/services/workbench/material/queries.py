@@ -16,7 +16,7 @@ from core.models.workbench_resource_table_query import table_query_required, too
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
-from .table_facts import material_table_index
+from .table_facts import material_counts, material_ordered_rows, material_table_index, material_toolbar_rows
 
 
 @dataclass(frozen=True)
@@ -52,29 +52,51 @@ class WorkbenchMaterialQueryService:
         self.conn = conn
         self.repo = WorkbenchMaterialQueryRepository(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
-        self._table_indexes = None
+        self._snapshot = None
 
     @contextmanager
     def read_snapshot(self, *, capture_fingerprint=True):
         with TransactionManager(self.conn).transaction():
-            previous = self._table_indexes
-            self._table_indexes = {}
+            previous = self._snapshot
+            self._snapshot = {"fingerprint": None, "records": {}, "indexes": {}, "scopes": {}, "orders": {}}
             try:
                 yield self.state_fingerprint() if capture_fingerprint else None
             finally:
-                self._table_indexes = previous
+                self._snapshot = previous
 
     def state_fingerprint(self):
-        return {"state": self.repo.snapshot_state(), "rows": self.repo.table_rows()}
+        snapshot = self._snapshot
+        if snapshot is not None and snapshot["fingerprint"] is not None:
+            return snapshot["fingerprint"]
+        state = self.repo.snapshot_state()
+        fingerprint = {"state": state, "rows": self.repo.table_rows(requirements=state["requirements"])}
+        if snapshot is not None:
+            snapshot["fingerprint"] = fingerprint
+        return fingerprint
+
+    def _toolbar_rows(self, query):
+        if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
+            key = tuple(toolbar_scope(query).items())
+            scopes = self._snapshot["scopes"]
+            if key not in scopes:
+                scopes[key] = material_toolbar_rows(self._snapshot["fingerprint"]["rows"], query)
+            return scopes[key]
+        return self.repo.table_rows(query.query, query.status)
+
+    def _record(self, row):
+        if self._snapshot is None:
+            return _project(row)
+        records = self._snapshot["records"]
+        code = row["material_id"]
+        if code not in records:
+            records[code] = _project(row)
+        return records[code]
 
     def metrics(self, query: MaterialPageRequest):
         if query.column_filters:
             index = self.table_index(query)
-            rows = [index.rows[code] for code in index.matching_keys(query)]
-            counts = {"total": len(rows), "active": sum(row["status"] == "active" for row in rows),
-                      "inactive": sum(row["status"] == "inactive" for row in rows),
-                      "unknown": sum(row["status"] not in ("active", "inactive") for row in rows),
-                      "stock_unknown": sum(row["stock_qty"] is None for row in rows)}
+            rows = [index.rows[code].state["material"] for code in index.matching_keys(query)]
+            counts = material_counts(rows)
         else:
             counts = self.toolbar_metrics(query)
         return {"scope": "filtered", "counts": counts,
@@ -82,9 +104,11 @@ class WorkbenchMaterialQueryService:
                 "issues": []}
 
     def toolbar_metrics(self, query: MaterialPageRequest):
-        """Counts straight from SQL over the toolbar scope; column filters must go through metrics()."""
+        """Count the toolbar scope from its captured raw rows, or SQL without a full capture."""
         if query.column_filters:
             raise WorkbenchCommandRejected("invalid_input", "列筛选统计请使用物料查询服务的统一入口。", 400)
+        if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
+            return material_counts(self._toolbar_rows(query))
         return self.repo.metrics(query.query, query.status)
 
     def resolve(self, ref):
@@ -104,11 +128,20 @@ class WorkbenchMaterialQueryService:
 
     def page(self, query: MaterialPageRequest):
         if table_query_required(query):
-            rows, total = self.table_index(query).page(query)
+            records, total = self.table_index(query).page(query)
         else:
-            rows, total = self.repo.page(query=query.query, status=query.status, number=query.number,
-                                         size=query.size, sort=query.sort, direction=query.direction)
-        records = [_project(row) for row in rows]
+            if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
+                key = (tuple(toolbar_scope(query).items()), query.sort, query.direction)
+                orders = self._snapshot["orders"]
+                if key not in orders:
+                    orders[key] = material_ordered_rows(self._toolbar_rows(query), query)
+                ordered = orders[key]
+                start = (query.number - 1) * query.size
+                rows, total = ordered[start:start + query.size], len(ordered)
+            else:
+                rows, total = self.repo.page(query=query.query, status=query.status, number=query.number,
+                                             size=query.size, sort=query.sort, direction=query.direction)
+            records = [self._record(row) for row in rows]
         page = {"number": query.number, "size": query.size, "total": total,
                 "pages": max(1, (total + query.size - 1) // query.size),
                 "sort": [{"field": query.sort, "direction": query.direction}]}
@@ -116,9 +149,9 @@ class WorkbenchMaterialQueryService:
 
     def table_index(self, query):
         key = tuple(toolbar_scope(query).items())
-        cache = self._table_indexes if self._table_indexes is not None else {}
+        cache = self._snapshot["indexes"] if self._snapshot is not None else {}
         if key not in cache:
-            cache[key] = material_table_index(self.repo.table_rows(query.query, query.status), _project)
+            cache[key] = material_table_index(self._toolbar_rows(query), self._record)
         return cache[key]
 
     def matching_keys(self, query):
@@ -126,7 +159,7 @@ class WorkbenchMaterialQueryService:
 
     def matching_rows(self, query):
         index = self.table_index(query)
-        return [{"business_code": code, "ref": index.rows[code]["ref"], "revision": index.rows[code]["revision"]}
+        return [{"business_code": code, "ref": index.rows[code].identity.ref, "revision": index.rows[code].identity.revision}
                 for code in index.matching_keys(query)]
 
     def facets(self, query, column, search="", number=1, size=100):

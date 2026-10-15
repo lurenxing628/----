@@ -48,8 +48,12 @@ def source_resolution(operations):
 
 
 class WorkbenchOutsourcingSourceService:
-    def __init__(self, conn):
-        self.repo = WorkbenchOutsourcingSourceRepository(conn)
+    def __init__(self, conn, *, repo=None):
+        self.repo = WorkbenchOutsourcingSourceRepository(conn) if repo is None else repo
+
+    def capture(self, targets, *, entities=()):
+        """Resolve the same source rules from facts owned by this read snapshot."""
+        return WorkbenchOutsourcingSourceService(None, repo=self.repo.capture(targets, entities=entities))
 
     def entity(self, ref, kind):
         identity = self.repo.entity_identity(ref, kind)
@@ -142,13 +146,34 @@ class WorkbenchOutsourcingSourceService:
         return [item for item, source in self.load_targets(batch_ref, query)]
 
     def load_targets(self, batch_ref=None, query=""):
-        """Read each target and its verified source once in the caller's snapshot."""
+        """Capture source dependencies once, then project the original target contract."""
+        rows, captured = self.capture_targets(batch_ref, query)
+        return captured.load_target_rows(rows)
+
+    def target_rows(self, batch_ref=None, query="", *, unregistered_only=False):
+        """Read the bounded target range and retain a selected batch already resolved here."""
         batch_id = None
+        entities = []
         if batch_ref is not None:
-            batch_id = self.entity(batch_ref, "batch")["row"]["batch_id"]
-        rows = self.repo.external_operation_rows(batch_id, MAX_ROWS, query)
+            batch = self.entity(batch_ref, "batch")
+            batch_id = batch["row"]["batch_id"]
+            entities.append(batch)
+        rows = self.repo.external_operation_rows(batch_id, MAX_ROWS, query, unregistered_only=unregistered_only)
         if len(rows) > MAX_ROWS:
             reject("外协工序超过10000项，请按批次号或工序查找，缩小范围。", "query_too_large", 413)
+        return rows, entities
+
+    @staticmethod
+    def target_from_row(row):
+        return {"kind": "single", "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
+                "operation_refs": [row["operation_ref"]]}
+
+    def capture_targets(self, batch_ref=None, query=""):
+        rows, entities = self.target_rows(batch_ref, query)
+        return rows, self.capture([self.target_from_row(row) for row in rows], entities=entities)
+
+    def load_target_rows(self, rows):
+        """Project already captured target rows with the shared load/binding judgement."""
         result = []
         for row in rows:
             source = None
@@ -162,8 +187,7 @@ class WorkbenchOutsourcingSourceService:
             else:
                 # Known per-row identity gaps stay visible; storage failures propagate.
                 try:
-                    source = self.load({"kind": "single", "batch_ref": row["batch_ref"], "supplier_ref": row["supplier_ref"],
-                                        "operation_refs": [row["operation_ref"]]})
+                    source = self.load(self.target_from_row(row))
                     item["can_register"] = row["outsourcing_ref"] is None
                     item["batch"] = self._target_entity_labels(row, "batch", source)
                     item["supplier"] = self._target_entity_labels(row, "supplier", source)

@@ -26,8 +26,13 @@ def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_cas
     case.conn.execute("INSERT INTO WorkCalendar(date,day_type,shift_start,shift_hours,efficiency,allow_normal,allow_urgent) "
                       "VALUES ('2026-09-09','workday','08:00',?,?,'yes','yes')", (shift_hours, efficiency))
     case.conn.commit()
-    _, refs = compute(case)
-    assert len(refs) == 4
+    run_ref, refs = compute(case)
+    assert 1 <= len(refs) <= 3
+    receipt = json.loads(case.conn.execute(
+        "SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])
+    selection = receipt["selection"]
+    assert set(selection["objective_winners"]) == set(selection["target_objectives"])
+    assert set(selection["objective_winners"].values()) <= set(refs)
     svc = adoption_service(case.conn)
     for ref in refs:
         preview = svc.preview(ref)
@@ -45,7 +50,7 @@ def test_fractional_chain_all_candidates_adopt_reopen_and_delivery(candidate_cas
         assert analysis["metrics"]["overdue_count"]["value"] == 0
         assert analysis["metrics"]["total_tardiness_hours"]["value"] == 0
         assert analysis["baseline"]["available"] is False
-    ref = refs[0]
+    ref = selection["selected_candidate_ref"]
     expected = [json.loads(row[0]) for row in case.conn.execute(
         "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=? ORDER BY ordinal", (ref,))]
     preview = svc.preview(ref)

@@ -5,6 +5,7 @@ from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_job import durable_value
+from core.services.workbench.facts.run_input_codec import execution_snapshots_match
 from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 
 from .jobs_facts import production_facts_match, run_baseline, run_execution_projections
@@ -26,7 +27,7 @@ def check_admission_current(conn, capture):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")
     projections = run_execution_projections(conn, capture["input"])
     _require_official_baseline(baseline, projections)
-    if not same(durable_value(projections), capture["execution"]):
+    if not execution_snapshots_match(durable_value(projections), capture["execution"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产时记下的报工记录已经变了，这次没有采用，正式计划没有改动。请重新排产后再试。")
     return baseline, projections
 

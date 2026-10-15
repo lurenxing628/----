@@ -1,13 +1,13 @@
-"""One bounded directory read; task payloads and current resource tables stay unread."""
+"""Read one SQL page of immutable admission and decision projections."""
 
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_run_history import (
     MAX_DIRECTORY_BYTES,
-    MAX_DIRECTORY_ROWS,
     MAX_DOCUMENT_BYTES,
     inconsistent,
     reject,
 )
+from core.services.workbench.facts.decision_read_models import public_run_head, read_model_json
 from data.repositories.workbench_run_query_repo import WorkbenchRunHistoryQueryRepository
 
 
@@ -27,22 +27,22 @@ class RunHistoryStore:
         if workbench_run_contract_issues(self.conn):
             reject("run_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
 
-    def _capacity(self):
-        total = 0
-        for facts in self.repo.directory_capacity().values():
-            _bounded(facts["rows"], MAX_DIRECTORY_ROWS)
-            _bounded(facts["max_document_bytes"], MAX_DOCUMENT_BYTES)
-            total += facts["bytes"]
-        _bounded(total, MAX_DIRECTORY_BYTES)
-        _bounded(self.repo.candidate_count(), MAX_DIRECTORY_ROWS)
-
-    def _require_parents(self):
-        # These anti-joins also catch unfiltered/off-page orphans with foreign_keys disabled by an older writer.
-        if any(self.repo.orphan_probe().values()):
-            inconsistent()
-
-    def read(self):
+    def read(self, scope):
         self.require_schema()
-        self._capacity()
-        self._require_parents()
-        return self.repo.list_jobs(), self.repo.list_candidates()
+        total = self.repo.count_jobs(scope)
+        run_count = total if scope.state == "all" and scope.accepted_from is None else self.repo.count_jobs()
+        rows, byte_count = [], 0
+        for head in self.repo.list_jobs(scope):
+            for field in ("scope_json", "header_json"):
+                raw = head[field]
+                if raw is not None:
+                    size = len(raw.encode("utf-8")) if type(raw) is str else -1
+                    _bounded(size, MAX_DOCUMENT_BYTES)
+                    byte_count += size
+            _bounded(byte_count, MAX_DIRECTORY_BYTES)
+            admission = read_model_json(head, "scope_json")
+            header = (read_model_json(head, "header_json")
+                      if head["header_version"] is not None or head["header_json"] is not None else None)
+            rows.append(public_run_head(head, admission, header))
+        state = {"read_contract_version": 1, "run_count": run_count, "active_runs": self.repo.active_jobs()}
+        return rows, total, state

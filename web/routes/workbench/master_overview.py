@@ -44,7 +44,7 @@ def _response(data, snapshot):
 @api_endpoint
 def master_overview_list():
     page = _page("page")
-    scope, token = _request(("page",), require_snapshot=page > 1)
+    scope, token = _request(("page",))
     reader = MasterOverviewService(g.db)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(scope.scope(), state, token)

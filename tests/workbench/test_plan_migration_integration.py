@@ -12,6 +12,8 @@ from core.infrastructure.migration_state import (
 )
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_plan_identity_schema import plan_identity_objects
+from core.infrastructure.workbench_run_read_model_schema import READ_MODEL_TABLES
+from core.infrastructure.workbench_run_read_model_schema import objects as run_read_model_objects
 from core.infrastructure.workbench_run_schema import RUN_TABLES, workbench_run_objects
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects
@@ -46,7 +48,7 @@ def test_real_v23_upgrade_backs_up_all_rows_and_keeps_plan_refs_across_restart(m
     before = table_snapshot(conn, exclude=("SchemaVersion",))
     backup_before = table_snapshot(conn)
     ddl_before = [tuple(row) for row in conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY name")]
-    added_objects = (set(plan_identity_objects()) | set(execution_ledger_objects()) | set(workbench_run_objects()) |
+    added_objects = (set(plan_identity_objects()) | set(execution_ledger_objects()) | set(workbench_run_objects()) | set(run_read_model_objects()) |
                      set(template_lineage_objects()) | set(workbench_trial_objects()))
     assert not added_objects & {row[1] for row in ddl_before}
     path, backups = tmp_path / "old.db", tmp_path / "backups"
@@ -56,14 +58,14 @@ def test_real_v23_upgrade_backs_up_all_rows_and_keeps_plan_refs_across_restart(m
         assert get_schema_version(upgraded) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(upgraded) == []
         after = table_snapshot(upgraded, exclude=("SchemaVersion",))
         assert {name: after[name] for name in before} == before
-        assert set(after) - set(before) == set(IDENTITY_TABLES + LEDGER_TABLES + RUN_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
+        assert set(after) - set(before) == set(IDENTITY_TABLES + LEDGER_TABLES + RUN_TABLES + READ_MODEL_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)
         assert_v29_source_maps_only(upgraded)
         assert_v30_source_maps_only(upgraded)
         assert_v31_receipt_maps_only(upgraded)
         assert_v32_empty(upgraded)
         assert_v33_contexts(upgraded)
         assert table_rows(upgraded, "WorkbenchExecutionLedgerClock") == [(1, 1, 1)]
-        assert all(table_rows(upgraded, table) == [] for table in LEDGER_TABLES[1:] + RUN_TABLES + V27_TABLES)
+        assert all(table_rows(upgraded, table) == [] for table in LEDGER_TABLES[1:] + RUN_TABLES + READ_MODEL_TABLES + V27_TABLES)
         refs = all_refs(upgraded)
         assert refs and not upgraded.execute("PRAGMA foreign_key_check").fetchall()
     files = list(backups.glob(f"*before_migrate_v23_to_v{CURRENT_SCHEMA_VERSION}*.db"))

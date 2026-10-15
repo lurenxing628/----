@@ -23,6 +23,7 @@ from core.services.workbench.run.decision_recommendation_export import (
 )
 from core.services.workbench.run.decision_selection_explanation import selection_explanation
 from core.services.workbench.run.decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
+from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
 from tests.workbench.run_candidate_support import BASE, api, compute, corrupt_update, edit_artifact
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.test_run_decision_api import _assert_summary_matches_full, decision, decision_summary
@@ -166,6 +167,8 @@ def test_tradeoffs_prioritize_business_groups_and_keep_all_differences_and_neutr
 
 
 def test_operation_supports_keep_known_changes_and_removed_reference_arrangements():
+    from core.services.workbench.run.decision_source import DecisionSource
+
     def ref(number):
         return format(number, "048x")
 
@@ -195,7 +198,7 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     unknown.update(interval_comparable=False, data_gaps=[{"field": "start", "code": "source_missing"}])
     before[operation_refs["time_unknown"]] = [unknown]
     after[operation_refs["time_unknown"]] = [deepcopy(unknown)]
-    groups = {"reference": before, fixed_ref: after}
+    groups = {"reference": before, reference_ref: before, fixed_ref: after}
     intervals = {key: {row["row_ref"]: task_interval(row) for rows in grouped.values() for row in rows}
                  for key, grouped in groups.items()}
     source = SimpleNamespace(
@@ -204,8 +207,11 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
         scope={"operation_refs": list(operation_refs.values()), "batch_refs": [batch_ref],
                "range_start": "2026-09-09T08:00:00", "range_end": "2026-09-09T12:00:00"},
         preparation=SimpleNamespace(groups=groups.__getitem__, labels={value: {"batch_ref": batch_ref} for value in operation_refs.values()}),
-        task_intervals=intervals.__getitem__,
+        task_intervals=lambda key: intervals[source.computation_key(key)],
     )
+    source.computation_key = lambda key: DecisionSource.computation_key(source, key)
+    source.analysis_groups = lambda key: groups[source.computation_key(key)]
+    source.operation_batch_ref = lambda _ref: batch_ref
     supports = RecommendationSupport(source, fixed_ref)
     candidate_supports = supports.operations("changed_operation_count")
     assert [item["ref"] for item in candidate_supports] == [operation_refs[name] for name in ("added", "removed", "machine_changed")]
@@ -243,6 +249,31 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     removed_export = [row for row in candidate_export if row["相关明细永久编号"] == operation_refs["removed"]]
     assert removed_export and all(row["相关明细候选编号"] == reference_ref for row in removed_export)
     assert {row["相关明细筛选字段"]: row["相关明细筛选值"] for row in removed_export}["side"] == "reference"
+
+    source.reference_ref = fixed_ref
+    source.baseline = {"state": "available", "kind": "candidate", "candidate_ref": fixed_ref}
+    group_reads = []
+    original_groups = source.analysis_groups
+    source.analysis_groups = lambda key: (group_reads.append(key), original_groups(key))[1]
+    own_supports = RecommendationSupport(source, fixed_ref)
+    assert own_supports.operations("changed_operation_count") == own_supports.operations("machine_change_count") == []
+    own_entries = own_supports.entries(definition, {"value": None, "state": "unavailable", "direction": "neutral"})
+    assert group_reads == [] and own_supports._operations is None
+    assert len(own_entries) == 1 and own_entries[0]["kind"] == "collection"
+    assert own_entries[0]["candidate_ref"] == own_entries[0]["drill"]["selected_candidate_ref"] == fixed_ref
+    assert own_entries[0]["drill"]["reference_candidate_ref"] == fixed_ref
+    assert own_entries[0]["drill"]["comparison_tab"] == "operations" and own_entries[0]["drill"]["detail_query"] == {}
+    same_metrics = operation_changes(after_tasks, after_tasks, list(operation_refs.values()), True)
+    assert same_metrics["changed_operation_count"]["value"] is None
+    assert same_metrics["changed_operation_count"]["unknown_count"] > 0
+
+    source.reference_ref = reference_ref
+    source.selected_ref = reference_ref
+    source.baseline = {"state": "available", "kind": "candidate", "candidate_ref": reference_ref}
+    different_supports = RecommendationSupport(source, fixed_ref).operations("changed_operation_count")
+    assert [item["ref"] for item in different_supports] == [item["ref"] for item in candidate_supports]
+    assert all(item["candidate_ref"] == fixed_ref for item in different_supports)
+    source.selected_ref = viewed_ref
     source.comparison_mode, source.reference_ref = "admission_official", None
     source.baseline = {"state": "available", "kind": "admission_official", "plan_ref": plan_ref}
     formal_supports = supports.operations("changed_operation_count")
@@ -273,8 +304,9 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     }, ensure_ascii=False), encoding="utf-8")
 
 
-def test_legacy_missing_decision_evidence_keeps_saved_selection_and_unspecified_due(candidate_case):
+def test_legacy_missing_decision_evidence_keeps_saved_selection_and_unspecified_due(candidate_case, monkeypatch):
     case = candidate_case
+    install_complete_legacy_archive(monkeypatch)
     case.conn.execute("UPDATE Batches SET due_date='9999-12-31' WHERE batch_id='B1'")
     case.conn.commit()
     run_ref, refs = compute(case)
@@ -320,6 +352,13 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
         operation_ids["B" + str(number)] = case.operation("B" + str(number), setup_hours=3, unit_hours=3)
     case.config(dispatch_mode="batch_order", sort_strategy="due_date_first")
     run_ref, refs = compute(case, case.settings(*("B" + str(number) for number in range(1, 7)), end_date="2026-09-09"))
+    assert 1 <= len(refs) <= 3
+    saved = json.loads(case.conn.execute(
+        "SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])["selection"]
+    viewed_ref = saved["selected_candidate_ref"]
+    reference_ref = next((ref for ref in refs if ref != viewed_ref), viewed_ref)
+    assert set(saved["objective_winners"]) == set(saved["target_objectives"])
+    assert set(saved["objective_winners"].values()) <= set(refs)
     from itertools import count
 
     from web import public_token_registry
@@ -327,29 +366,31 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
     token_numbers = count(1)
     monkeypatch.setattr(public_token_registry.secrets, "token_urlsafe", lambda _size: "-" + format(next(token_numbers), "031x"))
     client, _ = api(case)
-    document = decision_summary(client, run_ref, reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])
+    document = decision_summary(client, run_ref, reference_candidate_ref=reference_ref, selected_candidate_ref=viewed_ref)
     data, snapshot = document["data"], document["meta"]["snapshot_ref"]
     recommendation = data["recommendation"]
-    assert "本次计算范围内已排齐的批次中" in data["selection_basis"]["explanation"]["headline"]
+    assert data["selection_basis"]["explanation"]["headline"] == "在本次已安排工序和完整批次范围内，按“最少超期”推荐最佳方案。"
+    assert saved["scoring_scope"]["is_complete"] is False and saved["scoring_scope"]["components_known"] is True
+    assert len(saved["scoring_scope"]["complete_batch_refs"]) == 1
     assert recommendation["recommendation_type"] == "partial"
     assert recommendation["candidate_ref"] == data["selection_basis"]["selected_candidate_ref"]
-    assert recommendation["viewed_candidate_ref"] == refs[-2]
+    assert recommendation["viewed_candidate_ref"] == viewed_ref
     scope = recommendation["completion_scope"]
     assert scope["complete_batch_count"] == 1 and scope["ordinary_incomplete_batch_count"] == 5
     assert scope["unplanned_operation_count"] == scope["remaining_work"]["operation_count"] == 5
     assert len(scope["sample_batch_refs"]["incomplete"]) == 3
-    query = {"reference_candidate_ref": refs[-1], "selected_candidate_ref": refs[-2], "snapshot_ref": snapshot}
+    query = {"reference_candidate_ref": reference_ref, "selected_candidate_ref": viewed_ref, "snapshot_ref": snapshot}
     path = BASE + "/runs/" + run_ref + "/decision/export"
     csv_response = client.get(path, query_string=dict(query, section="recommendation", format="csv"))
     assert csv_response.status_code == 200, csv_response.get_data(as_text=True)
     rows = list(csv.DictReader(io.StringIO(csv_response.data.decode("utf-8-sig"))))
     assert rows and tuple(rows[0]) == RECOMMENDATION_CSV_HEADERS and len(rows[0]) == 97
     identity = {"排产编号": run_ref, "归档编号": data["capture_ref"], "读取编号": snapshot,
-                "保存推荐候选编号": recommendation["candidate_ref"], "当前查看候选编号": refs[-2],
-                "查看基准编号": refs[-1], "比较模式": "candidates", "查看基准类型": "candidate",
+                "保存推荐候选编号": recommendation["candidate_ref"], "当前查看候选编号": viewed_ref,
+                "查看基准编号": reference_ref, "比较模式": "candidates", "查看基准类型": "candidate",
                 "范围起点（含）": data["scope"]["range_start"], "范围终点（不含）": data["scope"]["range_end"],
                 "资源视角": data["scope"]["resource_view"], "推荐版本": "decision-recommendation-v1",
-                "推荐记录格式版本": "candidate-selection-evidence-v1"}
+                "推荐记录格式版本": saved["selection_policy_version"]}
     for row in rows:
         assert {field: row[field] for field in identity} == {**identity, "读取编号": "'" + snapshot}
     differences = {row["指标标识"]: row for row in rows if row["record_kind"] == "difference"}
@@ -372,14 +413,14 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
                        for entry in recommendation["current_comparison"]["all_differences"] for support in entry["supporting_refs"]}
     assert supports and all(row["相关明细候选编号"] == support_targets[row["指标标识"], row["相关明细永久编号"]] for row in supports)
     completion_rows = [row for row in rows if row["record_kind"] == "completion_set"]
-    assert len(completion_rows) == 24
+    assert len(completion_rows) == len(refs) * 6
     for ref in refs:
         candidate_rows = [row for row in completion_rows if row["候选永久编号"] == ref]
         assert len(candidate_rows) == 6 and {row["批次永久编号"] for row in candidate_rows} == set(data["scope"]["batch_refs"])
         assert sum(row["安排分类"] == "complete" for row in candidate_rows) == 1
         assert all(row["预计完工"] == row["拖期小时"] == "" for row in candidate_rows if row["安排分类"] == "incomplete")
     remaining = [row for row in rows if row["record_kind"] == "remaining_work"]
-    assert len(remaining) == 20 and {row["候选永久编号"] for row in remaining} == set(refs)
+    assert len(remaining) == len(refs) * 5 and {row["候选永久编号"] for row in remaining} == set(refs)
     for row in remaining:
         code = row["批次编号"]
         assert row["工序永久编号"] == operation_ref(case, operation_ids[code])
@@ -413,7 +454,7 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
             assert cells[headers.index("读取编号")].value == snapshot
             assert cells[headers.index("读取编号")].data_type == "s"
         remaining_rows = list(book["剩余需求"].iter_rows(max_col=len(REMAINING_HEADERS)))
-        assert len(remaining_rows) == 21
+        assert len(remaining_rows) == len(refs) * 5 + 1
         indexed = {cell.value: index for index, cell in enumerate(remaining_rows[0])}
         for values in remaining_rows[1:]:
             cells = {field: values[index] for field, index in indexed.items()}
@@ -433,13 +474,14 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
         book.close()
     all_response = client.get(path, query_string=dict(query, section="all", format="xlsx"))
     assert all_response.status_code == 200
+    process_sheets = ["共同计算", "目标预算", "进步事件", "搜索动作", "搜索阶段", "评价范围", "范围成员", "真实桥接"]
     book = load_workbook(io.BytesIO(all_response.data), read_only=True, data_only=True)
     try:
         assert book.sheetnames == ["方案总览", "批次影响", "工序变化", "资源影响", "覆盖工序", "准备需求", "工种切换",
-                                   "推荐说明", "工序安排", "剩余需求", "候选计算", "进步事件", "搜索阶段", "代表尝试", "指标计算方式", "比较范围"]
+                                   "推荐说明", "工序安排", "剩余需求", *process_sheets, "指标计算方式", "比较范围"]
     finally:
         book.close()
-    day_query = {"reference_candidate_ref": refs[-1], "selected_candidate_ref": refs[-2], "resource_kind": "machine",
+    day_query = {"reference_candidate_ref": reference_ref, "selected_candidate_ref": viewed_ref, "resource_kind": "machine",
                  "resource_ref": data["scope"]["resource_refs"]["machine"][0]}
     days = client.get(BASE + "/runs/" + run_ref + "/decision/resource-days", query_string=day_query)
     assert days.status_code == 200, days.get_json()
@@ -450,10 +492,11 @@ def test_recommendation_exports_include_complete_remaining_work_and_preserve_vie
     book = load_workbook(io.BytesIO(all_days.data), read_only=True, data_only=True)
     try:
         assert book.sheetnames == ["方案总览", "批次影响", "工序变化", "资源影响", "资源逐日", "资源冲突", "覆盖工序",
-                                   "准备需求", "工种切换", "推荐说明", "工序安排", "剩余需求", "候选计算", "进步事件", "搜索阶段", "代表尝试", "指标计算方式", "比较范围"]
+                                   "准备需求", "工种切换", "推荐说明", "工序安排", "剩余需求", *process_sheets, "指标计算方式", "比较范围"]
     finally:
         book.close()
     _assert_summary_matches_full(data, decision(client, run_ref,
-        reference_candidate_ref=refs[-1], selected_candidate_ref=refs[-2])["data"])
-    stale = client.get(path, query_string=dict(query, reference_candidate_ref=refs[0], section="recommendation", format="csv"))
+        reference_candidate_ref=reference_ref, selected_candidate_ref=viewed_ref)["data"])
+    changed_reference = {key: value for key, value in query.items() if key != "reference_candidate_ref"}
+    stale = client.get(path, query_string=dict(changed_reference, comparison_mode="admission_official", section="recommendation", format="csv"))
     assert stale.status_code == 409 and stale.get_json()["error"]["code"] == "snapshot_stale"

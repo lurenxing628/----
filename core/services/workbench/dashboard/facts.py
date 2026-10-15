@@ -6,18 +6,20 @@ from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.content import content_text
 from core.models.enums import read_source_type
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.capacity.plan_calendar_io import CapturedCalendarInputs
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
+from core.services.workbench.plan.calendar_context import resource_ids
 from core.services.workbench.plan.delivery import read_plan_delivery
-from core.services.workbench.plan.projection import project_plan, project_tasks
-from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.projection import project_plan
+from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_dashboard_source_repo import DashboardSourceRepository
-from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 
 from .catalogs import candidate_catalog, resource_pressure
-from .policy import read_entity_refs
+from .policy import entity_refs_from_rows
 
 UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid", "plan_unavailable",
                "execution_ledger_unavailable", "constraint_conflict", "entity_not_found"}
@@ -40,6 +42,17 @@ def source_issue(code, message):
     return {"code": code, "message": message}
 
 
+class _EntityRefs:
+    """The plan context consumes the dashboard's already captured identity rows."""
+    def __init__(self, facts):
+        self.facts = facts
+
+    def active_map(self, kind, keys):
+        return {key: WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"],
+                    int(row["revision"]), bool(row["active"]))
+                for key, row in self.facts.entity_refs(kind, keys).items()}
+
+
 class DashboardFacts:
     def __init__(self, conn, now):
         self.conn, self.now = conn, now
@@ -50,25 +63,54 @@ class DashboardFacts:
         self.pressure = {"state": "unavailable", "resources": None, "issues": []}
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
         self._ledger = None
+        self._entity_refs = {}
+        self._observations = {}
 
     def entity_refs(self, kind, keys):
         """Active permanent refs keyed by business key; missing or duplicated keys are identity gaps."""
-        return read_entity_refs(self.repo, kind, keys)
+        keys = list(dict.fromkeys(keys))
+        known = self._entity_refs.setdefault(kind, {})
+        missing = [key for key in keys if key not in known]
+        if missing:
+            captured = {key: [] for key in missing}
+            for row in self.repo.entity_ref_rows(kind, missing):
+                captured[row["entity_key"]].append(row)
+            known.update(captured)
+        return entity_refs_from_rows([row for key in keys for row in known[key]], keys)
 
-    def load(self):
+    def load(self, *, include_candidates=True):
         """Read sources under the caller's snapshot; project() then works on them without SQLite."""
         with read_evidence_scope(self.conn):
-            return self._load_sources()
+            return self._load_sources(include_candidates=include_candidates)
 
-    def _load_sources(self):
-        for table in ("SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines", "WorkbenchDashboardDowntimeRefs"):
+    def _load_sources(self, *, include_candidates=True):
+        for table in ("SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "Machines", "WorkbenchDashboardDowntimeRefs"):
             self.raw[table] = self.repo.table(table)
         self._plan()
+        if "MachineDowntimes" not in self.raw:
+            self._capture_calendar_inputs(())
         if self.plan_state == "loaded":
             self._load_execution()
             self.raw["analysis_batch_refs"] = self.entity_refs("batch", [row["batch_id"] for row in self.tasks])
-        self.candidates, self.raw["candidate_catalog"] = candidate_catalog(self.conn)
+        if include_candidates:
+            self.candidates, self.raw["candidate_catalog"] = candidate_catalog(self.conn)
         return self
+
+    def _capture_calendar_inputs(self, machine_ids):
+        self.raw["MachineDowntimes"], prepared = self.repo.downtime_capture(machine_ids=machine_ids)
+        self.calendar_inputs = CapturedCalendarInputs(machines=self.raw["Machines"], downtimes=prepared,
+            schema_version=self.raw["SchemaVersion"], downtime_machine_ids=machine_ids)
+
+    def observations(self, category):
+        """List and analysis share each full projection; summaries are caller-owned views."""
+        self.project()
+        if category not in self._observations:
+            from .downtime import downtime
+            from .execution import actual
+
+            self._observations[category] = {"actual": actual, "downtime": downtime}[category](self)
+        rows, summary = self._observations[category]
+        return rows, dict(summary)
 
     def project(self):
         """报工投影只用已读出的台账事实，可在读事务结束后做，不再碰数据库。"""
@@ -84,37 +126,39 @@ class DashboardFacts:
             self.plan_state = "unavailable"
             self.plan_issues = [source_issue("source_not_read", "正式计划的数据还没读全，不能得出零风险的结论。")]
             return
-        reader = WorkbenchPlanQueryService(self.conn)
-        version = WorkbenchPlanCatalogRepository(self.conn).latest_version()
+        context = PlanReadContext(self.conn, entities=_EntityRefs(self))
+        with context.read_scope():
+            self._captured_plan(context)
+
+    def _captured_plan(self, context):
+        version = context.repo.latest_version()
         self.raw["latest_official_version"] = version
         if version is None:
             self.plan_issues = [source_issue("no_official_plan", "当前没有正式计划，未改读候选结果。")]
             return
-        self.raw["ScheduleHistory"] = self.repo.selected_raw("ScheduleHistory", version)
-        self.raw["Schedule"] = self.repo.selected_raw("Schedule", version)
+        self.raw["ScheduleHistory"] = sorted(context.history_rows(version), key=lambda row: row["id"])
+        self.raw["Schedule"] = context.source_rows(version=version, source_table="schedule", candidate_id=None, scenario_id=None)
         try:
-            ref = reader.references.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
-            repo, entry, span = reader._selected(ref)
+            ref = context.references.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
+            _, entry, span = context.selected(ref)
             plan = project_plan(entry, ref)
             identity = entry.plan_identity
             if identity is None or not plan["is_current_official"] or plan["kind"] != "official" or identity.source_table != "schedule":
                 raise WorkbenchCommandRejected("plan_unavailable", "正式计划记录无效，请刷新重试。")
             self.plan = plan
             scope = PlanReadScope(ref)
-            self.delivery, self.delivery_facts = read_plan_delivery(self.conn, scope=scope, identity=identity)
-            self.task_rows = reader._task_rows(repo, entry, scope)
-            self.raw["plan_task_sources"] = [(row["schedule_id"], row["source"]) for row in self.task_rows]
-            for row in self.task_rows:
-                row["source"] = read_source_type(row["source"])
-            tasks = reader.references.get_task_refs(ref, self.task_rows)
-            operations = reader.references.get_operation_refs(row["op_id"] for row in self.task_rows)
-            resources, resource_state = reader._resources(self.task_rows)
-            self.tasks = project_tasks(ref, self.task_rows, tasks, operations, resources, conn=self.conn)
+            self.delivery, self.delivery_facts = read_plan_delivery(self.conn, scope=scope, identity=identity, context=context)
+            original_rows = context.scoped_rows(entry, scope)
+            self.task_rows = [dict(row, source=read_source_type(row["source"])) for row in original_rows]
+            self.raw["plan_task_sources"] = [(row["schedule_id"], row["source"]) for row in original_rows]
+            self.tasks, _, resources, resource_state = context.scoped_tasks(ref, entry, scope)
             self.raw["plan_resource_identities"] = resource_state
-            self.raw["plan_identity_revision"] = reader.references.read_revision()
+            self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"
+            self._capture_calendar_inputs(resource_ids(original_rows, "machine"))
             self.pressure, self.raw["resource_pressure"] = resource_pressure(self.conn, {
-                "entry": entry, "scope": scope, "rows": self.task_rows, "resources": resources, "plan_span": span})
+                "entry": entry, "scope": scope, "rows": original_rows, "resources": resources, "plan_span": span,
+                "context": context}, captured_calendar=self.calendar_inputs)
         except WorkbenchPlanReferenceError as exc:
             self._plan_failure("plan_binding_invalid", "正式计划记录已失效，请刷新重试。")
             self.raw["plan_reference_failure"] = exc.code
@@ -135,8 +179,8 @@ class DashboardFacts:
             ledger.require_schema()
             facts = ledger.load([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
             self.raw["execution_operation_sources"] = {ref: row["source"] for ref, row in facts["operations"].items()}
-            for row in facts["operations"].values():
-                row["source"] = read_source_type(row["source"])
+            facts = {**facts, "operations": {ref: dict(row, source=read_source_type(row["source"]))
+                                            for ref, row in facts["operations"].items()}}
             self._ledger = ledger, facts
         except WorkbenchCommandRejected as exc:
             self._execution_unavailable(exc)

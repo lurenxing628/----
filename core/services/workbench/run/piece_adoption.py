@@ -1,6 +1,7 @@
-"""Read-only piece proof shared by computation, candidate and trial adoption.
+"""Read-only piece proof shared by candidate publication and formal adoption.
 
-Call inside the caller's adoption snapshot and repeat in its write transaction.
+Publication accepts a closed partial scope; adoption requires the whole scope.
+Adoption repeats its proof in the caller's write transaction.
 The caller still owns saved-source/raw equality, candidate/scenario identity,
 baseline admission, request receipts and append-only official persistence.
 This replaces the batch-only constraints/execution check for a piece scope; do
@@ -41,6 +42,11 @@ from .piece_adoption_execution import validate_piece_execution
 from .piece_adoption_facts import current_piece_scope
 
 
+def validate_piece_candidate(conn, *, prepared, payload):
+    """Validate a known payload for publication while retaining every protected seed."""
+    return _validate_piece(conn, prepared, payload, purpose="publication")
+
+
 def validate_piece_adoption(conn, *, prepared, payload):
     """Return PieceAdoptionEvidence; raise a typed blocker without writes or repair.
 
@@ -49,8 +55,12 @@ def validate_piece_adoption(conn, *, prepared, payload):
     calendar, seeds and full execution guards. payload is ValidatedSchedulePayload.
     No proof is inferred from the engine's completion flag.
     """
+    return _validate_piece(conn, prepared, payload, purpose="adoption")
+
+
+def _validate_piece(conn, prepared, payload, *, purpose):
     try:
-        return _validate_piece_adoption(conn, prepared, payload)
+        return _validate_piece_in_snapshot(conn, prepared, payload, purpose=purpose)
     except PieceAdoptionBlocked:
         raise
     except (CandidateAdoptionBlocked, CandidateRunInputError, PointEventError) as exc:
@@ -62,14 +72,14 @@ def validate_piece_adoption(conn, *, prepared, payload):
         raise PieceAdoptionBlocked("piece_evidence_incomplete", "分件排产依据不完整或有错，本次没有采用。请回「执行排产」重新排一次。") from exc
 
 
-def _validate_piece_adoption(conn, prepared, payload):
+def _validate_piece_in_snapshot(conn, prepared, payload, *, purpose):
     with candidate_read_snapshot(conn):
         if prepared.cal_svc.conn is not conn:
             block("piece_connection_mismatch", FAILURE)
         scope, refs = current_piece_scope(conn, prepared)
-        _payload(prepared, payload, scope)
+        _payload(prepared, payload, scope, purpose=purpose)
         svc = ScheduleService(conn)
-        protected = validate_piece_execution(svc, prepared, payload, scope, refs)
+        protected = validate_piece_execution(svc, prepared, payload, scope, refs, purpose=purpose)
         algo_ops = verified_read(conn, ("piece_algorithm", id(prepared)), lambda: _algorithm_facts(svc, prepared))
         _precedence(payload, scope, algo_ops)
         _constraints(conn, prepared, payload, scope, algo_ops)
@@ -82,19 +92,23 @@ def _algorithm_facts(svc, prepared):
     return {op.id: op for op in build_algo_operations(svc, prepared.operations, strict_mode=True)}
 
 
-def _payload(prepared, payload, scope):
+def _payload(prepared, payload, scope, *, purpose):
     ids = {work.op_id for work in scope.operations} - material_deferred_ids(prepared.dispositions, prepared.normalized_input)
-    if (prepared.schedule_output_allowed_op_ids != ids or payload.scheduled_op_ids != ids
-            or len(payload.schedule_rows) != len(ids)):
+    scheduled = {row.op_id for row in payload.schedule_rows}
+    if (prepared.schedule_output_allowed_op_ids != ids or payload.scheduled_op_ids != scheduled
+            or len(payload.schedule_rows) != len(scheduled) or not scheduled <= ids
+            or (purpose == "publication" and not scheduled)
+            or (purpose == "adoption" and scheduled != ids)):
         block("piece_scope_incomplete", "排产结果没有把共同工序和每个分件各排一次，本次没有采用。请回「执行排产」重新排一次。")
     for row in payload.schedule_rows:
         for time in (row.start_time, row.end_time):
             if not isinstance(time, datetime) or time.tzinfo is not None:
                 block("piece_time_unrepresentable", "排产结果的开始或结束时刻无效，写不进正式计划。请回「执行排产」重新排一次。")
-    checked = build_validated_schedule_payload(list(payload.schedule_rows), allowed_op_ids=ids,
-        operations=prepared.operations, point_validator=candidate_point_validator(prepared))
-    if checked != payload:
-        block("piece_payload_inconsistent", "排产结果的工序行、设备人员分配和工序编号对不上，本次没有采用。请回「执行排产」重新排一次。")
+    if purpose == "adoption":
+        checked = build_validated_schedule_payload(list(payload.schedule_rows), allowed_op_ids=ids,
+            operations=prepared.operations, point_validator=candidate_point_validator(prepared))
+        if checked != payload:
+            block("piece_payload_inconsistent", "排产结果的工序行、设备人员分配和工序编号对不上，本次没有采用。请回「执行排产」重新排一次。")
 
 
 def _precedence(payload, scope, ops):

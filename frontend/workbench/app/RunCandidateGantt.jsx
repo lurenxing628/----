@@ -140,13 +140,16 @@
       && B.matching([selectedItem.comparison], query).length ? selectedItem : null;
     // Draw the complete print range once; CSS maps this normalized axis onto the paper width.
     const labelWidth = 156, width = printing ? 640 : Math.max(1, viewport) * zoom;
-    const candidate = React.useMemo(() => M.layout(resourceFocus ? { ...data, tasks: data.tasks.filter(task => M.resourceMatches(task, resourceFocus)) } : data, mode, query, width, operationRefs), [data, mode, query, width, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
+    const candidate = React.useMemo(() => M.prepare(resourceFocus ? { ...data, tasks: data.tasks.filter(task => M.resourceMatches(task, resourceFocus)) } : data, mode, query, operationRefs), [data, mode, query, operationRefs, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
     const displayedBaseline = React.useMemo(() => result && resourceFocus ? { ...result.data, comparisons: result.data.comparisons.map(row => ({ ...row, baseline_segments: row.baseline_segments.filter(segment => M.resourceMatches(segment, resourceFocus)) })) } : result && result.data, [result, resourceFocus && resourceFocus.ref, resourceFocus && resourceFocus.kind]);
-    const model = React.useMemo(() => window.PointGanttModel.candidateRows(B.compose(candidate, displayedBaseline, mode, query, operationRefs, width), width), [candidate, displayedBaseline, mode, query, width, operationRefs]);
+    const prepared = React.useMemo(() => B.prepare(candidate, displayedBaseline, mode, query, operationRefs), [candidate, displayedBaseline, mode, query, operationRefs]);
+    const model = React.useMemo(() => B.layoutPrepared(prepared, width), [prepared, width]);
     const risks = React.useMemo(() => new Map(data.delivery_risks.items.map(row => [row.batch_ref, row.risk])), [data]);
     const graph = React.useMemo(() => window.GanttGraph.create(data.gantt_graph), [data.gantt_graph]);
     const targetRef = hover && hover.taskRef || !chosen && selected && selected.row_ref || null;
     const active = React.useMemo(() => window.GanttGraph.selection(graph, { enabled: chainEnabled, targetRef }), [graph, chainEnabled, targetRef]);
+    const graphLocations = React.useMemo(() => window.GanttGraph.locations(model, { candidate: true }), [model]);
+    const locationIndex = React.useMemo(() => window.GanttGraph.locationIndex(graphLocations), [graphLocations]);
     function selectBaseline(item) { setSelection(item ? { item, result } : null); if (item) onSelect(null); else setInspection(null); setHover(null); }
     function selectCandidate(task) { setInspection(null); setSelection(null); setHover(null); onSelect(task); }
     function inspectProblem(operationRef) {
@@ -220,7 +223,7 @@
     const renderLeft = printing ? 0 : scroll.left, renderViewport = printing ? width : viewport;
     const geometry = React.useMemo(() => window.GanttGraph.paths(active, model, width, {
       left: renderLeft, top: printing ? 0 : scroll.top, width: renderViewport, height: printing ? model.height : viewportHeight
-    }, { candidate: true }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing]);
+    }, { locationIndex }), [active, model, width, renderLeft, renderViewport, scroll.top, viewportHeight, printing, locationIndex]);
     const visible = printing ? model.rows : M.visibleRows(model.rows, scroll.top - 56, scroll.top + viewportHeight + 56);
     const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
     const axis = window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport });

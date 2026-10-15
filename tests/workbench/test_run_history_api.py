@@ -12,11 +12,17 @@ from urllib.request import url2pathname
 
 from flask import Blueprint
 
+from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_run_history import RunHistoryScope
+from core.models.workbench_run_job import new_run_ref
+from core.services.workbench.facts.decision_read_model import build_failure_read_models
+from core.services.workbench.facts.decision_read_models import decode_model
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
+from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from tests._support.excel_templates import point_env_at_shared
-from tests.workbench.run_history_support import BASE, dump, read, seed
+from tests.workbench.legacy_run_archive_support import install_budget_skipped_archive
+from tests.workbench.run_history_support import BASE, dump, read
 from tests.workbench.run_history_support import history_case as _history_case  # noqa: F401
 from tests.workbench.run_jobs_support import service
 from web.routes.workbench.run_candidates import register_run_candidate_routes
@@ -46,7 +52,15 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     case.operation(seq=2)
     case.config(objective="min_changeover")
     assert service(case.conn).get(accepted["run_ref"])["scope_summary"] == captured_scope
-    assert len(worker_result["candidates"]) == 4
+    expected_candidate_count = len(worker_result["candidates"])
+    expected_task_count = sum(row["task_count"] for row in worker_result["candidates"])
+    assert 1 <= expected_candidate_count <= 3
+    receipt = json.loads(case.conn.execute(
+        "SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (accepted["run_ref"],)).fetchone()[0])
+    selection = receipt["selection"]
+    assert selection["selected_candidate_ref"] == next(row["candidate_ref"] for row in worker_result["candidates"] if row["selected"])
+    assert set(selection["objective_winners"]) == set(selection["target_objectives"])
+    assert set(selection["objective_winners"].values()) <= {row["candidate_ref"] for row in worker_result["candidates"]}
     for key, path in (("APS_DB_PATH", case.path), ("APS_LOG_DIR", tmp_path / "logs"), ("APS_BACKUP_DIR", tmp_path / "backups")):
         monkeypatch.setenv(key, str(path))
     monkeypatch.setenv("APS_ENV", "development")
@@ -83,7 +97,8 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     before = dump(case.conn)
     data = read(client)["data"]
     row = data["runs"][0]
-    assert row["run_ref"] == accepted["run_ref"] and row["candidate_count"] == row["task_count"] == 4
+    assert row["run_ref"] == accepted["run_ref"] and row["candidate_count"] == expected_candidate_count
+    assert row["task_count"] == expected_task_count
     assert row["scope_summary"]["start_date"] == "2026-09-09"
     assert row["constraint_verification"] == "not_checked_by_history"
     reopened_client = app.test_client()
@@ -102,9 +117,43 @@ def test_full_flask_app_actual_engine_run_and_only_temporary_sqlite(history_case
     assert dump(case.conn) == before and paths and str(case.path) in paths
 
 
-def test_new_process_reopens_history_without_browser_token_cache(history_case):
+def test_new_process_reopens_history_without_browser_token_cache(history_case, monkeypatch):
     case = history_case
-    refs = [seed(case, state) for state in ("complete", "partial", "failed", "interrupted")]
+    complete = case.accept(new_run_ref())
+    complete_result = WorkbenchRunWorker(case.conn).execute(complete["run_ref"])
+    assert complete_result["state"] == "complete"
+    refs = [complete["run_ref"]]
+    with monkeypatch.context() as archive_patch:
+        install_budget_skipped_archive(archive_patch)
+        partial = case.accept(new_run_ref())
+        partial_result = WorkbenchRunWorker(case.conn).execute(partial["run_ref"])
+    assert partial_result["state"] == "partial"
+    completed_candidates = [row for row in partial_result["candidates"] if row["status"] == "completed"]
+    skipped_candidates = [row for row in partial_result["candidates"] if row["status"] == "skipped"]
+    assert len(completed_candidates) == 1 and len(skipped_candidates) == 3
+    assert completed_candidates[0]["task_count"] == 1
+    for candidate in partial_result["candidates"]:
+        actual_count = case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?",
+                                        (candidate["candidate_ref"],)).fetchone()[0]
+        assert actual_count == candidate["task_count"]
+    assert all(row["task_count"] == 0 for row in skipped_candidates)
+    refs.append(partial["run_ref"])
+    repo = WorkbenchRunRepository(case.conn)
+    for state in ("failed", "interrupted"):
+        accepted = case.accept(new_run_ref())
+        run_ref = accepted["run_ref"]
+        when = datetime.fromisoformat(accepted["data"]["accepted_at"])
+        result = {"state": state, "result_persisted": False, "candidates": [],
+                  "error": {"code": "history_fixture_" + state,
+                            "message": "跨进程历史读取测试明确保存的 " + state + " 终态。"}}
+        with TransactionManager(case.conn).transaction(begin_immediate=True):
+            assert repo.claim(run_ref, new_run_ref(), (when + timedelta(seconds=1)).isoformat(timespec="microseconds"))
+            admission = decode_model(repo.admission_read_model(run_ref, fields=("decision",)), ("decision",))["decision"]
+            models = build_failure_read_models(repo.get(run_ref), admission, result)
+            repo.insert_decision_read_models(run_ref, models["run_model"], models["candidate_models"])
+            repo.finish(run_ref, state, result, (when + timedelta(seconds=2)).isoformat(timespec="microseconds"))
+        assert not case.conn.in_transaction
+        refs.append(run_ref)
     expected, fingerprint = WorkbenchRunHistoryQueryService(case.conn).catalog(RunHistoryScope())
     before = dump(case.conn)
     code = '''import json, sqlite3, sys
@@ -126,4 +175,5 @@ conn.close()
     actual = json.loads(completed.stdout)
     assert actual["data"] == expected and actual["fingerprint"] == fingerprint
     assert {row["run_ref"] for row in actual["data"]["runs"]} == set(refs)
+    assert {row["state"] for row in actual["data"]["runs"]} == {"complete", "partial", "failed", "interrupted"}
     assert dump(case.conn) == before

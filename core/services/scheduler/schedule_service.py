@@ -17,7 +17,6 @@ from .resource_pool_builder import build_resource_pool, extend_downtime_map_for_
 from .run.freeze_window import build_freeze_window_seed
 from .run.schedule_input_builder import build_algo_operations
 from .run.schedule_input_collector import collect_schedule_run_input
-from .run.schedule_optimizer import optimize_schedule
 from .run.schedule_orchestrator import orchestrate_schedule_run
 from .run.schedule_persistence import (
     persist_schedule_run_with_candidates as persist_schedule,
@@ -310,7 +309,6 @@ class ScheduleService:
             schedule_input=schedule_input,
             simulate=simulate,
             strict_mode=bool(strict_mode),
-            optimize_schedule_fn=optimize_schedule,
             build_result_summary_fn=build_result_summary,
             before_version_allocate_fn=_validate_execution_guard_before_version,
             allocate_version=not simulate_without_persistence,

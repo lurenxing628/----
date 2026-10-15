@@ -1,5 +1,7 @@
 """Dashboard analysis projected from an already captured source snapshot."""
 
+from collections import defaultdict
+
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant, wire
 from core.services.workbench import messages
@@ -11,9 +13,6 @@ from core.services.workbench.facts.resource_projection import (
     resource_cohort,
     resource_summary,
 )
-
-from .downtime import downtime
-from .execution import actual
 
 
 def _time(value):
@@ -66,11 +65,15 @@ def _resources(facts, tasks, scope):
     specs = [dict(row, saved_id=factory.bindings.get((row["kind"], row["ref"]))) for row in cohort] if factory else []
     calendars = factory.iter_resources(specs, start, end) if factory else ((row["ref"], None) for row in cohort)
     index = ResourceTaskIndex(normalized, start, end, source="current_transaction_snapshot")
+    task_refs = defaultdict(list)
+    for task in tasks:
+        if task["source"] != "external":
+            for kind in ("machine", "operator"):
+                task_refs[kind, task[kind + "_ref"]].append(task["task_ref"])
     result = []
     for resource, (_, calendar) in zip(cohort, calendars):
         values = pressure_from_index(index, resource, calendar)
-        selected = [task["task_ref"] for task in tasks if task["source"] != "external"
-                    and task[resource["kind"] + "_ref"] == resource["ref"]]
+        selected = task_refs[resource["kind"], resource["ref"]]
         result.append({"resource_ref": resource["ref"], "label": resource["label"], "kind": resource["kind"],
                        **values, "task_refs": selected, "issues": values["window_metrics"]["issues"]})
     common = {"metric_version": RESOURCE_METRIC_VERSION, "source": "current_transaction_snapshot",
@@ -115,7 +118,7 @@ def _downtimes(facts, tasks):
         records.append(record)
         if not record["valid"]:
             issues.append({"code": "downtime_invalid", "message": "有停机记录的起止时间或状态填得不对，没有画成有效的停机条。"})
-    observations, state = downtime(facts)
+    observations, state = facts.observations("downtime")
     return records, _downtime_overlaps(observations, tasks), issues + state["issues"]
 
 
@@ -130,7 +133,7 @@ def _projection(facts, material):
     resources, resource_common = _resources(facts, tasks, scope)
     records, overlaps, issues = _downtimes(facts, tasks)
     deliveries = facts.delivery["items"]
-    execution, execution_state = actual(facts)
+    execution, execution_state = facts.observations("actual")
     by_ref = {row["task_ref"]: row for row in tasks}
     # The task already carries identity, label and planned times. Analysis links
     # execution by task_ref; list/detail retain the complete evidence source.

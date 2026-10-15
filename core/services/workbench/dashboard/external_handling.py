@@ -1,7 +1,6 @@
 """Migrate prototype external disposition without changing DO's risk summary."""
 
 from core.models.workbench_dashboard import bounded
-from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from data.repositories.workbench_dashboard_external_repo import WorkbenchDashboardExternalRepository
 
 from .external_sources import subject
@@ -19,9 +18,8 @@ def _navigation(ref, current):
              "reason": None if current else "外协来源暂时无法核对，请刷新重试。"}]
 
 
-def _observation(reader, ref, captured, gap):
-    # Invalid raw dates have no receipt DTO; only their original header is still read here.
-    header = captured["header"] if "header" in captured else reader.header(ref)
+def _observation(ref, captured, gap):
+    header = captured["header"]
     source = _source(header)
     if gap:
         risk = {"active": None, "code": gap["code"], "message": gap["message"]}
@@ -63,14 +61,15 @@ class DashboardExternalHandling:
                            handling_state="unavailable", handling_issues=[{"code": "dashboard_external_unavailable",
                            "message": "外协处置记录不完整，请核对登记来源和处置历史。"}])
             return [], {}, {"state": "unavailable"}
-        reader = WorkbenchOutsourcingService(self.conn, clock=lambda: now)
         refs = list(receipts)
-        mappings, stored = read_receipt_mappings(self.repo, refs), read_external_stored(self.repo)
+        mappings = read_receipt_mappings(self.repo, refs)
+        stored, identities = read_external_stored(self.repo, receipts)
         gaps = {row["source_ref"]: row for row in summary["evaluation_gaps"]}
         observations = []
         for ref in refs:
-            identity = mappings[ref]
-            item, awaiting = _observation(reader, ref, receipts[ref], gaps.get(ref))
+            mapped = mappings[ref]
+            identity = identities.get(mapped["item_ref"], mapped)
+            item, awaiting = _observation(ref, receipts[ref], gaps.get(ref))
             saved = stored.get(identity["item_ref"])
             if awaiting or saved:
                 observations.append((dict(item, item_ref=identity["item_ref"]), saved, identity))

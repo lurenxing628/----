@@ -8,6 +8,7 @@ from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 from core.services.common.normalize import append_unique_text_messages
 from core.services.process.workflow_state import require_template_ready
 from core.services.scheduler.template_lineage import TemplateLineageWriter
+from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 
 
 def default_template_resolver_factory(svc) -> Callable[..., Any]:
@@ -64,7 +65,8 @@ def ensure_template_ops_in_tx(
     strict_mode: bool = False,
 ):
     require_template_ready(svc.conn, part_no)
-    template_ops = svc.part_op_repo.list_by_part(part_no, include_deleted=False)
+    templates = WorkbenchTemplateLineageRepository(svc.conn, logger=svc.logger)
+    template_ops = templates.templates_for_part(part_no)
     if template_ops:
         return template_ops
 
@@ -88,7 +90,7 @@ def ensure_template_ops_in_tx(
                 cause=exc,
             ) from exc
         append_unique_text_messages(svc._user_visible_warnings, getattr(parse_result, "warnings", None))
-        template_ops = svc.part_op_repo.list_by_part(part_no, include_deleted=False)
+        template_ops = templates.templates_for_part(part_no)
 
     if not template_ops:
         raise BusinessError(
@@ -166,9 +168,10 @@ def create_batch_from_template_no_tx(
     if not part:
         raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
 
-    template_ops = ensure_template_ops_in_tx(svc, part_no_text, part, strict_mode=bool(strict_mode))
     lineage = TemplateLineageWriter(svc.conn)
     lineage.require_ready()
+    template_ops = ensure_template_ops_in_tx(svc, part_no_text, part, strict_mode=bool(strict_mode))
+    prepared = lineage.prepare_templates(template_ops)
     _ensure_batch_exists_for_template_ops(
         svc,
         batch_id=bid,
@@ -183,5 +186,5 @@ def create_batch_from_template_no_tx(
         rebuild_ops=bool(rebuild_ops),
     )
 
-    for template in template_ops:
-        lineage.copy_template(bid, template.id)
+    for template in prepared:
+        lineage.copy_prepared_template(bid, template)

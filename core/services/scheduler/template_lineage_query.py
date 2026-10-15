@@ -36,25 +36,39 @@ def lineage_available(repo):
     return state == "loaded"
 
 
+def _read_origins(repo, refs, evidence_bytes=0):
+    result = {}
+    for row in repo.origin_rows(refs):
+        evidence_bytes += row.pop("_lineage_bytes")
+        check_evidence_size(evidence_bytes)
+        result[row["operation_ref"]] = row
+    return result, evidence_bytes
+
+
 def read_origins(repo, refs):
-    check_evidence_size(repo.origins_bytes(refs))
-    return repo.origins(refs)
+    return _read_origins(repo, refs)[0]
 
 
 def read_events(repo, refs):
-    check_evidence_size(repo.events_bytes(refs))
     result = {}
+    event_count = evidence_bytes = 0
     for rows in repo.event_chunks(refs, MAX_EVENTS):
-        if len(rows) > MAX_EVENTS:
-            raise WorkbenchCommandRejected("query_too_large", "模板来源的变更记录超过 50000 条，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
         for row in rows:
+            event_count += 1
+            evidence_bytes += row.pop("_lineage_bytes")
+            check_evidence_size(evidence_bytes)
+            if event_count > MAX_EVENTS:
+                raise WorkbenchCommandRejected("query_too_large", "模板来源的变更记录超过 50000 条，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
             result.setdefault(row["operation_ref"], []).append(row)
-    if sum(map(len, result.values())) > MAX_EVENTS:
-        raise WorkbenchCommandRejected("query_too_large", "模板来源的变更记录超过 50000 条，系统没有截断处理，这次没有读取。请缩小范围后重试。", 413)
     return result
 
 
 def validate_origin(origin, events):
+    prepared = _prepare_origin(origin, events)
+    return prepared.template, prepared.initial
+
+
+def _prepare_origin(origin, events):
     try:
         template = restore_snapshot(origin["template_snapshot"])
         instance = restore_snapshot(origin["instance_snapshot"])
@@ -69,15 +83,20 @@ def validate_origin(origin, events):
             state_snapshot(events[0]) != origin["instance_snapshot"] or
             any(event["operation_ref"] != origin["operation_ref"] for event in events)):
         _invalid()
-    _validate_events(events)
-    return template, instance
+    positions, prefixes = _validate_events(events)
+    return _PreparedOrigin(origin, template, instance, events, positions, prefixes)
 
 
 def _validate_events(events):
     previous = events[0]
     if previous["affects_calibration"] != 0:
         _invalid()
-    for row in events[1:]:
+    positions = {previous["event_id"]: 0}
+    prefixes = [(False, False, False)]
+    withdrawn = retired = modified = False
+    for position, row in enumerate(events[1:], 1):
+        if row["event_id"] <= previous["event_id"]:
+            _invalid()
         if row["event_type"] == "updated":
             keys = SEMANTIC_COLUMNS + ("batch_id",)
             changed = snapshot({key: previous[key] for key in keys}) != snapshot({key: row[key] for key in keys})
@@ -87,35 +106,69 @@ def _validate_events(events):
             _invalid()
         if bool(row["affects_calibration"]) != changed:
             _invalid()
+        withdrawn = withdrawn or row["event_type"] == "withdrawn"
+        retired = retired or row["event_type"] == "retired"
+        modified = modified or bool(row["affects_calibration"] and row["event_type"] in ("updated", "batch_changed"))
+        positions[row["event_id"]] = position
+        prefixes.append((withdrawn, retired, modified))
         previous = row
+    return positions, prefixes
 
 
-def _problems(origin, events, current):
-    _, initial = validate_origin(origin, events)
+class _PreparedOrigin:
+    def __init__(self, origin, template, initial, events, positions, prefixes):
+        self.template = template
+        self.initial = initial
+        self.events = events
+        self.positions = positions
+        self.prefixes = prefixes
+        self.source_eligible = bool(origin["source_eligible"])
+        self.initial_semantic = snapshot({key: initial[key] for key in SEMANTIC_COLUMNS + OWNER_COLUMNS})
+        self._eligibility = {}
+
+    @property
+    def last_event_id(self):
+        return self.events[-1]["event_id"]
+
+    def eligible_at(self, position):
+        if position not in self._eligibility:
+            clean = self.source_eligible and not any(self.prefixes[position])
+            if clean:
+                _validate_semantic(self, self.events[position])
+            self._eligibility[position] = clean
+        return self._eligibility[position]
+
+
+def _problems(prepared, current):
     reasons = []
-    if not origin["source_eligible"]:
+    withdrawn, retired, modified = prepared.prefixes[-1]
+    if not prepared.source_eligible:
         reasons.append(issue("template_copy_source_unqualified", "复制来源那道工序的模板来源已失效或已撤回，复制过来的这道工序也不能当作可用的完工记录。"))
-    if any(row["event_type"] == "withdrawn" for row in events):
+    if withdrawn:
         reasons.append(issue("template_lineage_withdrawn", "模板来源已撤回，原来的记录保留，但不再用于校准。"))
-    if current is None or any(row["event_type"] == "retired" for row in events):
+    if current is None or retired:
         reasons.append(issue("template_instance_retired", "原来那道工序已删除或被替换，不会改指同号的新工序，不再用于校准。"))
-    if any(row["affects_calibration"] and row["event_type"] in ("updated", "batch_changed") for row in events):
+    if modified:
         reasons.append(issue("template_instance_modified", "这道工序的工艺资料或所属批次改过，即使改回原值也不能当作可用的完工记录。"))
-    _validate_current(initial, events, current, reasons)
+    _validate_current(prepared, current, reasons)
     return reasons
 
 
-def _validate_current(initial, events, current, reasons):
+def _validate_semantic(prepared, current):
+    if snapshot({key: current[key] for key in SEMANTIC_COLUMNS + OWNER_COLUMNS}) != prepared.initial_semantic:
+        _invalid()
+
+
+def _validate_current(prepared, current, reasons):
     if current is None:
         return
-    if state_snapshot(events[-1]) != state_snapshot(current):
+    if state_snapshot(prepared.events[-1]) != state_snapshot(current):
         _invalid()
-    semantic = SEMANTIC_COLUMNS + OWNER_COLUMNS
-    if snapshot({key: current[key] for key in semantic}) != snapshot({key: initial[key] for key in semantic}) and not reasons:
-        _invalid()
+    if not reasons:
+        _validate_semantic(prepared, current)
 
 
-def _validate_source(origin, origins, events):
+def _validate_source(origin, origins, prepared):
     source_ref = origin["source_operation_ref"]
     if source_ref is None:
         return
@@ -123,10 +176,11 @@ def _validate_source(origin, origins, events):
     if source is None or (source["lineage_ref"] != origin["source_lineage_ref"] or
                           source["template_snapshot"] != origin["template_snapshot"]):
         _invalid()
-    history = [row for row in events.get(source_ref, []) if row["event_id"] <= origin["source_event_id"]]
-    if not history or history[-1]["event_id"] != origin["source_event_id"] or origin["source_event_id"] >= origin["birth_event_id"]:
+    source_prepared = prepared[source_ref]
+    position = source_prepared.positions.get(origin["source_event_id"])
+    if position is None or origin["source_event_id"] >= origin["birth_event_id"]:
         _invalid()
-    clean = not _problems(source, history, history[-1])
+    clean = source_prepared.eligible_at(position)
     if clean != bool(origin["source_eligible"]):
         _invalid()
 
@@ -145,36 +199,61 @@ class TemplateLineageQuery:
     def __init__(self, conn, repo=None):
         # 写入器逐道复制时把已校验过表结构的仓储传进来，避免每道工序重新解析整套 DDL。
         self.repo = repo if repo is not None else WorkbenchTemplateLineageRepository(conn)
+        self._prepared = {}
 
-    def read(self, operation_refs):
+    def prepared_origin(self, operation_ref):
+        return self._prepared[operation_ref]
+
+    def read(self, operation_refs, *, current=None, templates=None, captured_current=None):
+        self._prepared = {}
         refs = sorted(set(operation_refs))
         if not lineage_available(self.repo):
             return {"available": False, "origins": {}, "events": {}, "current": {}, "templates": {}, "lineages": {}, "problems": {}}
-        origins = read_origins(self.repo, refs)
-        self._ancestors(origins)
+        origins, evidence_bytes = _read_origins(self.repo, refs)
+        self._ancestors(origins, evidence_bytes)
         events = read_events(self.repo, list(origins))
-        current = self.repo.current_instances(list(origins))
-        templates = self.repo.current_templates(sorted({row["template_operation_ref"] for row in origins.values()}))
+        if current is None and captured_current is not None:
+            current = {ref: captured_current[ref] for ref in origins if ref in captured_current}
+            missing_current = [ref for ref in origins if ref not in captured_current]
+            if missing_current:
+                current.update(self.repo.current_instances(missing_current))
+        elif current is None:
+            current = self.repo.current_instances(list(origins))
+        else:
+            current = {ref: current[ref] for ref in origins if ref in current}
+        template_refs = sorted({row["template_operation_ref"] for row in origins.values()})
+        if templates is None:
+            templates = self.repo.current_templates(template_refs)
+        else:
+            templates = {ref: templates[ref] for ref in template_refs if ref in templates}
+        self._prepared = {ref: _prepare_origin(origin, events.get(ref, [])) for ref, origin in origins.items()}
         lineages, problems = {}, {}
         for ref, origin in origins.items():
-            _validate_source(origin, origins, events)
+            _validate_source(origin, origins, self._prepared)
             _validate_template_revision(origin, templates)
-            problems[ref] = _problems(origin, events.get(ref, []), current.get(ref))
+            problems[ref] = _problems(self._prepared[ref], current.get(ref))
             lineages[ref] = CalibrationLineage(origin["template_operation_ref"], origin["template_revision"], origin["lineage_ref"])
         return {"available": True, "origins": origins, "events": events, "current": current, "templates": templates,
                 "lineages": lineages, "problems": problems}
 
-    def _ancestors(self, origins):
+    def _ancestors(self, origins, evidence_bytes):
+        frontier = list(origins.values())
+        if len(origins) > MAX_OPERATIONS:
+            self._too_many_ancestors()
         for _ in range(100):
-            missing = {row["source_operation_ref"] for row in origins.values() if row["source_operation_ref"] is not None} - origins.keys()
+            missing = {row["source_operation_ref"] for row in frontier if row["source_operation_ref"] is not None
+                       and row["source_operation_ref"] not in origins}
             if not missing:
                 return
-            rows = read_origins(self.repo, sorted(missing))
+            rows, evidence_bytes = _read_origins(self.repo, sorted(missing), evidence_bytes)
             if set(rows) != missing:
                 _invalid()
             origins.update(rows)
-            check_evidence_size(sum(len(row["template_snapshot"].encode("ascii")) + len(row["instance_snapshot"].encode("ascii"))
-                                    for row in origins.values()))
             if len(origins) > MAX_OPERATIONS:
                 break
+            frontier = list(rows.values())
+        self._too_many_ancestors()
+
+    @staticmethod
+    def _too_many_ancestors():
         raise WorkbenchCommandRejected("query_too_large", "模板复制来源超过 100 层或 10000 道工序，这次没有读取。请缩小范围后重试。", 413)

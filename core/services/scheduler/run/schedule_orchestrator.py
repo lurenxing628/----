@@ -9,7 +9,6 @@ from core.services.scheduler.contracts.schedule_summary_types import SummaryBuil
 
 from .schedule_candidate_runner import run_candidate_comparison
 from .schedule_candidate_summary import candidate_comparison_public_summary
-from .schedule_graph_report import prepare_schedule_graph_for_dispatch
 from .schedule_input_collector import ScheduleRunInput
 from .schedule_persistence import ValidatedSchedulePayload, build_validated_schedule_payload
 from .schedule_summary_contract import ScheduleSummaryContract
@@ -56,13 +55,14 @@ class ScheduleOrchestrationOutcome:
     overdue_items: List[Any]
     result_status: str
     result_summary_obj: Dict[str, Any]
+    # Persisted text freezes the complete unified formal result before the display size guard.
     result_summary_json: str
     time_cost_ms: int
     candidate_comparison: Any
 
 
 @dataclass
-class _NormalizedOptimizerOutcome:
+class _NormalizedCandidatePlan:
     results: List[Any]
     summary: Any
     used_strategy: Any
@@ -79,31 +79,8 @@ class _NormalizedOptimizerOutcome:
     search_report: Dict[str, Any]
 
 
-def _normalize_optimizer_outcome(optimizer_outcome: Any) -> _NormalizedOptimizerOutcome:
-    from .schedule_optimizer import OptimizationOutcome
-
-    if not isinstance(optimizer_outcome, OptimizationOutcome):
-        raise TypeError("optimize_schedule_fn must return OptimizationOutcome")
-    return _NormalizedOptimizerOutcome(
-        results=list(optimizer_outcome.results or []),
-        summary=optimizer_outcome.summary,
-        used_strategy=optimizer_outcome.used_strategy,
-        used_params=dict(optimizer_outcome.used_params or {}),
-        best_metrics=optimizer_outcome.metrics,
-        best_score=tuple(optimizer_outcome.best_score or ()),
-        best_order=list(optimizer_outcome.best_order or []),
-        attempts=list(optimizer_outcome.attempts or []),
-        improvement_trace=list(optimizer_outcome.improvement_trace or []),
-        algo_mode=str(optimizer_outcome.algo_mode or ""),
-        objective_name=str(optimizer_outcome.objective_name or ""),
-        algo_stats=dict(optimizer_outcome.algo_stats or {}),
-        time_budget_seconds=int(optimizer_outcome.time_budget_seconds or 0),
-        search_report=dict(optimizer_outcome.search_report or {}),
-    )
-
-
-def _normalize_candidate_plan(candidate_plan: Any) -> _NormalizedOptimizerOutcome:
-    return _NormalizedOptimizerOutcome(
+def _normalize_candidate_plan(candidate_plan: Any) -> _NormalizedCandidatePlan:
+    return _NormalizedCandidatePlan(
         results=list(getattr(candidate_plan, "results", None) or []),
         summary=getattr(candidate_plan, "summary", None),
         used_strategy=getattr(candidate_plan, "used_strategy", None),
@@ -118,74 +95,6 @@ def _normalize_candidate_plan(candidate_plan: Any) -> _NormalizedOptimizerOutcom
         algo_stats=dict(getattr(candidate_plan, "algo_stats", None) or {}),
         time_budget_seconds=int(getattr(candidate_plan, "time_budget_seconds", 0) or 0),
         search_report=dict(getattr(candidate_plan, "search_report", None) or {}),
-    )
-
-
-def _required_candidate_setting(cfg: Any, name: str) -> Any:
-    """The config snapshot owns every default; a missing or blank value here is a defect, not a fallback."""
-    try:
-        value = getattr(cfg, name)
-    except AttributeError:
-        raise ValidationError(f"排产配置缺少候选对比参数 {name}", field=name) from None
-    if value is None or str(value).strip() == "":
-        raise ValidationError(f"候选对比参数 {name} 不能为空", field=name)
-    return value
-
-
-def _candidate_comparison_enabled(cfg: Any) -> bool:
-    return str(_required_candidate_setting(cfg, "graph_analysis_mode")).strip().lower() == "on"
-
-
-def _candidate_weight_count(cfg: Any) -> int:
-    return int(_required_candidate_setting(cfg, "graph_candidate_weight_count"))
-
-
-def _candidate_selection_policy(cfg: Any) -> str:
-    return str(_required_candidate_setting(cfg, "graph_selection_policy")).strip().lower()
-
-
-def _candidate_overdue_tolerance_count(cfg: Any) -> int:
-    return int(_required_candidate_setting(cfg, "graph_overdue_tolerance_count"))
-
-
-def _candidate_tardiness_tolerance_ratio(cfg: Any) -> float:
-    return float(_required_candidate_setting(cfg, "graph_tardiness_tolerance_ratio"))
-
-
-def _run_optimizer_once(
-    *,
-    schedule_input: ScheduleRunInput,
-    optimize_schedule_fn: Any,
-    strict_mode: bool,
-    logger: Any,
-    graph_preparation: Optional[Any] = None,
-) -> Tuple[_NormalizedOptimizerOutcome, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    if graph_preparation is None:
-        graph_preparation = prepare_schedule_graph_for_dispatch(schedule_input)
-    optimizer_outcome = _normalize_optimizer_outcome(
-        optimize_schedule_fn(
-            calendar_service=schedule_input.cal_svc,
-            cfg_svc=schedule_input.cfg_svc,
-            cfg=schedule_input.cfg,
-            algo_ops_to_schedule=schedule_input.algo_ops_to_schedule,
-            batches=schedule_input.batches,
-            start_dt=schedule_input.start_dt_norm,
-            end_date=schedule_input.end_date_norm,
-            downtime_map=schedule_input.downtime_map,
-            seed_results=schedule_input.seed_results,
-            resource_pool=schedule_input.resource_pool,
-            version=schedule_input.optimizer_seed_version,
-            logger=logger,
-            readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
-            strict_mode=bool(strict_mode),
-            graph_ready_context=graph_preparation.graph_ready_context,
-            graph_dispatch_mode_override=graph_preparation.graph_dispatch_mode_override,
-        )
-    )
-    return (
-        optimizer_outcome,
-        graph_preparation.graph_analysis_public,
-        graph_preparation.graph_analysis_diagnostics,
     )
 
 
@@ -244,27 +153,12 @@ def _run_plan_selection(
     *,
     schedule_input: ScheduleRunInput,
     strict_mode: bool,
-    optimize_schedule_fn: Any,
     candidate_comparison_fn: Any = None,
-) -> Tuple[_NormalizedOptimizerOutcome, Optional[Dict[str, Any]], Optional[Dict[str, Any]], Any]:
-    if not _candidate_comparison_enabled(schedule_input.cfg):
-        optimizer_outcome, graph_public, graph_diagnostics = _run_optimizer_once(
-            schedule_input=schedule_input,
-            optimize_schedule_fn=optimize_schedule_fn,
-            strict_mode=bool(strict_mode),
-            logger=svc.logger,
-        )
-        return optimizer_outcome, graph_public, graph_diagnostics, None
+) -> Tuple[_NormalizedCandidatePlan, Optional[Dict[str, Any]], Optional[Dict[str, Any]], Any]:
     candidate_comparison = (candidate_comparison_fn or run_candidate_comparison)(
         schedule_input=schedule_input,
-        optimize_schedule_fn=optimize_schedule_fn,
         run_time_budget_seconds=getattr(schedule_input, "run_time_budget_seconds", None),
-        weight_count=_candidate_weight_count(schedule_input.cfg),
-        selection_policy=_candidate_selection_policy(schedule_input.cfg),
-        graph_overdue_tolerance_count=_candidate_overdue_tolerance_count(schedule_input.cfg),
-        graph_tardiness_tolerance_ratio=_candidate_tardiness_tolerance_ratio(schedule_input.cfg),
-        strict_mode=bool(strict_mode),
-        logger=svc.logger,
+        strict_mode=bool(strict_mode), logger=svc.logger,
     )
     adopted_plan = candidate_comparison.selection.selected_plan
     graph_public, graph_diagnostics = _graph_analysis_for_summary(candidate_comparison, adopted_plan)
@@ -293,7 +187,6 @@ def orchestrate_schedule_run(
     schedule_input: ScheduleRunInput,
     simulate: bool,
     strict_mode: bool,
-    optimize_schedule_fn: Any,
     build_result_summary_fn: Any,
     before_version_allocate_fn: Any = None,
     allocate_version: bool = True,
@@ -308,7 +201,6 @@ def orchestrate_schedule_run(
         svc,
         schedule_input=schedule_input,
         strict_mode=bool(strict_mode),
-        optimize_schedule_fn=optimize_schedule_fn,
         candidate_comparison_fn=candidate_comparison_fn,
     )
     allowed_op_ids_raw = _allowed_schedule_output_op_ids(schedule_input)

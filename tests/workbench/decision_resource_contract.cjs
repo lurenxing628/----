@@ -20,7 +20,7 @@ function hooks() {
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
     render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); } };
 }
-const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'WorkbenchDatePickerModel.js', 'ResourceProjectionContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionResources.jsx', 'RunDecisionResourceHeatmap.jsx'];
+const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'WorkbenchDatePickerModel.js', 'ResourceProjectionContract.js', 'EffortProjectionContract.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionResources.jsx', 'RunDecisionResourceHeatmap.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
 function runtime(state = hooks()) {
   const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, WorkbenchReference: 'reference', PointContract: {},
@@ -84,6 +84,14 @@ function identityContracts() {
     rejected(days, result => { result.data.items[0].before.tasks[0].drill.candidate_ref = chosen; }, q, 'resource-days'); }
   for (const wrong of [{ selected_candidate_ref: undefined }, { resource_kind: 'batch' }, { size: 7 }, { heatmap_size: 20 }]) assert.throws(() => API.resourceScope(run, { ...common, ...wrong }));
   assert.throws(() => API.resourceScope(run, common, 'resource-days'), /请选择/);
+  const saved = { resource_kind: 'machine', resource_ref: outside, page: 2, snapshot_ref: token, grain: 'hour',
+    display_start: '2026-11-30T23:00:00', display_end: '2026-12-01T01:00:00', heatmap_page: 2, sort: 'label', pressure_threshold: 0.8 };
+  assert.deepEqual(clone(API.savedResourceView(saved, scope(common).resource_refs, scope(common))),
+    { resource_kind: 'machine', page: 1, grain: 'hour', heatmap_page: 1, sort: 'label', pressure_threshold: 0.8 },
+    '越界资源和显示窗按同一规则清理，同时保留有效筛选');
+  const boundary = { grain: 'hour', display_start: start + '.000000', display_end: end + '.000000', snapshot_ref: token, heatmap_page: 2 };
+  assert.deepEqual(clone(API.savedResourceView(boundary, scope(common).resource_refs, scope(common))), boundary,
+    '资源显示窗的等价零小数边界仍在当前比较范围内，保留原快照与页码');
 }
 function presentationContracts() {
   const zero = metricWindow({ state: 'complete', available_hours: 0, utilization_ratio: null, demand_ratio: null, peak_utilization: null, zero_capacity_task: false, high_pressure: false, conflict: false }), unknown = metricWindow({ state: 'unavailable', available_hours: null, utilization_ratio: null, demand_ratio: null, peak_utilization: null });
@@ -216,7 +224,7 @@ function presentationContracts() {
 const turns = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 async function paneContracts() {
   const { state, window: local } = runtime(), calls = [], daily = [], signals = [];
-  const overview = { data: { run: { run_ref: run }, scope: scope(common) } }, props = { result: overview, query: {}, onQuery: next => { props.query = next; }, onView: () => {},
+  const overview = { data: { run: { run_ref: run }, scope: scope(common) }, meta: { snapshot_ref: token } }, props = { result: overview, query: {}, onQuery: next => { props.query = next; }, onView: () => {},
     adapter: { resources: async (run, q, signal) => { calls.push(clone(q)); signals.push(signal); if (calls.length === 1) throw new Error('首读失败'); return payload(q); }, resourceDays: async (run, q) => { daily.push(clone(q)); return payload(q, 'resource-days'); } } };
   let tree; async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => local.RunDecisionResources.Pane(props)); state.flush(); await turns(); } }
   await render(); assert.equal(calls.length, 1); assert(nodes(tree).some(node => node.type === 'error-box' && node.props.error));
@@ -228,6 +236,18 @@ async function paneContracts() {
   const nextMap = nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap), before = calls.length;
   nextMap.props.onCursor({ resource_ref: machines[20], date: dates[14] }); await render(); assert.equal(calls.length, before, '日格焦点变化不重读资源');
   nextMap.props.onFocus({ resource_ref: machines[20] }, { date: dates[24], bucket_key: dates[24], start: dates[24] + 'T00:00:00', end: dates[24] + 'T23:59:59' }, 10); await render(); assert.equal(daily.at(-1).bucket_start, dates[24] + 'T00:00:00', '点击时段读取精确起止范围，独立绑定明细快照'); assert.equal(daily.at(-1).bucket_end, dates[24] + 'T23:59:59');
+  const loadedResources = calls.length, loadedDays = daily.length;
+  props.enabled = false; await render(); props.enabled = true; await render();
+  assert.equal(calls.length, loadedResources); assert.equal(daily.length, loadedDays, '同上层快照重开资源与逐日面板复用各自成功读取');
+  props.enabled = false; props.result = { ...overview, meta: { snapshot_ref: 't'.repeat(32) } }; await render();
+  assert.equal(calls.length, loadedResources); assert.equal(daily.length, loadedDays, '隐藏资源面板随上层快照失效而不提前读取');
+  props.enabled = true; await render();
+  assert.equal(calls.length, loadedResources + 1); assert.equal(daily.length, loadedDays + 1, '重开刷新后的资源与逐日面板各读当前身份一次');
+  const visibleQuery = clone(props.query), hiddenQuery = { ...props.query, resource_ref: outside }, normalized = [];
+  props.enabled = false; props.query = hiddenQuery; props.onQuery = next => { normalized.push(next); props.query = next; }; await render();
+  assert.equal(normalized.length, 0, '隐藏资源面板不回写查询规范化');
+  props.query = visibleQuery; props.onQuery = next => { props.query = next; }; props.enabled = true; await render();
+  console.log(JSON.stringify({ r18_resources: { same_snapshot_reopen: { resources: 0, days: 0 }, hidden_refresh: { resources: 0, days: 0 }, refreshed_reopen: { resources: 1, days: 1 }, hidden_query_updates: normalized.length } }));
   const remembered = clone(props.query.heatmap_focus), focusEvents = [], readsBeforeClose = calls.length, detailsBeforeClose = daily.length;
   const selectedCell = { dataset: { resourceRef: machines[20], resourceBucket: dates[24] }, focus: options => { focusEvents.push(['cell', options]); nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap).props.onCursor(remembered); }, scrollIntoView: options => focusEvents.push(['scroll', options]) };
   const resourceEntry = { dataset: { resourceEntry: machines[20] }, focus: options => focusEvents.push(['entry', options]), scrollIntoView: options => focusEvents.push(['scroll', options]) };
@@ -262,6 +282,42 @@ async function paneContracts() {
   props.adapter.resources = (run, q, signal) => { calls.push(clone(q)); signals.push(signal); return new Promise(() => {}); };
   nodes(tree).find(node => node.props['aria-label'] === '刷新资源影响').props.onClick(); await render();
   nodes(tree).find(node => node.type === 'button' && text(node) === '取消读取').props.onClick(); await render(); assert(signals.at(-1).aborted);
+
+  // The real Pane consumes the combined response inside its existing read owner.
+  const seeded = runtime(), resourceCalls = [], normalizedQueries = [];
+  const combined = query => ({ ...overview, resource_query: API.resourceFilters(query), resource_result: payload(query) });
+  const seedProps = { result: combined({}), query: {}, onQuery: next => { normalizedQueries.push(clone(next)); seedProps.query = next; }, onView() {},
+    adapter: { resources: async (_, q) => { resourceCalls.push(clone(q)); return payload(q); }, resourceDays: async (_, q) => payload(q, 'resource-days') } };
+  let seededTree;
+  async function seedRender() { for (let index = 0; index < 3; index++) { seededTree = seeded.state.render(() => seeded.window.RunDecisionResources.Pane(seedProps)); seeded.state.flush(); await turns(); } }
+  await seedRender(); assert.equal(resourceCalls.length, 0, '组合首屏直接消费资源 envelope，不再发单独 resources 请求');
+  assert(nodes(seededTree).some(node => node.type === seeded.window.RunDecisionResources.Summary));
+  assert.equal(seedProps.query.snapshot_ref, undefined, '新签发资源 token 不回写叶查询');
+  seedProps.enabled = false; await seedRender(); seedProps.enabled = true; await seedRender();
+  assert.equal(resourceCalls.length, 0, '成功首屏隐藏重开复用现有读结果');
+  nodes(seededTree).find(node => node.props['aria-label'] === '刷新资源影响').props.onClick(); await seedRender();
+  assert.equal(resourceCalls.length, 1, '已消费组合响应后的明确刷新发一次真实资源请求');
+  nodes(seededTree).find(node => node.type === 'pager' && node.props.label === '资源影响').props.onPage(2); await seedRender();
+  assert.equal(resourceCalls.length, 2); assert.equal(resourceCalls.at(-1).page, 2); assert.equal(resourceCalls.at(-1).snapshot_ref, token);
+  nodes(seededTree).find(node => node.props['aria-label'] === '资源高负荷关注线').props.onChange({ target: { value: '0.8' } }); await seedRender();
+  assert.equal(resourceCalls.length, 3); assert.equal(resourceCalls.at(-1).pressure_threshold, 0.8); assert.equal(resourceCalls.at(-1).snapshot_ref, undefined);
+  seedProps.result = combined(seedProps.query); await seedRender();
+  assert.equal(resourceCalls.length, 3, '同 token 的新父响应按原对象身份消费一次');
+  seedProps.enabled = false; seedProps.result = combined(seedProps.query); await seedRender();
+  assert.equal(resourceCalls.length, 3, '隐藏的新组合响应等待显示');
+  seedProps.enabled = true; await seedRender(); assert.equal(resourceCalls.length, 3, '显示后消费新父响应无需额外请求');
+  seedProps.query = { resource_ref: outside, page: 2, snapshot_ref: token };
+  seedProps.result = combined({ page: 1 }); const beforeNormalization = normalizedQueries.length; await seedRender();
+  assert.equal(normalizedQueries.length, beforeNormalization + 1); assert.equal(resourceCalls.length, 3, '有效叶筛选回写稳定 canonical query，不触发第三次读取');
+  assert.equal(seedProps.query.resource_ref, undefined); assert.equal(seedProps.query.snapshot_ref, undefined);
+  const rejection = { ok: false, committed: false, status: 409, error: { code: 'snapshot_stale', message: '资源保存身份已变化。', fields: [], retryable: false, request_ref: '1'.repeat(32) } };
+  seedProps.result = { ...combined(seedProps.query), resource_result: rejection }; await seedRender();
+  const error = nodes(seededTree).find(node => node.type === 'error-box' && node.props.error).props.error;
+  assert.equal(error.code, rejection.error.code); assert.equal(error.status, 409); assert.equal(error.committed, false); assert.equal(resourceCalls.length, 3);
+  seedProps.enabled = false; await seedRender(); seedProps.enabled = true; await seedRender();
+  assert.equal(resourceCalls.length, 4, '组合中的明确资源失败由原 hook 在重开时重试真实 resources 一次');
+  console.log(JSON.stringify({ u5_resource_workspace_reads: { first_combined_resource_http: 0, same_result_reopen: 0, refresh: 1, page: 1, threshold: 1,
+    new_parent_same_token_extra_http: 0, hidden_new_parent_extra_http: 0, normalized_query_extra_http: 0, explicit_failure_reopen: 1, new_token_query_updates: 0 } }));
 }
 async function transportContracts() {
   const calls = [], responses = [], transport = API.create(async (url, options) => { calls.push({ url: new URL(url, 'http://localhost'), options }); return responses.shift(); });

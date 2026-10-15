@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult
-from core.algorithms.evaluation import compute_metrics, objective_score
-from core.algorithms.greedy.algo_stats import capture_algo_stats
+from core.algorithms.evaluation import objective_score
 
 from .neighborhood_moves import NeighborhoodMove
+from .shared_decode import decode_and_metrics
+
+if TYPE_CHECKING:
+    from .shared_decode import SharedDecodeSession
 
 
 def evaluate_local_search_candidate(
@@ -32,9 +35,15 @@ def evaluate_local_search_candidate(
     readiness_gate_enabled: bool,
     graph_ready_context: Optional[Any],
     neighborhood_move: NeighborhoodMove,
+    decode_session: SharedDecodeSession,
 ) -> Dict[str, Any]:
-    res, summ, used_strat, used_params = schedule_fn(
-        scheduler,
+    decoded = decode_and_metrics(
+        decode_session=decode_session,
+        scheduler=scheduler,
+        schedule_fn=schedule_fn,
+        expected_operations=algo_ops_to_schedule,
+        objective_name=objective_name,
+        optimizer_algo_stats=optimizer_algo_stats,
         strict_mode=bool(strict_mode),
         operations=algo_ops_to_schedule,
         batches=batches,
@@ -51,28 +60,30 @@ def evaluate_local_search_candidate(
         readiness_gate_enabled=bool(readiness_gate_enabled),
         graph_ready_context=graph_ready_context,
     )
-    metrics = compute_metrics(
-        res, batches, expected_operations=algo_ops_to_schedule,
-        seed_results=seed_sr_list, failure_details=getattr(summ, "failure_details", ()),
-    )
-    algo_stats = capture_algo_stats(scheduler, optimizer_algo_stats)
-    return {
-        "algo_stats": algo_stats,
-        "results": res,
-        "summary": summ,
-        "strategy": used_strat,
-        "params": used_params,
+    metrics, summary = decoded.metrics, decoded.summary
+    candidate = {
+        "algo_stats": decoded.algo_stats,
+        "results": decoded.results,
+        "summary": summary,
+        "strategy": decoded.used_strategy,
+        "params": decoded.used_params,
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
         "order": order,
         "metrics": metrics,
-        "score": (float(summ.failed_ops),) + objective_score(objective_name, metrics),
+        "score": (float(summary.failed_ops),) + objective_score(objective_name, metrics),
         "resource_pool": resource_pool or {},
         "seed_result_count": len(seed_sr_list or []),
         "locked_seed_range": [getattr(item, "op_id", None) for item in list(seed_sr_list or [])],
         "mutable_scope": _mutable_scope_payload(neighborhood_move, order),
         "neighborhood_move": neighborhood_move.to_report_dict(),
     }
+    if decoded.receipt is not None:
+        candidate["decode_receipt"] = dict(decoded.receipt)
+        source_runtime = decoded.receipt.get("source_runtime_ms")
+        if source_runtime is not None:
+            candidate["runtime_ms"] = source_runtime
+    return candidate
 
 
 def _mutable_scope_payload(neighborhood_move: NeighborhoodMove, order: List[str]) -> Dict[str, Any]:

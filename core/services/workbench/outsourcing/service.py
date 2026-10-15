@@ -6,6 +6,7 @@ receipt, member drift, row caps) lives here; the repository only reads.
 
 from contextlib import contextmanager
 from datetime import datetime
+from typing import Any, Dict, Optional, TypedDict, cast
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -14,6 +15,11 @@ from data.repositories.workbench_outsourcing_repo import WorkbenchOutsourcingRep
 
 from .projection import fact, receipt
 from .source import WorkbenchOutsourcingSourceService
+
+
+class CapturedReceiptFacts(TypedDict):
+    header: Dict[str, Any]
+    latest: Optional[Dict[str, Any]]
 
 
 class WorkbenchOutsourcingService:
@@ -29,7 +35,11 @@ class WorkbenchOutsourcingService:
             reject("真实外协登记结构尚未完整接入；未补表或改动原资料。", "outsourcing_unavailable", 503)
 
     def header(self, ref):
-        header = self.repo.header(ref)
+        return self.header_from_row(self.repo.header(ref))
+
+    @staticmethod
+    def header_from_row(header: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Admit a receipt header without reading its members again."""
         if header is None:
             reject("外协原登记不存在，未改读其他对象。", "entity_not_found", 404)
         if header["target"]["operation_refs"] != header["origin"]["operation_refs"]:
@@ -37,7 +47,10 @@ class WorkbenchOutsourcingService:
         return bounded(header)
 
     def latest(self, ref):
-        row = self.repo.latest(ref)
+        return self.latest_from_row(self.repo.latest(ref))
+
+    @staticmethod
+    def latest_from_row(row):
         if row is None:
             reject("外协登记缺少确认事实，请恢复完整记录。", "outsourcing_unavailable", 503)
         return bounded(row)
@@ -66,11 +79,17 @@ class WorkbenchOutsourcingService:
         header, latest = self.header(ref), self.latest(ref)
         return self.entry_from_facts(header, latest, now)
 
-    def entry_from_facts(self, header, latest, now):
+    def capture_receipts(self, batch_ref=None) -> Dict[str, CapturedReceiptFacts]:
+        captured = self.repo.receipt_facts(self.refs(batch_ref))
+        for rows in captured.values():
+            rows["header"] = self.header_from_row(rows["header"])
+        return cast(Dict[str, CapturedReceiptFacts], captured)
+
+    def entry_from_facts(self, header, latest, now, *, sources=None):
         """Resolve a receipt from header/latest already admitted in the caller's snapshot."""
         source, issues, state = None, [], "current"
         try:
-            source = self.sources.load(header["target"])
+            source = (self.sources if sources is None else sources).load(header["target"])
             if source["identity"] != header["identity"]:
                 state = "identity_drift"
                 issues = [{"code": "identity_drift", "message": "原登记的工序或所属批次已变化，请重新核对。"}]
@@ -108,8 +127,10 @@ class WorkbenchOutsourcingService:
             raise RuntimeError("Outsourcing list requires a caller-owned snapshot")
         now = as_of or self.now()
         rows, snapshots = [], []
-        for ref in self.refs(batch_ref):
-            item, snapshot = self._entry(ref, now)
+        captured = self.capture_receipts(batch_ref)
+        sources = self.sources.capture([facts["header"]["target"] for facts in captured.values()])
+        for facts in captured.values():
+            item, snapshot = self.entry_from_facts(facts["header"], self.latest_from_row(facts["latest"]), now, sources=sources)
             snapshots.append(snapshot)
             matches = {"all": True, "awaiting": item["awaiting_return"], "overdue": item["overdue"], "returned": not item["awaiting_return"]}
             if matches[status]:
@@ -126,7 +147,8 @@ class WorkbenchOutsourcingService:
         pagination(number, size)
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing targets require a caller-owned snapshot")
-        rows = self.sources.targets(batch_ref, query)
-        clock = self.repo.plan_identity_revision()
+        target_rows, sources = self.sources.capture_targets(batch_ref, query)
+        rows = [item for item, source in sources.load_target_rows(target_rows)]
+        clock = sources.repo.plan_identity_revision()
         return bounded({**page(rows, number, size), "content": {"rows": rows, "clock": clock, "query": query},
                         "grouping_basis": "explicit_receipt_membership", "dates_inferred": False})

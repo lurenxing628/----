@@ -24,7 +24,7 @@ from core.services.scheduler.run.schedule_graph_score_projection import (
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 
 
-def piece_graph_preparer(prepared):
+def _piece_graph_data(prepared):
     scope = build_piece_adoption_scope(prepared.operations, prepared.batches)
     nodes = []
     for op in prepared.algo_ops:
@@ -37,13 +37,22 @@ def piece_graph_preparer(prepared):
     graph = build_precedence_graph(nodes, edges)
     generations = get_topological_generations(graph)
     order = [key for group in generations for key in group]
-    critical, minutes = get_critical_path(graph)
+    critical, minutes = get_critical_path(graph, topological_order=order)
     metrics = build_node_metrics(graph, topological_order=order, critical_path=critical,
                                  generation_index={key: index for index, group in enumerate(generations) for key in group})
     payload = graph_summary_to_dict(GraphAnalysisSummary(len(nodes), len(edges), True, [], order,
         critical, minutes, metrics, collect_graph_warnings(graph)))
+    return nodes, edges, order, metrics, payload
+
+
+def piece_graph_preparer(prepared):
+    graph_data = None
 
     def prepare(candidate_input):
+        nonlocal graph_data
+        if graph_data is None:
+            graph_data = _piece_graph_data(prepared)
+        nodes, edges, order, metrics, payload = graph_data
         weights = graph_score_weights(candidate_input.cfg)
         score, score_public, score_diagnostics = build_available_graph_score_projection(
             score_weights=weights, nodes=nodes, node_metrics=metrics,

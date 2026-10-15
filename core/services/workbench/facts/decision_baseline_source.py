@@ -2,6 +2,7 @@
 
 import re
 
+from core.infrastructure.read_evidence import verified_read
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
@@ -189,7 +190,12 @@ def _point_loader(source, load):
     return points
 
 
-def decision_baseline_source_resolver(conn):
+def decision_baseline_source_resolver(conn, *, candidate_provider=None):
+    return verified_read(conn, ("decision_baseline_resolver", candidate_provider),
+        lambda: _decision_baseline_source_resolver(conn, candidate_provider=candidate_provider))
+
+
+def _decision_baseline_source_resolver(conn, *, candidate_provider=None):
     """Create one request's resolver over permanent candidate/scenario identities.
 
     The caller compares ``evidence.arranged`` with its captured Schedule rows.
@@ -200,6 +206,10 @@ def decision_baseline_source_resolver(conn):
     candidates = CandidateStore(conn)
 
     def resolve(*, plan_ref, version, history):
+        key = ("decision_baseline_source", plan_ref, version, history.get("version"), history.get("result_summary"))
+        return verified_read(conn, key, lambda: load(plan_ref=plan_ref, version=version, history=history))
+
+    def load(*, plan_ref, version, history):
         parsed = parse_result_summary_payload(history.get("result_summary"))
         audit = parsed.payload
         if parsed.parse_failed:
@@ -211,7 +221,8 @@ def decision_baseline_source_resolver(conn):
             if audit["source"] == "workbench_candidate_adoption":
                 key = ("candidate", audit["candidate_ref"])
                 if key not in sources:
-                    sources[key] = read_candidate_source(candidates, audit["candidate_ref"])
+                    prepared = candidate_provider(audit["candidate_ref"]) if candidate_provider is not None else None
+                    sources[key] = prepared if prepared is not None else read_candidate_source(candidates, audit["candidate_ref"])
                 source = sources[key]
                 evidence, points = _candidate_evidence(source, audit), _candidate_points
             else:

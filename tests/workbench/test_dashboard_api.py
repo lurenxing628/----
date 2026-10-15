@@ -69,7 +69,7 @@ def test_routes_list_detail_transition_history_and_stale_snapshot(dashboard_case
     assert rejected.value.code == "dashboard_storage_invalid"
 
 
-def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monkeypatch):
+def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monkeypatch, record_property):
     from core.services.workbench.dashboard.facts import DashboardFacts
 
     case = dashboard_case
@@ -91,6 +91,20 @@ def test_first_screen_list_and_analysis_share_one_fact_read(dashboard_case, monk
 
     monkeypatch.setattr(DashboardFacts, "load", load)
     monkeypatch.setattr(DashboardFacts, "snapshot_contents", snapshot_contents)
+    restored = client.get(ROOT, query_string={"page": 2, "size": 1})
+    assert restored.status_code == 200, restored.get_json()
+    direct = restored.get_json()
+    assert len(calls) == len(snapshots) == 1 and direct["data"]["page"]["number"] == 2
+    assert len(direct["data"]["items"]) == 1
+    record_property("direct_page", 2)
+    record_property("fact_query_calls", len(calls))
+    record_property("data_fields", sorted(direct["data"]))
+    repeated = client.get(ROOT, query_string={"page": 2, "size": 1, "snapshot_ref": direct["meta"]["snapshot_ref"]}).get_json()
+    assert repeated["data"] == direct["data"] and repeated["meta"].keys() == direct["meta"].keys()
+    assert repeated["meta"]["request_ref"] != direct["meta"]["request_ref"]
+    assert all(repeated["meta"][key] == value for key, value in direct["meta"].items() if key != "request_ref")
+    calls.clear()
+    snapshots.clear()
     response = client.get(ROOT)
     assert response.status_code == 200, response.get_json()
     body = response.get_json()

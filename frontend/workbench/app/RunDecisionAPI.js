@@ -76,6 +76,8 @@
   }
   function recommendation(data) {
     const value = data.recommendation, basis = data.selection_basis, comparison = value && value.current_comparison;
+    if (basis && basis.selection_policy_version === 'business_objectives_v1')
+      check(window.RunGenerationContract.selectionBasis(basis, data.candidates), '保存的共同优化选择资料不完整，请点“刷新方案对比”。');
     check(object(basis) && ['selected_candidate_ref', 'raw_score_best_candidate_ref', 'health_reference_candidate_ref'].every(key => basis[key] === null || ref(basis[key]) && data.candidates.some(row => row.candidate_ref === basis[key]))
       && ['complete', 'partial', 'unavailable'].includes(basis.evidence_state)
       && object(value) && value.recommendation_version === 'decision-recommendation-v1' && ['available', 'unavailable'].includes(value.state)
@@ -138,6 +140,15 @@
       check(ref(row.candidate_ref) && !candidates.has(row.candidate_ref) && object(row.coverage)
         && ['schedulable', 'delivery', 'search'].every(key => object(row.coverage[key])) && row.metrics && row.deltas && Array.isArray(row.selection_role), '方案的比较资料不完整，请点“刷新方案对比”。');
       candidates.add(row.candidate_ref);
+      if (row.generation_policy_version !== undefined) {
+        const G = window.RunGenerationContract;
+        check(A.shape(row, ['candidate_ref', 'label', 'kind', 'status', 'persisted_status', 'task_count', 'completeness', 'coverage', 'metrics',
+          'capabilities', 'selection_role', 'equivalent_source_ref', 'source', 'deltas'].concat(G.metadataKeys))
+          && G.metadata(row, runRef) && row.kind === 'business_objective' && row.persisted_status === 'completed'
+          && ['completed', 'partial'].includes(row.status) && row.equivalent_source_ref === null
+          && new Set(row.selection_role).size === row.selection_role.length
+          && row.selection_role.every(role => role === 'recommended' || G.objective(role)), '业务方向候选的保存资料不完整，请点“刷新方案对比”。');
+      }
       coreMetricKeys.forEach(key => {
         const metric = data.metric_definitions.find(definition => definition.key === key);
         check(metric && window.EffortProjectionContract.metric(row.metrics[key]) && row.metrics[key].metric_version === metric.metric_version
@@ -149,6 +160,7 @@
     if (q.comparison_mode === 'candidates' && data.scope.reference_state === 'available') check(data.scope.reference && candidates.has(data.scope.reference.candidate_ref), '比较基准已不在这次排产中，请点“刷新方案对比”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '比较基准已变化，请点“刷新方案对比”。');
     if (q.comparison_mode === 'admission_official') check(data.scope.reference && data.scope.reference.kind === 'admission_official', '比较基准的正式计划资料已变化，请点“刷新方案对比”。');
+    if (data.scope.run_options !== undefined) check(window.RunGenerationContract.runOptions(data.scope.run_options), '本次保存的优化选项不完整，请点“刷新方案对比”。');
     bindScope(payload, data, q);
     recommendation(data);
     if (data.difference_summary !== undefined) {
@@ -276,12 +288,13 @@
   }
   function processScope(runRef, query = {}) {
     const value = { ...scope(runRef, query), record_kind: 'attempts', order: 'asc', page: 1, size: 20 };
-    ['process_candidate_ref', 'record_kind', 'sort', 'order', 'page', 'size'].forEach(key => {
+    ['process_candidate_ref', 'objective', 'record_kind', 'sort', 'order', 'page', 'size'].forEach(key => {
       if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key];
     });
     if (value.process_candidate_ref === undefined && value.selected_candidate_ref) value.process_candidate_ref = value.selected_candidate_ref;
     if (value.sort === undefined) value.sort = value.record_kind === 'progress' ? 'elapsed_ms' : 'rank';
     check(value.process_candidate_ref === undefined || ref(value.process_candidate_ref), '优化过程的方案选择已失效，请重新选择方案。');
+    check(value.objective === undefined || window.RunGenerationContract.objective(value.objective), '请选择有效的优化方向。');
     check(['attempts', 'progress'].includes(value.record_kind)
       && (value.record_kind === 'progress' ? ['event_index', 'elapsed_ms', 'primary_value'] : ['rank', 'elapsed_ms', 'primary_value']).includes(value.sort)
       && ['asc', 'desc'].includes(value.order), '优化过程的筛选或排序条件无效，请重新选择。');
@@ -295,8 +308,127 @@
   const processMemberKeys = ['candidate_ref', 'label', 'status', 'persisted_status', 'kind', 'algo_mode', 'used_strategy', 'dispatch_mode', 'configured_dispatch_rule',
     'adopted_dispatch_rule', 'source_kind', 'source_candidate_ref', 'own_elapsed_ms', 'source_solver_elapsed_ms', 'own_counts', 'solver_counts', 'stop_reason',
     'final_metrics', 'completion', 'algorithm_profile', 'legacy_best_updates', 'evidence_state', 'evidence_version'];
+  function unifiedProcessDetails(payload, data, runRef, q) {
+    const G = window.RunGenerationContract, nullableText = value => value === null || typeof value === 'string';
+    const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+    const optionalAmount = value => value === null || amount(value), positive = value => count(value) && value > 0;
+    const numbers = value => object(value) && Object.values(value).every(amount);
+    const integers = value => object(value) && Object.values(value).every(count);
+    const descriptors = ['name', 'label', 'primary_metric_key', 'primary_metric_label', 'unit', 'score_fields'];
+    const fields = ['run_ref', 'capture_ref', 'scope', 'baseline', 'process_version', 'summary', 'counts', 'budget', 'stop_reason', 'bridges',
+      'objectives', 'selected_objective', 'progress', 'scopes', 'actions', 'stages', 'candidate', 'candidates', 'source_event', 'items', 'page', 'filters'];
+    check(A.shape(data, fields) && data.run_ref === runRef && data.capture_ref === runRef
+      && object(data.scope) && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode
+      && (q.selected_candidate_ref ? data.scope.selected_candidate_ref === q.selected_candidate_ref : data.scope.selected_candidate_ref === null || ref(data.scope.selected_candidate_ref))
+      && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end)
+      && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind
+      && data.baseline.state === data.scope.reference_state && G.runOptions(data.scope.run_options), '共同优化过程的运行或保存选项不一致，请点“刷新优化过程”。');
+    bindScope(payload, data, q);
+    if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate'
+      && data.baseline.candidate_ref === data.scope.reference.candidate_ref
+      && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null)
+      && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '过程的查看基准已变化，请点“刷新优化过程”。');
+    const names = data.scope.run_options.target_objectives;
+    const descriptor = value => A.shape(value, descriptors) && G.objective(value.name)
+      && ['label', 'primary_metric_key', 'primary_metric_label', 'unit'].every(key => typeof value[key] === 'string')
+      && Array.isArray(value.score_fields) && G.sameArray(value.score_fields.map(field => field.key), G.fieldOrders[value.name])
+      && value.score_fields.every((field, index) => A.shape(field, ['index', 'key', 'label', 'unit', 'direction'])
+        && field.index === index && field.direction === 'lower' && ['key', 'label', 'unit'].every(key => typeof field[key] === 'string'));
+    check(Array.isArray(data.objectives) && G.sameArray(data.objectives.map(value => value.name), names) && data.objectives.every(descriptor)
+      && descriptor(data.selected_objective) && names.includes(data.selected_objective.name)
+      && data.selected_objective.name === (q.objective || data.scope.run_options.primary_objective)
+      && JSON.stringify(data.selected_objective) === JSON.stringify(data.objectives.find(value => value.name === data.selected_objective.name)),
+    '过程的优化方向或评分字段已变化，请点“刷新优化过程”。');
+    const selectedObjective = data.selected_objective.name, summary = data.summary;
+    check(A.shape(summary, ['elapsed_ms', 'first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms']) && amount(summary.elapsed_ms)
+      && ['first_complete_elapsed_ms', 'first_improvement_elapsed_ms', 'last_improvement_elapsed_ms'].every(key => optionalAmount(summary[key]) && (summary[key] === null || summary[key] <= summary.elapsed_ms))
+      && (summary.first_improvement_elapsed_ms === null ? summary.last_improvement_elapsed_ms === null
+        : summary.last_improvement_elapsed_ms !== null && summary.first_improvement_elapsed_ms <= summary.last_improvement_elapsed_ms)
+      && nullableText(data.stop_reason), '共同优化的真实用时或改善时刻不完整，请点“刷新优化过程”。');
+    check(A.shape(data.counts, ['actual_decoder_calls', 'new_decisions', 'decision_reuses', 'skipped_requests', 'failed_decoder_calls', 'request_count', 'execution_counts'])
+      && ['actual_decoder_calls', 'new_decisions', 'decision_reuses', 'skipped_requests', 'failed_decoder_calls', 'request_count'].every(key => count(data.counts[key]))
+      && integers(data.counts.execution_counts), '共同优化的实际计算次数不完整，请点“刷新优化过程”。');
+    const goalFields = ['objective_status', 'weight', 'elapsed_seconds', 'charged_seconds', 'preparation_seconds', 'action_count', 'new_decisions',
+      'reused_decisions', 'probe_decisions', 'minimum_opportunity', 'improvement_action_count', 'has_gain', 'feedback_rate', 'feedback_bonus',
+      'unavailable_reason', 'budget_reason', 'phase_elapsed_seconds'];
+    const goals = data.budget && data.budget.objectives;
+    check(object(data.budget) && amount(data.budget.configured_seconds) && data.budget.configured_seconds > 0
+      && A.shape(goals, names) && names.every(name => {
+        const value = goals[name];
+        return A.shape(value, goalFields) && ['searched', 'paused_no_gain', 'not_searched_budget', 'not_applicable'].includes(value.objective_status)
+          && ['weight', 'elapsed_seconds', 'charged_seconds', 'preparation_seconds', 'feedback_rate', 'feedback_bonus'].every(key => amount(value[key]))
+          && ['action_count', 'new_decisions', 'reused_decisions', 'probe_decisions', 'improvement_action_count'].every(key => count(value[key]))
+          && ['minimum_opportunity', 'has_gain'].every(key => typeof value[key] === 'boolean')
+          && nullableText(value.unavailable_reason) && nullableText(value.budget_reason) && numbers(value.phase_elapsed_seconds);
+      }), '各优化方向的实际预算机会不完整，请点“刷新优化过程”。');
+    check(object(data.scopes) && Object.entries(data.scopes).every(([key, value]) => /^[1-9]\d*$/.test(key) && G.scoringScope(value)),
+      '过程的完整评价范围不完整，请点“刷新优化过程”。');
+    const memberFields = ['candidate_ref', 'label', 'status', 'representative_objectives', 'origin', 'first_found_elapsed_ms', 'search_evidence_ref'];
+    const member = value => A.shape(value, memberFields) && ref(value.candidate_ref) && nullableText(value.label)
+      && ['completed', 'partial'].includes(value.status) && G.objectives(value.representative_objectives)
+      && value.representative_objectives.every(name => names.includes(name)) && G.origin(value.origin)
+      && amount(value.first_found_elapsed_ms) && G.evidence(value.search_evidence_ref, runRef);
+    check(Array.isArray(data.candidates) && data.candidates.length >= 1 && data.candidates.length <= 3 && data.candidates.every(member)
+      && new Set(data.candidates.map(value => value.candidate_ref)).size === data.candidates.length && member(data.candidate),
+    '过程来源候选的保存身份不完整，请点“刷新优化过程”。');
+    const catalog = new Map(data.candidates.map(value => [value.candidate_ref, value]));
+    const anchor = q.process_candidate_ref || data.scope.selected_candidate_ref || data.candidates[0].candidate_ref;
+    check(data.candidate.candidate_ref === anchor && catalog.has(anchor)
+      && JSON.stringify(data.candidate) === JSON.stringify(catalog.get(anchor))
+      && (data.scope.selected_candidate_ref === null || catalog.has(data.scope.selected_candidate_ref)), '过程来源定位已变化，请点“刷新优化过程”。');
+    check(data.source_event === null || object(data.source_event) && positive(data.source_event.event_id)
+      && data.source_event.event_id === data.candidate.search_evidence_ref.source_event_id && amount(data.source_event.elapsed_ms)
+      && typeof data.source_event.phase === 'string' && typeof data.source_event.verified === 'boolean'
+      && (data.source_event.scope_ref === undefined || Object.prototype.hasOwnProperty.call(data.scopes, data.source_event.scope_ref)),
+    '候选的真实来源事件不一致，请点“刷新优化过程”。');
+    const pointFields = ['elapsed_ms', 'entry_id', 'source_event_id', 'search_objective', 'origin', 'score', 'field_order', 'scope_ref', 'segment', 'flags', 'phase', 'verified', 'primary_value'];
+    const mandatoryFlags = ['first_valid', 'first_expected_complete', 'final'], pointFlags = [...mandatoryFlags, 'strict_improvement'];
+    const point = value => A.shape(value, pointFields) && amount(value.elapsed_ms) && positive(value.entry_id) && positive(value.source_event_id)
+      && names.includes(value.search_objective) && nullableText(value.origin) && typeof value.phase === 'string' && typeof value.verified === 'boolean'
+      && G.score(value.score) && G.sameArray(value.field_order, G.fieldOrders[selectedObjective]) && value.score.length === value.field_order.length
+      && Object.prototype.hasOwnProperty.call(data.scopes, value.scope_ref) && count(value.segment)
+      && Array.isArray(value.flags) && value.flags.every(flag => pointFlags.includes(flag)) && new Set(value.flags).size === value.flags.length
+      && value.primary_value === value.score[value.field_order.indexOf(data.selected_objective.primary_metric_key)];
+    const sampling = data.progress && data.progress.sampling;
+    check(A.shape(data.progress, ['points', 'sampling']) && Array.isArray(data.progress.points) && data.progress.points.length <= 200 && data.progress.points.every(point)
+      && A.shape(sampling, ['policy', 'point_budget', 'event_total_count', 'retained_point_count', 'bucket_count', 'bucket_width_ms', 'mandatory'])
+      && sampling.policy === 'elapsed_equal_width_bucket_end_best_v1' && sampling.point_budget === 200
+      && ['event_total_count', 'retained_point_count', 'bucket_count'].every(key => count(sampling[key]))
+      && sampling.retained_point_count === data.progress.points.length && optionalAmount(sampling.bucket_width_ms) && G.sameArray(sampling.mandatory, mandatoryFlags),
+    '所选方向的进步事件或采样资料不完整，请点“刷新优化过程”。');
+    const actionFields = ['action_id', 'search_objective', 'phase', 'initial_construction', 'started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms',
+      'evaluation_count', 'verified_evaluation_count', 'new_decisions', 'reused_decisions', 'skip_reason', 'improved_objectives'];
+    const counters = ['evaluation_count', 'verified_evaluation_count', 'new_decisions', 'reused_decisions'];
+    const action = value => A.shape(value, actionFields) && positive(value.action_id) && value.search_objective === selectedObjective
+      && typeof value.phase === 'string' && typeof value.initial_construction === 'boolean'
+      && ['started_elapsed_ms', 'finished_elapsed_ms', 'elapsed_ms'].every(key => amount(value[key])) && value.started_elapsed_ms <= value.finished_elapsed_ms
+      && counters.every(key => count(value[key])) && value.verified_evaluation_count <= value.evaluation_count
+      && nullableText(value.skip_reason) && G.objectives(value.improved_objectives) && value.improved_objectives.every(name => names.includes(name));
+    check(Array.isArray(data.actions) && data.actions.every(action) && new Set(data.actions.map(value => value.action_id)).size === data.actions.length
+      && Array.isArray(data.stages) && data.stages.every(value => A.shape(value, ['phase', 'start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms', 'action_count', ...counters])
+        && typeof value.phase === 'string' && ['start_elapsed_ms', 'end_elapsed_ms', 'elapsed_ms'].every(key => optionalAmount(value[key]))
+        && count(value.action_count) && counters.every(key => count(value[key]))), '实际搜索动作或阶段统计不完整，请点“刷新优化过程”。');
+    check(Array.isArray(data.bridges) && data.bridges.every(value => A.shape(value, ['search_objective', 'phase', 'before_entry_id', 'after_entry_id', 'elapsed_ms',
+      'started_elapsed_ms', 'finished_elapsed_ms', 'same_arrangement', 'decoder_executed', 'reference_kind', 'source_event_id'])
+      && names.includes(value.search_objective) && ['phase', 'reference_kind'].every(key => typeof value[key] === 'string')
+      && ['before_entry_id', 'after_entry_id'].every(key => value[key] === null || positive(value[key]))
+      && ['elapsed_ms', 'started_elapsed_ms', 'finished_elapsed_ms'].every(key => amount(value[key]))
+      && (value.same_arrangement === null || typeof value.same_arrangement === 'boolean') && typeof value.decoder_executed === 'boolean' && positive(value.source_event_id)),
+    '共同优化的实际接续记录不完整，请点“刷新优化过程”。');
+    check(A.shape(data.filters, ['section', 'process_candidate_ref', 'objective', 'record_kind', 'sort', 'order']) && data.filters.section === 'process'
+      && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective
+      && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key])
+      && (q.record_kind !== 'attempts' || ['rank', 'elapsed_ms'].includes(q.sort))
+      && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size
+      && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : data.actions.length)
+      && data.page.has_more === (q.page * q.size < data.page.total) && Array.isArray(data.items)
+      && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size))
+      && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
+    return data;
+  }
   function processDetails(payload, runRef, query = {}) {
     const data = envelope(payload), q = processScope(runRef, query);
+    if (data.process_version === 'unified-optimization-process-v1') return unifiedProcessDetails(payload, data, runRef, q);
     const nullableText = value => value === null || typeof value === 'string';
     const amount = value => value === null || typeof value === 'number' && Number.isFinite(value) && value >= 0;
     const nullableCount = value => value === null || count(value);
@@ -576,15 +708,15 @@
     bindSnapshot(payload, query);
     return data;
   }
-  function resourceScope(runRef, query = {}, section = 'resources') {
-    const value = { ...scope(runRef, query), resource_kind: 'machine', grain: 'day', pressure_threshold: 0.9, page: 1, size: 20 };
+  function resourceFilters(query = {}, section = 'resources') {
+    const value = { resource_kind: 'machine', grain: 'day', pressure_threshold: 0.9, page: 1, size: 20 };
     const keys = ['resource_kind', 'resource_ref', 'grain', 'pressure_threshold', 'page', 'size'];
     if (section === 'resources') {
       Object.assign(value, { pressure_filter: 'all', sort: 'after_peak_utilization', order: 'desc', heatmap_page: 1, heatmap_size: 7 });
       keys.push('pressure_filter', 'sort', 'order', 'heatmap_page', 'heatmap_size', 'display_start', 'display_end');
     } else keys.push('bucket_start', 'bucket_end');
     keys.forEach(key => { if (query[key] !== undefined && query[key] !== null && query[key] !== '') value[key] = query[key]; });
-    check(ref(value.selected_candidate_ref) && ['machine', 'operator'].includes(value.resource_kind), '请选择查看方案及设备或人员。');
+    check(['machine', 'operator'].includes(value.resource_kind), '请选择设备或人员。');
     check(value.resource_ref === undefined || ref(value.resource_ref), '设备或人员选择已失效，请重新选择。');
     check(['hour', 'shift', 'day', 'week'].includes(value.grain) && typeof value.pressure_threshold === 'number'
       && Number.isFinite(value.pressure_threshold) && value.pressure_threshold > 0 && value.pressure_threshold <= 1,
@@ -597,7 +729,60 @@
     if (section === 'resource-days') check(ref(value.resource_ref), '请选择要查看逐日明细的设备或人员。');
     check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '资源明细每页支持 20 或 50 条，请重新选择。');
     if (section === 'resources') check(Number.isInteger(value.heatmap_page) && value.heatmap_page > 0 && [7, 14, 31].includes(value.heatmap_size), '热力图每页支持 7、14 或 31 天，请重新选择。');
+    if (query.snapshot_ref !== undefined && query.snapshot_ref !== null && query.snapshot_ref !== '') value.snapshot_ref = query.snapshot_ref;
     return value;
+  }
+  function resourceScope(runRef, query = {}, section = 'resources') {
+    const value = { ...scope(runRef, query), ...resourceFilters(query, section) };
+    check(ref(value.selected_candidate_ref), '请选择查看方案及设备或人员。');
+    return value;
+  }
+  function savedResourceView(query, cohort, comparison) {
+    const next = { ...query }, refs = cohort[next.resource_kind || 'machine'];
+    if (next.resource_ref && !refs.includes(next.resource_ref)) { delete next.resource_ref; delete next.snapshot_ref; next.page = 1; }
+    if (comparison && next.display_start && (timeKey(next.display_start) < timeKey(comparison.range_start) || timeKey(next.display_end) > timeKey(comparison.range_end))) {
+      delete next.display_start; delete next.display_end; delete next.snapshot_ref; next.heatmap_page = 1;
+    }
+    return next;
+  }
+  function resourceWorkspaceScope(runRef, query = {}, savedQuery = {}) {
+    const filters = resourceFilters(savedQuery), resourceSnapshot = filters.snapshot_ref; delete filters.snapshot_ref;
+    return { ...scope(runRef, query), ...filters, ...(resourceSnapshot !== undefined ? { resource_snapshot_ref: resourceSnapshot } : {}) };
+  }
+  function resourceError(value) {
+    return Object.assign(new Error(value.error.message), value.error, { status: value.status, committed: value.committed });
+  }
+  function resourceWorkspace(payload, runRef, query = {}, savedQuery = {}) {
+    check(A.shape(payload, ['ok', 'schema_version', 'data', 'meta', 'warnings', 'resource_result', 'resource_query']), '资源首屏的共同读取资料不完整，请刷新方案对比。');
+    const { resource_result: resources, resource_query: effective, ...summary } = payload;
+    const data = decisionSummary(summary, runRef, query), cohort = data.scope.resource_refs;
+    check(object(cohort) && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref)
+      && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请刷新方案对比。');
+    const filterKeys = ['resource_kind', 'grain', 'pressure_threshold', 'page', 'size', 'pressure_filter', 'sort', 'order', 'heatmap_page', 'heatmap_size'];
+    check(A.shape(effective, filterKeys, ['resource_ref', 'display_start', 'display_end', 'snapshot_ref']), '恢复的资源筛选资料不完整，请刷新方案对比。');
+    const expected = resourceFilters(savedResourceView(resourceFilters(savedQuery), cohort, data.scope)), actual = resourceFilters(effective);
+    check(JSON.stringify(actual) === JSON.stringify(expected) && Object.keys(effective).length === Object.keys(actual).length,
+      '恢复的资源筛选与当前范围不一致，请刷新方案对比。');
+    const candidate = data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
+    if (!candidate || candidate.persisted_status !== 'completed') {
+      check(resources === null, '当前方案没有可查看的资源结果，请刷新方案对比。'); return data;
+    }
+    check(object(resources), '资源读取结果未记录，请刷新方案对比。');
+    if (resources.ok === true) {
+      const comparison = { comparison_mode: data.scope.comparison_mode, resource_view: data.scope.resource_view,
+        selected_candidate_ref: data.scope.selected_candidate_ref, range_start: data.scope.range_start, range_end: data.scope.range_end,
+        ...(data.scope.comparison_mode === 'candidates' ? { reference_candidate_ref: data.scope.reference.candidate_ref } : {}) };
+      resourceDetails(resources, runRef, { ...comparison, ...actual, expected_resource_refs: cohort });
+    } else {
+      const error = resources.error;
+      check(A.shape(resources, ['ok', 'committed', 'error', 'status']) && resources.ok === false && resources.committed === false
+        && Number.isInteger(resources.status) && resources.status >= 400 && resources.status <= 599
+        && A.shape(error, ['code', 'message', 'fields', 'retryable', 'request_ref']) && typeof error.code === 'string' && error.code.length > 0
+        && typeof error.message === 'string' && typeof error.retryable === 'boolean' && /^[a-f0-9]{32}$/.test(error.request_ref)
+        && Array.isArray(error.fields) && error.fields.every(field => A.shape(field, ['path', 'message']) && typeof field.path === 'string' && typeof field.message === 'string'),
+      '资源读取失败的资料不完整，请刷新方案对比。');
+    }
+    return data;
   }
   function resourceDetails(payload, runRef, query, section = 'resources') {
     const data = envelope(payload), q = resourceScope(runRef, query, section);
@@ -688,6 +873,7 @@
     return window.APSReadBoundary.verified({
       async decision(runRef, query = {}, signal) { const q = scope(runRef, query), value = await request(runRef, q, signal); decision(value, runRef, q); return value; },
       async decisionSummary(runRef, query = {}, signal) { const q = scope(runRef, query), value = await request(runRef, q, signal, null, '/summary'); decisionSummary(value, runRef, q); return value; },
+      async resourceWorkspace(runRef, query = {}, savedQuery = {}, signal) { const q = resourceWorkspaceScope(runRef, query, savedQuery), value = await request(runRef, q, signal, null, '/resource-workspace'); resourceWorkspace(value, runRef, query, savedQuery); return value; },
       async decisionDetails(runRef, query, section, signal) {
         const q = detailScope(runRef, query, section), value = await request(runRef, q, signal, null, '/' + section); details(value, runRef, q, section); return value;
       },
@@ -720,10 +906,10 @@
         for (const key of ['page', 'size', 'heatmap_page', 'heatmap_size']) delete q[key];
         return request(runRef, { ...q, ...(detailSection ? { filter_section: detailSection } : {}), snapshot_ref: snapshotRef, format, section }, signal, format);
       }
-    }, ['decision', 'decisionSummary', 'decisionDetails', 'completionBatches', 'process', 'referenceWorkspace', 'resources', 'resourceDays', 'preparation', 'changeovers']);
+    }, ['decision', 'decisionSummary', 'resourceWorkspace', 'decisionDetails', 'completionBatches', 'process', 'referenceWorkspace', 'resources', 'resourceDays', 'preparation', 'changeovers']);
   }
-  function adapter(value) { return window.APSReadBoundary.checked(value, { decision, decisionSummary, decisionDetails: (payload, runRef, query, section) => details(payload, runRef, query, section), completionBatches, process: processDetails, referenceWorkspace,
+  function adapter(value) { return window.APSReadBoundary.checked(value, { decision, decisionSummary, resourceWorkspace, decisionDetails: (payload, runRef, query, section) => details(payload, runRef, query, section), completionBatches, process: processDetails, referenceWorkspace,
     resources: (payload, runRef, query) => resourceDetails(payload, runRef, query), resourceDays: (payload, runRef, query) => resourceDetails(payload, runRef, query, 'resource-days'),
     preparation: (payload, runRef, query) => preparationDetails(payload, runRef, query), changeovers: (payload, runRef, query) => preparationDetails(payload, runRef, query, 'changeovers') }); }
-  window.RunDecisionAPI = { create, adapter, decision, decisionSummary, details, scope, detailScope, completionScope, completionBatches, processScope, processDetails, referenceWorkspace, resourceScope, resourceDetails, preparationScope, preparationDetails };
+  window.RunDecisionAPI = { create, adapter, decision, decisionSummary, resourceWorkspace, resourceWorkspaceScope, resourceFilters, savedResourceView, resourceError, details, scope, detailScope, completionScope, completionBatches, processScope, processDetails, referenceWorkspace, resourceScope, resourceDetails, preparationScope, preparationDetails };
 })();

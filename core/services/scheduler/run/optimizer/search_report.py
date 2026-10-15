@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from .candidate_fingerprint import (
     CandidateFingerprint,
@@ -9,7 +9,6 @@ from .candidate_fingerprint import (
     jsonable_fingerprint_payload,
     score_strictly_better,
 )
-from .process_evidence import OptimizationProcessEvidence
 from .search_report_helpers import (
     append_fingerprint_event,
     candidate_summary,
@@ -75,7 +74,10 @@ class OptimizationSearchReportState:
     _candidate_sequence: int = field(default=0, init=False, repr=False)
     _best_candidate: Optional[Dict[str, Any]] = field(default=None, init=False, repr=False, compare=False)
     _best_identity: Optional[CandidateFingerprint] = field(default=None, init=False, repr=False, compare=False)
-    process_collector: Optional[OptimizationProcessEvidence] = field(default=None, repr=False, compare=False)
+    candidate_observer: Optional[Callable[..., None]] = field(default=None, repr=False, compare=False)
+    candidate_clock: Optional[Callable[[], float]] = field(default=None, repr=False, compare=False)
+    candidate_acceptance_observer: Optional[Callable[..., None]] = field(default=None, repr=False, compare=False)
+    reference_capture_observer: Optional[Callable[..., None]] = field(default=None, repr=False, compare=False)
 
     def next_candidate_id(self) -> int:
         self._candidate_sequence += 1
@@ -85,9 +87,31 @@ class OptimizationSearchReportState:
         """The retained best's stable identity; its comparison context is recomputed by the caller."""
         return self._best_identity if candidate is self._best_candidate else None
 
+    def sync_best_reference(self, candidate: Optional[Dict[str, Any]], *, origin: str = "shared_archive_reference") -> None:
+        """Adopt an already decoded comparison reference without recording new search work."""
+        if candidate is None or candidate is self._best_candidate:
+            return
+        identity = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints)
+        self._best_candidate, self._best_identity = candidate, identity
+        self.best_fingerprint = identity.output_key
+        self.best_candidate_fingerprint = identity.to_report_dict()
+        self.best_origin = origin
+        self.best_score = list(candidate.get("score") or ())
+        self.candidate_fingerprints.add(identity.output_key)
+        if self.initial_fingerprint is None:
+            self.initial_fingerprint = identity.output_key
+            self.initial_candidate_fingerprint = identity.to_report_dict()
+            self.initial_score = list(candidate.get("score") or ())
+
+    def _observe_candidate(self, candidate: Dict[str, Any], *, origin: str, verified: bool) -> None:
+        if self.candidate_observer is None:
+            return
+        if self.candidate_clock is None:
+            raise ValueError("A shared candidate observer requires the common search clock.")
+        elapsed_ms = max(int((self.candidate_clock() - self.started_at) * 1000), 0)
+        self.candidate_observer(candidate=candidate, origin=origin, verified=verified, elapsed_ms=elapsed_ms)
+
     def mark_phase_skipped(self, phase: str, reason: str, **extra: Any) -> None:
-        if self.process_collector is not None:
-            self.process_collector.skipped_phase(phase, reason)
         row: Dict[str, Any] = {"phase": safe_text(phase), "reason": safe_text(reason)}
         for key, value in extra.items():
             if value is not None:
@@ -111,8 +135,7 @@ class OptimizationSearchReportState:
                                  fingerprint: Optional[CandidateFingerprint] = None) -> CandidateFingerprint:
         """Count real work; an unverified checkpoint trial must not occupy the validated duplicate set."""
         self.evaluated_candidates += 1
-        if self.process_collector is not None:
-            self.process_collector.evaluated(candidate, origin=origin, verified=remember_fingerprint)
+        self._observe_candidate(candidate, origin=origin, verified=remember_fingerprint)
         fingerprint = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints, identity=fingerprint)
         if remember_fingerprint:
             self.candidate_fingerprints.add(fingerprint.output_key)
@@ -133,8 +156,7 @@ class OptimizationSearchReportState:
         if fingerprint.output_key not in self.candidate_fingerprints:
             self.evaluated_candidates += 1
             self.candidate_fingerprints.add(fingerprint.output_key)
-            if self.process_collector is not None:
-                self.process_collector.evaluated(candidate, origin=origin)
+            self._observe_candidate(candidate, origin=origin, verified=True)
         was_initial = self.initial_fingerprint is None
         if self.initial_fingerprint is None:
             self.initial_fingerprint = fingerprint.output_key
@@ -146,8 +168,8 @@ class OptimizationSearchReportState:
         self.best_origin = str(origin)
         self.best_score = list(candidate.get("score") or [])
         self.accepted_candidates += 1
-        if self.process_collector is not None:
-            self.process_collector.accepted(candidate, origin=origin)
+        if self.candidate_acceptance_observer is not None:
+            self.candidate_acceptance_observer(candidate=candidate, origin=origin, current_only=False)
         self.accepted_fingerprints.add(fingerprint.output_key)
         if not was_initial:
             self.best_improved_candidates += 1
@@ -168,12 +190,11 @@ class OptimizationSearchReportState:
         if fingerprint.output_key not in self.candidate_fingerprints:
             self.evaluated_candidates += 1
             self.candidate_fingerprints.add(fingerprint.output_key)
-            if self.process_collector is not None:
-                self.process_collector.evaluated(candidate, origin=origin)
+            self._observe_candidate(candidate, origin=origin, verified=True)
         self.accepted_candidates += 1
         self.current_accepted_candidates += 1
-        if self.process_collector is not None:
-            self.process_collector.accepted(candidate, origin=origin, current_only=True)
+        if self.candidate_acceptance_observer is not None:
+            self.candidate_acceptance_observer(candidate=candidate, origin=origin, current_only=True)
         self.accepted_fingerprints.add(fingerprint.output_key)
         append_fingerprint_event(self.fingerprint_events, origin=origin, status="current_accepted", fingerprint=fingerprint)
         self._append_attempt_summary(candidate_summary(candidate, origin=origin, status="current_accepted"))
@@ -286,8 +307,6 @@ class OptimizationSearchReportState:
 
     def _record_rejection_reason(self, reason: str) -> None:
         safe_reason = normalize_reason(reason)
-        if self.process_collector is not None:
-            self.process_collector.rejected(reason=safe_reason)
         self.rejected_candidates += 1
         self.rejection_summary[safe_reason] = int(self.rejection_summary.get(safe_reason, 0)) + 1
 

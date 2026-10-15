@@ -2,18 +2,163 @@
 
 - 用户授权：2026-10-13，逐阶段审查功能完整性、原型样式与排版、冗余防护、无用密码哈希和防御性文案；发现问题发回修复，通过后推进下一阶段，直到全部完成。
 - A实施对话：`01a13119-bc50-77b0-b399-30018dd316d6`，宿主 `local`，已冻结结束。
-- 当前B独立review/debug对话：`01a139e1-02ee-7cd0-bebd-ba53c0673b72`，宿主 `local`，A基线`efe047d3b3816db29f0718ba5999aeeb199669bf`。
+- B独立review/debug对话（已冻结）：`01a139e1-02ee-7cd0-bebd-ba53c0673b72`，宿主 `local`，A基线`efe047d3b3816db29f0718ba5999aeeb199669bf`。
+- 当前C算法优化对话：`01a13a5e-ebf4-7bb2-abd6-ca06b29491c4`，宿主`local`，题名“统一算法优化与性能收口”，基线为已推送B提交7b2697a5。
 - 主对话：`01a130fb-3ebb-7660-9a39-b2e1eb99e859`。
-- 自动跟进：`automation-2`，每 10 分钟检查可行动变化；按下方新增授权完成工作台交付、独立 review/debug、统一算法优化全部步骤后设为 `PAUSED`。
+- 自动跟进：`automation-2`，原每10分钟检查可行动变化；2026-10-15已按用户授权，在工作台交付、独立review/debug、统一优化和R01—R28非延期范围全部完成后设为`PAUSED`，其余设置保持。
 - 主对话负责本文件、具体施工设计、代码审查与独立验收；实施对话负责代码、相关验证和各 feature 交付材料。路线图条目的实施完成与本表的主对话验收分别记录。
 - 2026-10-13 新增明确授权：0—8阶段全部通过后提交并推送；新对话、新子代理进行 review/debug，主对话验收后再次提交推送；随后新对话实施统一算法优化。提交仅包含明确归属本轮的文件和必要文档，保留其他任务的 `开发文档/README.md` 等改动；发布和安装另按用户指令。
 - 2026-10-14 用户追加固定分工，适用于后续全部A／B／C实现：主对话负责方案与具体细节、明确施工指导、代码审查和真实使用验收；实施对话负责执行代码、相关验证及交接。发现设计或合同缺口，由主对话根据具体事实确定改法，再交实施方执行。产品、交互、数据职责和验证取舍的最终判断始终由主对话承担。
 
-## 当前推进：A已推送，B主验收通过待推送；性能由C收口（2026-10-14）
+## 最终验收：A/B已推送，C的U0—U6及R01—R28非延期范围全部完成（2026-10-15）
+
+主对话已完成全部设计细节、源码审查、真实页面与数据验收。最终第6轮门禁前16步全部通过；实际全量827项中791通过、0失败、36项Windows／PowerShell／CMD检查跳过。第17步required核销因其中15个已延期平台节点setup:skipped而返回1，整体命令返回2；原门槛与失败状态保留。主直接检查17份receipt、完整JSON、15节点与36跳过集合，确认没有其他未通过项，门禁运行期间源码漂移为false。主验收原件`evidence/unified-scheduling-optimization/2026-10-14/u6/parent-final-acceptance.json`，完整日志`u6/integration-gate-attempt-6.log`。
+
+末轮14项测试构造／合同接线已逐项由主定稿、C实施、主亲查，14个原失败与2个共用消费者共16项定点通过；随后上述全量结果确认整合通过。主直接将当前1717份产品、Schema和离线资产与已验收源码及两个已批准增量逐字节比对，0变化／0缺失／0新增；最终性能和实页证据继续适用。R01—R28的28份交付均implementation_complete／parent passed，U4前置阻塞已全部接续。
+
+最终858新10秒等待中位11.3345秒、最大11.3387秒，新30秒中位20.2821秒；推荐0超期／0拖期、跨度848.6小时，较旧902.6667小时缩短54.0667小时，切换126→127，真实更少切换的备选及其代价完整保留。20k旧4／6／8完整首屏分别1.7894／1.8437／1.8281秒，全部达2秒目标。计划版本按钮及页头对齐已在1280／560实页核对，横向溢出0，最终64／40统计名称准确。
+
+Windows／Win7实机、PowerShell和CMD统一按用户安排留待集中实测。A为efe047d3、B为7b2697a5，均已推送；C源码与离线构建保存在当前工作区，Git提交／推送未授权，clean-worktree proof未形成。用户原README十行、U0原件与正常数据库保持。实现交付索引见`evidence/unified-scheduling-optimization/2026-10-14/repeated-work/completed-index.json`及`u6/latest-source.json`。
+
+### 阶段过程记录
+
+以下保留各时点真实状态；当前结论以上述最终验收为准。
+
+最终门禁第五轮1—15步通过；第16步全量实际827项：777通过、14失败、36跳过，第17步尚未执行。原件为`evidence/QualityGate/v4/current_full_test_debt.failed.json`（2026-10-15T08:33:49）。主已亲读14项对应测试、实际产品合同和共用构造，并完成四组独立只读核对；全部具体修法写入U6§4.8，授权C只调整测试构造时机、旧目录/DDL接线及新增失败读模型的精确产物断言。原业务数值、缺项、不同工作量、事务/历史只读检查保持；产品、构建与已通过性能状态保持冻结。定点验证和主增量复核完成后继续同一完整门禁。
+
+U6最终实页主验收通过：当前构建读取原保存样本，1280／560两种宽度均明确显示“跳过执行次数64／不同计算请求40”；页头四按钮均32px高、中心分别155／204.390625，页面横向溢出0、alert和console错误0，两截图主已目视。原件`u6/process-counts-final-ui/parent-browser-acceptance.json`。整合门禁首轮在第5步发现新增依赖环，主按真实职责定稿§4.4：共同组合层上移run、断点输入移至algorithm_runtime；主直接与正式冻结包比对全部函数／类正文一致，两个既有节点2 passed／2.95秒，原件`u6/import-cycle-repair/parent-source-acceptance.json`。后续原完整门禁继续，原失败及未执行范围保持记录。
+
+U6最终同码构建及六次858／四次48主验收通过。冻结`u6/source-freeze/freeze.json`，实际Python3.8.10、Chrome109离线10项资产构建通过，构建仅改变生成main.js。三次新30等待20.2821／20.3508／20.2386秒，中位20.2821秒；三次新10等待11.3387／11.3345／11.3222秒，中位11.3345、最大11.3387秒，全部达原门槛。六次推荐完整向量均[0,0,0,0,848.6,127]，三组新30逐组优于旧30；全部12代表各858工序／validator858／0错误、身份与实算选择一致、只读核验0写入，输入与原U5对应样本一致。主已逐张目视六张实页，首屏410.8—503.7ms、0页面错误。第三10的切换备选为126次／4超期／246.0333拖期／1070.0333跨度，真实代价保持；其余五次备选为120次／0超期／0拖期／920.5跨度。
+
+本轮48四目标均按原shift_pool／5秒／seed0、48成员与独立全向量及硬约束通过。最少超期12→10批、拖期1544→1472.5小时、跨度268→288.5小时；最短拖期1544→1444.5小时、跨度270.5；加权拖期2972.5→2013小时、跨度270；最少切换原0仍0，按后续交付分量选10批超期／1469拖期／290.5跨度。原件与主验收汇总`u6/shared-repair-retest/parent-acceptance.json`。旧30三份、20k最终六项及未变UI复用；64／40实页已完成，最终完整适用门禁和交付归并继续。
+
+U5整体主验收通过，U6正式授权同一C执行。最后20k两层4/6/8各一次结果：HTTP1.338796／1.169229／1.197794秒，浏览器完整首屏1.7894／1.8437／1.8281秒，全部低于2秒。主亲查原始计时／请求日志／完整身份与100日范围、201资源／160800可排／5000占用／20×7热图，并目视全部三张实页截图；三次HTTP逐字段0差异、全部读取0写入，每页恰1条组合业务请求，页面错误0。原件`u5/20k/parent-consumer-read-layer-retest-review.json`与consumer-read-layer-freeze，前四轮失败/部分通过记录保留。858九组、48四目标和此前主实际UI验收按同码未变范围复用。U6按主定稿移交共同runtime、退役旧外层/独立缓存、迁移仍承担风险的测试、同步说明并执行一次适用整合门禁；Windows继续延期，C不提交推送，README原十行/U0/B原件保持。
+
+U6首批代码主审通过：主亲读共同runtime四文件迁移与统计名称五文件差异。runtime仅保留四项真实依赖，shared直接导入；显式runtime及SearchBudget时钟覆盖保持，实际Python3.8导入／编译与2项共享入口测试通过（2.77秒）。统计页面、导出、帮助同步“跳过执行次数／不同计算请求”，存档64／40保持，2项已有合同通过（2.16秒）。原件`u6/runtime-*`与`u6/process-labels-*`；主已核对原日志，最终构建后的真实64／40页面仍待验收。其余旧链退役与测试迁移继续实施。
+
+U6主已亲读旧外层／候选模块、共同stage及IG helper全部当前净差异，核对真实版本/事务/约束、评分、采样和保存读取。已确认Repair原seen_decisions在shared也可达，当前移交共同session会改变yield与reuse/skip计数；主正式定稿§3.1保留此统一职责，并在最终冻结后仅复测新858六次与48四目标，旧30三份和20k有效结果复用。另主确认旧OptimizationProcessEvidence只有测试非None引用，§4.2已明确四产品文件退役与现有测试承接，保留旧保存过程读取。当前这些收口和最终整合仍在进行；U5上述通过对应其原冻结状态。
+
+U6追加代码／定点主审通过：§4.2四产品文件、采样与GraphReady／IG实际比较、unknown／unverified共同过程、旧过程8份保存素材及永久引用读取已亲查，独立静态复核同样通过；四过程节点4 passed。历史失败基线fixture漏存decision_evidence导致的原失败已补齐完整保存字典，原节点1 passed／0.73秒，保留原失败日志。§4.3同一规则节点分别核对真实纯枚举8项与本次有限预算实际6项，ATC16、7次规则动作、15次非改善及实际采用来源仍通过，1 passed／1.36秒；原4业务节点复用。循环真实入口的2个受影响节点最终2 passed／0.33秒。该批原件在`u6/legacy-process-writer/`、`u6/business-rule-4.3-*`与`u6/outer-runtime-cycle-source-pytest-ready.log`。最终冻结、六次858／四次48、完整适用门禁和64／40实页仍待完成。
+
+U4最后P1主验收通过：主亲读v41准确状态分支、admission缺证投影和官方读取原错误边界，并独立将failed/interrupted两个旧40原库只读backup到新副本，真实ensure_schema升42。每库85原业务表typed值/rowid/refs/receipt原文相同，8个旧/新公开调用逐字段同义，完整official仍原candidate_baseline_invalid，writes0/FK空/原库元数据保持。原件`u4/legacy-terminal-migration/parent-acceptance-t4kof1m1/parent-acceptance.json`。partial此前13调用有效结果复用。U4整体判定passed，R18/19/20真实UI接续及R22/24/25/26原阻塞整合均闭合。
+
+U5正式派发：收束当前已在途必要回归并冻结同一源码/构建，按施工稿执行唯一9次858、四目标48工序、20k 4/6/8两层测量。性能期间串行，不并行产品修改/构建/测试/求解；主亲查结果及实际页面，未达按事实返修，U6继续等待U5验收。Windows延期、无C提交/推送授权、原README十行/U0/B正常库边界保持。
+
+U5九次858质量／等待／首屏已主验收：旧30、新30、新10的等待中位数分别31.7957／20.2656／11.3183秒，最大值31.9054／20.4155／11.3340秒。全部原始质量复核通过，每候选858道／validator858／0错误、选择实算一致、0写入；三组新30完整推荐向量均[0,0,0,0,848.6,127]，逐组优于旧[0,0,0,0,902.6667,126]。新10三次同样为848.6小时、0超期／0拖期，通过12秒中位／14秒最大和跨度底线。较旧推荐缩短54.0667小时、切换增加1次；共同另保存920.5小时／120次切换的真实替代方案。九张截图已逐张目视，旧完整首屏596.1—610.1ms、新435.6—475.0ms，均无页面错误；所有永久ref／卡片数／选中与推荐对应。实际接单一次、t0/t1、包络与COMMIT返回、源码导入／输入／种子及串行次序均核对。主汇总`u5/parent-858-acceptance.json`，48质量与20k仍待完成，未判U5整体通过。
+
+U5四目标48工序主验收通过：主亲读本轮runner及四份原件，原shift_pool／seed0／各5秒入口、原_audit_plan硬约束及完整48成员、共同首解／目标赢家／实际安排评分和去重均通过。每次保存2份真实代表。min_overdue将超期12→10批、总拖期1544→1472.5小时，跨度268→288.5小时；min_tardiness总拖期1544→1444.5小时、跨度268→270.5小时；min_weighted_tardiness加权拖期2972.5→2013小时、总拖期1544→1445.5小时，跨度268→270小时。该fixture原切换0，min_changeover仍0，完整向量改善来自后续交付分量，未声称切换下降。原件`u5/parent-business48-acceptance.json`。
+
+U5 20k首轮实测主判changes_requested：HTTP summary 4/6/8为1.401865／1.433555／1.389057秒、逐字段0差异、均低于2秒；浏览器完整资源首屏3.9316／4.0860／4.4531秒，三张截图及原DOM/身份主已亲查，201资源／160800可排／5000占用／20×7当前热图和全部4/6/8卡正确，实际页面未达2秒。主随后亲读共同链并实际各一次只读cProfile，确认window与periods重复日历/measurement/日计算、分页前构造201×100完整cell，以及summary→resources跨请求重复准备。`u5/20k/parent-diagnostic-before/`保留原data和profile，0写入。U5§6.1/6.2已主定稿派C：同资源轻量完整事实一次、可见cell与排名drill按需投影、日期索引，以及同快照resource-workspace首屏协调，原DTO/范围/独立端点和错误保持。正式复测待整合构建后仅重验受影响4/6/8，858/48有效结果复用；U6继续待验收。
+
+U5读取修复首审：主已亲读共同资源事实、组合服务／route／独立token和前端父／叶读取接线。实际零长week未知冲突返修已复验，与冻结原值相同，轻量事实与完整cell均conflict=None，`u5/20k/parent-zero-window-acceptance.json`。C对主保存的完整旧data逐值比较通过：summary 32636节点、resources 50559节点均0差异，独立读取和同source组合读取分别一致，query_only=1／writes=0；主已亲读对照工具及两个原始报告。时间小数秒等值边界亦已主实际复现并定稿返修，最终定点／构建／冷服务复测仍待完成。
+
+U5读取修复代码主审通过：时间小数秒实际模块复验保留原有效区间，`u5/20k/parent-fractional-view-acceptance.json`；3项现有前端合同、真实HTTP组合信封穿过前端三个校验入口、5项资源用例及1项组合API用例通过，原件在`20k/repair-6.1/`与`repair-6.2/`。主亲读夜班原数据／投影差异与fixture修订，保留原2小时占用／3小时需求、夜班和冲突断言；仅明确资源fixture在派生模型前施加安排变化。组合新用例的malformed ref预期按既有400纠正，产品状态码保持。当前允许统一构建与既定两层4/6/8各一次冷测，正式性能及主真实交互未完成，U5整体尚未通过。
+
+U5第二轮正式结果仍changes_requested：HTTP summary 1.757887／1.640529／1.626213秒、32643／35311／37979节点0差异；浏览器2.4729／2.566／2.646秒，三页各一次resource-workspace、0页面错误、完整范围与内容通过，主已逐张目视，仍未达2秒。主报告`u5/20k/parent-read-layer-retest-review.json`，原件`read-layer-retest/`。随后主亲自一次组合profile及两个隔离临时实验，产品0修改、数据库0写入、完整DTO0差异；确认日历相同时间解析、前缀已完成段重复时间差、推荐与自身比较重复样本扫描、day统计再次投影。正式U5§6.3已定稿派C按共同职责收口，相关验证后仅复测受影响20k两层，858/48有效结果复用；U6继续等待。
+
+U5§6.5代码与数据主验收通过：主对照stream-read-layer-freeze亲读2份产品及2份测试增量，默认旧pressure日缓存保持，仅决策读取在完整多日prepared统计时关闭未消费日值的保留；已有缓存命中、potential_work变体、cell/period明细缓存均保持。8 passed／3.52秒及Ruff/Python3.8/差异检查原日志已亲读。25×25样本真实790次计算、650个业务区间、165份缓存，140次重复准确对应可见日；独立和组合summary32636节点／resources50559节点均0差异、0写入。允许owner交接释放后构建冻结，按既定独立冷服务两层4/6/8各一次复测；前端真实交互及858／48复用，U6继续待性能通过。
+
+U5第4轮正式结果部分通过：HTTP1.260978／1.284503／1.302295秒、完整DTO0差异；浏览器4卡1.8841秒通过，6卡2.411秒、8卡2.0249秒未达。主亲查全部原值/身份/完整资源内容及三截图，报告`20k/parent-stream-read-layer-retest-review.json`。随后主两次独立只读生命周期诊断：全量日值cache60903→按需883、进程峰值少约90MB、GC累计约0.585→0.328秒，完整DTO均0差异／0写入，GC始终开启；剖析时间不作性能通过。U5§6.5已主定稿派C，默认保留旧pressure全日消费者cache，仅DecisionResources流式归并全日统计，cell/period按实际需求缓存；明确接受最多280可见日按需重算换去60020无消费者缓存。原计数记录保留，新计数准确反映取舍。
+
+U5§6.4代码与数据主验收通过：主对照cpu-read-layer-freeze亲读4份产品及3份测试增量，raw读取/成员展开职责分开，single与bulk共用_at_index及_window_result，known_span独立前缀和原potential_work缓存保持。source2 passed／0.30秒、interval1 passed／0.43秒、resource8 passed／3.61秒原日志已亲读；样本25整窗single＋625日bulk仍650次唯一数值事实。完整summary32636节点／resources50559节点及组合均0差异／0写入。允许收齐owner交接和统一静态成功后构建冻结、两层4/6/8各一次；已有前端真实交互及858／48有效证据复用。
+
+U5第三轮正式结果仍changes_requested：HTTP1.306208／1.351330／1.356481秒、完整DTO0差异／0写入；独立冷浏览器2.0264／2.2026／2.1273秒，三项均未达2秒。主亲查全部原值、完整身份／20×7热图／201资源及三张截图，每页恰1条组合请求，错误0。主报告`u5/20k/parent-cpu-read-layer-retest-review.json`。全部正式计时完成后，主一次完整route profile及隔离诊断保持原DTO0差异／0写入，确认arrangements无效成员展开与连续自然日端点重复查询，现按U5§6.4定稿继续收口；前端实际交互、858／48质量证据复用，U6仍待通过。
+
+U5§6.3代码与受影响验证主审通过：主逐项对照read-layer-freeze亲读全部5份产品差异及现有用例增量；前缀节点1 passed／0.23秒、推荐节点1 passed／0.52秒、资源相关8 passed／3.45秒、Ruff和实际Python3.8检查通过。25资源×25日样本原650次数值保持，时间字串62个仅解析62次、完整day period_facts降为0、仅140个可见周期统计；未知计数、日冲突、跨夜／零长与旧period聚合对照保持。完整summary32636节点／resources50559节点及同源组合均0差异／0写入，原件`20k/repair-6.3/`已亲读。随后独立审查确认零长index复用正长规范日历时会误用双日汇总，主已定稿补本次low<high，实际代码及该既有节点1 passed／0.30秒亲查通过，正长DTO结果复用。主已明确允许C统一构建／冻结并执行两层4/6/8各一次，当前尚未判正式性能通过。
+
+U5组合读取真实交互主验收通过：主在保留的50744已构建实例亲自操作旧8卡，首开／换候选／整页刷新各1次resource-workspace、无独立summary；资源第2页只1次leaf，切页签隐藏重开仍第2页且资源请求不增加；阈值0.9→0.8与显式资源刷新合计2次leaf。推荐／基准／当前查看身份分别保持，201／5000／160800完整，console0错0警告／页面0横溢出，最终截图已目视。原件`u5/20k/parent-combined-ui-acceptance.json`。该前端在§6.3未改，后续复用交互验收；新后端的正式性能仍待冷服务实测。
+
+第一轮新30/10实页由主亲自操作：30秒两方案查看／推荐／基准／采用隔离和真实过程时刻正确；10秒显示预算10／实际10.001秒／首完整615ms。原件`u5/parent-round-1-review.json`与各run目录。后续重复轮次按相同页面原始记录和逐张截图验收，不重复求解。
+
+U4主真实浏览器主要路径已完成：独立51999实例实际预算60→10→30→自定义1后只提交一次，生成complete/1候选/1任务，存档预算1、全局60保持；52指标、非主过程方向/正式基准切换、甘特返回原选择、完整XLSX下载、新采用预检与旧来源漂移拒绝均实测。历史实际两次运行显示60→1预算差异、条件第2页保持。旧52016的4/6/8全部卡及原ref/20k范围保持，1280与560布局无溢出；资源翻第2页后隐藏重开仍第2页，resources请求总数2→2。正式/候选workspace各1请求；正式打印实际PDF并渲染目视，Overview 1→0→1、scrollLeft 393→0→393、task ref相同；960宽度重排正常。详细原件`u4/parent-browser-acceptance.json`及其目录。一次手工拼接历史URL校验拒绝后改走实际界面入口，未列作产品缺陷。
+
+U5 observer主发现并定稿第二处显示判断：closed details中的资源汇总表在Chrome仍有rect，实际checkVisibility=false/innerText空；改为真实业务汇总、筛选201与20×7热图可见，隐藏两行仅before/after内容核对。主亲读修后代码并在实际旧8卡与新1卡页面运行纯inspect，均ready=true，隐藏表visible=false，原件`u5/parent-observer-real-eight.json`及`parent-observer-real-new.json`。正式性能仍未开始。
+
+U4最后迁移补验已定稿§8.1：partial真实旧B worker→40→42通过，85原业务表typed/rowid/refs/receipt及13公开DTO逐字段相同。failed/interrupted实际旧0候选存档发现P1：无dispositions却被v41要求完整official，整库升级回滚。主亲读并只读复现，已定稿§8.2按合法旧无结果分支保存真实成员/缺证状态、默认读取同义，完整正式比较沿原candidate_baseline_invalid；旧active沿原宿主启动前恢复，不增加续算入口。C实施中，U4整体等待该修复实际验收。旧1仅synthetic目录计数原覆盖，不伪造真实旧产品运行。
+
+用户“计划版本”按钮歪斜问题已主验收：共同导航选择器改为工具栏后代，清除原12px下边距导致的6px上偏。实际构建后刷新52016实页、临时样式不存在；1280px同组按钮中心155px，560px全部4按钮高32px/中心224.390625px，横向溢出0，两张截图已目视核对。记录`.codestable/issues/2026-10-15-plan-version-alignment/plan-version-alignment-fix-note.md`。
+
+U5工具接线主已实际通过：亲读最终unified_evidence/binding_check/observer，执行现有binding_check读取真实新worker归档与native结果，两分支saved/internal comparison均一致且solver_called=false，`u5/parent-binding-acceptance.json`。9次858、48质量与20k性能仍未启动。主当前功能验收实例52016为迁移20k只读副本，51999为C独立新结果库，身份与证据各自记录；原B正常库及U0原件保持。
+
+§5.4有限小数预算主通过：主公开入口观测确认cfg1/override1.5曾被截到1秒，已定稿为共同SearchBudget唯一deadline和实际configured_seconds。首测试因原场景未跨1秒而失败；调整受控准备时间后，主直接调用同一完整native共享测试全部断言通过，0.5场景真实解码100.053<100.501，1.5场景真实解码101.063跨原101.001且早于实际101.501，预算与过程值一致，`u4/parent-fractional-budget-acceptance-final.json`。原失败保留`parent-fractional-budget-acceptance.log`。
+
+最新前端真实合同主1 passed／18 deselected／2.04秒，`u4/frontend/parent-unified-decision-contract-final.log`：真实公共DTO接纳strict_improvement、15ms真实改善与无改善null、新旧候选布局分支、未知评分标题、加权缺项、目标/来源/查看/基准/采用/甘特返回隔离均通过。首验仅“0.015”秒文本预期与既有“15 毫秒”格式冲突，保留初次失败并只改预期。采样省略末改善点Chart接续及实际浏览器仍待完成。新版history主1 passed／0.35秒，receipt/native完整保存来源与真实覆盖预算优先保持，`u4/parent-history-optimization-acceptance.log`。
+
+最新两项主实际关闭：§5.3首验发现SummaryBuildContext字段误写candidate_comparison，正式运行AttributeError回滚，保留`u4/parent-formal-summary-storage-attempt1.json`；按真实candidate_comparison_public修正后，主真实ScheduleService在局部4096阈值下完成，完整18855字节原文保存，显示1599字节并明确裁剪，selection/candidates/3方向共同过程均保全、事务已提交，原件`parent-formal-summary-storage-acceptance.json`。§7.1过程页非主方向筛选all导出主实际1 passed／1.45秒，全部3方向、当前来源/排序/snapshot及共同范围一次通过，`u4/process/parent-filtered-all-export-acceptance.log`。三项前端源码返修也已逐处亲查闭合，真实页面仍接续。
+
+U5主已亲读全部准备工具，记录准确存档与内存事实接线到§4.1并派C；发现858 observer等待仅differences出现的3个DOM，默认delivery永远不完成，已按新旧共同成功数据DOM定稿§5修法。原B也有推荐和delivery-source，缺少新data-decision-panel包装已明确。性能运行仍未启动。
+
+主最新实际验收：新worker→采用preview/confirm→候选catalog/workspace与正式plan.workspace真实HTTP→真实前端合同通过，目标顺序保持主目标优先；单独workspace初次验证漏载EffortProjectionContract，补实际依赖后通过，生产build-order依赖原已正确。原件`u4/parent-new-api-dtuqr4z5/`。真实ScheduleService.run_schedule(simulate=False)实际仅1次shared，保存1候选、1正式任务及adopted+3方向角色；共同PlanQuery/LegacyNavigation/Workbench目录身份一致，对比角色只读、4个永久plan_ref、读取写入0/FK空，`u4/parent-native-schedule-acceptance.json`。新候选history available1/can_open=true/同正式ref/writes0，关闭R25对应新结果路径。
+
+执行快照§1.4主已亲读并实际验收4工序：统一排序后实际新capture与ledger数组一致，旧SQL顺序/倒序归档通过采用guard，真实字段/类型/重复行变化仍拒绝、原归档字节保持。原件`evidence/2026-10-14-unified-scheduling-optimization/u4/production-input/parent-execution-order-acceptance.json`。§7.5后端与导出主实际2 passed／1.72秒，真实改善15ms与结束100ms分开，末改善点被采样省略仍保留时刻，HTTP/CSV/XLSX通过，原件`u4/process/parent-improvement-acceptance.log`。
+
+U4剩余接续已具体派C：§5.3在display size guard之前保存正式统一运行完整summary JSON（主实际缩阈值18963→1441字节时复现selection/process/candidates丢失）；§7.3未知评分partial卡标题消费原label；§7.5前端point允许strict_improvement而sampling.mandatory仍准确三锚点；§7.1过程页all导出完整targets并保留当前筛选/来源。最后三项均主亲查真实调用确认。完整前端构建、页面交互及受影响整合节点继续，U4整体尚在验收。U6[清理施工稿](../../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-u6-instructions.md)已完成具体职责与旧节点退役设计，状态prepared_pending_u5_acceptance，当前未执行清理。
+
+U4 §2.7/2.8与§5.2主源码复验及真实定点已完成：亲读status共同适配、claim/finish接续、最终JSON编码、Schema42三表迁移、共同role/排序与facts规范。首轮4节点3 passed/1 failed／1.48秒，唯一失败为新增成功测试直接调用目录未进入其既有read_snapshot；已按真实调用补齐，主只复跑该成功节点1 passed／0.44秒。worker实际16列JSON准备16次、完成事务编码0次，完成状态/重复execute相同且不再计算，大列/tasks状态读取0；真实迁移保留有内容的3表rowid/sequence、原ref/clock与40 raw/named事实，新旧正式保存及失败回滚通过。原件`u4/parent-v42-worker-native-acceptance.log`、`parent-v42-native-success-acceptance.log`。
+
+主另把已验收858的41库只读backup到独立42副本并执行实际ensure_schema，13张相关原表及read models逐行保持，4×858任务仍3432条；status相同、原production_facts_match=true、foreign_key_check空、升级后只读writes=0。原件`u4/parent-v42-858-acceptance.json`，当前可用副本`u4/parent-v42-858-h2j5u8av/upgraded.sqlite`。R24此前候选来源受U4前置阻塞的实际完整create/change/save/reopen也已接续通过1 passed／0.86秒，`evidence/2026-10-14-unified-scheduling-optimization/repeated-work/r24/parent-u4-integration-acceptance.log`。
+
+U4 §7.4/7.5已主亲查、复现并派C：新artifact目标列表不能按canonical JSON字典顺序生成；正式采用后的PlanContract须接受同一新版算法来源；完整新selection字段顺序按primary提取；真实过程改善15ms与final100ms须分别保存展示。目标顺序/采用来源/历史字段静态链已见修正，主最终真实JS/API/浏览器接续；过程时刻仍待修改。原件`u4/parent-generation-contract-regression.json`、`parent-history-objective-regression.json`、`process/parent-improvement-flag-controlled-regression.json`。无改善native重放原件单列，未将它计作改善反例。
+
+主继续确认正式ScheduleService存储P1：business_objective候选及min_overdue方向被旧CHECK拒绝，读端旧三角色同时拒绝。主实际SQLite和纯读入口复现三项，已在U4 §5.2定稿Schema42两表CHECK扩展、三表外键闭包保真迁移、共同四方向比较身份、角色查询与生产事实兼容，并派C执行。旧AdjustmentDraft/Scenario写服务已退役，主亲查后维持其历史DDL，当前workbench试调沿plan_ref。原件`u4/parent-formal-storage-contract-regression.json`；正式公开入口实际保存及42验收待C交接。
+
+主在最新资源对象目录格式的真实858升级副本上，实际完成最后graph候选的analysis／全量comparison／窗口comparison／批次comparison四种旧合同对照，完整data和state逐字段相同、writes=0；原件`u4/readers/parent-analysis-integration/analysis-integration-probe.json`，C既有其他候选16场景材料按未变范围复用。分件发布共同核心主亲读后，实际运行真实SQLite合法部分/正式采用边界场景1 passed／0.58秒，覆盖前序/seed/资源/窗口约束及发布payload只建一次，原件`u4/parent-piece-publication-acceptance.log`。
+
+worker末端重复读取已主实际复现并定稿U4 §2.7：原完成返回读取五类大归档和tasks，新status投影原DTO逐字段相同且上述读取0；完成归属检查改用既有claim_head。具体共同适配、重复claim和BUSY重试职责已明确派C，原件`u4/readers/parent-worker-status-read-regression.json`。新worker整条实际调用与最终公开UI仍在U4实施验收中。
+
+U4上述主审返修已完成首轮主复验：亲读新版schema_compat、job/目录双投影、资源对象目录、source先筛后展开与实际调用；现有真实41迁移场景1 passed／0.78秒，覆盖40 raw/named事实等价及真实业务/额外DDL变化仍可识别。主另从只读U0 858原件复制，实际ensure_schema（含预检、备份和正式升级）通过；4×858原Jobs/Candidates/Tasks/Receipts逐值保持，旧job status和目录row全部字段相同、原保存生产事实match=true；升级后验读query_only=1／writes=0。原件`u4/parent-v41-migration-acceptance.log`和`u4/parent-v41-858-acceptance.json`。副本为`u4/parent-v41-858-pq46psio/upgraded.sqlite`。
+
+主实际三个对应反例也已通过：正式基准原50小时误算恢复为本次2小时，范围外未知时间不污染；缺ref但有名称对象与同supplier ref两个来源名称精确恢复；摘要/目录无用成员展开20,000→0，公开数据保持。原件`u4/readers/parent-read-model-repairs-acceptance.json`。这是上述源头修复与真实旧库迁移的验收；新worker/共享公开选择、全部API/UI与20k范围仍按U4继续。
+
+新builder主已逐行亲读，追加U4稿2.6两项返修并实际复现：job状态误用目录shape，恢复原16字段及独立目录/工作量scope；紧凑安排只保留资源ref会丢已知名称/缺ref对象及正式供应商各历史来源label，统一改为每份安排的精确资源对象目录和行内index。原件`u4/readers/parent-status-shape-regression.json`、`parent-arrangement-resource-regression.json`。两项均由主确定完整协议后派C，最终API/迁移/实页验收仍待整合。主另外实际预检2 passed／0.74秒（`u4/parent-preflight-capture-acceptance.log`），确认普通/旧结构每表一次、DATE业务值与SQLite原文本保持。
+
+最新U4主审：已亲查当前输入捕获/受理、轻量source、旧analysis/comparison、history SQL、Schema41和纯投影的实际源头。R25唯一历史返修主实际1 passed／0.80秒；共同过程范围字典真实native场景1 passed／2.81秒；completion原7场景7 passed／0.31秒；交付末道纯公式原件逐字段对照通过（5批、4条并列末道、分件/point/多段/NULL与BLOB/缺disposition，分组和区间重复准备0）。history既有21个SQL/DTO场景主实际通过，大归档与任务读取均0；本轮只将原probe未消费的admission decision列补空fixture，原脚本保留。原件为`u4/process/parent-scopes-acceptance.log`、`u4/parent-completion-acceptance.log`、`u4/parent-deliverydetail-equality.json`及`u4/readers/parent-history-sql-probe.json`。
+
+三项U4主审返修已按实际复现定稿并派C：正式来源依赖变化时，范围外50小时工序污染本次2小时makespan（§3）；候选摘要/目录先展开后丢弃每候选20k成员（§3）；41派生DDL升级使未变真实858旧archive的production_facts_match从true变false（§2.5）。最后一项在内存副本隔离验证DDL和版本，完整迁移仍待builder整合。三者原件分别`u4/readers/parent-official-scope-regression.json`、`parent-candidate-expansion-count.json`及`u4/parent-v41-production-compat-regression.json`。上述已通过部分不代替U4整体发布/迁移/API/UI验收。
+
+U5准确施工稿已准备为[质量与性能验收](../../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-u5-instructions.md)，状态prepared_pending_u4_acceptance。允许C准备参数化工具，正式9次858和20k HTTP/浏览器测量等待U4主通过及同码构建冻结；当前未启动性能复测。Windows延期继续。
+
+最新接续：R18保存与R19打印返修代码、真实父子挂载测试已主亲查并实际通过，`r19-print-cache-repair/parent-acceptance.log`：跨类别保存直接请求实际第2页，Overview打印卸载/重挂后同任务新增日期解析与bin均0；R18报表恢复第2页及导出绑定1 passed／0.53秒（`r18-catalog/parent-acceptance.log`）。R24十二产品文件已亲查，实际正式来源试调闭环1 passed；候选来源1 failed发生在U4纯builder尚未落地的导入前置，保留`r24/parent-acceptance.log`待集成接续。R25全部差异已亲查，实际试调HTTP预检/确认/回执1 passed／0.65秒；唯一历史记录判定前检查多条正文的回归已按原合同返修，主复验接续。R26全部产品差异及新增两场景已亲查，实际2 passed／0.58秒；看板整合读取随U4最终重验。后三项原件目录为`evidence/2026-10-14-unified-scheduling-optimization/repeated-work/`，先前已通过结果按未变范围复用。
+
+U4新增两项兼容缺口已主亲查并补定：独立delivery_detail_json保存旧analysis/comparison的完整last_operations；context按需保存无候选基准的原preparation/completion/delivery汇总，按本次run依据保持旧缺项计数。具体字段、纯函数、状态边界与必要对照已写U4稿2.1/2.4/4.2并派发C。
+
+最新主验收接续：R21同步存储源码及真实source contract通过（`repeated-work/r21/parent-source-acceptance.log`：同步写后回读0、本地事件重读/重验0，quota/remove异常和晚到pending保留）；R23单侧条件源码与主实际1 passed／1.87秒通过（`r23/parent-acceptance.log`）。R27十个产品文件逐一亲查，主实际3 passed／0.67秒（`r27/parent-acceptance.log`），覆盖真实SQLite批量复制/NULL与BLOB/外协上下文/写入失败回滚、历史source_event_id资格与全局事件上限；其余未变9个唯一节点材料按对应范围复用。
+
+R22共同读取主亲查16个产品文件及真实新增场景，1 passed／0.43秒；主只读原正常库v1/15条任务，SELECT 203→63，raw/detail/selected_context各1次，完整公开DTO同原件、writes=0、原库及WAL/SHM元数据保持，原件`r22/parent-acceptance.log`及`parent-after-normal.json`。R22该职责定点通过；关联集合仍有U4中间状态导致的19项旧配置属性与1项新表前置失败，原日志保留，待公开入口/schema合并后由C复跑受影响既有节点，最终整合验收再关闭。U4配置退役九产品文件已主亲查，真实旧preset/显式预算保留、旧字段提交写前拒绝用例1 passed／0.44秒（`u4/config-retirement/parent-acceptance.log`）；新鲜worker的公开入口接线仍由U4统一验证。
+
+R20模型源头主实际对照：7个公开wrapper及4个生产几何结果与原件相同，实际位置/原DTO保持；两种宽度的point布局6→4次、图源边读取4→1次、交互全位置Map遍历2→0次，`r19-r20/parent-model-comparison.json`；`r20/parent-source-acceptance.log`图合同通过。真实浏览器宽度/缩放/hover/打印与整合构建仍在U4后统一执行。R18跨类别保存后旧页码重读、R19打印卸载Overview丢缓存两处已主亲查并定稿返修到原施工稿；历史图同data复用与新条目详情请求后的新data准备按实际层次记录。
+
+U4实施缺口已主补定：受理表新增独立decision_json保存相同纯builder的context/memberships/calendar/official，进行中比较保留完整原scope/基准，轮询目录仍只读scope_json；终态构建复用受理基础。分件发布与采用共用约束核心，合法前序闭合部分候选允许保存，所有seed/资源/时间/执行保护保持；正式采用仍执行原完整可排与正式范围覆盖资格。具体表列、调用点与验证见U4稿2.3/5.1，已派发同一C。
+
+U3及U3.8主验收通过：主对话亲读共同optimizer/decode/budget/process、五个求值入口及普通/graph/repair/IG/断点实际接线，核实warmstart排序前后预算拒绝只在共同预算记录一次。主对话在当前整合源码实际运行8项场景，8 passed／2.94秒，原件`evidence/unified-scheduling-optimization/2026-10-14/u3/parent-u3-acceptance-pytest.log`。其余未变U3兼容材料按覆盖范围复用；R17/R28随后接续变化继续按对应批次验收。U4完整[具体施工稿](../../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-u4-instructions.md)已由主对话亲查源头并定稿：统一生产捕获和input_ref消费、Schema41三张不可变读模型、轻量状态/目录/摘要、旧analysis/comparison与分区导出、公开共享1—3代表、版本化选择与共同过程、确认预算和新旧UI合同。正式派发同一C，无新建对话；858及20k实测留U5，Windows继续延期。
+
+R01—R17本轮主验收已完成，R28固定事务/native会话部分也通过。主对话逐组亲读实际产品差异、必要调用者和原交接，对后续变化只验证对应范围：R01/R11普通页未引用坏工种回归1 passed／0.29秒；R05物料与R06区间两项2 passed／0.27秒，阶段缺料真实输入另1 passed／0.36秒；R08/R09实际锁等待及连接路径5 passed／1.28秒；R10模板定位/批量工时事务2 passed／0.62秒；R11物料与关联页3 passed／0.32秒；R12来源SQL与R13外协捕获2 passed／0.70秒；R14日历与资格/空停机5 passed／0.36秒；R15静态评价与容量3 passed／0.32秒；R16真实repair及续取2 passed／0.43秒；R17图/SGS和R28断点/写事务12 passed／0.44秒。日志为各`repeated-work/rXX`目录的`parent-*acceptance.log`，R14为`repeated-work/parent-r14-acceptance.log`。以上是相关定点结果，U4和最终整合门禁继续推进。
+
+主对话实际计数同时确认：R06四个已规范available入口index union均为0，七种完整业务结果与原件逐值一致（`repair-R06/parent-counts.json`）；R12当前零件只读取实际供应商，新建三个空零件supplier查询0（`r12/parent-workflow-counts.json`）；R14两人×三日同JSON只decode1次，原反例3次，工作日窗口仍各8小时（`parent-r14-period-proof.json`）；R17真实6节点piece图拓扑2→1，完整payload/order/node_metrics与原件相同（`r17-piece-integration/parent.json`）。R28真实断点用例验证同会话certificate/encoding各1次、metadata4次、4次实际解码，普通无断点为0次；新会话与执行释放时刻保持独立。旧MultiStart缓存整体退役仍归U6。R18—R27的后端/前端剩余材料和U4由主对话继续核对，最终浏览器操作按整合构建验收。
+
+当前U2.1—U2.7已通过主对话验收：最终源码和真实材料已核对，主对话实际6 passed／2.12秒。原生共享求解、piece DAG、受控较差参考保留best、活动引用生命周期和warmstart异常均通过；原件`evidence/unified-scheduling-optimization/2026-10-14/u2/parent-u2-acceptance-pytest.log`。已按施工稿U3.1—U3.7派发共同解码复用、单一成本与60/20/20目标机会；公开主链继续到U4一起贯通。下列U2返修文字保留当时事实。
+
+用户追加全项目重复工作／重复保护修复已启动：主对话分八组取得实际调用链和限定只读计数，范围含重复读取丢弃、排序／连接／全扫描及单机个人场景下纯为安全反复执行的动作。具体改法由主对话逐组定稿到[重复工作施工稿](../../features/2026-10-13-unified-scheduling-optimization/repeated-work-repair-instructions.md)。当前R01—R28已亲查并正式派发，覆盖资源／物料／外协、Schema／只读保护／路径／日志、SQL定位、日历与搜索准备、前端请求／页码恢复／甘特计算／同步本地存储、计划共同上下文、历史单侧条件、试调准备及写后返回、采用历史、看板共同事实、模板复制血缘和固定事务／搜索会话版本探测；交叉文件由实施方顺序整合。U4运行输入与紧凑读模型已按上方具体施工稿正式派发。全部确认项修复并实际验收后才结束C与自动跟进。
+
+R01/R02首批主验收通过：主对话亲读实际产品差异与测试，实际只读858初始副本20行设备SELECT 370→21、COUNT 127→13；人员SELECT 869→25、COUNT 127→13，records/page/metrics逐值相同，total_changes=0。原件`u3/parent-r01-read-acceptance.json`保留实际SQL和对应差异。维护日志亲跑真实临时目录／10备份场景1 passed／0.44秒，目录迁移后21个token同原scope，3条journal只扫描1次／读3条（原22次／66条）；空目录、日志窗口和RunDataContext同样各一次捕获。原件`u3/parent-r02-capture-acceptance.log`。这些是首批定点验收；后续R11与R07接续改变同路径时补验其变化部分，全项目完成状态仍进行中。
+
+U3交接已收到：31产品文件／3测试文件，17项不同场景通过，真实完整与partial共同过程原件保留；`u3/handoff.json`与`u3/source-before-repeated-work-r15-r17.tar`记录接续改动前状态。主对话正亲查实际代码，两个只读辅助核对已结束；确认一项P2公共过程缺口：warmstart排序预算不足只写旧attempt，新的action.skip_reason为空、admission_skips漏记。主对话亲读相应入口后按施工稿新增U3.8正式返修：共同预算拒绝入口记录一次并抛SharedSearchSkip，不伪造尚未产生的解码请求／调用。U3主验收为changes_requested，R批次继续独立推进。
+
+R03/R04主验收通过：主对话亲查memo/只读scope及调用差异，实际执行临时1/5零件创建，两者均sqlite_master=1、schema_version=0、foreign_keys=1；原5行创建分别为7/20/5。血缘三次相同结构读取sqlite_master=1、schema_version=0。原件`repeated-work/r03/parent-query-counts.json`；实际嵌套快照测试1 passed／0.40秒。独立只读复核也未发现R03—R06实现语义问题，R05/R06仍待主实际验收。
+
+R07主验收通过：主对话亲读RunDataContext／SystemJournal／请求读取的实际差异，并实际执行当前请求与历史保护库两项场景，2 passed／0.38秒，原件`repeated-work/r07/parent-acceptance.log`。确认当前命中时不读取备份内容，旧请求查询只捕获一次目录、读取一次注册文件签名，无完整文件前后扫描；保护库仍按只读方式查询真实请求/回执，身份变化、缺失和不可读保持unknown。原恢复文件内容变化回归由实施方通过并按未变范围复用。
+
+资源及日历主审补齐已派发：R01/R11主实际在858原件的内存backup中插入未引用空工种，旧普通设备页仍返回20/44、当前批处理抛ResourceMetricFactsError；修法为页内实际消费记录的原件lookup，保留批读取及advanced指标职责。原R01有效数据计数验收保留，异常范围回归修正后再关闭最终资源批次。R14主实际2人×3工作日同JSON仍decode 3次，已定稿传递本engine解析好的period offsets，日期只展开窗口。R06补齐三个已规范available入口与occupancy constraint重复union；上述分别记录在施工稿，修后仅复验受影响场景。
+
+C的U0／U1已通过主验收。U1实际5文件、当前3聚焦场景passed，原11未变过程／选择兼容用例复用，Ruff／Python3.8通过；主对话亲读全部代码并实际回放858旧4候选，得到3份真实安排和正确多目标最好值，同内容更完整证据的升级／不降级也通过。原件`u1/parent-858-archive-final.json`。已向C派发[U2具体施工](../../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-instructions.md#u2统一编排一次首解与真实桥接u1已通过按主对话派发实施)，执行统一内部入口与真实桥接；公开主链在U4新旧合同齐备后切换。详见[U阶段执行与主验收](../../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-checklist.md)。
+
+U2实施中的现场更新：原B验收实例PID50528／59615当前已无进程监听，主对话已用ps／lsof独立核对；旧库继续保全，只读核对身份，U2使用独立内存输入。已补充一个3工序的受控真实SGS较差参考解验证，用于检查较差结果入档后主best保持；同顺序capture复现原安排的现有事实照实保留，不再扩展随机探针。U2仍待完整交接及主验收。
+
+主对话亲读U2实际实现后确认两项收口，已按施工稿U2.7发回：archive的保留范围遗漏IG实际持有的旧reference／pool／decoded entries，淘汰后可能在checkpoint复用路径触发KeyError；warmstart的可选异常catch覆盖共享observer，会把归档错误当作可选求解失败继续。修法为单动作完成引用更新后统一清理、由生成器实际持有状态确定保留，以及将可选catch收窄到求顺序职责。当前U2主验收为changes_requested；受控较差真实SGS、piece DAG、oracle和未变兼容材料按范围复用，修后独立验收再派U3。
 
 用户在了解20,000工序边界4／6／8候选首屏仍为3.6246／4.6823／5.2835秒后，明确选择：“性能留到 C 收口，先推进 A/B（建议）”。因此A按已通过的功能、数据、界面和非Windows检查验收收口；主对话提交推送后创建B独立review/debug，再按既定顺序推进C。2秒目标仍未达，旧4／6／8候选、完整成员／资源窗口和真实内容范围保持；此项为验收时点调整，C负责最后收口。Windows全部验证继续按下一节统一延期。
 
-本轮A阶段0—8的非延期范围已通过主验收，已提交并推送至origin/main：`efe047d3b3816db29f0718ba5999aeeb199669bf`，远程提交已独立核对。真实pre-commit Ruff／运行产物检查、commit-msg及pre-push日常门禁全部通过；B已新建并开始独立检查，C尚未创建。当前源码与测试冻结，复用Gate09前16步及722通过／36跳过／0失败和最终正常冷启实页证据，不追加同状态完整测试。完整17步门禁原始失败、Windows跳过和性能未达均保留。
+以下A／B推进段落按发生顺序保留，当前状态以上方C记录为准。A阶段0—8的非延期范围通过主验收后，提交并推送至origin/main：`efe047d3b3816db29f0718ba5999aeeb199669bf`，远程提交已独立核对。真实pre-commit Ruff／运行产物检查、commit-msg及pre-push日常门禁全部通过；当时B新建开始检查，C等待B完成。A源码与测试在该交付点冻结，复用Gate09前16步及722通过／36跳过／0失败和最终正常冷启实页证据。完整17步门禁原始失败、Windows跳过和性能未达均保留。
 
 性能移交证据为`evidence/decision-stage-acceptance/stage-08/performance-c-handoff.json`。主对话亲读原profile、当前source并只读核对原受控库：4候选共有80,000份实际任务JSON，所选run的receipt原文32,029,852字节，各候选3.38MB artifact的results保存工种等元数据且没有validated_payload.schedule_rows；这些内容各有消费者。资源日历展开／再规范化和每日指标查询两块profile包络合计约0.90秒，含测量开销且有必要成本。C的U0须先设计输入和读取结构，不能凭小改收益承诺2秒，也不能通过减少历史候选／资源窗口冒充达标。
 
@@ -54,6 +199,10 @@ B最终同库冷启已交接：`http://127.0.0.1:59615`／PID50528，仍为原de
 B最终全量原件已由主对话核对：Gate04前16步通过，762收集／726通过／36跳过／0失败；第17步仅原15条Windows required setup-skipped导致failed，按用户延期保留，未改核销规则。主对话实际复验计划行/冻结首格同为浅蓝、单行高度83px、DC-02的data-selected选中行和编号展开满行通过，原件parent-ui-final/06b、09、10；详细比较选中表头另确认被20-controls高优先级important覆盖，已在B15补定同路径加选中条件的单规则修法。最后这条纯CSS构建/实页复验和交接记录收口后执行Git，其余未变功能结果复用。
 
 B主对话验收完成：B1—B14的最终代码、相关原回归与共同来源/锁/真实Git临时仓材料已核对；B15最终CSS1791979961/JS1791977112在正常59615实页通过，最后选中表头和正文列同为rgb(239,246,255)，标题文字为29/78/216，其他表头原色，console无warn/error、无页面横溢出，原件parent-ui-final/11b。正式导出原CSV/XLSX亲读确认未设置交期仍保留9999-12-31原值，截止与拖期为空；完整末端点8行/显式半开7行，正常UI下载15行/32列。受控试调PID48561已停止并移除临时目录，正常50528保留。Gate04的726通过/36跳过和已核对host回归复用；最后纯CSS仅构建和真实页复验，不追加全量。B的非延期范围判定passed，现按明确文件暂存提交推送，保留开发README原10行；真实commit/pre-push与远程核对结果随后追加。
+
+B Git交付完成：82条明确路径提交为`7b2697a5da12fa9f512c2f14409b05da8cedc572`，常规push后主对话ls-remote确认origin/main一致。真实pre-commit Ruff/产物、commit-msg和原生pre-push完整链通过；pre-push日常检查针对实际待推提交执行。原开发README首块10行字节保持，交付时仅其未暂存；主调度随后继续记录C，不作clean-worktree proof。原件`evidence/decision-workbench-review/2026-10-14/git-delivery/delivery.json`与commit/push.log。
+
+C初始派发记录：`01a13a5e-ebf4-7bb2-abd6-ca06b29491c4`/local，“统一算法优化与性能收口”。[主对话施工稿](../../features/2026-10-13-unified-scheduling-optimization/unified-scheduling-optimization-instructions.md)明确源码archive、858两库和规范化20k库只读backup到独立证据目录；U0不跑新排产/性能、不迁移原件。主对话核对只读事实清单并亲读源头保存、选择、编排和纯目标合同，更新旧design及共享档案／读取结构。该初始派发由上方当前推进记录接续：U0／U1现已通过主验收，U2具体施工已派发实施；自动跟进保持ACTIVE。
 
 ## 当前验收范围：Windows统一延期（2026-10-14最新用户决定）
 
@@ -358,8 +507,8 @@ B主对话验收完成：B1—B14的最终代码、相关原回归与共同来�
 | 大阶段 | 负责人／对话 | 开始条件 | 完成动作 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | A 工作台0—8 | 现实施对话 `01a13119-bc50-77b0-b399-30018dd316d6`，主对话逐段验收 | 已启动 | 全部验收通过后，主对话提交并推送远程，保存实际commit和远程分支 | done；非延期验收通过，efe047d3已推送origin/main并核对 |
-| B 独立 review/debug | 新对话`01a139e1-02ee-7cd0-bebd-ba53c0673b72`／local，启用全新子代理；主对话复核关键发现 | A完成且远程已核对 | 修复范围内确认问题，精简重复测试与冗余机制；主对话验收后再次提交并推送 | passed；B1—B15非延期范围主验收通过，Gate04前16步和726通过/36跳过/0失败；第17仅15项Windows按用户延期；正在统一提交推送 |
-| C 统一算法优化 | B推送成功后再新建项目对话；主对话按U阶段验收 | B通过且远程已核对 | 按已授权设计先更新最终工作台合同与对照基线，再实施U0—U6；主对话统筹最终交付 | planned；对话待创建 |
+| B 独立 review/debug | 新对话`01a139e1-02ee-7cd0-bebd-ba53c0673b72`／local，启用全新子代理；主对话复核关键发现 | A完成且远程已核对 | 修复范围内确认问题，精简重复测试与冗余机制；主对话验收后再次提交并推送 | done；B1—B15非延期范围主验收通过，7b2697a5已推送origin/main并核对；Gate04前16步/726通过，Windows延期保留 |
+| C 统一算法优化 | 新对话`01a13a5e-ebf4-7bb2-abd6-ca06b29491c4`/local，主对话按U阶段设计及验收 | B通过且7b2697a5远程已核对 | 更新最终工作台合同与对照基线，再实施U0—U6；主对话统筹最终交付 | in_progress；U0—U2主验收passed，U3具体施工已派发实施；公开主链到U4贯通 |
 
 - 当前远程：`origin` → `https://github.com/lurenxing628/----.git`，当前分支`main`。每次提交前重新核对分支、远程和工作区；只暂存明确文件，常规推送，出现远程并发变化按实际差异处理。主对话统一执行Git操作，记录两次提交和推送的实际结果。
 - B阶段审查对象以A阶段交付为基线，重点为数据／指标共同来源、排产与采用事务、候选和历史身份、过程计数及完整性、页面与导出一致、必要性能与兼容。新子代理提出证据和修复建议，主对话独立核实重点问题；已授权修复持续到确认问题关闭。每项修复只做受影响的必要验证。
@@ -375,7 +524,7 @@ B主对话验收完成：B1—B14的最终代码、相关原回归与共同来�
 - 2026-10-13主对话首次静态盘点：当前工作区相对HEAD，在28个有函数增删的Python测试文件中，按`test_`函数名比较新增130项、删除0项；未展开参数化和JavaScript内部断言。该数与日常495个执行用例分别记录。后续优先检查共同投影、各入口适配与API之间的重复行为验证，在A收尾及B审查中按实际价值精简。
 - **主对话实际把关。** 关键实现、真实运行、页面、原始导出、测试与保护机制由主对话直接复核；子对话和子代理的“通过”是验收材料，最终结论由主对话作出。
 
-两次Git交付记录：A提交／推送待执行；B提交／推送待执行。后续对话：B待创建；C待创建。历史阶段报告保持原样，当前授权以上述顺序为准。
+两次Git交付现已完成：A为efe047d3，B为7b2697a5，均已常规推送并核对origin/main。B对话已冻结，C对话已创建并进入U2实施；实际threadId与逐段结果见本文件顶部。历史阶段报告保持原样，当前授权以上述完整顺序及后续用户延期决定为准。
 
 ## 前项记录：选择方案整页讨论与产品对标（2026-10-13）
 

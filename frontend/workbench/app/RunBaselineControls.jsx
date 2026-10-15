@@ -3,23 +3,13 @@
   const M = window.RunCandidateModel, B = window.RunBaselineModel, { Button } = window.RunCandidateControls;
   function usePrintLayout() { return window.WorkbenchControls.usePrintLayout(); }
   function useBaseline(data, available) {
-    const [enabled, setEnabled] = React.useState(false), [revision, refresh] = React.useReducer(v => v + 1, 0);
-    const [state, setState] = React.useState({ result: null, error: null, busy: false }), request = React.useRef(null);
+    const [enabled, setEnabled] = React.useState(false);
     const active = enabled && available;
-    const identity = React.useMemo(() => ({}), [data, active, revision]);
-    React.useLayoutEffect(() => {
-      const controller = new AbortController(); request.current = controller;
-      setState({ identity, result: null, error: null, busy: active });
-      if (active) window.RunBaselineAPI.create().read(data, controller.signal).then(result => {
-        if (!controller.signal.aborted) setState({ identity, result, error: null, busy: false });
-      }).catch(error => {
-        if (!controller.signal.aborted) setState({ identity, result: null, error: new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message), busy: false });
-      });
-      return () => controller.abort();
-    }, [identity]);
-    function toggle(value) { if (request.current) request.current.abort(); setEnabled(value); }
-    function retry() { if (request.current) request.current.abort(); refresh(); }
-    return { ...(state.identity === identity ? state : { result: null, error: null, busy: active }), enabled: active, toggle, retry };
+    const read = window.APSResourceSession.useQuery(signal => window.RunBaselineAPI.create().read(data, signal).catch(error => {
+      throw new Error(error.name === 'AbortError' ? '原安排读取超时，请刷新原安排。' : error.message);
+    }), [data], active);
+    return { ...read, result: active ? read.result : null, error: active ? read.error : null,
+      busy: active && read.loading, enabled: active, toggle: setEnabled, retry: read.reload };
   }
   function Toggle({ state }) {
     return <label className="rb-toggle" title="叠加提交试排时冻结的正式版安排，与新安排对照"><input type="checkbox" checked={state.enabled} onChange={e => state.toggle(e.target.checked)} />显示原安排</label>;

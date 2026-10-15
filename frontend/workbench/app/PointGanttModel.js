@@ -7,9 +7,12 @@
     const pad = Math.max(60000, (end - start) * .04);
     return { start: start - pad, end: end + pad };
   }
-  function tracks(items, start, end, width) {
+  function prepareTracks(items) {
+    return items.slice().sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)));
+  }
+  function layoutTracks(items, start, end, width) {
     const lanes = [], heap = [], scale = Math.max(1, width) / (end - start);
-    for (const item of items.slice().sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)))) {
+    for (const item of items) {
       const x = (item.start - start) * scale;
       let slot;
       if (heap.length && heap[0].end <= x) {
@@ -29,6 +32,9 @@
       heap[i] = slot;
     }
     return lanes;
+  }
+  function tracks(items, start, end, width) {
+    return layoutTracks(prepareTracks(items), start, end, width);
   }
   function visible(items, start, end, scale) {
     const pad = hitSize / 2 / scale;
@@ -68,5 +74,5 @@
     }
     return { ...model, rows, locations, baselineLocations, height: top };
   }
-  window.PointGanttModel = { bounds, tracks, visible, hit, paint, candidateRows, hitSize };
+  window.PointGanttModel = { bounds, prepareTracks, layoutTracks, tracks, visible, hit, paint, candidateRows, hitSize };
 })();

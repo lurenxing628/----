@@ -8,10 +8,13 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 from core.algorithms import ScheduleResult
 
 from .acceptance import AcceptanceDecision, decide_acceptance
-from .attempt_records import append_rejected_reason_attempt, attempt_decision_evidence
-from .deadline_guard import evaluate_optional_local_or_exhausted
+from .attempt_records import (
+    append_rejected_reason_attempt,
+    attempt_decision_evidence,
+    evaluate_optional_local_candidate,
+)
 from .local_search_candidate_eval import evaluate_local_search_candidate
-from .local_search_fingerprints import LocalSearchFingerprintTracker, local_candidate_fingerprint, should_skip_seen
+from .local_search_fingerprints import LocalSearchFingerprintTracker, local_candidate_fingerprint
 from .local_search_report_hooks import (
     mark_acceptance_rejected,
     mark_best_candidate_accepted,
@@ -20,29 +23,40 @@ from .local_search_report_hooks import (
 from .local_search_state import LocalSearchState, candidate_can_update_best
 from .neighborhood_moves import NeighborhoodMove
 from .neighborhood_registry import choose_neighborhood_move
+from .shared_budget import SharedSearchSkip
 from .vns import VnsState
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
+    from .shared_decode import SharedDecodeSession
 
 
 @dataclass(frozen=True)
 class LocalSearchRoundResult:
-    """``decode_attempted`` is False for no-op and duplicate rounds, which cost no decoder call;
-    ``budget_exhausted`` names the guard refusal that stopped the round before any decode."""
+    """``decode_attempted`` reflects actual common-session decoder calls for this round."""
 
     no_improve: int
     accepted_current: bool
     best_improved: bool
     move: NeighborhoodMove
     decode_attempted: bool = False
-    duplicate: bool = False
-    budget_exhausted: Optional[str] = None
+    skip_reason: Optional[str] = None
+    request_id: Optional[int] = None
+    decode_receipt: Optional[Dict[str, Any]] = None
 
 
 def stamp_decode_runtime(candidate: Optional[Dict[str, Any]], *, started_at: float, clock: Callable[[], float]) -> None:
     """Every decoded candidate carries its measured decode time so later phases can budget on it."""
     if candidate is not None:
+        receipt = candidate.get("decode_receipt")
+        if receipt is not None:
+            source_cost = receipt.get("source_initial_decode_runtime_ms")
+            if source_cost is None:
+                source_cost = receipt.get("source_runtime_ms")
+            if source_cost is None:
+                source_cost = receipt["original_decode_ms"]
+            candidate["initial_decode_runtime_ms"] = max(float(source_cost), 0.0)
+            return
         candidate["initial_decode_runtime_ms"] = max((clock() - started_at) * 1000.0, 0.0)
 
 
@@ -196,7 +210,6 @@ def run_local_search_candidate_round(
     cur_params: Dict[str, Any],
     cur_dispatch_mode: str,
     cur_dispatch_rule: str,
-    seen_hashes: set,
     rnd: Any,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
@@ -225,6 +238,7 @@ def run_local_search_candidate_round(
     clock: Callable[[], float],
     t_begin: float,
     started_at: float,
+    decode_session: SharedDecodeSession,
 ) -> LocalSearchRoundResult:
     move = choose_neighborhood_move(
         order=local_state.current_order,
@@ -247,24 +261,6 @@ def run_local_search_candidate_round(
             move=move,
         )
         return LocalSearchRoundResult(no_improve + 1, False, False, move)
-    if should_skip_seen(move, seen_hashes):
-        mark_neighborhood_move(
-            search_report_state,
-            move,
-            noop=True,
-            candidate_rejected="noop_neighbor",
-            reason="duplicate_decision",
-        )
-        _record_noop_neighbor(
-            attempts=attempts,
-            search_report_state=search_report_state,
-            strategy=cur_strat,
-            dispatch_mode=cur_dispatch_mode,
-            dispatch_rule=cur_dispatch_rule,
-            move=move,
-        )
-        return LocalSearchRoundResult(no_improve + 1, False, False, move, duplicate=True)
-
     mark_neighborhood_move(search_report_state, move)
     cand_order = list(move.batch_order or local_state.current_order)
     candidate_resource_pool = move.resource_pool if move.resource_pool is not None else (local_state.current_resource_pool or resource_pool)
@@ -272,38 +268,48 @@ def run_local_search_candidate_round(
     candidate_rule = str(move.dispatch_rule or cur_dispatch_rule)
     # ``started_at`` is the loop's reading taken just before this round; choosing the move costs
     # microseconds, so the decode time is measured from it without another clock call.
-    candidate, budget_exhausted = evaluate_optional_local_or_exhausted(
-        evaluate=partial(
-            evaluate_local_search_candidate,
-            scheduler=scheduler,
-            strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
-            strategy=cur_strat,
-            params=cur_params,
-            start_dt=start_dt,
-            end_date=end_date,
-            downtime_map=downtime_map,
-            order=cand_order,
-            seed_sr_list=seed_sr_list,
-            dispatch_mode=candidate_mode,
-            dispatch_rule=candidate_rule,
-            resource_pool=candidate_resource_pool,
-            objective_name=objective_name,
-            optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
-            readiness_gate_enabled=bool(readiness_gate_enabled),
-            graph_ready_context=graph_ready_context,
-            neighborhood_move=move,
-        ),
-        attempts=attempts,
-        move=move.neighborhood_name,
+    evaluate = partial(
+        evaluate_local_search_candidate,
+        scheduler=scheduler,
+        strict_mode=bool(strict_mode),
+        algo_ops_to_schedule=algo_ops_to_schedule,
+        batches=batches,
         strategy=cur_strat,
+        params=cur_params,
+        start_dt=start_dt,
+        end_date=end_date,
+        downtime_map=downtime_map,
+        order=cand_order,
+        seed_sr_list=seed_sr_list,
         dispatch_mode=candidate_mode,
         dispatch_rule=candidate_rule,
-        strict_mode=bool(strict_mode),
-        search_report_state=search_report_state,
+        resource_pool=candidate_resource_pool,
+        objective_name=objective_name,
+        optimizer_algo_stats=optimizer_algo_stats,
+        schedule_fn=schedule_fn,
+        readiness_gate_enabled=bool(readiness_gate_enabled),
+        graph_ready_context=graph_ready_context,
+        neighborhood_move=move,
+        decode_session=decode_session,
     )
+    calls_before = decode_session.actual_decoder_calls
+    try:
+        candidate = evaluate_optional_local_candidate(
+            evaluate=evaluate,
+            attempts=attempts,
+            move=move.neighborhood_name,
+            strategy=cur_strat,
+            dispatch_mode=candidate_mode,
+            dispatch_rule=candidate_rule,
+            strict_mode=bool(strict_mode),
+            search_report_state=search_report_state,
+        )
+    except SharedSearchSkip as exc:
+        return LocalSearchRoundResult(
+            no_improve + 1, False, False, move, skip_reason=exc.reason,
+            request_id=exc.request_id, decode_receipt=exc.receipt,
+        )
+    decode_attempted = decode_session.actual_decoder_calls > calls_before
     stamp_decode_runtime(candidate, started_at=started_at, clock=clock)
     candidate_fingerprint = local_candidate_fingerprint(
         search_report_state=search_report_state,
@@ -312,7 +318,8 @@ def run_local_search_candidate_round(
     )
     if candidate is None:
         return LocalSearchRoundResult(
-            no_improve + 1, False, False, move, decode_attempted=budget_exhausted is None, budget_exhausted=budget_exhausted,
+            no_improve + 1, False, False, move,
+            decode_attempted=decode_attempted,
         )
     acceptance_decision = decide_acceptance(
         acceptance_name=acceptance,
@@ -348,7 +355,13 @@ def run_local_search_candidate_round(
         candidate=candidate,
         acceptance_decision=acceptance_decision,
     )
-    return LocalSearchRoundResult(no_improve, accepted_current, best_improved, move, decode_attempted=True)
+    receipt = candidate.get("decode_receipt")
+    return LocalSearchRoundResult(
+        no_improve, accepted_current, best_improved, move,
+        decode_attempted=decode_attempted,
+        request_id=receipt["request_id"] if receipt is not None else None,
+        decode_receipt=receipt,
+    )
 
 
 def _incumbent_origin(

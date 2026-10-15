@@ -63,7 +63,7 @@ def _utilization_row(kind, key, item: _ResourceGroup, calendar, start, end):
     """One report row: a resource's unioned occupancy measured against its own calendar."""
     available = available_intervals(calendar) if calendar is not None else None
     intervals = [span for values in item["operations"].values() for span in union(values)]
-    metrics = ResourceUtilizationMetrics(intervals, available).window(start, end)
+    metrics = ResourceUtilizationMetrics.from_normalized_availability(intervals, available).window(start, end)
     return {kind + "_id": key, kind + "_name": item["label"], "task_count": item["task_count"], **metrics,
             "hours": metrics["occupied_hours"], "capacity_hours": metrics["available_hours"],
             "utilization": metrics["utilization_ratio"], "calendar_issues": calendar["issues"] if calendar else []}

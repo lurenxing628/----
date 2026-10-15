@@ -7,9 +7,8 @@ from core.infrastructure.workbench_run_schema import workbench_run_contract_issu
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
-from core.services.workbench.facts.candidate_read_source import CandidateReadSource
+from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_tasks import tasks_projection, unplanned_projection
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.decision_baseline_source import _candidate_evidence, _trial_evidence
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
@@ -18,6 +17,18 @@ from core.services.workbench.facts.trial_scenario_archive import load_saved_scen
 from core.services.workbench.run.decision import decision_overview
 from core.services.workbench.run.decision_source import DecisionSource
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
+
+from .conditions import prepare_history_condition_side, prepare_history_condition_source
+
+
+def _condition_key(packet):
+    issue = packet.get("source_issue")
+    if packet["ref"] is None:
+        return ("empty", issue["code"], issue["message"])
+    if issue is not None:
+        return ("entry", packet["entry_ref"])
+    candidate = packet.get("candidate")
+    return (packet["kind"], packet["ref"], candidate["candidate_ref"] if candidate is not None else None)
 
 
 def _cached(cache, key, load):
@@ -80,12 +91,16 @@ class HistoryReader:
     event identity separately from the original candidate or saved scenario.
     """
 
-    def __init__(self, conn):
+    def __init__(self, conn, *, catalog=()):
         if not conn.in_transaction:
             raise RuntimeError("History sources require the caller's read transaction")
         self.conn = conn
         self.store = _HistoryCandidateStore(conn)
         self._run_schema_checked = False
+        self._run_prepared = {descriptor["source"]["run_ref"]: {
+            "head": descriptor["record"]["job"], "admission": descriptor["record"]["admission"],
+            "header": descriptor["record"]["run_header"]} for descriptor in catalog
+            if descriptor["source_kind"] == "run" and "admission" in descriptor["record"]}
         self._runs = {}
         self._candidates = {}
         self._scenarios = {}
@@ -93,7 +108,25 @@ class HistoryReader:
         self._source_states = {}
         self._sources = {}
         self._decisions = {}
+        self._condition_sources = {}
+        self._condition_sides = {}
         self.history_metrics_cache = {}
+
+    def condition_source(self, packet):
+        """Share a verified saved source while keeping missing-event evidence separate."""
+        key = _condition_key(packet)
+        if key not in self._condition_sources:
+            self._condition_sources[key] = prepare_history_condition_source(packet)
+        return self._condition_sources[key]["source"]
+
+    def condition_side(self, packet, window):
+        """Reuse production by source and window, retaining window-free settings."""
+        source_key = _condition_key(packet)
+        key = (source_key, window["start"], window["end"])
+        if key not in self._condition_sides:
+            self.condition_source(packet)
+            self._condition_sides[key] = prepare_history_condition_side(self._condition_sources[source_key], window)
+        return self._condition_sides[key]
 
     def _require_run_schema(self):
         if not self._run_schema_checked:
@@ -105,13 +138,18 @@ class HistoryReader:
         self._require_run_schema()
 
         def load():
-            run = self.store.run(run_ref)
+            prepared = self._run_prepared.get(run_ref, {})
+            head = prepared.get("head")
+            run = ({key: head[key] for key in ("run_ref", "state", "accepted_at", "finished_at")}
+                   if head is not None else self.store.run(run_ref))
+            if head is not None:
+                self.store._saved[("run", run_ref)] = run
             receipt = self.store.receipt(run)
             rows = self.store.candidates(run_ref)
             validate_manifest(run, rows, receipt)
             capture = self.store.capture(run_ref)
-            return {"run": run, "receipt": receipt, "rows": rows, "capture": capture,
-                    "facts": GenerationFacts(capture), "disposition": dispositions(receipt)}
+            return {**prepared, "run": run, "receipt": receipt, "rows": rows, "capture": capture,
+                    "facts": GenerationFacts(capture), "disposition": dispositions(receipt), "candidate_sources": {}}
 
         return _cached(self._runs, run_ref, load)
 
@@ -125,13 +163,9 @@ class HistoryReader:
                     raise WorkbenchCommandRejected("history_source_invalid", "历史候选与原排产编号不一致。", 500)
                 corrupt()
             candidate_summary(candidate, saved["disposition"])
-            raw_tasks = self.store.tasks(candidate_ref)
-            if len(raw_tasks) != candidate["task_count"]:
-                corrupt()
-            tasks = tasks_projection(raw_tasks, candidate, saved["facts"])
-            return CandidateReadSource(saved["run"], candidate, saved["disposition"], saved["capture"],
-                saved["facts"], raw_tasks, tasks, unplanned_projection(saved["disposition"], tasks, saved["facts"]),
-                saved["rows"], receipt=saved["receipt"])
+            source = read_candidate_source(self.store, candidate_ref, prepared={**saved, "candidate": candidate})
+            saved["candidate_sources"][candidate_ref] = source
+            return source
 
         return _cached(self._candidates, (run_ref, candidate_ref), load)
 
@@ -167,6 +201,10 @@ class HistoryReader:
         return packet
 
     def _read_run(self, packet, refs, descriptor):
+        record = descriptor["record"]
+        if descriptor["source_kind"] == "run" and "admission" in record:
+            self._run_prepared[refs["run_ref"]] = {
+                "head": record["job"], "admission": record["admission"], "header": record["run_header"]}
         saved = self._run(refs["run_ref"])
         packet.update(capture=saved["capture"], facts=saved["facts"], receipt=saved["receipt"])
         candidate_ref = refs["candidate_ref"]
@@ -228,7 +266,7 @@ class HistoryReader:
         key = (run_ref, candidate_ref, range_start, range_end)
         return _cached(self._sources, key, lambda: DecisionSource(self.store, run_ref,
             selected_candidate_ref=candidate_ref, range_start=range_start, range_end=range_end,
-            resource_view="full_candidate"))
+            resource_view="full_candidate", prepared=self._runs.get(run_ref, self._run_prepared.get(run_ref))))
 
     def decision(self, run_ref, range_start=None, range_end=None, *, candidate_ref=None):
         """Return the same overview used by the run workspace, once per window."""

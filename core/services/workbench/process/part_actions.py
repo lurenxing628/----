@@ -37,7 +37,7 @@ class WorkbenchProcessPartActionService:
         self.facts = ProcessPartActionFacts(conn, logger=logger)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
-        # 文件导入逐行新建零件时由调用方传入同一个，表结构校验整条命令只做一次。
+        # 文件逐行导入共用本命令的结构和连接事实；下一请求新建实例，命令内不执行 DDL。
         self.contracts = contracts if contracts is not None else SchemaContractMemo(conn)
 
     @staticmethod

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const root = path.resolve(__dirname, '../..');
-const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'PointContract.js', 'PlanProcessOrder.js', 'GanttGraph.js', 'DeliveryProjectionContract.js', 'PlanContract.js', 'PlanAPI.js'];
+const files = ['resource-contract.js', 'resource-api.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js', 'PlanProcessOrder.js', 'GanttGraph.js', 'DeliveryProjectionContract.js', 'PlanContract.js', 'PlanAPI.js'];
 const scripts = files.map(name => ({name, source: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8')}));
 const input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
 const P = 'a'.repeat(48), OTHER = 'b'.repeat(48), TASK = 'c'.repeat(48), OP = 'd'.repeat(48);

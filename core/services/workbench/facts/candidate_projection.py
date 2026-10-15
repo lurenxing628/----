@@ -8,6 +8,18 @@ from .candidate_values import corrupt, gap, number, text
 _METRICS = ("overdue_count", "total_tardiness_hours", "makespan_hours", "changeover_count",
             "weighted_tardiness_hours", "machine_used_count", "operator_used_count",
             "machine_busy_hours_total", "operator_busy_hours_total", "machine_util_avg", "operator_util_avg")
+UNIFIED_GENERATION_VERSION = "unified_search_v1"
+
+
+def business_candidate_fields(artifact):
+    """New saved business facts are exposed only under their recorded policy."""
+    if artifact.get("generation_policy_version") != UNIFIED_GENERATION_VERSION:
+        return {}
+    fields = ("generation_policy_version", "representative_objectives", "evaluations", "origin",
+              "first_found_elapsed_ms", "search_evidence_ref")
+    if any(field not in artifact for field in fields):
+        corrupt()
+    return {field: artifact[field] for field in fields}
 
 
 def dispositions(receipt):
@@ -125,9 +137,13 @@ def metrics(artifact, gaps):
         else:
             value = number(raw.get(key), "metrics." + key, issues, integer=key.endswith("_count"))
         result[key] = {"value": value, "reason": issues[0] if issues else None}
-    result["elapsed_seconds"] = {"value": number(artifact.get("elapsed_seconds"), "elapsed_seconds", gaps), "reason": None}
-    if result["elapsed_seconds"]["value"] is None:
-        result["elapsed_seconds"]["reason"] = gaps[-1]
+    if artifact.get("generation_policy_version") == UNIFIED_GENERATION_VERSION:
+        result["elapsed_seconds"] = {"value": None, "state": "not_applicable",
+            "reason": {"field": "elapsed_seconds", "code": "shared_run_time", "message": "计算用时属于本轮共同优化。"}}
+    else:
+        result["elapsed_seconds"] = {"value": number(artifact.get("elapsed_seconds"), "elapsed_seconds", gaps), "reason": None}
+        if result["elapsed_seconds"]["value"] is None:
+            result["elapsed_seconds"]["reason"] = gaps[-1]
     return result
 
 
@@ -146,14 +162,19 @@ def candidate_summary(row, disposition):
             "status": status, "persisted_status": row["status"], "task_count": row["task_count"],
             "completeness": completeness, "metrics": metrics(artifact, gaps),
             "metric_scopes": {"delivery": "completed_batches_only", "resources": "scheduled_results_only"},
-            "capabilities": read_capabilities(), "blocked_reasons": reasons, "data_gaps": gaps}
+            "capabilities": read_capabilities(), "blocked_reasons": reasons, "data_gaps": gaps,
+            **business_candidate_fields(artifact)}
 
 
 def algorithm_facts(artifact):
     mode = text(artifact.get("algo_mode"), "algo_mode", [])
     strategy = text(artifact.get("used_strategy"), "used_strategy", [])
-    return {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode) if mode is not None else None,
-            "strategy": strategy, "strategy_label": choice_label_map_for("sort_strategy").get(strategy) if strategy is not None else None}
+    result = {"mode": mode, "mode_label": choice_label_map_for("algo_mode").get(mode) if mode is not None else None,
+            "strategy": strategy, "strategy_label": choice_label_map_for("sort_strategy").get(strategy) if strategy is not None else None,
+            **business_candidate_fields(artifact)}
+    if artifact.get("generation_policy_version") == UNIFIED_GENERATION_VERSION:
+        result.update(primary_objective=artifact["objective_name"], target_objectives=list(artifact["target_objectives"]))
+    return result
 
 
 def baseline_capture(baseline, captured_at, *, kind="admission_official"):

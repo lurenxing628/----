@@ -1,4 +1,4 @@
-"""Saved solver sources, legacy pagination and downloads share one process selector."""
+"""Shared-run HTTP processes and legacy selectors preserve saved evidence."""
 
 import csv
 import io
@@ -10,27 +10,32 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import load_workbook
 
-from core.services.scheduler.run.optimizer.process_evidence import non_search_evidence
+from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.scheduler.summary.optimizer_public_attempts import COMPARISON_METRIC_KEYS, project_attempts
 from core.services.scheduler.summary.optimizer_public_summary import project_public_result_summary
 from core.services.workbench.facts.candidate_process import COUNT_KEYS, candidate_process
-from core.services.workbench.run.decision_process import normalize_process_filters, process_details
+from core.services.workbench.run.decision_process import (
+    normalize_process_filters,
+    process_details,
+    process_export_records,
+)
 from core.services.workbench.run.decision_process_export import (
     ATTEMPT_HEADERS,
     CANDIDATE_HEADERS,
     PROCESS_CSV_HEADERS,
     PROGRESS_HEADERS,
     STAGE_HEADERS,
+    UNIFIED_PROCESS_CSV_HEADERS,
+    process_csv,
+    process_export_tables,
 )
-from tests.workbench.run_candidate_support import BASE, api, compute, edit_artifact, public, retained
+from tests.workbench.legacy_run_archive_support import load_legacy_process_evidence
+from tests.workbench.run_candidate_support import BASE, api, compute, public, retained
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
-from tests.workbench.test_run_decision_api import decision
+from tests.workbench.test_run_decision_api import decision_summary
 from tests.workbench.test_run_decision_impact_api import detail
 
-
-def saved_artifacts(case):
-    return {row[0]: json.loads(row[1]) for row in case.conn.execute(
-        "SELECT candidate_ref,artifact_json FROM WorkbenchRunCandidates ORDER BY sequence")}
+PROCESS_SHEETS = ("共同计算", "目标预算", "进步事件", "搜索动作", "搜索阶段", "评价范围", "范围成员", "真实桥接")
 
 
 def expect_error(client, path, query, status, code):
@@ -42,6 +47,7 @@ def expect_error(client, path, query, status, code):
 def process_source(rows, selected=None):
     run_ref = "a" * 48
     source = SimpleNamespace(run={"run_ref": run_ref}, rows=rows, selected_ref=selected,
+        saved_process={"version": "decision-process-v1", "candidates": [candidate_process(row, rows) for row in rows]},
         scope={"run_ref": run_ref, "selected_candidate_ref": selected,
                "comparison_mode": "candidates", "reference": {"kind": "candidate", "candidate_ref": None}},
         baseline={"kind": "candidate", "candidate_ref": None, "state": "selection_required"})
@@ -49,289 +55,225 @@ def process_source(rows, selected=None):
     return source
 
 
-def check_process_exports(client, run_ref, query, token, data, overview):
-    candidate, summary, progress = (data[key] for key in ("candidate", "summary", "progress"))
-    attempts = detail(client, run_ref, "process", **dict(query, record_kind="attempts", sort="rank", size=50))["data"]["items"]
-    assert sorted(attempts, key=lambda row: row["saved_index"]) == sorted(data["attempts"], key=lambda row: row["saved_index"])
-    points = sorted(progress["points"], key=lambda row: (
-        row["elapsed_ms"] is None, row["elapsed_ms"] or 0, row["event_index"] if row["event_index"] is not None else float("inf")))
-    metric_fields = {"overdue_count": "保存超期批次数", "total_tardiness_hours": "保存总拖期（小时）",
-                     "weighted_tardiness_hours": "保存加权拖期（小时）", "makespan_hours": "保存工期（小时）", "changeover_count": "保存算法工种切换次数"}
-    completion_fields = {"expected_operation_count": "本次参与计算工序数", "missing_operation_count": "本次计算范围缺少工序数",
-                         "unexpected_result_count": "本次计算范围外结果数", "complete_batch_count": "本次计算范围内工序排齐批次数",
-                         "incomplete_batch_count": "本次计算范围内工序未排齐批次数"}
-    count_fields = {"evaluated": "评估数", "accepted": "接受数", "current_accepted": "当前解接受数",
-                    "strict_improvements": "严格改善数", "rejected": "已记录拒绝数", "unverified_trials": "未验证数", "decoder_invocations": "实际排程调用数"}
-    profile_fields = {"enabled": "优化器已启用", "seed": "优化器随机种子", "configured_time_budget_seconds": "配置求解预算（秒）",
-        "effective_time_budget_seconds": "实际求解预算（秒）", "assigned_time_budget_ms": "已分配求解预算（毫秒）",
-        "configured_max_iterations": "配置迭代上限", "effective_max_iterations": "实际迭代上限", "system_limit_applied": "已应用系统限制",
-        "system_limit_reason": "系统限制原因", "message": "Profile说明", "candidate_strategy_families": "候选策略族",
-        "configured_neighborhoods": "配置邻域", "effective_neighborhoods": "实际邻域"}
-    profile = data["source"]["profile"]
-    recorded = data["source"]["evidence_version"] is not None
-    units = {field["index"]: field["unit"] for field in data["objective"]["score_fields"]}
-
-    def scores(row):
-        return {**{"评分分量" + str(index): row["score"][index] if index < len(row["score"]) else None for index in range(6)},
-                **{"评分分量" + str(index) + "单位": units.get(index) for index in range(6)}}
-
-    def values(row, fields):
-        return {label: row[key] for key, label in fields.items()}
-
-    def comparison_values(row):
-        comparison = row["comparison"] or {}
-        score = comparison.get("reference_score") or []
-        labels = {"failed_ops": "失败工序数", "overdue_count": "超期批次数", "weighted_tardiness_hours": "加权拖期（小时）",
-                  "total_tardiness_hours": "总拖期（小时）", "makespan_hours": "工期（小时）", "changeover_count": "算法工种切换次数"}
-        return {"当时比较对象": comparison.get("kind"), "当时比较状态": comparison.get("state"), "当时比较目标": comparison.get("objective_name"),
-                "当时本次评价范围": comparison.get("objective_scope"), "当时参考评价范围": comparison.get("reference_scope"),
-                **{"当时参考评分分量" + str(index): score[index] if index < len(score) else None for index in range(6)},
-                **{"当时参考" + label: (comparison.get("reference_metrics") or {}).get(key) for key, label in labels.items()},
-                **{"相对当时对象变化" + label: (comparison.get("metric_deltas") or {}).get(key) for key, label in labels.items()},
-                **{"当时参考" + label: (comparison.get("reference_completion") or {}).get(key) for key, label in completion_fields.items()}}
-
-    expected = {"candidate_summary": [{
-        "候选自身耗时（毫秒）": candidate["own_elapsed_ms"], "来源求解耗时（毫秒）": candidate["source_solver_elapsed_ms"],
-        "配置派工规则": candidate["configured_dispatch_rule"], "实际采用派工规则": candidate["adopted_dispatch_rule"],
-        "优化器配置类别": candidate["algorithm_profile"], "优化器Profile": profile.get("profile"), "接受准则": profile.get("acceptance"),
-        **{label: "；".join(profile[key]) if type(profile.get(key)) is list else profile.get(key) for key, label in profile_fields.items()},
-        "保存代表尝试数": summary["saved_attempt_count"], "原进步事件数": progress["sampling"]["event_total_count"],
-        "旧版最佳更新数（含同分）": summary["legacy_best_updates"],
-        "保留进步点数": len(points), "采样策略": progress["sampling"]["policy"],
-        "保留首次有效": progress["coverage"]["endpoint_coverage"]["first_valid"],
-        "保留首次排齐本次参与计算工序": progress["coverage"]["endpoint_coverage"]["first_expected_complete"],
-        "保留最终": progress["coverage"]["endpoint_coverage"]["final"],
-        **{"候选自身" + label: candidate["own_counts"][key] for key, label in count_fields.items()},
-        **{"来源求解" + label: candidate["solver_counts"][key] for key, label in count_fields.items()},
-        **values(candidate["final_metrics"], metric_fields), **values(candidate["completion"], completion_fields),
-    }], "rejection_reason": [{
-        "拒绝原因key": key, "拒绝原因数": count,
-        "候选自身耗时（毫秒）": None, "来源求解耗时（毫秒）": None, "保存代表尝试数": None, "保留进步点数": None,
-        **{"候选自身" + label: None for label in count_fields.values()}, **{"来源求解" + label: None for label in count_fields.values()},
-        **{label: None for label in metric_fields.values()},
-    } for key, count in sorted((data["source"]["rejection_summary"] or {}).items())], "progress_point": [{
-        "事件序号": row["event_index"], "累计求解耗时（毫秒）": row["elapsed_ms"], "阶段": row["phase"],
-        "阶段访问序号": row["phase_visit"], "连续段": row["segment"], "业务主值": row["primary_value"],
-        "首次有效": "first_valid" in row["flags"] if recorded else None, "首次排齐本次参与计算工序": "first_expected_complete" in row["flags"] if recorded else None,
-        "最终结果": "final" in row["flags"] if recorded else None, "目标评价范围": row["objective_scope"], "已验证": row["verified"],
-        "评价范围未排齐批次编号": json.dumps(row["evaluation_scope"]["incomplete_batch_ids"], ensure_ascii=False, separators=(",", ":")) if row["evaluation_scope"] is not None else None,
-        **values(row["completion"], completion_fields), **scores(row),
-    } for row in points], "stage": [{
-        "阶段": row["phase"], "阶段状态": row["status"], "阶段起点（毫秒）": row["start_elapsed_ms"],
-        "阶段终点（毫秒）": row["end_elapsed_ms"], "阶段累计耗时（毫秒）": row["elapsed_ms"], "访问数": row["visits"],
-        "评估数": row["evaluated"], "接受数": row["accepted"], "严格改善数": row["strict_improvements"],
-        "已记录拒绝数": row["rejected"], "停止原因": row["stop_reason"],
-    } for row in data["stages"]], "representative_attempt": [{
-        "保存尝试序号": row["saved_index"], "代表排名": row["rank"], "尝试来源": row["source_label"],
-        "尝试来源key": row["candidate_origin"], "权重Profile": row["weight_profile_slug"], "尝试事件序号": row["event_index"],
-        "尝试策略": row["strategy"], "尝试派工模式": row["dispatch_mode"], "尝试派工规则": row["dispatch_rule"],
-        "尝试失败工序数": row["failed_ops"], "尝试累计耗时（毫秒）": row["elapsed_ms"], "尝试已接受": row["accepted"],
-        "尝试已验证": row["verified"], "相对当时对象严格改善": row["strict_improved"],
-        "业务主值": row["primary_value"], "目标评价范围": row["objective_scope"],
-        **values(row["metrics"], metric_fields), **values(row["completion"], completion_fields), **scores(row), **comparison_values(row),
-    } for row in attempts]}
-    common = {"排产编号": run_ref, "归档编号": run_ref, "读取编号": token,
-              "保存推荐候选编号": overview["recommendation"]["candidate_ref"],
-              "当前查看候选编号": query["selected_candidate_ref"], "查看基准编号": query["reference_candidate_ref"],
-              "范围起点（含）": data["scope"]["range_start"], "范围终点（不含）": data["scope"]["range_end"],
-              "资源视角": data["scope"]["resource_view"], "推荐版本": overview["recommendation"]["recommendation_version"],
-              "推荐记录格式版本": overview["selection_basis"]["selection_evidence_version"],
-              "查看过程候选编号": candidate["candidate_ref"], "求解来源候选编号": data["source"]["source_candidate_ref"],
-              "过程版本": "decision-process-v1", "过程证据版本": data["source"]["evidence_version"],
-              "过程证据状态": data["source"]["evidence_state"], "主指标key": "overdue_count", "主指标单位": "批次"}
-    row_count = sum(map(len, expected.values()))
-    export_path = BASE + "/runs/" + run_ref + "/decision/export"
-    for fmt in ("csv", "xlsx"):
-        response = client.get(export_path, query_string=dict(query, snapshot_ref=token, section="process", format=fmt))
-        assert response.status_code == 200, response.get_json()
-        assert response.headers["X-Workbench-Snapshot-Ref"] == token and response.headers["X-Workbench-Run-Ref"] == run_ref
-        assert int(response.headers["X-Workbench-Row-Count"]) == row_count
-        if fmt == "csv":
-            reader = csv.DictReader(io.StringIO(response.data.decode("utf-8-sig")))
-            actual = list(reader)
-            assert reader.fieldnames == list(PROCESS_CSV_HEADERS) and len(actual) == row_count
-            for kind, records in expected.items():
-                rows = [row for row in actual if row["record_kind"] == kind]
-                assert len(rows) == len(records)
-                for row, record in zip(rows, records):
-                    for label, value in {**common, **record}.items():
-                        if type(value) in (int, float):
-                            assert float(row[label]) == value, (kind, label, row[label], value)
-                        else:
-                            text = "" if value is None else str(value)
-                            if type(value) is str and value.lstrip().startswith(("=", "+", "-", "@")):
-                                text = "'" + value
-                            assert row[label] == text, (kind, label)
-        else:
-            book = load_workbook(io.BytesIO(response.data), read_only=True, data_only=False)
-            try:
-                assert book.sheetnames == ["候选计算", "进步事件", "搜索阶段", "代表尝试", "指标计算方式", "比较范围"]
-                definitions = (("候选计算", CANDIDATE_HEADERS, ("candidate_summary", "rejection_reason")), ("进步事件", PROGRESS_HEADERS, ("progress_point",)),
-                               ("搜索阶段", STAGE_HEADERS, ("stage",)), ("代表尝试", ATTEMPT_HEADERS, ("representative_attempt",)))
-                for title, headers, kinds in definitions:
-                    cells = list(book[title].iter_rows(max_col=len(headers)))
-                    assert [cell.value for cell in cells[0]] == list(headers)
-                    records = [{"record_kind": kind, **record} for kind in kinds for record in expected[kind]]
-                    assert len(cells) - 1 == len(records)
-                    for cells_row, record in zip(cells[1:], records):
-                        row = dict(zip(headers, cells_row))
-                        kind = record["record_kind"]
-                        assert row["record_kind"].value == kind
-                        for label, value in {**common, **record}.items():
-                            cell = row[label]
-                            if type(value) in (int, float):
-                                assert cell.value == pytest.approx(value, rel=1e-12, abs=1e-9) and cell.data_type == "n", (kind, label)
-                            else:
-                                assert cell.value == (None if value == "" else value), (kind, label, cell.value, value)
-                                if type(value) is str and value:
-                                    assert cell.data_type == "s"
-                                elif type(value) is bool:
-                                    assert cell.data_type == "b"
-                assert sum(len(list(book[title].iter_rows())) - 1 for title, _, _ in definitions) == row_count
-            finally:
-                book.close()
+def process_download(client, run_ref, query, token, *, fmt, section="process"):
+    response = client.get(BASE + "/runs/" + run_ref + "/decision/export", query_string={
+        **query, "snapshot_ref": token, "section": section, "format": fmt})
+    assert response.status_code == 200, response.get_json()
+    assert response.headers["X-Workbench-Snapshot-Ref"] == token
+    assert response.headers["X-Workbench-Run-Ref"] == run_ref
+    if fmt == "csv":
+        reader = csv.DictReader(io.StringIO(response.data.decode("utf-8-sig")))
+        rows = list(reader)
+        assert reader.fieldnames == list(UNIFIED_PROCESS_CSV_HEADERS)
+    else:
+        book = load_workbook(io.BytesIO(response.data), read_only=True, data_only=False)
+        try:
+            if section == "process":
+                assert book.sheetnames == list(PROCESS_SHEETS) + ["指标计算方式", "比较范围"]
+            assert all(book.sheetnames.count(title) == 1 for title in PROCESS_SHEETS)
+            rows = []
+            for title in PROCESS_SHEETS:
+                cells = iter(book[title].iter_rows())
+                headers = [cell.value for cell in next(cells)]
+                for cells_row in cells:
+                    for cell in cells_row:
+                        if type(cell.value) is str:
+                            assert cell.data_type == "s" and cell.number_format == "@"
+                        elif type(cell.value) is bool:
+                            assert cell.data_type == "b"
+                        elif type(cell.value) in (int, float):
+                            assert cell.data_type == "n"
+                    rows.append(dict(zip(headers, [cell.value for cell in cells_row])))
+        finally:
+            book.close()
+    if section == "process":
+        assert int(response.headers["X-Workbench-Row-Count"]) == len(rows)
+    return rows
 
 
-def test_real_process_sources_keep_viewer_and_legacy_progress_pages_under_one_snapshot(candidate_case):
+def exported_value(row, label, value, fmt):
+    actual = row[label]
+    if type(value) in (int, float):
+        assert float(actual) == pytest.approx(value, rel=1e-12, abs=1e-9), label
+    elif fmt == "csv":
+        expected = "" if value is None else str(value)
+        if type(value) is str and (value.lstrip().startswith(("=", "+", "-", "@"))
+                                  or label.endswith("编号") and value.isdecimal()):
+            expected = "'" + value
+        assert actual == expected, (label, actual, expected)
+    else:
+        assert actual == (None if value == "" else value), label
+
+
+def check_scope_exports(rows, scopes, fmt):
+    groups = [row for row in rows if row["record_kind"] == "score_scope"]
+    members = [row for row in rows if row["record_kind"] == "scope_member"]
+    assert len(groups) == len(scopes)
+    expected_members = [(ref, kind, index, member) for ref, scope in scopes.items()
+                        for kind, field in (("scheduled_operation", "scheduled_operation_refs"),
+                                            ("complete_batch", "complete_batch_refs"))
+                        for index, member in enumerate(scope[field], 1)]
+    assert len(members) == len(expected_members)
+    for row, (ref, kind, index, member) in zip(members, expected_members):
+        for label, value in (("评价范围编号", ref), ("成员类型", kind), ("成员顺序", index), ("成员永久编号", member)):
+            exported_value(row, label, value, fmt)
+    for row, (ref, scope) in zip(groups, scopes.items()):
+        for label, value in (("评价范围编号", ref), ("目标评价范围", scope["objective_scope"]),
+                             ("评分分量已知", scope["components_known"]), ("本次工序已排齐", scope["is_complete"]),
+                             ("已排工序成员数", len(scope["scheduled_operation_refs"])),
+                             ("排齐批次成员数", len(scope["complete_batch_refs"]))):
+            exported_value(row, label, value, fmt)
+
+
+def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate_case):
     case = candidate_case
-    case.config(algo_mode="improve", dispatch_mode="sgs", dispatch_rule="slack", time_budget_seconds=1)
+    case.config(algo_mode="improve", dispatch_mode="sgs", dispatch_rule="slack", time_budget_seconds=1, objective="min_overdue")
     run_ref, refs = compute(case)
-    artifacts = saved_artifacts(case)
-    client, _ = api(case)
-    query = {"selected_candidate_ref": refs[-2], "reference_candidate_ref": refs[0]}
+    assert 1 <= len(refs) <= 3
+    raw = json.loads(case.conn.execute("SELECT process_json FROM WorkbenchRunDecisionReadModels WHERE run_ref=?", (run_ref,)).fetchone()[0])
+    artifacts = {row[0]: json.loads(row[1]) for row in case.conn.execute(
+        "SELECT candidate_ref,artifact_json FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (run_ref,))}
+    assert raw["version"] == UNIFIED_PROCESS_VERSION
+    assert raw["primary_objective"] == "min_overdue" and raw["target_objectives"] == ["min_overdue", "min_tardiness", "min_changeover"]
+    assert raw["budget"]["configured_seconds"] == 1
+    events = {row["event_id"]: row for row in raw["events"]}
+    client, statements = api(case)
+    query = {"selected_candidate_ref": refs[-1], "reference_candidate_ref": refs[0]}
     path = BASE + "/runs/" + run_ref + "/decision/process"
+    units = {"min_overdue": ("overdue_count", "批次"), "min_tardiness": ("total_tardiness_hours", "小时"),
+             "min_changeover": ("changeover_count", "次")}
     with retained(case.conn):
-        overview = decision(client, run_ref, **query)["data"]
-        default = detail(client, run_ref, "process", **query)["data"]
-        assert default["candidate"]["candidate_ref"] == default["filters"]["process_candidate_ref"] == refs[-2]
-        assert default["scope"]["selected_candidate_ref"] == refs[-2]
-        assert default["scope"]["reference"]["candidate_ref"] == refs[0]
-        assert {row["candidate_ref"] for row in default["candidates"]} == set(refs)
-        assert default["process_version"] == "decision-process-v1"
-        reused = []
-        checked_sources = set()
+        overview = decision_summary(client, run_ref, **query)
+        statements.clear()
+        initial = detail(client, run_ref, "process", **query)
+        data = initial["data"]
+        reads = [sql.upper() for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+        assert not any(any(column in sql for column in ("FACTS_JSON", "EXECUTION_JSON", "RECEIPT_JSON", "ARTIFACT_JSON", "PAYLOAD_JSON")) for sql in reads)
+        assert data["process_version"] == UNIFIED_PROCESS_VERSION
+        assert data["scope"]["selected_candidate_ref"] == refs[-1] and data["scope"]["reference"]["candidate_ref"] == refs[0]
+        assert data["candidate"]["candidate_ref"] == data["filters"]["process_candidate_ref"] == refs[-1]
+        assert data["filters"]["objective"] == data["selected_objective"]["name"] == raw["primary_objective"]
+        assert data["counts"] == raw["counts"] and data["budget"] == raw["budget"]
+        assert data["summary"]["elapsed_ms"] == raw["elapsed_ms"] and data["stop_reason"] == raw["stop_reason"]
+        assert set(data["summary"]) == {"elapsed_ms", "first_complete_elapsed_ms", "first_improvement_elapsed_ms", "last_improvement_elapsed_ms"}
+        for field in ("first_improvement_elapsed_ms", "last_improvement_elapsed_ms"):
+            assert data["summary"][field] == raw["targets"][raw["primary_objective"]][field]
+        complete_times = [event["elapsed_ms"] for event in raw["events"] if event["event_type"] == "archive_observation"
+                          and event["verified"] is True and raw["scopes"][event["scope_ref"]]["is_complete"] is True]
+        assert data["summary"]["first_complete_elapsed_ms"] == min(complete_times)
+        assert data["scopes"] == raw["scopes"] and data["bridges"] == raw["bridges"]
+        explicit = detail(client, run_ref, "process", **dict(query, objective=raw["primary_objective"], snapshot_ref=initial["meta"]["snapshot_ref"]))
+        assert all(explicit["meta"][key] == initial["meta"][key] for key in ("snapshot_ref", "as_of"))
+        assert explicit["data"] == data
+        assert {candidate["candidate_ref"] for candidate in data["candidates"]} == set(refs)
         for ref in refs:
-            response = detail(client, run_ref, "process", **dict(query, process_candidate_ref=ref))
-            data = response["data"]
-            public({key: value for key, value in data.items() if key != "baseline"})
-            own = artifacts[ref]
-            candidate, source, summary = (data[key] for key in ("candidate", "source", "summary"))
-            assert candidate["candidate_ref"] == source["candidate_ref"] == ref
-            assert source["role"] == "process_anchor" and source["grain"] == "saved_candidate_solver_process"
-            assert data["scope"] == default["scope"] and data["baseline"] == default["baseline"]
-            assert candidate["configured_dispatch_rule"] == own["dispatch_rule"] == "slack"
-            assert candidate["adopted_dispatch_rule"] == own["adopted_dispatch_rule"]
-            assert candidate["own_elapsed_ms"] == summary["own_elapsed_ms"] == own["elapsed_seconds"] * 1000
-            assert candidate["final_metrics"] == {key: own["metrics"][key] for key in candidate["final_metrics"]}
-            completed = own["metrics"]["completion"]
-            assert candidate["completion"] == {key: len(completed["incomplete_batch_ids"]) if key == "incomplete_batch_count"
-                                                else completed[key] for key in candidate["completion"]}
-            assert source["evidence_version"] == "optimization-process-v1" and source["evidence_state"] == "complete"
-            assert data["progress"]["mode"] == "curve" and 1 <= len(data["progress"]["points"]) <= 200
-            assert len(data["items"]) <= 12 and data["page"]["total"] == summary["saved_attempt_count"]
-            assert len(data["attempts"]) == summary["saved_attempt_count"]
-            assert sorted(data["attempts"], key=lambda row: row["saved_index"]) == sorted(data["items"], key=lambda row: row["saved_index"])
-            assert all("tasks" not in row and "gantt_graph" not in row for row in data["items"])
-            assert set(summary["solver_counts"]) == set(COUNT_KEYS)
-            assert summary["rejection_summary"] == source["rejection_summary"] == artifacts[source["source_candidate_ref"]]["process_evidence"]["rejection_summary"]
-            assert all(type(value) is int for value in summary["solver_counts"].values())
-            assert summary["solver_counts"]["evaluated"] >= summary["solver_counts"]["strict_improvements"]
-            solver_ref = source["source_candidate_ref"]
-            solver = artifacts[solver_ref]["process_evidence"]
-            assert summary["solver_counts"] == solver["counts"]
-            assert summary["source_solver_elapsed_ms"] == solver["elapsed_ms"]
-            saved_points = {row["event_index"]: row for row in solver["points"]}
-            assert all(point["evaluation_scope"] == saved_points[point["event_index"]]["evaluation_scope"] for point in data["progress"]["points"])
-            assert all(row["source_candidate_ref"] == solver_ref for row in data["items"] + data["progress"]["points"])
-            for item in data["items"]:
-                saved = artifacts[solver_ref]["attempts"][item["saved_index"] - 1]
-                assert item["source_label"] and item["candidate_origin"] == saved.get("candidate_origin", saved.get("source"))
-                assert item["weight_profile_slug"] == saved.get("weight_profile_slug")
-                for field in ("elapsed_ms", "event_index", "accepted", "verified", "strict_improved", "comparison"):
-                    assert item[field] == saved.get(field), (ref, item["saved_index"], field)
-                assert type(item["elapsed_ms"]) is int and type(item["accepted"]) is bool and type(item["verified"]) is bool
-                comparison = item["comparison"]
-                if comparison["state"] == "comparable":
-                    assert type(item["strict_improved"]) is bool and set(comparison["metric_deltas"]) == set(COMPARISON_METRIC_KEYS)
-                else:
-                    assert item["strict_improved"] is None and comparison["metric_deltas"] is None
-            assert data["objective"]["primary_metric_key"] == "overdue_count" and data["objective"]["unit"] == "批次"
-            assert data["progress"]["coverage"]["endpoint_coverage"]["first_valid"] is True
-            assert data["progress"]["coverage"]["endpoint_coverage"]["first_expected_complete"] is True
-            assert data["progress"]["coverage"]["endpoint_coverage"]["final"] is True
-            assert data["summary"]["sampling"]["retained_point_count"] == len(data["progress"]["points"])
-            if source["kind"] == "reused":
-                reused.append(ref)
-                assert solver_ref != ref and summary["own_counts"] == dict.fromkeys(COUNT_KEYS, 0)
-                original = detail(client, run_ref, "process", **dict(query, process_candidate_ref=solver_ref))["data"]
-                assert data["progress"] == original["progress"] and data["stages"] == original["stages"]
-                assert data["attempts"] == original["attempts"]
-                assert data["items"] == original["items"] and summary["solver_counts"] == original["summary"]["own_counts"]
-            else:
-                assert source["kind"] == "own_search" and solver_ref == ref
-                assert summary["own_counts"] == summary["solver_counts"]
-            if source["kind"] not in checked_sources:
-                check_process_exports(client, run_ref, dict(query, process_candidate_ref=ref), response["meta"]["snapshot_ref"], data, overview)
-                checked_sources.add(source["kind"])
-        assert reused
-        assert decision(client, run_ref, **query)["data"]["selection_basis"] == overview["selection_basis"]
-        for invalid in ({"record_kind": "raw"}, {"record_kind": "attempts", "sort": "event_index"},
-                        {"page": 0}, {"size": 27}, {"order": "random"}):
+            anchored = detail(client, run_ref, "process", **dict(query, process_candidate_ref=ref))["data"]
+            assert anchored["scope"] == data["scope"] and anchored["baseline"] == data["baseline"]
+            assert anchored["summary"] == data["summary"] and anchored["counts"] == data["counts"]
+            assert anchored["candidate"]["candidate_ref"] == ref
+            for field in ("representative_objectives", "origin", "first_found_elapsed_ms", "search_evidence_ref"):
+                assert anchored["candidate"][field] == artifacts[ref][field]
+            evidence = anchored["candidate"]["search_evidence_ref"]
+            assert evidence["run_ref"] == run_ref and anchored["source_event"] == events[evidence["source_event_id"]]
+        for objective in raw["target_objectives"]:
+            current = detail(client, run_ref, "process", **dict(query, objective=objective, record_kind="progress", size=50))["data"]
+            descriptor = current["selected_objective"]
+            metric, unit = units[objective]
+            assert (descriptor["primary_metric_key"], descriptor["unit"]) == (metric, unit)
+            assert current["scope"] == data["scope"]
+            assert current["summary"] == {**data["summary"], **{field: raw["targets"][objective][field]
+                for field in ("first_improvement_elapsed_ms", "last_improvement_elapsed_ms")}}
+            assert current["actions"] == [action for action in raw["actions"] if action["search_objective"] == objective]
+            assert current["progress"]["sampling"] == raw["targets"][objective]["sampling"]
+            assert 1 <= len(current["progress"]["points"]) <= 200
+            for point, saved in zip(current["progress"]["points"], raw["targets"][objective]["points"]):
+                assert all(point[key] == value for key, value in saved.items())
+                assert point["phase"] == events[point["source_event_id"]]["phase"]
+                assert point["verified"] == events[point["source_event_id"]]["verified"]
+                assert point["primary_value"] == point["score"][point["field_order"].index(metric)]
+            event_order = detail(client, run_ref, "process", **dict(query, objective=objective, record_kind="progress", sort="event_index", size=50))["data"]
+            assert [point["source_event_id"] for point in event_order["items"]] == sorted(point["source_event_id"] for point in current["progress"]["points"])[:50]
+        actions = detail(client, run_ref, "process", **dict(query, record_kind="attempts", sort="rank", order="desc", size=50))["data"]
+        assert [action["action_id"] for action in actions["items"]] == sorted((action["action_id"] for action in data["actions"]), reverse=True)[:50]
+        assert all("rank" not in action and "primary_value" not in action for action in actions["actions"])
+        progress_query = dict(query, process_candidate_ref=refs[0], objective="min_tardiness", record_kind="progress", sort="elapsed_ms", order="desc")
+        first = detail(client, run_ref, "process", **progress_query)
+        token = first["meta"]["snapshot_ref"]
+        assert first["data"]["scope"] == data["scope"]
+        second = detail(client, run_ref, "process", **dict(progress_query, page=2, snapshot_ref=token))
+        wide = detail(client, run_ref, "process", **dict(progress_query, size=50, snapshot_ref=token))
+        assert all(second["meta"][key] == wide["meta"][key] == first["meta"][key] for key in ("snapshot_ref", "as_of"))
+        assert first["data"]["items"] + second["data"]["items"] == wide["data"]["items"][:40]
+        total = first["data"]["page"]["total"]
+        empty = detail(client, run_ref, "process", **dict(progress_query, page=(total + 19) // 20 + 1, snapshot_ref=token))["data"]
+        assert empty["items"] == [] and empty["page"]["total"] == total and empty["page"]["has_more"] is False
+        assert first["data"]["page"]["size"] == 20 and wide["data"]["page"]["size"] == 50
+        for changed in ({"objective": "min_overdue"}, {"order": "asc"}, {"sort": "event_index"}):
+            expect_error(client, path, dict(progress_query, snapshot_ref=token, **changed), 409, "snapshot_stale")
+        for invalid in ({"objective": "min_weighted_tardiness"}, {"record_kind": "raw"}, {"record_kind": "attempts", "sort": "event_index"},
+                        {"record_kind": "attempts", "sort": "primary_value"}, {"page": 0}, {"size": 27}, {"order": "random"}):
             expect_error(client, path, dict(query, **invalid), 422, "invalid_input")
         expect_error(client, path, dict(query, process_candidate_ref="bad"), 400, "invalid_input")
         expect_error(client, path, dict(query, process_candidate_ref="f" * 48), 404, "entity_not_found")
         expect_error(client, BASE + "/runs/" + "e" * 48 + "/decision/process", {}, 404, "entity_not_found")
-
-    # Explicit old-record fixture: 27 genuinely stored discrete rows, not 27 producer events.
-    legacy = [{"elapsed_ms": index * 10, "tag": "local:swap", "strategy": "due_date_first",
-               "dispatch_mode": "sgs", "dispatch_rule": "slack", "score": [0, 28 - index, 0.75],
-               "metrics": {"overdue_count": 28 - index, "makespan_hours": 0.75}}
-              for index in range(1, 28)]
-    legacy[7]["metrics"].pop("overdue_count")
-
-    def old_record(artifact):
-        artifact.pop("process_evidence", None)
-        artifact["improvement_trace"] = deepcopy(legacy)
-        artifact["search_report"] = {"objective_name": "min_overdue", "best_improved_candidates": 1,
-                                     "rejection_summary": {"duration_overflow": 2, "resource_guard": 1}}
-
-    edit_artifact(case, refs[0], old_record)
-    progress_query = dict(query, process_candidate_ref=refs[0], record_kind="progress", sort="elapsed_ms", order="asc")
-    with retained(case.conn):
-        first = detail(client, run_ref, "process", **progress_query)
-        token = first["meta"]["snapshot_ref"]
-        second = detail(client, run_ref, "process", **dict(progress_query, page=2, snapshot_ref=token))
-        wide = detail(client, run_ref, "process", **dict(progress_query, size=50, snapshot_ref=token))
-        one, two, full = (response["data"] for response in (first, second, wide))
-        assert second["meta"]["snapshot_ref"] == wide["meta"]["snapshot_ref"] == token
-        assert one["items"] + two["items"] == full["items"] == one["progress"]["points"]
-        assert one["attempts"] == two["attempts"] == full["attempts"]
-        assert len(one["attempts"]) == one["summary"]["saved_attempt_count"]
-        assert one["page"] == {"number": 1, "size": 20, "total": 27, "has_more": True}
-        assert two["page"] == {"number": 2, "size": 20, "total": 27, "has_more": False}
-        assert len(two["items"]) == 7 and [row["event_index"] for row in full["items"]] == list(range(1, 28))
-        assert [row["elapsed_ms"] for row in full["items"]] == list(range(10, 280, 10))
-        assert one["scope"] == default["scope"] and one["candidate"]["candidate_ref"] == refs[0]
-        assert one["progress"]["mode"] == "discrete" and one["source"]["evidence_state"] == "partial"
-        assert set(one["progress"]["coverage"]["endpoint_coverage"].values()) == {None}
-        assert all(row["flags"] == [] and row["verified"] is None for row in full["items"])
-        assert all(row["evaluation_scope"] is None for row in full["items"])
-        assert set(one["summary"]["solver_counts"].values()) == {None}
-        assert one["summary"]["sampling"]["event_total_count"] is None
-        assert one["items"][7]["primary_value"] is None and one["items"][7]["score"] == [0, 20, 0.75]
-        empty = detail(client, run_ref, "process", **dict(progress_query, page=3, snapshot_ref=token))["data"]
-        assert empty["items"] == [] and empty["page"]["total"] == 27 and empty["page"]["has_more"] is False
-        assert empty["attempts"] == one["attempts"]
-        for sort_order in ("asc", "desc"):
-            sorted_data = detail(client, run_ref, "process", **dict(progress_query, sort="primary_value", order=sort_order, size=50))["data"]
-            assert sorted_data["items"][-1]["event_index"] == 8
-            values = [row["primary_value"] for row in sorted_data["items"][:-1]]
-            assert values == sorted(values, reverse=sort_order == "desc")
-        for changed in ({"process_candidate_ref": refs[1]}, {"record_kind": "attempts", "sort": "rank"},
-                        {"sort": "event_index"}, {"order": "desc"}, {"selected_candidate_ref": refs[-1]},
-                        {"reference_candidate_ref": refs[1]}):
-            expect_error(client, path, dict(progress_query, snapshot_ref=token, **changed), 409, "snapshot_stale")
-        check_process_exports(client, run_ref, progress_query, token, full, overview)
+        progress = first["data"]
+        expected_points = sorted(sorted(progress["progress"]["points"], key=lambda point: point["source_event_id"]), key=lambda point: point["elapsed_ms"], reverse=True)
+        expected_actions = sorted(progress["actions"], key=lambda action: action["action_id"], reverse=True)
+        for fmt in ("csv", "xlsx"):
+            rows = process_download(client, run_ref, progress_query, token, fmt=fmt)
+            summary = [row for row in rows if row["record_kind"] == "run_process_summary"]
+            assert len(summary) == 1
+            for label, value in (("过程版本", UNIFIED_PROCESS_VERSION), ("共同总耗时（毫秒）", raw["elapsed_ms"]),
+                                 ("首次完整解（毫秒）", data["summary"]["first_complete_elapsed_ms"]),
+                                 ("共同实际排程调用数", raw["counts"]["actual_decoder_calls"]),
+                                 ("查看过程候选编号", progress["candidate"]["candidate_ref"]), ("查看过程来源事件编号", progress["source_event"]["event_id"])):
+                exported_value(summary[0], label, value, fmt)
+            for row in rows:
+                for label, value in (("读取编号", token), ("排产编号", run_ref), ("归档编号", run_ref),
+                                     ("保存推荐候选编号", overview["data"]["recommendation"]["candidate_ref"]),
+                                     ("当前查看候选编号", refs[-1]), ("查看基准编号", refs[0])):
+                    exported_value(row, label, value, fmt)
+            budgets = [row for row in rows if row["record_kind"] == "objective_budget"]
+            assert len(budgets) == 1 and budgets[0]["优化方向"] == "min_tardiness"
+            exported_value(budgets[0], "首次真实评分改善（毫秒）", progress["summary"]["first_improvement_elapsed_ms"], fmt)
+            exported_value(budgets[0], "最后真实评分改善（毫秒）", progress["summary"]["last_improvement_elapsed_ms"], fmt)
+            points = [row for row in rows if row["record_kind"] == "progress_point"]
+            assert len(points) == len(expected_points)
+            for row, point in zip(points, expected_points):
+                for label, value in (("累计共同耗时（毫秒）", point["elapsed_ms"]), ("来源事件编号", point["source_event_id"]),
+                                     ("评价范围编号", point["scope_ref"]), ("连续段", point["segment"]), ("业务主值", point["primary_value"]),
+                                     ("已验证", point["verified"]), ("主指标单位", "小时")):
+                    exported_value(row, label, value, fmt)
+                fields = {field["key"]: field for field in progress["selected_objective"]["score_fields"]}
+                for index, (key, value) in enumerate(zip(point["field_order"], point["score"])):
+                    exported_value(row, "评分分量" + str(index), value, fmt)
+                    exported_value(row, "评分分量" + str(index) + "指标key", key, fmt)
+                    exported_value(row, "评分分量" + str(index) + "单位", fields[key]["unit"], fmt)
+            exported_actions = [row for row in rows if row["record_kind"] == "search_action"]
+            assert len(exported_actions) == len(expected_actions)
+            for row, action in zip(exported_actions, expected_actions):
+                for label, value in (("动作编号", action["action_id"]), ("动作实际耗时（毫秒）", action["elapsed_ms"]),
+                                     ("动作新增决策数", action["new_decisions"]), ("动作复用决策数", action["reused_decisions"])):
+                    exported_value(row, label, value, fmt)
+            check_scope_exports(rows, raw["scopes"], fmt)
+        all_rows = process_download(client, run_ref, {**progress_query, "filter_section": "process"}, token, fmt="xlsx", section="all")
+        all_summary = [row for row in all_rows if row["record_kind"] == "run_process_summary"]
+        assert len(all_summary) == 1
+        assert all_summary[0]["查看过程候选编号"] == progress["candidate"]["candidate_ref"]
+        assert all_summary[0]["查看过程来源事件编号"] == progress["source_event"]["event_id"]
+        assert all(row["读取编号"] == token and row["当前查看候选编号"] == query["selected_candidate_ref"]
+                   and row["查看基准编号"] == query["reference_candidate_ref"] for row in all_rows)
+        current_points = [row for row in all_rows if row["record_kind"] == "progress_point" and row["优化方向"] == "min_tardiness"]
+        assert [row["累计共同耗时（毫秒）"] for row in current_points] == [point["elapsed_ms"] for point in expected_points]
+        assert [row["优化方向"] for row in all_rows if row["record_kind"] == "objective_budget"] == raw["target_objectives"]
+        for row in all_rows:
+            if row["record_kind"] == "objective_budget":
+                target = raw["targets"][row["优化方向"]]
+                exported_value(row, "首次真实评分改善（毫秒）", target["first_improvement_elapsed_ms"], "xlsx")
+                exported_value(row, "最后真实评分改善（毫秒）", target["last_improvement_elapsed_ms"], "xlsx")
+        assert sum(row["record_kind"] == "search_action" for row in all_rows) == len(raw["actions"])
+        check_scope_exports(all_rows, raw["scopes"], "xlsx")
+        assert decision_summary(client, run_ref, **query)["data"]["selection_basis"] == overview["data"]["selection_basis"]
 
 
 def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
@@ -466,19 +408,63 @@ def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
     assert ordinary["algo"]["attempts"][1]["comparison"] == comparator
 
 
+    # Old archives keep 27 actual saved events; their immutable projection is the reader input.
+    legacy = deepcopy(row)
+    legacy["artifact"]["improvement_trace"] = [{"elapsed_ms": index * 10, "tag": "local:swap", "strategy": "due_date_first",
+        "dispatch_mode": "sgs", "dispatch_rule": "slack", "score": [0, 28 - index, 0.75],
+        "metrics": {"overdue_count": 28 - index, "makespan_hours": 0.75}} for index in range(1, 28)]
+    legacy["artifact"]["improvement_trace"][7]["metrics"].pop("overdue_count")
+    source = process_source([legacy], ref)
+    filters = normalize_process_filters(process_candidate_ref=ref, record_kind="progress", sort="elapsed_ms")
+    first = process_details(source, filters)
+    second = process_details(source, filters, page=2)
+    wide = process_details(source, filters, size=50)
+    assert first["items"] + second["items"] == wide["items"] == first["progress"]["points"]
+    assert first["attempts"] == second["attempts"] == wide["attempts"]
+    assert first["page"] == {"number": 1, "size": 20, "total": 27, "has_more": True}
+    assert second["page"] == {"number": 2, "size": 20, "total": 27, "has_more": False}
+    assert len(second["items"]) == 7 and [point["event_index"] for point in wide["items"]] == list(range(1, 28))
+    assert [point["elapsed_ms"] for point in wide["items"]] == list(range(10, 280, 10))
+    assert first["scope"] == source.scope and first["candidate"]["candidate_ref"] == ref
+    assert first["progress"]["mode"] == "discrete" and first["source"]["evidence_state"] == "partial"
+    assert set(first["progress"]["coverage"]["endpoint_coverage"].values()) == {None}
+    assert all(point["flags"] == [] and point["verified"] is None and point["evaluation_scope"] is None for point in wide["items"])
+    assert set(first["summary"]["solver_counts"].values()) == {None}
+    assert first["summary"]["sampling"]["event_total_count"] is None
+    assert first["items"][7]["primary_value"] is None and first["items"][7]["score"] == [0, 20, 0.75]
+    empty = process_details(source, filters, page=3)
+    assert empty["items"] == [] and empty["page"]["total"] == 27 and empty["page"]["has_more"] is False
+    for order in ("asc", "desc"):
+        result = process_details(source, {**filters, "sort": "primary_value", "order": order}, size=50)
+        assert result["items"][-1]["event_index"] == 8
+        values = [point["primary_value"] for point in result["items"][:-1]]
+        assert values == sorted(values, reverse=order == "desc")
+    export = {"run": source.run, "capture_ref": source.run["run_ref"], "baseline": source.baseline,
+        "scope": {**source.scope, "range_start": None, "range_end": None, "resource_view": "selected_batches"},
+        "selection_basis": {"selection_evidence_version": None},
+        "recommendation": {"candidate_ref": ref, "recommendation_version": "decision-recommendation-v1"},
+        "export_process": process_export_records(source, filters)}
+    snapshot = {"snapshot_ref": "s" * 32, "as_of": "2026-10-15T01:30:00"}
+    tables = process_export_tables(export, snapshot)
+    assert {title: table[0] for title, table in tables.items()} == {
+        "候选计算": CANDIDATE_HEADERS, "进步事件": PROGRESS_HEADERS, "搜索阶段": STAGE_HEADERS, "代表尝试": ATTEMPT_HEADERS}
+    assert len(tables["进步事件"][1]) == 27 and process_csv(export, snapshot)[0] == PROCESS_CSV_HEADERS
+    rows = [dict(zip(PROGRESS_HEADERS, item)) for item in tables["进步事件"][1]]
+    assert [point["事件序号"] for point in rows] == list(range(1, 28))
+    assert rows[7]["业务主值"] is None and rows[7]["评分分量1"] == 20
+
+
 def test_failed_not_started_and_missing_reuse_sources_keep_availability_explicit():
     failed, skipped, reused, old_skipped, budget_skipped = (format(index, "048x") for index in range(1, 6))
     rows = [
         {"candidate_ref": failed, "status": "failed", "artifact": {"label": "失败候选", "failure_reason": "测试失败原因"}},
         {"candidate_ref": skipped, "status": "skipped", "artifact": {"label": "未启动候选",
-            "failure_reason": "candidate_time_budget_reached", "process_evidence": non_search_evidence(
-                "min_overdue", kind="not_started", reason="candidate_time_budget_reached", known_not_started=True)}},
+            "failure_reason": "candidate_time_budget_reached", "process_evidence": load_legacy_process_evidence("min_overdue_not_started")}},
         {"candidate_ref": reused, "status": "completed", "artifact": {"label": "缺来源复用候选",
             "reused_from_candidate_key": "old-missing-source", "elapsed_seconds": 0.001}},
         {"candidate_ref": old_skipped, "status": "skipped", "artifact": {"label": "旧跳过候选", "failure_reason": "历史预算结束"}},
         {"candidate_ref": budget_skipped, "status": "skipped", "artifact": {"label": "预算中断候选",
-            "failure_reason": "candidate_time_budget_reached", "process_evidence": non_search_evidence(
-                "min_overdue", kind="budget_skipped", reason="candidate_time_budget_reached")}},
+            "failure_reason": "candidate_time_budget_reached", "process_evidence": load_legacy_process_evidence("min_overdue_budget_skipped")}},
     ]
     source = process_source(rows[:2])
     result = process_details(source, normalize_process_filters())

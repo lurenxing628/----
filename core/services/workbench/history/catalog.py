@@ -13,6 +13,7 @@ from core.models.workbench_run_history import (
     MAX_DOCUMENT_BYTES,
     local_datetime,
 )
+from core.services.workbench.facts.decision_read_models import public_run_head, read_model_json
 from data.repositories.workbench_history_catalog_repo import WorkbenchHistoryCatalogRepository
 
 _REF_FIELDS = ("run_ref", "candidate_ref", "scenario_ref", "draft_ref", "plan_ref", "version", "history_id", "receipt_ref", "request_key")
@@ -80,10 +81,14 @@ def _descriptor(ref, kind, state, source, times, record, gaps):
             "selection": {}, "occurred_at": None, "time_basis": None, "evidence_gaps": gaps}
 
 
-def _run(row, candidate_keys):
+def _run(row):
     run_ref = _reference(row["run_ref"])
-    result = _object(row["result_json"]) if row["result_json"] is not None else None
-    settings = _object(row["normalized_input_json"])
+    admission = read_model_json(row, "scope_json")
+    result = (read_model_json(row, "header_json")
+              if row["header_version"] is not None or row["header_json"] is not None else None)
+    public_run_head(row, admission, result)
+    candidate_keys = {candidate["candidate_key"]: candidate["candidate_ref"]
+                      for candidate in (result or {}).get("candidates", [])}
     selection = (result or {}).get("selection") or {}
     if type(selection) is not dict:
         _invalid()
@@ -98,7 +103,7 @@ def _run(row, candidate_keys):
         gaps.append(_gap("selected_candidate_ref"))
     source = {"run_ref": run_ref, "candidate_ref": selected, "receipt_ref": row["receipt_ref"], "request_key": row["request_key"]}
     entry = _descriptor("run:" + run_ref, "run", row["state"], source, row,
-                        {"job": row, "run_receipt": result, "input": settings, "candidate_keys": candidate_keys}, gaps)
+                        {"job": row, "admission": admission, "run_header": result, "candidate_keys": candidate_keys}, gaps)
     occurred = _local_time(row["accepted_at"], "accepted_at", gaps)
     entry.update(selected_candidate_ref=selected, selection=selection,
                  occurred_at=occurred, time_basis="accepted_at_factory_local" if occurred is not None else None)
@@ -210,27 +215,36 @@ def read_history_catalog(conn):
     if not conn.in_transaction:
         raise RuntimeError("History catalog requires the caller's read transaction")
     repo = WorkbenchHistoryCatalogRepository(conn)
-    capacities = repo.capacity()
-    if (any(row["rows"] > MAX_DIRECTORY_ROWS or row["max_document_bytes"] > MAX_DOCUMENT_BYTES for row in capacities.values())
-            or sum(row["bytes"] for row in capacities.values()) > MAX_DIRECTORY_BYTES):
-        raise WorkbenchCommandRejected("history_capacity_exceeded", "历史目录超过读取上限，请联系维护人员处理。", 413)
-    jobs, candidates, receipts, histories, bindings = repo.runs(), repo.candidate_keys(), repo.adoption_receipts(), repo.histories(), repo.official_bindings()
-    keys, by_version, official = defaultdict(dict), defaultdict(list), {}
-    for row in candidates:
-        keys[row["run_ref"]][row["candidate_key"]] = row["candidate_ref"]
+    jobs, receipts, histories, bindings = repo.runs(), repo.adoption_receipts(), repo.histories(), repo.official_bindings()
+    byte_count = 0
+    for records, fields in ((jobs, ("scope_json", "header_json")), (receipts, ("outcome_json",)),
+                           (histories, ("result_summary",)), (bindings, ("ref",))):
+        if len(records) > MAX_DIRECTORY_ROWS:
+            raise WorkbenchCommandRejected("history_capacity_exceeded", "历史目录超过读取上限，请联系维护人员处理。", 413)
+        for row in records:
+            for field in fields:
+                raw = row[field]
+                if raw is not None:
+                    if type(raw) is not str:
+                        _invalid()
+                    size = len(raw.encode("utf-8"))
+                    byte_count += size
+                    if size > MAX_DOCUMENT_BYTES or byte_count > MAX_DIRECTORY_BYTES:
+                        raise WorkbenchCommandRejected("history_capacity_exceeded", "历史目录超过读取上限，请联系维护人员处理。", 413)
+    by_version, official = defaultdict(list), {}
     for row in histories:
         by_version[row["version"]].append(row)
     for row in bindings:
         if row["active"] == 1 and row["source_key"] == str(row["version"]) and row["plan_role"] == "adopted" and row["source_table"] == "schedule":
             official[row["version"]] = row
-    entries = [_run(row, keys[row["run_ref"]]) for row in jobs]
+    entries = [_run(row) for row in jobs]
     adopted = [entry for entry in (_adoption(row, by_version, official) for row in receipts) if entry is not None]
     covered = {entry["source"]["version"] for entry in adopted}
     entries.extend(adopted)
     entries.extend(entry for entry in (_legacy(row, official) for row in histories if row["version"] not in covered) if entry is not None)
     _labels(entries)
     # Structural snapshot state keeps original contents, including off-page records.
-    state = {"read_contract_version": 1, "runs": jobs, "candidate_keys": candidates, "adoption_receipts": receipts,
+    state = {"read_contract_version": 1, "runs": jobs, "adoption_receipts": receipts,
              "schedule_history": histories, "official_bindings": bindings, "identity_clock": repo.identity_clock(),
              "event_times": [{key: entry[key] for key in ("entry_ref", "occurred_at", "time_basis")} for entry in entries]}
     return entries, state

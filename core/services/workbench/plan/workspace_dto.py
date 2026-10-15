@@ -36,15 +36,16 @@ def resource_directory(rows, resources, *, tasks=None, baseline=None, archived=(
     return [directory[key] for key in sorted(directory)]
 
 
-def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger=None):
-    baseline, baseline_facts = build_plan_baseline(conn, entry=entry, scope=scope, selected_rows=rows)
-    arguments = dict(entry=entry, scope=scope, rows=rows, resources=resources, plan_span=plan_span)
-    calendar, calendar_facts = project_plan_calendar(conn, **arguments)
+def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger=None, context=None, captured_calendar=None):
+    baseline, baseline_facts = build_plan_baseline(conn, entry=entry, scope=scope, selected_rows=rows, context=context)
+    selected = context.calendar_selection(entry, scope, resources, plan_span) if context is not None else None
+    arguments = dict(entry=entry, scope=scope, rows=rows, resources=resources, plan_span=plan_span, context=context, selected=selected)
+    calendar, calendar_facts = project_plan_calendar(conn, captured_calendar=captured_calendar, **arguments)
     occupancy, occupancy_facts = project_plan_occupancy(conn, calendar_facts=calendar_facts, **arguments)
-    delivery, delivery_facts = read_plan_delivery(conn, scope=scope, identity=entry.plan_identity, logger=logger)
+    delivery, delivery_facts = read_plan_delivery(conn, scope=scope, identity=entry.plan_identity, logger=logger, context=context)
     state = delivery["summary"]["state"]
     delivery = dict(delivery, state="available" if state == "complete" else state)
-    process_order, process_facts, gantt_graph = project_process_order(conn, plan_ref=scope.plan_ref)
+    process_order, process_facts, gantt_graph = project_process_order(conn, plan_ref=scope.plan_ref, context=context)
     provenance = baseline_facts.get("provenance") or {
         "state": "unavailable", "reason": baseline.get("reason") or "此计划未记录可核对的生成来源。",
         "source_kind": None, "source_ref": None, "source_label": None, "run_ref": None,

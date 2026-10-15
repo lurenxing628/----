@@ -7,9 +7,10 @@ from __future__ import annotations
 from typing import Any, Dict, Iterable
 
 from .metrics import build_node_metrics, get_critical_path, get_topological_generations
+from .nx_runtime import import_networkx
 from .precedence_builder import build_linear_edges_by_batch, build_precedence_graph
 from .types import GraphAnalysisSummary, GraphWarning, OperationGraphEdge, OperationGraphNode
-from .validators import collect_graph_warnings, find_cycle_edges, is_dag
+from .validators import collect_graph_warnings, find_cycle_edges
 
 
 class ScheduleGraphAnalysisService:
@@ -43,8 +44,16 @@ class ScheduleGraphAnalysisService:
         return self._analyze_graph(build_precedence_graph(nodes, edges), metrics_mode=metrics_mode)
 
     def _analyze_graph(self, graph: Any, *, metrics_mode: str) -> GraphAnalysisSummary:
-        cycle_edges = find_cycle_edges(graph)
-        dag_ok = is_dag(graph)
+        nx = import_networkx()
+        cycle_edges = []
+        topological_generations = []
+        try:
+            topological_generations = get_topological_generations(graph)
+        except nx.NetworkXUnfeasible:
+            dag_ok = False
+            cycle_edges = find_cycle_edges(graph)
+        else:
+            dag_ok = True
         warnings = collect_graph_warnings(graph)
 
         topological_order = []
@@ -53,7 +62,6 @@ class ScheduleGraphAnalysisService:
         node_metrics: Dict[str, Dict[str, Any]] = {}
 
         if dag_ok:
-            topological_generations = get_topological_generations(graph)
             topological_order = [
                 node_id
                 for group in topological_generations
@@ -64,7 +72,9 @@ class ScheduleGraphAnalysisService:
                 for index, group in enumerate(topological_generations)
                 for node_id in group
             }
-            critical_path, critical_path_minutes = get_critical_path(graph)
+            critical_path, critical_path_minutes = get_critical_path(
+                graph, topological_order=topological_order,
+            )
             if metrics_mode == "full":
                 node_metrics = build_node_metrics(
                     graph,

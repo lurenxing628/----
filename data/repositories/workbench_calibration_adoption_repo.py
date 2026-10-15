@@ -15,7 +15,8 @@ class WorkbenchCalibrationAdoptionRepository(BaseRepository):
     def template(self, template_operation_ref):
         """Active template row joined with its permanent refs, or None; part_ref may be None."""
         return self.fetchone("""SELECT o.*, r.ref AS template_operation_ref, r.revision AS template_revision,
-            p.ref AS part_ref FROM WorkbenchEntityRefs r JOIN PartOperations o ON r.entity_key=CAST(o.id AS TEXT)
+            p.ref AS part_ref FROM WorkbenchEntityRefs r JOIN PartOperations o
+                ON o.id=CAST(r.entity_key AS INTEGER) AND CAST(o.id AS TEXT)=r.entity_key
             LEFT JOIN WorkbenchEntityRefs p ON p.kind='part' AND p.active=1 AND p.entity_key=o.part_no
             WHERE r.ref=? AND r.kind='template_operation' AND r.active=1 AND o.status='active'""", (template_operation_ref,))
 

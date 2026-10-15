@@ -4,23 +4,33 @@ from dataclasses import replace
 from datetime import datetime, timedelta
 
 from core.errors import ValidationError
+from core.models.objective import normalize_objective_name, target_objectives_for
 from core.models.workbench_preflight import hold_window_bounds, local_date
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
 from data.repositories.config_repo import ConfigRepository
 
 
-def configuration_snapshot(conn):
-    return build_schedule_config_snapshot(ConfigRepository(conn), strict_mode=True)
+def configuration_snapshot(conn, *, rows=None):
+    return build_schedule_config_snapshot(ConfigRepository(conn), strict_mode=True, rows=rows)
+
+
+def run_options(settings, snapshot):
+    """Fix this admission's actual budget and shared search directions once."""
+    primary = normalize_objective_name(snapshot.objective)
+    budget = settings.get("time_budget_seconds", snapshot.time_budget_seconds)
+    return {"generation_policy_version": "unified_search_v1", "primary_objective": primary,
+            "target_objectives": list(target_objectives_for(primary)), "time_budget_seconds": budget,
+            "algo_mode": snapshot.algo_mode, "graph_analysis_mode": snapshot.graph_analysis_mode}
 
 
 def candidate_config(conn, settings, *, snapshot=None):
     # 工作台不按配置里的冻结开关和天数推算窗口：不重排时段由 hold_window() 定好后显式交给冻结逻辑。
+    base = configuration_snapshot(conn) if snapshot is None else snapshot
     return replace(
-        configuration_snapshot(conn) if snapshot is None else snapshot,
+        base, time_budget_seconds=settings.get("time_budget_seconds", base.time_budget_seconds),
         enforce_ready_default="yes" if settings["ready_check"] else "no",
         auto_assign_enabled="yes" if settings["missing_resource_policy"] == "auto_assign" else "no",
         auto_assign_persist="no",
-        graph_analysis_mode="on",
         freeze_window_enabled="no",
         freeze_window_days=0,
     )

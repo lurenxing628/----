@@ -42,7 +42,6 @@
       throw window.APSResourceContract.failure('现场原页码无效，未切换到其他页。');
     if (input.task_ref) {
       // The backend locates the task within this one freshly captured scope.
-      // Start at page 1 because an unbound explicit later page requires a snapshot.
       const query = { ...input, page: 1 };
       delete query.snapshot_ref;
       const result = checked(await api.list(query, signal), input);
@@ -52,14 +51,10 @@
         throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
       return result;
     }
-    const firstQuery = { ...input, page: 1 };
-    delete firstQuery.snapshot_ref; delete firstQuery.task_ref; delete firstQuery.operation_ref;
-    const first = checked(await api.list(firstQuery, signal), firstQuery);
-    if (input.page === undefined || input.page === 1) return first;
-    const bound = { ...first.data.scope, page: input.page || 1, size: input.size,
-      snapshot_ref: first.meta.snapshot_ref };
-    const result = checked(await api.list(bound, signal), bound);
-    if (JSON.stringify(result.data.scope) !== JSON.stringify(first.data.scope))
+    const query = { ...input };
+    delete query.snapshot_ref; delete query.task_ref; delete query.operation_ref;
+    const result = checked(await api.list(query, signal), input);
+    if (!taskScopeMatches(result.data.scope, input))
       throw window.APSResourceContract.failure('原现场任务、页码或筛选范围已不匹配，没有切换到其他任务。');
     return result;
   }

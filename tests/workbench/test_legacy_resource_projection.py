@@ -58,9 +58,9 @@ return {shipped_contract:true, capacity_panel:true};
 """)
 
 
-def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_case):
+def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_case, monkeypatch):
     case = candidate_case
-    _, candidates = reassigned_run(case)
+    _, candidates = reassigned_run(case, monkeypatch=monkeypatch)
     rows = []
     for candidate in (candidates[0], candidates[-1]):
         data, _ = read_candidate_comparison(case.conn, RunCandidateReadScope(candidate, **WINDOW))

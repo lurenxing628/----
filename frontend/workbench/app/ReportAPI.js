@@ -24,11 +24,9 @@
   }
   async function readView(api, input, signal) {
     if (input.snapshot_ref) return api.read(input, signal);
-    const first = await api.read({ ...input, page: 1 }, signal);
-    if (input.plan_ref && first.data.plan.plan_ref !== input.plan_ref || first.data.topic !== input.topic)
+    const result = await api.read(input, signal);
+    if (input.plan_ref && result.data.plan.plan_ref !== input.plan_ref || result.data.topic !== input.topic)
       throw new Error('刷新后的计划或专题与原查看状态不一致，没有改用其他来源。');
-    const result = input.page === 1 ? first : await api.read({ ...input, ...scope(first.data.scope),
-      snapshot_ref: first.meta.snapshot_ref }, signal);
     if (result.data.page.number !== input.page || result.data.page.size !== input.size)
       throw new Error('翻页位置已失效，请回到第 1 页重新查询。');
     return result;

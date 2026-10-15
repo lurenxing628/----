@@ -1,9 +1,14 @@
 """Dashboard's existing viewing scope consumes the same tradeoff projection."""
 
 from core.services.workbench.facts.changeovers import subject_arrangements
+from core.services.workbench.facts.decision_delivery import common_delivery
+from core.services.workbench.facts.decision_metrics import (
+    delivery_metric_values,
+    metric_definitions,
+    metric_delta,
+    metric_value,
+)
 
-from .decision_delivery import common_delivery
-from .decision_metrics import delivery_metric_values, metric_definitions, metric_delta, metric_value
 from .decision_recommendation import RECOMMENDATION_VERSION
 from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 

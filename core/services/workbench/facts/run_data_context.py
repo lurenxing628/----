@@ -9,7 +9,7 @@ from core.infrastructure.snapshot_connection import open_readonly_immutable
 from core.models.content import content_text, same
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
-from .system_journal import SystemMaintenanceJournal, file_content
+from .system_journal import SystemMaintenanceJournal
 from .system_reads import backup_signature
 
 
@@ -26,29 +26,32 @@ class RunDataContext:
         self.journal = SystemMaintenanceJournal(journal_dir or self.database_path + ".system-journal", self.database_path)
         self.backup_dir = backup_dir
 
-    def _records(self):
+    def capture(self):
+        """Capture validated maintenance facts for one operation."""
         records = self.journal.records()
         self.journal.assert_ready(records)
         return records
 
-    def ref(self):
-        return restored_context_ref(self.journal.database_scope, self._records())
+    def ref(self, *, records=None):
+        records = self.capture() if records is None else records
+        return restored_context_ref(self.journal.scope_from_records(records), records)
 
-    def resolve_missing(self, request_key, previous_context=None):
+    def resolve_missing(self, request_key, previous_context=None, *, records=None):
         """Call only after current run and admission receipt have both been checked."""
-        records = self._records()
+        records = self.capture() if records is None else records
         restores = [row for row in records if row["action"] == "restore"
                     and row["state"] == "succeeded" and row["code"] == "verified"]
         if not restores:
             return "unresolved"
-        current = restored_context_ref(self.journal.database_scope, restores)
+        scope = self.journal.scope_from_records(records)
+        current = restored_context_ref(scope, restores)
         if previous_context is not None:
             # Older browser records carry no data_context_before; None stays a member so
             # membership tests keep the same answer as before.
-            known: Set[Optional[str]] = {restored_context_ref(self.journal.database_scope, [])}
+            known: Set[Optional[str]] = {restored_context_ref(scope, [])}
             for row in restores:
                 known.add(row.get("data_context_before"))
-                known.add(restored_context_ref(self.journal.database_scope,
+                known.add(restored_context_ref(scope,
                                               [old for old in restores if old["job_ref"] != row["job_ref"]]))
             if previous_context != current and previous_context in known:
                 return "context_replaced"
@@ -74,12 +77,11 @@ class RunDataContext:
             before = backup_signature(path)
             if row.get("version") == 2 and not same(protection.get("signature"), before):
                 return False
-            original = file_content(path)
             # The file is journal-authorized and read-only. Never open a user path
             # or migrate a backup while answering a status lookup.
             with open_readonly_immutable(path) as conn:
                 found = WorkbenchRunRepository(conn).scheduling_run_admitted(request_key)
-            return bool(found) and same(backup_signature(path), before) and file_content(path) == original
+            return bool(found)
         except (OSError, sqlite3.Error):
             # Missing/changed historical evidence does not prove non-execution.
             return False

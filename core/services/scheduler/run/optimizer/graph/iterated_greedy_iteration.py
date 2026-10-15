@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any, Generator, Optional, Tuple
 
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
+
 from .iterated_greedy_contract import _BudgetExhausted
 from .iterated_greedy_moves import _insertion_positions, _park
 
@@ -39,7 +41,12 @@ class IGIteration:
     def _tasks(self) -> Generator[None, None, None]:
         search, report = self.search, self.search.report
         search._require_budget()
-        reference = search._reference_for_iteration()
+        try:
+            reference = search._reference_for_iteration()
+        except SharedSearchSkip as exc:
+            report["last_shared_skip"] = exc.reason
+            yield
+            return
         generator = search.rotation.pick()
         before, scored_before = report["decodes"], search.scored_decodes
         search.improved_incumbent = False
@@ -48,6 +55,11 @@ class IGIteration:
             final = yield from self._repair(reference, removed)
             idle = final == reference.order
             entry = None if idle else search._decode_entry(final)
+            if not idle and search.last_decode_skip is not None:
+                yield
+                generator.record(self.seconds(), improved=False, fully_solved=False, idle=False)
+                report["interrupted_iterations"] += 1
+                return
         except (_BudgetExhausted, GeneratorExit):
             generator.record(self.seconds(), improved=False, fully_solved=False, idle=False)
             report["interrupted_iterations"] += 1
@@ -87,7 +99,7 @@ class IGIteration:
                     score, feasible = scored
                     if feasible and (best_score is None or score < best_score):
                         best_position, best_score = position, score
-                if search.report["decodes"] > before:
+                if search.report["decodes"] > before or search.last_decode_skip is not None:
                     yield
             if best_position is not None:
                 working = without[:best_position] + [op_id] + without[best_position:]

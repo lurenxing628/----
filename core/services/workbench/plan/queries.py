@@ -19,31 +19,27 @@ from core.models.schedule_plan_role import (
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
-from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.scheduler.workbench_plan_catalog import _role_entry, _scenario_entry
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .calendar import project_plan_calendar
-from .point_evidence import annotate_plan_points
 from .point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from .projection import (
     check_payload_size,
     project_capacity_blocked_plan,
     project_plan,
-    project_tasks,
     project_unavailable_plan,
     public_time,
     task_span,
 )
+from .read_context import PlanReadContext, PlanReadQuery
 from .workspace_dto import resource_directory, workspace_projections
 
 
 def _admit_rows(repo, version, source, candidate_id=None, scenario_id=None):
-    rows = repo.list_plan_row_ids_bounded(version=version, source_table=source, candidate_id=candidate_id,
-                                          scenario_id=scenario_id, limit=MAX_PLAN_TASKS + 1)
+    rows = repo.source_rows(version=version, source_table=source, candidate_id=candidate_id, scenario_id=scenario_id)
     if len(rows) > MAX_PLAN_TASKS:
         raise WorkbenchCommandRejected("query_too_large", "所选计划明细超过 10000 条上限。请缩小时间范围后重试。", 413)
 
@@ -65,6 +61,40 @@ def _admit_scenario(repo, row):
     if row["status"] == "active":
         _admit_rows(repo, row["base_version"], SOURCE_ADJUSTMENT_SCENARIO_ROWS, scenario_id=row["scenario_id"])
         _admit_version(repo, row["base_version"], row["base_plan_role"])
+
+
+def _selected_plan(context, plan_ref, locator, *, repo=None, metadata_only=False):
+    repo = context.repo if repo is None else repo
+    if not metadata_only:
+        if locator.scenario_id is not None:
+            row = repo.get_scenario_context(locator.scenario_id)
+            if row is not None:
+                _admit_scenario(repo, row)
+        else:
+            _admit_version(repo, locator.version, locator.plan_role)
+    query = PlanReadQuery(repo, repo.latest_version())
+    history = repo.get_history_identity_row(locator.version)
+    if locator.scenario_id is not None:
+        row = repo.get_scenario_context(locator.scenario_id)
+        if row is None:
+            raise WorkbenchCommandRejected("entity_not_found", "所选试调方案已不存在，请到「试调排产方案」重新选择。", 404)
+        entry = _scenario_entry(query, ScheduleAdjustmentScenario.from_row(row), history, query.latest)
+    else:
+        if history is None:
+            raise WorkbenchCommandRejected("entity_not_found", "所选排产记录已不存在，请刷新列表后重新选择。", 404)
+        option = next((row for row in repo.list_plan_role_options(locator.version) if row["role"] == locator.plan_role), None)
+        entry = _role_entry(query, history, query.latest, locator.plan_role, option)
+    identity = entry.plan_identity
+    if not entry.can_view or identity is None:
+        raise WorkbenchCommandRejected("plan_unavailable", "所选计划的状态、摘要或明细无效，看不了。请回计划列表查看不可用原因。")
+    span = repo.get_plan_time_span(version=locator.version, source_table=identity.source_table,
+                                   candidate_id=identity.candidate_id, scenario_id=locator.scenario_id)
+    if span is None:
+        raise WorkbenchCommandRejected("plan_unavailable", "所选计划没有可查看的明细。请刷新计划列表后重新选择。")
+    public_span: Dict[str, Union[str, bool]] = {"start": public_time(span.get("start_time")), "end": public_time(span.get("end_time"))}
+    if span.get("end_includes_point") is True:
+        public_span["end_inclusive"] = True
+    return repo, entry, public_span
 
 
 class WorkbenchPlanQueryService:
@@ -95,12 +125,17 @@ class WorkbenchPlanQueryService:
         return PointPlanCatalogRepository(self.conn, logger=self.logger)
 
     def catalog_page(self, scope, seek=None):
-        repo = self._repo()
+        context = PlanReadContext(self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            return self._catalog_page(scope, seek, context)
+
+    def _catalog_page(self, scope, seek, context):
+        repo = context.repo
         if scope.collection == "history":
             heads, has_more = repo.history_page(page_size=scope.size, before_version=seek)
         else:
             heads, has_more = repo.scenario_page(page_size=scope.size, after_scenario_id=seek)
-        query = _PagePlanQueryService(repo, repo.latest_version() if heads else None)
+        query = PlanReadQuery(repo, repo.latest_version() if heads else None)
         plans = []
         for head in heads:
             if scope.collection == "history":
@@ -158,106 +193,66 @@ class WorkbenchPlanQueryService:
             raise RuntimeError("A valid catalog binding must have a permanent plan reference.")
         return reference.plan_ref, None
 
-    def _selected(self, plan_ref):
-        repo = self._repo()
-        locator = self.references.resolve_plan(plan_ref)
-        if locator.scenario_id is not None:
-            row = repo.get_scenario_context(locator.scenario_id)
-            if row is not None:
-                _admit_scenario(repo, row)
-        else:
-            _admit_version(repo, locator.version, locator.plan_role)
-        return self._selected_metadata(plan_ref, repo=repo)
+    def _selected(self, plan_ref, *, context=None):
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            return context.selected(plan_ref)
 
-    def _selected_metadata(self, plan_ref, *, repo=None):
+    def _selected_metadata(self, plan_ref, *, repo=None, locator=None, context=None):
         if not self.conn.in_transaction:
             raise RuntimeError("Plan reads require read_snapshot() or an existing read transaction.")
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
         repo = repo if repo is not None else PlanMetadataRepository(self.conn, logger=self.logger)
-        locator = self.references.resolve_plan(plan_ref)
-        query = _PagePlanQueryService(repo, repo.latest_version())
-        history = repo.get_history_identity_row(locator.version)
-        if locator.scenario_id is not None:
-            row = repo.get_scenario_context(locator.scenario_id)
-            if row is None:
-                raise WorkbenchCommandRejected("entity_not_found", "所选试调方案已不存在，请到「试调排产方案」重新选择。", 404)
-            entry = _scenario_entry(query, ScheduleAdjustmentScenario.from_row(row), history, query.latest)
-        else:
-            if history is None:
-                raise WorkbenchCommandRejected("entity_not_found", "所选排产记录已不存在，请刷新列表后重新选择。", 404)
-            option = next((row for row in repo.list_plan_role_options(locator.version) if row["role"] == locator.plan_role), None)
-            entry = _role_entry(query, history, query.latest, locator.plan_role, option)
-        identity = entry.plan_identity
-        if not entry.can_view or identity is None:
-            raise WorkbenchCommandRejected("plan_unavailable", "所选计划的状态、摘要或明细无效，看不了。请回计划列表查看不可用原因。")
-        span = repo.get_plan_time_span(version=locator.version, source_table=identity.source_table,
-                                       candidate_id=identity.candidate_id, scenario_id=locator.scenario_id)
-        if span is None:
-            raise WorkbenchCommandRejected("plan_unavailable", "所选计划没有可查看的明细。请刷新计划列表后重新选择。")
-        public_span: Dict[str, Union[str, bool]] = {
-            "start": public_time(span.get("start_time")), "end": public_time(span.get("end_time")),
-        }
-        if span.get("end_includes_point") is True:
-            public_span["end_inclusive"] = True
-        return repo, entry, public_span
+        with context.read_scope():
+            locator = context.resolve(plan_ref) if locator is None else locator
+            return _selected_plan(context, plan_ref, locator, repo=repo, metadata_only=True)
 
-    def _task_rows(self, repo, entry, scope):
-        identity = entry.plan_identity
-        rows = repo.list_detail_rows_bounded(
-            version=entry.locator.version, source_table=identity.source_table, candidate_id=identity.candidate_id,
-            scenario_id=entry.locator.scenario_id, range_start=scope.range_start, range_end=scope.range_end,
-            limit=MAX_PLAN_TASKS + 1,
-        )
-        if len(rows) > MAX_PLAN_TASKS:
-            raise WorkbenchCommandRejected("query_too_large", "这次要读的安排超过上限。请缩小时间范围后重试。", 413)
-        rows = annotate_plan_points(self.conn, rows, source_table=identity.source_table)
-        if scope.range_start is not None:
-            rows = [row for row in rows if not row.get("_point_work") or overlaps(
-                public_time(row["start_time"]), public_time(row["end_time"]), scope.range_start, scope.range_end)]
-        return rows
+    def _task_rows(self, repo, entry, scope, *, context=None):
+        context = context if context is not None else getattr(repo, "context", None)
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            return context.scoped_rows(entry, scope)
 
-    def _resources(self, rows):
-        resources, state = {}, {}
-        for kind in ("machine", "operator", "supplier", "batch"):
-            keys = {str(row[kind + "_id"]) for row in rows if row[kind + "_id"] not in (None, "")}
-            mapping = self.entities.active_map(kind, sorted(keys))
-            if keys != set(mapping):
-                raise WorkbenchCommandRejected("identity_missing", "安排关联的批次、设备或人员编号缺失，请到资料总览核对。")
-            resources[kind] = mapping
-            state[kind] = [(key, value.ref, value.revision) for key, value in sorted(mapping.items())]
-        return resources, state
+    def _resources(self, rows, *, context=None):
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        return context.resources(rows)
 
-    def workspace(self, scope):
-        with read_evidence_scope(self.conn):
-            return self._workspace(scope)
+    def workspace(self, scope, *, context=None):
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            return self._workspace(scope, context=context)
 
-    def execution_workspace(self, scope, *, include_calendar=False):
+    def execution_workspace(self, scope, *, include_calendar=False, context=None):
         """Read complete scoped plan tasks without unrelated comparison/dashboard DTOs.
 
         Field reporting and actual Gantt use the same plan admission, identities,
         captured quantities and payload bound as the plan workspace. Only actual
         Gantt needs the selected-plan calendar; its full-plan chain reads tasks.
         """
-        with read_evidence_scope(self.conn):
-            return self._workspace(scope, execution_only=True, include_calendar=include_calendar)
+        context = context if context is not None else PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities)
+        with context.read_scope():
+            return self._workspace(scope, execution_only=True, include_calendar=include_calendar, context=context)
 
-    def _workspace(self, scope, *, execution_only=False, include_calendar=False):
-        repo, entry, span = self._selected(scope.plan_ref)
-        rows = self._task_rows(repo, entry, scope)
-        task_refs = self.references.get_task_refs(scope.plan_ref, rows)
-        operation_refs = self.references.get_operation_refs(row["op_id"] for row in rows)
-        resources, resource_state = self._resources(rows)
-        task_facts = {}
-        tasks = project_tasks(scope.plan_ref, rows, task_refs, operation_refs, resources, conn=self.conn, facts=task_facts)
+    def _workspace(self, scope, *, execution_only=False, include_calendar=False, context):
+        repo, entry, span = context.selected(scope.plan_ref)
+        rows = context.scoped_rows(entry, scope)
+        tasks, task_facts, resources, resource_state = context.scoped_tasks(scope.plan_ref, entry, scope)
         if execution_only:
             projections, facts = {}, {}
             if include_calendar:
                 calendar, calendar_facts = project_plan_calendar(
-                    self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span,
+                    self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, context=context,
                 )
                 projections, facts = {"calendar": calendar}, {"calendar": calendar_facts}
         else:
             projections, facts, gantt_graph, provenance = workspace_projections(
-                self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, logger=self.logger,
+                self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, logger=self.logger, context=context,
             )
         baseline_facts = facts.get("baseline", {})
         source_resources = (task_facts["resource_directory"] + baseline_facts.get("resource_directory", [])

@@ -10,7 +10,6 @@ from core.services.workbench.calibration.template_lineage import TemplateLineage
 from data.repositories.batch_material_repo import BatchMaterialRepository
 
 from .facts import BatchFacts, require_deletable
-from .operations import insert_operation
 from .projection import BatchProjection
 from .service import WorkbenchBatchService
 
@@ -133,6 +132,10 @@ class WorkbenchBatchBulkService:
         for row in projection.facts["BatchMaterials"]:
             requirements[row["batch_id"]].append(dict(row, operation_id=bindings.get(row["id"])))
         writer = TemplateLineageWriter(self.conn)
+        source_operations = [op for row in plan["rows"]
+                             for op in source_relations[row["before"]["business_code"]]["operations"]]
+        prepared_rows = writer.prepare_instances(source_operations, facts=projection.facts)
+        prepared = {op["id"]: ready for op, ready in zip(source_operations, prepared_rows)}
         outcomes = []
         for row in plan["rows"]:
             ref = row["entity_ref"]
@@ -140,7 +143,7 @@ class WorkbenchBatchBulkService:
             code = row["after"]["business_code"]
             fields = {key: batch[key] for key in ("quantity", "due_date", "priority", "remark", "part_name")}
             self.domain.domain.create(code, batch["part_no"], **fields, ready_status="no", ready_date=None)
-            mapping = {op["id"]: insert_operation(self.conn, code, op, writer=writer)
+            mapping = {op["id"]: writer.copy_prepared_instance(code, prepared[op["id"]])
                        for op in source_relations[batch["batch_id"]]["operations"]}
             BatchMaterialRepository(self.conn).copy_requirements(batch["batch_id"], code, mapping,
                                                                requirements=requirements[batch["batch_id"]])

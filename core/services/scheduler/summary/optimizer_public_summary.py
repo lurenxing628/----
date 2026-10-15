@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, cast
 
 from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
 from core.services.scheduler.contracts.optimizer_public_safety import (
@@ -14,6 +14,7 @@ from core.services.scheduler.contracts.optimizer_public_safety import (
     safe_public_text_list,
 )
 from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
+from core.services.scheduler.run.schedule_candidate_summary import is_unified_generation
 
 from .optimizer_public_algo_fields import (
     project_config_snapshot,
@@ -64,9 +65,19 @@ _PUBLIC_ALGO_KEYS = {
 def project_public_algo_summary(algo: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     raw_algo = algo if isinstance(algo, dict) else {}
     public_algo = {key: raw_algo[key] for key in _PUBLIC_ALGO_KEYS if key in raw_algo}
+    comparison = raw_algo.get("candidate_comparison")
+    unified = is_unified_generation(raw_algo) or is_unified_generation(comparison)
+    if unified:
+        policy = cast(Dict[str, Any], raw_algo if is_unified_generation(raw_algo) else comparison)
+        for key in ("generation_policy_version", "primary_objective", "target_objectives"):
+            if key in policy:
+                public_algo[key] = policy[key]
+        selection = (comparison or {}).get("selection") or {}
+        if "selected_score" in selection:
+            public_algo["best_score"] = list(selection["selected_score"])
 
     _project_text_and_budget_fields(public_algo)
-    _project_score_fields(public_algo)
+    _project_score_fields(public_algo, unified=unified)
     search_report_diagnostics = _project_search_report_field(public_algo)
     _project_attempt_fields(public_algo)
     _project_algo_context_fields(public_algo)
@@ -95,14 +106,15 @@ def _project_text_and_budget_fields(public_algo: Dict[str, Any]) -> None:
     _replace_with_text_list_or_drop(public_algo, "soft_objectives")
 
 
-def _project_score_fields(public_algo: Dict[str, Any]) -> None:
+def _project_score_fields(public_algo: Dict[str, Any], *, unified: bool = False) -> None:
     metric = safe_metric_key(public_algo.get("comparison_metric"))
     if metric:
         public_algo["comparison_metric"] = metric
     else:
         public_algo.pop("comparison_metric", None)
 
-    _replace_with_list_or_drop(public_algo, "best_score", project_attempt_score)
+    if not unified:
+        _replace_with_list_or_drop(public_algo, "best_score", project_attempt_score)
     _project_best_score_schema_field(public_algo)
     _replace_with_mapping_or_drop(public_algo, "metrics", project_public_metrics)
 

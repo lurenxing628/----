@@ -4,17 +4,24 @@ from __future__ import annotations
 
 from .base_repo import BaseRepository
 
+_FROM = """FROM Materials AS m LEFT JOIN WorkbenchEntityRefs AS r
+    ON r.kind = 'material' AND r.active = 1 AND r.entity_key = m.material_id"""
 _SELECT = """SELECT m.*, r.ref, r.revision,
     (SELECT COUNT(*) FROM BatchMaterials AS b WHERE b.material_id = m.material_id) AS requirement_count
-    FROM Materials AS m LEFT JOIN WorkbenchEntityRefs AS r
-    ON r.kind = 'material' AND r.active = 1 AND r.entity_key = m.material_id"""
+    """ + _FROM
+_TABLE_SELECT = "SELECT m.*, r.ref, r.revision " + _FROM
 _SORTS = {"business_code": "m.material_id", "label": "m.name", "spec": "m.spec", "stock_qty": "m.stock_qty", "status": "m.status"}
 
 
 class WorkbenchMaterialQueryRepository(BaseRepository):
-    def table_rows(self, query="", status=None):
+    def table_rows(self, query="", status=None, *, requirements=None):
         where, params = self._where(query, status)
-        return self.fetchall(_SELECT + where + " ORDER BY m.material_id", params)
+        rows = self.fetchall(_TABLE_SELECT + where + " ORDER BY m.material_id", params)
+        requirements = self.requirement_counts() if requirements is None else requirements
+        counts = {row["material_id"]: row["amount"] for row in requirements if row["material_id"] is not None}
+        for row in rows:
+            row["requirement_count"] = counts.get(row["material_id"], 0)
+        return rows
 
     def get_by_ref(self, ref):
         return self.fetchone(_SELECT + " WHERE r.ref = ?", (ref,))
@@ -49,9 +56,11 @@ class WorkbenchMaterialQueryRepository(BaseRepository):
         # Retired refs are retained: revisions/count increase on every material mutation.
         refs = self.fetchone("""SELECT COUNT(*) AS instances, coalesce(SUM(revision), 0) AS revisions
             FROM WorkbenchEntityRefs WHERE kind = 'material'""")
-        requirements = self.fetchall("""SELECT material_id, COUNT(*) AS amount FROM BatchMaterials
+        return {"refs": refs, "requirements": self.requirement_counts()}
+
+    def requirement_counts(self):
+        return self.fetchall("""SELECT material_id, COUNT(*) AS amount FROM BatchMaterials
             GROUP BY material_id ORDER BY material_id""")
-        return {"refs": refs, "requirements": requirements}
 
     def metrics(self, query="", status=None):
         """Status and stock counts over the toolbar scope (text query + status) only."""

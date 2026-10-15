@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta
+from functools import partial
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
 import pytest
 
+from core.algorithms import GreedyScheduler, ScheduleResult, ScheduleSummary, SortStrategy
 from core.errors import ValidationError
 from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
-from core.services.scheduler.run.schedule_optimizer import OptimizationOutcome
+from core.services.scheduler.run.optimizer.outcome import OptimizationOutcome
+from core.services.scheduler.run.optimizer.runtime import _default_runtime
+from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
+from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
+from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
 
 
 def _make_dt(hours: int) -> datetime:
@@ -113,8 +120,8 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
     )
 
 
-def _valid_result() -> SimpleNamespace:
-    return SimpleNamespace(
+def _valid_result() -> ScheduleResult:
+    return ScheduleResult(
         op_id=1,
         op_code="OP-B001-010",
         batch_id="B001",
@@ -131,7 +138,7 @@ def _valid_result() -> SimpleNamespace:
 def _optimizer_outcome() -> OptimizationOutcome:
     return OptimizationOutcome(
         results=[_valid_result()],
-        summary=SimpleNamespace(
+        summary=ScheduleSummary(
             success=True,
             total_ops=1,
             scheduled_ops=1,
@@ -140,7 +147,7 @@ def _optimizer_outcome() -> OptimizationOutcome:
             errors=[],
             duration_seconds=0.0,
         ),
-        used_strategy=SimpleNamespace(value="priority_first"),
+        used_strategy=SortStrategy.PRIORITY_FIRST,
         used_params={"dispatch": "fifo"},
         metrics=None,
         best_score=(0.0, 0.0),
@@ -178,7 +185,7 @@ def _cycle_graph_payload() -> Dict[str, Any]:
 
 
 def _summary_from_ctx(_svc: Any, *, ctx: Any) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], str, int]:
-    algo: Dict[str, Any] = {"ok": 1}
+    algo: Dict[str, Any] = {"ok": 1, "used_params": dict(ctx.used_params)}
     result_summary_obj: Dict[str, Any] = {"algo": algo, "warnings": [], "errors": []}
     if ctx.graph_analysis_public is not None:
         algo["graph_analysis"] = dict(ctx.graph_analysis_public)
@@ -188,16 +195,32 @@ def _summary_from_ctx(_svc: Any, *, ctx: Any) -> Tuple[List[Dict[str, Any]], str
 
 
 def _run_orchestrator(schedule_input: Any, svc: _Svc) -> Any:
-    return _run_orchestrator_with_optimizer(schedule_input, svc, optimize_fn=lambda **_kwargs: _optimizer_outcome())
+    return _run_orchestrator_with_decoder(schedule_input, svc, decode_fn=lambda **_kwargs: _optimizer_outcome())
 
 
-def _run_orchestrator_with_optimizer(schedule_input: Any, svc: _Svc, *, optimize_fn: Any) -> Any:
+def _run_orchestrator_with_decoder(schedule_input: Any, svc: _Svc, *, decode_fn: Any) -> Any:
+    preparation = None
+
+    def prepare_graph(inputs):
+        nonlocal preparation
+        preparation = prepare_schedule_graph_for_dispatch(inputs)
+        return preparation
+
+    class ContractScheduler(GreedyScheduler):
+        def schedule(self, **kwargs):
+            outcome = decode_fn(**kwargs, graph_dispatch_mode_override=preparation.graph_dispatch_mode_override)
+            params = dict(outcome.used_params, dispatch_mode=kwargs["dispatch_mode"], dispatch_rule=kwargs["dispatch_rule"])
+            return outcome.results, outcome.summary, outcome.used_strategy, params
+
+    compare = partial(run_candidate_comparison, prepare_graph_fn=prepare_graph,
+        optimize_shared_schedule_fn=partial(optimize_shared_schedule,
+            _runtime=replace(_default_runtime(), scheduler_factory=ContractScheduler)))
     return orchestrate_schedule_run(
         svc,
         schedule_input=schedule_input,
         simulate=True,
         strict_mode=True,
-        optimize_schedule_fn=optimize_fn,
+        candidate_comparison_fn=compare,
         build_result_summary_fn=_summary_from_ctx,
     )
 
@@ -225,6 +248,8 @@ def test_report_mode_cycle_only_reports_warning_and_keeps_scheduling(cycle_graph
     assert graph_analysis["status"] == "available"
     assert graph_analysis["is_dag"] is False
     assert graph_analysis["cycle_edge_count"] == 2
+    assert outcome.candidate_comparison.selection.selected_plan.dispatch_mode == "batch_order"
+    assert json.loads(outcome.result_summary_json)["algo"]["used_params"]["dispatch_mode"] == "batch_order"
     assert svc.history_repo.allocate_calls == 1
 
 
@@ -256,7 +281,7 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
         captured.update(kwargs)
         return _optimizer_outcome()
 
-    outcome = _run_orchestrator_with_optimizer(_schedule_input("on", block_on_cycle="no"), svc, optimize_fn=_optimize)
+    outcome = _run_orchestrator_with_decoder(_schedule_input("on", block_on_cycle="no"), svc, decode_fn=_optimize)
 
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["effective_mode"] == "sgs_without_graph_ready_queue"
@@ -266,6 +291,11 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
     assert "继续按普通排法处理" in graph_analysis["graph_enhancement_message"]
     assert captured["graph_ready_context"] is None
     assert captured["graph_dispatch_mode_override"] == "sgs"
+    assert captured["dispatch_mode"] == "sgs"
+    selected = outcome.candidate_comparison.selection.selected_plan
+    assert selected.dispatch_mode == "sgs"
+    assert "graph_ready_profile" not in selected.origin
+    assert json.loads(outcome.result_summary_json)["algo"]["used_params"]["dispatch_mode"] == "sgs"
     assert svc.history_repo.allocate_calls == 1
 
 
@@ -340,3 +370,111 @@ def test_unknown_graph_error_is_not_swallowed_before_scheduling(monkeypatch: Any
     with pytest.raises(RuntimeError, match="boom"):
         _run_orchestrator(_schedule_input("on", block_on_cycle="yes"), svc)
     assert svc.history_repo.allocate_calls == 0
+
+
+def _analysis_graph(durations: List[Tuple[str, int]], edges: List[Tuple[str, str, int]]) -> Any:
+    from core.services.scheduler.graph.nx_runtime import import_networkx
+
+    graph = import_networkx().DiGraph()
+    for node_id, duration in durations:
+        graph.add_node(node_id, batch_id="B", seq=0, op_code=node_id, duration_minutes=duration)
+    for parent, child, lag in edges:
+        graph.add_edge(parent, child, lag_minutes=lag, kind="precedence")
+    return graph
+
+
+@pytest.mark.parametrize(
+    ("durations", "edges", "expected"),
+    [
+        ([("b", 1), ("a", 1), ("c", 1)], [("a", "c", 0), ("b", "c", 0)], (["b", "c"], 2)),
+        ([("z", 1), ("a", 1)], [], (["a"], 1)),
+        ([("a", 0), ("b", 0)], [("a", "b", 0)], ([], 0)),
+        ([("a", 3), ("b", 2), ("c", 4)], [("b", "c", 0), ("a", "c", 2)], (["a", "c"], 9)),
+        ([("a", 5), ("b", 1), ("c", 10)], [("a", "b", -6), ("b", "c", 0)], (["a", "b", "c"], 10)),
+        ([("a", 5), ("b", 1), ("c", 10)], [("a", "b", -7), ("b", "c", 0)], (["b", "c"], 10)),
+    ],
+)
+def test_critical_path_keeps_original_networkx_order_and_zero_semantics(
+    durations: List[Tuple[str, int]], edges: List[Tuple[str, str, int]], expected: Tuple[List[str], int],
+) -> None:
+    from core.services.scheduler.graph import metrics
+    from core.services.scheduler.graph.nx_runtime import import_networkx
+
+    graph = _analysis_graph(durations, edges)
+    weighted = metrics.build_duration_weighted_graph(graph)
+    raw_path = import_networkx().dag_longest_path(
+        weighted, weight="weight", topo_order=metrics.get_topological_order(weighted),
+    )
+    oracle = (
+        [node_id for node_id in raw_path if node_id != "__GRAPH_METRICS_SOURCE__"],
+        sum(weighted.edges[parent, child]["weight"] for parent, child in zip(raw_path, raw_path[1:])),
+    )
+    assert oracle == expected
+    order = metrics.get_topological_order(graph)
+    assert metrics.get_critical_path(graph, topological_order=order) == oracle
+    assert metrics.get_critical_path(graph) == oracle
+
+
+@pytest.mark.parametrize("metrics_mode", ["basic", "full"])
+def test_graph_analysis_reuses_one_topology_without_success_path_cycle_scan(
+    monkeypatch: Any, metrics_mode: str,
+) -> None:
+    from unittest.mock import Mock
+
+    from core.services.scheduler.graph import analysis_service, metrics
+    from core.services.scheduler.graph.nx_runtime import import_networkx
+
+    graph = _analysis_graph([("a", 3), ("b", 4)], [("a", "b", 2)])
+    nx = import_networkx()
+    topology = Mock(wraps=nx.topological_generations)
+    cycle = Mock(wraps=nx.find_cycle)
+    monkeypatch.setattr(nx, "topological_generations", topology)
+    monkeypatch.setattr(nx, "find_cycle", cycle)
+    monkeypatch.setattr(metrics, "build_duration_weighted_graph", Mock(side_effect=AssertionError("weighted copy")))
+
+    summary = analysis_service.ScheduleGraphAnalysisService()._analyze_graph(graph, metrics_mode=metrics_mode)
+    assert summary.is_dag is True
+    assert (summary.critical_path, summary.critical_path_minutes) == (["a", "b"], 9)
+    assert bool(summary.node_metrics) is (metrics_mode == "full")
+    assert topology.call_count == 1
+    assert cycle.call_count == 0
+
+
+def test_graph_analysis_keeps_cycle_evidence_after_topology_failure(monkeypatch: Any) -> None:
+    from unittest.mock import Mock
+
+    from core.services.scheduler.graph import analysis_service
+    from core.services.scheduler.graph.nx_runtime import import_networkx
+
+    nx = import_networkx()
+    topology = Mock(wraps=nx.topological_generations)
+    cycle = Mock(wraps=nx.find_cycle)
+    monkeypatch.setattr(nx, "topological_generations", topology)
+    monkeypatch.setattr(nx, "find_cycle", cycle)
+    graph = _analysis_graph([("a", 1), ("b", 1)], [("a", "b", 0), ("b", "a", 0)])
+
+    summary = analysis_service.ScheduleGraphAnalysisService()._analyze_graph(graph, metrics_mode="full")
+    assert summary.is_dag is False
+    assert [(edge["from"], edge["to"]) for edge in summary.cycle_edges] == [("a", "b"), ("b", "a")]
+    assert (summary.topological_order, summary.critical_path, summary.node_metrics) == ([], [], {})
+    assert summary.warnings[-1].code == "GRAPH_HAS_CYCLE"
+    assert summary.warnings[-1].data == {"cycle_edges": summary.cycle_edges}
+    assert topology.call_count == cycle.call_count == 1
+
+
+def test_standalone_node_metrics_prepares_topology_once_and_reuses_given_order(monkeypatch: Any) -> None:
+    from unittest.mock import Mock
+
+    from core.services.scheduler.graph import metrics
+    from core.services.scheduler.graph.nx_runtime import import_networkx
+
+    graph = _analysis_graph([("a", 3), ("b", 4)], [("a", "b", 2)])
+    nx = import_networkx()
+    topology = Mock(wraps=nx.topological_generations)
+    monkeypatch.setattr(nx, "topological_generations", topology)
+
+    expected = metrics.build_node_metrics(graph)
+    assert topology.call_count == 1
+    topology.reset_mock()
+    assert metrics.build_node_metrics(graph, topological_order=["a", "b"]) == expected
+    assert topology.call_count == 0

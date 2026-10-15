@@ -54,8 +54,8 @@ def database_scope():
     return os.path.normcase(os.path.realpath(current_app.config["DATABASE_PATH"]))
 
 
-def issue_context(kind, value):
-    return issue_public_token(SCOPE, canonical_json({"source": "production", "database": database_scope(),
+def issue_context(kind, value, *, database=None):
+    return issue_public_token(SCOPE, canonical_json({"source": "production", "database": database_scope() if database is None else database,
                                                     "kind": kind, "value": value}), ttl_seconds=900)
 
 

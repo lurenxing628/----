@@ -278,6 +278,7 @@ class ConfigPageSaveService(ConfigPageSavePolicy):
         return raw_values, missing
 
     def save_page_config(self, form_values: Any) -> ConfigPageSaveOutcome:
+        submitted = self.submitted_fields(form_values)
         self.bootstrap_service.ensure_defaults_if_pristine()
         current_rows = self.uow.repo.list_all()
         by_key = {row.config_key: row for row in current_rows}
@@ -291,7 +292,6 @@ class ConfigPageSaveService(ConfigPageSavePolicy):
         current_active_preset = str(provenance_state.active_preset or "").strip() or None
         current_active_reason = str(provenance_state.active_preset_reason or "").strip() or None
         current_active_meta = dict(provenance_state.active_preset_meta or {})
-        submitted = self.submitted_fields(form_values)
         normalized_snapshot = self.normalize_payload(
             form_values,
             current_snapshot=current_snapshot,

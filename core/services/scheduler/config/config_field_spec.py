@@ -70,10 +70,6 @@ _GRAPH_ANALYSIS_MODE_LABELS = {
     "report": "只看分析报告",
     "on": "参与排产",
 }
-_GRAPH_CANDIDATE_WEIGHT_COUNT_LABELS = {"3": "3 档（更快）", "5": "5 档（默认）", "7": "7 档（更细）"}
-_GRAPH_SELECTION_POLICY_LABELS = {"balanced": "综合看交期和整体表现", "score_only": "只看整体表现值"}
-_GRAPH_OVERDUE_TOLERANCE_COUNT_LABELS = {"0": "0 批", "1": "1 批（默认）", "2": "2 批"}
-_GRAPH_TARDINESS_TOLERANCE_RATIO_LABELS = {"0.05": "5%", "0.1": "10%（默认）", "0.2": "20%"}
 
 _FIELD_LABEL_ALIASES = {
     "preset_name": "方案名称",
@@ -83,22 +79,6 @@ _FIELD_LABEL_ALIASES = {
 
 def _choice_pairs(choice_labels: Dict[str, str]) -> Tuple[Dict[str, str], ...]:
     return tuple({"value": key, "label": value} for key, value in choice_labels.items())
-
-
-def _candidate_option_spec(
-    key: str,
-    label: str,
-    description: str,
-    choice_labels: Dict[str, str],
-    hint: str,
-) -> ConfigFieldSpec:
-    return ConfigFieldSpec(
-        key=key,
-        label=label,
-        description=description,
-        choice_labels=dict(choice_labels),
-        page_metadata=ConfigFieldPageMetadata(key=key, label=label, hint=hint, choices=_choice_pairs(choice_labels)),
-    )
 
 
 _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
@@ -253,11 +233,11 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
     ConfigFieldSpec(
         key="time_budget_seconds",
         label="找更好排法先试多久",
-        description="精细计算会在这段时间里多试排法，建议不超过 180 秒",
+        description="一次共同优化的总计算预算，默认 10 秒",
         page_metadata=ConfigFieldPageMetadata(
             key="time_budget_seconds",
             label="找更好排法先试多久",
-            hint="精细计算时，系统会在这段时间里多试排法。时间到了以后不再开始新的排法；已经开始算的会算完。填的是秒数，例如 20。",
+            hint="预算用于一次共同优化；结果有1—3份，实际相同方案会合并。常规10秒，深入30秒，也可填写自定义秒数。",
             unit="秒",
         ),
     ),
@@ -331,10 +311,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
             hint="选择“参与排产”且工序关系可用时生效。数值越大，后面牵着更多工序的当前工序越容易提前；填 0 表示不使用这项加分。",
         ),
     ),
-    _candidate_option_spec("graph_candidate_weight_count", "重点工序方案档数", "参与排产时，系统额外尝试几档重点工序优先方案", _GRAPH_CANDIDATE_WEIGHT_COUNT_LABELS, "默认 5 档。档数越多，系统会多试几种排法，结果更容易挑细一点，但也会多花一点时间。"),
-    _candidate_option_spec("graph_selection_policy", "正式方案选择方式", "系统自动挑正式采用方案时使用的规则", _GRAPH_SELECTION_POLICY_LABELS, "默认综合判断。综合判断会先避免明显拖期更多的方案，再看整体表现；只看整体表现值则完全按这个内部参考值来选。"),
-    _candidate_option_spec("graph_overdue_tolerance_count", "允许多超期批次数", "综合选择方案时，最多允许比当前最好方案多几个超期批次", _GRAPH_OVERDUE_TOLERANCE_COUNT_LABELS, "默认 1 批。综合判断时，如果一个方案让超期批次数多太多，系统不会只因为内部参考值好看就采用它。"),
-    _candidate_option_spec("graph_tardiness_tolerance_ratio", "允许多拖期比例", "综合选择方案时，最多允许比当前最好方案多出的拖期比例", _GRAPH_TARDINESS_TOLERANCE_RATIO_LABELS, "默认 10%。综合判断时，如果一个方案拖期时间多太多，系统不会只因为内部参考值好看就采用它。"),
     ConfigFieldSpec(
         key="graph_debug_export",
         label="导出工序图排查文件",

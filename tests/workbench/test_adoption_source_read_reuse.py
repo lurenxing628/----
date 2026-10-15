@@ -1,12 +1,14 @@
 """Real adoption reads reuse proven sources only inside one SQLite snapshot."""
 
 import json
+import sqlite3
 from collections import Counter
 
 import pytest
 
 from core.infrastructure import read_evidence
-from core.infrastructure.read_evidence import read_evidence_scope
+from core.infrastructure.connection_guards import query_only
+from core.infrastructure.read_evidence import read_evidence_scope, verified_read
 from core.models.workbench_command import canonical_json
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
 from core.services.batch.service import BatchService
@@ -52,6 +54,11 @@ def _track_sources(monkeypatch):
 
 def test_full_workspace_keeps_two_version_quantities_and_exact_uncached_output(adopted_versions, monkeypatch):
     case, first, second = adopted_versions
+    audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?",
+                                       (second["version"],)).fetchone()[0])
+    artifact = json.loads(case.conn.execute(
+        "SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=? AND run_ref=?",
+        (audit["candidate_ref"], audit["run_ref"])).fetchone()[0])
     before, changes = snapshot(case.conn), case.conn.total_changes
     calls = _track_sources(monkeypatch)
     data, state = _workspace(case, second)
@@ -62,7 +69,8 @@ def test_full_workspace_keeps_two_version_quantities_and_exact_uncached_output(a
     assert provenance["baseline"]["baseline_ref"] == first["plan_ref"]
     assert provenance["baseline"]["version"] == first["version"]
     assert provenance["baseline"]["captured_at"] == provenance["accepted_at"]
-    assert provenance["algorithm"]["mode"] == "greedy" and provenance["source_label"] == "原算法"
+    assert provenance["algorithm"]["mode"] == "greedy" and provenance["source_label"] == artifact["label"]
+    assert provenance["source_ref"] == audit["candidate_ref"] and provenance["run_ref"] == audit["run_ref"]
     assert provenance["run_ref"] and provenance["source_ref"] and provenance["adopted_at"]
     assert data["tasks"][0]["quantity"] == 5
     assert baseline["items"][0]["before"]["quantity"] == 3
@@ -151,7 +159,7 @@ def test_new_request_rechecks_broken_source_and_rejects_old_snapshot(adopted_ver
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
 
 
-def test_original_baseline_is_still_checked_independently(adopted_versions):
+def test_original_baseline_is_still_checked_independently(adopted_versions, monkeypatch):
     case, first, second = adopted_versions
     corrupt_update(case.conn, "Schedule", "UPDATE Schedule SET end_time='2026-09-09T15:59:00' WHERE version=?", (first["version"],))
     before = snapshot(case.conn)
@@ -160,6 +168,57 @@ def test_original_baseline_is_still_checked_independently(adopted_versions):
     assert data["projections"]["baseline"]["state"] == "unavailable"
     assert data["projections"]["baseline"]["reason_code"] == "adoption_baseline_drift"
     assert snapshot(case.conn) == before
+
+    # Opening this adoption depends on its own source and official plan. The
+    # original baseline's display remains independently unavailable.
+    audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (second["version"],)).fetchone()[0])
+    corrupt_update(case.conn, "ScheduleHistory", "DELETE FROM ScheduleHistory WHERE version=?", (first["version"],))
+    from core.services.workbench.run.candidate_history import read_candidate_history
+
+    calls = _track_sources(monkeypatch)
+    statements, baseline_calls = [], []
+    original_tasks = adoption_baseline.baseline_tasks
+    def baseline_tasks(*args, **kwargs):
+        baseline_calls.append(True)
+        return original_tasks(*args, **kwargs)
+    monkeypatch.setattr(adoption_baseline, "baseline_tasks", baseline_tasks)
+    before, changes = snapshot(case.conn), case.conn.total_changes
+    case.conn.set_trace_callback(statements.append)
+    try:
+        history, _ = read_candidate_history(case.conn, audit["candidate_ref"])
+    finally:
+        case.conn.set_trace_callback(None)
+    assert history["total"] == 1
+    entry = history["items"][0]
+    assert entry["can_open"] is True and entry["evidence_gaps"] == []
+    assert entry["adoption"]["reason"] == audit["reason"]
+    assert entry["adoption"]["declared_operator"] == audit["declared_operator"]
+    assert entry["adoption"]["baseline_ref"] == first["plan_ref"]
+    assert calls == [(audit["run_ref"], audit["candidate_ref"])]
+    assert baseline_calls == []
+    receipt_queries = [sql.upper() for sql in statements if sql.upper().startswith("SELECT") and "FROM WORKBENCHCOMMANDRECEIPTS" in sql.upper()]
+    adopted_receipts = [sql for sql in receipt_queries if "WHERE ACTION=" in sql and "CONTEXT_REF=" in sql]
+    assert len(adopted_receipts) == 1
+    assert "ORDER BY COMMITTED_AT_UTC,REQUEST_KEY LIMIT 10001" in adopted_receipts[0]
+    assert not any("LENGTH(" in sql or "COUNT(" in sql or "SUM(" in sql for sql in receipt_queries)
+    selected_histories = [sql for sql in statements if "FROM ScheduleHistory WHERE version=" in sql and "result_summary" in sql]
+    assert len(selected_histories) == 1 and "LIMIT 2" in selected_histories[0]
+    assert snapshot(case.conn) == before and case.conn.total_changes == changes
+    data, _ = _workspace(case, second)
+    assert data["tasks"][0]["quantity"] == 5
+    assert data["projections"]["baseline"]["reason_code"] == "adoption_baseline_archived"
+    # Immutable candidate preparation is shared across version-specific proofs;
+    # every proof is still checked against that source after the memo lookup.
+    calls.clear()
+    from core.infrastructure.transaction import TransactionManager
+    with TransactionManager(case.conn).transaction(), read_evidence_scope(case.conn):
+        source = adoption_baseline_sources.candidate_source_evidence(case.conn, audit)
+        later_audit = dict(audit, version=second["version"] + 1)
+        assert adoption_baseline_sources.candidate_source_evidence(case.conn, later_audit) is source
+        invalid_audit = dict(later_audit, proof=dict(audit["proof"], run_ref="f" * 48))
+        with pytest.raises(AdoptionBaselineUnavailable):
+            adoption_baseline_sources.candidate_source_evidence(case.conn, invalid_audit)
+    assert calls == [(audit["run_ref"], audit["candidate_ref"])]
 
 
 def test_oversized_capture_keeps_original_64_mib_rejection(adopted_versions):
@@ -171,3 +230,53 @@ def test_oversized_capture_keeps_original_64_mib_rejection(adopted_versions):
     response = make_api(case.path).get("/" + second["plan_ref"] + "/workspace")
     assert response.status_code == 413 and response.get_json()["error"]["code"] == "candidate_capacity_exceeded"
     assert case.conn.total_changes == changes
+
+
+def test_nested_snapshots_reuse_same_connection_and_restore_readonly_on_exception():
+    first, second = sqlite3.connect(":memory:"), sqlite3.connect(":memory:")
+    statements, other_statements, loads = [], [], []
+
+    def load(owner):
+        loads.append(owner)
+        return object()
+
+    try:
+        first.execute("BEGIN")
+        second.execute("BEGIN")
+        first.set_trace_callback(statements.append)
+        second.set_trace_callback(other_statements.append)
+        with pytest.raises(ValueError, match="scope exit"):
+            with query_only(first), read_evidence_scope(first):
+                original = verified_read(first, "source", lambda: load("first"))
+                with read_evidence_scope(first):
+                    assert verified_read(first, "source", lambda: load("same")) is original
+                with read_evidence_scope(second), query_only(first):
+                    assert verified_read(second, "source", lambda: load("second")) is not original
+                    with read_evidence_scope(first):
+                        assert verified_read(first, "source", lambda: load("first_again")) is original
+                assert verified_read(first, "source", lambda: load("after_second")) is original
+                with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                    first.execute("CREATE TABLE forbidden(value)")
+                raise ValueError("scope exit")
+        assert loads == ["first", "second"]
+        for sql in (statements, other_statements):
+            assert not any("data_version" in statement.lower() for statement in sql)
+            assert [statement for statement in sql if statement.startswith("PRAGMA")] == [
+                "PRAGMA query_only", "PRAGMA query_only=ON", "PRAGMA query_only=OFF"]
+        first.set_trace_callback(None)
+        second.set_trace_callback(None)
+        assert first.execute("PRAGMA query_only").fetchone()[0] == 0
+        assert second.execute("PRAGMA query_only").fetchone()[0] == 0
+        # A new outer request gets its own source capture, and an already-ON
+        # connection keeps that setting without a redundant SET.
+        first.execute("PRAGMA query_only=ON")
+        statements.clear()
+        first.set_trace_callback(statements.append)
+        with query_only(first), read_evidence_scope(first):
+            assert verified_read(first, "source", lambda: load("new_request")) is not original
+        assert statements == ["PRAGMA query_only"]
+        first.set_trace_callback(None)
+        assert first.execute("PRAGMA query_only").fetchone()[0] == 1
+    finally:
+        first.close()
+        second.close()

@@ -33,20 +33,21 @@ def _task_query(identity):
 
 
 class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
-    def validate_identity(self, scope, identity):
-        locator = WorkbenchPlanIdentityRepository(self.conn, logger=self.logger).resolve_plan(scope.plan_ref)
+    def validate_identity(self, scope, identity, *, context=None):
+        locator = context.resolve(scope.plan_ref) if context is not None else WorkbenchPlanIdentityRepository(self.conn, logger=self.logger).resolve_plan(scope.plan_ref)
         if (identity.version, identity.requested_plan_role, identity.effective_plan_role, identity.scenario_id) != (
             locator.version, locator.plan_role, locator.plan_role, locator.scenario_id,
         ) or identity.plan_resolution_status == "fallback_to_adopted":
             _binding_error()
-        roles = self.list_plan_role_options(locator.version)
+        roles = context.repo.list_plan_role_options(locator.version) if context is not None else self.list_plan_role_options(locator.version)
         option = next((row for row in roles if row["role"] == locator.plan_role), None)
         expected = (SOURCE_SCHEDULE, None, None) if option is None else (
             option["source_table"], option["candidate_id"], option["candidate_key"],
         )
         scenario = None
         if locator.scenario_id is not None:
-            scenario = self.get_scenario_binding(locator.scenario_id)
+            raw = context.repo.get_scenario_context(locator.scenario_id) if context is not None else self.get_scenario_binding(locator.scenario_id)
+            scenario = {key: raw[key] for key in ("scenario_id", "base_version", "base_plan_role", "base_source_table", "base_candidate_id", "base_candidate_key", "status", "validation_status", "row_count", "issues_json")} if raw is not None else None
             if scenario is None or scenario["status"] != "active":
                 raise WorkbenchCommandRejected("plan_unavailable", "所选试调方案无效，请到「试调排产方案」重新选择。")
             if expected != (scenario["base_source_table"], scenario["base_candidate_id"], scenario["base_candidate_key"]):
@@ -60,11 +61,24 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
             raise WorkbenchCommandRejected("plan_unavailable", "所选候选方案没有完整保存的明细，看不了。请回「选择排产方案」重新选一个。")
         return scenario
 
-    def task_rows(self, identity):
+    def task_rows(self, identity, *, context=None, entry=None):
         query = _task_query(identity)
-        # Admit before joins, parsing, aggregation or applying a visible range.
-        _bounded(self.list_task_ids_bounded(limit=MAX_PLAN_TASKS + 1, **query))
-        rows = self.list_task_rows_with_batch(**query)
+        if context is None:
+            rows = self.list_task_rows_with_batch(**query)
+            _bounded(rows)
+        else:
+            raw = _bounded(context.source_rows(**query))
+            if entry is None:
+                # Standalone delivery keeps its permissive CAST-time and bad-point contract.
+                rows = self.list_task_rows_with_batch(**query)
+            else:
+                raw_by_id = {row["id"]: row for row in raw}
+                fields = ("schedule_id", "version", "op_id", "machine_id", "operator_id", "batch_id")
+                rows = [{**{key: row[key] for key in fields},
+                         "start_time": raw_by_id[row["schedule_id"]]["start_time"],
+                         "end_time": raw_by_id[row["schedule_id"]]["end_time"],
+                         **({"_point_work": row["_point_work"]} if row.get("_point_work") else {})}
+                        for row in sorted(context.detail_rows(entry), key=lambda row: row["schedule_id"])]
         if any(row["batch_id"] is None for row in rows):
             raise WorkbenchCommandRejected("plan_unavailable", "计划里有安排找不到对应的批次工序，交付风险算不完整。请到批次管理核对。")
         return rows
@@ -87,7 +101,7 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
         issues = [] if {row["op_id"] for row in rows} == operation_ids else ["deferred_operation_source_missing"]
         return {row["batch_id"] for row in rows}, issues
 
-    def completion_record(self, identity, scenario):
+    def completion_record(self, identity, scenario, *, context=None):
         if identity.source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
             return {"source": identity.source_table, "scenario": scenario}
         if identity.source_table == SOURCE_CANDIDATE_ROWS:
@@ -95,7 +109,7 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
             if row is None:
                 _binding_error()
             return {"source": identity.source_table, "summary": row["summary_json"]}
-        history = self.get_history_identity_row(identity.version)
+        history = context.history(identity.version) if context is not None else self.get_history_identity_row(identity.version)
         if history is None:
             _binding_error()
         return {"source": SOURCE_SCHEDULE, "summary": history["result_summary"],

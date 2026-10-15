@@ -36,8 +36,9 @@
   const minute = v => text(v) && /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/.test(v) && date(v.slice(0, 10));
   const holdWindow = v => v === undefined || v === null || shape(v, ['start', 'end']) && minute(v.start) && minute(v.end) && v.start < v.end;
   function input(v) {
-    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window'])
+    check(shape(v, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds'])
       && (v.material_strategy === undefined || ['strict', 'stage', 'split'].includes(v.material_strategy)) && holdWindow(v.hold_window)
+      && (v.time_budget_seconds === undefined || window.RunGenerationContract.budget(v.time_budget_seconds))
       && Array.isArray(v.batch_refs) && v.batch_refs.length <= 5000 && v.batch_refs.every(ref) && new Set(v.batch_refs).size === v.batch_refs.length
       && date(v.start_date) && date(v.end_date) && v.start_date <= v.end_date && typeof v.ready_check === 'boolean'
       && ['auto_assign', 'exclude'].includes(v.missing_resource_policy) && v.completed_policy === 'preserve_actuals');
@@ -51,13 +52,17 @@
   }
   function preview(v, inputRef) {
     const d = envelope(v);
-    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef
+    check(shape(d, ['input_ref', 'normalized_input', 'write_context', 'calendar_check', 'warnings', 'data_context_ref'], ['run_options']) && contextRef(d.data_context_ref) && token(inputRef) && d.input_ref === inputRef
       && d.calendar_check === 'not_evaluated' && issues(d.warnings));
     input(d.normalized_input);
     const c = d.write_context;
+    check(d.run_options === undefined || (d.run_options === null ? object(c) && c.capabilities && c.capabilities['scheduling.run'] === false
+      && Array.isArray(c.blocked_reasons) && c.blocked_reasons.some(row => row.code === 'config_error')
+      : window.RunGenerationContract.runOptions(d.run_options) && d.run_options.time_budget_seconds === d.normalized_input.time_budget_seconds));
     check(shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, ['scheduling.run']) && issues(c.blocked_reasons));
     check(c.capabilities['scheduling.run'] === true ? token(c.write_token) && time(c.expires_at) && c.blocked_reasons.length === 0 && d.normalized_input.batch_refs.length > 0
       : c.capabilities['scheduling.run'] === false && c.write_token === null && c.expires_at === null && c.blocked_reasons.length > 0);
+    check(c.capabilities['scheduling.run'] !== true || d.normalized_input.time_budget_seconds === undefined || d.run_options !== undefined);
     return d;
   }
   function run(v, expectedRef) {
@@ -69,6 +74,8 @@
       && Array.isArray(v.candidates) && time(v.accepted_at) && (v.started_at === null || time(v.started_at))
       && (v.finished_at === null || time(v.finished_at)) && (v.error === null || shape(v.error, ['code', 'message']) && issue(v.error)));
     runScope(v.scope_summary);
+    const unified = v.scope_summary.run_options && v.scope_summary.run_options.generation_policy_version === 'unified_search_v1';
+    check(!unified || v.progress === null && v.candidates.length <= 3 && v.candidates.every(candidate => candidate.status === 'completed'));
     const done = terminal(v), saved = ['complete', 'partial'].includes(v.state);
     check(v.result_persisted === saved && v.recovery_required === (v.stage === 'awaiting_reconciliation')
       && (done ? v.stage === 'finished' && ref(v.receipt_ref) && time(v.finished_at)
@@ -85,7 +92,7 @@
   function runScope(value) {
     const nullableText = item => item === null || text(item), nullableCount = item => item === null || count(item);
     check(shape(value, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy', 'batch_count',
-      'selection', 'basis', 'data_gaps', 'operation_count', 'batches', 'objective', 'objective_label'], ['material_strategy', 'hold_window'])
+      'selection', 'basis', 'data_gaps', 'operation_count', 'batches', 'objective', 'objective_label'], ['material_strategy', 'hold_window', 'run_options'])
       && value.selection === 'explicit_batches' && value.basis === 'captured_at_run_admission'
       && ['start_date', 'end_date'].every(field => value[field] === null || date(value[field]))
       && (value.start_date === null || value.end_date === null || value.start_date <= value.end_date)
@@ -94,6 +101,7 @@
       && [null, 'preserve_actuals'].includes(value.completed_policy)
       && (value.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(value.material_strategy))
       && holdWindow(value.hold_window) && nullableCount(value.batch_count) && nullableCount(value.operation_count)
+      && (value.run_options === undefined || window.RunGenerationContract.runOptions(value.run_options))
       && nullableText(value.objective) && nullableText(value.objective_label) && gaps(value.data_gaps)
       && Array.isArray(value.batches) && value.batches.every(row => shape(row, ['batch_ref', 'batch_id', 'part_no', 'part_label'])
         && ref(row.batch_ref) && ['batch_id', 'part_no', 'part_label'].every(field => nullableText(row[field]))));
@@ -118,14 +126,6 @@
   const blocked = v => Array.isArray(v) && v.every(r => shape(r, ['capability', 'code', 'message'])
     && ['adopt', 'edit_draft', 'report_actual', 'preview'].includes(r.capability) && text(r.code) && text(r.message))
     && ['adopt', 'edit_draft', 'report_actual'].every(c => v.some(r => r.capability === c));
-  const metricKeys = ['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'changeover_count', 'weighted_tardiness_hours', 'machine_used_count',
-    'operator_used_count', 'machine_busy_hours_total', 'operator_busy_hours_total', 'machine_util_avg', 'operator_util_avg', 'elapsed_seconds'];
-  function metric(v) {
-    if (!shape(v, ['value', 'reason'])) return false;
-    if (v.value === null) return v.reason !== null && gaps([v.reason]);
-    return v.reason === null && (typeof v.value === 'number' && Number.isFinite(v.value) && v.value >= 0
-      || text(v.value) && /^[1-9]\d{15,}$/.test(v.value) && (v.value.length > 16 || v.value > '9007199254740991'));
-  }
   function catalogScope(v = {}) {
     check(shape(v, [], ['page', 'snapshot_ref']) && (v.page === undefined || Number.isInteger(v.page) && v.page >= 1 && v.page <= 256)
       && (v.snapshot_ref === undefined || token(v.snapshot_ref)));
@@ -141,19 +141,14 @@
       && count(d.page.total) && d.page.total === d.candidate_count && d.page.has_more === (scope.page * 20 < d.page.total)
       && (!scope.snapshot_ref || v.meta.snapshot_ref === scope.snapshot_ref) && Array.isArray(d.candidates)
       && d.candidates.length === Math.min(20, Math.max(0, d.page.total - (scope.page - 1) * 20)));
-    check(d.candidates.every(c => shape(c, ['candidate_ref', 'run_ref', 'label', 'status', 'persisted_status', 'task_count', 'completeness', 'metrics', 'metric_scopes', 'capabilities', 'blocked_reasons', 'data_gaps'])
-      && ref(c.candidate_ref) && c.run_ref === runRef && (c.label === null || text(c.label)) && count(c.task_count)
-      && ['completed', 'failed', 'skipped'].includes(c.persisted_status) && ['complete', 'partial', 'unknown', 'no_result'].includes(c.completeness)
-      && c.status === (c.persisted_status === 'completed' && c.completeness === 'partial' ? 'partial' : c.persisted_status)
-      && (c.persisted_status === 'completed' ? c.completeness !== 'no_result' : c.completeness === 'no_result' && c.task_count === 0)
-      && shape(c.metrics, metricKeys) && metricKeys.every(k => metric(c.metrics[k]))
-      && shape(c.metric_scopes, ['delivery', 'resources']) && c.metric_scopes.delivery === 'completed_batches_only' && c.metric_scopes.resources === 'scheduled_results_only'
-      && capabilities(c.capabilities) && blocked(c.blocked_reasons) && gaps(c.data_gaps))
+    d.candidates.forEach(candidate => window.RunCandidateAPI.summary(candidate, runRef));
+    check(d.candidates.every(candidate => capabilities(candidate.capabilities) && blocked(candidate.blocked_reasons))
       && new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
     return d;
   }
   const OUTCOMES = window.WorkbenchTerms.outcomes;
   const messages = {
+    input_already_used: '这份检查结果已经开始过排产，请重新检查后再开始下一次。',
     run_schema_unavailable: '排产记录还没准备好，暂时不能开始排产。请联系维护人员升级数据库。',
     run_worker_not_connected: '排产计算程序没有启动，暂时不能开始排产。请联系维护人员。',
     execution_ledger_unavailable: '报工记录还没准备好，请联系维护人员升级数据库。',
@@ -193,7 +188,7 @@
     const error = new Error(valid ? message(e) : '读到的排产数据不完整，请刷新重试。');
     error.code = valid ? e.code : 'invalid_response'; error.status = status;
     error.rejected = valid && v.committed === false && (([400, 409, 422].includes(status)
-      && ['invalid_input', 'snapshot_stale', 'stale_write', 'constraint_conflict'].includes(e.code))
+      && ['invalid_input', 'snapshot_stale', 'stale_write', 'constraint_conflict', 'input_already_used'].includes(e.code))
       || status === 503 && ['run_schema_unavailable', 'run_worker_not_connected', 'request_lifecycle_stopping'].includes(e.code));
     if (error.rejected) rejections.add(error);
     return error;
@@ -204,10 +199,10 @@
     if (storage === undefined) {
       try { storage = window.localStorage; } catch (_) { throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。'); }
     }
-    const same = (a, b) => validIntent(a) && validIntent(b) && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
+    const same = (a, b) => !!a && !!b && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
     function save(v) {
       try { storage.setItem(PENDING_KEY, JSON.stringify(v)); } catch (_) { throw new Error('存不下这次排产的操作记录，没有开始排产。请重新打开页面。'); }
-      check(same(read(), v), '上次操作记录没能保存，这次不能开始排产。'); return v;
+      return v;
     }
     function read() {
       let raw; try { raw = storage.getItem(PENDING_KEY); } catch (_) { throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。'); }
@@ -225,6 +220,7 @@
     return { read, recent,
       begin(inputRef, previous = null, dataContext = null) {
         check(token(inputRef), '排产检查已失效，请重新做排产检查。'); const current = read();
+        check(previous === null || validIntent(previous));
         check(previous ? same(current, previous) : current === null, '上次排产还没确认结果，不能重做。请先点「查询结果」。');
         const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
         check(dataContext === null || contextRef(dataContext));
@@ -233,7 +229,7 @@
       },
       attach(intent, runRef) {
         const current = read();
-        check(validIntent(intent) && validIntent(current) && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref
+        check(validIntent(intent) && current !== null && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref
           && (!intent.run_ref || intent.run_ref === runRef) && (!current.run_ref || current.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
         if (current.run_ref === runRef) return current;
         return save({ ...intent, run_ref: runRef });
@@ -245,14 +241,12 @@
         if (current === null) return;
         check(same(current, intent), '上次操作记录已变化，没有删除其他记录。');
         storage.setItem(RECENT_KEY, JSON.stringify({ intent, resolution }));
-        check(same(recent().intent, intent), '最近排产记录没能保存。');
         storage.removeItem(PENDING_KEY);
-        check(read() === null, '本机无法更新上次操作记录。');
       },
       reject(intent) {
+        check(validIntent(intent));
         check(same(read(), intent), '上次操作记录已变化，没有删除其他记录。');
         try { storage.removeItem(PENDING_KEY); } catch (_) { throw new Error('本机无法更新上次操作记录。请不要再操作，联系维护人员。'); }
-        check(read() === null, '上次操作记录没能更新。请不要再操作，联系维护人员。');
       }
     };
   }

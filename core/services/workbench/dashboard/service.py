@@ -19,8 +19,6 @@ from core.models.workbench_dashboard import (
 from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
 
 from .analysis_projection import project_dashboard_analysis
-from .downtime import downtime
-from .execution import actual
 from .external import load_external
 from .external_handling import DashboardExternalHandling
 from .facts import DashboardFacts, typed
@@ -58,6 +56,7 @@ def _handling_view(item, stored, now):
 
 
 def _category_counts(categories, observations, stored):
+    categories = {name: dict(summary) for name, summary in categories.items()}
     for name, summary in categories.items():
         scope = [row for row in observations if row["category"] == name]
         summary["known_risk_count"] = sum(row["risk"]["active"] is True for row in scope)
@@ -69,6 +68,7 @@ def _category_counts(categories, observations, stored):
         handled = [row for row in stored.values() if row["category"] == name]
         summary["handling_count"] = len(handled)
         summary["closed_count"] = sum(row["handling"]["status"] == "closed" for row in handled)
+    return categories
 
 
 class DashboardSources:
@@ -129,9 +129,9 @@ class WorkbenchDashboardService:
         material = safe_material(facts)
         external_summary, facts.raw["external"], receipts = load_external(self.conn, now)
         external_items, external_stored, facts.raw["external_handling"] = self.external_handling.read(external_summary, now, receipts)
-        stored = read_stored(self.repo)
+        stored, identities = read_stored(self.repo)
         return DashboardSources(facts, material, (external_summary, external_items, external_stored), stored,
-                                self._anchor_mappings(facts, material[0]), {ref: self.repo.identity(ref) for ref in stored})
+                                self._anchor_mappings(facts, material[0]), identities)
 
     def _anchor_mappings(self, facts, material):
         """各类风险可能评估到的来源映射一次读出；是否条条有映射，投影时按实际评估到的来源核对。"""
@@ -143,9 +143,10 @@ class WorkbenchDashboardService:
     def project(self, sources):
         """Pure projection of load(); callers may run it after their read snapshot has ended."""
         facts = sources.facts.project()
-        observations, categories = [], {}
-        for name, reader in (("delivery", delivery), ("actual", actual), ("downtime", downtime)):
-            found, categories[name] = reader(facts)
+        observations, delivery_summary = delivery(facts)
+        observations, categories = list(observations), {"delivery": delivery_summary}
+        for name in ("actual", "downtime"):
+            found, categories[name] = facts.observations(name)
             observations.extend(found)
         found, categories["material"] = sources.material
         observations.extend(found)
@@ -157,7 +158,7 @@ class WorkbenchDashboardService:
         items = self._merge(observations, sources, categories, facts.now)
         items.extend(self._decorate(item, saved, identity, facts.now) for item, saved, identity in external_items)
         bounded(items)
-        _category_counts(categories, observations, stored)
+        categories = _category_counts(categories, observations, stored)
         categories["external"] = external_summary
         snapshot_contents = facts.snapshot_contents(view={
             "stored": stored, "external_stored": external_stored,

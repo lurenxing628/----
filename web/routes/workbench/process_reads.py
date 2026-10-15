@@ -56,8 +56,6 @@ def _response(data, snapshot):
 def process_list():
     query = _list_query()
     token = request.args.get("snapshot_ref")
-    if query.number > 1 and token is None:
-        raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(query.scope(), state, token)

@@ -124,7 +124,9 @@
     const [navigationError, setNavigationError] = React.useState(target.error || null);
     const startNode = target.node || initialNode;
     const readView = target.context && !['part', 'calendar'].includes(target.context.kind) && target.context.read_view;
-    const [node, setNode] = React.useState(startNode), [scope, setScope] = React.useState(() => readView ? readView.scope : scopeFor(startNode));
+    const [node, setNode] = React.useState(startNode), [request, setRequest] = React.useState(() => ({
+      scope: readView ? readView.scope : scopeFor(startNode), externalRevision
+    }));
     const [sortActive, setSortActive] = React.useState(!!readView && readView.sort_active);
     const [selected, setSelected] = React.useState(() => readView ? readView.selected_refs : []), [revision, setRevision] = React.useState(0);
     const [dialog, setDialog] = React.useState(() => !deferred && target.context && !['part', 'calendar'].includes(target.context.kind)
@@ -138,7 +140,16 @@
     React.useEffect(() => {
       if (basic && onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle' && !external.busy);
     }, [basic, dialog, command.phase, external.busy, onNavigationReady]);
-    const list = S.useQuery(signal => readList(adapter, config.kind, scope, signal), [adapter, node, scope, revision, externalRevision], basic);
+    // External writes restart from the latest committed view of this request.
+    const lastScope = React.useRef(null);
+    const requestScope = React.useMemo(() => request.externalRevision === externalRevision ? request.scope
+      : { ...(lastScope.current && lastScope.current.request === request ? lastScope.current.scope : request.scope), snapshot_ref: undefined }, [request, externalRevision]);
+    const list = S.useQuery(signal => readList(adapter, config.kind, requestScope, signal), [adapter, node, requestScope, revision, externalRevision], basic);
+    const effectiveScope = React.useMemo(() => list.result
+      ? { ...requestScope, page: list.result.data.page.number, snapshot_ref: list.result.meta.snapshot_ref } : requestScope, [requestScope, list.result]);
+    React.useLayoutEffect(() => {
+      if (list.result) lastScope.current = { request, scope: effectiveScope };
+    }, [request, effectiveScope, list.result]);
     const detail = S.useQuery(async signal => {
       if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
       const result = C.query(await adapter.detail(dialog.kind, dialog.ref, signal), 'entity');
@@ -150,31 +161,26 @@
     }, [adapter, dialog && dialog.ref, dialog && dialog.kind], !!(dialog && dialog.ref));
     const data = list.result && list.result.data;
     const savedDetail = dialog && dialog.action === 'view' ? { kind: dialog.kind, entity_ref: dialog.ref, ...(dialog.kind === 'op_type' ? { category: dialog.category } : {}) } : null;
-    const savedScope = Object.fromEntries(readScopeKeys.filter(key => scope[key] !== undefined).map(key => [key, scope[key]]));
+    const savedScope = Object.fromEntries(readScopeKeys.filter(key => effectiveScope[key] !== undefined).map(key => [key, effectiveScope[key]]));
     window.WorkbenchPageContext.useSnapshot({ source: 'production', kind: config && config.kind, ...(config && config.category ? { category: config.category } : {}),
       read_view: { scope: savedScope, selected_refs: selected, sort_active: sortActive, detail: savedDetail } },
       rememberEnabled && basic && !!data && !list.loading && !list.error && !navigationError && !deferred && command.phase === 'idle' && !external.busy
       && list.result.meta.source === 'production' && (!dialog || dialog.action === 'view' && !!detail.result && !detail.loading && !detail.error));
-    React.useEffect(() => {
-      if (data && data.page.number < scope.page) setScope(current => current === scope
-        ? { ...current, page: data.page.number, snapshot_ref: list.result.meta.snapshot_ref } : current);
-    }, [list.result, scope]);
     const refreshGeneration = React.useRef(0), mounted = React.useRef(true);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; refreshGeneration.current++; }; }, []);
-    function refresh() { setScope(current => ({ ...current, snapshot_ref: undefined })); setRevision(value => value + 1); }
+    function setRequestScope(scope) { setRequest({ scope, externalRevision }); }
+    function refresh() { setRequestScope({ ...effectiveScope, snapshot_ref: undefined }); setRevision(value => value + 1); }
     function navigate(next) {
       if (blocked || dialog) return;
-      setNode(next); setScope(scopeFor(next)); setSortActive(false); setSelected([]); setContextError(null); setExternal({ busy: false, error: null });
+      setNode(next); setRequestScope(scopeFor(next)); setSortActive(false); setSelected([]); setContextError(null); setExternal({ busy: false, error: null });
     }
-    function filter(patch) { if (!blocked) setScope(current => ({ ...current, ...patch, page: 1, snapshot_ref: undefined })); }
+    function filter(patch) { if (!blocked) setRequestScope({ ...effectiveScope, ...patch, page: 1, snapshot_ref: undefined }); }
     function columnFilter(key, rule) {
       if (blocked) return;
-      setScope(current => {
-        const column_filters = { ...(current.column_filters || {}) };
-        if (rule === null || rule.mode === 'exclude' && !rule.values.length) delete column_filters[key];
-        else column_filters[key] = { mode: rule.mode, values: rule.values.slice() };
-        return { ...current, column_filters, page: 1, snapshot_ref: undefined };
-      });
+      const column_filters = { ...(effectiveScope.column_filters || {}) };
+      if (rule === null || rule.mode === 'exclude' && !rule.values.length) delete column_filters[key];
+      else column_filters[key] = { mode: rule.mode, values: rule.values.slice() };
+      setRequestScope({ ...effectiveScope, column_filters, page: 1, snapshot_ref: undefined });
     }
     function sortColumn(sort, direction) {
       if (blocked) return;
@@ -183,7 +189,7 @@
     }
     function changePage(page) {
       if (blocked || !list.result) return;
-      setScope(current => ({ ...current, page, snapshot_ref: list.result.meta.snapshot_ref }));
+      setRequestScope({ ...effectiveScope, page });
     }
     function open(action, ref = null, related = null) {
       if (blocked) return;
@@ -204,7 +210,7 @@
     function close() { if (!command.locked && !contextBusy && command.reset()) { setDialog(null); setEditContext(null); setContextReview(null); refreshGeneration.current++; } }
     function continueNavigation() {
       if (command.phase !== 'idle' || dialog || external.busy) { setNavigationError(C.failure('请先确认上次操作的结果并关闭，再继续跳转。')); return; }
-      setNavigationError(null); setDeferred(false); setNode(target.node); setScope(readView ? readView.scope : scopeFor(target.node));
+      setNavigationError(null); setDeferred(false); setNode(target.node); setRequestScope(readView ? readView.scope : scopeFor(target.node));
       if (readView) { setSelected(readView.selected_refs); setSortActive(readView.sort_active); setDialog(readView.detail ? navigationDialog(readView.detail) : null); }
       else if (!['part', 'calendar'].includes(target.context.kind)) setDialog(navigationDialog(target.context));
     }
@@ -214,7 +220,7 @@
       try {
         let result;
         if (dialog.ref) result = C.query(await adapter.detail(dialog.kind, dialog.ref, new AbortController().signal), 'entity');
-        else result = C.query(await adapter.list(dialog.kind, { ...scope, page: 1, snapshot_ref: undefined }, new AbortController().signal), 'list');
+        else result = C.query(await adapter.list(dialog.kind, { ...effectiveScope, page: 1, snapshot_ref: undefined }, new AbortController().signal), 'list');
         if (dialog.ref && result.data.ref !== dialog.ref) throw C.failure('读到的资料与所选记录不一致，请刷新后核对。');
         if (!command.reset()) return;
         setEditContext({ context: dialog.ref ? result.data.write_context : result.data.create_context,
@@ -233,14 +239,14 @@
         if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
         const sameView = config && config.kind === intent.kind && (intent.kind !== 'op_type' || config.category === intent.category);
-        const readScope = { ...(sameView ? scope : scopeFor(intentNode)), snapshot_ref: undefined };
+        const readScope = { ...(sameView ? effectiveScope : scopeFor(intentNode)), snapshot_ref: undefined };
         if (intent.kind === 'op_type') { delete readScope.status; readScope.category = intent.category; }
         let refreshedList;
         if (sameView) {
-          setScope(readScope);
+          setRequestScope(readScope);
           refreshedList = await list.reloadAndWait(signal => readList(adapter, intent.kind, readScope, signal));
         } else {
-          list.reload();
+          refresh();
           refreshedList = await readList(adapter, intent.kind, readScope, new AbortController().signal);
         }
         let fresh = null;
@@ -270,7 +276,7 @@
         refresh(); setExternal({ busy: false, error: null, result, action: name === 'openBulk' ? 'delete' : /Import$/.test(name) ? 'import' : 'save' });
       };
       try {
-        const result = await adapter[name](config.kind, { refs: selected.slice(), scope: { ...scope, source: list.result && list.result.meta.source, snapshot_ref: list.result && list.result.meta.snapshot_ref }, ...extra, onCommitted }, new AbortController().signal);
+        const result = await adapter[name](config.kind, { refs: selected.slice(), scope: { ...effectiveScope, source: list.result && list.result.meta.source }, ...extra, onCommitted }, new AbortController().signal);
         if (callbackCalled) return;
         if (result && ['opened', 'cancelled'].includes(result.state)) { setExternal({ busy: false, error: null }); return; }
         if (C.receipt(result) === 'terminal') { onCommitted(result); return; }
@@ -293,13 +299,13 @@
           {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
             <window.ResourceMetrics node={node} data={data} />
             {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && <> · <span>含非当前页记录</span></>}</p>}
-            <Toolbar config={config} scope={scope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
+            <Toolbar config={config} scope={effectiveScope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
               createReason={C.blocked(data && data.create_context, config.kind, 'create', list.result && list.result.meta.source)} onExternal={openExternal} adapter={adapter} selected={selected} ready={!!data} onClearSelection={() => setSelected([])} />
             {data && <Issues issues={list.result.warnings} />}
             <Tables key={node} kind={config.kind} category={config.category} entities={data ? data.entities : []} source={list.result && list.result.meta.source} selected={selected} onSelect={setSelected}
-              disabled={blocked || list.loading} headerDisabled={blocked} loading={list.loading} error={list.error} adapter={adapter} scope={scope} matchingCount={data && data.page.total}
+              disabled={blocked || list.loading} headerDisabled={blocked} loading={list.loading} error={list.error} adapter={adapter} scope={effectiveScope} matchingCount={data && data.page.total}
               onRetry={refresh} onClear={() => filter({ query: '', column_filters: {}, ...(config.kind === 'op_type' ? {} : { status: '' }) })}
-              onOpen={ref => open('view', ref)} onDelete={ref => open('delete', ref)} sort={scope.sort} direction={scope.direction} sortActive={sortActive} onSort={sortColumn} onColumnFilter={columnFilter} />
+              onOpen={ref => open('view', ref)} onDelete={ref => open('delete', ref)} sort={effectiveScope.sort} direction={effectiveScope.direction} sortActive={sortActive} onSort={sortColumn} onColumnFilter={columnFilter} />
             {data && <Tables.Pager page={data.page} disabled={blocked || list.loading} onPage={changePage} onSize={size => filter({ size })} />}
           </>}
         </>}

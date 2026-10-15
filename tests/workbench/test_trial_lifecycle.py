@@ -1,5 +1,6 @@
 """Real draft and scenario persistence, lossless restoration and exact refs."""
 
+from collections import Counter
 from copy import deepcopy
 from types import SimpleNamespace
 
@@ -23,14 +24,51 @@ from tests.workbench.trial_support import trial_case as trial_case
 
 
 @pytest.mark.parametrize("kind", ["official", "candidate"])
-def test_complete_create_change_save_and_reopen(trial_case, kind):
+def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     case = trial_case
     intent = official(case) if kind == "official" else candidate(case)
     before = snapshot(case.conn)
+    from core.services.workbench.trial import projection
+    from core.services.workbench.trial import service as trial_service
+    from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
+
+    calls, table_reads, statements = Counter(), Counter(), []
+    for method in ("draft_header", "draft_rows", "changes"):
+        original = getattr(WorkbenchTrialRepository, method)
+        def tracked(repo, *args, _method=method, _original=original, **kwargs):
+            calls[_method] += 1
+            return _original(repo, *args, **kwargs)
+        monkeypatch.setattr(WorkbenchTrialRepository, method, tracked)
+    original_table = WorkbenchPreflightFactsRepository.capture_table
+    def table_read(repo, name):
+        table_reads[name] += 1
+        return original_table(repo, name)
+    monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_read)
+    original_rows, original_facts = projection.scenario_rows, projection.GenerationFacts
+    def projected(*args, **kwargs):
+        calls["scenario_rows"] += 1
+        return original_rows(*args, **kwargs)
+    def generation_facts(*args, **kwargs):
+        calls["generation_facts"] += 1
+        return original_facts(*args, **kwargs)
+    monkeypatch.setattr(projection, "scenario_rows", projected)
+    monkeypatch.setattr(trial_service, "scenario_rows", projected)
+    monkeypatch.setattr(projection, "GenerationFacts", generation_facts)
+    case.conn.set_trace_callback(statements.append)
     draft = create(case, intent)
+    case.conn.set_trace_callback(None)
+    assert table_reads and set(table_reads.values()) == {2}  # preview and command own separate facts.
+    assert calls["draft_header"] == calls["draft_rows"] == calls["changes"] == 0
+    assert not any(sql.upper().startswith("SELECT") and "COUNT(" in sql.upper() and "FROM WORKBENCHTRIALROWS" in sql.upper() for sql in statements)
     assert draft["validation"]["constraints_status"] == "valid", draft["validation"]
     assert draft["validation"]["can_adopt"] is False
+    calls.clear()
+    statements.clear()
+    case.conn.set_trace_callback(statements.append)
     updated = change(case, draft)["data"]
+    case.conn.set_trace_callback(None)
+    assert calls["draft_header"] == calls["draft_rows"] == calls["changes"] == 1
+    assert not any(sql.upper().startswith("SELECT") and "COUNT(" in sql.upper() and "FROM WORKBENCHTRIALROWS" in sql.upper() for sql in statements)
     task = updated["tasks"][0]
     assert task["start"] == "2026-09-09T13:00:00"
     assert task["end"] == "2026-09-09T16:00:00"
@@ -46,7 +84,10 @@ def test_complete_create_change_save_and_reopen(trial_case, kind):
         saved = service(conn).save(draft["draft_ref"], {"name": "Saved trial"}, restored["write_context"]["write_token"], "trial-save-0000000001")["data"]
         assert saved["scenario_ref"] != draft["draft_ref"]
         assert saved["tasks"][0]["task_ref"] != task["task_ref"]
+        calls.clear()
         assert service(conn).scenario(saved["scenario_ref"]) == saved
+        assert calls["draft_header"] == calls["draft_rows"] == calls["scenario_rows"] == 1
+        assert calls["generation_facts"] == (1 if kind == "candidate" else 0)
         assert service(conn).get(draft["draft_ref"])["status"] == "saved"
     finally:
         conn.close()

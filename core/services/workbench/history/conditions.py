@@ -67,14 +67,15 @@ class _Projection:
         return _side(source, None if known else _MISSING, present=False, reason=reason)
 
 
-def _state(rows):
-    counts = {state: sum(row["state"] == state for row in rows) for state in ("equal", "different", "unknown")}
-    return ("different" if counts["different"] else "unknown" if counts["unknown"] else "equal"), counts
+def _state(counts):
+    return "different" if counts["different"] else "unknown" if counts["unknown"] else "equal"
 
 
 def _compare(before, after, categories):
     rows = []
     rank = {key: index for index, (key, _) in enumerate(categories)}
+    summary = dict.fromkeys(("equal", "different", "unknown"), 0)
+    category_counts = {key: dict(summary) for key, _ in categories}
     for key in sorted(set(before.rows) | set(after.rows), key=lambda key: (rank.get(key[0], 99), key[1:])):
         left, right = before.rows.get(key), after.rows.get(key)
         row = left or right
@@ -83,12 +84,12 @@ def _compare(before, after, categories):
             "equal" if (previous["present"], previous["value"]) == (current["present"], current["value"]) else "different")
         rows.append({key: row[key] for key in ("category", "entity", "field")})
         rows[-1].update(state=state, before=previous, after=current)
-    state, summary = _state(rows)
-    groups = []
-    for key, label in categories:
-        group_state, group_summary = _state([row for row in rows if row["category"] == key])
-        groups.append({"key": key, "label": label, "state": group_state, "summary": group_summary})
-    return {"state": state, "summary": summary, "categories": groups, "rows": rows,
+        summary[state] += 1
+        if row["category"] in category_counts:
+            category_counts[row["category"]][state] += 1
+    groups = [{"key": key, "label": label, "state": _state(category_counts[key]), "summary": category_counts[key]}
+              for key, label in categories]
+    return {"state": _state(summary), "summary": summary, "categories": groups, "rows": rows,
             "page": {"number": 1, "size": len(rows), "total": len(rows), "has_more": False}}
 
 
@@ -128,8 +129,8 @@ def _scope(projection):
     known = type(selected) is list
     projection.declare("scope", "selected_batches", "batch_refs", known, origin="input")
     batches = {ref: source.batches[ref] for ref in selected if ref in source.batches} if known else {}
-    operations = {ref: row for ref, row in source.operations.items() if row.get("batch_id") in {
-        batch.get("batch_id") for batch in batches.values()}}
+    batch_ids = {batch.get("batch_id") for batch in batches.values()}
+    operations = {ref: row for ref, row in source.operations.items() if row.get("batch_id") in batch_ids}
     projection.declare("scope", "selected_operations", "tables.BatchOperations", known and source.original_table("BatchOperations") is not None,
                        origin="original")
     for ref in selected if known else []:
@@ -194,6 +195,9 @@ def _materials(projection, batches, operations):
             projection.declare(category, name, "tables." + name, rows is not None)
     review_index = {row["requirement_id"]: (index, row) for index, row in enumerate(reviews or [])}
     stage_index = {row["requirement_id"]: (index, row) for index, row in enumerate(stages or [])}
+    arrivals_by_requirement = defaultdict(list)
+    for arrival in arrivals or []:
+        arrivals_by_requirement[arrival.get("requirement_id")].append(arrival)
     for index, row in enumerate(requirements or []):
         batch_ref = by_batch.get(row.get("batch_id"))
         if batch_ref is None:
@@ -212,9 +216,8 @@ def _materials(projection, batches, operations):
             None if stages is not None else _MISSING), "tables.BatchMaterialStages" + ("[" + str(stage[0]) + "].operation_id" if stage else ""),
             "materials", nullable=True)
         amounts = defaultdict(Decimal)
-        for arrival in arrivals or []:
-            if arrival.get("requirement_id") == row["id"]:
-                amounts[arrival["arrival_date"]] += Decimal(str(arrival["quantity"]))
+        for arrival in arrivals_by_requirement.get(row["id"], []):
+            amounts[arrival["arrival_date"]] += Decimal(str(arrival["quantity"]))
         projection.declare(category, "arrivals:" + entity, "tables.BatchMaterialArrivals", arrivals is not None)
         for day, amount in sorted(amounts.items()):
             projection.add(category, entity + ":arrival:" + day, label + " " + day, "quantity", float(amount),
@@ -427,9 +430,10 @@ def _execution(projection, operations, resources):
                if row.get("kind") == "operation" and row.get("active") == 1}
     op_refs.update({row.get("id"): ref for ref, row in source.operations.items()})
     arranged = defaultdict(list)
+    relevant_refs = set(operations) | set(relevant)
     for index, row in enumerate(schedule or []):
         ref = op_refs.get(row.get("op_id"))
-        if ref in set(operations) | set(relevant) and row.get("version") == latest.get(row.get("op_id")):
+        if ref in relevant_refs and row.get("version") == latest.get(row.get("op_id")):
             arranged[ref].append((index, row))
     for ref, rows in arranged.items():
         for ordinal, (index, row) in enumerate(sorted(rows, key=lambda item: (item[1].get("start_time", ""), item[1].get("end_time", "")))):
@@ -520,10 +524,21 @@ def _saved_objective(source, packet, artifact, algo):
         score = artifact.get("score")
         return name == saved_name and type(score) is list and len(score) == len(order)
 
+    saved_name = (selection.get("primary_objective", name) if selection.get("selection_policy_version") == "business_objectives_v1"
+                  else selection.get("objective_name", name))
     order = selection.get("objective_field_order", _MISSING)
-    saved_name = selection.get("objective_name", name)
+    if selection.get("selection_policy_version") == "business_objectives_v1":
+        order = order.get(saved_name, _MISSING) if type(order) is dict and type(saved_name) is str else _MISSING
     if applicable(saved_name, order):
         return _side(source.source("receipt.selection"), {"name": saved_name, "field_order": order})
+    native = _native_optimization(source)
+    if native is not None:
+        _, _, selection = native
+        saved_name = selection.get("primary_objective", _MISSING)
+        orders = selection.get("objective_field_order")
+        order = orders.get(saved_name, _MISSING) if type(orders) is dict and type(saved_name) is str else _MISSING
+        if selection.get("selection_policy_version") == "business_objectives_v1" and applicable(saved_name, order, owned=True):
+            return _side(source.source("algo.candidate_comparison.selection"), {"name": saved_name, "field_order": order})
     sources = ((algo, "candidate.artifact.summary.algo", True),
                (((receipt.get("summary") or {}).get("algo") or {}), "receipt.summary.algo", False))
     for values, path, owned in sources:
@@ -538,6 +553,41 @@ def _saved_objective(source, packet, artifact, algo):
                  reason=_reason("objective_basis_not_recorded", "原记录缺少适用于该候选的目标名称或实际评分字段顺序。"))
 
 
+def _native_optimization(source):
+    """Native formal runs keep their saved optimization facts in the summary."""
+    if source.kind != "legacy" or type(source.saved) is not dict:
+        return None
+    algo = source.saved.get("algo")
+    if type(algo) is not dict:
+        return None
+    comparison = algo.get("candidate_comparison")
+    comparison = comparison if type(comparison) is dict else {}
+    if (comparison.get("generation_policy_version") or algo.get("generation_policy_version")) != "unified_search_v1":
+        return None
+    selection = comparison.get("selection")
+    return algo, comparison, selection if type(selection) is dict else {}
+
+
+def _native_run_options(projection, native):
+    algo, comparison, selection = native
+    algorithm_path, comparison_path = "algo.", "algo.candidate_comparison."
+    selection_path = comparison_path + "selection."
+    sources = {
+        "generation_policy_version": ((comparison, comparison_path, "generation_policy_version"), (algo, algorithm_path, "generation_policy_version")),
+        "selection_policy_version": ((selection, selection_path, "selection_policy_version"), (comparison, comparison_path, "selection_policy_version")),
+        "primary_objective": ((selection, selection_path, "primary_objective"), (comparison, comparison_path, "primary_objective"), (algo, algorithm_path, "primary_objective")),
+        "target_objectives": ((selection, selection_path, "target_objectives"), (comparison, comparison_path, "target_objectives"), (algo, algorithm_path, "target_objectives")),
+        "time_budget_seconds": ((comparison, comparison_path, "run_time_budget_seconds"), (algo, algorithm_path, "time_budget_seconds")),
+    }
+    for field, candidates in sources.items():
+        value, path = _MISSING, candidates[0][1] + candidates[0][2]
+        for values, prefix, key in candidates:
+            if key in values:
+                value, path = values[key], prefix + key
+                break
+        projection.add("algorithm", "run_options", "本次保存的优化策略和预算", field, value, path, "algorithm")
+
+
 def _experiments(source, packet):
     projection = _Projection(source)
     projection.declare("algorithm", "algorithm", "tables.ScheduleConfig", source.available)
@@ -547,6 +597,23 @@ def _experiments(source, packet):
             value, path = cfg[key]
             projection.add("algorithm", "archived_settings", "原保存算法设置", key, value, path, "algorithm")
     artifact = source.artifact or {}
+    selection = (packet.get("receipt") or {}).get("selection") or {}
+    inputs = source.input or {}
+    native = _native_optimization(source)
+    if native is not None:
+        _native_run_options(projection, native)
+    if source.available:
+        for key in ("generation_policy_version", "selection_policy_version", "primary_objective", "target_objectives", "time_budget_seconds"):
+            if key in inputs:
+                value, path = inputs[key], "capture.input." + key
+            elif key in selection:
+                value, path = selection[key], "receipt.selection." + key
+            elif key in artifact:
+                value, path = artifact[key], "candidate.artifact." + key
+            else:
+                value, path = None, "capture.input." + key
+            projection.add("algorithm", "run_options", "本次保存的优化策略和预算", key, value, path,
+                           "algorithm", present=key in inputs or key in selection or key in artifact)
     algo = ((artifact.get("summary") or {}).get("algo") or {})
     for prefix, values, path in (("chosen", artifact, "candidate.artifact"), ("actual_summary", algo, "candidate.artifact.summary.algo"),
                                ("effective_config", algo.get("config_snapshot") or {}, "candidate.artifact.summary.algo.config_snapshot")):
@@ -580,14 +647,24 @@ def _experiments(source, packet):
     return projection, _saved_objective(source, packet, artifact, algo)
 
 
-def compare_history_conditions(before_source, after_source, shared_window):
-    """Return full evidence rows; paging and metric gates belong to history queries."""
-    sources = [ConditionSource(packet) for packet in (before_source, after_source)]
-    production = [_production(source, shared_window) for source in sources]
-    experiments = [_experiments(source, packet) for source, packet in zip(sources, (before_source, after_source))]
-    conditions = _compare(production[0], production[1], _CATEGORIES)
-    configurations = _compare(experiments[0][0], experiments[1][0], (("algorithm", "算法实验设置"),))
-    previous, current = experiments[0][1], experiments[1][1]
+def prepare_history_condition_source(packet):
+    """Prepare the saved source, settings and objective independently of the window."""
+    source = ConditionSource(packet)
+    configurations, objective = _experiments(source, packet)
+    return {"source": source, "configurations": configurations, "objective": objective}
+
+
+def prepare_history_condition_side(prepared, window):
+    """Project one saved source's production conditions for the actual window."""
+    return {"conditions": _production(prepared["source"], window),
+            "configurations": prepared["configurations"], "objective": prepared["objective"]}
+
+
+def compare_prepared_history_conditions(before, after):
+    """Compare prepared sides without changing their shared projections."""
+    conditions = _compare(before["conditions"], after["conditions"], _CATEGORIES)
+    configurations = _compare(before["configurations"], after["configurations"], (("algorithm", "算法实验设置"),))
+    previous, current = before["objective"], after["objective"]
     objective_state = "unknown" if "unknown" in (previous["state"], current["state"]) else (
         "equal" if previous["value"] == current["value"] else "different")
     objective = {"category": "algorithm", "entity": {"key": "objective", "label": "优化目标"},
@@ -596,3 +673,10 @@ def compare_history_conditions(before_source, after_source, shared_window):
             "gate": {"production_state": conditions["state"], "objective_state": objective_state,
                      "state": "equal" if conditions["state"] == objective_state == "equal" else (
                          "different" if "different" in (conditions["state"], objective_state) else "unknown")}}
+
+
+def compare_history_conditions(before_source, after_source, shared_window):
+    """Prepare standalone inputs for this call; grouped history reads use their reader."""
+    before, after = (prepare_history_condition_side(prepare_history_condition_source(packet), shared_window)
+                     for packet in (before_source, after_source))
+    return compare_prepared_history_conditions(before, after)

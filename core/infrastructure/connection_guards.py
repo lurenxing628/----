@@ -7,7 +7,12 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Iterator, List, Optional, Tuple
+
+from .schema_structure import SchemaStructure
+
+_QUERY_ONLY: ContextVar[Tuple[sqlite3.Connection, ...]] = ContextVar("aps_query_only", default=())
 
 
 def is_query_only(conn: sqlite3.Connection) -> bool:
@@ -17,13 +22,21 @@ def is_query_only(conn: sqlite3.Connection) -> bool:
 
 @contextmanager
 def query_only(conn: sqlite3.Connection) -> Iterator[None]:
-    """进入时置 PRAGMA query_only=ON，退出时恢复进入前的值。"""
+    """最外层拥有只读开关；同连接嵌套加入已有作用域，退出恢复原值。"""
+    active = _QUERY_ONLY.get()
+    if any(current is conn for current in active):
+        yield
+        return
     previous = is_query_only(conn)
+    token = _QUERY_ONLY.set(active + (conn,))
     try:
-        conn.execute("PRAGMA query_only=ON")
+        if not previous:
+            conn.execute("PRAGMA query_only=ON")
         yield
     finally:
-        conn.execute("PRAGMA query_only=" + ("ON" if previous else "OFF"))
+        _QUERY_ONLY.reset(token)
+        if not previous:
+            conn.execute("PRAGMA query_only=OFF")
 
 
 def foreign_keys_enabled(conn: sqlite3.Connection) -> bool:
@@ -51,41 +64,31 @@ def main_database_path(conn: sqlite3.Connection) -> str:
     raise LookupError("connection has no main database")
 
 
-def schema_cookie(conn: sqlite3.Connection) -> Tuple[int, int]:
-    """(main.schema_version, temp.schema_version)：任何连接改主库结构、本连接建临时表遮挡同名表，都会变。"""
-    values: List[int] = []
-    for statement in ("PRAGMA main.schema_version", "PRAGMA temp.schema_version"):
-        row = conn.execute(statement).fetchone()
-        if row is None or len(row) != 1 or type(row[0]) is not int:
-            raise ValueError(f"connection metadata unavailable: {statement}")
-        values.append(row[0])
-    return values[0], values[1]
-
-
 class SchemaContractMemo:
-    """一次命令内复用只读结构合同校验的结果，表结构一变就重新校验。
+    """同一命令或读请求内，共享一次结构捕获及各合同检查的结果。
 
-    逐行写入时每行都重新解析整套 DDL 会把写锁拖到几十秒；这里按 schema_cookie 记住
-    每个校验函数的结果，本连接自己的 DDL 或他连接提交的 DDL 都会让下一次调用重新校验，
-    结构被破坏后照样拒绝。只能放只读表结构的校验（sqlite_master、PRAGMA table_info，
-    以及调用方写事务里别人改不了的单例行）；foreign_keys 这类连接设置不随表结构版本变化，
-    必须每次现查。实例只绑定一个连接，随调用方的一次命令存活，不做模块级或跨连接缓存。
-    同一实例存活期间不得执行 DDL：保存点回滚 DDL 会让 schema_version 退回旧值，之后再做一次
-    DDL 可能恰好撞上已记住的版本号，误用旧结论。
+    实例绑定一个连接，随调用方的一次命令或读请求存活；下一请求新建实例。
+    存活期间不执行 DDL，也不改变已检查的连接设置。get_schema 复用同一份
+    SchemaStructure，get 复用本次调用内固定的连接事实，如 foreign_keys。
+    逐行保存共用叶子检查，结构和连接设置由首次入口检查。
     """
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
         self._results: dict = {}
+        self._structure: Optional[SchemaStructure] = None
 
     def get(self, check):
-        cookie = schema_cookie(self.conn)
-        cached = self._results.get(check)
-        if cached is not None and cached[0] == cookie:
-            return cached[1]
-        result = check(self.conn)
-        self._results[check] = (cookie, result)
-        return result
+        if check not in self._results:
+            self._results[check] = check(self.conn)
+        return self._results[check]
+
+    def get_schema(self, check):
+        if check not in self._results:
+            if self._structure is None:
+                self._structure = SchemaStructure(self.conn)
+            self._results[check] = check(self.conn, structure=self._structure)
+        return self._results[check]
 
 
 def connection_snapshot_metadata(conn: sqlite3.Connection) -> Tuple[int, int, int, int]:

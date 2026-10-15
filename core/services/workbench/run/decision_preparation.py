@@ -3,13 +3,14 @@
 from collections import defaultdict
 from functools import cached_property
 
-from core.models.enums import OperationRequirementRole, SourceType
 from core.services.workbench.facts.candidate_tasks import operation_labels
-from core.services.workbench.facts.operation_effort_evidence import archived_standard_effort
+from core.services.workbench.facts.decision_preparation import (
+    admission_operation_standards,
+    project_decision_preparation,
+    project_decision_preparation_row,
+)
 from core.services.workbench.facts.preparation_projection import (
     preparation_delta,
-    preparation_summary,
-    project_operation_effort,
     public_preparation_metrics,
     public_preparation_roles,
 )
@@ -49,43 +50,7 @@ class DecisionPreparation:
 
     @cached_property
     def current_standards(self):
-        source = self.source
-        result = {}
-        for ref in source.scope["operation_refs"]:
-            operation = source.facts.tables["BatchOperations"].get(source.facts.operations[ref], {})
-            execution = source.facts.execution.get(ref, {})
-            result[ref] = {**archived_standard_effort(operation, execution),
-                           "evidence_source": {"kind": "admission", "run_ref": source.run["run_ref"]}}
-        return result
-
-    def _facts(self, key, ref):
-        source = self.source
-        formal = key == "reference" and source.comparison_mode == "admission_official"
-        if formal:
-            original = source.official["operation_efforts"].get(ref) or {}
-            saved_standard = source.official["operation_standards"].get(ref)
-            if saved_standard is not None:
-                standard = {**archived_standard_effort(saved_standard["operation"], saved_standard["execution"]),
-                            "evidence_source": saved_standard["evidence_source"]}
-            else:
-                standard = None
-            return original.get("effort"), standard, original.get("evidence_source")
-        return source.operation_efforts.get(ref), self.current_standards[ref], {"kind": "run", "run_ref": source.run["run_ref"]}
-
-    def _allocation(self, key, ref, runtime, tasks):
-        if not self.available(key):
-            return "unknown"
-        deferred = self.reference_deferred if key == "reference" else self.source.deferred_refs
-        if not tasks:
-            return "deferred" if ref in deferred else "unplanned"
-        source = runtime.get("source") if runtime is not None else tasks[0]["source"]
-        if source == SourceType.EXTERNAL.value:
-            return "external"
-        role = (runtime or {}).get("requirement_role")
-        if role in (OperationRequirementRole.NEW_SCHEDULE.value, OperationRequirementRole.RETAINED.value,
-                    OperationRequirementRole.EXECUTION.value, OperationRequirementRole.COMPLETED.value):
-            return role
-        return "unknown"
+        return admission_operation_standards(self.source.facts, self.source.scope["operation_refs"], self.source.run["run_ref"])
 
     @cached_property
     def reference_deferred(self):
@@ -96,37 +61,43 @@ class DecisionPreparation:
     def rows(self, key):
         key = self.source.computation_key(key)
         if key not in self._rows:
-            rows = [self._row(key, ref, self.groups(key)[ref]) for ref in self.source.scope["operation_refs"]]
+            source = self.source
+            formal = key == "reference" and source.comparison_mode == "admission_official"
+            available = self.available(key)
+            requirements_available = available if formal else (source.receipt or {}).get("operation_effort") is not None or available
+            projection = project_decision_preparation(source.facts, source.scope["operation_refs"],
+                {} if formal else source.operation_efforts, self.tasks(key), run_ref=source.run["run_ref"], available=available,
+                deferred_refs=self.reference_deferred if key == "reference" else source.deferred_refs,
+                requirements_available=requirements_available, official=source.official_details if formal else None,
+                standards=None if formal else self.current_standards, task_groups=self.groups(key))
+            rows = projection["rows"]
             self._rows[key] = rows
             self._rows_by_ref[key] = {row["operation_ref"]: row for row in rows}
+            self._summaries[key] = projection["summary"]
         return self._rows[key]
 
     def _row(self, key, ref, tasks):
         source = self.source
         formal = key == "reference" and source.comparison_mode == "admission_official"
-        runtime, standard, evidence_source = self._facts(key, ref)
-        operation = source.facts.tables["BatchOperations"].get(source.facts.operations.get(ref), {})
-        original_source = runtime.get("source") if runtime is not None else (
-            tasks[0]["source"] if formal and tasks else operation.get("source") if not formal else None)
-        row = project_operation_effort(runtime, standard, allocation_state=self._allocation(key, ref, runtime, tasks),
-                                       source_available=self.available(key), source=original_source,
-                                       execution=source.facts.execution.get(ref, {}), evidence_source=evidence_source)
-        row.update(operation_ref=ref, arranged=bool(tasks))
-        return row
+        return project_decision_preparation_row(source.facts, ref, tasks, {} if formal else source.operation_efforts,
+            run_ref=source.run["run_ref"], available=self.available(key),
+            deferred_refs=self.reference_deferred if key == "reference" else source.deferred_refs,
+            official=source.official_details if formal else None, standards=None if formal else self.current_standards)
 
     @cached_property
     def formal_task_groups(self):
         result = defaultdict(list)
-        for task in self.source.official["tasks"]:
+        for task in self.source.official_details["tasks"]:
             result[task["operation_ref"]].append(task)
         return result
 
     def summary(self, key):
         key = self.source.computation_key(key)
         if key not in self._summaries:
-            formal = key == "reference" and self.source.comparison_mode == "admission_official"
-            requirements_available = self.available(key) if formal else (self.source.receipt or {}).get("operation_effort") is not None or self.available(key)
-            self._summaries[key] = preparation_summary(self.rows(key), available=self.available(key), requirements_available=requirements_available)
+            if key != "reference" or not self.source.official_changed:
+                self._summaries[key] = self.source.saved_projection(key, "preparation")
+            else:
+                self.rows(key)
         return self._summaries[key]
 
     def metrics(self, key):

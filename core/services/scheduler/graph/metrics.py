@@ -71,24 +71,42 @@ def build_duration_weighted_graph(graph: Any) -> Any:
     return weighted
 
 
-def _path_weight(graph: Any, path: List[str]) -> int:
-    total = 0
-    for from_node_id, to_node_id in zip(path, path[1:]):
-        total += int(graph.edges[from_node_id, to_node_id]["weight"])
-    return total
+def get_critical_path(
+    graph: Any,
+    *,
+    topological_order: Optional[List[str]] = None,
+) -> Tuple[List[str], int]:
+    if topological_order is None:
+        topological_order = get_topological_order(graph)
 
+    # The former weighted copy inserted incoming edges by source-node order.
+    # Keep that predecessor tie order while reading the original graph's edges.
+    node_index = {node_id: index for index, node_id in enumerate(graph.nodes)}
+    distances: Dict[str, Tuple[int, str]] = {_SOURCE_NODE_ID: (0, _SOURCE_NODE_ID)}
+    for node_id in topological_order:
+        duration = _duration_of(graph, node_id)
+        predecessors = graph.pred[node_id]
+        if predecessors:
+            best = max(
+                ((distances[parent_id][0] + duration + int(data["lag_minutes"]), parent_id)
+                 for parent_id, data in predecessors.items()),
+                key=lambda item: (item[0], -node_index[item[1]]),
+            )
+        else:
+            best = (duration, _SOURCE_NODE_ID)
+        distances[node_id] = best if best[0] >= 0 else (0, node_id)
 
-def get_critical_path(graph: Any) -> Tuple[List[str], int]:
-    nx = import_networkx()
-
-    weighted = build_duration_weighted_graph(graph)
-    raw_path = nx.dag_longest_path(
-        weighted,
-        weight="weight",
-        topo_order=get_topological_order(weighted),
-    )
-    minutes = _path_weight(weighted, raw_path)
-    path = [node_id for node_id in raw_path if node_id != _SOURCE_NODE_ID]
+    # Source comes first, so a graph with no positive distance has an empty path.
+    node_id = max(distances, key=lambda item: distances[item][0])
+    minutes = distances[node_id][0]
+    path: List[str] = []
+    while node_id != _SOURCE_NODE_ID:
+        path.append(node_id)
+        predecessor = distances[node_id][1]
+        if predecessor == node_id:
+            break
+        node_id = predecessor
+    path.reverse()
 
     return path, minutes
 
@@ -172,11 +190,25 @@ def build_node_metrics(
     generation_index: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     if topological_order is None:
-        topological_order = get_topological_order(graph)
+        generations = get_topological_generations(graph)
+        topological_order = [node_id for group in generations for node_id in group]
+        if generation_index is None:
+            generation_index = {
+                node_id: index
+                for index, group in enumerate(generations)
+                for node_id in group
+            }
+    elif generation_index is None:
+        generation_index = {}
+        for node_id in topological_order:
+            generation_index[node_id] = max(
+                (generation_index[parent_id] + 1 for parent_id in graph.pred[node_id]),
+                default=0,
+            )
     if critical_path is None:
-        critical_path, _critical_minutes = get_critical_path(graph)
-    if generation_index is None:
-        generation_index = get_generation_index(graph)
+        critical_path, _critical_minutes = get_critical_path(
+            graph, topological_order=topological_order,
+        )
 
     critical_set = set(critical_path)
     critical_rank = {

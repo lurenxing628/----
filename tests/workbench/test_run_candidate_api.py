@@ -14,6 +14,7 @@ from core.models.workbench_run_analysis import operation_metrics
 from core.models.workbench_run_baseline import RunCandidateBaselineScope, _resource_change
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_projection import algorithm_facts
 from core.services.workbench.facts.candidate_tasks import _resource
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
@@ -53,13 +54,21 @@ def test_full_app_explicit_registration_only_temporary_connections(candidate_cas
     client = app.test_client()
     before = state(case.conn)
     catalog = read(client, "/runs/" + run_ref + "/candidates")
-    assert catalog["data"]["candidate_count"] == 4
+    assert catalog["data"]["candidate_count"] == len(refs)
     result = read(client, "/candidates/" + refs[0])
     generation = result["data"]["generation"]
     assert generation["baseline"] == {"baseline_ref": None, "version": None, "kind": "admission_official",
                                       "captured_at": generation["accepted_at"], "captured_task_count": 0}
-    assert generation["algorithm"] == {"mode": "greedy", "mode_label": "快速计算",
-                                       "strategy": "priority_first", "strategy_label": "优先级优先"}
+    artifact = json.loads(case.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (refs[0],)).fetchone()[0])
+    if artifact.get("generation_policy_version") == "unified_search_v1":
+        assert 1 <= len(refs) <= 3
+        assert generation["algorithm"] == algorithm_facts(artifact)
+        assert generation["algorithm"]["target_objectives"] == artifact["target_objectives"]
+        assert list(artifact["evaluations"]) != artifact["target_objectives"]
+    else:
+        assert len(refs) == 4
+        assert generation["algorithm"] == {"mode": "greedy", "mode_label": "快速计算",
+                                           "strategy": "priority_first", "strategy_label": "优先级优先"}
     token = result["meta"]["snapshot_ref"]
     for fmt in ("csv", "xlsx"):
         response = client.get(BASE + "/candidates/" + refs[0] + "/export", query_string={"format": fmt, "snapshot_ref": token})

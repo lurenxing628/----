@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from datetime import date
 from typing import Any, Dict
 
-from core.infrastructure.connection_guards import data_version
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -61,7 +60,7 @@ class BatchFacts:
         return facts
 
     def _write_stamp(self):
-        return self.conn.total_changes, data_version(self.conn)
+        return self.conn.total_changes
 
     def _pinned(self):
         if self._stamp is not None and (not self.conn.in_transaction or self._write_stamp() != self._stamp):

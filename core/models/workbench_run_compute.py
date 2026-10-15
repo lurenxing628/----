@@ -35,6 +35,15 @@ class CandidateRunComputation:
     result_persisted: bool = field(default=False, init=False)
 
 
+@dataclass(frozen=True)
+class PreparedRunResult:
+    """The computation's identities, serializable result and immutable read models."""
+
+    candidates: List[Dict[str, Any]]
+    result: Dict[str, Any]
+    read_models: Dict[str, Any]
+
+
 class CandidateRunInputError(ValueError):
     def __init__(self, reason: str, message: str, *, issues=None):
         super().__init__(message)

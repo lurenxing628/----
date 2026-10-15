@@ -9,6 +9,9 @@ from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCom
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, validate_run_ref
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
+from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.decision_read_model import build_failure_read_models
+from core.services.workbench.facts.decision_read_models import decode_model, public_job_status
 from core.services.workbench.facts.run_history_projection import (
     COMPUTATION_FAILED,
     failure_message,
@@ -16,14 +19,13 @@ from core.services.workbench.facts.run_history_projection import (
 )
 from core.services.workbench.facts.run_input_codec import restore_execution_projections
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-from core.services.workbench.facts.run_policy import public_run
-from data.repositories.workbench_run_facts_repo import WorkbenchRunFactsRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
-from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository, prepare_run_result
+from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 
 from .compute import compute_candidate_run
 from .jobs_facts import run_facts_unchanged
 from .progress import clear_progress, report_progress
+from .result_preparation import prepare_run_result
 from .worker_claim import claim_run
 from .worker_snapshot import computation_database
 
@@ -70,12 +72,12 @@ class WorkbenchRunWorker:
             if existing is not None:
                 return existing
             try:
-                candidates, result = self._compute(row)
+                prepared_result = self._compute(row)
             except Exception as exc:
                 self._record_failure(row, exc)
                 raise
-            self._persist(row, candidates, result)
-            return public_run(self.conn, self.repo.get(run_ref))
+            self._persist(row, prepared_result)
+            return public_job_status(self.repo.status(run_ref))
         finally:
             # The run is terminal (or failed to claim) here; the receipt is the record from now on.
             clear_progress(run_ref)
@@ -87,22 +89,33 @@ class WorkbenchRunWorker:
             return self.compute_runner(self.conn, row, on_progress=progress)
         with computation_database(self.conn) as snapshot, candidate_read_snapshot(snapshot):
             self._check_facts(row, snapshot)
-            projections = restore_execution_projections(json.loads(row["execution_json"]))
+            raw_execution = json.loads(row["execution_json"])
+            normalized_input = json.loads(row["normalized_input_json"])
+            projections = restore_execution_projections(raw_execution)
             computation = compute_candidate_run(
-                snapshot, json.loads(row["normalized_input_json"]), projections,
+                snapshot, normalized_input, projections,
                 on_progress=progress)
-            identities = {int(item[0]): item[1] for item in WorkbenchRunFactsRepository(snapshot).operation_identity_refs()}
-            return prepare_run_result(computation, identities)
+            capture = {"input": normalized_input, "execution": raw_execution,
+                       "baseline": json.loads(row["baseline_json"]), "facts_text": row["facts_json"],
+                       "facts_hash": row["facts_hash"]}
+            facts = GenerationFacts(capture)
+            identities = {op_id: ref for ref, op_id in facts.operations.items()}
+            admission_row = WorkbenchRunRepository(snapshot).admission_read_model(row["run_ref"], fields=("decision",))
+            admission = decode_model(admission_row, ("decision",))["decision"]
+            return prepare_run_result(computation, identities, run=row, capture=capture, admission=admission, facts=facts)
 
-    def _persist(self, row, candidates, result):
+    def _persist(self, row, prepared):
+        candidates, result = prepared.candidates, prepared.result
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
                 self._check_facts(row)
-                current = self.repo.get(row["run_ref"])
+                current = self.repo.claim_head(row["run_ref"])
                 if current is None or current["state"] != "running" or current["executor_ref"] != PROCESS_EXECUTOR_REF:
                     raise RuntimeError("Run ownership changed before result persistence")
                 self.results.save(row["run_ref"], candidates)
-                self.repo.finish(row["run_ref"], result["state"], result, self._now())
+                self.repo.insert_prepared_decision_read_models(row["run_ref"], prepared.read_models["run_model"],
+                                                     prepared.read_models["candidate_models"])
+                self.repo.finish_prepared(row["run_ref"], result, self._now())
         except WorkbenchCommandRejected as exc:
             self._record_failure(row, exc)
             raise
@@ -128,6 +141,10 @@ class WorkbenchRunWorker:
                   "diagnostic": failure_diagnostic(exc)}
         try:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
+                admission_row = self.repo.admission_read_model(row["run_ref"], fields=("decision",))
+                admission = decode_model(admission_row, ("decision",))["decision"]
+                models = build_failure_read_models(row, admission, result)
+                self.repo.insert_decision_read_models(row["run_ref"], models["run_model"], models["candidate_models"])
                 self.repo.finish(row["run_ref"], "failed", result, self._now())
         except Exception as storage_exc:
             raise WorkbenchCommandUncertain(row["request_key"]) from storage_exc

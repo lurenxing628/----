@@ -57,10 +57,41 @@ def _section(client, result, entity, section):
     return rows
 
 
-def test_overview_material_readiness_follows_arrival_day_and_quantity_review(overview_client, monkeypatch):
+def test_overview_material_readiness_follows_arrival_day_and_quantity_review(overview_client, monkeypatch, record_property):
     from core.services.workbench.master import overview_facts
+    from core.services.workbench.master.overview import MasterOverviewService
 
     client = overview_client
+    client.batch_conn.executemany("INSERT INTO Materials(material_id,name,unit,stock_qty) VALUES (?,?,'kg',0)",
+                                 [("R18-" + str(index).zfill(2), "test material") for index in range(20)])
+    client.batch_conn.commit()
+    original, calls = MasterOverviewService.page, []
+
+    def page(reader, scope, number=1):
+        calls.append(number)
+        return original(reader, scope, number)
+
+    query = {"scope": json.dumps(SCOPE), "page": 2}
+    with monkeypatch.context() as patch:
+        patch.setattr(MasterOverviewService, "page", page)
+        restored = client.get(BASE, query_string=query)
+    assert restored.status_code == 200, restored.get_json()
+    direct = restored.get_json()
+    assert calls == [2] and direct["data"]["page"]["number"] == 2
+    assert direct["data"]["rows"]
+    record_property("direct_page", 2)
+    record_property("page_query_calls", len(calls))
+    record_property("data_fields", sorted(direct["data"]))
+    repeated = client.get(BASE, query_string={**query, "snapshot_ref": direct["meta"]["snapshot_ref"]}).get_json()
+    assert repeated["data"] == direct["data"] and repeated["meta"].keys() == direct["meta"].keys()
+    assert repeated["meta"]["request_ref"] != direct["meta"]["request_ref"]
+    assert all(repeated["meta"][key] == value for key, value in direct["meta"].items() if key != "request_ref")
+    missing = client.get(BASE + "/export", query_string={"scope": json.dumps(SCOPE)})
+    assert missing.status_code == 409 and missing.get_json()["error"]["code"] == "snapshot_stale"
+    # Keep the original readiness oracle's single-material first screen after
+    # the independent pagination proof has consumed its temporary rows.
+    client.batch_conn.execute("DELETE FROM Materials WHERE material_id GLOB 'R18-*'")
+    client.batch_conn.commit()
     tomorrow = date.today() + timedelta(days=1)
     arrival = {"arrival_date": tomorrow.isoformat(), "quantity": 8}
     receipt = _save(client, 2, [arrival])

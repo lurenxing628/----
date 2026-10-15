@@ -1,0 +1,1531 @@
+{
+  "provenance": {
+    "source_kind": "controlled_real_metrics_pure_shared_producer_and_projection",
+    "actual_http": false,
+    "database_access": false,
+    "solver_calls": 0,
+    "decoder_calls": 0,
+    "metrics_computations": 2,
+    "archive_observations": 3,
+    "observation_elapsed_ms": [
+      10,
+      15,
+      20
+    ],
+    "runtime_ms": 100,
+    "strict_improvement_elapsed_ms": 15,
+    "final_elapsed_ms": 100,
+    "source_event_id": 2,
+    "first_found_elapsed_ms": 15,
+    "test_run_ref": "000000000000000000000000000000000000000000000384",
+    "test_candidate_ref": "000000000000000000000000000000000000000000000385",
+    "target_objectives": [
+      "min_overdue",
+      "min_tardiness",
+      "min_changeover"
+    ],
+    "wrapper_shape_donor": "/Users/lurenxing/GitHub/----/evidence/unified-scheduling-optimization/2026-10-14/u4/process-api/actual-new-process-http/process-min_overdue.json",
+    "producer": "build_shared_process",
+    "permanent_scope_conversion": "result_preparation._scope_references",
+    "projection": "project_unified_process",
+    "frontend_required_path": "strict RunDecisionAPI.processDetails, then RunDecisionProcessChart",
+    "evidence_boundary": "Controlled fixture with real ScheduleResult/compute_metrics and real collector; public outer wrapper adapted from an actual HTTP donor. No HTTP envelope or DB snapshot is claimed."
+  },
+  "improvement": {
+    "run_ref": "000000000000000000000000000000000000000000000384",
+    "capture_ref": "000000000000000000000000000000000000000000000384",
+    "scope": {
+      "batch_refs": [
+        "000000000000000000000000000000000000000000000321",
+        "000000000000000000000000000000000000000000000322",
+        "000000000000000000000000000000000000000000000323"
+      ],
+      "comparison_mode": "candidates",
+      "delta_basis": "candidate_minus_reference",
+      "metric_scope": "full_admission",
+      "operation_refs": [
+        "000000000000000000000000000000000000000000000001",
+        "000000000000000000000000000000000000000000000002",
+        "000000000000000000000000000000000000000000000003"
+      ],
+      "range_end": "2026-10-15T00:00:00",
+      "range_start": "2026-10-13T00:00:00",
+      "reference": {
+        "kind": "candidate",
+        "candidate_ref": "000000000000000000000000000000000000000000000385"
+      },
+      "reference_state": "available",
+      "resource_refs": {
+        "machine": [
+          "0000000000000000000000000000000000000000000003e9"
+        ],
+        "operator": [
+          "00000000000000000000000000000000000000000000044d",
+          "00000000000000000000000000000000000000000000044e",
+          "00000000000000000000000000000000000000000000044f"
+        ]
+      },
+      "resource_view": "selected_batches",
+      "run_options": {
+        "generation_policy_version": "unified_search_v1",
+        "primary_objective": "min_overdue",
+        "target_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ],
+        "time_budget_seconds": 1,
+        "algo_mode": "improve",
+        "graph_analysis_mode": "off"
+      },
+      "run_ref": "000000000000000000000000000000000000000000000384",
+      "selected_candidate_ref": "000000000000000000000000000000000000000000000385",
+      "time_basis": "factory_local"
+    },
+    "baseline": {
+      "baseline_ref": null,
+      "candidate_ref": "000000000000000000000000000000000000000000000385",
+      "kind": "candidate",
+      "label": "受控真实指标 · 三方向代表",
+      "source_candidate_ref": null,
+      "state": "available",
+      "version": null
+    },
+    "process_version": "unified-optimization-process-v1",
+    "summary": {
+      "elapsed_ms": 100,
+      "first_complete_elapsed_ms": 10,
+      "first_improvement_elapsed_ms": 15,
+      "last_improvement_elapsed_ms": 15
+    },
+    "counts": {
+      "actual_decoder_calls": 0,
+      "new_decisions": 0,
+      "decision_reuses": 0,
+      "skipped_requests": 0,
+      "failed_decoder_calls": 0,
+      "request_count": 0,
+      "execution_counts": {}
+    },
+    "budget": {
+      "policy": "shared_search_budget_v1",
+      "clock": "shared_monotonic",
+      "configured_seconds": 1.0,
+      "elapsed_seconds": 0.1,
+      "remaining_seconds": 0.9,
+      "deadline_overrun_seconds": 0.0,
+      "actual_decoder_count": 0,
+      "actual_decode_seconds": 0.0,
+      "decode_counts_by_kind": {
+        "batch_order_full": 0,
+        "sgs_full": 0,
+        "sgs_resume": 0
+      },
+      "cost_samples": {
+        "batch_order_full": [],
+        "sgs_full": [],
+        "sgs_resume": []
+      },
+      "cost_estimates": {
+        "batch_order_full": 0.0,
+        "sgs_full": 0.0,
+        "sgs_resume": 0.0
+      },
+      "admission_skips": {},
+      "action_count": 0,
+      "new_decisions": 0,
+      "reused_decisions": 0,
+      "phase_elapsed_seconds": {},
+      "first_complete_elapsed_seconds": null,
+      "last_improvement_elapsed_seconds": 0,
+      "stalled_new_decisions": 0,
+      "stall_decision_limit": 6,
+      "stall_seconds": 2.0,
+      "auxiliary_probe_limit": 2,
+      "stop_reason": null,
+      "objective_status": {
+        "min_overdue": "not_searched_budget",
+        "min_tardiness": "not_searched_budget",
+        "min_changeover": "not_searched_budget"
+      },
+      "objectives": {
+        "min_overdue": {
+          "objective_status": "not_searched_budget",
+          "weight": 0.6,
+          "elapsed_seconds": 0.0,
+          "charged_seconds": 0.0,
+          "preparation_seconds": 0.0,
+          "action_count": 0,
+          "new_decisions": 0,
+          "reused_decisions": 0,
+          "probe_decisions": 0,
+          "minimum_opportunity": false,
+          "improvement_action_count": 0,
+          "has_gain": false,
+          "feedback_rate": 0.0,
+          "feedback_bonus": 0.0,
+          "unavailable_reason": null,
+          "budget_reason": null,
+          "phase_elapsed_seconds": {}
+        },
+        "min_tardiness": {
+          "objective_status": "not_searched_budget",
+          "weight": 0.2,
+          "elapsed_seconds": 0.0,
+          "charged_seconds": 0.0,
+          "preparation_seconds": 0.0,
+          "action_count": 0,
+          "new_decisions": 0,
+          "reused_decisions": 0,
+          "probe_decisions": 0,
+          "minimum_opportunity": false,
+          "improvement_action_count": 0,
+          "has_gain": false,
+          "feedback_rate": 0.0,
+          "feedback_bonus": 0.0,
+          "unavailable_reason": null,
+          "budget_reason": null,
+          "phase_elapsed_seconds": {}
+        },
+        "min_changeover": {
+          "objective_status": "not_searched_budget",
+          "weight": 0.2,
+          "elapsed_seconds": 0.0,
+          "charged_seconds": 0.0,
+          "preparation_seconds": 0.0,
+          "action_count": 0,
+          "new_decisions": 0,
+          "reused_decisions": 0,
+          "probe_decisions": 0,
+          "minimum_opportunity": false,
+          "improvement_action_count": 0,
+          "has_gain": false,
+          "feedback_rate": 0.0,
+          "feedback_bonus": 0.0,
+          "unavailable_reason": null,
+          "budget_reason": null,
+          "phase_elapsed_seconds": {}
+        }
+      }
+    },
+    "stop_reason": "completed",
+    "bridges": [],
+    "objectives": [
+      {
+        "name": "min_overdue",
+        "label": "最少超期",
+        "primary_metric_key": "overdue_count",
+        "primary_metric_label": "超期批次数",
+        "unit": "批次",
+        "score_fields": [
+          {
+            "index": 0,
+            "key": "failed_ops",
+            "label": "失败工序数",
+            "unit": "工序",
+            "direction": "lower"
+          },
+          {
+            "index": 1,
+            "key": "overdue_count",
+            "label": "超期批次数",
+            "unit": "批次",
+            "direction": "lower"
+          },
+          {
+            "index": 2,
+            "key": "weighted_tardiness_hours",
+            "label": "加权拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 3,
+            "key": "total_tardiness_hours",
+            "label": "总拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 4,
+            "key": "makespan_hours",
+            "label": "总工期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 5,
+            "key": "changeover_count",
+            "label": "算法工种切换次数",
+            "unit": "次",
+            "direction": "lower"
+          }
+        ]
+      },
+      {
+        "name": "min_tardiness",
+        "label": "最少拖期小时",
+        "primary_metric_key": "total_tardiness_hours",
+        "primary_metric_label": "总拖期小时",
+        "unit": "小时",
+        "score_fields": [
+          {
+            "index": 0,
+            "key": "failed_ops",
+            "label": "失败工序数",
+            "unit": "工序",
+            "direction": "lower"
+          },
+          {
+            "index": 1,
+            "key": "total_tardiness_hours",
+            "label": "总拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 2,
+            "key": "overdue_count",
+            "label": "超期批次数",
+            "unit": "批次",
+            "direction": "lower"
+          },
+          {
+            "index": 3,
+            "key": "weighted_tardiness_hours",
+            "label": "加权拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 4,
+            "key": "makespan_hours",
+            "label": "总工期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 5,
+            "key": "changeover_count",
+            "label": "算法工种切换次数",
+            "unit": "次",
+            "direction": "lower"
+          }
+        ]
+      },
+      {
+        "name": "min_changeover",
+        "label": "最少算法工种切换次数",
+        "primary_metric_key": "changeover_count",
+        "primary_metric_label": "算法工种切换次数",
+        "unit": "次",
+        "score_fields": [
+          {
+            "index": 0,
+            "key": "failed_ops",
+            "label": "失败工序数",
+            "unit": "工序",
+            "direction": "lower"
+          },
+          {
+            "index": 1,
+            "key": "changeover_count",
+            "label": "算法工种切换次数",
+            "unit": "次",
+            "direction": "lower"
+          },
+          {
+            "index": 2,
+            "key": "overdue_count",
+            "label": "超期批次数",
+            "unit": "批次",
+            "direction": "lower"
+          },
+          {
+            "index": 3,
+            "key": "total_tardiness_hours",
+            "label": "总拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 4,
+            "key": "weighted_tardiness_hours",
+            "label": "加权拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 5,
+            "key": "makespan_hours",
+            "label": "总工期小时",
+            "unit": "小时",
+            "direction": "lower"
+          }
+        ]
+      }
+    ],
+    "selected_objective": {
+      "name": "min_overdue",
+      "label": "最少超期",
+      "primary_metric_key": "overdue_count",
+      "primary_metric_label": "超期批次数",
+      "unit": "批次",
+      "score_fields": [
+        {
+          "index": 0,
+          "key": "failed_ops",
+          "label": "失败工序数",
+          "unit": "工序",
+          "direction": "lower"
+        },
+        {
+          "index": 1,
+          "key": "overdue_count",
+          "label": "超期批次数",
+          "unit": "批次",
+          "direction": "lower"
+        },
+        {
+          "index": 2,
+          "key": "weighted_tardiness_hours",
+          "label": "加权拖期小时",
+          "unit": "小时",
+          "direction": "lower"
+        },
+        {
+          "index": 3,
+          "key": "total_tardiness_hours",
+          "label": "总拖期小时",
+          "unit": "小时",
+          "direction": "lower"
+        },
+        {
+          "index": 4,
+          "key": "makespan_hours",
+          "label": "总工期小时",
+          "unit": "小时",
+          "direction": "lower"
+        },
+        {
+          "index": 5,
+          "key": "changeover_count",
+          "label": "算法工种切换次数",
+          "unit": "次",
+          "direction": "lower"
+        }
+      ]
+    },
+    "progress": {
+      "points": [
+        {
+          "elapsed_ms": 10,
+          "entry_id": 1,
+          "source_event_id": 1,
+          "search_objective": "min_overdue",
+          "origin": "controlled_real_arrangement",
+          "score": [
+            0,
+            3.0,
+            22.0,
+            12.0,
+            5.0,
+            2.0
+          ],
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "scope_ref": "1",
+          "segment": 0,
+          "flags": [
+            "first_valid",
+            "first_expected_complete"
+          ],
+          "phase": "initial_construct",
+          "verified": true,
+          "primary_value": 3.0
+        },
+        {
+          "elapsed_ms": 15,
+          "entry_id": 2,
+          "source_event_id": 2,
+          "search_objective": "min_overdue",
+          "origin": "controlled_real_arrangement",
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            1.0
+          ],
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "scope_ref": "1",
+          "segment": 0,
+          "flags": [
+            "strict_improvement"
+          ],
+          "phase": "improve",
+          "verified": true,
+          "primary_value": 0.0
+        },
+        {
+          "elapsed_ms": 100,
+          "entry_id": 2,
+          "source_event_id": 2,
+          "search_objective": "min_overdue",
+          "origin": "controlled_real_arrangement",
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            1.0
+          ],
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "scope_ref": "1",
+          "segment": 0,
+          "flags": [
+            "final"
+          ],
+          "phase": "improve",
+          "verified": true,
+          "primary_value": 0.0
+        }
+      ],
+      "sampling": {
+        "policy": "elapsed_equal_width_bucket_end_best_v1",
+        "point_budget": 200,
+        "event_total_count": 3,
+        "retained_point_count": 3,
+        "bucket_count": 198,
+        "bucket_width_ms": 0.5050505050505051,
+        "mandatory": [
+          "first_valid",
+          "first_expected_complete",
+          "final"
+        ]
+      }
+    },
+    "scopes": {
+      "1": {
+        "scheduled_operation_refs": [
+          "000000000000000000000000000000000000000000000001",
+          "000000000000000000000000000000000000000000000002",
+          "000000000000000000000000000000000000000000000003"
+        ],
+        "complete_batch_refs": [
+          "000000000000000000000000000000000000000000000321",
+          "000000000000000000000000000000000000000000000322",
+          "000000000000000000000000000000000000000000000323"
+        ],
+        "objective_scope": "all_batches",
+        "components_known": true,
+        "is_complete": true
+      }
+    },
+    "actions": [],
+    "stages": [],
+    "candidate": {
+      "candidate_ref": "000000000000000000000000000000000000000000000385",
+      "label": "受控真实指标 · 三方向代表",
+      "status": "completed",
+      "representative_objectives": [
+        "min_overdue",
+        "min_tardiness",
+        "min_changeover"
+      ],
+      "origin": {
+        "search_objective": "min_overdue",
+        "phase": "improve",
+        "origin": "controlled_real_arrangement",
+        "dispatch_mode": "sgs",
+        "dispatch_rule": "cr",
+        "strategy": "None",
+        "repair_decision": null
+      },
+      "first_found_elapsed_ms": 15,
+      "search_evidence_ref": {
+        "run_ref": "000000000000000000000000000000000000000000000384",
+        "source_event_id": 2
+      }
+    },
+    "candidates": [
+      {
+        "candidate_ref": "000000000000000000000000000000000000000000000385",
+        "label": "受控真实指标 · 三方向代表",
+        "status": "completed",
+        "representative_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ],
+        "origin": {
+          "search_objective": "min_overdue",
+          "phase": "improve",
+          "origin": "controlled_real_arrangement",
+          "dispatch_mode": "sgs",
+          "dispatch_rule": "cr",
+          "strategy": "None",
+          "repair_decision": null
+        },
+        "first_found_elapsed_ms": 15,
+        "search_evidence_ref": {
+          "run_ref": "000000000000000000000000000000000000000000000384",
+          "source_event_id": 2
+        }
+      }
+    ],
+    "source_event": {
+      "search_objective": "min_overdue",
+      "phase": "improve",
+      "verified": true,
+      "entry_id": 2,
+      "improved_objectives": [
+        "min_overdue",
+        "min_tardiness",
+        "min_changeover"
+      ],
+      "parent_entry_id": 1,
+      "origin": "controlled_real_arrangement",
+      "dispatch_mode": "sgs",
+      "dispatch_rule": "cr",
+      "strategy": "None",
+      "repair_decision": null,
+      "event_type": "archive_observation",
+      "elapsed_ms": 15,
+      "reason": null,
+      "content_reused": false,
+      "restored": false,
+      "evidence_updated": false,
+      "initialized_objectives": [],
+      "event_id": 2,
+      "evaluations": {
+        "min_overdue": {
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            1.0
+          ]
+        },
+        "min_tardiness": {
+          "field_order": [
+            "failed_ops",
+            "total_tardiness_hours",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            1.0
+          ]
+        },
+        "min_changeover": {
+          "field_order": [
+            "failed_ops",
+            "changeover_count",
+            "overdue_count",
+            "total_tardiness_hours",
+            "weighted_tardiness_hours",
+            "makespan_hours"
+          ],
+          "score": [
+            0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            3.0
+          ]
+        }
+      },
+      "scope_ref": "1"
+    },
+    "items": [
+      {
+        "elapsed_ms": 10,
+        "entry_id": 1,
+        "source_event_id": 1,
+        "search_objective": "min_overdue",
+        "origin": "controlled_real_arrangement",
+        "score": [
+          0,
+          3.0,
+          22.0,
+          12.0,
+          5.0,
+          2.0
+        ],
+        "field_order": [
+          "failed_ops",
+          "overdue_count",
+          "weighted_tardiness_hours",
+          "total_tardiness_hours",
+          "makespan_hours",
+          "changeover_count"
+        ],
+        "scope_ref": "1",
+        "segment": 0,
+        "flags": [
+          "first_valid",
+          "first_expected_complete"
+        ],
+        "phase": "initial_construct",
+        "verified": true,
+        "primary_value": 3.0
+      },
+      {
+        "elapsed_ms": 15,
+        "entry_id": 2,
+        "source_event_id": 2,
+        "search_objective": "min_overdue",
+        "origin": "controlled_real_arrangement",
+        "score": [
+          0,
+          0.0,
+          0.0,
+          0.0,
+          3.0,
+          1.0
+        ],
+        "field_order": [
+          "failed_ops",
+          "overdue_count",
+          "weighted_tardiness_hours",
+          "total_tardiness_hours",
+          "makespan_hours",
+          "changeover_count"
+        ],
+        "scope_ref": "1",
+        "segment": 0,
+        "flags": [
+          "strict_improvement"
+        ],
+        "phase": "improve",
+        "verified": true,
+        "primary_value": 0.0
+      },
+      {
+        "elapsed_ms": 100,
+        "entry_id": 2,
+        "source_event_id": 2,
+        "search_objective": "min_overdue",
+        "origin": "controlled_real_arrangement",
+        "score": [
+          0,
+          0.0,
+          0.0,
+          0.0,
+          3.0,
+          1.0
+        ],
+        "field_order": [
+          "failed_ops",
+          "overdue_count",
+          "weighted_tardiness_hours",
+          "total_tardiness_hours",
+          "makespan_hours",
+          "changeover_count"
+        ],
+        "scope_ref": "1",
+        "segment": 0,
+        "flags": [
+          "final"
+        ],
+        "phase": "improve",
+        "verified": true,
+        "primary_value": 0.0
+      }
+    ],
+    "page": {
+      "number": 1,
+      "size": 20,
+      "total": 3,
+      "has_more": false
+    },
+    "filters": {
+      "section": "process",
+      "process_candidate_ref": "000000000000000000000000000000000000000000000385",
+      "record_kind": "progress",
+      "sort": "elapsed_ms",
+      "order": "asc",
+      "objective": "min_overdue"
+    }
+  },
+  "sampled_provenance": {
+    "source_kind": "controlled_real_metrics_pure_shared_producer_and_projection_sampled",
+    "actual_http": false,
+    "database_access": false,
+    "solver_calls": 0,
+    "decoder_calls": 0,
+    "metrics_computations": 2,
+    "archive_observations": 2,
+    "observation_elapsed_ms": [
+      10,
+      999
+    ],
+    "runtime_ms": 1000,
+    "first_improvement_elapsed_ms": 999,
+    "last_improvement_elapsed_ms": 999,
+    "source_event_id": 2,
+    "source_event_elapsed_ms": 999,
+    "first_found_elapsed_ms": 999,
+    "sampling": {
+      "policy": "elapsed_equal_width_bucket_end_best_v1",
+      "point_budget": 200,
+      "event_total_count": 3,
+      "retained_point_count": 2,
+      "bucket_count": 198,
+      "bucket_width_ms": 5.05050505050505,
+      "mandatory": [
+        "first_valid",
+        "first_expected_complete",
+        "final"
+      ]
+    },
+    "retained_point_elapsed_ms": [
+      10,
+      1000
+    ],
+    "expected_frontend_path": "strict RunDecisionAPI.processDetails then RunDecisionProcessChart; last improvement stays 999ms although the 999ms point was sampled out",
+    "wrapper_shape_donor": "/Users/lurenxing/GitHub/----/evidence/unified-scheduling-optimization/2026-10-14/u4/process-api/controlled-improvement/process-min_overdue.json",
+    "test_case_source": "tests/workbench/test_unified_process_projection.py existing real collector 10ms/999ms/runtime1000ms boundary",
+    "producer": "build_shared_process",
+    "permanent_scope_conversion": "result_preparation._scope_references",
+    "projection": "project_unified_process",
+    "evidence_boundary": "Controlled real ScheduleResult/compute_metrics and real collector with controlled timestamps. No HTTP envelope, live DB snapshot or decode run is claimed."
+  },
+  "sampled_improvement": {
+    "run_ref": "000000000000000000000000000000000000000000000384",
+    "capture_ref": "000000000000000000000000000000000000000000000384",
+    "scope": {
+      "batch_refs": [
+        "000000000000000000000000000000000000000000000321",
+        "000000000000000000000000000000000000000000000322",
+        "000000000000000000000000000000000000000000000323"
+      ],
+      "comparison_mode": "candidates",
+      "delta_basis": "candidate_minus_reference",
+      "metric_scope": "full_admission",
+      "operation_refs": [
+        "000000000000000000000000000000000000000000000001",
+        "000000000000000000000000000000000000000000000002",
+        "000000000000000000000000000000000000000000000003"
+      ],
+      "range_end": "2026-10-15T00:00:00",
+      "range_start": "2026-10-13T00:00:00",
+      "reference": {
+        "kind": "candidate",
+        "candidate_ref": "000000000000000000000000000000000000000000000385"
+      },
+      "reference_state": "available",
+      "resource_refs": {
+        "machine": [
+          "0000000000000000000000000000000000000000000003e9"
+        ],
+        "operator": [
+          "00000000000000000000000000000000000000000000044d",
+          "00000000000000000000000000000000000000000000044e",
+          "00000000000000000000000000000000000000000000044f"
+        ]
+      },
+      "resource_view": "selected_batches",
+      "run_options": {
+        "generation_policy_version": "unified_search_v1",
+        "primary_objective": "min_overdue",
+        "target_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ],
+        "time_budget_seconds": 1,
+        "algo_mode": "improve",
+        "graph_analysis_mode": "off"
+      },
+      "run_ref": "000000000000000000000000000000000000000000000384",
+      "selected_candidate_ref": "000000000000000000000000000000000000000000000385",
+      "time_basis": "factory_local"
+    },
+    "baseline": {
+      "baseline_ref": null,
+      "candidate_ref": "000000000000000000000000000000000000000000000385",
+      "kind": "candidate",
+      "label": "受控真实指标 · 抽样省略末改善",
+      "source_candidate_ref": null,
+      "state": "available",
+      "version": null
+    },
+    "process_version": "unified-optimization-process-v1",
+    "summary": {
+      "elapsed_ms": 1000,
+      "first_complete_elapsed_ms": 10,
+      "first_improvement_elapsed_ms": 999,
+      "last_improvement_elapsed_ms": 999
+    },
+    "counts": {
+      "actual_decoder_calls": 0,
+      "new_decisions": 0,
+      "decision_reuses": 0,
+      "skipped_requests": 0,
+      "failed_decoder_calls": 0,
+      "request_count": 0,
+      "execution_counts": {}
+    },
+    "budget": {
+      "policy": "shared_search_budget_v1",
+      "clock": "shared_monotonic",
+      "configured_seconds": 1.0,
+      "elapsed_seconds": 1,
+      "remaining_seconds": 0,
+      "deadline_overrun_seconds": 0,
+      "actual_decoder_count": 0,
+      "actual_decode_seconds": 0.0,
+      "decode_counts_by_kind": {
+        "batch_order_full": 0,
+        "sgs_full": 0,
+        "sgs_resume": 0
+      },
+      "cost_samples": {
+        "batch_order_full": [],
+        "sgs_full": [],
+        "sgs_resume": []
+      },
+      "cost_estimates": {
+        "batch_order_full": 0.0,
+        "sgs_full": 0.0,
+        "sgs_resume": 0.0
+      },
+      "admission_skips": {},
+      "action_count": 0,
+      "new_decisions": 0,
+      "reused_decisions": 0,
+      "phase_elapsed_seconds": {},
+      "first_complete_elapsed_seconds": null,
+      "last_improvement_elapsed_seconds": 0,
+      "stalled_new_decisions": 0,
+      "stall_decision_limit": 6,
+      "stall_seconds": 2.0,
+      "auxiliary_probe_limit": 2,
+      "stop_reason": "time_budget",
+      "objective_status": {
+        "min_overdue": "not_searched_budget",
+        "min_tardiness": "not_searched_budget",
+        "min_changeover": "not_searched_budget"
+      },
+      "objectives": {
+        "min_overdue": {
+          "objective_status": "not_searched_budget",
+          "weight": 0.6,
+          "elapsed_seconds": 0.0,
+          "charged_seconds": 0.0,
+          "preparation_seconds": 0.0,
+          "action_count": 0,
+          "new_decisions": 0,
+          "reused_decisions": 0,
+          "probe_decisions": 0,
+          "minimum_opportunity": false,
+          "improvement_action_count": 0,
+          "has_gain": false,
+          "feedback_rate": 0.0,
+          "feedback_bonus": 0.0,
+          "unavailable_reason": null,
+          "budget_reason": null,
+          "phase_elapsed_seconds": {}
+        },
+        "min_tardiness": {
+          "objective_status": "not_searched_budget",
+          "weight": 0.2,
+          "elapsed_seconds": 0.0,
+          "charged_seconds": 0.0,
+          "preparation_seconds": 0.0,
+          "action_count": 0,
+          "new_decisions": 0,
+          "reused_decisions": 0,
+          "probe_decisions": 0,
+          "minimum_opportunity": false,
+          "improvement_action_count": 0,
+          "has_gain": false,
+          "feedback_rate": 0.0,
+          "feedback_bonus": 0.0,
+          "unavailable_reason": null,
+          "budget_reason": null,
+          "phase_elapsed_seconds": {}
+        },
+        "min_changeover": {
+          "objective_status": "not_searched_budget",
+          "weight": 0.2,
+          "elapsed_seconds": 0.0,
+          "charged_seconds": 0.0,
+          "preparation_seconds": 0.0,
+          "action_count": 0,
+          "new_decisions": 0,
+          "reused_decisions": 0,
+          "probe_decisions": 0,
+          "minimum_opportunity": false,
+          "improvement_action_count": 0,
+          "has_gain": false,
+          "feedback_rate": 0.0,
+          "feedback_bonus": 0.0,
+          "unavailable_reason": null,
+          "budget_reason": null,
+          "phase_elapsed_seconds": {}
+        }
+      }
+    },
+    "stop_reason": "time_budget",
+    "bridges": [],
+    "objectives": [
+      {
+        "name": "min_overdue",
+        "label": "最少超期",
+        "primary_metric_key": "overdue_count",
+        "primary_metric_label": "超期批次数",
+        "unit": "批次",
+        "score_fields": [
+          {
+            "index": 0,
+            "key": "failed_ops",
+            "label": "失败工序数",
+            "unit": "工序",
+            "direction": "lower"
+          },
+          {
+            "index": 1,
+            "key": "overdue_count",
+            "label": "超期批次数",
+            "unit": "批次",
+            "direction": "lower"
+          },
+          {
+            "index": 2,
+            "key": "weighted_tardiness_hours",
+            "label": "加权拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 3,
+            "key": "total_tardiness_hours",
+            "label": "总拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 4,
+            "key": "makespan_hours",
+            "label": "总工期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 5,
+            "key": "changeover_count",
+            "label": "算法工种切换次数",
+            "unit": "次",
+            "direction": "lower"
+          }
+        ]
+      },
+      {
+        "name": "min_tardiness",
+        "label": "最少拖期小时",
+        "primary_metric_key": "total_tardiness_hours",
+        "primary_metric_label": "总拖期小时",
+        "unit": "小时",
+        "score_fields": [
+          {
+            "index": 0,
+            "key": "failed_ops",
+            "label": "失败工序数",
+            "unit": "工序",
+            "direction": "lower"
+          },
+          {
+            "index": 1,
+            "key": "total_tardiness_hours",
+            "label": "总拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 2,
+            "key": "overdue_count",
+            "label": "超期批次数",
+            "unit": "批次",
+            "direction": "lower"
+          },
+          {
+            "index": 3,
+            "key": "weighted_tardiness_hours",
+            "label": "加权拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 4,
+            "key": "makespan_hours",
+            "label": "总工期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 5,
+            "key": "changeover_count",
+            "label": "算法工种切换次数",
+            "unit": "次",
+            "direction": "lower"
+          }
+        ]
+      },
+      {
+        "name": "min_changeover",
+        "label": "最少算法工种切换次数",
+        "primary_metric_key": "changeover_count",
+        "primary_metric_label": "算法工种切换次数",
+        "unit": "次",
+        "score_fields": [
+          {
+            "index": 0,
+            "key": "failed_ops",
+            "label": "失败工序数",
+            "unit": "工序",
+            "direction": "lower"
+          },
+          {
+            "index": 1,
+            "key": "changeover_count",
+            "label": "算法工种切换次数",
+            "unit": "次",
+            "direction": "lower"
+          },
+          {
+            "index": 2,
+            "key": "overdue_count",
+            "label": "超期批次数",
+            "unit": "批次",
+            "direction": "lower"
+          },
+          {
+            "index": 3,
+            "key": "total_tardiness_hours",
+            "label": "总拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 4,
+            "key": "weighted_tardiness_hours",
+            "label": "加权拖期小时",
+            "unit": "小时",
+            "direction": "lower"
+          },
+          {
+            "index": 5,
+            "key": "makespan_hours",
+            "label": "总工期小时",
+            "unit": "小时",
+            "direction": "lower"
+          }
+        ]
+      }
+    ],
+    "selected_objective": {
+      "name": "min_overdue",
+      "label": "最少超期",
+      "primary_metric_key": "overdue_count",
+      "primary_metric_label": "超期批次数",
+      "unit": "批次",
+      "score_fields": [
+        {
+          "index": 0,
+          "key": "failed_ops",
+          "label": "失败工序数",
+          "unit": "工序",
+          "direction": "lower"
+        },
+        {
+          "index": 1,
+          "key": "overdue_count",
+          "label": "超期批次数",
+          "unit": "批次",
+          "direction": "lower"
+        },
+        {
+          "index": 2,
+          "key": "weighted_tardiness_hours",
+          "label": "加权拖期小时",
+          "unit": "小时",
+          "direction": "lower"
+        },
+        {
+          "index": 3,
+          "key": "total_tardiness_hours",
+          "label": "总拖期小时",
+          "unit": "小时",
+          "direction": "lower"
+        },
+        {
+          "index": 4,
+          "key": "makespan_hours",
+          "label": "总工期小时",
+          "unit": "小时",
+          "direction": "lower"
+        },
+        {
+          "index": 5,
+          "key": "changeover_count",
+          "label": "算法工种切换次数",
+          "unit": "次",
+          "direction": "lower"
+        }
+      ]
+    },
+    "progress": {
+      "points": [
+        {
+          "elapsed_ms": 10,
+          "entry_id": 1,
+          "source_event_id": 1,
+          "search_objective": "min_overdue",
+          "origin": "controlled_sampled_real_arrangement",
+          "score": [
+            0,
+            3.0,
+            22.0,
+            12.0,
+            5.0,
+            2.0
+          ],
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "scope_ref": "1",
+          "segment": 0,
+          "flags": [
+            "first_valid",
+            "first_expected_complete"
+          ],
+          "phase": "initial_construct",
+          "verified": true,
+          "primary_value": 3.0
+        },
+        {
+          "elapsed_ms": 1000,
+          "entry_id": 2,
+          "source_event_id": 2,
+          "search_objective": "min_overdue",
+          "origin": "controlled_sampled_real_arrangement",
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            1.0
+          ],
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "scope_ref": "1",
+          "segment": 0,
+          "flags": [
+            "final"
+          ],
+          "phase": "improve",
+          "verified": true,
+          "primary_value": 0.0
+        }
+      ],
+      "sampling": {
+        "policy": "elapsed_equal_width_bucket_end_best_v1",
+        "point_budget": 200,
+        "event_total_count": 3,
+        "retained_point_count": 2,
+        "bucket_count": 198,
+        "bucket_width_ms": 5.05050505050505,
+        "mandatory": [
+          "first_valid",
+          "first_expected_complete",
+          "final"
+        ]
+      }
+    },
+    "scopes": {
+      "1": {
+        "scheduled_operation_refs": [
+          "000000000000000000000000000000000000000000000001",
+          "000000000000000000000000000000000000000000000002",
+          "000000000000000000000000000000000000000000000003"
+        ],
+        "complete_batch_refs": [
+          "000000000000000000000000000000000000000000000321",
+          "000000000000000000000000000000000000000000000322",
+          "000000000000000000000000000000000000000000000323"
+        ],
+        "objective_scope": "all_batches",
+        "components_known": true,
+        "is_complete": true
+      }
+    },
+    "actions": [],
+    "stages": [],
+    "candidate": {
+      "candidate_ref": "000000000000000000000000000000000000000000000385",
+      "label": "受控真实指标 · 抽样省略末改善",
+      "status": "completed",
+      "representative_objectives": [
+        "min_overdue",
+        "min_tardiness",
+        "min_changeover"
+      ],
+      "origin": {
+        "search_objective": "min_overdue",
+        "phase": "improve",
+        "origin": "controlled_sampled_real_arrangement",
+        "dispatch_mode": "sgs",
+        "dispatch_rule": "cr",
+        "strategy": "None",
+        "repair_decision": null
+      },
+      "first_found_elapsed_ms": 999,
+      "search_evidence_ref": {
+        "run_ref": "000000000000000000000000000000000000000000000384",
+        "source_event_id": 2
+      }
+    },
+    "candidates": [
+      {
+        "candidate_ref": "000000000000000000000000000000000000000000000385",
+        "label": "受控真实指标 · 抽样省略末改善",
+        "status": "completed",
+        "representative_objectives": [
+          "min_overdue",
+          "min_tardiness",
+          "min_changeover"
+        ],
+        "origin": {
+          "search_objective": "min_overdue",
+          "phase": "improve",
+          "origin": "controlled_sampled_real_arrangement",
+          "dispatch_mode": "sgs",
+          "dispatch_rule": "cr",
+          "strategy": "None",
+          "repair_decision": null
+        },
+        "first_found_elapsed_ms": 999,
+        "search_evidence_ref": {
+          "run_ref": "000000000000000000000000000000000000000000000384",
+          "source_event_id": 2
+        }
+      }
+    ],
+    "source_event": {
+      "search_objective": "min_overdue",
+      "phase": "improve",
+      "verified": true,
+      "entry_id": 2,
+      "improved_objectives": [
+        "min_overdue",
+        "min_tardiness",
+        "min_changeover"
+      ],
+      "parent_entry_id": 1,
+      "origin": "controlled_sampled_real_arrangement",
+      "dispatch_mode": "sgs",
+      "dispatch_rule": "cr",
+      "strategy": "None",
+      "repair_decision": null,
+      "event_type": "archive_observation",
+      "elapsed_ms": 999,
+      "reason": null,
+      "content_reused": false,
+      "restored": false,
+      "evidence_updated": false,
+      "initialized_objectives": [],
+      "event_id": 2,
+      "evaluations": {
+        "min_overdue": {
+          "field_order": [
+            "failed_ops",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "total_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            1.0
+          ]
+        },
+        "min_tardiness": {
+          "field_order": [
+            "failed_ops",
+            "total_tardiness_hours",
+            "overdue_count",
+            "weighted_tardiness_hours",
+            "makespan_hours",
+            "changeover_count"
+          ],
+          "score": [
+            0,
+            0.0,
+            0.0,
+            0.0,
+            3.0,
+            1.0
+          ]
+        },
+        "min_changeover": {
+          "field_order": [
+            "failed_ops",
+            "changeover_count",
+            "overdue_count",
+            "total_tardiness_hours",
+            "weighted_tardiness_hours",
+            "makespan_hours"
+          ],
+          "score": [
+            0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            3.0
+          ]
+        }
+      },
+      "scope_ref": "1"
+    },
+    "items": [
+      {
+        "elapsed_ms": 10,
+        "entry_id": 1,
+        "source_event_id": 1,
+        "search_objective": "min_overdue",
+        "origin": "controlled_sampled_real_arrangement",
+        "score": [
+          0,
+          3.0,
+          22.0,
+          12.0,
+          5.0,
+          2.0
+        ],
+        "field_order": [
+          "failed_ops",
+          "overdue_count",
+          "weighted_tardiness_hours",
+          "total_tardiness_hours",
+          "makespan_hours",
+          "changeover_count"
+        ],
+        "scope_ref": "1",
+        "segment": 0,
+        "flags": [
+          "first_valid",
+          "first_expected_complete"
+        ],
+        "phase": "initial_construct",
+        "verified": true,
+        "primary_value": 3.0
+      },
+      {
+        "elapsed_ms": 1000,
+        "entry_id": 2,
+        "source_event_id": 2,
+        "search_objective": "min_overdue",
+        "origin": "controlled_sampled_real_arrangement",
+        "score": [
+          0,
+          0.0,
+          0.0,
+          0.0,
+          3.0,
+          1.0
+        ],
+        "field_order": [
+          "failed_ops",
+          "overdue_count",
+          "weighted_tardiness_hours",
+          "total_tardiness_hours",
+          "makespan_hours",
+          "changeover_count"
+        ],
+        "scope_ref": "1",
+        "segment": 0,
+        "flags": [
+          "final"
+        ],
+        "phase": "improve",
+        "verified": true,
+        "primary_value": 0.0
+      }
+    ],
+    "page": {
+      "number": 1,
+      "size": 20,
+      "total": 2,
+      "has_more": false
+    },
+    "filters": {
+      "section": "process",
+      "process_candidate_ref": "000000000000000000000000000000000000000000000385",
+      "record_kind": "progress",
+      "sort": "elapsed_ms",
+      "order": "asc",
+      "objective": "min_overdue"
+    }
+  }
+}

@@ -26,10 +26,11 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 
 from .delivery_repository import PlanDeliveryRepository
 from .point_evidence import annotate_plan_points
+from .read_context import PlanReadContext
 
 
 def read_plan_delivery(
-    conn, *, scope: PlanReadScope, identity: PlanIdentity, logger=None,
+    conn, *, scope: PlanReadScope, identity: PlanIdentity, logger=None, context=None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Select task-overlap batches, calculate completion from their FULL plan rows.
 
@@ -41,19 +42,29 @@ def read_plan_delivery(
     """
     if not conn.in_transaction:
         raise RuntimeError("Delivery reads require a caller-owned read transaction.")
+    context = PlanReadContext(conn, logger) if context is None else context
+    with context.read_scope():
+        return _read_plan_delivery(conn, scope=scope, identity=identity, logger=logger, context=context)
+
+
+def _read_plan_delivery(conn, *, scope, identity, logger, context):
     repo = PlanDeliveryRepository(conn, logger=logger)
-    scenario = repo.validate_identity(scope, identity)
-    rows = _delivery_rows(conn, repo.task_rows(identity), identity.source_table)
+    scenario = repo.validate_identity(scope, identity, context=context)
+    selected = context._selected.get(scope.plan_ref)
+    entry = selected[1] if selected is not None else None
+    rows = repo.task_rows(identity, context=context, entry=entry)
+    if entry is None:
+        rows = _delivery_rows(conn, rows, identity.source_table, context=context)
     intervals = task_intervals(rows)
     keys = selected_batch_keys(rows, intervals, scope)
-    record = repo.completion_record(identity, scenario)
+    record = repo.completion_record(identity, scenario, context=context)
     deferred, deferred_issues = deferred_operation_evidence(conn, record)
     if scope.range_start is None and deferred:
         pending_keys, pending_issues = repo.deferred_batch_keys(deferred)
         keys = sorted(set(keys) | pending_keys)
         deferred_issues.extend(pending_issues)
     batches, operations = repo.batch_facts(keys)
-    references = WorkbenchIdentityRepository(conn, logger=logger).active_map("batch", keys)
+    references = context.active_map("batch", keys)
     if set(references) != set(keys):
         raise WorkbenchCommandRejected("identity_missing", "批次编号缺失，无法评估交付风险。请到批次管理核对。")
     items = _delivery_items(rows, operations, batches, intervals, references, record, deferred, deferred_issues)
@@ -76,9 +87,9 @@ def read_plan_delivery(
     return public, facts
 
 
-def _delivery_rows(conn, rows, source_table):
+def _delivery_rows(conn, rows, source_table, *, context=None):
     try:
-        return annotate_plan_points(conn, rows, source_table=source_table)
+        return annotate_plan_points(conn, rows, source_table=source_table, context=context)
     except WorkbenchCommandRejected as exc:
         if exc.code != "point_evidence_unproven":
             raise

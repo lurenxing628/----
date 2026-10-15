@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const { compile } = require('../../scripts/workbench/compile.cjs');
 const root = path.resolve(__dirname, '../..'), app = path.join(root, 'frontend/workbench/app');
-const names = ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'PlanGanttModel.js', 'ResourceControls.jsx', 'RunHistoryAPI.js', 'RunDecisionComparison.jsx', 'DecisionHistoryAPI.js', 'DeliveryProjectionContract.js', 'TrialContract.js', 'DecisionHistoryChart.jsx', 'DecisionHistoryDetails.jsx', 'DecisionHistoryWorkspace.jsx', 'RunHistoryWorkspace.jsx', 'SchedulingWorkspace.jsx'];
+const names = ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'PlanGanttModel.js', 'ResourceControls.jsx', 'RunGenerationContract.js', 'RunHistoryAPI.js', 'RunDecisionComparison.jsx', 'DecisionHistoryAPI.js', 'DeliveryProjectionContract.js', 'TrialContract.js', 'DecisionHistoryChart.jsx', 'DecisionHistoryDetails.jsx', 'DecisionHistoryWorkspace.jsx', 'RunHistoryWorkspace.jsx', 'SchedulingWorkspace.jsx', 'RunHistoryControls.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })), check_combined: true }).outputs;
 const clone = value => JSON.parse(JSON.stringify(value)), ref = n => n.toString(16).padStart(48, '0'), token = 'h'.repeat(32);
 const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(value => value !== null && value !== undefined && value !== false) });
@@ -24,12 +24,14 @@ function runtime(state = hooks()) {
     WorkbenchListControls: { Pager: 'pager', EmptyState: 'empty-state' }, WorkbenchReference: 'reference', WorkbenchPageContext: { useSnapshot: value => snapshots.push(clone(value)) },
     RunJobAPI: { create: () => ({}) }, RunJobControls: { Button: 'button' }, RunCandidateWorkspace: 'candidate-workspace', PlanWorkspace: 'plan-workspace',
     WorkbenchDatePickerModel: { factoryTime: value => value.replace(' ', 'T') }, fetch: () => { throw new Error('Unexpected live fetch'); } };
+  const stubHistoryControls = window.RunHistoryControls;
   for (const output of built) vm.runInNewContext(output.code, { React: state.React, window, AbortController, DOMException, URLSearchParams, setTimeout, clearTimeout, document });
+  const historyControls = window.RunHistoryControls; window.RunHistoryControls = stubHistoryControls;
   const sharedButton = window.ResourceControls.Button;
   Object.assign(window.ResourceControls, { Button: 'button', Modal: 'modal', Icon: 'icon' }); window.WorkbenchListControls.EmptyState = window.ResourceControls.EmptyState;
-  return { window, state, snapshots, sharedButton };
+  return { window, state, snapshots, sharedButton, historyControls };
 }
-const { window } = runtime(), A = window.DecisionHistoryAPI;
+const { window, historyControls } = runtime(), A = window.DecisionHistoryAPI;
 const keys = ['overdue_count', 'machine_utilization_ratio'];
 const definitions = [{ key: keys[0], label: '超期批次', group: 'delivery', unit: '批次', precision: 0, improvement: 'lower', scope: 'full_admission', source: 'archived_delivery', common: true, metric_version: 'decision-delivery-v1' },
   { key: keys[1], label: '设备占用比例', group: 'resources', unit: '%', precision: 1, improvement: 'neutral', scope: 'fixed_resource_window', source: 'archived_resource_calendar', common: false, metric_version: 'decision-resource-v4' }];
@@ -78,6 +80,24 @@ function queryAndResponse() {
   const official = clone(value.data.entries[0]); official.timeline = 'official'; official.source_kind = 'candidate_adoption'; official.identity.receipt_ref = 'a'.repeat(32); official.entry_ref = 'adoption:' + official.identity.receipt_ref; A.entry(official, keys); official.source_kind = 'trial_adoption'; A.entry(official, keys);
   official.source_kind = 'legacy_official'; official.identity.history_id = 7; official.entry_ref = 'legacy:7'; A.entry(official, keys);
   assert.equal(A.metricText(metric(0, '小时'), { precision: 2 }), '0 小时'); assert.equal(A.metricText(metric(null, '小时'), { precision: 2 }), '未知'); assert.equal(A.metricText(metric(0.125, '%'), { precision: 1 }), '12.5%');
+  const savedOptions = { generation_policy_version: 'unified_search_v1', primary_objective: 'min_weighted_tardiness',
+    target_objectives: ['min_weighted_tardiness', 'min_overdue', 'min_changeover'], time_budget_seconds: 10, algo_mode: 'improve', graph_analysis_mode: 'report' };
+  const scope = { start_date: '2026-10-01', end_date: '2026-10-02', ready_check: true, missing_resource_policy: 'auto_assign',
+    completed_policy: 'preserve_actuals', batch_count: 1, selection: 'explicit_batches', basis: 'captured_at_run_admission', data_gaps: [] };
+  const run = { run_ref: ref(1), state: 'complete', recovery_required: false, error: null, accepted_at: '2026-10-01T08:00:00',
+    started_at: '2026-10-01T08:00:01', finished_at: '2026-10-01T08:00:11', candidate_count: 2, task_count: 1, counts_final: true, scope_summary: scope };
+  const oldScope = text(expand(h(historyControls.Table, { runs: [run], canNavigate: true, onOpen() {} })));
+  assert(!oldScope.includes('主目标：') && !oldScope.includes('同时探索：') && !oldScope.includes('总计算预算：'), '旧范围不追加未保存的优化选项');
+  for (const seconds of [10, 30]) {
+    const options = { ...savedOptions, time_budget_seconds: seconds }, current = { ...run, scope_summary: { ...scope, run_options: options } }, saved = JSON.stringify(current);
+    assert(window.RunGenerationContract.runOptions(options));
+    const shown = text(expand(h(historyControls.Table, { runs: [current], canNavigate: true, onOpen() {} }))).replace(/\s+/g, ' ');
+    assert(shown.includes('主目标： 加权拖期更轻') && shown.includes('同时探索： 加权拖期更轻 · 交期优先 · 切换更少'));
+    assert(shown.includes('总计算预算： ' + seconds + ' 秒 · 共同优化') && shown.includes('unified_search_v1') && shown.includes('诊断报告'));
+    assert.equal(JSON.stringify(current), saved, '范围展示使用实际保存选项，不改变原记录');
+  }
+  const quick = { ...run, scope_summary: { ...scope, run_options: { ...savedOptions, algo_mode: 'greedy' } } };
+  assert(text(expand(h(historyControls.Table, { runs: [quick], canNavigate: true, onOpen() {} }))).includes('快速生成'));
 }
 function chartAndDetails() {
   const value = payload(), before = JSON.stringify(value), selected = [], reveals = [], chart = window.DecisionHistoryChart.Chart({ data: value.data, metricKey: keys[1], selectedEntryRef: value.data.entries[0].entry_ref, onSelect: (row, reveal) => { selected.push(row); reveals.push(reveal); } });
@@ -131,6 +151,22 @@ function chartAndDetails() {
   const missingRows = nodes(missingChart).filter(node => node.props.className === 'dh-chart-missing-entry'); assert(!text(missingRows[0]).includes('已知')); assert(text(missingRows[1]).includes('已知 0 批次'), 'known_count为0不报0小计，有真实已知0则保留');
   assert(!nodes(missingChart).find(node => node.props['aria-live'] === 'polite').props.className.includes('visually-hidden')); assert(text(nodes(missingChart).find(node => node.props['aria-live'] === 'polite')).includes('待确认'));
   assert.equal(JSON.stringify(value), before, '绘图与百分比格式不改业务DTO');
+  const memoRuntime = runtime(), memoWindow = memoRuntime.window, memoSelected = []; let timeReads = 0, definitionReads = 0;
+  const instant = memoWindow.PlanGanttModel.instant, sameDefinition = memoWindow.DecisionHistoryAPI.sameMetricDefinition;
+  memoWindow.PlanGanttModel.instant = (...args) => { timeReads++; return instant(...args); };
+  memoWindow.DecisionHistoryAPI.sameMetricDefinition = (...args) => { definitionReads++; return sameDefinition(...args); };
+  const memoChart = selectedEntryRef => memoRuntime.state.render(() => memoWindow.DecisionHistoryChart.Chart({
+    data: value.data, metricKey: keys[1], selectedEntryRef, onSelect: row => memoSelected.push(row) }));
+  const initialChart = memoChart(value.data.entries[0].entry_ref), selectedChart = memoChart(value.data.entries[3].entry_ref);
+  assert.equal(timeReads, value.data.trend.points.length); assert.equal(definitionReads, value.data.trend.points.length - 1);
+  assert.deepEqual(nodes(initialChart).filter(node => node.type === 'line').map(node => clone(node.props)),
+    nodes(selectedChart).filter(node => node.type === 'line').map(node => clone(node.props)));
+  assert(nodes(initialChart).find(node => node.props['data-entry-ref'] === value.data.entries[0].entry_ref).props['aria-pressed']);
+  assert(nodes(selectedChart).find(node => node.props['data-entry-ref'] === value.data.entries[3].entry_ref).props['aria-pressed']);
+  assert(text(nodes(selectedChart).find(node => node.props['aria-live'] === 'polite')).includes(value.data.entries[3].label));
+  nodes(selectedChart).find(node => node.props['data-entry-ref'] === value.data.entries[1].entry_ref).props.onClick();
+  assert.strictEqual(memoSelected[0], value.data.entries[1]);
+  assert.equal(JSON.stringify(value), before);
   const selectedData = payload({ selected_entry_ref: 'run:' + ref(2) }).data, opened = [], changes = [];
   let detail = expand(h(window.DecisionHistoryDetails.Details, { data: selectedData, query: selectedData.filters, onOpen: target => opened.push(target), onQuery: (...args) => changes.push(args), canNavigate: true }));
   const source = expand(h(window.DecisionHistoryDetails.Sources, { data: selectedData, result: payload() })); assert(text(source).includes('当时无正式计划')); assert(!text(source).includes('第 0 版')); assert(text(detail).replace(/\s+/g, ' ').includes('批次原数量合计 12 件'));
@@ -161,7 +197,35 @@ function chartAndDetails() {
   const pager = nodes(conditionDetails).find(node => node.type === 'pager'); pager.props.onPage(2); pager.props.onSize(50); assert.deepEqual(clone(changes), [[{ condition_page: 2 }, true], [{ condition_page: 1, condition_size: 50 }, true]]);
   const equalData = clone(selectedData); equalData.comparison.conditions.summary = { equal: 533, different: 0, unknown: 0 }; equalData.comparison.conditions.categories = [];
   detail = expand(h(window.DecisionHistoryDetails.Details, { data: equalData, query: equalData.filters, onOpen() {}, onQuery() {}, canNavigate: true })); assert(text(detail).replace(/\s+/g, ' ').includes('生产条件相同，共 533 项'), '相同条件总数使用全量summary');
-
+  const strategyFields = [
+    ['generation_policy_version', null, 'unified_search_v1', '候选生成策略版本'],
+    ['selection_policy_version', null, 'business_objectives_v1', '推荐选择策略版本'],
+    ['primary_objective', 'min_overdue', 'min_weighted_tardiness', '主目标'],
+    ['target_objectives', ['min_overdue', 'min_tardiness', 'min_changeover'], ['min_weighted_tardiness', 'min_overdue', 'min_changeover'], '同时探索方向'],
+    ['time_budget_seconds', 10, 30, '总计算预算（秒）']
+  ];
+  const oldFields = [['graph_candidate_weight_count', 4, '图分析候选数量'], ['graph_selection_policy', 'health', '图分析选优策略'],
+    ['graph_overdue_tolerance_count', 0, '超期批次数容差'], ['graph_tardiness_tolerance_ratio', 0.1, '总拖期比例容差'],
+    ['objective', 'min_overdue', '优化目标'], ['objectives', ['min_overdue', 'min_tardiness', 'min_changeover'], '优化目标顺序'],
+    ['time_budget_seconds', 10, '候选计算预算（秒）']];
+  const optionRows = strategyFields.map(([field, before, after]) => ({ category: 'algorithm', entity: { key: 'run_options', label: '本次保存的优化策略和预算' }, field, state: 'different',
+    before: before === null ? { ...side(null), present: false } : side(before), after: side(after) }));
+  const historicalRows = oldFields.map(([field, value]) => ({ category: 'algorithm', entity: { key: 'archived_settings', label: '原保存算法设置' }, field, state: 'equal', before: side(value), after: side(value) }));
+  const optionsData = clone(selectedData), summary = { equal: historicalRows.length, different: optionRows.length, unknown: 0 };
+  optionsData.comparison.configurations = { ...conditionGroup([...optionRows, ...historicalRows], optionRows.length + historicalRows.length), summary,
+    categories: [{ key: 'algorithm', label: '算法实验设置', state: 'different', summary }] };
+  const optionDetail = expand(h(window.DecisionHistoryDetails.Details, { data: optionsData, onOpen() {}, onQuery() {}, canNavigate: true }));
+  const changedTable = nodes(optionDetail).find(node => node.type === 'table' && node.props['aria-label'] === '算法设置变化');
+  const changedRows = nodes(changedTable).filter(node => node.props['data-history-condition-state']);
+  assert.deepEqual(changedRows.map(row => text(row.children[1])), strategyFields.map(row => row[3]), '新策略、主目标、目标集合和总预算各自保留独立条件项');
+  assert(changedRows.slice(0, 2).every(row => text(row.children[2]) === '未保存'), '旧策略缺少的版本字段保持未保存');
+  assert(text(changedRows[2]).includes('交期优先') && text(changedRows[2]).includes('加权拖期更轻'));
+  assert(text(changedRows[3]).includes('交期优先 · 拖期更轻 · 切换更少') && text(changedRows[3]).includes('加权拖期更轻 · 交期优先 · 切换更少'));
+  assert.equal(text(changedRows[4].children[2]), '10'); assert.equal(text(changedRows[4].children[3]), '30'); assert.equal(text(changedRows[4].children[4]), '有变化');
+  const sameTable = nodes(optionDetail).find(node => node.type === 'table' && node.props['aria-label'] === '相同设置');
+  const sameRows = nodes(sameTable).filter(node => node.props['data-history-condition-state']);
+  assert.deepEqual(sameRows.map(row => text(row.children[1])), oldFields.map(row => row[2]), '旧图档、目标和候选预算保留原标签');
+  assert.equal(text(sameRows[4].children[3]), 'min_overdue'); assert.equal(text(sameRows[5].children[3]), '3 项');
 }
 function navigationAndSession() {
   const start = A.context({ query: A.scope({ metric_keys: keys, selected_entry_ref: 'run:' + ref(2), reference_run_ref: ref(1), comparison: 'same_conditions', page: 2, range_start: windowScope.start, range_end: windowScope.end, snapshot_ref: token }), metric_key: keys[1] });

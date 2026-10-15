@@ -7,9 +7,11 @@ from core.services.workbench.facts.run_input_rows import fail
 from core.services.workbench.facts.zero_duration import candidate_point_validator
 
 
-def validate_candidate(schedule_input, results, errors):
-    payload = build_validated_schedule_payload(
-        results, allowed_op_ids=schedule_input.schedule_output_allowed_op_ids,
+def validate_candidate(schedule_input, results, errors, *, prepared_payload=None):
+    payload = prepared_payload
+    if payload is None:
+        payload = build_validated_schedule_payload(
+            results, allowed_op_ids=schedule_input.schedule_output_allowed_op_ids,
         operations=schedule_input.payload_validation_operations,
         missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
         schedule_errors=errors,

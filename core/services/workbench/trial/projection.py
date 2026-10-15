@@ -161,11 +161,11 @@ def _blocked_delivery_batches(checked, tasks, rows):
     return blocked
 
 
-def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None):
+def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None, *, origin=None):
     groups = defaultdict(list)
     for task in tasks:
         groups[task["batch_ref"]].append(task)
-    batches, operations, deferred, deferred_issues = delivery_origin(admission, rows, facts)
+    batches, operations, deferred, deferred_issues = delivery_origin(admission, rows, facts) if origin is None else origin
     origin_issues = list(origin_issues) + list(deferred_issues)
     before = _delivery_side(batches, operations, _delivery_arrangements(rows, "original"), deferred, origin_issues)
     blocked = _blocked_delivery_batches(checked, tasks, rows)
@@ -192,7 +192,7 @@ def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None):
             "changeovers": None, "changeover_reason": "原试调来源的工种资料缺失。"}
 
 
-def scenario_comparison(saved, head, rows):
+def scenario_comparison(saved, head, rows, *, projected=None, facts=None, origin=None):
     """Reproject a historical saved view from its immutable source, without writing it."""
     if head is None:
         projected = []
@@ -205,8 +205,8 @@ def scenario_comparison(saved, head, rows):
                               "_delivery_source_unknown": True})
         admission = {"source": {}, "facts": {"tables": {"BatchOperations": []}}}
         return comparison(saved["tasks"], saved["validation"], projected, admission, ["trial_source_unavailable"])
-    projected = scenario_rows(saved, rows)
-    return comparison(saved["tasks"], saved["validation"], projected, head["admission"])
+    projected = scenario_rows(saved, rows) if projected is None else projected
+    return comparison(saved["tasks"], saved["validation"], projected, head["admission"], facts=facts, origin=origin)
 
 
 def scenario_rows(saved, rows):
@@ -222,15 +222,17 @@ def scenario_rows(saved, rows):
     return projected
 
 
-def scenario_capacity(saved, head, rows):
+def scenario_capacity(saved, head, rows, *, projected=None, archive=None):
     if head is None:
         return dict(saved["capacity"], state="unavailable", source="archived_resource_calendar",
                     metric_version=RESOURCE_METRIC_VERSION, resource_common=None,
                     reason="原草稿保存的日历来源缺失，资源容量未知。", resources=[])
     admission = head["admission"]
-    facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
-    archive = facts.archive if facts is not None else admission["facts"]
-    return trial_capacity(scenario_rows(saved, rows), archive, source_ref=admission["source"]["identity"])
+    if archive is None:
+        facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
+        archive = facts.archive if facts is not None else admission["facts"]
+    projected = scenario_rows(saved, rows) if projected is None else projected
+    return trial_capacity(projected, archive, source_ref=admission["source"]["identity"])
 
 
 def _public_value(value):
@@ -250,7 +252,16 @@ def _display_fields(task):
         task[key] = value
 
 
-def draft_projection(head, rows, checked, live, context_factory, frozen=None):
+def source_projection(rows, admission):
+    """Prepare one source archive, delivery grouping and operation scope for these rows."""
+    facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
+    archive = facts.archive if facts is not None else admission["facts"]
+    origin = delivery_origin(admission, rows, facts)
+    contexts = operation_contexts(rows, admission, facts, origin=origin)
+    return facts, archive, origin, contexts
+
+
+def draft_projection(head, rows, checked, live, context_factory, frozen=None, *, source_prepared=None):
     ref, admission = head["draft_ref"], head["admission"]
     binding = write_snapshot(head, rows, live)
     context = {"write_token": None, "expires_at": None,
@@ -260,21 +271,19 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None):
     else:
         context["blocked_reasons"] = [{"code": "draft_closed", "message": "该草稿已保存或明确放弃，只能读取原记录。"}]
     tasks = tasks_projection(rows, ref, checked, live, frozen)
-    facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
-    archive = facts.archive if facts is not None else admission["facts"]
+    facts, archive, origin, contexts = source_projection(rows, admission) if source_prepared is None else source_prepared
     if head["status"] != "editing":
         for task in tasks:
             task["edit_context"]["can_change"] = False
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
-    contexts = operation_contexts(rows, admission, facts)
     unplanned = _unplanned(contexts)
     ledger = operation_effort_ledger(rows, admission)
     pairs, preparation = preparation_projection(rows, admission, ledger,
         current_evidence={"kind": "trial", "draft_ref": ref}, contexts=contexts)
     apply_preparation(tasks, unplanned, pairs)
-    compared = comparison(tasks, checked, rows, admission, facts=facts)
+    compared = comparison(tasks, checked, rows, admission, facts=facts, origin=origin)
     compared["preparation_common"] = preparation
-    apply_changeovers(compared, trial_changeovers(rows, admission))
+    apply_changeovers(compared, trial_changeovers(rows, admission, facts=facts))
     return {"draft_ref": ref, "status": head["status"], "base": admission["input"]["base"],
             "base_identity": admission["source"]["identity"], "scope": admission["input"]["scope"],
             "baseline": {"plan_ref": admission["baseline"]["plan_ref"], "version": admission["baseline"]["version"]},

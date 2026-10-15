@@ -49,6 +49,19 @@ class WorkbenchTrialQueryRepository(BaseRepository):
             raise ValueError("Raw table read is not allowed: " + str(name))
         return self._read_table(name)
 
+    def raw_rows_by_ids(self, name: str, ids) -> List[Dict[str, Any]]:
+        """Selected legacy source rows retain all raw storage columns, in bounded ID chunks."""
+        if name not in ("Schedule", "ScheduleCandidateRows", "ScheduleAdjustmentScenarioRow"):
+            raise ValueError("Raw selected trial source is not allowed: " + str(name))
+        names, columns = raw_projection(self.conn, name)
+        wanted, result = sorted(set(ids)), []
+        for offset in range(0, len(wanted), 400):
+            chunk = wanted[offset:offset + 400]
+            cursor = self.execute("SELECT " + columns + " FROM " + _quote(name)
+                                  + " WHERE id IN (" + ",".join("?" for _ in chunk) + ") ORDER BY rowid", chunk)
+            result.extend(dict(zip(names, tuple(row))) for row in cursor)
+        return result
+
     # ---- explicit whole-table reads used by the trial base ----
     def raw_batch_operations(self) -> List[Dict[str, Any]]:
         return self._read_table("BatchOperations")[1]

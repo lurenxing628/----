@@ -3,7 +3,7 @@
 import math
 from datetime import date, datetime
 
-from core.infrastructure.connection_guards import foreign_keys_enabled
+from core.infrastructure.connection_guards import SchemaContractMemo, foreign_keys_enabled
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
@@ -11,15 +11,13 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
 
-def _storage_issues(conn):
-    return tuple(workbench_metadata_contract_issues(conn) + workbench_process_contract_issues(conn)
-                 + workbench_process_workflow_contract_issues(conn))
-
-
 def check_part_action_storage(conn, contracts=None):
-    # 表结构校验可按 schema 版本复用（contracts）；foreign_keys 是连接设置，每次现查。
-    issues = _storage_issues(conn) if contracts is None else contracts.get(_storage_issues)
-    if not foreign_keys_enabled(conn) or issues:
+    # 本命令不执行 DDL、不改外键设置；逐行写入共用首次入口的检查结果。
+    contracts = contracts if contracts is not None else SchemaContractMemo(conn)
+    issues = (contracts.get_schema(workbench_metadata_contract_issues)
+              + contracts.get_schema(workbench_process_contract_issues)
+              + contracts.get_schema(workbench_process_workflow_contract_issues))
+    if not contracts.get(foreign_keys_enabled) or issues:
         raise WorkbenchCommandRejected("storage_failure", "工艺数据的保存设置不完整，这次没有改动任何资料。请刷新重试；仍不行请联系维护人员。", 500)
 
 

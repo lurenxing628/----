@@ -5,6 +5,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.objective_specs import objective_metric_keys
 from core.errors import ValidationError
 
@@ -49,6 +50,26 @@ class CandidateFingerprint:
 
 def jsonable_fingerprint_payload(value: Any) -> Any:
     return _jsonable(value)
+
+
+def schedule_content_key(results: Iterable[ScheduleResult]) -> Tuple[Tuple[Any, ...], ...]:
+    """Identify the actual arrangement independently of its evaluation."""
+    return tuple(
+        (
+            result.op_id,
+            result.batch_id,
+            result.seq,
+            result.machine_id,
+            result.operator_id,
+            result.start_time,
+            result.end_time,
+            result.source,
+            result.seed_source,
+            result.state_revision,
+            result.op_type_id,
+        )
+        for result in sorted(results, key=lambda row: row.op_id)
+    )
 
 
 def build_candidate_fingerprint(
@@ -208,5 +229,6 @@ __all__ = [
     "CandidateFingerprint",
     "build_candidate_fingerprint",
     "jsonable_fingerprint_payload",
+    "schedule_content_key",
     "score_strictly_better",
 ]

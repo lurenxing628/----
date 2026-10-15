@@ -17,7 +17,12 @@ from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     SUCCESSOR_WORKLOAD_BASIS,
 )
 
-from .v2_capacity import bottleneck_on, residual_capacity_for_operation, seed_results_by_resource_id
+from .v2_capacity import (
+    FixedResourceBlockingFacts,
+    bottleneck_on,
+    residual_capacity_for_operation,
+    seed_results_by_resource_id,
+)
 from .workload import batch_ordering_workload_signals, operation_workload_signals
 
 _NO_DUE_DEADLINE_HOURS = 1_000_000_000.0
@@ -52,7 +57,7 @@ def enrich_graph_ready_v2_metrics(
     seed_results: Optional[List[Any]] = None,
     resource_pool: Optional[Dict[str, Any]] = None,
     strict_mode: bool = False,
-    objective_name: str = "min_overdue",
+    objective_name: Optional[str] = "min_overdue",
     graph_ready_context: Optional[Dict[str, Any]] = None,
     include_baseline_ordering: bool = True,
 ) -> Dict[int, Dict[str, Any]]:
@@ -92,6 +97,8 @@ def _enrich_feature_basis(metrics_by_op_id, *, operations, batches, start_dt, ca
         prepared["family_ranks"] = {name: index for index, name in enumerate(family_names)}
         prepared["processing_ranks"] = _processing_time_ranks(duration_by_op_id)
         prepared["resource_seeds"] = seed_results_by_resource_id(seed_results or [])
+        prepared["resource_blocking"] = FixedResourceBlockingFacts(
+            downtime_map=downtime_map or {}, seed_results_by_resource_id=prepared["resource_seeds"])
     family_ranks, processing_ranks = prepared["family_ranks"], prepared["processing_ranks"]
     seed_results_by_resource = prepared["resource_seeds"]
     schedulable_duration_by_op_id = duration_by_op_id
@@ -115,6 +122,7 @@ def _enrich_feature_basis(metrics_by_op_id, *, operations, batches, start_dt, ca
             downtime_map=downtime_map or {},
             seed_results_by_resource_id=seed_results_by_resource,
             resource_pool=resource_pool,
+            prepared=prepared["resource_blocking"],
         )
         due_unavailable = parsed_due_exclusive is None
         if due_unavailable:
@@ -163,7 +171,6 @@ def _enrich_feature_basis(metrics_by_op_id, *, operations, batches, start_dt, ca
                 "slack_hours": float(slack_hours),
                 "remaining_work_hours": float(remaining_hours),
                 "remaining_due_burden_hours": float(remaining_hours),
-                "graph_ready_objective_name": normalize_objective_name(objective_name),
                 "weighted_processing_hours": float(schedulable_duration_by_op_id[op_id] / priority_weight),
                 "weighted_due_pressure": float(due_pressure * priority_weight),
                 "changeover_family_rank": family_ranks[str(getattr(op, "op_type_name", "") or "").strip()],
@@ -187,6 +194,8 @@ def _enrich_feature_basis(metrics_by_op_id, *, operations, batches, start_dt, ca
                 "graph_ready_v2_feature_version": "graph_ready_v2_objective_features_v2",
             }
         )
+        if objective_name is not None:
+            row["graph_ready_objective_name"] = normalize_objective_name(objective_name)
         row.update(_basis_metadata(feature_basis))
         out[int(op_id)] = row
     return out

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from .process_evidence import sample_legacy_trace
+if TYPE_CHECKING:
+    from .shared_archive import SharedScheduleArchive
 
 
 def score_tuple(score: Any) -> Tuple[float, ...]:
@@ -117,25 +118,12 @@ def compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> List
     return selected_scored[: limit - len(selected_rejected)] + selected_rejected
 
 
-def init_seen_hashes(cur_order: List[str], best: Optional[Dict[str, Any]]) -> set:
-    """Decisions already decoded: the current and best orders. Every order length is tracked;
-    the old ``< 10`` exemption let small instances decode the same neighbor round after round."""
-    seen_hashes = {tuple(cur_order)}
-    if isinstance(best, dict):
-        best_order = tuple(best.get("order") or [])
-        if best_order:
-            seen_hashes.add(best_order)
-    return seen_hashes
-
-
 @dataclass
 class OptimizerSearchState:
     best: Optional[Dict[str, Any]] = None
     attempts: List[Dict[str, Any]] = field(default_factory=list)
     improvement_trace: List[Dict[str, Any]] = field(default_factory=list)
+    shared_archive: Optional[SharedScheduleArchive] = None
 
     def compact_attempts(self, *, limit: int = 12) -> List[Dict[str, Any]]:
         return compact_attempts(self.attempts, limit=limit)
-
-    def compact_trace(self, *, limit: int = 200, elapsed_ms: Optional[int] = None) -> List[Dict[str, Any]]:
-        return sample_legacy_trace(list(self.improvement_trace or []), elapsed_ms=elapsed_ms, limit=limit)

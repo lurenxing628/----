@@ -38,6 +38,7 @@ def resolve_graph_ready_profiles_and_metrics(
     objective_name: str = "min_overdue",
     graph_ready_context: Optional[Dict[str, Any]] = None,
     before_metrics: Optional[Callable[[], None]] = None,
+    prepared_metrics: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any], Dict[int, Dict[str, Any]]]:
     profiles, profile_summary = _resolve_profiles(
         max_weight_profiles=max_weight_profiles,
@@ -46,6 +47,7 @@ def resolve_graph_ready_profiles_and_metrics(
         candidate_construction=candidate_construction,
         version=version,
         objective_name=objective_name,
+        shared_search=prepared_metrics is not None,
     )
     objective_name = normalize_objective_name(objective_name)
     profiles = [replace(profile, objective_name=objective_name) for profile in profiles]
@@ -55,7 +57,7 @@ def resolve_graph_ready_profiles_and_metrics(
     # _metrics_for_profiles 抛出的 ValidationError 直接上抛,由 run_graph_ready_candidates 主链按 strict/feature-error 统一处理。
     if before_metrics is not None:
         before_metrics()
-    metrics = _metrics_for_profiles(
+    metrics = prepared_metrics if prepared_metrics is not None else _metrics_for_profiles(
         metrics_by_op_id,
         profiles=profiles,
         scheduler=scheduler,
@@ -80,6 +82,7 @@ def _resolve_profiles(
     candidate_construction: Optional[Dict[str, Any]],
     version: int,
     objective_name: str = "min_overdue",
+    shared_search: bool = False,
 ) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any]]:
     if profiles_override is not None:
         profiles = list(profiles_override)
@@ -88,6 +91,7 @@ def _resolve_profiles(
             max_weight_profiles=max_weight_profiles,
             version=version,
             objective_name=objective_name,
+            shared_search=shared_search,
         )
         return profiles, summary
 
@@ -105,11 +109,13 @@ def _resolve_profiles(
             max_candidate_profiles=max_candidate_profiles,
             seed=int(version),
             objective_name=objective_name,
+            shared_search=shared_search,
         )
         return profiles, graph_ready_v2_profile_summary(
             max_candidate_profiles=max_candidate_profiles,
             seed=int(version),
             objective_name=objective_name,
+            shared_search=shared_search,
         )
     raise ValidationError(
         f"GraphReady 候选策略不支持：{policy}",
@@ -163,9 +169,11 @@ def _profile_summary_for_profiles(
     max_weight_profiles: int,
     version: int,
     objective_name: str = "min_overdue",
+    shared_search: bool = False,
 ) -> Dict[str, Any]:
     if any(_uses_v2_profile(profile) for profile in profiles):
-        return graph_ready_v2_profile_summary(max_candidate_profiles=max(len(profiles), 1), seed=int(version), objective_name=objective_name)
+        return graph_ready_v2_profile_summary(max_candidate_profiles=max(len(profiles), 1), seed=int(version),
+                                             objective_name=objective_name, shared_search=shared_search)
     return graph_ready_weight_profile_summary(max_weight_profiles=max_weight_profiles)
 
 

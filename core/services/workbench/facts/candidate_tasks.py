@@ -50,9 +50,9 @@ def _execution(facts, ref, gaps):
     return values
 
 
-def operation_labels(facts, ref, payload=None):
-    gaps = []
-    op = facts.operation(ref, payload, gaps)
+def operation_labels(facts, ref, payload=None, *, prepared=None):
+    gaps = list(prepared["operation_gaps"]) if prepared is not None else []
+    op = prepared["operation"] if prepared is not None else facts.operation(ref, payload, gaps)
     if ref not in facts._operation_labels:
         facts._operation_labels[ref] = _base_operation_labels(facts, ref, op, gaps)
     base = facts._operation_labels[ref]
@@ -128,9 +128,9 @@ def _check_task_payload(payload, expected, seen):
             corrupt()
 
 
-def _task_dto(row, facts, start, end):
+def _task_dto(row, facts, start, end, *, prepared=None):
     ref, payload = row["operation_ref"], row["payload"]
-    task, operation = operation_labels(facts, ref, payload)
+    task, operation = operation_labels(facts, ref, payload, prepared=prepared)
     gaps = task["data_gaps"]
     task.update(row_ref=row["row_ref"], start=start.isoformat(), end=end.isoformat(),
                 source=payload["source"], locked=payload["locked"])
@@ -147,17 +147,20 @@ def tasks_projection(rows, candidate, facts):
 
 
 def tasks_projection_with_intervals(rows, candidate, facts):
-    rows, intervals = validate_saved_tasks(rows, candidate, facts)
-    return project_validated_tasks(rows, candidate, facts, intervals), intervals
+    prepared_tasks = {}
+    rows, intervals = validate_saved_tasks(rows, candidate, facts, prepared_tasks=prepared_tasks)
+    return project_validated_tasks(rows, candidate, facts, intervals, prepared_tasks=prepared_tasks), intervals
 
 
-def validate_saved_tasks(rows, candidate, facts):
+def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks=None):
     expected = _expected_task_rows(rows, candidate)
     intervals, seen, point_reader = {}, set(), None
     for row in rows:
         ref, payload = row["operation_ref"], row["payload"]
         _check_task_payload(payload, expected, seen)
-        facts.operation(ref, payload, [])
+        operation_gaps = []
+        operation = facts.operation(ref, payload, operation_gaps)
+        point_work = None
         try:
             start, end = local_time(payload.get("start_time")), local_time(payload.get("end_time"))
             if start > end or payload.get("source") not in ("internal", "external") or type(payload.get("locked")) is not bool:
@@ -165,19 +168,23 @@ def validate_saved_tasks(rows, candidate, facts):
             if start == end:
                 if point_reader is None:
                     point_reader = CandidatePointReader(candidate, facts)
-                point_reader.work(ref, payload)
+                point_work = point_reader.work(ref, payload)
         except (ValueError, TypeError):
             corrupt()
         intervals[row["row_ref"]] = (start, end)
+        if prepared_tasks is not None:
+            prepared_tasks[row["row_ref"]] = {"operation": operation, "operation_gaps": operation_gaps,
+                                               "interval": (start, end), "point_work": point_work}
     return rows, intervals
 
 
-def project_validated_tasks(rows, candidate, facts, intervals):
+def project_validated_tasks(rows, candidate, facts, intervals, *, prepared_tasks=None):
     traces = {row["op_id"]: row for row in candidate["artifact"].get("results", [])}
     result = []
     for row in rows:
         start, end = intervals[row["row_ref"]]
-        task = _task_dto(row, facts, start, end)
+        task = _task_dto(row, facts, start, end,
+            prepared=prepared_tasks[row["row_ref"]] if prepared_tasks is not None else None)
         trace = traces.get(row["payload"]["op_id"], {})
         if "op_type_id" in trace:
             task.update(operation_type_labels(facts, trace["op_type_id"]))

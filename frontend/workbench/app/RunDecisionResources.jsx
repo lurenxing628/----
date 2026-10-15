@@ -7,15 +7,11 @@
   const pressureFilters = [['all', '全部资源'], ['high_pressure', '高负荷'], ['demand_overload', '需求超载'], ['zero_capacity', '无可排时段仍有工作'], ['conflicts', '班表内冲突'], ['unknown', '班表待确认']];
   const grains = [['hour', '小时'], ['shift', '班次'], ['day', '天'], ['week', '周']];
   function storedQuery(query, cohort, scope) {
-    const stored = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))), next = { ...stored }, refs = cohort[next.resource_kind || 'machine'];
-    if (next.resource_ref && !refs.includes(next.resource_ref)) { delete next.resource_ref; delete next.snapshot_ref; next.page = 1; }
+    const stored = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))), next = A.savedResourceView(stored, cohort, scope), refs = cohort[next.resource_kind || 'machine'];
     if (next.day_resource_ref && !refs.includes(next.day_resource_ref)) { delete next.day_resource_ref; delete next.day_snapshot_ref; delete next.day_bucket_start; delete next.day_bucket_end; delete next.day_grain; next.day_page = 1; }
     if (next.heatmap_focus && !refs.includes(next.heatmap_focus.resource_ref)) delete next.heatmap_focus;
     if (scope && next.day_bucket_start && (next.day_bucket_start < scope.range_start || next.day_bucket_end > scope.range_end)) {
       delete next.day_bucket_start; delete next.day_bucket_end; delete next.day_grain; delete next.day_snapshot_ref; delete next.heatmap_focus; next.day_page = 1;
-    }
-    if (scope && next.display_start && (next.display_start < scope.range_start || next.display_end > scope.range_end)) {
-      delete next.display_start; delete next.display_end; delete next.snapshot_ref; next.heatmap_page = 1;
     }
     return next;
   }
@@ -95,10 +91,10 @@
           <td><details className="rres-day-facts"><summary>查看统计</summary>{extraFields.map(field => <div key={field}><strong>{metricLabel(field)}{field.endsWith('_hours') && ' · 小时'}</strong><Pair row={day} field={field} absent={data.baseline.state !== 'available'} /></div>)}</details></td><td><Flags value={day.after} kind={data.resource.kind} definitions={definitions} /><DayFacts value={day.after} label="当前方案" onDrill={onDrill} /><DayFacts value={day.before} label="基准" onDrill={onDrill} /></td><td className="wb-col-actions"><Locate row={day} baseline={data.baseline} onDrill={onDrill} /></td></tr>)}</tbody></table></div>
       <div className="rc-heading"><label>每页 <select aria-label="资源逐日每页条数" value={data.page.size} onChange={event => onQuery({ size: Number(event.target.value) })}><option value="20">20 天</option><option value="50">50 天</option></select></label><C.Pager label="资源逐日" page={data.page.number} pages={Math.max(1, Math.ceil(data.page.total / data.page.size))} onPage={page => onQuery({ page }, true)} /></div></section>;
   }
-  function SelectedWindow({ result, query, adapter, definitions, whole = false, onQuery, onClose, onWhole, onDrill }) {
+  function SelectedWindow({ result, query, adapter, definitions, whole = false, onQuery, onClose, onWhole, onDrill, enabled = true }) {
     const data = result.data, cell = whole ? { ...data.summary, start: data.scope.range_start, end: data.scope.range_end } : data.items[0], value = cell.after, heading = React.useRef(null);
     const periods = whole ? data.items : [cell], hasTasks = periods.some(period => period.after.tasks.length > 0);
-    React.useEffect(() => { if (heading.current) { heading.current.focus({ preventScroll: true }); heading.current.scrollIntoView({ block: 'start' }); } }, [data.resource.ref, cell.start, cell.end, whole]);
+    React.useEffect(() => { if (enabled && heading.current) { heading.current.focus({ preventScroll: true }); heading.current.scrollIntoView({ block: 'start' }); } }, [enabled, data.resource.ref, cell.start, cell.end, whole]);
     return <section className="rres-selected-window" aria-label="所选资源时段安排"><div className="rc-heading"><div><h3 ref={heading} tabIndex={-1}>{data.resource.label || T.name_missing} · {whole ? '整个统计范围' : F.compactRange(cell.start, cell.end)}</h3>{whole && <p className="rres-window-note">{F.compactRange(cell.start, cell.end)}</p>}</div><div className="rc-tools"><D.Export key={result.meta.snapshot_ref} adapter={adapter} result={result} initialSection="resource-days" filterQuery={{ ...query, ...data.filters }} />{!whole && <C.Button icon="calendar-days" onClick={onWhole}>查看整个范围</C.Button>}<C.Button icon="x" aria-label="关闭资源时段安排" onClick={onClose} /></div></div>
       <div className="rres-contribution-summary"><div>班内已占 / 可排时长<strong>{scalar(value.occupied_hours)} / {scalar(value.available_hours)} 小时</strong></div><div>对照已占 · {data.baseline.label || '比较基准'}<strong>{data.baseline.state === 'available' ? scalar(cell.before.occupied_hours) + ' 小时' : '对照未记录'}</strong></div><div>{whole ? '占用比例' : '关联工序（道）'}<Metric value={value} field={whole ? 'utilization_ratio' : 'contribution_operation_count'} /></div></div>
       <Flags value={value} kind={data.resource.kind} definitions={definitions} />
@@ -128,18 +124,28 @@
     return <div className="rres-range-editor"><span ref={entry}><C.Button icon="calendar-days" data-resource-range-entry aria-expanded={open} onClick={() => setOpen(!open)}>统计时间 · {F.compactRange(scope.range_start, scope.range_end)}</C.Button></span>{open && <form className="rres-range-controls" onSubmit={apply} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); close(); } }}><label>开始（包含）<input type="text" data-picker-type="factory-local" aria-label={title + '开始'} value={value.range_start} onChange={event => setValue({ ...value, range_start: event.target.value.replace('T', ' ') })} /></label>
       <label>结束（不含）<input type="text" data-picker-type="factory-local" aria-label={title + '结束'} value={value.range_end} onChange={event => setValue({ ...value, range_end: event.target.value.replace('T', ' ') })} /></label><C.Button icon="check" type="submit">{actionLabel}</C.Button><C.Button onClick={close}>收起</C.Button><C.ErrorBox error={error} /></form>}</div>;
   }
-  function Pane({ adapter, result, query = {}, onQuery, onView, onRange, onDrill }) {
+  function Pane({ adapter, result, query = {}, onQuery, onView, onRange, onDrill, enabled = true }) {
     const overview = result.data, scope = overview.scope, runRef = overview.run.run_ref, host = React.useRef(null);
     const shared = { comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, range_start: scope.range_start, range_end: scope.range_end,
       ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
     const stored = storedQuery(query, scope.resource_refs, scope), q = A.resourceScope(runRef, { ...stored, heatmap_size: stored.heatmap_size || 7, ...shared });
-    React.useEffect(() => { const prior = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))); if (JSON.stringify(prior) !== JSON.stringify(stored)) onQuery(stored); }, [JSON.stringify(stored), JSON.stringify(query)]);
+    React.useEffect(() => { if (!enabled) return; const prior = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))); if (JSON.stringify(prior) !== JSON.stringify(stored)) onQuery(stored); }, [enabled, JSON.stringify(stored), JSON.stringify(query)]);
     const [paused, setPaused] = React.useState(false), [daysPaused, setDaysPaused] = React.useState(false);
-    const read = window.APSResourceSession.useQuery(signal => adapter.resources(runRef, { ...q, expected_resource_refs: scope.resource_refs }, signal), [adapter, runRef, JSON.stringify(q), paused], !paused);
+    const consumed = React.useRef(null), qKey = JSON.stringify(q);
+    const read = window.APSResourceSession.useQuery(signal => {
+      if (signal && signal.aborted) throw new DOMException('读取已取消', 'AbortError');
+      if (result.resource_result && consumed.current !== result
+          && JSON.stringify(A.resourceScope(runRef, { ...result.resource_query, ...shared })) === qKey) {
+        consumed.current = result;
+        if (result.resource_result.ok === false) throw A.resourceError(result.resource_result);
+        return result.resource_result;
+      }
+      return adapter.resources(runRef, { ...q, expected_resource_refs: scope.resource_refs }, signal);
+    }, [adapter, runRef, qKey, result], enabled && !paused);
     const data = read.result && read.result.data;
     const activeFilters = [q.resource_ref && data && data.filter_options.resources.find(row => row.ref === q.resource_ref)?.label, !['all', 'high_pressure', 'conflicts'].includes(q.pressure_filter) && pressureFilters.find(row => row[0] === q.pressure_filter)[1]].filter(Boolean);
     const dayRef = stored.day_resource_ref, dayQ = dayRef ? A.resourceScope(runRef, { ...shared, resource_kind: q.resource_kind, resource_ref: dayRef, grain: stored.day_grain || 'day', bucket_start: stored.day_bucket_start, bucket_end: stored.day_bucket_end, pressure_threshold: q.pressure_threshold, page: stored.day_page || 1, size: stored.day_size || 20, snapshot_ref: stored.day_snapshot_ref }, 'resource-days') : null;
-    const days = window.APSResourceSession.useQuery(signal => adapter.resourceDays(runRef, { ...dayQ, expected_resource_refs: scope.resource_refs }, signal), [adapter, runRef, JSON.stringify(dayQ), daysPaused], !!dayQ && !daysPaused);
+    const days = window.APSResourceSession.useQuery(signal => adapter.resourceDays(runRef, { ...dayQ, expected_resource_refs: scope.resource_refs }, signal), [adapter, runRef, JSON.stringify(dayQ), result], enabled && !!dayQ && !daysPaused);
     function change(value, type = 'filter') {
       const next = { ...stored, ...value };
       if (type === 'filter') { next.page = 1; delete next.snapshot_ref; }
@@ -192,7 +198,7 @@
       <C.ErrorBox error={days.error} />{days.loading && <div className="rc-tools"><span role="status">正在读取资源逐日数值与重叠安排。</span><C.Button icon="x" onClick={() => setDaysPaused(true)}>取消逐日读取</C.Button></div>}
       {daysPaused && <div className="rc-tools"><span role="status">资源逐日读取已取消。</span><C.Button icon="refresh-cw" onClick={() => { setDaysPaused(false); days.reload(); }}>继续读取逐日</C.Button></div>}
       {days.error && <div className="rc-tools"><C.Button icon="refresh-cw" onClick={() => { setDaysPaused(false); days.reload(); }}>重试逐日读取</C.Button><C.Button onClick={closeDays}>关闭逐日明细</C.Button></div>}
-      {days.result && <SelectedWindow adapter={adapter} result={days.result} definitions={overview.metric_definitions} query={{ ...dayQ, focus_date: stored.heatmap_focus && stored.heatmap_focus.resource_ref === dayRef ? stored.heatmap_focus.date : null }} whole={!stored.day_bucket_start} onQuery={dayQuery} onClose={closeDays} onWhole={wholeDays} onDrill={onDrill} />}
+      {days.result && <SelectedWindow adapter={adapter} result={days.result} definitions={overview.metric_definitions} query={{ ...dayQ, focus_date: stored.heatmap_focus && stored.heatmap_focus.resource_ref === dayRef ? stored.heatmap_focus.date : null }} whole={!stored.day_bucket_start} onQuery={dayQuery} onClose={closeDays} onWhole={wholeDays} onDrill={onDrill} enabled={enabled} />}
       {data && <details className="rres-statistics"><summary>数据来源</summary><div className="rres-full-table"><h3>统计范围详细对照 · {data.page.total} 个资源</h3><Summary data={data} definitions={overview.metric_definitions} />
         {data.items.length ? <ResourceTable data={data} definitions={overview.metric_definitions} onFocus={focus} onDrill={onDrill} /> : <p className="rc-empty">当前筛选没有资源记录。</p>}</div>
         <Coverage data={data} /><Calculation data={data} definitions={overview.metric_definitions} /><Rankings data={data} onFocus={focus} onAll={sort => change({ sort, order: 'desc', resource_ref: undefined })} /></details>}

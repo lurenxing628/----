@@ -22,8 +22,13 @@ def wire(value):
 
 
 def union(intervals):
+    return _union_sorted(sorted(intervals))
+
+
+def _union_sorted(intervals):
+    """Merge sorted input in one pass, including adjacent positive intervals."""
     result = []
-    for start, end in sorted(intervals):
+    for start, end in intervals:
         if start >= end:
             continue
         if result and start <= result[-1][1]:
@@ -74,18 +79,41 @@ class IntervalIndex:
     """O(log W) per task intersection duration after O(W) prefix construction."""
 
     def __init__(self, intervals):
-        self.intervals = union(intervals)
-        self.starts = [start for start, _ in self.intervals]
+        self._build_prefix(union(intervals))
+
+    @classmethod
+    def from_normalized(cls, intervals):
+        """Index internal sorted, positive, disjoint intervals without another union."""
+        index = cls.__new__(cls)
+        index._build_prefix(intervals)
+        return index
+
+    def _build_prefix(self, intervals):
+        self.intervals = list(intervals)
+        self.starts = []
         self.prefix = [0.0]
         for start, end in self.intervals:
+            self.starts.append(start)
             self.prefix.append(self.prefix[-1] + (end - start).total_seconds())
 
-    def _before(self, at):
-        index = bisect_right(self.starts, at) - 1
+    def _at_index(self, index, at):
         if index < 0:
             return 0.0
         start, end = self.intervals[index]
-        return self.prefix[index] + (min(at, end) - start).total_seconds()
+        if at >= end:
+            return self.prefix[index + 1]
+        return self.prefix[index] + (at - start).total_seconds()
+
+    def _before(self, at):
+        return self._at_index(bisect_right(self.starts, at) - 1, at)
+
+    def prefix_values_at_sorted(self, points):
+        """Consume caller-ordered points as cumulative seconds, including repeats."""
+        index = -1
+        for at in points:
+            while index + 1 < len(self.starts) and self.starts[index + 1] <= at:
+                index += 1
+            yield self._at_index(index, at)
 
     def hours_between(self, start, end):
         return (self._before(end) - self._before(start)) / 3600.0

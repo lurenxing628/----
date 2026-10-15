@@ -15,6 +15,7 @@ class ScheduleTimeSpanRow(TypedDict, total=False):
     version: int
     start_time: str
     end_time: str
+    end_includes_point: bool
 
 
 class ScheduleDetailRow(TypedDict, total=False):

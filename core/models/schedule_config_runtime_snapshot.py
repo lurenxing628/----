@@ -31,10 +31,6 @@ class ScheduleConfigSnapshot:
     graph_critical_weight: int = 500
     graph_impact_weight: int = 10
     graph_downstream_weight: int = 1
-    graph_candidate_weight_count: int = 5
-    graph_selection_policy: str = "balanced"
-    graph_overdue_tolerance_count: int = 1
-    graph_tardiness_tolerance_ratio: float = 0.10
     graph_debug_export: str = "no"
     auto_assign_persist: str = "yes"
     degradation_events: Tuple[Dict[str, Any], ...] = field(default_factory=tuple, repr=False)
@@ -64,10 +60,6 @@ class ScheduleConfigSnapshot:
             "graph_block_on_cycle": self.graph_block_on_cycle,
             "graph_critical_weight": int(self.graph_critical_weight),
             "graph_impact_weight": int(self.graph_impact_weight),
-            "graph_candidate_weight_count": int(self.graph_candidate_weight_count),
-            "graph_selection_policy": self.graph_selection_policy,
-            "graph_overdue_tolerance_count": int(self.graph_overdue_tolerance_count),
-            "graph_tardiness_tolerance_ratio": float(self.graph_tardiness_tolerance_ratio),
             "graph_debug_export": self.graph_debug_export,
         }
 

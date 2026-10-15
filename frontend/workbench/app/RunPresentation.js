@@ -27,6 +27,9 @@
     return (hours ? hours + ' 小时 ' : '') + (minutes || hours ? minutes + ' 分钟 ' : '')
       + window.WorkbenchFormat.number(seconds - hours * 3600 - minutes * 60, { digits: precision, trim: true }) + ' 秒';
   }
-  function stage(run) { return stages[run.stage] || '排产阶段未知'; }
+  function stage(run) {
+    if (run.stage === 'computing' && window.RunGenerationContract.unified(run.scope_summary && run.scope_summary.run_options)) return '正在共同优化方案';
+    return stages[run.stage] || '排产阶段未知';
+  }
   window.RunPresentation = { step, stage, elapsed };
 })();

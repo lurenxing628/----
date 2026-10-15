@@ -36,7 +36,7 @@ def _arguments(detail, history):
     query = DashboardQuery(**{key: value for key, value in request.args.items() if key not in
                               ("page", "size", "snapshot_ref", "history_page")}, number=numbers["page"], size=numbers["size"])
     token = request.args.get("snapshot_ref")
-    if (detail or query.number > 1) and not token:
+    if detail and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     return query, token, numbers["history_page"]
 

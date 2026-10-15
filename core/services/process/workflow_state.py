@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timezone
 
 from core.errors import BusinessError, ErrorCode, ValidationError
+from core.infrastructure.connection_guards import SchemaContractMemo
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
@@ -22,14 +23,13 @@ from .template_source import source_issues, valid_external_group, valid_supplier
 _STAGES = ("route", "source", "hours")
 
 
-def _schema_issues(conn):
-    return tuple(workbench_metadata_contract_issues(conn) + workbench_resource_contract_issues(conn)
-                 + workbench_process_contract_issues(conn) + workbench_process_workflow_contract_issues(conn))
-
-
 def _schema(conn, contracts=None):
-    # contracts（SchemaContractMemo）由逐行写入的调用方传入：同一命令里表结构只解析一次，改过就重验。
-    issues = _schema_issues(conn) if contracts is None else contracts.get(_schema_issues)
+    # 逐行写入共用本命令的结构和叶子检查；独立读取使用本次请求的新实例。
+    contracts = contracts if contracts is not None else SchemaContractMemo(conn)
+    issues = (contracts.get_schema(workbench_metadata_contract_issues)
+              + contracts.get_schema(workbench_resource_contract_issues)
+              + contracts.get_schema(workbench_process_contract_issues)
+              + contracts.get_schema(workbench_process_workflow_contract_issues))
     if issues:
         raise RuntimeError("Invalid process workflow storage: " + "; ".join(issues))
 
@@ -152,8 +152,11 @@ def _load_facts(conn, part_no=None):
 
 def _read_facts(conn, part_no=None):
     repo = WorkbenchProcessWorkflowRepository(conn)
-    return {"operations": repo.active_operations(part_no), "groups": repo.active_external_groups(part_no),
-            "suppliers": repo.supplier_facts(), "capabilities": repo.supplier_op_types(),
+    operations, groups = repo.active_operations(part_no), repo.active_external_groups(part_no)
+    supplier_ids = None if part_no is None else list(dict.fromkeys(
+        row["supplier_id"] for rows in (operations, groups) for row in rows if row["supplier_id"] is not None))
+    return {"operations": operations, "groups": groups,
+            "suppliers": repo.supplier_facts(supplier_ids), "capabilities": repo.supplier_op_types(supplier_ids),
             "records": repo.confirmations(part_no)}
 
 

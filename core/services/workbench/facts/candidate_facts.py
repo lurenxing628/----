@@ -1,22 +1,12 @@
 """Interpret acceptance-time facts only; current replacement entities are irrelevant."""
 
-from core.infrastructure.snapshot_connection import ddl_columns
 from core.models.workbench_run_candidate import reference
 
 from .candidate_values import corrupt, gap, stored_json
+from .schema_compat import archived_columns
 
 _TABLES = {"BatchOperations": "id", "Batches": "batch_id", "Parts": "part_no",
            "Machines": "machine_id", "Operators": "operator_id", "Suppliers": "supplier_id", "OpTypes": "op_type_id"}
-
-
-def _columns(sql, name):
-    if type(sql) is not str:
-        corrupt()
-    # SQLite parses its own archived DDL in an empty isolated database with a deny-by-default authorizer.
-    try:
-        return ddl_columns(sql, name, restricted=True)
-    except ValueError:
-        corrupt()
 
 
 def _table(facts, name):
@@ -28,14 +18,22 @@ def _table(facts, name):
     ddl = [row[3] for row in schema if type(row) is list and len(row) == 4 and row[0] == "table" and row[1] == name]
     if len(ddl) != 1 or type(tables[name]) is not list:
         corrupt()
-    columns = _columns(ddl[0], name)
+    try:
+        columns = archived_columns(facts, name)
+    except (ValueError, TypeError, KeyError):
+        corrupt()
     if not columns:
         corrupt()
     result = []
     for row in tables[name]:
-        if type(row) is not list or len(row) != len(columns):
+        if type(row) is dict:
+            if set(row) != set(columns):
+                corrupt()
+            result.append(dict(row))
+        elif type(row) is list and len(row) == len(columns):
+            result.append(dict(zip(columns, row)))
+        else:
             corrupt()
-        result.append(dict(zip(columns, row)))
     return result
 
 

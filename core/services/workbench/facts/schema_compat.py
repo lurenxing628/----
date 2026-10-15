@@ -1,11 +1,14 @@
-"""Compare the declared v39/v40 representation without rewriting saved facts."""
+"""Compare the declared v39-v42 representation without rewriting saved facts."""
 
 import base64
 from functools import lru_cache
 
+from core.infrastructure.schedule_business_roles_schema import objects as business_role_objects
 from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.workbench_content_schema import CONTENT_TABLES, content_objects
 from core.infrastructure.workbench_metadata_schema import canonical_ddl_parts, canonical_sql
+from core.infrastructure.workbench_run_read_model_schema import READ_MODEL_TABLES
+from core.infrastructure.workbench_run_read_model_schema import objects as read_model_objects
 from core.models.content import packed, unpacked
 
 
@@ -78,6 +81,22 @@ def _named_rows(value, table, rows):
     return result
 
 
+def _comparison_rows(value, table, rows):
+    # Legacy run archives already own physical positional values. New named
+    # trial views use their captured columns to reach that same representation.
+    if not any(type(row) is dict for row in rows):
+        return _rows(rows)
+    columns = archived_columns(value, table)
+    ordered = []
+    for row in rows:
+        if type(row) is dict:
+            if set(row) != set(columns):
+                raise ValueError("Archived SQLite row does not match its columns: " + table)
+            row = [row[name] for name in columns]
+        ordered.append(row)
+    return _rows(ordered)
+
+
 def _version(value):
     rows = value["tables"].get("SchemaVersion", [])
     if len(rows) != 1:
@@ -86,28 +105,59 @@ def _version(value):
     return named.get("version") if type(named.get("version")) is int and named.get("id") == 1 else None
 
 
+@lru_cache(maxsize=1)
+def _read_model_schema():
+    declared = {}
+    for name, sql in read_model_objects().items():
+        normalized = canonical_sql(sql)
+        kind = normalized.split(" ", 2)[1].lower()
+        table = name if kind == "table" else normalized.partition(" ON ")[2].split(" ", 1)[0].split("(", 1)[0]
+        declared[name] = kind, table, normalized
+    return declared
+
+
+def _derived_schema(row):
+    kind, name, table, sql = row
+    expected = _read_model_schema().get(name)
+    if expected is not None and (kind, table, canonical_sql(sql)) == expected:
+        return True
+    return (kind == "index" and table in READ_MODEL_TABLES
+            and name == "sqlite_autoindex_" + table + "_1" and sql is None)
+
+
+@lru_cache(maxsize=1)
+def _business_role_schema():
+    current, legacy = business_role_objects(), business_role_objects(legacy=True)
+    return {name: (canonical_sql(sql), canonical_sql(legacy[name])) for name, sql in current.items()}
+
+
 def project_facts(value):
     """Pure comparison value; preserve other fields, old digests and unknown DDL."""
     current, legacy = _definitions(), _definitions(True)
     table_names = {row[1] for row in value["schema"] if len(row) == 4 and row[0] == "table"}
-    tables = {name: _rows(rows) if name in table_names else rows for name, rows in value["tables"].items()}
-    result = {**value, "schema": list(value["schema"]), "tables": tables}
-    if "columns" in value:
-        result["columns"] = dict(value["columns"])
-    if _version(value) not in (39, 40):
+    tables = {name: _comparison_rows(value, name, rows) if name in table_names else rows
+              for name, rows in value["tables"].items()}
+    result = {key: item for key, item in value.items()
+              if key != "columns" and not (key == "version" and item == "production-facts-v2")}
+    result.update(schema=list(value["schema"]), tables=tables)
+    if _version(value) not in (39, 40, 41, 42):
         return result
-    schema = []
+    for name in READ_MODEL_TABLES:
+        tables.pop(name, None)
+    schema, roles = [], _business_role_schema()
     for row in value["schema"]:
+        if _derived_schema(row):
+            continue
         kind, name, table, sql = row
-        if kind == "table" and name in current and canonical_sql(sql) in (
+        if kind == "table" and table == name and name in roles and canonical_sql(sql) in roles[name]:
+            schema.append((kind, name, table, roles[name][1]))
+        elif kind == "table" and name in current and canonical_sql(sql) in (
                 canonical_sql(current[name]), canonical_sql(legacy[name])):
             schema.append((kind, name, table, canonical_sql(legacy[name])))
             if name in tables:
                 columns = list(_columns(current[name], name))
                 rows = _named_rows(value, name, tables[name])
                 tables[name] = [{**dict.fromkeys(columns), **item} for item in rows]
-                if "columns" in result:
-                    result["columns"][name] = columns
         else:
             schema.append(row)
     rows = _named_rows(value, "SchemaVersion", tables["SchemaVersion"])

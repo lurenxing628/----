@@ -2,6 +2,15 @@
 .rd-workspace .rd-process-heading h3{font-size:var(--font-size-3);font-weight:500;margin:0 0 var(--space-1)}
 .rd-workspace .rd-process-heading>div>span{color:var(--ui-info-muted)}
 .rd-workspace .rd-process small{line-height:var(--wb-line-relaxed)}
+.rd-workspace .rd-process-run-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--space-2) var(--space-4);margin:var(--space-3) 0}
+.rd-workspace .rd-process-run-summary dt{color:var(--ui-info-muted);font-size:var(--font-size-1)}
+.rd-workspace .rd-process-run-summary dd{margin:var(--space-1) 0 0;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rd-workspace .rd-process-objective{display:flex;flex-wrap:wrap;gap:var(--space-2);margin:var(--space-3) 0}
+.rd-workspace .rd-process-objective label{display:flex;align-items:center;flex-wrap:wrap;gap:var(--space-2);color:var(--ui-info-muted);min-width:0}
+.rd-workspace .rd-process-objective select{max-width:100%;min-width:0}
+.rd-workspace .rd-process-source-table,.rd-workspace .rd-process-action-table,.rd-workspace .rd-process-bridge-table{min-width:660px;font-size:var(--font-size-2)}
+.rd-workspace .rd-process-source-table td,.rd-workspace .rd-process-action-table td,.rd-workspace .rd-process-bridge-table td{vertical-align:top}
+.rd-workspace .rd-process-source-table small,.rd-workspace .rd-process-action-table small,.rd-workspace .rd-process-bridge-table small{display:block}
 .rd-workspace .rd-process-actions{justify-content:flex-end;margin:0;min-height:0}
 .rd-workspace .rd-process-actions .rd-detail-actions{padding:0}
 .rd-workspace .rd-process-heading{margin:0 0 var(--space-2)}

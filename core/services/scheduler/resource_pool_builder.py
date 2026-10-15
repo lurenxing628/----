@@ -141,8 +141,7 @@ def _load_downtime_intervals_for_machines(
     for mid in machine_ids:
         try:
             intervals = _normalize_downtime_intervals(svc, dt_repo.list_active_after(mid, start_str))
-            if intervals:
-                downtime_map[mid] = intervals
+            downtime_map[mid] = intervals
         except Exception as e:
             partial_fail_mids.append(str(mid))
             _warn_service_logger(svc, failure_log_template.format(mid=mid, error=e), exc_info=True)
@@ -322,7 +321,11 @@ def build_resource_pool(
 
         # OperatorMachine：一次性取出，按设备聚合（并按“主操/技能”做轻量排序）
         rows = svc.operator_machine_repo.list_simple_rows()
-        rows = OperatorQualificationService(svc.conn, logger=svc.logger).eligible_links(rows, machines, active_ops, algo_ops)
+        qualification_service = OperatorQualificationService(svc.conn, logger=svc.logger)
+        qualifications = qualification_service.load(sorted(active_ops))
+        rows = qualification_service.eligible_links(
+            rows, machines, active_ops, algo_ops, qualifications=qualifications,
+        )
         operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(
             rows,
             active_machines=active_machines,
@@ -337,7 +340,6 @@ def build_resource_pool(
             "pair_rank": pair_rank,
         }
         if any(len(machine_types(machine)) > 1 for machine in machines):
-            qualifications = OperatorQualificationService(svc.conn, logger=svc.logger).load(sorted(active_ops))
             resource_pool["operator_skills"] = {key: sorted(value) if value is not None else None
                                                 for key, value in qualifications.items()}
         if meta is not None:

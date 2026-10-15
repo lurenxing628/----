@@ -1,5 +1,6 @@
 """Draft and scenario rulings over WorkbenchTrialRepository facts; the repository itself never rejects."""
 
+from core.infrastructure.read_evidence import verified_read
 from core.models.content import same
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
 from core.models.workbench_trial_codec import dump, load_object
@@ -14,21 +15,19 @@ def _current_fields(value):
 
 
 def require_trial_schema(repo):
-    if repo.schema_issues():
+    if verified_read(getattr(repo, "conn", None), ("trial_schema_issues",), repo.schema_issues):
         reject("trial_schema_unavailable", "试调记录结构不完整，请联系维护人员。", 503)
 
 
-def load_draft(repo, draft_ref):
+def load_draft(repo, draft_ref, *, header=None):
     """(head, rows) of one draft with decoded snapshots; rejects missing, truncated or malformed storage."""
     require_trial_schema(repo)
-    head = repo.draft_header(draft_ref)
+    head = repo.draft_header(draft_ref) if header is None else header
     if head is None:
         reject("entity_not_found", "未找到指定草稿，未改查其他草稿或最新计划。", 404)
+    head = dict(head)
     head["admission"] = load_object(head.pop("admission_json"))
     head["validation"] = load_object(head.pop("validation_json"))
-    count = repo.draft_row_count(draft_ref)
-    if count != head["row_count"] or not 0 < count <= MAX_TRIAL_TASKS:
-        reject("trial_snapshot_invalid", "草稿原范围行数不一致，未截断或重建。")
     rows = []
     for item in repo.draft_rows(draft_ref):
         if item["ordinal"] != len(rows):
@@ -39,32 +38,9 @@ def load_draft(repo, draft_ref):
         if not _current_fields(item["current"]):
             reject("trial_snapshot_invalid", "草稿安排字段不完整。")
         rows.append(item)
-    return head, rows
-
-
-def reload_changed_draft(repo, head, rows):
-    """Refresh a changed draft within the write transaction that checked its immutable archives."""
-    if not repo.conn.in_transaction:
-        raise RuntimeError("Trial archive reuse requires the same caller write transaction")
-    draft_ref = head["draft_ref"]
-    state = repo.draft_state(draft_ref)
-    if state is None:
-        reject("entity_not_found", "未找到指定草稿，未改查其他草稿或最新计划。", 404)
-    current_head = dict(head, **state)
-    current_head["validation"] = load_object(current_head.pop("validation_json"))
-    count = repo.draft_row_count(draft_ref)
-    if count != head["row_count"] or not 0 < count <= MAX_TRIAL_TASKS:
+    if len(rows) != head["row_count"] or not 0 < len(rows) <= MAX_TRIAL_TASKS:
         reject("trial_snapshot_invalid", "草稿原范围行数不一致，未截断或重建。")
-    current_rows = []
-    for item in repo.draft_arrangements(draft_ref):
-        index = len(current_rows)
-        if item["ordinal"] != index or index >= len(rows) or item["row_ref"] != rows[index]["row_ref"]:
-            reject("trial_snapshot_invalid", "草稿原始行顺序缺失。")
-        current = load_object(item["current_json"])
-        if not _current_fields(current):
-            reject("trial_snapshot_invalid", "草稿安排字段不完整。")
-        current_rows.append(dict(rows[index], current=current))
-    return current_head, current_rows
+    return head, rows
 
 
 def load_scenario(repo, scenario_ref):
@@ -72,17 +48,40 @@ def load_scenario(repo, scenario_ref):
     return load_scenario_record(repo, scenario_ref)[1]
 
 
-def load_scenario_record(repo, scenario_ref):
-    """The immutable header and decoded snapshot from the same verified scenario read."""
+def load_scenario_record(repo, scenario_ref, *, row_limit=None, byte_limit=None, size_check=None):
+    """One immutable saved record; each consumer keeps its own actual body limits."""
     require_trial_schema(repo)
+    header, result, sizes = verified_read(getattr(repo, "conn", None), ("trial_scenario_record", scenario_ref),
+        lambda: _load_scenario_record(repo, scenario_ref, row_limit, byte_limit, size_check))
+    _scenario_limits(sizes, row_limit, byte_limit, size_check)
+    return header, result
+
+
+def _scenario_limits(sizes, row_limit, byte_limit, size_check):
+    if row_limit is not None and sizes["rows"] > row_limit:
+        reject("query_too_large", "试调方案的明细超过 10000 条上限，这次没有读取。请缩小范围。", 413)
+    if byte_limit is not None:
+        size_check(sizes["header"], byte_limit, "试调方案内容")
+        size_check(sizes["bodies"], byte_limit, "试调方案内容")
+
+
+def _load_scenario_record(repo, scenario_ref, row_limit, byte_limit, size_check):
     header = repo.scenario_header(scenario_ref)
     if header is None:
         reject("entity_not_found", "未找到指定试调场景。", 404)
-    archive = load_object(header["snapshot_json"])
-    legacy = "tasks" in archive
-    stored = {row["row_ref"]: load_object(row["payload_json"]) for row in repo.scenario_rows(scenario_ref)}
+    raw = header["snapshot_json"]
+    sizes = {"header": len(raw.encode("utf-8")) if type(raw) is str else 0, "rows": 0, "bodies": 0}
+    _scenario_limits(sizes, row_limit, byte_limit, size_check)
+    archive = load_object(raw)
+    legacy, stored = "tasks" in archive, {}
+    rows = repo.iter_scenario_rows(scenario_ref) if hasattr(repo, "iter_scenario_rows") else repo.scenario_rows(scenario_ref)
+    for row in rows:
+        raw = row["payload_json"]
+        sizes["rows"] += 1
+        sizes["bodies"] += len(raw.encode("utf-8")) if type(raw) is str else 0
+        _scenario_limits(sizes, row_limit, byte_limit, size_check)
+        stored[row["row_ref"]] = load_object(raw)
     result = scenario_snapshot(archive, stored)
-    # Permanent task bodies keep the full public document's existing size limit.
     if not legacy:
         dump(result)
     tasks = result.get("tasks")
@@ -90,7 +89,7 @@ def load_scenario_record(repo, scenario_ref):
         reject("trial_snapshot_invalid", "场景任务明细必须为带永久行引用的对象列表。")
     if len(stored) != len(tasks) or not same(stored, {row["row_ref"]: row for row in tasks}):
         reject("trial_snapshot_invalid", "场景快照与永久明细不一致。")
-    return header, result
+    return header, result, sizes
 
 
 def require_advanced(advanced):

@@ -67,7 +67,7 @@ def arguments(export=False, detail=False):
         raise WorkbenchCommandRejected("invalid_input", "这个报表专题不支持，报表没有变化。请从侧栏进入「报表中心」重新选择。", 400)
     page = _report_page(topic)
     token = request.args.get("snapshot_ref")
-    if (export or detail or page.number > 1) and not token:
+    if (export or detail) and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     return scope, topic, page, token
 

@@ -27,7 +27,27 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     result = response.get_json()
     receipt = client.get(path + "/adoption-commands/" + KEY).get_json()["data"]
     assert receipt["state"] == "committed" and receipt["receipt"]["receipt_ref"] == result["receipt_ref"]
-    history, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    statements = []
+    before, changes = snapshot(case.conn), case.conn.total_changes
+    case.conn.set_trace_callback(statements.append)
+    try:
+        history, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    finally:
+        case.conn.set_trace_callback(None)
+    queries = [sql.upper() for sql in statements if sql.upper().startswith("SELECT")]
+    receipt_queries = [sql for sql in queries if "FROM WORKBENCHCOMMANDRECEIPTS" in sql]
+    adopted_receipts = [sql for sql in receipt_queries if "WHERE ACTION=" in sql and "CONTEXT_REF=" in sql]
+    assert len(adopted_receipts) == 1
+    assert "ORDER BY COMMITTED_AT_UTC DESC,REQUEST_KEY DESC LIMIT 1001" in adopted_receipts[0]
+    assert all("WHERE" in sql for sql in receipt_queries)
+    assert not any("LENGTH(" in sql or "COUNT(" in sql or "SUM(" in sql for sql in receipt_queries)
+    assert not any("LENGTH(" in sql and "PAYLOAD_JSON" in sql for sql in queries)
+    assert sum("FROM WORKBENCHTRIALSCENARIOS WHERE SCENARIO_REF=" in sql for sql in queries) == 1
+    assert sum("FROM WORKBENCHTRIALSCENARIOROWS WHERE SCENARIO_REF=" in sql for sql in queries) == 1
+    assert sum("FROM WORKBENCHTRIALDRAFTS WHERE DRAFT_REF=" in sql for sql in queries) == 1
+    selected_histories = [sql for sql in queries if "FROM SCHEDULEHISTORY WHERE VERSION=" in sql and "RESULT_SUMMARY" in sql]
+    assert len(selected_histories) == 1 and "LIMIT 2" in selected_histories[0]
+    assert snapshot(case.conn) == before and case.conn.total_changes == changes
     entry = history["items"][0]
     assert entry["adoption"]["reason"] == INTENT["reason"]
     assert entry["adoption"]["declared_operator"] == INTENT["declared_operator"]
@@ -39,6 +59,20 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     assert client.get(path + "/adopt").status_code == 405
     unknown = client.get(path + "/adoption-commands/not-yet-seen-request").get_json()["data"]
     assert unknown == {"state": "not_observed", "receipt": None, "may_be_in_flight": True, "can_retry_automatically": False}
+    version = result["data"]["official_plan"]["version"]
+    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary,schedule_time) "
+                      "VALUES (?, 'duplicate-history', 'success', NULL, '2026-09-10 13:00:00')", (version,))
+    case.conn.commit()
+    duplicate, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    entry = duplicate["items"][0]
+    assert any(gap["code"] == "audit_missing" for gap in entry["evidence_gaps"])
+    assert entry["adoption"] == dict.fromkeys(("reason", "declared_operator", "application_operator", "adopted_at"))
+    from core.services.workbench.trial.adoption_history_policy import load_history
+    from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
+
+    case.conn.execute("DELETE FROM ScheduleHistory WHERE version=?", (version,))
+    case.conn.commit()
+    assert load_history(TrialAdoptionHistoryRepository(case.conn), version) is None
 
 
 def test_http_ack_unknown_points_to_original_scenario_and_key(trial_case):

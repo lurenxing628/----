@@ -19,7 +19,7 @@ function hooks() {
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
     render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); } };
 }
-const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'EffortProjectionContract.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
+const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'EffortProjectionContract.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
 function runtime(state = hooks()) {
   const window = { ResourceControls: { Button: 'button', Modal: 'modal' }, WorkbenchReference: 'reference', PointContract: {},
@@ -224,11 +224,17 @@ function identities() {
 const turns = () => new Promise(resolve => setImmediate(resolve));
 async function session() {
   for (const section of ['preparation', 'changeovers']) {
-    const state = hooks(), { window: local } = runtime(state), calls = [], signals = [], overview = { data: { run: { run_ref: run }, scope: fixture().data.scope, metric_definitions: [] } };
+    const state = hooks(), { window: local } = runtime(state), calls = [], signals = [], overview = { data: { run: { run_ref: run }, scope: fixture().data.scope, metric_definitions: [] }, meta: { snapshot_ref: token } };
     const props = { result: overview, section, query: {}, onQuery: q => { props.query = q; }, adapter: { [section]: async (run, q, signal) => { calls.push(clone(q)); signals.push(signal); if (calls.length === 1) throw new Error('首读失败'); return fixture(q, section); } } };
     let tree; async function render() { for (let i = 0; i < 3; i++) { tree = state.render(() => local.RunDecisionPreparation.Pane(props)); state.flush(); await turns(); } }
     await render(); assert.equal(calls.length, 1); assert(nodes(tree).some(node => node.type === 'error-box' && node.props.error));
     nodes(tree).find(node => node.props['aria-label'] === '刷新准备与切换明细').props.onClick(); await render(); assert.equal(calls.length, 2);
+    props.enabled = false; await render(); props.enabled = true; await render();
+    assert.equal(calls.length, 2, '准备与切换同上层快照隐藏重开保留成功结果');
+    props.enabled = false; props.result = { ...overview, meta: { snapshot_ref: 't'.repeat(32) } }; await render();
+    assert.equal(calls.length, 2, '隐藏准备与切换面板在上层刷新后不提前读取');
+    props.enabled = true; await render(); assert.equal(calls.length, 3, '重开准备与切换面板只读当前上层快照一次');
+    console.log(JSON.stringify({ r18_preparation: { section, same_snapshot_reopen: 0, hidden_refresh: 0, refreshed_reopen: 1 } }));
     nodes(tree).find(node => node.type === 'pager').props.onPage(2); await render(); assert.equal(calls.at(-1).page, 2); assert.equal(calls.at(-1).snapshot_ref, token);
     nodes(tree).find(node => node.props['aria-label'] === '准备与切换设备').props.onChange({ target: { value: machine } }); await render(); assert.equal(calls.at(-1).page, 1); assert.equal(calls.at(-1).snapshot_ref, undefined); assert.equal(calls.at(-1).machine_ref, machine);
     const filterValue = section === 'preparation' ? 'unplanned' : 'reference'; nodes(tree).find(node => node.type === 'select' && node.children.some(child => child && child.type === 'option' && child.props.value === filterValue)).props.onChange({ target: { value: filterValue } }); await render();

@@ -48,7 +48,7 @@ def candidate_case(tmp_path):
     case.path = path
     case.batch("B1")
     case.op_id = case.operation()
-    case.config(algo_mode="greedy", graph_candidate_weight_count=3, time_budget_seconds=60,
+    case.config(algo_mode="greedy", time_budget_seconds=60,
                 ortools_enabled="no", freeze_window_enabled="no")
     case.app = Flask("bl-candidate-tests")
     with case.app.app_context():

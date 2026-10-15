@@ -29,10 +29,10 @@ def _stable_projection(projection):
     return value
 
 
-def validate_piece_execution(svc, prepared, payload, scope, refs):
+def validate_piece_execution(svc, prepared, payload, scope, refs, *, purpose):
     facts, actual_seeds = verified_read(svc.conn, ("piece_execution", id(prepared)),
         lambda: _execution_inputs(svc, prepared, scope, refs))
-    protected = _protected_arrangements(svc, prepared, payload, actual_seeds)
+    protected = _protected_arrangements(svc, prepared, payload, actual_seeds, purpose=purpose)
     _validate_unselected_resource_overlap(svc, payload=payload, execution_facts=facts,
                                         operations=prepared.operations)
     return protected
@@ -68,7 +68,7 @@ def _current_protection(svc, prepared):
     return facts, actual_seeds
 
 
-def _protected_arrangements(svc, prepared, payload, actual_seeds):
+def _protected_arrangements(svc, prepared, payload, actual_seeds, *, purpose):
     rows = {row.op_id: row for row in payload.schedule_rows}
     seeds = prepared.seed_results
     by_seed = {seed["op_id"]: seed for seed in seeds}
@@ -80,7 +80,7 @@ def _protected_arrangements(svc, prepared, payload, actual_seeds):
         if not same([getattr(rows[seed["op_id"]], key) for key in _FIELDS], [seed[key] for key in _FIELDS]):
             block("piece_protected_seed_changed", "已开工或沿用的工序时间、设备、人员被改动了，本次没有采用。请回「执行排产」重新排一次。")
     derived = {seed["op_id"] for seed in seeds if seed.get("seed_source") == MERGED_EXECUTION_GROUP_SOURCE}
-    _original_arrangements(svc, prepared, rows, actual, protected, derived)
+    _original_arrangements(svc, prepared, rows, actual, protected, derived, purpose=purpose)
     return protected
 
 
@@ -100,11 +100,10 @@ def _quantities(scope, refs, projections):
             block("piece_execution_quantity_unproven", "有工序报了完工却没有确切完工数量，证明不了分件全部做完，本次没有采用。请到现场记录补齐完工数量。")
 
 
-def _original_arrangements(svc, prepared, rows, actual, protected, derived):
-    """候选要覆盖正式计划里已有的全部工序；按不重排时段保留的工序要和正式计划里的原安排一模一样。
-    正式计划里的锁定标记不再起作用，这里不再按它核对。"""
+def _original_arrangements(svc, prepared, rows, actual, protected, derived, *, purpose):
+    """正式采用覆盖全部原正式工序；每份候选都保持受保护的原安排。"""
     latest = _latest_plan_rows(svc, prepared.prev_version)
-    if not set(latest) <= set(rows):
+    if purpose == "adoption" and not set(latest) <= set(rows):
         block("official_scope_not_covered", "候选方案漏掉了正式计划里已有的部分工序，本次没有采用。请回「执行排产」重新排一次。")
     official = WorkbenchPieceAdoptionRepository(svc.conn)
     for op_id, identity in latest.items():

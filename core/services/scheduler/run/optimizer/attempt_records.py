@@ -48,11 +48,8 @@ def attempt_decision_evidence(
     verified: bool = True, comparison_kind: str = "incumbent",
 ) -> Dict[str, Any]:
     """Freeze the actual decision against its then-current reference, independently of representative rank."""
-    collector = getattr(search_report_state, "process_collector", None)
-    stamp = collector.last_evaluation_fact(candidate) if collector is not None else None
-    elapsed = stamp["elapsed_ms"] if stamp is not None else (
-        max(int((clock() - t_begin) * 1000), 0) if clock is not None and t_begin is not None else None)
-    verified = bool(verified and (stamp is None or stamp["verified"]))
+    elapsed = max(int((clock() - t_begin) * 1000), 0) if clock is not None and t_begin is not None else None
+    verified = bool(verified)
     current, previous = _comparison_snapshot(candidate), _comparison_snapshot(reference)
     objective_name = getattr(search_report_state, "objective_name", None)
     if not verified:
@@ -72,7 +69,7 @@ def attempt_decision_evidence(
     deltas = {key: current["metrics"][key] - previous["metrics"][key]
               if current["metrics"][key] is not None and previous["metrics"][key] is not None else None
               for key in _COMPARISON_METRICS} if comparable else None
-    return {"elapsed_ms": elapsed, "event_index": stamp["event_index"] if stamp is not None else None,
+    return {"elapsed_ms": elapsed, "event_index": None,
             "accepted": accepted, "verified": verified,
             "strict_improved": current["score"] < previous["score"] if comparable else None,
             "comparison": {"kind": comparison_kind if reference is not None else "none", "state": state,

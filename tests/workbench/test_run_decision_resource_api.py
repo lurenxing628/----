@@ -40,14 +40,44 @@ def add_pair(case, machine="M2", operator="O2", label=r"备用'甲\N"):
     case.conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES (?,?)", (operator, machine))
 
 
-def reassigned_run(case):
+def legacy_resource_archive(case, monkeypatch, settings=None, *, edits=None):
+    """Create a named legacy reading fixture before deriving its immutable models."""
+    from tests.workbench import decision_history_support
+    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
+
+    with monkeypatch.context() as archived:
+        install_complete_legacy_archive(archived)
+        original_run, original_refs = compute(case, settings)
+    existing_history = getattr(case, "history_refs", None)
+    case.history_refs = {"run_ref": original_run, "candidate_ref": original_refs[0]}
+    derive = decision_history_support._save_cloned_read_models
+
+    def derive_fixture(conn, run_ref):
+        refs = [row[0] for row in conn.execute(
+            "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (run_ref,))]
+        for index, edit in (edits or {}).items():
+            rewrite_candidate(case, refs[index], edit)
+        derive(conn, run_ref)
+
+    try:
+        with monkeypatch.context() as cloned:
+            cloned.setattr(decision_history_support, "_save_cloned_read_models", derive_fixture)
+            run_ref, _ = decision_history_support.clone_run(case, "2026-09-10T12:00:00.000000")
+    finally:
+        if existing_history is None:
+            del case.history_refs
+        else:
+            case.history_refs = existing_history
+    refs = [row[0] for row in case.conn.execute(
+        "SELECT candidate_ref FROM WorkbenchRunCandidates WHERE run_ref=? ORDER BY sequence", (run_ref,))]
+    return run_ref, refs
+
+
+def reassigned_run(case, monkeypatch):
     add_pair(case)
     case.conn.commit()
-    run_ref, refs = compute(case)
-    # Deterministic alternate saved arrangement; the other candidates and the
-    # admission facts remain the real worker's persisted result.
-    rewrite_candidate(case, refs[-1], lambda row: row.update(machine_id="M2", operator_id="O2"))
-    return run_ref, refs
+    return legacy_resource_archive(case, monkeypatch,
+        edits={-1: lambda row: row.update(machine_id="M2", operator_id="O2")})
 
 
 def row_by_ref(document, resource_ref):
@@ -56,7 +86,7 @@ def row_by_ref(document, resource_ref):
 
 def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate_case, monkeypatch):
     case = candidate_case
-    run_ref, refs = reassigned_run(case)
+    run_ref, refs = reassigned_run(case, monkeypatch=monkeypatch)
     client, _ = api(case)
     query = {**WINDOW, "selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0]}
     documents = {}
@@ -87,9 +117,9 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
         window_reads.append(resource["ref"])
         return original_window(index, resource, calendar, **values)
 
-    def record_calendar(value, calendar, low, high):
+    def record_calendar(value, calendar, low, high, **kwargs):
         calendar_reads.append(calendar["resource_ref"])
-        original_calendar(value, calendar, low, high)
+        original_calendar(value, calendar, low, high, **kwargs)
 
     def unexpected_execution(_baseline):
         pytest.fail("普通覆盖汇总只需要真实正式成员。")
@@ -150,7 +180,7 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
     assert reread["data"] == previous["data"]
 
 
-def test_partial_night_window_splits_days_and_preserves_overlap_identity(candidate_case):
+def test_partial_night_window_splits_days_and_preserves_overlap_identity(candidate_case, monkeypatch):
     case = candidate_case
     second, boundary = case.operation(seq=2), case.operation(seq=3)
     case.conn.commit()
@@ -158,11 +188,11 @@ def test_partial_night_window_splits_days_and_preserves_overlap_identity(candida
     calendar.upsert(DAY, shift_start="22:00", shift_end="06:00", efficiency=1, allow_normal="yes", allow_urgent="yes")
     calendar.upsert_operator_calendar("O1", DAY, shift_start="22:00", shift_end="06:00", efficiency=0.5,
                                       allow_normal="yes", allow_urgent="yes")
-    run_ref, refs = compute(case, case.settings(end_date="2026-09-10"))
     times = {case.op_id: ("2026-09-09T23:00:00", "2026-09-10T01:00:00"),
              second: ("2026-09-10T00:00:00", "2026-09-10T02:00:00"),
              boundary: ("2026-09-10T01:30:00", "2026-09-10T02:30:00")}
-    rewrite_candidate(case, refs[0], lambda row: row.update(start_time=times[row["op_id"]][0], end_time=times[row["op_id"]][1]))
+    run_ref, refs = legacy_resource_archive(case, monkeypatch, case.settings(end_date="2026-09-10"),
+        edits={0: lambda row: row.update(start_time=times[row["op_id"]][0], end_time=times[row["op_id"]][1])})
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0],
              "range_start": "2026-09-09T23:30:00", "range_end": "2026-09-10T01:30:00"}
@@ -268,7 +298,7 @@ def test_partial_night_window_splits_days_and_preserves_overlap_identity(candida
     assert float(exported[0]["所选可排总时长（小时）"]) == 6
 
 
-def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candidate_case):
+def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candidate_case, monkeypatch):
     case = candidate_case
     add_pair(case)
     add_pair(case, "M3", "O3")
@@ -282,9 +312,9 @@ def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candi
                                       allow_normal="yes", allow_urgent="yes")
     case.conn.execute("UPDATE OperatorCalendar SET efficiency=NULL WHERE operator_id IN ('O1','O3') AND date=?", (DAY,))
     case.conn.commit()
-    run_ref, refs = compute(case)
-    rewrite_candidate(case, refs[-1], lambda row: row.update(machine_id="M2", operator_id="O2"))
-    rewrite_candidate(case, refs[-2], lambda row: row.update(machine_id="M3", operator_id="O3"))
+    run_ref, refs = legacy_resource_archive(case, monkeypatch,
+        edits={-1: lambda row: row.update(machine_id="M2", operator_id="O2"),
+               -2: lambda row: row.update(machine_id="M3", operator_id="O3")})
     client, _ = api(case)
     query = {**WINDOW, "selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0]}
     operators = resource_document(client, run_ref, **dict(query, resource_kind="operator"))
@@ -322,9 +352,9 @@ def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candi
     assert actual["calendar_state"] == "complete" and actual["zero_capacity_reason"]["code"] == "actual_work_fragments_not_recorded"
 
 
-def test_hour_pressure_tracks_display_page_and_exports_its_exact_filter_window(candidate_case):
+def test_hour_pressure_tracks_display_page_and_exports_its_exact_filter_window(candidate_case, monkeypatch):
     case = candidate_case
-    run_ref, refs = reassigned_run(case)
+    run_ref, refs = reassigned_run(case, monkeypatch=monkeypatch)
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0], "resource_kind": "machine", "grain": "hour",
              "range_start": DAY + "T00:00:00", "range_end": "2026-09-11T00:00:00", "heatmap_size": 7,
@@ -452,6 +482,12 @@ def test_partial_worker_resource_load_keeps_ordinary_unplanned_demand_visible(ca
 
 
 def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_case, monkeypatch):
+    import json
+    from collections import Counter
+
+    from core.services.workbench.run import decision_resources as resource_runtime
+    from core.services.workbench.run.decision_resources import DecisionResources
+
     case = candidate_case
     batch_codes = ["B1"]
     for index in range(2, 26):
@@ -461,18 +497,130 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         case.operation(batch, machine_id=machine, operator_id=operator)
         batch_codes.append(batch)
     case.conn.commit()
-    run_ref, refs = compute(case, case.settings(*batch_codes))
+    run_ref, refs = legacy_resource_archive(case, monkeypatch, case.settings(*batch_codes))
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[0], "resource_kind": "machine",
              "resource_view": "selected_batches", "range_start": DAY + "T00:00:00", "range_end": "2026-10-04T00:00:00",
              "sort": "label", "order": "asc"}
-    first = resource_document(client, run_ref, **dict(query, heatmap_size=7))
+    calendar_refs, measurement_refs, calculation_keys, full_cells, drill_calls = [], [], [], [], []
+    parsed_calendar_times, day_facts_calls, day_statistics_calls = [], [], []
+    single_windows, bulk_windows = [], []
+    measurements = []
+    original_calendar = resource_projection._ResourceCalendar.__init__
+    original_measurement = resource_projection._ResourceMeasurement.__init__
+    original_values = resource_projection._ResourceMeasurement._values
+    original_cell = resource_projection._ResourceMeasurement.cell
+    original_drill = DecisionResources.drill
+    original_parse = resource_runtime.instant
+    original_facts = ResourceTaskIndex.period_facts
+    original_statistics = resource_projection._ResourceMeasurement.period_statistics
+    original_single = resource_projection.ResourceUtilizationMetrics.window
+    original_bulk = resource_projection.ResourceUtilizationMetrics.windows_at_boundaries
+
+    def record_calendar(value, calendar, low, high, **kwargs):
+        calendar_refs.append(calendar["resource_ref"])
+        original_calendar(value, calendar, low, high, **kwargs)
+
+    def record_parse(value):
+        parsed_calendar_times.append(value)
+        return original_parse(value)
+
+    def record_facts(index, resource, calendar, **kwargs):
+        day_facts_calls.append(resource["ref"])
+        return original_facts(index, resource, calendar, **kwargs)
+
+    def record_statistics(value, low, high, calendar_days, grain, group, *, whole=False):
+        day_statistics_calls.append((value.resource["ref"], low, high))
+        return original_statistics(value, low, high, calendar_days, grain, group, whole=whole)
+
+    def record_single(metrics, low, high, **kwargs):
+        single_windows.append((id(metrics), low, high))
+        return original_single(metrics, low, high, **kwargs)
+
+    def record_bulk(metrics, boundaries, **kwargs):
+        for index, raw in enumerate(original_bulk(metrics, boundaries, **kwargs)):
+            bulk_windows.append((id(metrics), boundaries[index], boundaries[index + 1]))
+            yield raw
+
+    def record_measurement(value, resource, *args, **kwargs):
+        measurement_refs.append(resource["ref"])
+        original_measurement(value, resource, *args, **kwargs)
+        measurements.append(value)
+
+    def record_values(value, low, high, calendar_days, *, potential_work=None, prepared=None):
+        result = original_values(value, low, high, calendar_days, potential_work=potential_work, prepared=prepared)
+        effective_work = (result.raw["span_occupied_hours"] > 0 or not value.work_complete
+                          if potential_work is None else potential_work)
+        calculation_keys.append((value.resource["ref"], low, high, value._day_key(calendar_days), effective_work))
+        return result
+
+    def record_cell(value, low, high, calendar_days, *, whole=False):
+        full_cells.append((value.resource["ref"], whole))
+        return original_cell(value, low, high, calendar_days, whole=whole)
+
+    def record_drill(engine, key, resource, **kwargs):
+        drill_calls.append((key, resource["ref"]))
+        return original_drill(engine, key, resource, **kwargs)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(resource_projection._ResourceCalendar, "__init__", record_calendar)
+        scoped.setattr(resource_projection._ResourceMeasurement, "__init__", record_measurement)
+        scoped.setattr(resource_projection._ResourceMeasurement, "_values", record_values)
+        scoped.setattr(resource_projection._ResourceMeasurement, "cell", record_cell)
+        scoped.setattr(DecisionResources, "drill", record_drill)
+        scoped.setattr(resource_runtime, "instant", record_parse)
+        scoped.setattr(ResourceTaskIndex, "period_facts", record_facts)
+        scoped.setattr(resource_projection._ResourceMeasurement, "period_statistics", record_statistics)
+        scoped.setattr(resource_projection.ResourceUtilizationMetrics, "window", record_single)
+        scoped.setattr(resource_projection.ResourceUtilizationMetrics, "windows_at_boundaries", record_bulk)
+        first = resource_document(client, run_ref, **dict(query, heatmap_size=7))
+    cohort_refs = set(first["data"]["scope"]["resource_refs"]["machine"])
+    assert len(cohort_refs) == 25
+    assert Counter(calendar_refs) == Counter(measurement_refs) == Counter({ref: 1 for ref in cohort_refs})
+    assert len(calculation_keys) == 25 * (1 + 25) + 20 * 7 and len(set(calculation_keys)) == 650
+    assert sum(len(key[3]) == 1 for key in calculation_keys) == 25 * 25 + 20 * 7
+    assert len(single_windows) == 25 + 20 * 7 and len(bulk_windows) == 25 * 25
+    assert len(single_windows + bulk_windows) == 790 and len(set(single_windows + bulk_windows)) == 650
+    assert Counter(Counter(calculation_keys).values()) == {1: 510, 2: 140}
+    duplicates = {key for key, count in Counter(calculation_keys).items() if count == 2}
+    assert {(key[0], key[1], key[2]) for key in duplicates} == {
+        (row["resource_ref"], resource_projection.instant(cell["start"]), resource_projection.instant(cell["end"]))
+        for row in first["data"]["heatmap"]["items"] for cell in row["cells"]}
+    retained_contexts = sum(len(value._value_cache) for value in measurements)
+    retained_variants = sum(sum(len(variants) for variants in value._value_cache.values()) for value in measurements)
+    assert retained_contexts == retained_variants == 25 + 20 * 7
+    assert all(not value.retain_statistics_values and all(value._value_cache.values()) for value in measurements)
+    assert Counter(whole for _ref, whole in full_cells) == {True: 25, False: 20 * 7}
+    assert len(parsed_calendar_times) == len(set(parsed_calendar_times))
+    assert day_facts_calls == [] and len(day_statistics_calls) == 20 * 7
+    output_rows = (first["data"]["items"] + first["data"]["rankings"]["top_pressure"] +
+                   first["data"]["rankings"]["top_increase"])
+    output_refs = {row["resource_ref"] for row in output_rows}
+    assert Counter(drill_calls) == Counter({(key, ref): 1 for key in (refs[0], "reference") for ref in output_refs})
+    print("U5_RESOURCE_FACT_COUNTS=" + json.dumps({
+        "resources": len(cohort_refs), "natural_days": 25, "visible_resources": 20, "visible_buckets": 7,
+        "normalized_calendars": len(calendar_refs), "measurements": len(measurement_refs),
+        "numeric_calculations": len(calculation_keys), "unique_numeric_keys": len(set(calculation_keys)),
+        "complete_window_rows": 25, "complete_period_rows": len(full_cells) - 25,
+        "drill_resources": len(output_refs), "drill_locations": len(drill_calls),
+        "calendar_time_parses": len(parsed_calendar_times), "unique_calendar_time_strings": len(set(parsed_calendar_times)),
+        "single_metrics_windows": len(single_windows), "bulk_metrics_windows": len(bulk_windows),
+        "retained_value_contexts": retained_contexts, "retained_value_variants": retained_variants,
+        "intentional_visible_recalculations": len(duplicates),
+        "full_day_period_facts_calls": len(day_facts_calls), "visible_period_statistics": len(day_statistics_calls),
+        "public_period_sides": 2 * 20 * 7}, sort_keys=True))
     token = first["meta"]["snapshot_ref"]
     page = first["data"]["page"]
     assert (page["number"], page["size"], page["total"], page["has_more"]) == (1, 20, 25, True)
     second = resource_document(client, run_ref, **dict(query, page=2, snapshot_ref=token, heatmap_size=7))
     rows = first["data"]["items"] + second["data"]["items"]
     assert len(rows) == len({row["resource_ref"] for row in rows}) == 25
+    assert rows == sorted(rows, key=lambda row: (row["label"], row["resource_ref"]))
+    assert len(first["data"]["items"]) == 20 and len(second["data"]["items"]) == 5
+    for row in output_rows:
+        for key in ("selected", "reference"):
+            assert row["drill"][key]["resource_ref"] == row["resource_ref"]
+            assert row["drill"][key]["candidate_ref"] == refs[0]
     other_dates = resource_document(client, run_ref, **dict(query, heatmap_page=2, heatmap_size=7, snapshot_ref=token))
     assert other_dates["data"]["summary"] == first["data"]["summary"]
     assert {row["date"] for row in other_dates["data"]["heatmap"]["buckets"]}.isdisjoint(
@@ -527,6 +675,9 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     finally:
         book.close()
     actual, _scope, _state = read_decision_export(case.conn, run_ref, "resources", **query)
+    assert len(actual["export_resources"][0]["items"]) == 25
+    assert all({"before", "after", "filter_summary", "drill"}.issubset(row)
+               for row in actual["export_resources"][0]["items"])
     boundary = deepcopy(actual)
     coverage = boundary["export_resources"][0]["coverage"]
     categories = (("missing_formal_operation_refs", "缺失正式"), ("unplanned_operation_refs", "其他未安排"),
@@ -540,6 +691,38 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     with store.snapshot(), read_evidence_scope(case.conn):
         source = DecisionSource(store, run_ref, **source_query)
         boundary["export_coverage_operations"] = list(coverage_operation_rows(source, coverage))
+        engine = source.resources
+        resource = engine.resource(case.ref("machine", "M1"), "machine")
+        calendar = engine.resource_calendar(resource)
+        parsed_calendar_times.clear()
+        with monkeypatch.context() as scoped:
+            scoped.setattr(resource_runtime, "instant", record_parse)
+            clock = DAY + "T08:00:00"
+            precise_clock = clock + ".000000"
+            assert engine._calendar_time(clock) == engine._calendar_time(precise_clock)
+            assert engine._calendar_time(precise_clock) is engine._calendar_times[precise_clock]
+            assert parsed_calendar_times == [precise_clock]
+            for _attempt in range(2):
+                with pytest.raises(ValueError, match="Invalid local plan/calendar time"):
+                    engine._calendar_time("invalid-time")
+            assert parsed_calendar_times == [precise_clock, "invalid-time", "invalid-time"]
+            assert "invalid-time" not in engine._calendar_times
+        detailed = engine.periods(resource, grain="hour", start=DAY + "T08:00:00", end=DAY + "T09:00:00", details=True)[0]
+        assert detailed["before"]["tasks"] is not detailed["after"]["tasks"]
+        assert detailed["before"]["tasks"][0]["drill"] is not detailed["after"]["tasks"][0]["drill"]
+        assert detailed["before"]["tasks"][0]["drill"]["candidate_ref"] == refs[0]
+        assert detailed["after"]["tasks"][0]["drill"]["candidate_ref"] == refs[0]
+        detailed["after"]["tasks"][0]["drill"]["test_location"] = "selected"
+        assert "test_location" not in detailed["before"]["tasks"][0]["drill"]
+        original_index = engine.index(refs[0])
+        engine.configure(0.9)
+        assert engine.index(refs[0]) is original_index and engine.resource_calendar(resource) is calendar
+        assert detailed["after"]["high_pressure"] is False
+        engine.configure(0.7)
+        assert engine.index(refs[0]) is not original_index and engine.resource_calendar(resource) is calendar
+        refreshed = engine.periods(resource, grain="hour", start=DAY + "T08:00:00", end=DAY + "T09:00:00")[0]
+        assert refreshed["after"]["occupied_hours"] == detailed["after"]["occupied_hours"] == 0.75
+        assert refreshed["after"]["pressure_threshold"] == 0.7 and refreshed["after"]["high_pressure"] is True
     download = write_run_decision_export(boundary, first["meta"], "xlsx", "resources")
     assert download.row_count == 25 + 3 * 800
     book = load_workbook(io.BytesIO(download.content), read_only=True, data_only=False)
@@ -660,3 +843,151 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         assert exported_days[0]["所选占用比例（%）"] == pytest.approx(days[0]["after"]["utilization_ratio"] * 100)
     finally:
         book.close()
+
+
+def test_resource_workspace_shares_source_restores_view_and_keeps_resource_failures(candidate_case, monkeypatch):
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.run import decision_resource_workspace as workspace
+    from tests.workbench.test_run_decision_api import decision_summary
+    from web.routes.workbench.read_context import bind_read_snapshot
+
+    case = candidate_case
+    add_pair(case)
+    case.conn.commit()
+    run_ref, refs = compute(case)
+    client, statements = api(case)
+    path = BASE + "/runs/" + run_ref + "/decision/resource-workspace"
+    query = {**WINDOW, "selected_candidate_ref": refs[-1], "reference_candidate_ref": refs[0]}
+    constructed, summary_sources, resource_sources = [], [], []
+    original_source, original_summary, original_resource = workspace.DecisionSource, workspace.decision_summary, workspace.resource_details
+
+    def source_once(*args, **kwargs):
+        source = original_source(*args, **kwargs)
+        constructed.append(source)
+        return source
+
+    def summary_from(source):
+        summary_sources.append(source)
+        return original_summary(source)
+
+    def resources_from(source, *args, **kwargs):
+        resource_sources.append(source)
+        return original_resource(source, *args, **kwargs)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(workspace, "DecisionSource", source_once)
+        scoped.setattr(workspace, "decision_summary", summary_from)
+        scoped.setattr(workspace, "resource_details", resources_from)
+        combined = client.get(path, query_string=query)
+    assert combined.status_code == 200 and combined.headers["Cache-Control"] == "no-store"
+    result = combined.get_json()
+    assert constructed == summary_sources == resource_sources and len(constructed) == 1
+    resource = result["resource_result"]
+    assert result["ok"] is resource["ok"] is True
+    assert result["meta"]["as_of"] == resource["meta"]["as_of"]
+    assert result["meta"]["snapshot_ref"] != resource["meta"]["snapshot_ref"]
+    assert "snapshot_ref" not in result["resource_query"]
+    independent_summary = decision_summary(client, run_ref, **query)
+    independent_resources = resource_document(client, run_ref, **query, heatmap_size=7)
+    assert result["data"] == independent_summary["data"]
+    assert resource["data"] == independent_resources["data"]
+    assert resource["schema_version"] == independent_resources["schema_version"]
+    assert resource["warnings"] == independent_resources["warnings"]
+    threshold = client.get(path, query_string={**query, "pressure_threshold": 0.5}).get_json()
+    assert threshold["data"] == independent_summary["data"]
+    assert threshold["resource_result"]["data"] == resource_document(
+        client, run_ref, **query, pressure_threshold=0.5, heatmap_size=7)["data"]
+
+    no_selected = client.get(path, query_string={**WINDOW, "reference_candidate_ref": refs[0]}).get_json()
+    initial_summary = decision_summary(client, run_ref, **WINDOW, reference_candidate_ref=refs[0])["data"]
+    assert no_selected["data"] == initial_summary
+    assert no_selected["resource_result"]["data"]["candidate"]["candidate_ref"] == initial_summary["scope"]["selected_candidate_ref"]
+    token = resource["meta"]["snapshot_ref"]
+    paging = client.get(path, query_string={**query, "resource_snapshot_ref": token, "page": 2}).get_json()
+    assert paging["ok"] and paging["resource_result"]["ok"]
+    assert paging["resource_query"]["snapshot_ref"] == token
+    assert paging["resource_result"]["meta"]["snapshot_ref"] == token
+    assert paging["resource_result"]["data"]["page"]["number"] == 2
+    assert paging["meta"]["as_of"] == paging["resource_result"]["meta"]["as_of"]
+    store = CandidateStore(case.conn)
+    with store.snapshot(), read_evidence_scope(case.conn):
+        source = original_source(store, run_ref, **query)
+        state, scope = source.state(), {"kind": "run-decision", **source.scope}
+    old_summary = bind_read_snapshot(scope, state, as_of=DAY + "T08:01:00")
+    old_resource = bind_read_snapshot({**scope, "filters": resource["data"]["filters"]}, state, as_of=DAY + "T08:02:00")
+    only_summary = client.get(path, query_string={**query, "snapshot_ref": old_summary["snapshot_ref"]}).get_json()
+    assert only_summary["ok"] and only_summary["resource_result"]["ok"]
+    assert only_summary["meta"]["as_of"] == only_summary["resource_result"]["meta"]["as_of"] == old_summary["as_of"]
+    both_old = client.get(path, query_string={**query, "snapshot_ref": old_summary["snapshot_ref"],
+                                             "resource_snapshot_ref": old_resource["snapshot_ref"]}).get_json()
+    assert both_old["ok"] and both_old["resource_result"]["ok"]
+    assert both_old["meta"]["snapshot_ref"] == old_summary["snapshot_ref"]
+    assert both_old["resource_result"]["meta"]["snapshot_ref"] == old_resource["snapshot_ref"]
+    assert both_old["meta"]["as_of"] == old_summary["as_of"]
+    assert both_old["resource_result"]["meta"]["as_of"] == old_resource["as_of"]
+    export = client.get(BASE + "/runs/" + run_ref + "/decision/export",
+        query_string={**query, "snapshot_ref": token, "heatmap_size": 7, "section": "resources", "format": "csv"})
+    assert export.status_code == 200, export.get_json()
+    assert export.headers["X-Workbench-Snapshot-Ref"] == token
+    exported_resources = list(csv.DictReader(io.StringIO(export.data.decode("utf-8-sig"))))
+    assert {row["资源永久编号"] for row in exported_resources} == set(resource["data"]["scope"]["resource_refs"]["machine"])
+
+    invalid_ref = "e" * 48
+    restored = client.get(path, query_string={**query, "resource_ref": invalid_ref, "resource_snapshot_ref": "expired-view", "page": 9})
+    assert restored.status_code == 200
+    restored = restored.get_json()
+    assert restored["resource_result"]["ok"]
+    assert "resource_ref" not in restored["resource_query"] and "snapshot_ref" not in restored["resource_query"]
+    assert restored["resource_query"]["page"] == 1
+    assert client.get(BASE + "/runs/" + run_ref + "/decision/resources", query_string={**query, "resource_ref": invalid_ref}).status_code == 404
+    display = {"grain": "hour", "display_start": DAY + "T07:00:00", "display_end": DAY + "T17:00:00",
+               "resource_snapshot_ref": "expired-view", "heatmap_page": 9}
+    restored = client.get(path, query_string={**query, **display}).get_json()
+    assert restored["resource_result"]["ok"] and restored["resource_query"]["grain"] == "hour"
+    assert not {"display_start", "display_end", "snapshot_ref"}.intersection(restored["resource_query"])
+    assert restored["resource_query"]["heatmap_page"] == 1
+    ordinary_display = {key: value for key, value in display.items() if key != "resource_snapshot_ref"}
+    assert client.get(BASE + "/runs/" + run_ref + "/decision/resources", query_string={**query, **ordinary_display}).status_code == 422
+    for invalid in ({"pressure_threshold": 0}, {"resource_ref": "malformed"}, {"page": "01"},
+                    {"heatmap_size": 15}, {"display_start": DAY + "T09:00:00"},
+                    {"grain": "hour", "display_start": "invalid-time", "display_end": "invalid-time"}, {"unknown": "field"}):
+        rejected = client.get(path, query_string={**query, **invalid})
+        ordinary = client.get(BASE + "/runs/" + run_ref + "/decision/resources", query_string={**query, **invalid})
+        assert rejected.status_code == ordinary.status_code
+        assert rejected.get_json()["error"]["code"] == ordinary.get_json()["error"]["code"] == "invalid_input"
+        assert rejected.get_json()["error"]["message"] == ordinary.get_json()["error"]["message"]
+    duplicate = client.get(path, query_string=list(query.items()) + [("grain", "day"), ("grain", "week")])
+    assert duplicate.status_code == 422
+    stale = client.get(path, query_string={**query, "resource_snapshot_ref": "expired-view"}).get_json()
+    assert stale["ok"] and stale["data"] == result["data"]
+    assert not stale["resource_result"]["ok"]
+    assert stale["resource_result"]["status"] == 409 and stale["resource_result"]["error"]["code"] == "snapshot_stale"
+    stale_summary = client.get(path, query_string={**query, "snapshot_ref": "expired-summary"})
+    assert stale_summary.status_code == 409 and not stale_summary.get_json()["ok"]
+
+    def known_failure(*_args, **_kwargs):
+        raise WorkbenchCommandRejected("resource_evidence_invalid", "原资源读取失败", 500)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(workspace, "resource_details", known_failure)
+        known = client.get(path, query_string=query)
+    assert known.status_code == 200 and known.get_json()["data"] == result["data"]
+    failure = known.get_json()["resource_result"]
+    assert failure["status"] == 500 and failure["error"]["code"] == "resource_evidence_invalid"
+    assert failure["error"]["message"] == "原资源读取失败" and failure["error"]["retryable"] is True
+
+    def unexpected(*_args, **_kwargs):
+        raise RuntimeError("unanticipated resource reader failure")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(workspace, "resource_details", unexpected)
+        unknown = client.get(path, query_string=query)
+    assert unknown.status_code == 500 and unknown.get_json()["error"]["code"] == "storage_failure"
+    assert not unknown.get_json()["ok"] and "resource_result" not in unknown.get_json()
+    pending = case.accept(key="resource-workspace-pending")
+    no_result = client.get(BASE + "/runs/" + pending["run_ref"] + "/decision/resource-workspace").get_json()
+    assert no_result["ok"] and no_result["data"]["candidates"] == [] and no_result["resource_result"] is None
+    assert no_result["resource_query"]["page"] == 1
+    # All client connections were query_only; writes above belong to the test's
+    # explicit saved arrangement and pending-run setup, never to these readers.
+    assert not any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "REPLACE")) for sql in statements)

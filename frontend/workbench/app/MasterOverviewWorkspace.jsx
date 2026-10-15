@@ -4,10 +4,6 @@
   const { Table, Tabs, Pager } = window.MasterOverviewTable;
   const { useState, useEffect, useMemo, useRef } = React;
   async function readList(api, scope, page, token, signal) {
-    if (page > 1 && !token) {
-      const first = await api.list(scope, 1, undefined, signal);
-      token = first.meta.snapshot_ref;
-    }
     return api.list(scope, page, token, signal);
   }
   function readContext(context) {

@@ -13,6 +13,37 @@ from core.errors import ValidationError
 _RESIDUAL_CAPACITY_MAX_WINDOW_DAYS = 30
 
 
+class FixedResourceBlockingFacts:
+    """Fixed blocking spans owned by one captured feature input, across its windows."""
+
+    def __init__(self, *, downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+                 seed_results_by_resource_id: Dict[str, Dict[str, List[Any]]]) -> None:
+        self._downtime_map = downtime_map
+        self._seed_results = seed_results_by_resource_id
+        self._downtime_segments: Dict[str, List[Tuple[datetime, datetime]]] = {}
+        self._seed_segments: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {"machine": {}, "operator": {}}
+        self._pairs: Dict[Tuple[str, Optional[str]], List[Tuple[datetime, datetime]]] = {}
+
+    def _resource_seeds(self, kind: str, resource_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
+        key = resource_id or ""
+        cache = self._seed_segments[kind]
+        if key not in cache:
+            cache[key] = _seed_segments(self._seed_results.get(kind, {}).get(key) or [])
+        return cache[key]
+
+    def segments_for(self, machine_id: str, operator_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
+        key = machine_id, operator_id
+        if key not in self._pairs:
+            if machine_id not in self._downtime_segments:
+                self._downtime_segments[machine_id] = _valid_segments(self._downtime_map.get(machine_id) or [])
+            self._pairs[key] = _merge_segments(
+                self._downtime_segments[machine_id]
+                + self._resource_seeds("machine", machine_id)
+                + self._resource_seeds("operator", operator_id)
+            )
+        return self._pairs[key]
+
+
 def residual_capacity_for_operation(
     op: Any,
     *,
@@ -23,6 +54,7 @@ def residual_capacity_for_operation(
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_results_by_resource_id: Dict[str, Dict[str, List[Any]]],
     resource_pool: Optional[Dict[str, Any]],
+    prepared: Optional[FixedResourceBlockingFacts] = None,
 ) -> Dict[str, float]:
     machine_ids = _candidate_machine_ids(op, resource_pool=resource_pool)
     if not machine_ids or due_exclusive <= start_dt:
@@ -35,6 +67,9 @@ def residual_capacity_for_operation(
             bottleneck_machine_count=1 if machine_ids else 0,
         )
 
+    if prepared is None:
+        prepared = FixedResourceBlockingFacts(downtime_map=downtime_map,
+                                               seed_results_by_resource_id=seed_results_by_resource_id)
     window_end = _residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
     priority = getattr(batch, "priority", None)
     requires_auto_operator = _requires_auto_operator(op, resource_pool=resource_pool)
@@ -53,8 +88,7 @@ def residual_capacity_for_operation(
                 due_exclusive=window_end,
                 priority=priority,
                 calendar_service=calendar_service,
-                downtime_map=downtime_map,
-                seed_results_by_resource_id=seed_results_by_resource_id,
+                prepared=prepared,
             )
         )
     if not candidates:
@@ -115,8 +149,7 @@ def _machine_residual_capacity(
     due_exclusive: datetime,
     priority: Any,
     calendar_service: Optional[Any],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_results_by_resource_id: Dict[str, Dict[str, List[Any]]],
+    prepared: FixedResourceBlockingFacts,
 ) -> Tuple[float, float, float]:
     operator_payloads = [
         _machine_operator_residual_capacity(
@@ -126,8 +159,7 @@ def _machine_residual_capacity(
             due_exclusive=due_exclusive,
             priority=priority,
             calendar_service=calendar_service,
-            downtime_map=downtime_map,
-            seed_results_by_resource_id=seed_results_by_resource_id,
+            prepared=prepared,
         )
         for operator_id in (operator_ids or (None,))
     ]
@@ -142,8 +174,7 @@ def _machine_operator_residual_capacity(
     due_exclusive: datetime,
     priority: Any,
     calendar_service: Optional[Any],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_results_by_resource_id: Dict[str, Dict[str, List[Any]]],
+    prepared: FixedResourceBlockingFacts,
 ) -> Tuple[float, float, float]:
     window_hours = _calendar_capacity_hours(
         calendar_service,
@@ -152,18 +183,11 @@ def _machine_operator_residual_capacity(
         priority=priority,
         operator_id=operator_id,
     )
-    machine_seed_results = seed_results_by_resource_id.get("machine", {}).get(machine_id) or []
-    operator_seed_results = seed_results_by_resource_id.get("operator", {}).get(operator_id or "") or []
-    blocked_segments = _merge_segments(
-        list(downtime_map.get(machine_id) or [])
-        + _seed_segments(machine_seed_results)
-        + _seed_segments(operator_seed_results)
-    )
     blocked_hours = _blocked_capacity_hours(
         calendar_service,
         start_dt,
         due_exclusive,
-        blocked_segments,
+        prepared.segments_for(machine_id, operator_id),
         priority=priority,
         operator_id=operator_id,
     )
@@ -277,13 +301,17 @@ def _seed_segments(seed_results: Iterable[Any]) -> List[Tuple[datetime, datetime
     return segments
 
 
-def _merge_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
-    normalized = [
+def _valid_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
+    return [
         (start, end)
         for start, end in list(segments or [])
         if isinstance(start, datetime) and isinstance(end, datetime) and end > start
     ]
-    normalized.sort(key=lambda item: item[0])
+
+
+def _merge_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
+    """Merge already valid positive spans from the fixed blocking preparation."""
+    normalized = sorted(segments, key=lambda item: item[0])
     merged: List[Tuple[datetime, datetime]] = []
     for start, end in normalized:
         if not merged or start > merged[-1][1]:
@@ -305,9 +333,7 @@ def _blocked_capacity_hours(
     operator_id: Optional[str],
 ) -> float:
     total = 0.0
-    for block_start, block_end in list(segments or []):
-        if not isinstance(block_start, datetime) or not isinstance(block_end, datetime):
-            continue
+    for block_start, block_end in segments:
         overlap_start = max(start_dt, block_start)
         overlap_end = min(end_dt, block_end)
         if overlap_end <= overlap_start:
@@ -466,6 +492,7 @@ def _non_negative_float(value: Any, *, field: str) -> float:
 
 
 __all__ = [
+    "FixedResourceBlockingFacts",
     "bottleneck_on",
     "residual_capacity_for_operation",
     "seed_results_by_machine_id",

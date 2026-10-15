@@ -76,6 +76,7 @@ class InsertionScreen:
             order = tuple(without[:position] + [op_id] + without[position:])
             if order in self.search.scores:
                 self.search.report["duplicate_decision_pruned"] += 1
+                self.search._record_local_reuse("local_trial_reused")
                 continue
             ranked.append((self._estimate(order), abs(position - anchor), position))
         if diversify:

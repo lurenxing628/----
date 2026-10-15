@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from itertools import islice
-from typing import Any, Callable, Dict, Generator, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, Iterator, List, Optional, Sequence
 
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
@@ -12,12 +11,13 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_REPAIRED_ORIGIN,
     GraphReadyWeightProfile,
 )
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
 from .acceptance import build_graph_ready_improve_only_acceptance_event
 from .context import reason_from_validation
 from .repair_accounting import RepairWorkAccounting
 from .repair_contract import REPAIR_PHASE, EliteRepairLimits, finish_repair_report, new_repair_report
-from .repair_decisions import RepairDecision
+from .repair_decisions import RepairDecision, RepairParentPreparation, prepare_repair_parent
 from .repair_portfolio import ParentRepairPortfolio, RepairPortfolio, build_repair_portfolio
 from .repair_rotation import (
     _current_improvements,
@@ -32,9 +32,8 @@ from .repair_rotation import (
 from .reporting import append_graph_attempt, append_graph_trace, record_rejected_attempt, repair_public_message
 from .v2_contract import is_graph_ready_v2_contract_error
 
-
-class _RepairBudgetExhausted(RuntimeError):
-    pass
+if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 
 class EliteRepairPool:
@@ -45,7 +44,8 @@ class EliteRepairPool:
                  best: Optional[Dict[str, Any]], report_state: Any,
                  graph_context: Optional[Dict[str, Any]] = None,
                  resource_pool: Optional[Dict[str, Any]] = None,
-                 clock: Optional[Callable[[], float]] = None, deadline: Optional[float] = None) -> None:
+                 clock: Optional[Callable[[], float]] = None, deadline: Optional[float] = None,
+                 decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.objective_name = objective_name
         self.operations = operations
@@ -56,8 +56,12 @@ class EliteRepairPool:
         self.resource_pool = resource_pool
         self.clock = clock
         self.deadline = deadline
+        self.decode_session = decode_session
         self.elites: List[Dict[str, Any]] = []
+        self.active_parents: List[Dict[str, Any]] = []
         self.parents_by_fingerprint: Dict[tuple, Dict[str, Any]] = {}
+        self.profile_parent_sizes: Dict[int, int] = {}
+        self._next_portfolio_id = 1
         self._candidate_sequence = 0
         self.report_state = report_state
         self.seen_outputs = set(report_state.candidate_fingerprints) if report_state is not None else set()
@@ -99,6 +103,10 @@ class EliteRepairPool:
             return
         self.seen_elites.add(elite_identity)
         elite = self.parents_by_fingerprint.get(fingerprint.output_key)
+        if elite is None:
+            elite = next((parent for parent in self.active_parents
+                          if parent.get("fingerprint") is not None
+                          and parent["fingerprint"].output_key == fingerprint.output_key), None)
         if elite is not None:
             self.add_basis_variant(elite, profile)
         else:
@@ -106,23 +114,31 @@ class EliteRepairPool:
         if not elite["neighborhood"].candidate_count:
             return
         self.parents_by_fingerprint[fingerprint.output_key] = elite
+        self.profile_parent_sizes[elite["portfolio_id"]] = elite["neighborhood"].candidate_count
         self._select_parent_elites()
 
     def make_elite(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile, *, fingerprint: Any = None) -> Dict[str, Any]:
-        neighborhood = ParentRepairPortfolio(((profile, self._build_variant(candidate, profile)),))
-        return {"candidate": candidate, "profile": profile, "fingerprint": self.fingerprint(candidate, identity=fingerprint),
-                "neighborhood": neighborhood, "decision_offset": 0, "stream_offsets": {}}
+        prepared = prepare_repair_parent(candidate, self.operations, self.resource_pool, self.graph_context,
+                                         resource_moves=self.graph_context is not None)
+        neighborhood = ParentRepairPortfolio(((profile, self._build_variant(candidate, profile, prepared)),))
+        elite = {"candidate": candidate, "profile": profile, "fingerprint": self.fingerprint(candidate, identity=fingerprint),
+                 "neighborhood": neighborhood, "decision_offset": 0, "stream_offsets": {}, "prepared_parent": prepared}
+        elite["portfolio_id"] = self._next_portfolio_id
+        self._next_portfolio_id += 1
+        return elite
 
-    def _build_variant(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> RepairPortfolio:
+    def _build_variant(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile,
+                       prepared_parent: RepairParentPreparation) -> RepairPortfolio:
         return build_repair_portfolio(
             candidate, operations=self.operations, metrics_by_op_id=select_profile_metrics(self.metrics_by_op_id, profile=profile),
             start_dt=self.start_dt, seed=self.seed, objective_name=self.objective_name,
-            graph_context=self.graph_context, resource_pool=self.resource_pool)
+            graph_context=self.graph_context, resource_pool=self.resource_pool, prepared_parent=prepared_parent)
 
     def add_basis_variant(self, elite: Dict[str, Any], profile: GraphReadyWeightProfile) -> None:
         neighborhood = elite["neighborhood"]
         if profile.feature_basis not in neighborhood.feature_bases:
-            elite["neighborhood"] = neighborhood.with_variant(profile, self._build_variant(elite["candidate"], profile))
+            elite["neighborhood"] = neighborhood.with_variant(
+                profile, self._build_variant(elite["candidate"], profile, elite["prepared_parent"]))
 
     def _select_parent_elites(self) -> None:
         parents = sorted(self.parents_by_fingerprint.values(), key=lambda elite: (
@@ -140,19 +156,20 @@ class EliteRepairPool:
         self.report["eligible_elites"] = len(parents)
         self.report["skipped_elites_by_top_k"] = len(removed)
         self.report["skipped_neighbors_by_top_k"] = sum(elite["neighborhood"].candidate_count for elite in removed)
+        self.parents_by_fingerprint = {elite["fingerprint"].output_key: elite for elite in self.elites}
 
 
 class EliteRepairRun:
     """Elite repair as a resumable search stage: one task is one evaluated neighbour.
 
-    The rotation hands the stage a task whenever it has used the least time; the stage itself only
-    keeps its own guards (local time budget, the shared candidate cap, round policy) and reports
-    what it evaluated, pruned and skipped exactly as the sequential version did.
+    The shared decode session owns admission and reuse. Rotation and round limits
+    keep repair resumable while its report accounts for actual decodes and skips.
     """
 
     def __init__(self, pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., Dict[str, Any]], budget: Any,
                  deadline: float, clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                 improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool) -> None:
+                 improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool,
+                 decode_session: SharedDecodeSession) -> None:
         self.pool = pool
         self.state = state
         self.evaluate = evaluate
@@ -164,6 +181,7 @@ class EliteRepairRun:
         self.improvement_trace = improvement_trace
         self.report_state = report_state
         self.strict_mode = strict_mode
+        self.decode_session = decode_session
         self.report = pool.report
         self.repair_deadline = deadline
         self.started_at: Optional[float] = None
@@ -173,12 +191,9 @@ class EliteRepairRun:
         self.finished = False
         self._tasks: Optional[Generator[None, None, None]] = None
         self.accounting = RepairWorkAccounting()
-        self.seen_decisions: set = set()
 
     def available(self) -> bool:
         if not self.pool.limits.enabled:
-            return False
-        if self.budget.remaining_candidates() <= 0:
             return False
         if self.exhausted:
             return (self.clock() < self.repair_deadline
@@ -205,13 +220,11 @@ class EliteRepairRun:
 
     def _start(self, started: float) -> Generator[None, None, None]:
         report, pruning = self.report, self.report["repair_pruning_report"]
-        limits = self.pool.limits
         self.started_at = started
-        remaining_ms = max(int((self.deadline - started) * 1000), 0)
-        budget_ms = remaining_ms if limits.time_budget_ms is None else min(remaining_ms, limits.time_budget_ms)
+        budget_ms = max(int((self.deadline - started) * 1000), 0)
         self.repair_deadline = min(self.deadline, started + budget_ms / 1000.0)
         report["repair_time_budget_ms"] = pruning["budget_ms"] = budget_ms
-        report["repair_candidate_budget"] = self.budget.remaining_candidates()
+        report["repair_candidate_budget"] = None
         self.accounting.observe(self.pool.elites)
         report["repair_best_origin"] = (self.state.best or {}).get("candidate_origin")
 
@@ -224,7 +237,8 @@ class EliteRepairRun:
                                     repair_deadline=self.repair_deadline, clock=self.clock, t_begin=self.t_begin,
                                     attempts=self.attempts, improvement_trace=self.improvement_trace,
                                     report_state=self.report_state, strict_mode=self.strict_mode, accounting=self.accounting,
-                                    start_round=self.report["repair_rounds_completed"], seen_decisions=self.seen_decisions)
+                                    start_round=self.report["repair_rounds_completed"],
+                                    decode_session=self.decode_session)
         return self._tasks
 
     def finish(self) -> None:
@@ -239,8 +253,6 @@ class EliteRepairRun:
             if report["repair_stop_reason"] is None:
                 if self.clock() >= self.repair_deadline:
                     report["repair_stop_reason"] = "time_budget"
-                elif self.budget.remaining_candidates() <= 0:
-                    report["repair_stop_reason"] = "candidate_budget"
                 else:
                     report["repair_stop_reason"] = "rotation_ended"
         self.accounting.finish(self.pool)
@@ -249,7 +261,7 @@ class EliteRepairRun:
         elif self._tasks is None:
             if self.pool.elites:
                 # Elites existed, but the rotation never reached this stage before the deadline or the cap.
-                report["repair_stop_reason"] = "time_budget" if self.clock() >= self.deadline else "candidate_budget"
+                report["repair_stop_reason"] = "time_budget" if self.clock() >= self.deadline else "rotation_ended"
                 report["repair_status"] = "skipped_by_budget"
             else:
                 report["repair_status"] = "skipped_by_budget" if report["repair_stop_reason"] == "time_budget" else "skipped_no_elite"
@@ -267,73 +279,78 @@ class EliteRepairRun:
 def _repair_tasks(pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., Dict[str, Any]], budget: Any,
                   repair_deadline: float, clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
                   improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool,
-                  accounting: RepairWorkAccounting, start_round: int, seen_decisions: set) -> Generator[None, None, None]:
-    report = pool.report
-    pruning = report["repair_pruning_report"]
-    def before_decode() -> None:
-        if clock() >= repair_deadline or budget.remaining_candidates() <= 0:
-            raise _RepairBudgetExhausted()
-        pruning["evaluated_candidates"] += 1
-        budget.repair_decodes += 1
+                  accounting: RepairWorkAccounting, start_round: int,
+                  decode_session: SharedDecodeSession) -> Generator[None, None, None]:
+    try:
+        report = pool.report
+        pruning = report["repair_pruning_report"]
+        def before_decode() -> None:
+            pruning["evaluated_candidates"] += 1
+            budget.repair_decodes += 1
 
-    elites = [elite for elite in pool.elites if _pending_neighbors(elite) > 0]
-    queued_elites: List[Dict[str, Any]] = []
-    for round_index in range(start_round, pool.limits.max_rounds):
-        # New parents can use vacant slots in this round; overflow waits in the bounded queue.
-        elites, queued_elites = _with_unvisited_pool_elites(elites, queued_elites, pool)
-        accounting.observe(elites + queued_elites)
-        improved_elites: List[Dict[str, Any]] = []
-        deferred_elites: List[Dict[str, Any]] = []
-        for elite_index, elite in enumerate(elites):
-            yield from _repair_one_elite(
-                pool, elite=elite, elite_index=elite_index, state=state, evaluate=evaluate, budget=budget,
-                repair_deadline=repair_deadline, clock=clock, t_begin=t_begin, attempts=attempts,
-                improvement_trace=improvement_trace, report_state=report_state, strict_mode=strict_mode,
-                before_decode=before_decode, seen_decisions=seen_decisions, improved_elites=improved_elites)
-            if _defer_to_improved_elites(pool, elites, elite_index, round_index, _current_improvements(improved_elites, state.best)):
-                _retain_pending_tail(elite, deferred_elites)
-                deferred_elites.extend(elites[elite_index + 1:])
-                for deferred in deferred_elites:
-                    deferred["pending_tail"] = True
-                break
-            _retain_pending_tail(elite, deferred_elites)
-            _fill_round_slots(elites, queued_elites, deferred_elites, pool)
+        elites = [elite for elite in pool.elites if _pending_neighbors(elite) > 0]
+        queued_elites: List[Dict[str, Any]] = []
+        for round_index in range(start_round, pool.limits.max_rounds):
+            # New parents can use vacant slots in this round; overflow waits in the bounded queue.
+            elites, queued_elites = _with_unvisited_pool_elites(elites, queued_elites, pool)
             accounting.observe(elites + queued_elites)
-        deferred_elites.extend(_fresh_pool_elites(elites + deferred_elites + queued_elites, pool))
-        deferred_elites.extend(queued_elites)
-        accounting.observe(deferred_elites)
-        # Give retained parents their first visit before resuming another tail;
-        # sharing basis variants must not consume all slots on the first parent.
-        deferred_elites.sort(key=lambda elite: bool(elite.get("decision_offset", 0)))
-        report["repair_rounds_completed"] = round_index + 1
-        report["repair_round_improvements"].append(len(improved_elites))
-        current_improvements = _current_improvements(improved_elites, state.best)
-        if clock() >= repair_deadline:
-            report["repair_stop_reason"] = "time_budget"
-        elif budget.remaining_candidates() <= 0:
-            report["repair_stop_reason"] = "candidate_budget"
-        elif not current_improvements and not deferred_elites:
-            report["repair_stop_reason"] = "no_improvement"
-        elif round_index + 1 >= pool.limits.max_rounds:
-            report["repair_stop_reason"] = "max_rounds"
-        else:
-            next_round = _prepare_next_repair_round(
-                pool, improved_elites=current_improvements, deferred_elites=deferred_elites,
-                repair_deadline=repair_deadline, clock=clock, accounting=accounting)
-            if next_round is None:
+            improved_elites: List[Dict[str, Any]] = []
+            deferred_elites: List[Dict[str, Any]] = []
+            for elite_index, elite in enumerate(elites):
+                yield from _repair_one_elite(
+                    pool, elite=elite, elite_index=elite_index, state=state, evaluate=evaluate,
+                    clock=clock, t_begin=t_begin, attempts=attempts,
+                    improvement_trace=improvement_trace, report_state=report_state, strict_mode=strict_mode,
+                    before_decode=before_decode, improved_elites=improved_elites,
+                    decode_session=decode_session, accounting=accounting,
+                    active_groups=(elites, queued_elites, deferred_elites, improved_elites))
+                if _defer_to_improved_elites(pool, elites, elite_index, round_index, _current_improvements(improved_elites, state.best)):
+                    _retain_pending_tail(elite, deferred_elites)
+                    deferred_elites.extend(elites[elite_index + 1:])
+                    for deferred in deferred_elites:
+                        deferred["pending_tail"] = True
+                    break
+                _retain_pending_tail(elite, deferred_elites)
+                _fill_round_slots(elites, queued_elites, deferred_elites, pool)
+                accounting.observe(elites + queued_elites)
+            deferred_elites.extend(_fresh_pool_elites(elites + deferred_elites + queued_elites, pool))
+            deferred_elites.extend(queued_elites)
+            accounting.observe(deferred_elites)
+            # Give retained parents their first visit before resuming another tail;
+            # sharing basis variants must not consume all slots on the first parent.
+            deferred_elites.sort(key=lambda elite: bool(elite.get("decision_offset", 0)))
+            report["repair_rounds_completed"] = round_index + 1
+            report["repair_round_improvements"].append(len(improved_elites))
+            current_improvements = _current_improvements(improved_elites, state.best)
+            if clock() >= repair_deadline:
                 report["repair_stop_reason"] = "time_budget"
-                break
-            elites, queued_elites = next_round
-            continue
-        break
+            elif not current_improvements and not deferred_elites:
+                report["repair_stop_reason"] = "no_improvement"
+            elif round_index + 1 >= pool.limits.max_rounds:
+                report["repair_stop_reason"] = "max_rounds"
+            else:
+                next_round = _prepare_next_repair_round(
+                    pool, improved_elites=current_improvements, deferred_elites=deferred_elites,
+                    repair_deadline=repair_deadline, clock=clock, accounting=accounting)
+                if next_round is None:
+                    report["repair_stop_reason"] = "time_budget"
+                    break
+                elites, queued_elites = next_round
+                continue
+            break
+    finally:
+        pool.active_parents.clear()
 
 
 def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], elite_index: int, state: Any,
-                      evaluate: Callable[..., Dict[str, Any]], budget: Any, repair_deadline: float,
+                      evaluate: Callable[..., Dict[str, Any]],
                       clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
                       improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool,
-                      before_decode: Callable[[], None], seen_decisions: set,
-                      improved_elites: List[Dict[str, Any]]) -> Iterator[None]:
+                      before_decode: Callable[[], None],
+                      improved_elites: List[Dict[str, Any]],
+                      decode_session: SharedDecodeSession,
+                      accounting: RepairWorkAccounting,
+                      active_groups: Sequence[List[Dict[str, Any]]] = ()) -> Iterator[None]:
     """Visit one elite's neighbours; yields after every evaluated neighbour so the rotation can interleave."""
     report = pool.report
     pruning = report["repair_pruning_report"]
@@ -343,26 +360,33 @@ def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], elite_ind
     # Each basis variant resumes after its own consumed prefix: a variant added between visits must not
     # re-yield decisions this elite already generated nor skip ones it has not.
     consumed: Dict[str, int] = elite.setdefault("stream_offsets", {})
-    for kind, decision, variant_profile in neighborhood.profiled_decisions(skip_by_basis=consumed):
-        if (generated >= pool.limits.max_neighbors_per_elite
-                or budget.remaining_candidates() <= 0
-                or clock() >= repair_deadline):
+    decisions = iter(neighborhood.profiled_decisions(skip_by_basis=consumed))
+    while generated < pool.limits.max_neighbors_per_elite:
+        try:
+            kind, decision, variant_profile = next(decisions)
+        except StopIteration:
             break
         generated += 1
         consumed[variant_profile.feature_basis] = consumed.get(variant_profile.feature_basis, 0) + 1
         elite["decision_offset"] = offset + generated
         pruning["generated_candidates"] += 1
-        decision_identity = (variant_profile.feature_basis, decision)
-        if decision_identity in seen_decisions:
-            _prune_duplicate(pruning, kind=kind, elite_index=elite_index)
-            continue
-        seen_decisions.add(decision_identity)
+        accounting.observe((elite,))
+        _set_active_repair_parents(pool, active_groups)
         profile = replace(variant_profile, slug="v2_repair_" + kind, candidate_origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
                           candidate_policy="elite_repair")
-        candidate = _evaluate_neighbor(evaluate, decision=decision, profile=profile, strict_mode=strict_mode,
-                                       attempts=attempts, report_state=report_state, pruning=pruning,
-                                       parent=elite["candidate"], before_decode=before_decode)
+        try:
+            candidate = _evaluate_neighbor(evaluate, decision=decision, profile=profile, strict_mode=strict_mode,
+                                           attempts=attempts, report_state=report_state, pruning=pruning,
+                                           parent=elite["candidate"], before_decode=before_decode)
+        except SharedSearchSkip as exc:
+            counts = pruning.setdefault("shared_skip_by_reason", {})
+            counts[exc.reason] = counts.get(exc.reason, 0) + 1
+            yield
+            continue
         if candidate is not None:
+            if candidate["decode_receipt"]["actual_decoder_calls"] == 0:
+                pruning["evaluated_candidates"] += 1
+                pruning["reused_candidates"] = pruning.get("reused_candidates", 0) + 1
             reference = state.best
             fingerprint = pool.fingerprint(candidate, elite["fingerprint"])
             event = _acceptance_event(pool, candidate=candidate, elite=elite, best=reference, report_state=report_state,
@@ -379,7 +403,16 @@ def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], elite_ind
                 state.best = candidate
                 improved_elites.append({"candidate": candidate, "profile": profile,
                                         "basis_profiles": tuple(item[0] for item in neighborhood.variants)})
+        _set_active_repair_parents(pool, active_groups)
         yield
+
+
+def _set_active_repair_parents(pool: EliteRepairPool, groups: Sequence[List[Dict[str, Any]]]) -> None:
+    active: Dict[int, Dict[str, Any]] = {}
+    for group in groups:
+        for parent in group:
+            active[id(parent)] = parent
+    pool.active_parents = list(active.values())
 
 
 def _evaluate_neighbor(evaluate: Callable[..., Dict[str, Any]], *, decision: RepairDecision, profile: GraphReadyWeightProfile,
@@ -388,11 +421,6 @@ def _evaluate_neighbor(evaluate: Callable[..., Dict[str, Any]], *, decision: Rep
     try:
         order = list(decision.batch_order)
         return evaluate(profile=profile, order=order, repair_order=order, repair_decision=decision, before_decode=before_decode)
-    except _RepairBudgetExhausted:
-        pruning["pruned_candidates"] += 1
-        counts = pruning["pruned_by_rule"]
-        counts["budget_before_decode"] = counts.get("budget_before_decode", 0) + 1
-        return None
     except ValidationError as exc:
         if strict_mode or is_graph_ready_v2_contract_error(exc) or exc.field == "graph_ready_elite_repair":
             raise
@@ -440,14 +468,6 @@ def _reject_duplicate_output(pruning: Dict[str, Any], fingerprint: Any,
     already_recorded = state_fingerprint is not None and (state_fingerprint.same_as_parent or state_fingerprint.same_as_seen)
     _reject(pruning, "same_fingerprint", None if already_recorded else report_state)
     return True
-
-
-def _prune_duplicate(pruning: Dict[str, Any], *, kind: str, elite_index: int) -> None:
-    pruning["pruned_candidates"] += 1
-    pruning["duplicate_decision_pruned"] += 1
-    counts = pruning["pruned_by_rule"]
-    counts["duplicate_decision"] = counts.get("duplicate_decision", 0) + 1
-    pruning["rule_trace"].append({"rule": "duplicate_decision", "generator": kind, "elite_index": elite_index})
 
 
 def _reject(pruning: Dict[str, Any], reason: str, report_state: Any) -> None:

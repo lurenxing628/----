@@ -105,10 +105,10 @@ def test_window_uses_next_start_and_retains_full_sequence_predecessor():
     subjects = {"operation:inside", "operation:right"}
     assert subject_arrangements(rows, subjects) == rows[1:]
     missing = rows[2:]
-    source = SimpleNamespace(computation_key=lambda key: key, comparison_mode="admission_official",
-        official={"tasks": rows}, tasks=lambda _key: missing, operation_refs=subjects,
+    source = SimpleNamespace(computation_key=lambda key: key,
+        analysis_tasks=lambda key: rows if key == "reference" else missing,
+        baseline={"state": "available"}, result_available=lambda key: True, operation_refs=subjects,
         scope={"range_start": at("08:00:00"), "range_end": at("10:00:00")},
-        preparation=SimpleNamespace(available=lambda _key: True),
         task_intervals=lambda key: {row["row_ref"]: task_interval(row) for row in (rows if key == "reference" else missing)})
     engine = DecisionChangeovers(source)
     before, after = (engine.metrics(key)["type_changeover_count"] for key in ("reference", "candidate"))

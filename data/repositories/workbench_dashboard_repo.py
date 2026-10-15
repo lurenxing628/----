@@ -31,22 +31,26 @@ class WorkbenchDashboardRepository:
             result.update((row[column], row) for row in selected)
         return result
 
-    def stored_bytes(self):
-        return self.conn.execute("SELECT COALESCE(SUM(length(CAST(handling_json AS BLOB))+length(CAST(origin_json AS BLOB))),0) "
-                                 "FROM " + self.states_table).fetchone()[0]
-
     def stored_rows(self, limit):
-        """Raw current states joined with their identities (handling_json/origin_json undecoded); reads limit+1 rows."""
-        return rows(self.conn, "SELECT i.*,s.revision,s.handling_json,s.origin_json,s.updated_at "
+        """Stream identity, raw state bodies and this revision's tail/receipt in one read."""
+        cursor = self.conn.execute("SELECT i.*,s.revision AS _state_revision,s.handling_json AS _state_handling_json,"
+                    "s.origin_json AS _state_origin_json,s.updated_at AS _state_updated_at,h.after_json AS _tail_after_json,"
+                    "c.receipt_ref AS _receipt_ref,length(CAST(s.handling_json AS BLOB))+"
+                    "length(CAST(s.origin_json AS BLOB)) AS _stored_body_bytes "
                     "FROM " + self.states_table + " s JOIN " + self.items_table + " i ON i.item_ref=s.item_ref "
+                    "LEFT JOIN " + self.history_table + " h ON h.item_ref=s.item_ref AND h.sequence=s.revision "
+                    "LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=h.request_key "
                     "ORDER BY i.item_ref LIMIT ?", (limit + 1,))
-
-    def state_tails(self):
-        """Per stored state: the history row at its revision, its receipt ref and the history count."""
-        return rows(self.conn, "SELECT s.item_ref,h.after_json,c.receipt_ref,"
-                    "(SELECT COUNT(*) FROM " + self.history_table + " a WHERE a.item_ref=s.item_ref) AS count "
-                    "FROM " + self.states_table + " s LEFT JOIN " + self.history_table + " h ON h.item_ref=s.item_ref AND h.sequence=s.revision "
-                    "LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=h.request_key")
+        names = [column[0] for column in cursor.description]
+        identity_columns = names[:names.index("_state_revision")]
+        for raw in cursor:
+            selected = dict(zip(names, raw))
+            identity = {name: selected[name] for name in identity_columns}
+            yield {**identity, "revision": selected["_state_revision"],
+                   "handling_json": selected["_state_handling_json"], "origin_json": selected["_state_origin_json"],
+                   "updated_at": selected["_state_updated_at"], "_identity": identity,
+                   "_tail_after_json": selected["_tail_after_json"], "_receipt_ref": selected["_receipt_ref"],
+                   "_stored_body_bytes": selected["_stored_body_bytes"]}
 
     def identity(self, item_ref):
         result = rows(self.conn, "SELECT * FROM " + self.items_table + " WHERE item_ref=?", (item_ref,))

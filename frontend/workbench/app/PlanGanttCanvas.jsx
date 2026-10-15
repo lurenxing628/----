@@ -66,26 +66,38 @@
         onSelect(row.items[next].task, row.before);
       }} />;
   }
-  function Overview({ model, tasks, width, viewport, left, onPan }) {
+  function Overview({ model, tasks, cache, width, viewport, left, onPan }) {
     const ref = React.useRef(null);
-    usePaint(ref, (ctx, w, h, colors) => {
-      const bins = new Float64Array(Math.max(1, Math.ceil(w)) + 1);
+    if (!cache.current || cache.current.tasks !== tasks) {
+      const intervals = [], points = [];
       for (const task of tasks) {
-        if (window.PointContract.isPoint(task)) continue;
-        const start = Math.max(0, Math.floor((M.instant(task.start) - model.start) / (model.end - model.start) * w));
-        const end = Math.min(bins.length - 1, Math.max(start + 1, Math.ceil((M.instant(task.end) - model.start) / (model.end - model.start) * w)));
-        bins[start]++; bins[end]--;
+        if (window.PointContract.isPoint(task)) points.push(M.instant(task.start));
+        else intervals.push({ start: M.instant(task.start), end: M.instant(task.end) });
       }
-      let max = 1, count = 0; for (let x = 0; x < bins.length; x++) { count += bins[x]; bins[x] = count; max = Math.max(max, count); }
+      cache.current = { tasks, intervals, points, histogram: null };
+    }
+    const prepared = cache.current;
+    usePaint(ref, (ctx, w, h, colors) => {
+      let facts = prepared.histogram;
+      if (!facts || facts.start !== model.start || facts.end !== model.end || facts.cssWidth !== w) {
+        const bins = new Float64Array(Math.max(1, Math.ceil(w)) + 1), bars = [];
+        for (const item of prepared.intervals) {
+          const start = Math.max(0, Math.floor((item.start - model.start) / (model.end - model.start) * w));
+          const end = Math.min(bins.length - 1, Math.max(start + 1, Math.ceil((item.end - model.start) / (model.end - model.start) * w)));
+          bins[start]++; bins[end]--;
+        }
+        let max = 1, count = 0; for (let x = 0; x < bins.length; x++) { count += bins[x]; bins[x] = count; max = Math.max(max, count); }
+        for (let x = 0; x < bins.length; x++) if (bins[x]) bars.push({ x, ratio: bins[x] / max });
+        facts = { start: model.start, end: model.end, cssWidth: w, bars,
+          points: prepared.points.map(at => (at - model.start) / (model.end - model.start) * w) };
+        prepared.histogram = facts;
+      }
       ctx.fillStyle = colors.primary.edge;
-      for (let x = 0; x < bins.length; x++) if (bins[x]) { const barHeight = 3 + bins[x] / max * (h - 8); ctx.fillRect(x, h - barHeight, 1, barHeight); }
-      for (const task of tasks) if (window.PointContract.isPoint(task)) {
-        const x = (M.instant(task.start) - model.start) / (model.end - model.start) * w;
-        window.PointGanttModel.paint(ctx, x, 8, colors.plan.fill, colors.plan.edge, false);
-      }
+      for (const bar of facts.bars) { const barHeight = 3 + bar.ratio * (h - 8); ctx.fillRect(bar.x, h - barHeight, 1, barHeight); }
+      for (const x of facts.points) window.PointGanttModel.paint(ctx, x, 8, colors.plan.fill, colors.plan.edge, false);
       ctx.strokeStyle = colors.gold; ctx.lineWidth = 2;
       ctx.strokeRect(left / width * w + 1, 1, Math.max(1, Math.min(w - 2, viewport / width * w - 2)), h - 2);
-    }, [model.start, model.end, tasks, width, left, viewport]);
+    }, [model.start, model.end, prepared, width, left, viewport]);
     return <div className="plan-global">
       <div className="plan-global-labels"><span>全局时间轴</span></div>
       <canvas ref={ref} role="img" aria-label="真实安排时间分布" onClick={event => {

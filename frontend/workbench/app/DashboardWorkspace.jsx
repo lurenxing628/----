@@ -3,9 +3,7 @@
   const C = window.DashboardContract, S = window.DashboardSession, P = window.DashboardPanels, { Button, ErrorBox } = window.ResourceControls;
   function durableScope(query) { const result = { ...query }; delete result.snapshot_ref; return result; }
   async function readList(api, query, signal) {
-    if (query.page === 1 || query.snapshot_ref) return api.list(query, signal);
-    const first = await api.list({ ...query, page: 1 }, signal);
-    return api.list({ ...query, snapshot_ref: first.meta.snapshot_ref }, signal);
+    return api.list(query, signal);
   }
   function Content({ start, onNavigate }) {
     const api = React.useMemo(() => C.create(), []), command = S.useCommand(api);
@@ -23,9 +21,9 @@
     const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
     const detailQuery = React.useMemo(() => ({ ...q, snapshot_ref: snapshot }), [q, snapshot]);
     const handlingAvailable = q.category !== 'external' || !!data && data.categories.external.handling_supported === true;
-    const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && !!selected && !!snapshot);
-    const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage, tab], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
-    const item = detail.result && detail.result.data.item;
+    const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
+    const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
+    const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
     const handlingOpen = !!(dialog && (command.saved || item));
     function choose(ref) { setSelected(ref); setHistoryPage(1); }
     function change(patch, paging = false) {

@@ -84,7 +84,7 @@
     const history = <><HistoryReturn context={initialContext || {}} onNavigate={onNavigate} /><U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button></>;
     return specified ? <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} /> :
       <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate} actions={history}
-        renderRunPanel={data => <window.RunJobPanel preflight={data} adapter={api} onNavigate={onNavigate} />} />;
+        renderRunPanel={(data, continuation) => <window.RunJobPanel preflight={data} adapter={api} onNavigate={onNavigate} onRecheck={continuation.onRecheck} preflightOwner={continuation.confirmationOwner} />} />;
   }
   function PlanCenterWorkspace({ view, onNavigate, initialContext }) {
     const context = initialContext || {}, candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');

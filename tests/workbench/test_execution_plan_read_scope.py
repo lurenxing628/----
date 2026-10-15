@@ -85,16 +85,40 @@ def test_scoped_actual_chain_retains_outside_predecessors_and_snapshot(ledger_ca
         assert response.status_code == 409 and response.get_json()['error']['code'] == 'snapshot_stale'
 
 
-def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case):
+def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monkeypatch, record_property):
+    from core.services.workbench.execution.field_workspace import FieldWorkspaceService
+
     case = ledger_case
     plan_ref, refs = _three_tasks(case)
     api = FieldAPI(case)
     scope = dict(plan_ref=plan_ref, range_start='2026-09-09T08:00:00', range_end='2026-09-09T14:00:00')
-    first = api.read(**scope, size=1)
-    token = first['meta']['snapshot_ref']
+    original, calls = FieldWorkspaceService.cohort, []
+
+    def cohort(reader, values):
+        calls.append(values)
+        return original(reader, values)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(FieldWorkspaceService, 'cohort', cohort)
+        direct = api.read(**scope, size=1, page=2)
+    assert len(calls) == 1 and direct['data']['page']['number'] == 2
+    assert direct['data']['tasks'][0]['task_ref'] == refs[1]
+    record_property('direct_page', 2)
+    record_property('cohort_query_calls', len(calls))
+    record_property('data_fields', sorted(direct['data']))
+    token = direct['meta']['snapshot_ref']
     second = api.read(**scope, size=1, page=2, snapshot_ref=token)
+    assert second['data'] == direct['data'] and second['meta'].keys() == direct['meta'].keys()
+    assert second['meta']['request_ref'] != direct['meta']['request_ref']
+    assert all(second['meta'][key] == value for key, value in direct['meta'].items() if key != 'request_ref')
+    first = api.read(**scope, size=1, snapshot_ref=token)
     assert second['meta']['snapshot_ref'] == token and second['meta']['as_of'] == first['meta']['as_of']
     assert second['data']['tasks'][0]['task_ref'] == refs[1]
+    located = api.read(**scope, size=1, task_ref=refs[1], operation_ref=second['data']['tasks'][0]['operation_ref'])
+    assert located['data']['page']['number'] == 2 and located['data']['tasks'][0]['task_ref'] == refs[1]
+    mismatch = api.client.get(FIELD + '/tasks', query_string=dict(scope, size=1, task_ref=refs[1],
+        operation_ref=first['data']['tasks'][0]['operation_ref']))
+    assert mismatch.status_code == 409 and mismatch.get_json()['error']['code'] == 'constraint_conflict'
     response = api.client.get(FIELD + '/files/template', query_string=dict(scope, snapshot_ref=token))
     assert response.status_code == 200
     book = load_workbook(BytesIO(response.data)); assert book.worksheets[0].max_row == 4; book.close()

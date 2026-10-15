@@ -5,7 +5,6 @@ from datetime import datetime
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.run import compute as compute_module
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import BASE, INTENT, api, service, snapshot
 from tests.workbench.run_candidate_support import edit_artifact
@@ -21,21 +20,10 @@ def _case(tmp_path):
 
 
 def persisted_partial_run(case, monkeypatch, *, setup=None, settings=None, expected_tasks=2):
-    """Real engine and worker; advance only the budget clock after baseline decode."""
-    compare = compute_module.run_candidate_comparison
+    """Real current arrangement and worker, saved in an explicit legacy partial archive."""
+    from tests.workbench.legacy_run_archive_support import install_budget_skipped_archive
 
-    def complete_then_expire(**kwargs):
-        measured = [0.0]
-        optimize = kwargs.pop("optimize_schedule_fn")
-
-        def real_decode(**inputs):
-            outcome = optimize(**inputs)
-            measured[0] = 120.0
-            return outcome
-
-        return compare(**kwargs, optimize_schedule_fn=real_decode, clock=lambda: measured[0])
-
-    monkeypatch.setattr(compute_module, "run_candidate_comparison", complete_then_expire)
+    install_budget_skipped_archive(monkeypatch)
     second = case.operation(seq=2)
     if setup is not None:
         setup(case, second)

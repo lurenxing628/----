@@ -2,366 +2,141 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from dataclasses import replace
+from typing import Any, Callable, Optional
 
 from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 
-from .optimizer.search_budget import (
-    CandidateBudgetFeedback,
-    SearchBudget,
-    SearchBudgetExhausted,
-    allocate_candidate_budget,
-)
-from .schedule_candidate_dedup import CandidateInputLedger
+from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
+from .optimizer.shared_process import _numeric_score, score_scope_payload
 from .schedule_candidate_plan import (
     CANDIDATE_STATUS_COMPLETED,
     CANDIDATE_STATUS_FAILED,
     CANDIDATE_STATUS_SKIPPED,
     CandidateComparisonOutcome,
     CandidatePlan,
-    CandidateRunArtifacts,
-    CandidateTrialFailure,
-    candidate_plan_from_artifacts,
-    failed_plan,
-    skipped_plan,
-    with_input_certification,
 )
-from .schedule_candidate_runtime_helpers import (
-    _candidate_cfg,
-    _candidate_health,
-    _candidate_score,
-    _dict_list,
-    _dict_or_none,
-    _public_budget,
-    _replace_schedule_input_cfg,
-    _resolve_total_budget,
-    _string_list,
-)
-from .schedule_candidate_selection import CandidateSelectionResult, select_candidate_plan
-from .schedule_candidate_specs import (
-    CANDIDATE_KIND_BASELINE,
-    CandidateRunSpec,
-    generate_candidate_specs,
-)
+from .schedule_candidate_runtime_helpers import _public_budget, _replace_schedule_input_cfg, _resolve_total_budget
+from .schedule_candidate_selection import BusinessObjectiveSelectionResult
 from .schedule_graph_report import make_cached_graph_preparation_fn
-from .schedule_optimizer import optimize_schedule
-
-
-class _CandidateTrialConfigService:
-    """Config view of one candidate trial: comparability locks only, never the optimizer's rule pool.
-
-    Candidates must differ in graph weights alone, so the sort strategy, dispatch mode, objective
-    and algorithm mode are pinned to the configured values. The SGS dispatch rule pool is the
-    optimizer's own search dimension (multi-start rules and the rule neighborhood) and stays the
-    registry pool; the rule a plan finally adopts is reported on the plan itself.
-    """
-
-    def __init__(self, base_cfg_svc: Any, cfg: Any) -> None:
-        self._base_cfg_svc = base_cfg_svc
-        self.VALID_STRATEGIES = (str(cfg.sort_strategy).strip().lower(),)
-        self.VALID_DISPATCH_MODES = (str(cfg.dispatch_mode).strip().lower(),)
-        self.VALID_OBJECTIVES = (str(cfg.objective).strip().lower(),)
-        self.VALID_ALGO_MODES = (str(cfg.algo_mode).strip().lower(),)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._base_cfg_svc, name)
+from .schedule_shared_optimizer import optimize_shared_schedule
 
 
 def run_candidate_comparison(
-    *,
-    schedule_input: Any,
-    optimize_schedule_fn: Optional[Callable[..., Any]] = None,
+    *, schedule_input: Any,
+    optimize_shared_schedule_fn: Optional[Callable[..., Any]] = None,
     prepare_graph_fn: Optional[Callable[[Any], Any]] = None,
     clock: Optional[Callable[[], float]] = None,
     run_time_budget_seconds: Optional[float] = None,
-    weight_count: int = 5,
-    selection_policy: str = "balanced",
-    graph_overdue_tolerance_count: int = 1,
-    graph_tardiness_tolerance_ratio: float = 0.10,
-    strict_mode: bool = False,
-    logger: Any = None,
+    strict_mode: bool = False, logger: Any = None,
     on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> CandidateComparisonOutcome:
+    """Publish the actual business representatives from one shared search archive."""
     now = clock or time.monotonic
-    optimize = optimize_schedule_fn or optimize_schedule
-    prepare_graph = prepare_graph_fn if prepare_graph_fn is not None else make_cached_graph_preparation_fn()
     cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=bool(strict_mode))
-    specs = generate_candidate_specs(
-        weight_count=weight_count,
-        base_critical_weight=int(cfg.graph_critical_weight),
-        base_impact_weight=int(cfg.graph_impact_weight),
-    )
     total_budget = _resolve_total_budget(run_time_budget_seconds, cfg=cfg)
+    if math.isfinite(total_budget) and total_budget.is_integer() and total_budget >= 1:
+        cfg = replace(cfg, time_budget_seconds=int(total_budget))
     started = now()
-    deadline = started + total_budget if math.isfinite(total_budget) else float("inf")
+    deadline = started + total_budget
+    budget = SearchBudget(clock=now, started_at=started, deadline=deadline,
+                          outer_deadline=deadline, assigned_seconds=total_budget)
+    prepare_graph = prepare_graph_fn or make_cached_graph_preparation_fn()
+    preparation = None
 
-    candidates, time_budget_reached = _run_candidate_plans(
-        specs,
-        schedule_input=schedule_input,
-        base_cfg=cfg,
-        optimize_schedule_fn=optimize,
-        prepare_graph_fn=prepare_graph,
-        strict_mode=bool(strict_mode),
-        logger=logger,
-        now=now,
-        deadline=deadline,
-        on_progress=on_progress,
+    def graph_prepare():
+        nonlocal preparation
+        preparation = prepare_graph(_replace_schedule_input_cfg(schedule_input, cfg=cfg))
+        return preparation
+
+    shared = (optimize_shared_schedule_fn or optimize_shared_schedule)(
+        calendar_service=schedule_input.cal_svc, cfg_svc=schedule_input.cfg_svc, cfg=cfg,
+        algo_ops_to_schedule=schedule_input.algo_ops_to_schedule, batches=schedule_input.batches,
+        start_dt=schedule_input.start_dt_norm, end_date=schedule_input.end_date_norm,
+        downtime_map=schedule_input.downtime_map, seed_results=schedule_input.seed_results,
+        resource_pool=schedule_input.resource_pool, version=int(schedule_input.optimizer_seed_version),
+        logger=logger, readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
+        strict_mode=bool(strict_mode), graph_prepare=graph_prepare, search_budget=budget,
     )
-
-    selection = select_candidate_plan(
-        candidates,
-        policy=selection_policy,
-        graph_overdue_tolerance_count=graph_overdue_tolerance_count,
-        graph_tardiness_tolerance_ratio=graph_tardiness_tolerance_ratio,
+    primary = shared.archive.primary_objective
+    targets = tuple(shared.target_objectives)
+    selected_entries = shared.process_facts["selected_entries_by_objective"]
+    candidates, entries = [], {}
+    for target in targets:
+        entry_id = selected_entries[target]
+        if entry_id is None or entry_id in entries:
+            continue
+        entry = shared.archive.entry(entry_id)
+        candidate = _business_representative(
+            shared, entry, sequence=len(candidates), primary=primary, targets=targets,
+            cfg=cfg, preparation=preparation, total_budget=total_budget)
+        entries[entry_id] = candidate
+        candidates.append(candidate)
+    if not candidates:
+        raise SearchBudgetExhausted("candidate_time_budget_reached")
+    selected = entries[selected_entries[primary]]
+    scope = score_scope_payload(shared.archive.entry(selected_entries[primary]).score_scope)
+    known = scope["components_known"]
+    winners = {target: entries[selected_entries[target]].candidate_key if known and selected_entries[target] is not None else None
+               for target in targets}
+    selection = BusinessObjectiveSelectionResult(
+        selected_candidate_key=selected.candidate_key, selected_plan=selected,
+        primary_objective=primary, target_objectives=targets, objective_winners=winners,
+        objective_winner_reasons={target: None if known else "score_components_unavailable" for target in targets},
+        objective_field_order={target: list(selected.evaluations[target]["field_order"]) for target in targets},
+        selected_score=tuple(selected.score), scoring_scope=scope,
+        reason_code=("primary_objective_best_found" if scope["is_complete"] else
+                     "primary_objective_best_in_completed_scope" if known else "partial_scope_score_unavailable"),
+        evidence_state="complete" if scope["is_complete"] and known else "partial",
     )
-    return _comparison_outcome(
-        specs=specs,
-        candidates=candidates,
-        selection=selection,
-        time_budget_reached=time_budget_reached,
-        selection_policy=selection_policy,
-        total_budget=total_budget,
-    )
-
-
-def _run_candidate_plans(
-    specs: List[CandidateRunSpec],
-    *,
-    schedule_input: Any,
-    base_cfg: Any,
-    optimize_schedule_fn: Callable[..., Any],
-    prepare_graph_fn: Callable[[Any], Any],
-    strict_mode: bool,
-    logger: Any,
-    now: Callable[[], float],
-    deadline: float,
-    on_progress: Optional[Callable[[int, int], None]] = None,
-) -> Tuple[List[CandidatePlan], bool]:
-    candidates: List[CandidatePlan] = []
-    baseline_results: List[Any] = []
-    feedback = CandidateBudgetFeedback(str(base_cfg.objective))
-    ledger = CandidateInputLedger(schedule_input=schedule_input, base_cfg=base_cfg, prepare_graph_fn=prepare_graph_fn)
-    time_budget_reached = False
-    # Progress counts finished candidate plans (computed, reused or skipped) out of the planned total, in loop order.
-    report = on_progress if callable(on_progress) else (lambda done, total: None)
-    for index, spec in enumerate(specs):
-        candidate_started = now()
-        # A previously certified twin needs no preparation or decoder budget. Finish publishing
-        # those already-computed plans even when the last non-preemptible decode crossed the deadline.
-        twin = ledger.completed_twin(spec)
-        if candidate_started >= deadline:
-            time_budget_reached = True
-            if twin is None:
-                candidates.append(skipped_plan(spec, failure_reason="candidate_time_budget_reached",
-                                               objective_name=str(base_cfg.objective)))
-                report(len(candidates), len(specs))
-                continue
-        if spec.graph_enabled and twin is None:
-            # Prepare every remaining graph plan inside the first graph plan's slice: the weight-independent
-            # core is shared and each projection is cheap, and knowing which tiers have identical optimizer
-            # inputs lets duplicates reuse a sibling while the budget is split among plans needing a search.
-            ledger.prepare_graph_specs(specs[index:])
-            twin = ledger.completed_twin(spec)
-        if twin is not None:
-            plan = ledger.reuse(
-                spec, twin, baseline_results=baseline_results,
-                elapsed_seconds=now() - candidate_started,
-            )
-            feedback.observe_reused(plan)
-        else:
-            plan = _run_candidate_with_failure_capture(
-                spec,
-                schedule_input=schedule_input,
-                base_cfg=base_cfg,
-                optimize_schedule_fn=optimize_schedule_fn,
-                prepare_graph_fn=prepare_graph_fn,
-                strict_mode=strict_mode,
-                logger=logger,
-                baseline_results=baseline_results,
-                now=now,
-                prepared=ledger.prepared(spec),
-                search_budget=allocate_candidate_budget(
-                    clock=now, started_at=candidate_started, deadline=deadline,
-                    remaining_candidates=ledger.distinct_remaining(specs[index:]), feedback=feedback,
-                ),
-            )
-            # Certify before the ledger keeps the plan: a reused sibling inherits the twin's record.
-            plan = with_input_certification(plan, ledger.certification(spec), logger=logger)
-            ledger.observe(spec, plan, completed=plan.status == CANDIDATE_STATUS_COMPLETED)
-            feedback.observe(plan)
-        candidates.append(plan)
-        report(len(candidates), len(specs))
-        baseline_results = _next_baseline_results(baseline_results, plan)
-    return candidates, time_budget_reached or now() >= deadline
-
-
-def _run_candidate_with_failure_capture(
-    spec: CandidateRunSpec,
-    *,
-    schedule_input: Any,
-    base_cfg: Any,
-    optimize_schedule_fn: Callable[..., Any],
-    prepare_graph_fn: Callable[[Any], Any],
-    strict_mode: bool,
-    logger: Any,
-    baseline_results: List[Any],
-    now: Callable[[], float],
-    search_budget: SearchBudget,
-    prepared: Any = None,
-) -> CandidatePlan:
-    candidate_started = search_budget.started_at
-    try:
-        plan = _run_single_candidate(
-            spec,
-            schedule_input=schedule_input,
-            base_cfg=base_cfg,
-            optimize_schedule_fn=optimize_schedule_fn,
-            prepare_graph_fn=prepare_graph_fn,
-            strict_mode=strict_mode,
-            logger=logger,
-            baseline_results=baseline_results,
-            search_budget=search_budget,
-            prepared=prepared,
-        )
-    # 仅显式候选失败和未启动解码的预算耗尽转换状态；其余 ValidationError/RuntimeError/TypeError 继续上抛。
-    # 这是 b81f8b3f 收窄后的护栏:绝不能以"统一/简化"名义改回 except Exception,
-    # 否则复活被治理掉的"未知异常静默转 failed candidate"静默吞错(踩灵魂线)。
-    except CandidateTrialFailure as exc:
-        return failed_plan(spec, exc, elapsed_seconds=now() - candidate_started, objective_name=str(base_cfg.objective))
-    except SearchBudgetExhausted:
-        return replace(
-            skipped_plan(spec, failure_reason="candidate_time_budget_reached", objective_name=str(base_cfg.objective),
-                         known_not_started=False),
-            elapsed_seconds=max(now() - candidate_started, 0.0),
-        )
-    return replace(plan, elapsed_seconds=now() - candidate_started)
-
-
-def _next_baseline_results(current: List[Any], plan: CandidatePlan) -> List[Any]:
-    if plan.kind == CANDIDATE_KIND_BASELINE and plan.status == CANDIDATE_STATUS_COMPLETED:
-        return list(plan.results or [])
-    return current
-
-
-def _comparison_outcome(
-    *,
-    specs: List[CandidateRunSpec],
-    candidates: List[CandidatePlan],
-    selection: CandidateSelectionResult,
-    time_budget_reached: bool,
-    selection_policy: str,
-    total_budget: float,
-) -> CandidateComparisonOutcome:
     return CandidateComparisonOutcome(
-        candidates=list(candidates),
-        selection=selection,
-        planned_count=int(len(specs)),
-        completed_count=_count_candidates(candidates, CANDIDATE_STATUS_COMPLETED),
-        failed_count=_count_candidates(candidates, CANDIDATE_STATUS_FAILED),
-        skipped_count=_count_candidates(candidates, CANDIDATE_STATUS_SKIPPED),
-        time_budget_reached=bool(time_budget_reached),
-        selection_policy=str(selection_policy),
-        run_time_budget_seconds=_public_budget(total_budget),
-        skipped_candidate_labels=_skipped_candidate_labels(candidates),
-        baseline_missing_or_failed=_baseline_missing_or_failed(candidates),
-        reused_count=sum(1 for candidate in candidates if candidate.reused_from_candidate_key),
+        candidates=candidates, selection=selection, planned_count=len(candidates), completed_count=len(candidates),
+        failed_count=0, skipped_count=0, reused_count=0,
+        time_budget_reached=shared.process_facts["stop_reason"] == "time_budget",
+        selection_policy="business_objectives_v1", run_time_budget_seconds=_public_budget(total_budget),
+        skipped_candidate_labels=[], baseline_missing_or_failed=False,
+        generation_policy_version="unified_search_v1", primary_objective=primary,
+        target_objectives=list(targets), unified_process=shared.process_facts["unified_process"],
     )
 
 
-def _count_candidates(candidates: List[CandidatePlan], status: str) -> int:
-    return sum(1 for candidate in candidates if candidate.status == status)
-
-
-def _skipped_candidate_labels(candidates: List[CandidatePlan]) -> List[str]:
-    return [
-        str(candidate.label)
-        for candidate in candidates
-        if candidate.status == CANDIDATE_STATUS_SKIPPED and str(candidate.label or "").strip()
-    ]
-
-
-def _baseline_missing_or_failed(candidates: List[CandidatePlan]) -> bool:
-    # O25 四态语义（勿当死分支清理）：missing 半边（空/无 baseline 候选→True）生产可达，是「没有基准
-    # 方案」真实告警源头；failed 半边不可达但随枚举契约保留。下游 workbench/helpers 消费分支禁裸删。
-    for candidate in candidates:
-        if candidate.kind == CANDIDATE_KIND_BASELINE:
-            return candidate.status != CANDIDATE_STATUS_COMPLETED
-    return True
-
-
-def _run_single_candidate(
-    spec: CandidateRunSpec,
-    *,
-    schedule_input: Any,
-    base_cfg: Any,
-    optimize_schedule_fn: Callable[..., Any],
-    prepare_graph_fn: Callable[[Any], Any],
-    strict_mode: bool,
-    logger: Any,
-    baseline_results: List[Any],
-    search_budget: SearchBudget,
-    prepared: Any = None,
-) -> CandidatePlan:
-    artifacts = _run_candidate_optimization(
-        spec,
-        schedule_input=schedule_input,
-        base_cfg=base_cfg,
-        optimize_schedule_fn=optimize_schedule_fn,
-        prepare_graph_fn=prepare_graph_fn,
-        strict_mode=strict_mode,
-        logger=logger,
-        search_budget=search_budget,
-        prepared=prepared,
+def _business_representative(shared, entry, *, sequence, primary, targets, cfg, preparation, total_budget):
+    candidate = shared.archive.materialize(entry.entry_id, objective=primary)
+    scope = score_scope_payload(entry.score_scope)
+    representatives = ([target for target in targets
+                        if shared.process_facts["selected_entries_by_objective"][target] == entry.entry_id]
+                       if scope["components_known"] else [])
+    labels = {"min_overdue": "交期优先", "min_tardiness": "拖期更轻", "min_changeover": "切换更少",
+              "min_weighted_tardiness": "加权拖期更轻"}
+    params = dict(candidate["params"])
+    origin = dict(entry.evidence_origin)
+    profile = params.get("graph_ready_profile")
+    if profile is not None:
+        origin["graph_ready_profile"] = profile
+    weights = profile.get("effective_weights", {}) if isinstance(profile, dict) else {}
+    return CandidatePlan(
+        sequence=sequence, candidate_key="business_" + str(sequence + 1), kind="business_objective",
+        label=" · ".join(labels[target] for target in representatives) if representatives else "算法选中的部分结果",
+        status="completed", score=tuple(entry.evaluations[primary].score),
+        graph_critical_weight=weights.get("critical_weight"), graph_impact_weight=weights.get("impact_weight"),
+        graph_downstream_weight=weights.get("downstream_weight"),
+        results=candidate["results"], summary=candidate["summary"], metrics=candidate["metrics"], health=None,
+        graph_analysis_public=preparation.graph_analysis_public if preparation is not None else None,
+        graph_analysis_diagnostics=preparation.graph_analysis_diagnostics if preparation is not None else None,
+        used_strategy=candidate["strategy"], used_params=params, best_order=list(candidate.get("order") or []),
+        algo_mode=str(cfg.algo_mode), objective_name=primary, objective=primary,
+        algo_stats=dict(candidate.get("algo_stats") or {}), time_budget_seconds=total_budget,
+        sort_strategy=str(getattr(candidate["strategy"], "value", candidate["strategy"])),
+        dispatch_mode=str(params["dispatch_mode"]), dispatch_rule=str(params["dispatch_rule"]),
+        adopted_dispatch_rule=str(params["dispatch_rule"]), generation_policy_version="unified_search_v1",
+        representative_objectives=representatives,
+        evaluations={target: {"field_order": list(entry.evaluations[target].field_order),
+            "score": _numeric_score(entry.evaluations[target].score, components_known=scope["components_known"]),
+            "scoring_scope": dict(scope)} for target in targets},
+        origin=origin, first_found_elapsed_ms=entry.first_found_elapsed_ms,
+        search_evidence_ref={"source_event_id": shared.process_facts["evidence_event_ids_by_entry"].get(entry.entry_id)},
     )
-    health = _candidate_health(
-        spec,
-        baseline_results=baseline_results,
-        outcome=artifacts.outcome,
-        graph_preparation=artifacts.graph_preparation,
-    )
-    return candidate_plan_from_artifacts(spec, artifacts=artifacts, health=health)
 
 
-def _run_candidate_optimization(
-    spec: CandidateRunSpec,
-    *,
-    schedule_input: Any,
-    base_cfg: Any,
-    optimize_schedule_fn: Callable[..., Any],
-    prepare_graph_fn: Callable[[Any], Any],
-    strict_mode: bool,
-    logger: Any,
-    search_budget: SearchBudget,
-    prepared: Any = None,
-) -> CandidateRunArtifacts:
-    if prepared is None:
-        candidate_cfg = _candidate_cfg(base_cfg, spec)
-        graph_preparation = prepare_graph_fn(_replace_schedule_input_cfg(schedule_input, cfg=candidate_cfg))
-    else:
-        candidate_cfg, graph_preparation = prepared
-    search_budget.require_available()
-    trial_cfg_svc = _CandidateTrialConfigService(schedule_input.cfg_svc, candidate_cfg)
-    outcome = optimize_schedule_fn(
-        calendar_service=schedule_input.cal_svc,
-        cfg_svc=trial_cfg_svc,
-        cfg=candidate_cfg,
-        algo_ops_to_schedule=schedule_input.algo_ops_to_schedule,
-        batches=schedule_input.batches,
-        start_dt=schedule_input.start_dt_norm,
-        end_date=schedule_input.end_date_norm,
-        downtime_map=schedule_input.downtime_map,
-        seed_results=schedule_input.seed_results,
-        resource_pool=schedule_input.resource_pool,
-        version=int(schedule_input.optimizer_seed_version),
-        logger=logger,
-        readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
-        strict_mode=bool(strict_mode),
-        graph_ready_context=graph_preparation.graph_ready_context,
-        graph_dispatch_mode_override=graph_preparation.graph_dispatch_mode_override,
-        search_budget=search_budget,
-    )
-    return CandidateRunArtifacts(candidate_cfg=candidate_cfg, graph_preparation=graph_preparation, outcome=outcome)
 
-
-__all__ = ["CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED", "CandidateComparisonOutcome", "CandidatePlan", "CandidateTrialFailure", "run_candidate_comparison"]
+__all__ = ["CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED", "CandidateComparisonOutcome", "CandidatePlan", "run_candidate_comparison"]

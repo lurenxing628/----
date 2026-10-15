@@ -175,6 +175,92 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     assert invalid.status_code == 409 and invalid.get_json()['error']['code'] == 'plan_unavailable'
 
 
+def test_workbench_report_restores_second_page_once_and_keeps_export_binding(ledger_case, monkeypatch, record_property):
+    from flask import Blueprint, Flask, g
+
+    from core.services.workbench.report.facts import WorkbenchReportFacts
+    from web.routes.workbench.reports import register_report_routes
+
+    case = ledger_case
+    case.install()
+    others = [case.op('R18-' + str(index), seq=index) for index in range(2, 12)]
+    case.plan(2, [case.op_id] + others)
+    app = Flask('direct-report-page')
+    app.config.update(TESTING=True, SECRET_KEY='temporary-direct-report-page')
+    bp = Blueprint('direct_report_page', __name__)
+    register_report_routes(bp)
+    app.register_blueprint(bp)
+
+    @app.before_request
+    def database():
+        g.db = case.conn
+
+    original, calls = WorkbenchReportFacts.read, []
+
+    def captured(reader, scope, **kwargs):
+        calls.append(scope)
+        return original(reader, scope, **kwargs)
+
+    client, url, query = app.test_client(), '/api/workbench/v1/analytics', {'page': 2, 'size': 10}
+    before = case.conn.total_changes
+    with monkeypatch.context() as patch:
+        patch.setattr(WorkbenchReportFacts, 'read', captured)
+        response = client.get(url, query_string=query)
+    assert response.status_code == 200, response.get_json()
+    direct = response.get_json()
+    assert len(calls) == 1 and direct['data']['page']['number'] == 2
+    assert direct['data']['page']['total'] == 11 and len(direct['data']['rows']) == 1
+    record_property('direct_page', 2)
+    record_property('fact_query_calls', len(calls))
+    record_property('data_fields', sorted(direct['data']))
+    token = direct['meta']['snapshot_ref']
+    repeated = client.get(url, query_string={**query, 'snapshot_ref': token}).get_json()
+    assert repeated['data'] == direct['data'] and repeated['meta'].keys() == direct['meta'].keys()
+    assert repeated['meta']['request_ref'] != direct['meta']['request_ref']
+    assert all(repeated['meta'][key] == value for key, value in direct['meta'].items() if key != 'request_ref')
+    for target in (url + '/export', url + '/operations/' + direct['data']['rows'][0]['operation_ref']):
+        missing = client.get(target, query_string=query)
+        assert missing.status_code == 400 and missing.get_json()['error']['code'] == 'snapshot_required'
+        bound = client.get(target, query_string={**query, 'snapshot_ref': token})
+        assert bound.status_code == 200, bound.get_json()
+    changed = client.get(url, query_string={**query, 'batch_ref': case.ref('batch', 'B1'), 'snapshot_ref': token})
+    assert changed.status_code == 409 and changed.get_json()['error']['code'] == 'snapshot_stale'
+    assert case.conn.total_changes == before
+    # Catalog pages use the same direct-page snapshot contract.
+    from web.routes.workbench import reports_catalog
+
+    for index, operation_id in enumerate(others, 2):
+        machine_id = 'R18-CATALOG-' + str(index)
+        case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES (?,?,'T1')",
+                          (machine_id, 'Catalog machine ' + str(index)))
+        case.conn.execute('UPDATE Schedule SET machine_id=? WHERE version=2 AND op_id=?', (machine_id, operation_id))
+    case.conn.commit()
+    catalog_calls, catalog_read = [], reports_catalog.catalog_facts
+
+    def captured_catalog(reader, scope):
+        catalog_calls.append(scope)
+        return catalog_read(reader, scope)
+
+    catalog_url = '/api/workbench/v1/reports/utilization'
+    before = case.conn.total_changes
+    with monkeypatch.context() as patch:
+        patch.setattr(reports_catalog, 'catalog_facts', captured_catalog)
+        response = client.get(catalog_url, query_string=query)
+    assert response.status_code == 200, response.get_json()
+    direct_catalog = response.get_json()
+    assert len(catalog_calls) == 1 and direct_catalog['data']['page']['number'] == 2
+    assert direct_catalog['data']['page']['total'] == 12 and len(direct_catalog['data']['rows']) == 2
+    record_property('catalog_direct_page_fact_calls', len(catalog_calls))
+    catalog_token = direct_catalog['meta']['snapshot_ref']
+    rebound = client.get(catalog_url, query_string={**query, 'snapshot_ref': catalog_token}).get_json()
+    assert rebound['data'] == direct_catalog['data']
+    missing = client.get(catalog_url + '/export', query_string={**query, 'format': 'csv'})
+    assert missing.status_code == 400 and missing.get_json()['error']['code'] == 'snapshot_required'
+    exported = client.get(catalog_url + '/export', query_string={**query, 'snapshot_ref': catalog_token, 'format': 'csv'})
+    assert exported.status_code == 200 and exported.headers['X-Workbench-Row-Count'] == '12'
+    assert case.conn.total_changes == before
+
+
 def _insert_event(repo: OperationExecutionEventRepo, **overrides) -> None:
     event_type = action_to_event_type(overrides.get("event_type") or "start")
     reported_status = {

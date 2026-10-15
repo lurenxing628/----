@@ -1,14 +1,14 @@
 """Readonly scenario adoption directory; every page binds live identity state."""
 
+from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_trial import reference, reject
 from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-from core.services.workbench.plan.point_query import PointPlanCatalogRepository
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
 from .adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
@@ -32,31 +32,35 @@ class WorkbenchTrialAdoptionHistoryService:
             reject("invalid_input", "页码必须是 1 至 100000 的整数。", 400)
         with candidate_read_snapshot(self.conn):
             try:
-                return self._read(scope, page)
+                with read_evidence_scope(self.conn):
+                    context = PlanReadContext(self.conn)
+                    with context.read_scope():
+                        return self._read(scope, page, context)
             except WorkbenchCommandRejected:
                 raise
             except (KeyError, TypeError, ValueError, OverflowError):
                 invalid()
 
-    def _read(self, scope, page):
+    def _read(self, scope, page, context):
         saved, header, draft = scenario_evidence(self.conn, scope["scenario_ref"])
         repo = TrialAdoptionHistoryRepository(self.conn)
-        refs = WorkbenchPlanIdentityRepository(self.conn)
+        refs = context.references
         revision = refs.read_revision()
         # Same catalog repository as the public plan catalog, so detail validation cannot diverge.
-        catalog = PointPlanCatalogRepository(self.conn)
+        catalog = context.repo
         # This is current-state evidence only. It never chooses the requested scene.
         current_version = catalog.latest_version()
         query = _PagePlanQueryService(catalog, current_version)
         reader = WorkbenchPlanQueryService(self.conn)
+        reader.references = refs
         rows, all_items, seen = adoption_receipts(repo, scope["scenario_ref"]), [], set()
         for row in rows:
             plan = receipt_plan(row, saved)
             if plan["plan_ref"] in seen:
                 invalid()
             seen.add(plan["plan_ref"])
-            audit, audit_gaps = audit_fields(repo, row, plan, saved, header, draft)
-            identity, issues = self._identity(refs, reader, query, plan)
+            audit, audit_gaps = audit_fields(repo, row, plan, saved, header, draft, context=context)
+            identity, issues = self._identity(context, reader, query, plan)
             state = "unavailable" if identity is None or not identity["capabilities"]["view"] else (
                 "current" if identity["is_current_official"] else "historical")
             all_items.append({"receipt_ref": row["receipt_ref"], "request_key": row["request_key"],
@@ -82,9 +86,9 @@ class WorkbenchTrialAdoptionHistoryService:
                 "total_adoptions": len(all_items), "state": "available" if items else "empty"}, content
 
     @staticmethod
-    def _identity(refs, reader, query, plan):
+    def _identity(context, reader, query, plan):
         try:
-            locator = refs.resolve_plan(plan["plan_ref"])
+            locator = context.resolve(plan["plan_ref"])
             if locator != WorkbenchPlanLocator(plan["version"], "adopted"):
                 raise ValueError("Receipt plan identity mismatch")
             history = query.repo.get_history_identity_row(plan["version"])

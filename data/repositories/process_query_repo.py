@@ -27,7 +27,7 @@ class ProcessQueryRepository(BaseRepository):
         rows: List[Dict[str, Any]] = []
         for chunk in chunks(refs):
             rows.extend(self.fetchall("""SELECT o.*,r.ref,r.revision FROM WorkbenchEntityRefs r
-                JOIN PartOperations o ON r.entity_key=CAST(o.id AS TEXT)
+                JOIN PartOperations o ON o.id=CAST(r.entity_key AS INTEGER) AND CAST(o.id AS TEXT)=r.entity_key
                 WHERE r.kind='template_operation' AND r.active=1 AND o.status='active'
                 AND r.ref IN (""" + ",".join("?" for _ in chunk) + ")", chunk))
         return rows

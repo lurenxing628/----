@@ -13,6 +13,7 @@ from .schedule_candidate_summary import (
     ROLE_BASELINE_BEST,
     ROLE_CRITICAL_BEST,
     candidate_roles_by_key,
+    is_unified_generation,
 )
 
 
@@ -127,7 +128,9 @@ def _require_candidate_key_available(
         )
 
 
-def _comparison_weight_count(candidate_comparison: Any) -> int:
+def _comparison_weight_count(candidate_comparison: Any) -> Optional[int]:
+    if is_unified_generation(candidate_comparison):
+        return None
     return max(0, int(getattr(candidate_comparison, "planned_count", 0) or 0) - 1)
 
 
@@ -138,7 +141,7 @@ def _candidate_models(
     roles_by_key: Dict[str, List[str]],
     adopted_key: str,
     selection: Any,
-    weight_count: int,
+    weight_count: Optional[int],
 ) -> List[ScheduleCandidate]:
     models: List[ScheduleCandidate] = []
     for candidate in list(getattr(candidate_comparison, "candidates", None) or []):
@@ -157,6 +160,9 @@ def _candidate_models(
 
 
 def _detail_keys(candidate_comparison: Any, *, adopted_key: str) -> List[str]:
+    if is_unified_generation(candidate_comparison):
+        return [str(candidate.candidate_key) for candidate in candidate_comparison.candidates
+                if candidate.candidate_key != adopted_key and candidate.status == "completed"]
     detail_keys: List[str] = []
     for role in (ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST):
         key = _role_key(candidate_comparison, role)
@@ -206,8 +212,13 @@ def _persist_candidate_selections(
     adopted_key: str,
 ) -> None:
     repo = svc.candidate_repo
-    for role in (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST):
-        key = _role_key(candidate_comparison, role)
+    if is_unified_generation(candidate_comparison):
+        selection = candidate_comparison.selection
+        selections = [(ROLE_ADOPTED, adopted_key)] + list(selection.objective_winners.items())
+    else:
+        selections = [(role, _role_key(candidate_comparison, role))
+                      for role in (ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST)]
+    for role, key in selections:
         if not key:
             continue
         _require_candidate_key_available(

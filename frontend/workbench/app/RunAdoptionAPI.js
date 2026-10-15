@@ -91,10 +91,10 @@
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     function save(value, previous) {
       check(same(read(), previous), '上次采用记录已变化，没有覆盖其他操作。');
+      check(value === null || validIntent(value));
       try { if (value === null) storage.removeItem(PENDING_KEY); else storage.setItem(PENDING_KEY, JSON.stringify(value)); }
       catch (_) { throw new Error('存不下采用的操作记录，没有开始新的采用。请重新打开页面。'); }
-      const stored = read(); check(same(stored, value), '采用的操作记录没有保存，不要重新采用。');
-      window.dispatchEvent(new CustomEvent(EVENT, { detail: stored })); return stored;
+      window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
     }
     return { read,
       begin(value, values, previous = null) {

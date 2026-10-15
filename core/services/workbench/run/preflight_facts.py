@@ -1,83 +1,36 @@
 """Raw SQLite facts and complete content bound to an in-process read snapshot."""
 
-import json
 from contextlib import contextmanager
+from typing import TYPE_CHECKING, Optional
 
-from core.infrastructure.schema_probe import schema_objects, table_columns
 from core.infrastructure.transaction import TransactionManager
-from core.infrastructure.workbench_run_schema import RUN_TABLES
-from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
-from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_preflight import SCHEDULING_PREFERENCES_ACTION, SCHEDULING_PREFERENCES_KEY
+from core.services.workbench.facts.production_capture import NON_INPUT_TABLES, ProductionFactsCapture, non_input_row
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES, WorkbenchPreflightFactsRepository
 
+if TYPE_CHECKING:
+    from core.errors import ValidationError
+    from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+
 TABLES = PREFLIGHT_TABLES
-# 排产检查和排产计算都不读这些表的内容：OperationLogs 只写不读；SystemJobState 只驱动自动维护间隔；排产账本是排产自己的记录；
-# 试调草稿和方案只记试调过程（排产只读已采用方案的行，触发器保证它们不能改、不能删）；
-# 看板处置只记处理进度。试调采用会改正式计划表，其他改动也都落在业务表上，仍参与比对。
-NON_INPUT_TABLES = frozenset(("OperationLogs", "SystemJobState") + RUN_TABLES + TRIAL_TABLES + (
-    "WorkbenchDashboardStates", "WorkbenchDashboardHistory",
-    "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory"))
-_NON_INPUT_ACTIONS = ("trial.", "dashboard.")
-# 排产检查到开始排产之间：排产账本和排产回执仍要比对。一份检查结果只能开始一次排产，
-# 先开始的那次写下的记录必须让同一份检查结果作废（计算过程中的比对才排除排产自己的记录）。
-_PREFLIGHT_NON_INPUT_TABLES = NON_INPUT_TABLES - frozenset(RUN_TABLES)
 
 
-def quote(name):
-    return '"' + name.replace('"', '""') + '"'
-
-
-def non_input_row(table, row, receipt_columns, *, skip_runs=True):
-    """这一行不影响排产输入：界面保存的排产范围、日志/配置的自增计数、排产自己的回执、试调和看板处置回执、“无改动”回执。
-
-    回执只增不改；已提交、部分提交的其他回执和读不出来的行都保守地留在比对里。
-    skip_runs=False 时排产回执也留在比对里（排产检查到开始排产之间用）。
-    """
-    if type(row) not in (list, tuple):
-        return False
-    if table == "sqlite_sequence":
-        return len(row) == 2 and row[0] in ("OperationLogs", "SystemJobState", "SystemConfig")
-    if table == "SystemConfig":
-        # SystemConfig's id/key/value/description/time storage order is shared by every supported schema.
-        return len(row) == 5 and row[1] == SCHEDULING_PREFERENCES_KEY
-    if table != "WorkbenchCommandReceipts" or len(row) != len(receipt_columns):
-        return False
-    receipt = dict(zip(receipt_columns, row))
-    action = receipt.get("action")
-    if type(action) is str and (action == SCHEDULING_PREFERENCES_ACTION
-                               or skip_runs and action == "scheduling.run" or action.startswith(_NON_INPUT_ACTIONS)):
-        return True
-    return _no_change_outcome(receipt.get("outcome_json"))
-
-
-def _no_change_outcome(text):
-    if type(text) is not str:
-        return False
-    try:
-        outcome = json.loads(text)
-    except ValueError:
-        return False
-    return type(outcome) is dict and outcome.get("result") == "unchanged"
-
-
-def full_facts_content(conn):
-    # Includes unselected execution/resources/calendars and all ledger revisions,
-    # with the run worker's non-input exclusions except the run ledger itself.
-    schema = schema_objects(conn)
-    repo = WorkbenchPreflightFactsRepository(conn)
-    receipt_columns = table_columns(conn, "WorkbenchCommandReceipts")
-    tables = {row[1]: [list(fact) for fact in repo.read_whole_table(row[1])
-                      if not non_input_row(row[1], fact, receipt_columns, skip_runs=False)]
-              for row in schema if row[0] == "table" and row[1] not in _PREFLIGHT_NON_INPUT_TABLES}
-    return content_text({"schema": [list(row) for row in schema], "tables": tables})
+def full_facts_content(conn, capture=None):
+    if capture is not None:
+        return capture.content()
+    with TransactionManager(conn).transaction():
+        return ProductionFactsCapture(conn).content()
 
 
 class PreflightFacts:
-    def __init__(self, conn):
+    config_snapshot: Optional["ScheduleConfigSnapshot"]
+    config_error: Optional["ValidationError"]
+
+    def __init__(self, conn, *, capture=None):
         self.conn = conn
         self.repo = WorkbenchPreflightFactsRepository(conn)
+        self._shared_capture = capture
+        self.capture = capture
         self.tables = {}
         self.refs = {}
         self.operation_refs = {}
@@ -85,11 +38,17 @@ class PreflightFacts:
     @contextmanager
     def snapshot(self, *, fingerprint=True):
         with TransactionManager(self.conn).transaction():
-            self.tables = self.repo.preflight_tables()
-            self.refs = {(row["kind"], row["entity_key"]): row["ref"] for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
-            self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
-                                   if row["kind"] == "operation" and row["active"]}
-            yield full_facts_content(self.conn) if fingerprint else ""
+            capture = self._shared_capture if self._shared_capture is not None else ProductionFactsCapture(self.conn)
+            self.bind_capture(capture)
+            yield full_facts_content(self.conn, self.capture) if fingerprint else ""
+
+    def bind_capture(self, capture):
+        self.capture = capture
+        self.tables = self.repo.preflight_tables(capture=capture)
+        self.refs = {(row["kind"], row["entity_key"]): row["ref"]
+                     for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
+        self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
+                               if row["kind"] == "operation" and row["active"]}
 
     def selected(self, refs):
         identities = {ref: key for (kind, key), ref in self.refs.items() if kind == "batch"}

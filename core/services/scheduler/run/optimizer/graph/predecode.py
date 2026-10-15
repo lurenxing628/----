@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import math
 from itertools import groupby
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
 from .budget import GraphReadySearchBudget
+
+if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 
 def graph_priority_preorder(keys: Dict[int, Tuple[float, ...]]) -> Tuple[Tuple[int, ...], ...]:
@@ -30,32 +34,18 @@ def graph_priority_preorder(keys: Dict[int, Tuple[float, ...]]) -> Tuple[Tuple[i
     return tuple(tuple(group) for _key, group in groupby(ordered, key=normalized.__getitem__))
 
 
-class _EquivalentDecision(RuntimeError):
-    def __init__(self, candidate: Dict[str, Any]) -> None:
-        self.candidate = candidate
-
-
-class _ProfileBudgetExhausted(RuntimeError):
-    pass
-
-
 class GraphReadyProfileSearch:
-    """Cache bound to ONE evaluator closure: input/seed/resource/rule cannot vary.
-
-    Only order and graph keys vary here. Never share this cache with a restart,
-    another resource pool, or repair. Failed decodes do not become representatives.
-    """
+    """Profile construction uses the run's shared decode admission and receipts."""
 
     def __init__(self, *, evaluate: Callable[..., Dict[str, Any]], pool: Any,
-                 budget: GraphReadySearchBudget, profile_count: int, initial_decode_seconds: float = 0.0) -> None:
+                 budget: GraphReadySearchBudget, profile_count: int,
+                 decode_session: SharedDecodeSession) -> None:
         self._evaluate = evaluate
         self.pool = pool
         self.budget = budget
-        self.initial_decode_seconds = initial_decode_seconds
-        self.cost_stopped = False
-        self._decoded: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+        self.decode_session = decode_session
         self.report: Dict[str, Any] = {
-            "proof": "exact_graph_key_weak_order_v1", "cache_scope": "single_fixed_evaluator",
+            "proof": "shared_decode_request_v1", "cache_scope": "shared_session", "shared_skip_by_reason": {},
             "configured_profiles": profile_count, "considered_profiles": 0,
             "predecode_pruned_profiles": 0, "construction_rejected_profiles": 0,
             "skipped_before_decode": 0, "equivalent_profiles": [],
@@ -63,51 +53,35 @@ class GraphReadyProfileSearch:
         }
 
     def can_start(self) -> bool:
-        return not self.cost_stopped and self.budget.available()
+        return self.budget.available()
 
     def evaluate(self, *, profile: GraphReadyWeightProfile, order: List[str]) -> Optional[Dict[str, Any]]:
         self.report["considered_profiles"] += 1
-        decision: List[Tuple[Any, ...]] = []
         started = False
 
-        def inspect(context: Dict[str, Any]) -> None:
+        def before_decode() -> None:
             nonlocal started
-            key = (tuple(order), graph_priority_preorder(context["graph_priority_key_by_op_id"]))
-            if key in self._decoded:
-                raise _EquivalentDecision(self._decoded[key])
-            # Construction and proof computation consume the SAME wall-clock budget.
-            if not self.can_start():
-                raise _ProfileBudgetExhausted()
-            if self.initial_decode_seconds > max(self.budget.deadline - self.budget.clock(), 0.0):
-                self.cost_stopped = True
-                self.report["skipped_by_estimated_decode_cost"] += 1
-                raise _ProfileBudgetExhausted()
-            decision.append(key)
             self.budget.profile_decodes += 1
             started = True
 
         evaluation_started = self.budget.clock()
         try:
-            candidate = self._evaluate(profile=profile, order=order, inspect_decision=inspect)
-        except _EquivalentDecision as exc:
-            self.report["predecode_pruned_profiles"] += 1
-            self.report["equivalent_profiles"].append({
-                "profile_slug": profile.slug,
-                "representative_slug": exc.candidate["graph_ready_profile"]["weight_profile_slug"],
-            })
-            # A v1 representative can still supply a proven-equivalent v2 elite.
-            # Do not relabel the decoded payload or count it as another evaluation.
-            self.pool.observe(exc.candidate, profile)
-            return None
-        except _ProfileBudgetExhausted:
+            candidate = self._evaluate(profile=profile, order=order, before_decode=before_decode)
+        except SharedSearchSkip as exc:
             self.report["skipped_before_decode"] += 1
+            counts = self.report["shared_skip_by_reason"]
+            counts[exc.reason] = counts.get(exc.reason, 0) + 1
             return None
         except ValidationError:
             if not started:
                 self.report["construction_rejected_profiles"] += 1
             raise
-        self.budget.record_profile_cost(self.budget.clock() - evaluation_started)
-        self._decoded[decision[0]] = candidate
+        if started:
+            self.budget.record_profile_cost(self.budget.clock() - evaluation_started)
+        else:
+            self.report["predecode_pruned_profiles"] += 1
+            self.report["equivalent_profiles"].append({"profile_slug": profile.slug,
+                                                        "request_id": candidate["decode_receipt"]["request_id"]})
         return candidate
 
     def publish(self, *, attempts: List[Dict[str, Any]], report_state: Any) -> None:
