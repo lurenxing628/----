@@ -53,8 +53,9 @@ def validate_after_scenario_id(value: Optional[str]) -> None:
 class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
     """Strict-query repository restricted to one catalog page, not full history."""
 
-    def __init__(self, conn: sqlite3.Connection, logger=None):
+    def __init__(self, conn: sqlite3.Connection, logger=None, *, role_reader=None):
         super().__init__(conn, logger=logger)
+        self._role_reader = role_reader
         self._histories: Dict[int, Optional[Dict[str, Any]]] = {}
         self._history_rows: Dict[int, List[Dict[str, Any]]] = {}
         self._roles: Dict[int, List[Dict[str, Any]]] = {}
@@ -126,7 +127,8 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
 
     def list_plan_role_options(self, version: int) -> List[Dict[str, Any]]:
         if version not in self._roles:
-            self._roles[version] = super().list_plan_role_options(version)
+            self._roles[version] = (self._role_reader(version) if self._role_reader is not None else
+                                    super().list_plan_role_options(version))
         return self._roles[version]
 
     def get_scenario_context(self, scenario_id: str) -> Optional[Dict[str, Any]]:

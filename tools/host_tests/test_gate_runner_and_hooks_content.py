@@ -263,6 +263,33 @@ def test_native_pre_push_checks_committed_targets_and_preserves_complete_chain(t
     assert push(good_line).returncode == 0
     assert len(Path(environment["APS_HOOK_TEST_LOG"]).read_text().splitlines()) == len(rows)
 
+    # 已验证目标不随当前 checkout 的无关改动或提交失效。
+    readme = root / "README.md"
+    readme.write_text("Unrelated checkout notes\n", encoding="utf-8")
+    dirty_push = push(good_line)
+    assert dirty_push.returncode == 0
+    before_key, after_key = json.loads(passed_cache)["key_payload"], json.loads(cache.read_bytes())["key_payload"]
+    assert len(Path(environment["APS_HOOK_TEST_LOG"]).read_text().splitlines()) == len(rows), (
+        dirty_push.stdout.decode() + dirty_push.stderr.decode(),
+        [key for key in before_key if before_key[key] != after_key[key]],
+        {name: (version, after_key["tool_versions"].get(name))
+         for name, version in before_key["tool_versions"].items()
+         if version != after_key["tool_versions"].get(name)},
+    )
+    git("add", "README.md")
+    git("commit", "-m", "Unrelated checkout documentation")
+    committed_push = push(good_line)
+    assert committed_push.returncode == 0
+    after_key = json.loads(cache.read_bytes())["key_payload"]
+    assert len(Path(environment["APS_HOOK_TEST_LOG"]).read_text().splitlines()) == len(rows), (
+        committed_push.stdout.decode() + committed_push.stderr.decode(),
+        [key for key in before_key if before_key[key] != after_key[key]],
+        {name: (version, after_key["tool_versions"].get(name))
+         for name, version in before_key["tool_versions"].items()
+         if version != after_key["tool_versions"].get(name)},
+    )
+    git("checkout", "--detach", base)
+
     # 相同 ref 和范围只改 local_sha，旧 aggregate pass 必须失效。
     failure = push(good_line.replace(passed, failed))
     assert failure.returncode != 0
@@ -285,6 +312,10 @@ def test_native_pre_push_checks_committed_targets_and_preserves_complete_chain(t
     assert push(f"HEAD {base} refs/heads/current {base}\n").returncode == 0
     head_row = json.loads(Path(environment["APS_HOOK_TEST_LOG"]).read_text().splitlines()[-1])
     assert head_row["marker"] == "base" and head_row["scope"]["changed_paths"] == []
+    assert script.read_text(encoding="utf-8") == dirty
+    before = len(Path(environment["APS_HOOK_TEST_LOG"]).read_text().splitlines())
+    assert push(f"HEAD {base} refs/heads/current {base}\n").returncode == 0
+    assert len(Path(environment["APS_HOOK_TEST_LOG"]).read_text().splitlines()) == before
     assert script.read_text(encoding="utf-8") == dirty
     script.write_text(original, encoding="utf-8")
     before = len(Path(environment["APS_HOOK_TEST_LOG"]).read_text().splitlines())

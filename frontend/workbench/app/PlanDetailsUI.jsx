@@ -137,6 +137,16 @@
     const [page, setPage] = React.useState(0), read = React.useMemo(() => {
       try { return conflictRows(data); } catch (error) { return { error }; }
     }, [data]);
+    const visible = React.useMemo(() => {
+      if (read.error) return [];
+      const current = Math.min(page, Math.max(0, Math.ceil(read.rows.length / 20) - 1));
+      return read.rows.slice(current * 20, current * 20 + 20).map(row => {
+        const start = M.instant(row.start), end = M.instant(row.end);
+        const tasks = (prepared.resourceMembers.get(row.resource_ref) || [])
+          .filter(item => item.start < end && item.end > start).map(item => item.task);
+        return { row, tasks };
+      });
+    }, [read, prepared, page]);
     if (read.error) return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3><window.ResourceControls.ErrorBox error={read.error} /></section>;
     const { rows, projection } = read, current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1)), labels = prepared.labels;
     const legacy = projection.resources.some(resource => resource.metric_version !== 'decision-resource-v4');
@@ -148,10 +158,9 @@
       <Issues issues={projection.issues} />
       {rows.length ? <><div className="plan-projection-table wb-table-frame" data-wb-scroll-key="plan-conflict-table" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="资源重叠明细"><caption className="wb-visually-hidden">资源重叠明细</caption><thead><tr>
         {['资源', '同时安排的工序', '重叠时段'].map((label, index) => <th scope="col" className={index === 0 ? 'wb-col-key' : undefined} key={label}>{label}</th>)}
-      </tr></thead><tbody>{rows.slice(current * 20, current * 20 + 20).map(row => <tr key={row.resource_ref + ':' + row.start + ':' + row.end}>
+      </tr></thead><tbody>{visible.map(({ row, tasks }) => <tr key={row.resource_ref + ':' + row.start + ':' + row.end}>
         <td className="wb-col-key">{row.label || labels.get(row.resource_ref) || '资源名称未填写'}<div className="plan-muted">{M.kindLabels[row.kind]}</div></td>
-        <td>{prepared.conflictMembers.get(row.resource_ref + ':' + row.start + ':' + row.end).map(item => item.task)
-          .map(task => <div key={task.task_ref}>{task.batch_id} · {task.sequence} {task.process_label}</div>)}</td>
+        <td>{tasks.map(task => <div key={task.task_ref}>{task.batch_id} · {task.sequence} {task.process_label}</div>)}</td>
         <td title={M.timeLabel(row.start) + ' 至 ' + M.timeLabel(row.end) + '（不含结束时刻）'}>{F.compactRange(row.start, row.end)}</td>
       </tr>)}</tbody></table></div><window.WorkbenchControls.Pager label="重叠明细" page={current + 1} pages={Math.ceil(rows.length / 20)} total={rows.length} size={20} sizes={[20]} unit="段" onPage={next => setPage(next - 1)} /></> : <window.WorkbenchControls.EmptyState kind="empty" title={empty} />}
     </section>;

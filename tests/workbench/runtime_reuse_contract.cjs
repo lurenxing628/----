@@ -687,8 +687,73 @@ async function main() {
   overviewSteps.push({ phase: 'display_new_tasks', date_reads: overviewTimeReads, histogram_builds: binBuilds });
   overviewHooks.unmount(); overviewHooks = null; overviewParentHooks.unmount();
 
+  // Conflict membership is prepared only for the displayed page, in original task order.
+  const conflictHooks = hooks(); let conflictSegmentReads = 0, conflictMemberChecks = 0;
+  const conflictWindow = { ResourceControls: { Button: 'button', Issues: 'issues', ErrorBox: 'error' }, WorkbenchTerms: { delivery_risks: {} },
+    WorkbenchFormat: { dateTime: String, compactRange: (start, end) => start + ' / ' + end },
+    WorkbenchControls: { Pager: 'pager', EmptyState: 'empty' }, PointContract: { isPoint: task => task.start === task.end } };
+  const conflictContext = vm.createContext({ window: conflictWindow, React: conflictHooks.React });
+  load(conflictContext, 'PlanGanttModel.js'); load(conflictContext, 'PlanDetailsUI.jsx');
+  const conflictTask = (id, start, end, machine = 'machine') => ({ task_ref: id, batch_id: id, process_label: id, sequence: 1,
+    machine_ref: machine, operator_ref: null, start: '2026-10-12T' + start, end: '2026-10-12T' + end });
+  const conflictTasks = [conflictTask('late-source-first', '08:50:00', '09:02:00'), conflictTask('ends-at-start', '08:00:00', '08:30:00.125'),
+    conflictTask('starts-at-end', '09:00:00.500', '09:30:00'), conflictTask('early-source-later', '08:00:00', '09:05:00'),
+    conflictTask('point-inside', '08:45:00', '08:45:00'), conflictTask('other-resource', '08:00:00', '10:00:00', 'other-machine')];
+  const conflictScope = { range_start: '2026-10-12T08:00:00', range_end: '2026-10-12T10:00:00', selection: 'overlap', boundary: 'half_open', time_basis: 'factory_local' };
+  const conflictSegments = Array.from({ length: 25 }, (_, index) => ({ start: '2026-10-12T08:30:00.125',
+    end: '2026-10-12T09:00:' + String(index).padStart(2, '0') + '.500', concurrent_operations: 2 }));
+  const conflictResource = { kind: 'machine', resource_ref: 'machine', label: 'M1', metric_version: 'decision-resource-v4', has_overlap: true, segments: [],
+    get conflict_segments() { conflictSegmentReads++; return conflictSegments; } };
+  const conflictData = { plan: { plan_ref: 'plan' }, tasks: conflictTasks, resources: [{ ref: 'machine', label: 'M1' }, { ref: 'other-machine', label: 'M2' }],
+    plan_span: { start: conflictScope.range_start, end: conflictScope.range_end }, time_scope: conflictScope,
+    projections: { baseline: { state: 'unavailable' }, calendar: { resources: [] }, occupancy: { state: 'available', basis: 'selected_plan_only', plan_ref: 'plan', time_scope: conflictScope, resources: [conflictResource], issues: [] } } };
+  const conflictFacts = conflictWindow.PlanGanttModel.prepare(conflictData);
+  assert.equal(conflictSegmentReads, 0, 'Ordinary plan preparation does not inspect conflict-detail segments');
+  const resourceMembers = conflictFacts.resourceMembers.get('machine'), memberFilter = resourceMembers.filter;
+  resourceMembers.filter = predicate => memberFilter.call(resourceMembers, item => { conflictMemberChecks++; return predicate(item); });
+  const renderConflicts = () => conflictHooks.render(() => conflictWindow.PlanDetailsUI.Conflicts({ data: conflictData, prepared: conflictFacts }));
+  let conflictTree = renderConflicts(); assert.equal(conflictMemberChecks, 20 * 5); assert.equal(conflictSegmentReads, 1);
+  const conflictRows = find(conflictTree, 'tbody').children.flat(Infinity), firstConflictTasks = conflictRows[0].props.children[1].props.children.flat(Infinity);
+  assert.deepEqual(Array.from(firstConflictTasks, node => node.props.key), ['late-source-first', 'early-source-later', 'point-inside'],
+    'Conflict membership keeps source order, exact fractional boundaries and the original point predicate');
+  renderConflicts(); assert.equal(conflictMemberChecks, 20 * 5, 'Unchanged conflict pages reuse their members');
+  find(conflictTree, 'pager').onPage(2); conflictTree = renderConflicts();
+  assert.equal(find(conflictTree, 'tbody').children.flat(Infinity).length, 5); assert.equal(conflictMemberChecks, 25 * 5);
+  conflictHooks.unmount();
+
+  // The dashboard picker reuses all labels and options while the timeline scrolls or zooms.
+  const timelineHooks = hooks(); let timelineLabels = 0, timelineSelected = 'batch-first';
+  const timelineData = { tasks: [{ task_ref: 'first', batch_ref: 'batch-first', batch_id: 'B1', sequence: 1, process_label: '加工', start: 'start-one' },
+    { task_ref: 'second', batch_ref: 'batch-second', batch_id: 'B2', sequence: 2, process_label: '检查', start: 'start-two', point: true }] };
+  const timelineWindow = { ResourceControls: { TimelineZoom: 'zoom' }, WorkbenchListControls: { EmptyState: 'empty' },
+    GanttPresentation: { axis: () => ({ ticks: [] }) }, GanttPresentationUI: { Axis: 'axis' },
+    PointContract: { isPoint: task => !!task.point }, WorkbenchFormat: { dateTime: String, compactRange: () => 'range' },
+    DashboardTimelineModel: { prepare: value => value, groupPrepared: value => value,
+      layoutPrepared: value => ({ tasks: value.tasks, rows: [], start: 0, end: 3600000, height: 100, locations: new Map() }),
+      visibleRows: () => [], wire: String, timeLabel: value => { timelineLabels++; return value; } } };
+  const timelineContext = vm.createContext({ window: timelineWindow, React: timelineHooks.React }); load(timelineContext, 'DashboardTimeline.jsx');
+  const renderTimeline = () => timelineHooks.render(() => timelineWindow.DashboardTimeline({ data: timelineData, selectedBatch: timelineSelected, onSelect: batch => { timelineSelected = batch; } }));
+  let timelineTree = renderTimeline(), timelinePicker = find(timelineTree, 'select'), timelineOptions = timelinePicker.children[1];
+  assert.equal(timelineLabels, 2); assert.deepEqual(timelineOptions.map(option => option.props.value), ['first', 'second']);
+  const timelineBoard = find(timelineTree, 'div', props => props.className === 'dy-timeline-board');
+  timelineBoard.ref.current = { scrollLeft: 100, scrollTop: 50, clientWidth: 900, clientHeight: 330 };
+  timelineBoard.onScroll(); timelineTree = renderTimeline(); assert.equal(timelineLabels, 2);
+  assert.strictEqual(find(timelineTree, 'select').children[1], timelineOptions);
+  find(timelineTree, 'zoom').onZoom(2); timelineTree = renderTimeline(); assert.equal(timelineLabels, 2);
+  assert.strictEqual(find(timelineTree, 'select').children[1], timelineOptions);
+  find(timelineTree, 'select').onChange({ target: { value: 'second' } }); timelineTree = renderTimeline();
+  assert.equal(timelineSelected, 'batch-second'); assert.equal(find(timelineTree, 'select').value, 'second');
+  timelineSelected = 'batch-first'; timelineTree = renderTimeline(); assert.equal(find(timelineTree, 'select').value, '');
+  timelineData.tasks = timelineData.tasks.map(task => ({ ...task, process_label: task.process_label + '更新' }));
+  // A new source data identity restarts model preparation, as the real workspace does after refresh.
+  const refreshedTimelineData = { ...timelineData };
+  timelineTree = timelineHooks.render(() => timelineWindow.DashboardTimeline({ data: refreshedTimelineData, selectedBatch: timelineSelected, onSelect() {} }));
+  assert.equal(timelineLabels, 4); assert.notStrictEqual(find(timelineTree, 'select').children[1], timelineOptions);
+  assert.equal(find(timelineTree, 'select').children[1][0].props.children[4], '加工更新'); timelineHooks.unmount();
+
   // An unrestricted trial keeps its scope, resource names and row preparation on hover/scroll.
-  const trialGanttHooks = hooks(); let trialFilters = 0, trialNames = 0;
+  const trialGanttHooks = hooks(); let trialFilters = 0, trialNames = 0, trialBatchSets = 0, trialBatchChecks = 0;
+  class TrialBatchSet extends Set { constructor(values) { super(values); trialBatchSets++; } has(value) { trialBatchChecks++; return super.has(value); } }
   const trialTasks = [8, 9].map((hour, index) => ({ task_ref: 'task-' + index, batch_ref: 'batch', batch_id: 'B1', sequence: index + 1, process_label: '加工',
     start: '2026-10-12T0' + hour + ':00:00', end: '2026-10-12T' + String(hour + 1).padStart(2, '0') + ':00:00', machine_ref: 'machine', operator_ref: null, issues: [], quantity: 1, batch_quantity: 1, piece_id: null }));
   trialTasks.push({ ...trialTasks[1], task_ref: 'point', start: trialTasks[1].end, event_kind: 'point' });
@@ -702,7 +767,7 @@ async function main() {
     ResourceControls: { TimelineZoom: 'zoom' }, TrialViewState: { useView: () => ({ value: trialValues, change() {} }), Notice: 'notice' },
     GanttPresentationUI: { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, GanttPresentation: { axis: () => ({ ticks: [] }), taskLines: () => ({ primary: '加工', secondary: '' }) },
     PointContract: { isPoint: task => task.event_kind === 'point' }, PointGantt: { Marker: 'point' }, trialRowSorts: 0 };
-  const trialGanttContext = vm.createContext({ window: trialGanttWindow, React: trialGanttHooks.React, innerWidth: 1280, innerHeight: 800,
+  const trialGanttContext = vm.createContext({ window: trialGanttWindow, React: trialGanttHooks.React, Set: TrialBatchSet, innerWidth: 1280, innerHeight: 800,
     ResizeObserver: class { observe() {} disconnect() {} } });
   load(trialGanttContext, 'PlanGanttModel.js'); load(trialGanttContext, 'TrialGantt.jsx');
   vm.runInContext(`const rowSort = Array.prototype.sort; Array.prototype.sort = function (compare) {
@@ -710,6 +775,7 @@ async function main() {
   };`, trialGanttContext);
   const trialGanttRender = () => trialGanttHooks.render(() => trialGanttWindow.TrialGantt({ data: trialGanttData, selected: null, onSelect() {} }));
   let trialGanttTree = trialGanttRender();
+  assert.equal(trialBatchSets, 1); assert.equal(trialBatchChecks, 3);
   find(trialGanttTree, 'div', props => props.className === 'tt-board').ref.current = { scrollLeft: 100, clientWidth: 1000, querySelector: () => ({ getBoundingClientRect: () => ({ width: 100 }) }) };
   find(trialGanttTree, 'div', props => props.className === 'tt-ticks').ref.current = { clientWidth: 1000 };
   trialGanttHooks.flush(); trialGanttTree = trialGanttRender();
@@ -718,7 +784,15 @@ async function main() {
   find(trialGanttTree, 'point').onHover({ clientX: 200, clientY: 200 }); trialGanttTree = trialGanttRender();
   assert(find(trialGanttTree, 'div', props => props.role === 'tooltip'));
   find(trialGanttTree, 'div', props => props.className === 'tt-board').onScroll(); trialGanttTree = trialGanttRender();
-  assert.equal(trialFilters, preparedTrialFilters); assert.equal(trialGanttWindow.trialRowSorts, preparedTrialRows); assert.equal(trialNames, 1); trialGanttHooks.unmount();
+  assert.equal(trialFilters, preparedTrialFilters); assert.equal(trialGanttWindow.trialRowSorts, preparedTrialRows); assert.equal(trialNames, 1);
+  const trialLimitLabel = find(trialGanttTree, 'label', props => props.children.includes('原显示范围'));
+  trialLimitLabel.children.find(child => child && child.type === 'input').props.onChange({ target: { checked: true } }); trialGanttTree = trialGanttRender();
+  assert.equal(trialBatchSets, 2); const scopedTrialChecks = trialBatchChecks;
+  trialValues.query = ' 加工 '; trialGanttTree = trialGanttRender();
+  assert.equal(trialBatchSets, 2, 'Typing a search reuses the batch membership set'); assert.equal(trialBatchChecks, scopedTrialChecks + 3);
+  trialGanttData.scope = { batch_refs: [] }; trialGanttTree = trialGanttRender();
+  assert.equal(find(trialGanttTree, 'div', props => props['data-trial-task'] !== undefined), null, 'An explicit empty batch scope still matches no task');
+  trialGanttHooks.unmount();
 
   // The three overdue flags share one pass and remain frozen with the data identity.
   const toolbarHooks = hooks(); let deadlineVisits = 0;
@@ -771,6 +845,9 @@ async function main() {
     resource_related_save_detail_reads: resourceDetails, overview_time_reads: overviewTimeReads, overview_bin_builds: binBuilds,
     overview_mounts: overviewMounts, overview_preparation_steps: overviewSteps,
     trial_filter_calls: trialFilters, trial_row_sorts: trialGanttWindow.trialRowSorts, trial_resource_name_passes: trialNames, actual_deadline_visits: deadlineVisits,
+    conflict_prepare_segment_reads: 0, conflict_current_page_member_checks: 20 * 5, conflict_two_page_member_checks: conflictMemberChecks,
+    dashboard_picker_initial_labels: 2, dashboard_picker_scroll_zoom_extra_labels: 0, dashboard_picker_refreshed_labels: timelineLabels,
+    trial_search_batch_set_rebuilds: 0, trial_search_membership_checks: 3,
     scroll_scans: scans, unrelated_scroll_refreshes: 0, context_updates: 60,
     trailing_history_writes: 1, immediate_navigation_and_history_restore: true, restoring_pagehide_preserved: true,
     forward_branch_plan_bound: true, history_help_chapters: true, dashboard_issue_scope_and_return: true, dashboard_late_request_isolated: true,

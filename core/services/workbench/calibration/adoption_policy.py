@@ -2,7 +2,6 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
-from core.models.workbench_template_lineage import snapshot
 from core.services.process.template_hours import ProcessTemplateHours
 
 
@@ -20,11 +19,8 @@ def adopt_checked_quota(repo, template, value):
     """Use the shared current-template hours writer in the adoption transaction."""
     if not repo.conn.in_transaction:
         raise RuntimeError("Quota adoption requires the caller write transaction.")
-    ProcessTemplateHours(repo.conn).revise(template["template_operation_ref"], {"unit_hours": value},
-                                          expected_revision=template["template_revision"])
-    after = require_template(repo, template["template_operation_ref"])
-    expected = {**template, "unit_hours": after["unit_hours"], "template_revision": after["template_revision"]}
+    current = {**template, "ref": template["template_operation_ref"], "revision": template["template_revision"]}
+    ProcessTemplateHours(repo.conn).revise_current(current, {"unit_hours": value},
+                                                  expected_revision=template["template_revision"])
     revision = template["template_revision"] + int(template["unit_hours"] != value)
-    if snapshot(after) != snapshot(expected) or after["unit_hours"] != value or after["template_revision"] != revision:
-        raise RuntimeError("Template adoption changed unexpected facts or failed to advance identity revision.")
-    return after
+    return {**template, "unit_hours": value, "template_revision": revision}

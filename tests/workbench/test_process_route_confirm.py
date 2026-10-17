@@ -47,6 +47,29 @@ def test_route_review_reuses_current_facts_for_parser_and_choices(stage_conn, mo
     assert [row["ref"] for row in affected] == [ref_for(stage_conn, "template_external_group", "PROC-G")]
 
 
+def test_catalog_workflow_reuses_operation_states_and_preserves_stage_results(stage_conn, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.process import workflow_state
+    from tests.workbench.process_commands_support import prepare_stages
+
+    prepare_stages(stage_conn)
+    with TransactionManager(stage_conn).transaction():
+        raw = workflow_state.load_workflow_snapshot(stage_conn)
+    expected = {part["part_no"]: {
+        "workflow": workflow_state.read_workflow(stage_conn, part["part_no"]),
+        "operations": workflow_state.operation_confirmations(stage_conn, part["part_no"]),
+    } for part in raw["parts"]}
+    calls, original = [], workflow_state._operation_states
+
+    def once(per_op, records, stored=None):
+        calls.append(stored)
+        return original(per_op, records, stored)
+
+    monkeypatch.setattr(workflow_state, "_operation_states", once)
+    assert workflow_state.project_workflow_snapshot(raw) == expected
+    assert len(calls) == len(raw["parts"])
+
+
 @pytest.mark.parametrize("change", ("remove",))
 def test_group_impact_is_readonly_and_exact_ack_is_required(stage_conn, change):
     if change in ("insert_in_range", "restore"):

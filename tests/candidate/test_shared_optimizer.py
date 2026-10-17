@@ -333,11 +333,76 @@ def _assert_controlled_worse_reference_keeps_source():
     assert bridge["elapsed_ms"] >= 0 and bridge["finished_elapsed_ms"] >= bridge["started_elapsed_ms"]
     assert session.events[-1]["event_type"] == "reference_capture"
     assert session.events[-1]["event_id"] == bridge["source_event_id"]
+    return session, view, search, reference, scheduler
+
+
+def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work():
+    from core.services.scheduler.run.optimizer.multi_start import MultiStartStage
+    from core.services.scheduler.run.schedule_shared_optimizer import _next_stage
+
+    session, view, search, reference, scheduler = _assert_controlled_worse_reference_keeps_source()
+    decoder = session.decode_session
+    now = monotonic()
+
+    def clock():
+        return now
+
+    deadline = now + 2.0
+    budget = SharedSearchBudget(clock=clock, started_at=now - 8.0, deadline=deadline,
+                                target_objectives=session.archive.target_objectives, configured_seconds=10)
+    budget.record_decode("sgs_full", 6.0)
+    budget.record_decode("batch_order_full", 0.1)
+    decoder.budget, decoder.clock, decoder.deadline = budget, clock, deadline
+    search.clock, search.deadline = clock, deadline
+    search.report["decodes"] = 0
+    search.reference = reference
+    search.best = reference.candidate
+    old_parent, old_profile = search.parent, search.profile
+    state = GraphSearchState(view.candidate)
+    run = IteratedGreedyRun(
+        limits=search.limits, state=state, parent_profile=lambda candidate: search.profile,
+        pool=search.pool, evaluate=search.evaluate, operations=search.operations, graph_context=search.graph_context,
+        metrics_by_op_id=search.metrics, objective_name=view.objective, start_dt=search.start_dt,
+        seed=0, deadline=deadline, clock=clock, t_begin=now - 8.0, attempts=[], improvement_trace=[],
+        report_state=view.report, strict_mode=True, decode_session=decoder,
+    )
+    run.search, run.report, run.started_at = search, search.report, now
+    ig = IteratedGreedyStage(run, startup_ready=lambda: True)
+    ordinary = MultiStartStage(
+        keys=[SortStrategy.FIFO.value], dispatch_modes=["batch_order"], dispatch_rule_cfg="slack",
+        valid_dispatch_rules=["slack"], scheduler=scheduler, algo_ops_to_schedule=decoder.operations,
+        batches=decoder.batches, start_dt=START_DT, end_date=None, downtime_map=decoder.downtime_map,
+        seed_sr_list=decoder.seed_results, cfg=scheduler.config, resource_pool=decoder.resource_pool,
+        objective_name=view.objective, deadline=deadline, t_begin=now - 8.0,
+        build_order=lambda strategy, params: list(decoder.batches), strict_mode=True, clock=clock,
+        search_report_state=view.report, state=view.state, decode_session=decoder,
+    )
+    view.stages = [ig, ordinary]
+    before_calls, before_skips = decoder.actual_decoder_calls, decoder.skipped_requests
+    assert _next_stage(view) is ig
+    ig.run_task()
+    assert not ig.available() and ig.unavailable_reason() == "estimated_decode_cost"
+    assert run.stopped and run.report["stop_reason"] == "estimated_decode_cost"
+    assert search.parent is old_parent and search.profile == old_profile and search.reference is reference
+    assert search.best is state.best is view.candidate
+    assert decoder.actual_decoder_calls == before_calls and decoder.skipped_requests == before_skips + 1
+    # A previously decoded reference still reuses its checkpoints without admission.
+    assert search._decode_entry(reference.order) is reference
+    assert _next_stage(view) is ordinary
+    ordinary.run_task()
+    assert ordinary.efficiency["decoded_candidates"] == 1
+    assert decoder.actual_decoder_calls == before_calls + 1 and decoder.skipped_requests == before_skips + 1
+    assert _next_stage(view) is None
+    assert decoder.skipped_requests == before_skips + 1
+    ig.finish()
+    assert run.report["status"] == "skipped_by_budget"
+    assert run.report["stop_reason"] == "estimated_decode_cost"
 
 
 def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece_dag(monkeypatch, record_property):
     from dataclasses import fields
 
+    from core.services.scheduler.run.optimizer.graph import candidates as graph_candidates
     from core.services.scheduler.run.optimizer.search_budget import SearchBudget
     from core.services.scheduler.run.schedule_optimizer_steps import _run_ortools_warmstart
 
@@ -376,12 +441,22 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
         prepared_contexts.append(context)
         return ScheduleGraphDispatchPreparation(None, None, context)
 
-    shared = optimize_shared_schedule(
-        calendar_service=ContinuousCalendar(), cfg_svc=cfg, cfg=cfg, algo_ops_to_schedule=operations,
-        batches=batches, start_dt=START_DT, end_date=None, downtime_map=downtime,
-        seed_results=[asdict(seed)], resource_pool=pool, version=0, readiness_gate_enabled=False, strict_mode=True,
-        graph_prepare=prepare_graph, _runtime=_runtime(created),
-    )
+    with patch.object(graph_candidates, "_validate_decision_features",
+                      wraps=graph_candidates._validate_decision_features) as feature_admissions:
+        shared = optimize_shared_schedule(
+            calendar_service=ContinuousCalendar(), cfg_svc=cfg, cfg=cfg, algo_ops_to_schedule=operations,
+            batches=batches, start_dt=START_DT, end_date=None, downtime_map=downtime,
+            seed_results=[asdict(seed)], resource_pool=pool, version=0, readiness_gate_enabled=False, strict_mode=True,
+            graph_prepare=prepare_graph, _runtime=_runtime(created),
+        )
+    admitted = set()
+    for call in feature_admissions.call_args_list:
+        profile = call.kwargs["profile"]
+        identity = (id(call.args[0]), profile.formula_version, profile.formula_slug, profile.feature_basis,
+                    tuple(sorted(profile.effective_weights.items())), profile.jitter_seed)
+        assert identity not in admitted
+        admitted.add(identity)
+    assert admitted
     assert len(created) == len(prepared_contexts) == 1
     scheduler = created[0]
     assert scheduler.calls[0]["dispatch_mode"] == "batch_order"

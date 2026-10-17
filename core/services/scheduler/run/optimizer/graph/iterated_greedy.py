@@ -62,7 +62,7 @@ from .v2_contract import is_graph_ready_v2_contract_error
 
 # Pending output contents share one complete decode's row budget and a bounded LRU.
 _PENDING_OUTPUT_CACHE_SIZE = 32
-_STOP_BY_BUDGET = ("time_budget", "decode_budget", "decode_would_overrun")
+_STOP_BY_BUDGET = ("time_budget", "decode_budget", "decode_would_overrun", "estimated_decode_cost")
 _FAILED = ((), False)
 # Helpers reachable through this module for existing callers and tests.
 _destroy = tardy_random_destroy
@@ -268,6 +268,9 @@ class _IteratedGreedySearch:
             candidate = self._decode(order, checkpoints=request, redecode_reason=redecode_reason)
         except SharedSearchSkip as exc:
             self.last_decode_skip = exc
+            if exc.reason == "estimated_decode_cost":
+                # This required full reconstruction cannot become affordable as run time decreases.
+                raise _BudgetExhausted(exc.reason) from exc
             return None
         if candidate is None:
             if self._take_output(order) is not None:

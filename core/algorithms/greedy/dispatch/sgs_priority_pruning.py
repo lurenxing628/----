@@ -24,6 +24,7 @@ from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
+from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_score_cache import plain_record_class
 from .sgs_scoring import _external_candidate_window, _parse_due_date
 
@@ -89,7 +90,8 @@ class GraphPriorityPruning:
         if len(widths) != 1:
             return False
         self.key_width = widths.pop()
-        if not self.key_width or not all(self._key_valid(key) for key in keys.values()):
+        if not self.key_width or (type(keys) is not ValidatedGraphPriorityKeys
+                                  and not all(self._key_valid(key) for key in keys.values())):
             return False
         for batch in batches.values():
             if not self._record(batch):
@@ -178,10 +180,11 @@ class GraphPriorityPruning:
         if len(candidates) < 2 or not self.intact():
             return None
         keys = graph["graph_priority_key_by_op_id"]
+        admitted = type(keys) is ValidatedGraphPriorityKeys
         selected, rank = [], None
         for item in candidates:
             key = keys.get(item[1].id)
-            if not self._key_valid(key):
+            if key is None or (not admitted and not self._key_valid(key)):
                 return None
             if rank is None or key < rank:
                 selected, rank = [item], key

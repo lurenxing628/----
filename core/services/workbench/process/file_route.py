@@ -9,6 +9,7 @@ Affected part refs include unchanged rows for the coordinator's read refresh.
 """
 
 from contextlib import ExitStack
+from functools import lru_cache
 
 from core.errors import ValidationError
 from core.infrastructure.connection_guards import schema_contract_memo
@@ -21,6 +22,7 @@ from data.repositories.part_repo import PartRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
 from .file_route_preview import RouteFilePreview, reject_duplicates
+from .group_defaults import _default_suppliers
 from .part_actions import WorkbenchProcessPartActionService
 from .part_actions_facts import check_part_action_storage
 from .route_apply import apply_route, discard_groups, require_group_ack
@@ -63,9 +65,13 @@ class ProcessRouteFileOperations:
                 parts=self.parts if self.facts is not None else None,
                 route_parsed="yes" if row["related"]["route"] is not None else "no")
                 for row in rows if row["action"] == "create"}
+            @lru_cache(maxsize=1)
+            def default_catalog():
+                return _default_suppliers(self.conn, self.facts["references"] if self.facts is not None else None)
+
             results, affected_refs = [], set()
             for row in rows:
-                result = self._apply_row(row)
+                result = self._apply_row(row, default_catalog)
                 results.append(result)
                 affected_refs.add(result["entity_ref"])
             return results, sorted(affected_refs)
@@ -86,7 +92,7 @@ class ProcessRouteFileOperations:
         if type(confirm_zero_unit_hours) is not bool:
             raise ValidationError("请明确勾选是否已复核零工时。", field="confirm_zero_unit_hours")
 
-    def _apply_row(self, row):
+    def _apply_row(self, row, default_catalog_reader):
         route = row["related"]["route"]
         fields = {}
         if row["action"] == "create":
@@ -108,7 +114,7 @@ class ProcessRouteFileOperations:
         if route is not None:
             discard_groups(self.conn, row["business_code"], row["related"]["affected_groups"])
             apply_route(self.conn, part, operations, route, self.identities if self.facts is None else self.current_identities,
-                        part_updates=fields)
+                        part_updates=fields, default_catalog_reader=default_catalog_reader)
             record_confirmation(self.conn, row["business_code"], "route", contracts=self.contracts)
         elif fields:
             PartRepository(self.conn).update(row["business_code"], fields)

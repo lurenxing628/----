@@ -80,7 +80,9 @@ class WorkbenchRelationFileService:
             return self._prepare_import(prepared, request, source, notices)[0]
 
     def _prepare_import(self, prepared, request, source, notices):
-        preparation = self._reader().preparation()
+        codes = {entity: {item["values"][field] for item in source
+                          if type(item["values"].get(field)) is str} for field, entity in _ENTITY_OF.items()}
+        preparation = self._reader().preparation(codes=codes)
         rows = self._build_rows(source, preparation)
         targets = [OperatorMachine(None, row["after"]["operator_code"], row["after"]["machine_code"],
                                    row["after"]["skill_level"], row["after"]["is_primary"])
@@ -193,9 +195,14 @@ class WorkbenchRelationFileService:
 
     def _final_primaries(self, rows, current) -> Dict[str, Set[str]]:
         """每个人确认后的主操设备。文件显式指定优先，其次保持原样，显式取消则变成没有主操。"""
-        kept = {operator for operator, links in current.items() if self._unchanged_operator(operator, links, rows)}
+        by_operator: Dict[str, List[Dict[str, Any]]] = {}
+        for row in rows:
+            if not _blocked(row):
+                by_operator.setdefault(row["values"]["operator_code"], []).append(row)
+        kept = {operator for operator, links in current.items()
+                if self._unchanged_operator(operator, links, by_operator.get(operator, []))}
         claimed = self._claimed_primaries(rows, kept)
-        return {operator: self._primary_for(operator, links, rows, claimed, operator in kept)
+        return {operator: self._primary_for(operator, links, by_operator.get(operator, []), claimed, operator in kept)
                 for operator, links in current.items()}
 
     @staticmethod

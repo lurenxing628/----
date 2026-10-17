@@ -7,6 +7,7 @@ freshness checks and result persistence. A failed child is never recomputed here
 import logging
 import multiprocessing
 import os
+import sqlite3
 import tempfile
 import threading
 from pathlib import Path
@@ -67,10 +68,12 @@ def _compute_child(snapshot_path, row, admission, sender, control):
 
         # Only this owned, consistent copy enters the child. The production path,
         # host runtime locks and the parent's writable connection are not passed.
-        with open_readonly_immutable(snapshot_path) as snapshot, query_only(snapshot):
+        with open_readonly_immutable(snapshot_path,
+                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES, row_factory=sqlite3.Row) as snapshot, query_only(snapshot):
+            snapshot.execute("PRAGMA foreign_keys=ON")
             worker = WorkbenchRunWorker(snapshot,
                 progress_sink=lambda done, total: sender.send(("progress", done, total)))
-            result = worker._compute(row, admission)
+            result = worker.compute_owned_snapshot(snapshot, row, admission, on_progress=worker.progress_sink)
         sender.send(("result", result))
     except Exception as exc:
         sender.send(("error", _error_message(exc)))

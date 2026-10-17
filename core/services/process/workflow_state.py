@@ -251,12 +251,12 @@ def _legacy_view(operations):
     return result
 
 
-def _view(stored, facts):
+def _view(stored, facts, *, operation_states=None):
     operations, contents, per_op, records = facts
     if stored is None:
         return _legacy_view(operations)
     result = {"origin": "managed", "stage": "route", "ready": False}
-    op_states = _operation_states(per_op, records, stored)
+    op_states = _operation_states(per_op, records, stored) if operation_states is None else operation_states
     unlocked = True
     for stage in _STAGES:
         current = _confirmation(stored, contents[stage], stage + "_")
@@ -351,8 +351,9 @@ def project_workflow_snapshot(raw) -> dict:
             raise RuntimeError("Invalid process part number; expected text.")
         facts = _facts(part, loaded)
         original = stored.get(_ref(part["ref"]))
-        result[part["part_no"]] = {"workflow": _view(original, facts),
-                                   "operations": _operation_states(facts[2], facts[3], original)}
+        op_states = _operation_states(facts[2], facts[3], original)
+        result[part["part_no"]] = {"workflow": _view(original, facts, operation_states=op_states),
+                                   "operations": op_states}
     return result
 
 

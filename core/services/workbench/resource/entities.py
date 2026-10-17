@@ -28,12 +28,14 @@ class WorkbenchResourceService:
     def apply(self, action, payload, identity=None):
         from .queries import WorkbenchResourceQueryService
 
-        preparation = WorkbenchResourceQueryService(self.conn, self.kind).preparation()
+        payload = self.normalize_input(action, payload)
+        preparation = WorkbenchResourceQueryService(self.conn, self.kind).preparation_for(
+            action, payload, ref=getattr(identity, "ref", None))
         if action == "create" and identity is not None:
             raise WorkbenchCommandRejected("invalid_input", "新增资源时请使用新增入口。", 400)
         checked = None if action == "create" else preparation.state(self.kind,
             preparation.current(self.kind, identity).entity_key)
-        return self.apply_prepared(self.prepare(action, self.normalize_input(action, payload), checked, preparation))
+        return self.apply_prepared(self.prepare(action, payload, checked, preparation))
 
     def prepare(self, action, payload, checked, preparation):
         identity = None if action == "create" else preparation.identity(self.kind, checked["identity"]["ref"])

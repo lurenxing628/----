@@ -1,8 +1,9 @@
-"""Compare the declared v39-v43 representation without rewriting saved facts."""
+"""Compare the declared v39-v44 representation without rewriting saved facts."""
 
 import base64
 from functools import lru_cache
 
+from core.infrastructure.efficiency_indexes_schema import ADDED as EFFICIENCY_INDEXES
 from core.infrastructure.schedule_business_roles_schema import objects as business_role_objects
 from core.infrastructure.single_pass_indexes_schema import ADDED, REMOVED
 from core.infrastructure.snapshot_connection import ddl_columns
@@ -132,7 +133,7 @@ def _business_role_schema():
     return {name: (canonical_sql(sql), canonical_sql(legacy[name])) for name, sql in current.items()}
 
 
-_PERFORMANCE_INDEXES = {name: canonical_sql(sql) for name, sql in {**ADDED, **REMOVED}.items()}
+_PERFORMANCE_INDEXES = {name: canonical_sql(sql) for name, sql in {**ADDED, **REMOVED, **EFFICIENCY_INDEXES}.items()}
 
 
 def _performance_index(row):
@@ -151,7 +152,7 @@ def project_facts(value):
     result = {key: item for key, item in value.items()
               if key != "columns" and not (key == "version" and item == "production-facts-v2")}
     result.update(schema=list(value["schema"]), tables=tables)
-    if _version(value) not in (39, 40, 41, 42, 43):
+    if _version(value) not in (39, 40, 41, 42, 43, 44):
         return result
     for name in READ_MODEL_TABLES:
         tables.pop(name, None)

@@ -46,6 +46,7 @@ from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
 from core.services.scheduler.calendar.service import CalendarService
+from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
 
 from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_row
@@ -208,10 +209,10 @@ class WorkbenchOperatorCalendarFileService:
                                       + " 行。请只保留一行。", field="date", code="duplicate_entry")
 
     def _resolve_operators(self, rows) -> None:
-        """按去重后的工号取人员，避免逐行查库。"""
+        """按文件里的工号分块读取人员原行。"""
         codes = sorted({row["values"]["operator_code"] for row in rows
                         if not _blocked(row) and row["values"].get("operator_code")})
-        loaded = {code: self.repo.raw("operator", code) for code in codes}
+        loaded = self.repo.raw_many("operator", codes)
         for row in rows:
             if _blocked(row):
                 continue
@@ -224,7 +225,7 @@ class WorkbenchOperatorCalendarFileService:
             row["values"]["operator_label"] = dict(raw).get("name")
 
     def _load_states(self, rows) -> Dict[str, Dict[str, Dict[str, Any]]]:
-        """一次按人读回各自那段日期的状态，不逐行查库（roadmap 4.7）。"""
+        """按工号分块读回日历和永久编号历史。"""
         days = sorted({row["values"]["date"] for row in rows if not _blocked(row)})
         if not days:
             return {}
@@ -233,7 +234,13 @@ class WorkbenchOperatorCalendarFileService:
                 "文件里最早和最晚的日期相差超过 " + str(MAX_RANGE_DAYS) + " 天，一行都没有导入。请拆成几个文件分次上传。",
                 field="date")
         codes = sorted({row["values"]["operator_code"] for row in rows if not _blocked(row)})
-        return {code: self._calendar(code).range_states(days[0], days[-1]) for code in codes}
+        return self._states_for(codes, days[0], days[-1])
+
+    def _states_for(self, codes, start_date, end_date):
+        repo = WorkbenchCalendarQueryRepository(self.conn, self.logger)
+        rows = repo.operator_calendar_rows_many(codes, start_date, end_date)
+        histories = repo.operator_identity_rows_many(codes, start_date, end_date)
+        return {code: WorkbenchOperatorCalendarService.states_from_rows(rows[code], histories[code]) for code in codes}
 
     def _classify(self, row, states) -> None:
         code, day = row["values"]["operator_code"], row["values"]["date"]
@@ -371,10 +378,13 @@ class WorkbenchOperatorCalendarFileService:
     def _rows_for(self, start_date: str, end_date: str, codes: List[str]) -> List[Dict[str, Any]]:
         """只导出这段时间里单独设置过的日期；没设置过的天按班次或全局日历走，不出现在文件里。"""
         rows = []
-        for code in sorted(set(codes)):
-            raw = self.repo.raw("operator", code)
+        codes = sorted(set(codes))
+        operators = self.repo.raw_many("operator", codes)
+        states = self._states_for(codes, start_date, end_date)
+        for code in codes:
+            raw = operators.get(code)
             label = dict(raw).get("name") if raw is not None else None
-            for _, state in sorted(self._calendar(code).range_states(start_date, end_date).items()):
+            for _, state in sorted(states[code].items()):
                 if state["row"] is not None:
                     rows.append(self._public(state["row"], label))
         rows.sort(key=lambda item: (item["operator_code"], item["date"]))

@@ -2608,7 +2608,7 @@ def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache
                         print(f"  {key}: {details.get(key)}", flush=True)
         if entry.get("previous_result_path"):
             print(f"  previous_result: {entry.get('previous_result_path')}", flush=True)
-        if entry.get("current_fingerprint"):
+        if entry.get("input_snapshot"):
             print("  fingerprint: complete input content compared", flush=True)
         _print_long_gate_cache_decision_hint(entry)
         invalidated_by = list(entry.get("invalidated_by") or [])
@@ -2808,7 +2808,7 @@ def _output_file_rows(paths: Sequence[str]) -> List[Dict[str, str]]:
             continue
         abs_path = os.path.join(REPO_ROOT, normalized.replace("/", os.sep))
         if os.path.isfile(abs_path):
-            rows.append({"path": normalized, "content_base64": read_file_content(abs_path)})
+            rows.append({"path": normalized})
     return rows
 
 

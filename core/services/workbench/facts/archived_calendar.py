@@ -5,6 +5,7 @@ calendar archive declares its evaluable ``coverage`` instead. Nothing is read
 from a connection or filled from a current resource/calendar directory.
 """
 
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 
@@ -12,7 +13,7 @@ from core.errors import ValidationError
 from core.models.calendar_periods import encode_periods
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
-from core.services.capacity.plan_calendar_intervals import instant
+from core.services.capacity.plan_calendar_intervals import instant, union
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
 from core.services.scheduler.calendar.defaults import default_periods_from_row
@@ -116,21 +117,40 @@ def _day_bounds(low, high):
         low = end
 
 
-def _downtimes(rows, low, high):
-    result = []
-    for row in rows:
-        if row.get("status") == "cancelled":
-            continue
-        try:
-            start, end = instant(row["start_time"]), instant(row["end_time"])
-            intersects = start < high and end > low
+class _DowntimeIndex:
+    """Parse a machine's saved intervals once; retain raw error rows in source order."""
+
+    def __init__(self, rows):
+        intervals, self.errors = [], []
+        for row in rows:
+            if row.get("status") == "cancelled":
+                continue
+            try:
+                start, end = instant(row["start_time"]), instant(row["end_time"])
+            except (ValueError, TypeError, KeyError):
+                self.errors.append((row, None, None))
+                continue
             if start >= end:
-                intersects = True
-        except (ValueError, TypeError, KeyError):
-            intersects = True
-        if intersects:
-            result.append(row)
-    return result
+                self.errors.append((row, None, None))
+            elif row.get("status") != "active":
+                self.errors.append((row, start, end))
+            else:
+                intervals.append((start, end))
+        # apply_resource exposes only the union of valid downtime windows; no
+        # record identity or other row metadata is part of this projection.
+        self.intervals = union(intervals)
+        self.starts = [start for start, _end in self.intervals]
+        self.ends = [end for _start, end in self.intervals]
+
+    def between(self, low, high):
+        for row, start, end in self.errors:
+            if start is None or start < high and end > low:
+                # The first applicable raw error keeps the original error and
+                # missing-field precedence; later valid rows cannot change it.
+                return [row]
+        first, last = bisect_right(self.ends, low), bisect_left(self.starts, high)
+        return [{"status": "active", "start_time": start, "end_time": end}
+                for start, end in self.intervals[first:last]]
 
 
 def _aggregate(days, basis, source):
@@ -181,6 +201,7 @@ class ArchivedCalendar:
         self.downtimes_known = rows is not None
         for row in rows or []:
             self.downtimes[row["machine_id"]].append(row)
+        self._downtime_indexes = {}
         tables = {name: self.table(name) for name in (
             "WorkCalendar", "OperatorCalendar", "WorkbenchOperatorProfiles", "WorkbenchShiftProfiles",
             "WorkbenchShiftPatternDays", "WorkbenchShiftDayPeriods", "WorkbenchCalendarDefaults")}
@@ -256,9 +277,14 @@ class ArchivedCalendar:
         else:
             base = self._policy_day(low, high, saved_id if kind == "operator" else None, engine=self.engine)
             result = apply_resource(base, self.records[kind].get(saved_id), kind,
-                                    _downtimes(self.downtimes[saved_id], low, high) if kind == "machine" else [], low, high)
+                                    self._machine_downtimes(saved_id, low, high) if kind == "machine" else [], low, high)
         return {**result, "date": low.date().isoformat(), "start": low.isoformat(), "end": high.isoformat(),
                 "source": self.source}
+
+    def _machine_downtimes(self, saved_id, low, high):
+        if saved_id not in self._downtime_indexes:
+            self._downtime_indexes[saved_id] = _DowntimeIndex(self.downtimes[saved_id])
+        return self._downtime_indexes[saved_id].between(low, high)
 
     def iter_resources(self, resources, start, end):
         """Stream complete resources; callers may consume summaries and discard days."""

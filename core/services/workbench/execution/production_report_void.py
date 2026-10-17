@@ -17,7 +17,7 @@ from .production_report_void_dependencies import adopted_quota_impacts
 
 
 def _downstream_impacts(ledger, facts, before, after, report, dependencies):
-    impacts = execution_conflicts(ledger, facts, before, after, [report], dependencies=dependencies)
+    impacts = execution_conflicts(ledger, facts, before, after, [report], dependencies=dependencies, facts_changed=True)
     refs = dependencies.relatives(facts["operations"][before.operation_ref])
     downstream = dependencies.projections(refs)
     for row in downstream:

@@ -144,6 +144,15 @@ def decision_overview(source):
     return data
 
 
+def decision_history_candidate(source):
+    """Project one history event against the same all-candidate resource cohort."""
+    candidate = source.saved_candidate(source.selected_ref)
+    candidates = _enriched_candidates(source, [candidate], [source.selected_ref])
+    selected = candidates[source.selected_ref]
+    selected["metrics"] = _public_metrics(selected["metrics"])
+    return {"candidates": [selected], "resource_cohort": source.resource_cohort}
+
+
 def decision_summary(source):
     definitions = metric_definitions()
     candidates = _core_candidates(source)

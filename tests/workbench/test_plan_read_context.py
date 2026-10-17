@@ -9,6 +9,7 @@ from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan import calendar_context, queries
 from core.services.workbench.plan.delivery import read_plan_delivery
+from core.services.workbench.plan.point_query import PointPlanCatalogRepository
 from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
 from tests.workbench.plan_read_support import (  # noqa: F401
@@ -87,7 +88,7 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
         assert facts["tasks"][0]["point_evidence_issue"] == "point_evidence_unproven"
 
 
-def test_20k_saved_plan_is_selectable_and_one_day_reads_200_tasks_from_one_capture(plan_api, record_property):
+def test_20k_saved_plan_is_selectable_and_one_day_reads_200_tasks_from_one_capture(plan_api, monkeypatch, record_property):
     with plan_api.db() as conn:
         add_tasks(conn, 19999)
         conn.executemany("INSERT INTO Machines(machine_id,name) VALUES (?,?)",
@@ -102,7 +103,12 @@ def test_20k_saved_plan_is_selectable_and_one_day_reads_200_tasks_from_one_captu
               "M" + str(index % 201), "O" + str(index % 201), operation_id)
              for index, operation_id in enumerate(operation_ids)])
     ref = plan_api.ref()
-    catalog = plan_api.read(collection="history")["data"]["plans"]
+    with monkeypatch.context() as catalog_read:
+        def no_full_capture(*args, **kwargs):
+            pytest.fail("Catalog captured complete plan arrangements instead of streaming metadata")
+
+        catalog_read.setattr(PointPlanCatalogRepository, "source_rows", no_full_capture)
+        catalog = plan_api.read(collection="history")["data"]["plans"]
     entry = next(row for row in catalog if row["plan_ref"] == ref)
     assert entry["capabilities"]["view"] and entry["capabilities"]["export"]
     assert entry["is_current_official"] and not entry["blocked_reasons"]
@@ -127,3 +133,16 @@ def test_20k_saved_plan_is_selectable_and_one_day_reads_200_tasks_from_one_captu
     record_property("source_capture_queries", len(captures))
     record_property("operation_metadata_queries", len(operations))
     record_property("resource_name_queries", len(machines) + len(operators))
+
+    execution_statements = []
+    with plan_api.db() as conn:
+        conn.execute("PRAGMA query_only=1")
+        conn.set_trace_callback(execution_statements.append)
+        reader = queries.WorkbenchPlanQueryService(conn)
+        with reader.read_snapshot():
+            execution, _ = reader.execution_workspace(PlanReadScope(ref, **scope))
+        assert execution["tasks"] == data["tasks"]
+        assert execution["task_count"] == 200
+        assert sum("BO.STATUS AS OP_STATUS" in sql.upper() for sql in execution_statements) == 1
+        record_property("execution_operation_metadata_queries", 1)
+        record_property("execution_visible_task_count", execution["task_count"])

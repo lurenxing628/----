@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import timedelta
+from itertools import chain
 from typing import Any, Dict
 
 from core.models.workbench_run_candidate import local_time
@@ -31,6 +32,10 @@ def batch_impacts(source):
     for op_ref, row in comparisons.items():
         operation = source.facts.tables["BatchOperations"][source.facts.operations[op_ref]]
         operation_rows[source.facts.entity_refs[("batch", operation["batch_id"])]].append(row)
+    expected_by_batch = defaultdict(set)
+    for op_ref in source.scope["operation_refs"]:
+        operation = source.facts.tables["BatchOperations"][source.facts.operations[op_ref]]
+        expected_by_batch[source.facts.entity_refs.get(("batch", operation["batch_id"]))].add(op_ref)
     result = []
     available = source.result_available(source.selected_ref)
     for ref in source.scope["batch_refs"]:
@@ -45,8 +50,7 @@ def batch_impacts(source):
             delta["change_kinds"] = [kind for kind in delta["change_kinds"] if kind != "unchanged"] + ["operation_changed"]
         attention = _attention_kinds(current)
         scheduled = {task["operation_ref"] for task in selected_by_batch[ref]}
-        expected = {op_ref for op_ref in source.scope["operation_refs"] if
-                    source.facts.entity_refs.get(("batch", source.facts.tables["BatchOperations"][source.facts.operations[op_ref]]["batch_id"])) == ref}
+        expected = expected_by_batch[ref]
         result.append({**labels, "before": previous, "after": current, **delta,
                        "attention_kinds": attention, "operation_change_count": changed,
                        "operation_unknown_count": unknown,
@@ -250,9 +254,10 @@ def filter_options(source, section):
     batches = [{"ref": ref, "label": source.facts.tables["Batches"][batch_keys[ref]]["batch_id"]} for ref in source.scope["batch_refs"]]
     resources = {}
     if section == "operations":
-        tasks = source.before_tasks + [task for row in source.rows for task in source.tasks(row["candidate_ref"])]
+        batch_refs, operation_refs = set(source.scope["batch_refs"]), set(source.scope["operation_refs"])
+        tasks = chain(source.before_tasks, chain.from_iterable(source.tasks(row["candidate_ref"]) for row in source.rows))
         for task in tasks:
-            if task["batch_ref"] not in source.scope["batch_refs"] or task["operation_ref"] not in source.scope["operation_refs"]:
+            if task["batch_ref"] not in batch_refs or task["operation_ref"] not in operation_refs:
                 continue
             for kind in ("machine", "operator"):
                 value = task[kind]

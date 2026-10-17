@@ -1,5 +1,7 @@
 """Build immutable decision projections once from the original historical archive."""
 
+from collections import OrderedDict
+
 from core.infrastructure.migration_common import MigrationOutcome
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_run_read_model_schema import install
@@ -10,6 +12,7 @@ _JOBS = """SELECT j.run_ref,j.request_key,j.input_ref,j.accepted_at,j.state,j.st
     r.receipt_ref,r.state AS receipt_state,r.recorded_at AS receipt_recorded_at
     FROM WorkbenchRunJobs j LEFT JOIN WorkbenchCommandReceipts a ON a.request_key=j.request_key
     LEFT JOIN WorkbenchRunReceipts r ON r.run_ref=j.run_ref ORDER BY j.accepted_at,j.run_ref"""
+_SOURCE_CACHE_SIZE = 2
 
 
 def _read_packet(store, run):
@@ -44,17 +47,22 @@ def _prepare_candidate(store, packet, candidate):
     return ready
 
 
-def _candidate_provider(store, repo, current):
+def _candidate_provider(store, repo, current, *, source_cache=None):
     from core.services.workbench.facts.candidate_read_source import read_candidate_source
     from core.services.workbench.facts.candidate_tasks import project_validated_tasks
     from core.services.workbench.facts.candidate_values import corrupt
 
-    # Only the current run and its real official sources stay alive. The next run
-    # gets a new owner instead of accumulating every archived task in memory.
+    # A run releases its full packets afterwards. Only two verified official
+    # sources may survive into the next run; immutable originals never change
+    # while this migration appends the derived read models.
     packets = {current["run"]["run_ref"]: current}
     owners = {row["candidate_ref"]: current for row in current["rows"]}
+    sources = OrderedDict() if source_cache is None else source_cache
 
     def load(candidate_ref):
+        if candidate_ref in sources:
+            sources.move_to_end(candidate_ref)
+            return sources[candidate_ref]
         if candidate_ref not in owners:
             run_ref = store.candidate_run(candidate_ref)
             if run_ref not in packets:
@@ -71,9 +79,13 @@ def _candidate_provider(store, repo, current):
         if "tasks" not in ready:
             ready["tasks"] = project_validated_tasks(ready["raw_tasks"], candidate, packet["facts"], ready["intervals"],
                                                      prepared_tasks=ready["prepared_tasks"])
-        return read_candidate_source(store, candidate_ref, prepared={
+        source = read_candidate_source(store, candidate_ref, prepared={
             **packet, "candidate": candidate, "raw_tasks": ready["raw_tasks"], "tasks": ready["tasks"],
             "scheduled_op_ids": ready["scheduled_op_ids"]})
+        sources[candidate_ref] = source
+        if len(sources) > _SOURCE_CACHE_SIZE:
+            sources.popitem(last=False)
+        return source
 
     return load
 
@@ -100,6 +112,7 @@ def _backfill(conn):
     from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     store, repo = CandidateStore(conn), WorkbenchRunRepository(conn)
+    source_cache = OrderedDict()
     for row in chain((first,), rows):
         run = dict(row)
         _job(run)
@@ -119,7 +132,8 @@ def _backfill(conn):
             continue
         for candidate in packet["rows"]:
             _prepare_candidate(store, packet, candidate)
-        resolver = decision_baseline_source_resolver(conn, candidate_provider=_candidate_provider(store, repo, packet))
+        resolver = decision_baseline_source_resolver(conn,
+            candidate_provider=_candidate_provider(store, repo, packet, source_cache=source_cache))
         official = read_decision_baseline(packet["capture"], packet["facts"], packet["disposition"], run["accepted_at"],
                                           source_resolver=resolver)
         candidate_refs = list(dict.fromkeys(item["source_candidate_ref"] for item in official["source_states"]

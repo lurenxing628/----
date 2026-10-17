@@ -18,7 +18,8 @@ def _interval(row):
 
 class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
     def __init__(self, conn, logger=None, *, context=None):
-        super().__init__(conn, logger=logger)
+        super().__init__(conn, logger=logger,
+                         role_reader=context.references.read_role_options if context is not None else None)
         self.context = context
         self._source_rows = {}
         self._prepared_rows = {}
@@ -76,13 +77,6 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
     def has_candidate_rows(self, *, version, candidate_id):
         return bool(self.source_rows(version, "candidate_rows", candidate_id))
 
-    def list_plan_role_options(self, version):
-        if self.context is None:
-            return super().list_plan_role_options(version)
-        if version not in self._roles:
-            self._roles[version] = self.context.references.read_role_options(version)
-        return self._roles[version]
-
     def get_plan_time_span(self, *, version, source_table, candidate_id, scenario_id=None):
         key = self._source_key(version, source_table, candidate_id, scenario_id)
         if key not in self._spans:
@@ -102,14 +96,22 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
 class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
     """Validate and aggregate plan metadata without admitting its full details."""
 
-    def __init__(self, conn, logger=None):
-        super().__init__(conn, logger=logger)
+    def __init__(self, conn, logger=None, *, role_reader=None):
+        super().__init__(conn, logger=logger, role_reader=role_reader)
         self._metadata_spans = {}
+
+    def get_first_plan_identity_row(self, *, version, source_table, candidate_id, scenario_id=None):
+        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        return self.fetchone("SELECT id AS source_row_id, lock_status FROM (" + sql + ") raw ORDER BY id ASC LIMIT 1",
+                             [version] + extra)
 
     def get_plan_time_span(self, *, version, source_table, candidate_id, scenario_id=None):
         key = (version, source_table, candidate_id, scenario_id)
         if key not in self._metadata_spans:
             sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+            fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status", "version")
+            selected = ", ".join("CASE WHEN 1 THEN raw." + field + " END AS " + field for field in fields)
+            sql = "SELECT " + selected + " FROM (" + sql + ") raw ORDER BY raw.id ASC"
             low, high, points, point_intervals = None, None, [], []
             for row in self.iter_rows(sql, [version] + extra):
                 start, end = _interval(row)

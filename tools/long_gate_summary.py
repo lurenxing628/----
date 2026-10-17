@@ -34,11 +34,23 @@ def _rel_path(repo_root: str, path: str) -> str:
 
 
 def _posix_output_file(item: Mapping[str, Any]) -> Dict[str, Any]:
-    """复制一条 output_file 记录并把其中的 path 归一为 posix（正斜杠）。"""
-    row = dict(item)
-    if "path" in row:
-        row["path"] = str(row.get("path") or "").replace("\\", "/")
-    return row
+    """摘要引用实际输出；完整内容由 long-gate 结果缓存保存。"""
+    return {"path": str(item.get("path") or "").replace("\\", "/")}
+
+
+def _input_snapshot_overview(fingerprint: Mapping[str, Any]) -> Dict[str, Any]:
+    if not fingerprint:
+        return {}
+    components = dict(fingerprint.get("components") or {})
+    files = dict(components.get("files") or {})
+    return {
+        "schema_version": fingerprint.get("schema_version"),
+        "path_count": len(files.get("files") or []),
+    }
+
+
+def _fingerprint_change_reference(change: Mapping[str, Any]) -> Dict[str, Any]:
+    return {key: change[key] for key in ("component", "reason", "path", "key", "field") if key in change}
 
 
 def _command_text_from_display(display: str) -> str:
@@ -168,7 +180,9 @@ def build_summary_entry(
         "invalidated_by": invalidated_by,
         "cache_unavailable": bool(decision.get("cache_unavailable")),
         "fingerprint_error": dict(decision.get("fingerprint_error") or {}),
-        "fingerprint_diff": [dict(item) for item in list(decision.get("fingerprint_diff") or [])],
+        "fingerprint_diff": [
+            _fingerprint_change_reference(item) for item in list(decision.get("fingerprint_diff") or [])
+        ],
         "execution_mode": resolved_execution_mode,
         "returncode": returncode,
         "failed": failed_value,
@@ -178,7 +192,7 @@ def build_summary_entry(
         "stdout_log_path": str((result or {}).get("stdout_log_path") or "").replace("\\", "/"),
         "stderr_log_path": str((result or {}).get("stderr_log_path") or "").replace("\\", "/"),
         "output_files": [_posix_output_file(item) for item in list(output_files or [])],
-        "current_fingerprint": dict(decision.get("current_fingerprint") or {}),
+        "input_snapshot": _input_snapshot_overview(dict(decision.get("current_fingerprint") or {})),
         "previous_result_path": str(decision.get("previous_result_path") or ""),
         "duration_s": _duration_value(result, "duration_s"),
         "duration_kind": str((result or {}).get("duration_kind") or "").strip(),

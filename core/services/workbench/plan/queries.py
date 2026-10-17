@@ -89,7 +89,8 @@ class WorkbenchPlanQueryService:
         return PointPlanCatalogRepository(self.conn, logger=self.logger)
 
     def catalog_page(self, scope, seek=None):
-        context = PlanReadContext(self.conn, self.logger, references=self.references, entities=self.entities)
+        repo = PlanMetadataRepository(self.conn, self.logger, role_reader=self.references.read_role_options)
+        context = PlanReadContext(self.conn, self.logger, references=self.references, entities=self.entities, repo=repo)
         with context.read_scope():
             return self._catalog_page(scope, seek, context)
 
@@ -196,6 +197,9 @@ class WorkbenchPlanQueryService:
 
     def _workspace(self, scope, *, execution_only=False, include_calendar=False, context):
         repo, entry, span = context.selected(scope.plan_ref)
+        if not execution_only:
+            # Complete comparison/delivery projections share one metadata capture.
+            context.detail_rows(entry)
         rows = context.scoped_rows(entry, scope)
         if not execution_only and len(rows) > MAX_PLAN_TASKS:
             raise WorkbenchCommandRejected("query_too_large", "本次范围的安排超过 10000 条，请缩小时间范围后重试。", 413)

@@ -52,7 +52,7 @@ def _adoption_evidence(conn, row, plan, candidate_ref, run_ref, context, receipt
 
 
 def _entry(conn, row, candidate_ref, run_ref, context):
-    receipt = WorkbenchCommandRepository.public_result(row, replayed=True)
+    receipt = WorkbenchCommandRepository(conn).public_result(row, replayed=True)
     data = receipt["data"]
     if (receipt["result"] != "committed" or data["candidate_ref"] != candidate_ref or data["run_ref"] != run_ref
             or data["official_plan"]["source_run_ref"] != run_ref):

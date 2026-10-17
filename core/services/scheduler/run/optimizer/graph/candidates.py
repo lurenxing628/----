@@ -48,6 +48,24 @@ _V2_COMMON_RANK_FIELDS = (
 )
 
 
+class PreparedDecisionFeatures:
+    """Admit each effective profile once against one owned, fixed feature set."""
+
+    def __init__(self, metrics_by_op_id: Dict[int, Dict[str, Any]],
+                 v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]]) -> None:
+        self.metrics_by_op_id = metrics_by_op_id
+        self.v2_common_rank_cache = v2_common_rank_cache
+        self._validated_profiles: List[Tuple[Any, ...]] = []
+
+    def validate(self, profile: GraphReadyWeightProfile) -> None:
+        identity = (profile.formula_version, profile.formula_slug, profile.feature_basis,
+                    dict(profile.effective_weights), profile.jitter_seed)
+        if identity not in self._validated_profiles:
+            _validate_decision_features(self.metrics_by_op_id, profile=profile,
+                                        v2_common_rank_cache=self.v2_common_rank_cache)
+            self._validated_profiles.append(identity)
+
+
 def evaluate_graph_ready_candidate(
     *,
     profile: GraphReadyWeightProfile,
@@ -77,6 +95,7 @@ def evaluate_graph_ready_candidate(
     decode_checkpoints: Optional[Any] = None,
     decode_session: SharedDecodeSession,
     redecode_reason: Optional[str] = None,
+    prepared_decision_features: Optional[PreparedDecisionFeatures] = None,
 ) -> Dict[str, Any]:
     # runtime_ms 合同语义是"该候选自身的构造+解码+评估耗时"(同分 tie-break 偏好更快候选,
     # 见 optimizer_candidate_comparison.candidate_runtime_ms 与 GRAPH_READY_SELECTION_TIEBREAKER)。
@@ -90,7 +109,10 @@ def evaluate_graph_ready_candidate(
         repair_order = decision_order
     _validate_repair_decision(profile, order=order, repair_order=repair_order)
     if repair_order is not None:
-        _validate_decision_features(metrics_by_op_id, profile=profile, v2_common_rank_cache=v2_common_rank_cache)
+        if prepared_decision_features is None:
+            _validate_decision_features(metrics_by_op_id, profile=profile, v2_common_rank_cache=v2_common_rank_cache)
+        else:
+            prepared_decision_features.validate(profile)
         candidate_context = _profile_context(graph_ready_context, profile)
     else:
         candidate_context = context_for_profile(

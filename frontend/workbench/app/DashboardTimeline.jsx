@@ -29,6 +29,16 @@
     const prepared = React.useMemo(() => M.prepare(data), [data]);
     const grouped = React.useMemo(() => M.groupPrepared(prepared, mode), [prepared, mode]);
     const model = React.useMemo(() => M.layoutPrepared(grouped, width), [grouped, width]);
+    const picker = React.useMemo(() => {
+      const byRef = new Map(), firstByBatch = new Map(); let hasPoints = false;
+      const options = model.tasks.map(task => {
+        byRef.set(task.task_ref, task);
+        if (!firstByBatch.has(task.batch_ref)) firstByBatch.set(task.batch_ref, task);
+        if (window.PointContract.isPoint(task)) hasPoints = true;
+        return <option key={task.task_ref} value={task.task_ref}>{task.batch_id} · {task.sequence} {task.process_label} · {M.timeLabel(task.start)}</option>;
+      });
+      return { byRef, firstByBatch, options, hasPoints };
+    }, [model.tasks]);
     const measure = () => { const node = board.current; if (node) setPosition({ left: node.scrollLeft, top: node.scrollTop, width: node.clientWidth, height: node.clientHeight }); };
     React.useLayoutEffect(() => { measure(); const observer = new ResizeObserver(measure); observer.observe(board.current); return () => observer.disconnect(); }, []);
     React.useLayoutEffect(() => {
@@ -40,7 +50,8 @@
     }, [width]);
     React.useEffect(() => { setHover(null); }, [position.left, position.top, mode]);
     React.useEffect(() => {
-      const task = model.tasks.find(row => row.task_ref === focusTask && row.batch_ref === selectedBatch) || model.tasks.find(row => row.batch_ref === selectedBatch), location = task && model.locations.get(task.task_ref);
+      const focused = picker.byRef.get(focusTask), task = focused && focused.batch_ref === selectedBatch ? focused : picker.firstByBatch.get(selectedBatch);
+      const location = task && model.locations.get(task.task_ref);
       if (!location || !board.current) return;
       board.current.scrollTop = Math.max(0, location.top - 60);
       const left = (location.item.start - model.start) / (model.end - model.start) * width;
@@ -66,9 +77,9 @@
       <div className="dy-heading"><h3>{mode === 'downtime' ? '停机时段与计划安排' : '关联资源计划时间轴'}</h3><div className="dy-tools">
         <TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="分析" onZoom={zoomTo} onFit={fit} />
       </div></div>
-      <label className="dy-run-picker">定位工序<select aria-label="定位分析时间轴中的工序" value={model.tasks.some(row => row.task_ref === focusTask && row.batch_ref === selectedBatch) ? focusTask : ''} onChange={event => {
-        const task = model.tasks.find(row => row.task_ref === event.target.value); setFocusTask(event.target.value); if (task) onSelect(task.batch_ref);
-      }}><option value="">选择需要查看的工序</option>{model.tasks.map(task => <option key={task.task_ref} value={task.task_ref}>{task.batch_id} · {task.sequence} {task.process_label} · {M.timeLabel(task.start)}</option>)}</select></label>
+      <label className="dy-run-picker">定位工序<select aria-label="定位分析时间轴中的工序" value={picker.byRef.has(focusTask) && picker.byRef.get(focusTask).batch_ref === selectedBatch ? focusTask : ''} onChange={event => {
+        const task = picker.byRef.get(event.target.value); setFocusTask(event.target.value); if (task) onSelect(task.batch_ref);
+      }}><option value="">选择需要查看的工序</option>{picker.options}</select></label>
       <div className="dy-timeline-board" ref={board} onScroll={measure} tabIndex={0} style={{ '--dy-label-width': labelWidth + 'px', height: Math.max(120, Math.min(330, model.height + 52)) }}>
         <div className="dy-timeline-inner" style={{ width: labelWidth + width, height: Math.max(110, model.height + 52) }}>
           <div className="dy-timeline-axis"><div className="dy-timeline-corner">设备 / 工序</div><div className="dy-timeline-ticks" style={{ width }}>
@@ -95,7 +106,7 @@
       </div>
       <div className="dy-timeline-legend" aria-label="分析时间轴图例"><span><i className="dy-plan-swatch" />计划工序</span>
         <span><i className="dy-risk-swatch" />批次预计超期</span><span><i className="dy-on-time-swatch" />预计按期</span><span><i className="dy-selected-swatch" />选中批次</span>
-        {model.tasks.some(window.PointContract.isPoint) && <span><i className="dy-point-swatch" />零工时工序</span>}
+        {picker.hasPoints && <span><i className="dy-point-swatch" />零工时工序</span>}
         {mode === 'downtime' && <span><i className="dy-downtime-swatch" />停机时段</span>}</div>
       <div className="dy-context"><span title={'显示范围：' + window.WorkbenchFormat.dateTime(M.wire(model.start), { seconds: true, fractions: true }) + ' 至 ' + window.WorkbenchFormat.dateTime(M.wire(model.end), { seconds: true, fractions: true })}>{window.WorkbenchFormat.compactRange(M.wire(model.start), M.wire(model.end))}</span>
         <span>{model.tasks.length} 道计划工序{mode === 'downtime' ? ' · 阴影为已登记停机' : ''}</span></div>

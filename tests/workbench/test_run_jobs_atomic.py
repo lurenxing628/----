@@ -37,6 +37,54 @@ def test_spawned_compute_consumes_the_parent_admission_and_returns_actual_status
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts WHERE run_ref=?", (accepted["run_ref"],)).fetchone()[0] == 1
 
 
+def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, monkeypatch):
+    from datetime import date
+    from types import SimpleNamespace
+
+    from core.infrastructure.connection_guards import is_query_only
+    from core.infrastructure.database import get_connection
+    from core.infrastructure.snapshot_connection import backup_to_file, open_readonly_immutable
+
+    source = get_connection(str(tmp_path / "source.sqlite"))
+    source.execute("CREATE TABLE Facts(day DATE, at TIMESTAMP, label TEXT)")
+    source.execute("INSERT INTO Facts VALUES (?,?,?)", (date(2026, 10, 17), datetime(2026, 10, 17, 8, 0, 0, 123456), "原内容"))
+    source.commit()
+    row = {"run_ref": "a" * 48, "execution_json": "[]", "normalized_input_json": '{"scope":"same"}',
+           "baseline_json": "{}", "facts_json": "{}", "facts_hash": None}
+    worker = WorkbenchRunWorker(source)
+    monkeypatch.setattr(worker, "_check_facts", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(worker_module, "GenerationFacts", lambda _capture: SimpleNamespace(operations={"b" * 48: 1}))
+    monkeypatch.setattr(worker_module, "prepare_run_result", lambda value, *_args, **_kwargs: value)
+
+    def compute(conn, normalized_input, projections, **_kwargs):
+        assert conn.in_transaction and is_query_only(conn)
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        fact = conn.execute("SELECT * FROM Facts").fetchone()
+        assert isinstance(fact, sqlite3.Row) and type(fact["day"]) is date and type(fact["at"]) is datetime
+        return {"day": fact["day"].isoformat(), "at": fact["at"].isoformat(), "label": fact["label"],
+                "input": normalized_input, "execution": projections}
+
+    monkeypatch.setattr(worker_module, "compute_candidate_run", compute)
+    try:
+        thread_payload = worker._compute(row, {})
+        path = str(tmp_path / "owned.sqlite")
+        backup_to_file(source, path)
+
+        def no_second_copy(_source):
+            raise AssertionError("An owned process snapshot must not be backed up again")
+
+        monkeypatch.setattr(worker_module, "computation_database", no_second_copy)
+        with open_readonly_immutable(path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+                                     row_factory=sqlite3.Row) as owned:
+            owned.execute("PRAGMA foreign_keys=ON")
+            process_payload = worker.compute_owned_snapshot(owned, row, {}, on_progress=lambda *_args: None)
+            assert process_payload == thread_payload
+            with pytest.raises(sqlite3.OperationalError):
+                owned.execute("INSERT INTO Facts VALUES (NULL,NULL,'write')")
+    finally:
+        source.close()
+
+
 def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     from collections import Counter
 

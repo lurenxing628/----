@@ -4,6 +4,25 @@ from collections import defaultdict
 
 from .base_repo import BaseRepository
 from .workbench_resource_dependencies import DEPENDENCIES
+from .workbench_resource_state_repo import RESOURCE_KEYS
+
+_RESOURCE_TABLES = dict(RESOURCE_KEYS, supplier=("Suppliers", "supplier_id"))
+_RELATION_TABLES = {
+    "groups": ("WorkbenchMachineGroupMembers", ("machine_id", "group_id"), ("machine_id",)),
+    "operator_profiles": ("WorkbenchOperatorProfiles", ("operator_id", "shift_profile_id"), ("operator_id",)),
+    "supplier_profiles": ("WorkbenchSupplierProfiles", ("supplier_id",), ("supplier_id",)),
+    "policies": ("WorkbenchOpTypePolicies", ("op_type_id",), ("op_type_id",)),
+    "skills": ("OperatorSkill", ("operator_id",), ("operator_id", "op_type_id")),
+    "authorizations": ("OperatorMachine", ("operator_id", "machine_id"), ("operator_id", "machine_id")),
+    "machine_capabilities": ("MachineOpTypes", ("machine_id",), ("machine_id", "op_type_id")),
+    "capabilities": ("WorkbenchSupplierOpTypes", ("supplier_id",), ("supplier_id", "op_type_id")),
+}
+
+
+def _chunks(values):
+    values = sorted(set(values))
+    for start in range(0, len(values), 400):
+        yield values[start:start + 400]
 
 
 class WorkbenchResourceTableRepository(BaseRepository):
@@ -11,6 +30,51 @@ class WorkbenchResourceTableRepository(BaseRepository):
         marks = ",".join("?" for _ in kinds)
         return self.fetchall("SELECT ref,kind,entity_key,revision,active FROM WorkbenchEntityRefs "
                              f"WHERE active=1 AND kind IN ({marks}) ORDER BY kind,entity_key,ref", kinds)
+
+    def identities_by_refs(self, refs):
+        rows = []
+        for chunk in _chunks(refs):
+            marks = ",".join("?" for _ in chunk)
+            rows.extend(self.fetchall("SELECT ref,kind,entity_key,revision,active FROM WorkbenchEntityRefs "
+                                     f"WHERE active=1 AND ref IN ({marks}) ORDER BY kind,entity_key,ref", chunk))
+        return rows
+
+    def identities_by_codes(self, kind, codes):
+        rows = []
+        for chunk in _chunks(codes):
+            marks = ",".join("?" for _ in chunk)
+            rows.extend(self.fetchall("SELECT ref,kind,entity_key,revision,active FROM WorkbenchEntityRefs "
+                f"WHERE active=1 AND kind=? AND entity_key IN ({marks}) ORDER BY entity_key,ref", [kind] + chunk))
+        return rows
+
+    def raw_rows(self, kind, codes):
+        table, key = _RESOURCE_TABLES[kind]
+        return [row for chunk in _chunks(codes) for row in self.fetchall(
+            f"SELECT * FROM {table} WHERE {key} IN ({','.join('?' for _ in chunk)}) ORDER BY {key}", chunk)]
+
+    def relation_rows(self, name, scopes):
+        """Capture only the requested owners, merging overlapping relationship scopes."""
+        table, allowed, order = _RELATION_TABLES[name]
+        rows = {}
+        for column, values in scopes:
+            if column not in allowed:
+                raise ValueError("Unsupported resource relationship key")
+            for chunk in _chunks(values):
+                marks = ",".join("?" for _ in chunk)
+                for row in self.fetchall(f"SELECT * FROM {table} WHERE {column} IN ({marks}) ORDER BY {','.join(order)}", chunk):
+                    rows[tuple(row[key] for key in order)] = row
+        return [rows[key] for key in sorted(rows)]
+
+    def name_owners(self, kind, names):
+        if kind not in ("op_type", "machine_group", "shift_profile"):
+            raise ValueError("Unsupported named resource catalog")
+        table, key = _RESOURCE_TABLES[kind]
+        result = dict.fromkeys(names)
+        for chunk in _chunks(names):
+            marks = ",".join("?" for _ in chunk)
+            for row in self.fetchall(f"SELECT {key} AS business_code,name FROM {table} WHERE name IN ({marks}) ORDER BY {key}", chunk):
+                result[row["name"]] = row["business_code"]
+        return result
 
     def assigned_counts(self, kind, codes):
         names = {"BatchOperations": "batch_operations", "Schedule": "schedule"}

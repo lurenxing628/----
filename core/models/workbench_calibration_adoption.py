@@ -1,6 +1,6 @@
 """Inputs and evidence for adopting one real D05 template recommendation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
@@ -37,11 +37,15 @@ class CalibrationAdoptionEvidence:
     snapshot: Dict[str, Any]
     generated_at: str
     blockers: list
+    _audit_json: str = field(init=False, repr=False, compare=False)
 
-    def audit_document(self):
+    def __post_init__(self):
         # The snapshot owns the recommendation; samples stay at their durable
         # location consumed by report-void dependency checks, including old audits.
-        return canonical_json({"snapshot": self.snapshot, "samples": self.samples})
+        object.__setattr__(self, "_audit_json", canonical_json({"snapshot": self.snapshot, "samples": self.samples}))
+
+    def audit_document(self):
+        return self._audit_json
 
     def require_adoptable(self):
         if self.blockers:

@@ -11,6 +11,7 @@ from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandOutcome, canonical_json
 
 from .base_repo import BaseRepository
+from .workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialRepository
 
 
 def _finite_json_number(text):
@@ -27,12 +28,28 @@ class WorkbenchCommandRepository(BaseRepository):
     def insert(self, *, request_key: str, receipt_ref: str, action: str, context_ref: str,
                outcome: WorkbenchCommandOutcome, input_json: Optional[str] = None,
                input_hash: Optional[str] = None) -> Dict[str, Any]:
-        outcome_json = canonical_json(outcome.payload())
+        payload, history = outcome.payload(), None
+        if action == "trial.change":
+            # Changes are permanent evidence. Keep this receipt's exact prefix
+            # instead of storing every earlier validation body again.
+            history = payload["data"]["change_history"]
+            data = dict(payload["data"], change_history=WorkbenchTrialRepository(self.conn).history_reference(context_ref))
+            payload = dict(payload, data=data)
+        outcome_json = canonical_json(payload)
         self.execute("""INSERT INTO WorkbenchCommandReceipts
             (request_key, receipt_ref, action, context_ref, input_hash, input_json, outcome_json)
             VALUES (?, ?, ?, ?, ?, ?, ?)""", (request_key, receipt_ref, action, context_ref, input_hash,
                                               input_json, outcome_json))
-        return {"ok": True, **json.loads(outcome_json), "receipt_ref": receipt_ref, "replayed": False}
+        public = self._public_payload(json.loads(outcome_json), action, history=history)
+        return {"ok": True, **public, "receipt_ref": receipt_ref, "replayed": False}
+
+    def _public_payload(self, payload, action, *, history=None):
+        if action == "trial.change":
+            value = payload["data"]["change_history"]
+            if type(value) is dict and value.get("format") == HISTORY_REFERENCE_FORMAT:
+                payload["data"]["change_history"] = (history if history is not None else
+                    WorkbenchTrialRepository(self.conn).public_history(value["draft_ref"], through_revision=value["through_revision"]))
+        return payload
 
     def input_content(self, row) -> Optional[str]:
         """Use saved intent, or exact original source fields for known old commands."""
@@ -85,10 +102,9 @@ class WorkbenchCommandRepository(BaseRepository):
                 return content_text(matches[0])
         return None
 
-    @staticmethod
-    def public_result(row: Dict[str, Any], *, replayed: bool) -> Dict[str, Any]:
+    def public_result(self, row: Dict[str, Any], *, replayed: bool) -> Dict[str, Any]:
         data = json.loads(row["outcome_json"], parse_float=_finite_json_number, parse_constant=_finite_json_number)
         if not isinstance(data, dict) or set(data) != {"result", "data", "warnings"}:
             raise ValueError("已保存的命令回执结构不完整。")
-        outcome = WorkbenchCommandOutcome(**data).payload()
+        outcome = self._public_payload(WorkbenchCommandOutcome(**data).payload(), row["action"])
         return {"ok": True, **outcome, "receipt_ref": row["receipt_ref"], "replayed": replayed}

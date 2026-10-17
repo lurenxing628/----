@@ -317,9 +317,10 @@ def _adopted_conflicts(before, after, current, revisions, source):
     return conflicts
 
 
-def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies=None, protect_plan=True):
+def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies=None, protect_plan=True,
+                        facts_changed=None):
     """Check final actual neighbours; corrections also retain adopted-plan protection."""
-    if not execution_facts_changed(before, after):
+    if not (execution_facts_changed(before, after) if facts_changed is None else facts_changed):
         return []
     operation = facts["operations"][before.operation_ref]
     if dependencies is None:

@@ -118,6 +118,23 @@ class IntervalIndex:
     def hours_between(self, start, end):
         return (self._before(end) - self._before(start)) / 3600.0
 
+    def seconds_and_count_between(self, start, end):
+        """Return overlap seconds and the number of intersecting stored intervals."""
+        if not self.intervals or end <= start:
+            return 0.0, 0
+        first = max(0, bisect_right(self.starts, start) - 1)
+        last = bisect_left(self.starts, end)
+        if first < last and self.intervals[first][1] <= start:
+            first += 1
+        if first >= last:
+            return 0.0, 0
+        seconds = self.prefix[last] - self.prefix[first]
+        if start > self.intervals[first][0]:
+            seconds -= (start - self.intervals[first][0]).total_seconds()
+        if end < self.intervals[last - 1][1]:
+            seconds -= (self.intervals[last - 1][1] - end).total_seconds()
+        return seconds, last - first
+
     def contains(self, at, *, ending=False):
         """A finish may touch a period's end; a start must be inside [start,end)."""
         index = (bisect_left if ending else bisect_right)(self.starts, at) - 1

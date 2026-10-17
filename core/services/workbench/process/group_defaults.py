@@ -3,7 +3,7 @@
 import math
 from uuid import uuid4
 
-from core.models.resource_capabilities import supports_source
+from core.models.resource_capabilities import supplier_capability_rows, supports_source
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.supplier_repo import SupplierRepository
@@ -23,36 +23,51 @@ def create_group(conn, part_no, members, supplier_id, total_days, *, attach=True
     return group_id
 
 
-def _default_suppliers(conn):
-    capability_rows = SupplierRepository(conn).list_capabilities(status="active")
+def _default_suppliers(conn, references=None):
+    if references is None:
+        capability_rows = SupplierRepository(conn).list_capabilities(status="active")
+        statuses = WorkbenchProcessQueryRepository(conn).supplier_status_rows()
+    else:
+        capability_rows = supplier_capability_rows(
+            references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
+        profiles = {row["supplier_id"]: row for row in references["WorkbenchSupplierProfiles"]}
+        statuses = [dict(row, inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
+                    for row in references["Suppliers"]]
     suppliers = {row["supplier_id"]: row for row in capability_rows
                  if not row["missing_supplier"]}
     capabilities = {(row["supplier_id"], row["op_type_id"]) for row in capability_rows if not row["missing_supplier"]}
-    available = {row["supplier_id"] for row in WorkbenchProcessQueryRepository(conn).supplier_status_rows()
+    available = {row["supplier_id"] for row in statuses
                  if row["status"] == "active" and row["inactive_reason"] is None}
     return suppliers, capabilities, available
 
 
-def _uses_merged_default(row, eligible, suppliers, capabilities, available):
+def _default_candidate(row, eligible):
+    return (row["seq"] in eligible and row["source"] == "external" and supports_source(row["category"], "external")
+            and row["ext_group_id"] is None and row["default_merge_mode"] == "merged")
+
+
+def _uses_merged_default(row, candidates, suppliers, capabilities, available):
     supplier = suppliers.get(row["supplier_id"])
     days = supplier["default_days"] if supplier else None
-    return (row["seq"] in eligible and row["source"] == "external" and supports_source(row["category"], "external")
-            and row["ext_group_id"] is None and row["default_merge_mode"] == "merged"
+    return (row["seq"] in candidates
             and row["supplier_id"] in available
             and (row["supplier_id"], row["op_type_id"]) in capabilities
             and isinstance(days, (int, float)) and not isinstance(days, bool) and math.isfinite(days) and days > 0)
 
 
-def apply_default_groups(conn, part_no, operation_sequences):
+def apply_default_groups(conn, part_no, operation_sequences, *, catalog_reader=None):
     """Group only consecutive new eligible rows; one supplier cycle per stage."""
     eligible = set(operation_sequences)
     if not eligible:
         return False
     rows = WorkbenchProcessWorkflowRepository(conn).active_operations(part_no)
-    suppliers, capabilities, available = _default_suppliers(conn)
+    candidates = {row["seq"] for row in rows if _default_candidate(row, eligible)}
+    if not candidates:
+        return False
+    suppliers, capabilities, available = _default_suppliers(conn) if catalog_reader is None else catalog_reader()
     segments, segment = [], []
     for row in rows:
-        usable = _uses_merged_default(row, eligible, suppliers, capabilities, available)
+        usable = _uses_merged_default(row, candidates, suppliers, capabilities, available)
         if segment and (not usable or segment[-1]["supplier_id"] != row["supplier_id"]):
             segments.append(segment)
             segment = []

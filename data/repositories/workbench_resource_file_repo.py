@@ -16,6 +16,16 @@ class WorkbenchResourceFileRepository(BaseRepository):
         table, key = TABLES[kind]
         return self.fetchone(f'SELECT * FROM "{table}" WHERE "{key}"=?', (code,))
 
+    def raw_many(self, kind, codes):
+        table, key = TABLES[kind]
+        codes, result = list(dict.fromkeys(codes)), {}
+        for offset in range(0, len(codes), 400):
+            chunk = codes[offset:offset + 400]
+            marks = ",".join("?" for _ in chunk)
+            for row in self.fetchall(f'SELECT * FROM "{table}" WHERE "{key}" IN ({marks})', chunk):
+                result[row[key]] = row
+        return result
+
     def identity_histories(self, kind, codes):
         result = {code: [] for code in codes}
         for offset in range(0, len(codes), 400):

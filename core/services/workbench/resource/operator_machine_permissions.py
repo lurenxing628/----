@@ -48,8 +48,14 @@ class WorkbenchOperatorMachinePermissions:
         with self.tx.transaction():
             return self._prepare(operator_ref, permissions, preparation=preparation)[0]
 
+    def capture(self, operator_ref, permissions):
+        machine_refs = [row["machine_ref"] for row in permissions
+                        if type(row) is dict and type(row.get("machine_ref")) is str] if type(permissions) is list else []
+        return self.reader.preparation(refs=[operator_ref] + machine_refs)
+
     def _prepare(self, operator_ref, permissions, *, preparation=None):
-        preparation = preparation or self.reader.preparation()
+        if preparation is None:
+            preparation = self.capture(operator_ref, permissions)
         identity = preparation.identity("operator", operator_ref)
         raw = preparation.raw("operator", identity.entity_key)
         if raw["operator_id"] != raw["operator_id"].strip():

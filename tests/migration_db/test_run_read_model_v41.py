@@ -88,7 +88,7 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
     ensure_schema(str(path), schema_path=str(REPO_ROOT / "schema.sql"), backup_dir=str(tmp_path / "backups"))
     conn = connect(path)
     try:
-        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION == 43
+        assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION == 44
         assert contract_issues(conn) == []
         assert business_role_contract_issues(conn) == []
         assert current_schema_contract_issues(conn) == []

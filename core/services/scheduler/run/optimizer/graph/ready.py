@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
@@ -21,7 +21,7 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
 from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
 from .budget import GraphReadySearchBudget
-from .candidates import build_v2_common_rank_cache, evaluate_graph_ready_candidate
+from .candidates import PreparedDecisionFeatures, build_v2_common_rank_cache, evaluate_graph_ready_candidate
 from .context import graph_node_metrics_by_op_id, reason_from_validation, validate_graph_ready_context
 from .iterated_greedy_contract import IteratedGreedyLimits, resolve_iterated_greedy_limits
 from .iterated_greedy_run import IteratedGreedyRun
@@ -49,6 +49,10 @@ class SharedGraphFeatures:
 
     metrics_by_op_id: Dict[int, Dict[str, Any]]
     v2_common_rank_cache: Dict[str, Dict[int, float]]
+    decision_features: PreparedDecisionFeatures = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.decision_features = PreparedDecisionFeatures(self.metrics_by_op_id, self.v2_common_rank_cache)
 
 
 @dataclass
@@ -330,6 +334,8 @@ def _build_weight_profile_stages(
     budget = GraphReadySearchBudget(limits=repair_limits, deadline=deadline, clock=clock, decode_session=decode_session)
     v2_common_rank_cache = (prepared_features.v2_common_rank_cache if prepared_features is not None
                             else build_v2_common_rank_cache(metrics_by_op_id) if _has_v2_profile(profiles) else None)
+    decision_features = (prepared_features.decision_features if prepared_features is not None
+                         else PreparedDecisionFeatures(metrics_by_op_id, v2_common_rank_cache))
     evaluate = partial(
         evaluate_graph_ready_candidate,
         graph_ready_context=graph_ready_context, metrics_by_op_id=metrics_by_op_id,
@@ -339,6 +345,7 @@ def _build_weight_profile_stages(
         resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
         readiness_gate_enabled=bool(readiness_gate_enabled), version=int(version),
         clock=clock, v2_common_rank_cache=v2_common_rank_cache,
+        prepared_decision_features=decision_features,
         decode_session=decode_session,
     )
     pool = EliteRepairPool(limits=repair_limits, objective_name=objective_name, operations=algo_ops_to_schedule,

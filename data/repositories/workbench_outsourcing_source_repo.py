@@ -38,6 +38,7 @@ class WorkbenchOutsourcingSourceFacts:
         self._confirmations = {}
         self._memberships = set()
         self._receipt_matches = set()
+        self._routes = {}
         self._revision = None
 
     def source_row(self, kind, value):
@@ -68,6 +69,9 @@ class WorkbenchOutsourcingSourceFacts:
 
     def plan_identity_revision(self):
         return self._revision
+
+    def route_rows(self, batch_id, piece_id):
+        return self._routes.get((batch_id, piece_id), [])
 
     def _entity(self, identity):
         self._entities[(identity["ref"], identity["kind"])] = identity
@@ -172,7 +176,7 @@ class WorkbenchOutsourcingSourceRepository:
             for row in rows:
                 facts._source_rows[chunk[row[0]]] = dict(zip(columns, row[1:]))
 
-    def capture(self, targets, *, entities=()):
+    def capture(self, targets, *, entities=(), include_routes=False):
         """Read every dependency once for these targets in the caller's current transaction.
 
         entities contains already-read {identity, row} pairs, such as the selected
@@ -217,6 +221,16 @@ class WorkbenchOutsourcingSourceRepository:
                 facts._memberships.add(row["operation_ref"])
                 if row["batch_ref"] is not None and row["fact_ref"] is not None:
                     facts._receipt_matches.add((row["operation_ref"], row["batch_ref"], row["fact_ref"]))
+        if include_routes:
+            for target in targets:
+                if len(target["operation_refs"]) < 2:
+                    continue
+                identity = facts.operation_identity(target["operation_refs"][0])
+                row = facts.source_row("operation", identity["source_key"]) if identity is not None else None
+                if row is not None:
+                    key = row["batch_id"], row["piece_id"]
+                    if key not in facts._routes:
+                        facts._routes[key] = self.route_rows(*key)
         facts._revision = self.plan_identity_revision()
         return facts
 

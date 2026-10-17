@@ -2,6 +2,7 @@
 
 import sqlite3
 from collections import Counter
+from types import SimpleNamespace
 
 import pytest
 
@@ -141,3 +142,27 @@ def test_captured_calendar_preserves_sql_status_time_types_order_and_budget(monk
     with pytest.raises(ProjectionLimit, match="calendar_unavailable"):
         missing.downtimes(["M1"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
     conn.close()
+
+
+def test_nonrisk_tasks_share_complete_machine_downtime_identity_evidence():
+    records = [
+        {"id": 1, "machine_id": "M1", "status": "cancelled", "start_time": "2020-01-01T08:00:00",
+         "end_time": "2020-01-01T09:00:00", "reason_detail": "Cancelled history"},
+        {"id": 2, "machine_id": "M1", "status": "active", "start_time": "2020-01-02T08:00:00",
+         "end_time": "2020-01-02T09:00:00", "reason_detail": "Earlier maintenance"},
+    ]
+    identities = [{"source_id": source_id, "ref": format(index, "048x"), "active": active}
+                  for index, (source_id, active) in enumerate(((1, 1), (1, 0), (2, 1)), start=1)]
+    task = {"plan_ref": "a" * 48, "operation_ref": "b" * 48, "machine_ref": "c" * 48,
+            "start": "2026-10-17T08:00:00", "end": "2026-10-17T09:00:00", "batch_id": "B1", "process_label": "Turning"}
+    facts = SimpleNamespace(plan_state="loaded",
+        tasks=[dict(task, task_ref=format(index, "048x")) for index in range(10, 13)],
+        task_rows=[{"source": "internal", "machine_id": key} for key in ("M1", "M1", "M2")],
+        raw={"MachineDowntimes": records, "WorkbenchDashboardDowntimeRefs": identities,
+             "Machines": [{"machine_id": key} for key in ("M1", "M2")]})
+    rows, state = downtime.downtime(facts)
+    assert state["assessed_count"] == 3 and all(row["risk"]["active"] is False for row in rows)
+    first, second, other = (row["_facts"] for row in rows)
+    assert first["downtimes"] == records and first["identity"] == identities
+    assert first["identity"] is second["identity"]
+    assert other["identity"] == other["downtimes"] == []

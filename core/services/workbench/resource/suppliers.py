@@ -50,12 +50,14 @@ class WorkbenchSupplierService:
     def apply(self, action: str, payload: Dict[str, Any], identity: Optional[WorkbenchEntityIdentity] = None):
         from .queries import WorkbenchResourceQueryService
 
-        preparation = WorkbenchResourceQueryService(self.conn, "supplier").preparation()
+        payload = self.normalize_input(action, payload)
+        preparation = WorkbenchResourceQueryService(self.conn, "supplier").preparation_for(
+            action, payload, ref=getattr(identity, "ref", None))
         if action == "create" and identity is not None:
             raise WorkbenchCommandRejected("invalid_input", "新增资源时请使用新增入口。", 400)
         checked = None if action == "create" else preparation.state("supplier",
             preparation.current("supplier", identity).entity_key)
-        return self.apply_prepared(self.prepare(action, self.normalize_input(action, payload), checked, preparation))
+        return self.apply_prepared(self.prepare(action, payload, checked, preparation))
 
     def prepare(self, action, payload, checked, preparation):
         identity = None if action == "create" else preparation.identity("supplier", checked["identity"]["ref"])

@@ -21,12 +21,12 @@ SCOPE = "workbench-operator-machine-permissions-v1"
 def operator_machine_preview(ref):
     body = json_body({"machine_permissions", "write_token"})
     reader = WorkbenchResourceQueryService(g.db, "operator", current_app.logger)
+    service = WorkbenchOperatorMachinePermissions(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        preparation = reader.preparation()
+        preparation = service.capture(ref, body["machine_permissions"])
         identity = preparation.identity("operator", ref)
         validate_write_context(body["write_token"], ref, "operator.update", preparation.state("operator", identity.entity_key))
-        preview = WorkbenchOperatorMachinePermissions(g.db, current_app.logger).preview(
-            ref, body["machine_permissions"], preparation=preparation)
+        preview = service.preview(ref, body["machine_permissions"], preparation=preparation)
         preview_ref, expiry = retain_context(SCOPE, preview.document)
         value = preview.as_dict()
         data = {"operator_ref": ref, "preview_ref": preview_ref, "expires_at": expiry,

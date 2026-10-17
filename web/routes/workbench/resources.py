@@ -81,9 +81,9 @@ def resource_command(kind, action, ref=None):
     command = kind + "." + action
 
     def guard():
-        preparation = reader.preparation()
+        preparation = reader.preparation_for(action, normalized, ref=ref)
         identity = None if action == "create" else preparation.identity(kind, ref)
-        state = preparation.create_snapshot(kind) if identity is None else preparation.state(kind, identity.entity_key)
+        state = reader.create_snapshot() if identity is None else preparation.state(kind, identity.entity_key)
         validate_write_context(body["write_token"], subject, command, state)
         return reader.domain.prepare(action, normalized, state if identity is not None else None, preparation)
 

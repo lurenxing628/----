@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import datetime
+from heapq import heappop, heappush
 
 from core.models.workbench_trial import issue, reject
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
@@ -129,15 +130,25 @@ def _trial_intervals(rows):
 def _overlap_issues(occupied):
     issues = []
     for (kind, _), intervals in occupied.items():
-        active = []
-        for start, end, operation, task in sorted(intervals, key=lambda value: (value[0], value[1])):
-            active = [value for value in active if value[0] > start]
-            for _, other_operation, other_task in active:
-                if operation != other_operation and (task is not None or other_task is not None):
+        if not any(task is not None for _, _, _, task in intervals):
+            continue
+        active, trial, expiry = {}, {}, []
+        for index, (start, end, operation, task) in enumerate(sorted(intervals, key=lambda value: (value[0], value[1]))):
+            while expiry and expiry[0][0] <= start:
+                _, expired = heappop(expiry)
+                active.pop(expired)
+                trial.pop(expired, None)
+            # Preserve chronological issue order, pairing outside work only with
+            # trial work. Outside/outside overlaps do not belong to this check.
+            for other_operation, other_task in (active if task is not None else trial).values():
+                if operation != other_operation:
                     issues.append(issue(kind + "_overlap", "设备安排重叠。" if kind == "machine" else "人员安排重叠。",
                                         task or other_task, other_task if task else None))
                     _issue_limit(issues)
-            active.append((end, operation, task))
+            active[index] = operation, task
+            if task is not None:
+                trial[index] = operation, task
+            heappush(expiry, (end, index))
     return issues
 
 

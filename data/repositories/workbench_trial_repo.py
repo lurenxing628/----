@@ -8,6 +8,8 @@ from core.models.workbench_trial import MAX_TRIAL_TASKS
 from core.models.workbench_trial_codec import dump, dump_document, load_object
 from core.models.workbench_trial_scenario_archive import EncodedScenario
 
+HISTORY_REFERENCE_FORMAT = "trial-change-history-ref-v1"
+
 
 def new_ref():
     return secrets.token_hex(24)
@@ -109,13 +111,34 @@ class WorkbenchTrialRepository:
         cursor = self.conn.execute("SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))
         return (dict(row) for row in cursor)
 
-    def changes(self, draft_ref):
-        result = []
-        for row in self.conn.execute("""SELECT change_ref,task_ref,before_json,after_json,validation_json,
-            recorded_at,local_operator FROM WorkbenchTrialChanges WHERE draft_ref=? ORDER BY revision""", (draft_ref,)):
+    def changes(self, draft_ref, *, through_revision=None):
+        if through_revision is None:
+            cursor = self.conn.execute("""SELECT change_ref,task_ref,before_json,after_json,validation_json,
+                recorded_at,local_operator FROM WorkbenchTrialChanges WHERE draft_ref=? ORDER BY revision""", (draft_ref,))
+        else:
+            cursor = self.conn.execute("""SELECT change_ref,task_ref,before_json,after_json,validation_json,
+                recorded_at,local_operator FROM WorkbenchTrialChanges
+                WHERE draft_ref=? AND revision<=? ORDER BY revision""", (draft_ref, through_revision))
+        result, validations = [], {}
+        for row in cursor:
+            if row[4] not in validations:
+                validations[row[4]] = load_object(row[4])
             result.append({"change_ref": row[0], "task_ref": row[1], "before": load_object(row[2]), "after": load_object(row[3]),
-                           "validation": load_object(row[4]), "recorded_at": row[5], "local_operator": row[6]})
+                           "validation": validations[row[4]], "recorded_at": row[5], "local_operator": row[6]})
         return result
+
+    def public_history(self, draft_ref, *, through_revision=None):
+        """Original historical evidence, with the established public arrangement fields."""
+        result = self.changes(draft_ref, through_revision=through_revision)
+        for item in result:
+            for side in ("before", "after"):
+                item[side] = {key: item[side][key] for key in ("machine_ref", "operator_ref", "start", "end")}
+        return result
+
+    def history_reference(self, draft_ref):
+        """Bind a command to the immutable change ledger at its committed revision."""
+        revision = self.conn.execute("SELECT revision FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft_ref,)).fetchone()[0]
+        return {"format": HISTORY_REFERENCE_FORMAT, "draft_ref": draft_ref, "through_revision": revision}
 
     def _transaction(self):
         if not self.conn.in_transaction:

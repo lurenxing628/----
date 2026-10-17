@@ -13,7 +13,7 @@ from core.services.workbench.facts.decision_baseline_source import _candidate_ev
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_policy import load_scenario_record
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
-from core.services.workbench.run.decision import decision_overview
+from core.services.workbench.run.decision import decision_history_candidate
 from core.services.workbench.run.decision_source import DecisionSource
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
@@ -260,9 +260,9 @@ class HistoryReader:
             resource_view="full_candidate", prepared=self._runs.get(run_ref, self._run_prepared.get(run_ref))))
 
     def decision(self, run_ref, range_start=None, range_end=None, *, candidate_ref=None):
-        """Return the same overview used by the run workspace, once per window."""
+        """Read this event's metrics under the workspace's common resource cohort."""
         key = (run_ref, candidate_ref, range_start, range_end)
-        return _cached(self._decisions, key, lambda: decision_overview(self.run_source(run_ref, candidate_ref,
+        return _cached(self._decisions, key, lambda: decision_history_candidate(self.run_source(run_ref, candidate_ref,
             range_start=range_start, range_end=range_end)))
 
 

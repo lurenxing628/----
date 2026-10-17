@@ -21,6 +21,8 @@ def test_real_point_report_http_retains_intervals_unknowns_and_readback(trial_ca
 
     identity = adopted(trial_case)
     client = app_for(trial_case).test_client()
+    catalog = read(client, '/api/workbench/v1/plans', collection='history')['data']['plans']
+    assert next(row for row in catalog if row['plan_ref'] == identity['plan']['plan_ref'])['capabilities']['view']
     scope_reads, require_scope = [], candidate_archive.require_candidate_scope
 
     def scope_once(run, candidate, *args, **kwargs):

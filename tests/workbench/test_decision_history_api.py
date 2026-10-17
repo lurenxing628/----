@@ -12,7 +12,8 @@ import pytest
 from openpyxl import load_workbook
 
 from tests.workbench.decision_history_support import BASE, api, clone_run, copy_case, four_source_case, read
-from tests.workbench.run_candidate_support import retained
+from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
+from tests.workbench.run_candidate_support import compute, retained
 
 
 @pytest.fixture(scope="module")
@@ -27,6 +28,40 @@ def history_case(history_template, tmp_path):
     with case.app.app_context():
         yield case
     case.conn.close()
+
+
+def test_history_event_keeps_all_metrics_but_enriches_only_its_candidate(candidate_case, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.facts.candidate_store import CandidateStore
+    from core.services.workbench.history.reading import HistoryReader
+    from core.services.workbench.run.decision import decision_overview
+    from core.services.workbench.run.decision_resources import DecisionResources
+    from core.services.workbench.run.decision_source import DecisionSource
+    from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
+
+    case = candidate_case
+    install_complete_legacy_archive(monkeypatch)
+    run_ref, candidates = compute(case)
+    assert len(candidates) == 4
+    candidate_ref = candidates[-1]
+    start, end = "2026-09-09T00:00:00", "2026-09-10T00:00:00"
+    with TransactionManager(case.conn).transaction():
+        source = DecisionSource(CandidateStore(case.conn), run_ref, selected_candidate_ref=candidate_ref,
+            range_start=start, range_end=end, resource_view="full_candidate")
+        expected = decision_overview(source)
+        selected = next(row for row in expected["candidates"] if row["candidate_ref"] == candidate_ref)
+        calls, original = [], DecisionResources.metrics
+
+        def metrics(engine, key):
+            calls.append(key)
+            return original(engine, key)
+
+        monkeypatch.setattr(DecisionResources, "metrics", metrics)
+        actual = HistoryReader(case.conn).decision(run_ref, start, end, candidate_ref=candidate_ref)
+        assert actual["resource_cohort"] == expected["resource_cohort"]
+        assert actual["candidates"][0]["metrics"] == selected["metrics"]
+        assert actual["candidates"][0]["coverage"] == selected["coverage"]
+        assert calls == [candidate_ref]
 
 
 def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines(history_case):

@@ -53,6 +53,7 @@ class WorkbenchBatchBulkService:
         facts = self.reader.load()
         projection = BatchProjection(facts)
         used = {row["batch_id"] for row in facts["Batches"]}
+        successors = {}
         rows = []
         for ref in payload["refs"]:
             batch = self.reader.batch(ref)
@@ -63,7 +64,7 @@ class WorkbenchBatchBulkService:
             elif payload["action"] == "update":
                 after = {**before, "fields": {**before["fields"], **payload["patch"]}}
             else:
-                code = self._copy_code(batch["batch_id"], used)
+                code = self._copy_code(batch["batch_id"], used, successors)
                 used.add(code)
                 operations = [copied_operation(op, code) for op in before["operations"]]
                 after = {**before, "ref": None, "business_code": code, "status": "pending", "stored_status": "pending",
@@ -82,18 +83,30 @@ class WorkbenchBatchBulkService:
                              if payload["action"] == "copy" else [])}, projection
 
     @staticmethod
-    def _copy_code(code, used):
+    def _copy_code(code, used, successors=None):
+        """Find the nearest free suffix, sharing occupied runs within this operation."""
+        successors = {} if successors is None else successors
         match = re.search(r"([0-9]+)$", code)
         prefix = code[:match.start()] if match else code + "-copy-"
         digits = len(match[1]) if match else 1
-        serial = int(match[1]) if match else 0
-        while serial < MAX_INTEGER:
-            serial += 1
+        serial = (int(match[1]) if match else 0) + 1
+        following, visited = successors.setdefault((prefix, digits), {}), []
+        while serial <= MAX_INTEGER:
+            if serial in following:
+                visited.append(serial)
+                serial = following[serial]
+                continue
             candidate = prefix + str(serial).zfill(digits)
             if len(candidate) > 200:
                 break
             if candidate not in used:
+                # Only occupied suffixes are cached. Another padding width may claim
+                # this candidate later; the shared used set remains authoritative.
+                for occupied in visited:
+                    following[occupied] = serial
                 return candidate
+            visited.append(serial)
+            serial += 1
         raise WorkbenchCommandRejected("constraint_conflict", "无法为复制批次分配有效编号，请手工新增。")
 
     def apply(self, payload):
@@ -102,11 +115,11 @@ class WorkbenchBatchBulkService:
         payload = normalize_bulk(payload)
         facts = self.reader.load()
         preparation = self.domain.preparation(facts)
-        prepared = []
+        prepared, successors = [], {}
         for ref in payload["refs"]:
             batch = preparation.batch(ref)
             if payload["action"] == "copy":
-                code = self._copy_code(batch["batch_id"], preparation.used_codes)
+                code = self._copy_code(batch["batch_id"], preparation.used_codes, successors)
                 change = preparation.copy(batch, code)
             else:
                 change = preparation.prepare(payload["action"], {"fields": payload["patch"]}, ref)

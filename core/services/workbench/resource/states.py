@@ -25,11 +25,12 @@ class ResourceChange:
 class ResourceChangePreparation:
     """One operation's captured resource rows, identities and complete current states."""
 
-    def __init__(self, facts):
+    def __init__(self, facts, *, name_reader=None, names=None):
         self.facts = facts
         self._identities = {row["ref"]: row for row in facts.identities.values()}
         self._states = {}
-        self._names = {}
+        self._names = names or {}
+        self._name_reader = name_reader
         self._references = {}
 
     def identity(self, kind, ref):
@@ -120,6 +121,11 @@ class ResourceChangePreparation:
         return identity.entity_key
 
     def name_owner(self, kind, name):
+        if self._name_reader is not None:
+            owners = self._names.setdefault(kind, {})
+            if name not in owners:
+                owners.update(self._name_reader(kind, [name]))
+            return owners[name]
         if kind not in self._names:
             self._names[kind] = {row["name"]: code for code, row in self.facts.raw_lookup(kind,
                 {"op_type": "op_type_id", "machine_group": "group_id", "shift_profile": "profile_id"}[kind]).items()}
@@ -133,30 +139,6 @@ class ResourceChangePreparation:
         from .file_projection import resource_export_state
 
         return resource_export_state(self.facts, kind, code)
-
-    def create_snapshot(self, kind):
-        relations = {"machine": ("op_type", "machine_group"), "operator": ("op_type", "shift_profile"),
-                     "supplier": ("op_type",)}.get(kind, ())
-        if not relations:
-            return None
-        from .metrics import _KEYS
-
-        result = {}
-        for target in relations:
-            records = self.facts.raw_lookup(target, _KEYS[target])
-            rows = []
-            for code in sorted(records):
-                raw = records[code]
-                if target == "op_type" and not supports_source(raw["category"], "external" if kind == "supplier" else "internal"):
-                    continue
-                identity = self.facts.identities.get((target, code))
-                rows.append(dict(raw, ref=identity["ref"] if identity else None, revision=identity["revision"] if identity else None))
-            result[target] = rows
-        if kind == "operator":
-            self.facts.metrics._load(["shift_pattern"])
-            result["shift_pattern"] = self.facts.metrics.facts["shift_pattern"]
-        return result
-
 
 class WorkbenchResourceStateService:
     def __init__(self, conn, logger=None):

@@ -104,7 +104,7 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
     return False, False
 
 
-def apply_route(conn, part, operations, preview, identities, *, part_updates=None):
+def apply_route(conn, part, operations, preview, identities, *, part_updates=None, default_catalog_reader=None):
     if not preview["can_confirm_route"]:
         raise WorkbenchCommandRejected("route_invalid", "路线中的工种已变化，请重新预检。", 422)
     op_repo = PartOperationRepository(conn)
@@ -128,5 +128,5 @@ def apply_route(conn, part, operations, preview, identities, *, part_updates=Non
     if defaults:
         from .group_defaults import apply_default_groups
 
-        changed = apply_default_groups(conn, part["part_no"], defaults) or changed
+        changed = apply_default_groups(conn, part["part_no"], defaults, catalog_reader=default_catalog_reader) or changed
     return changed

@@ -20,7 +20,7 @@ from .projection import project_resource
 from .readiness import process_readiness, resource_readiness
 from .states import ResourceChangePreparation
 from .suppliers import WorkbenchSupplierService
-from .table_facts import ResourceTableFacts
+from .table_facts import ResourceTableFacts, capture_change_facts
 from .table_states import resource_table_states
 
 
@@ -85,8 +85,16 @@ class WorkbenchResourceQueryService:
     def create_snapshot(self):
         return self.repo.create_relations(self.kind)
 
-    def preparation(self):
+    def preparation(self, *, refs=None, codes=None, selected_refs=(), selected_codes=None, names=None,
+                    machine_authorizations=False):
         repo = WorkbenchResourceTableRepository(self.conn, self.logger)
+        if refs is not None or codes is not None:
+            metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
+            facts = capture_change_facts(metrics, refs=refs or (), codes=codes,
+                                         selected_refs=selected_refs, selected_codes=selected_codes,
+                                         machine_authorizations=machine_authorizations)
+            owners = {kind: repo.name_owners(kind, values) for kind, values in (names or {}).items()}
+            return ResourceChangePreparation(facts, name_reader=repo.name_owners, names=owners)
         identities = self._table_identities
         if identities is None:
             identities = repo.identities()
@@ -96,6 +104,15 @@ class WorkbenchResourceQueryService:
             identities = identities + repo.identities(sorted(missing)) if missing else identities
         facts = ResourceTableFacts(self._metrics_reader(), identities, scope_state=self._snapshot_scope)
         return ResourceChangePreparation(facts)
+
+    def preparation_for(self, action, payload, *, ref=None):
+        selected = [ref for value in payload.get("relationships", {}).values()
+                    for ref in (value if isinstance(value, list) else [value]) if ref is not None]
+        names = ({self.kind: [payload["label"]]} if self.kind in ("op_type", "machine_group", "shift_profile")
+                 and "label" in payload else None)
+        return self.preparation(refs=[] if ref is None else [ref],
+            codes={self.kind: [payload["business_code"]]} if action == "create" else {},
+            selected_refs=selected, names=names)
 
     def summary(self):
         return self.repo.summary()

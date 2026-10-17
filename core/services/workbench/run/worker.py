@@ -89,7 +89,12 @@ class WorkbenchRunWorker:
         progress = self.progress_sink or (lambda done, total: report_progress(row["run_ref"], done, total, self._now()))
         if self.compute_runner is not None:
             return self.compute_runner(self.conn, row, admission=admission, on_progress=progress)
-        with computation_database(self.conn) as snapshot, candidate_read_snapshot(snapshot):
+        with computation_database(self.conn) as snapshot:
+            return self.compute_owned_snapshot(snapshot, row, admission, on_progress=progress)
+
+    def compute_owned_snapshot(self, snapshot, row, admission, *, on_progress):
+        """Consume the caller's isolated database without copying it again."""
+        with candidate_read_snapshot(snapshot):
             current_capture = ProductionFactsCapture(snapshot)
             self._check_facts(row, snapshot, capture=current_capture)
             raw_execution = json.loads(row["execution_json"])
@@ -97,7 +102,7 @@ class WorkbenchRunWorker:
             projections = restore_execution_projections(raw_execution)
             computation = compute_candidate_run(
                 snapshot, normalized_input, projections,
-                on_progress=progress, capture=current_capture)
+                on_progress=on_progress, capture=current_capture)
             capture = {"input": normalized_input, "execution": raw_execution,
                        "baseline": json.loads(row["baseline_json"]), "facts_text": row["facts_json"],
                        "facts_hash": row["facts_hash"]}

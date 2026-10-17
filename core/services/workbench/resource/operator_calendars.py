@@ -91,12 +91,19 @@ class WorkbenchOperatorCalendarService:
 
     def range_states(self, start_date: str, end_date: str) -> Dict[str, Dict[str, Any]]:
         """这段日期里这个人已经单独设过的天；没设过的日期不出现在结果里。"""
+        return self.states_from_rows(
+            self._query.operator_calendar_rows(self.operator_code, start_date, end_date),
+            self._query.operator_identity_rows(self.operator_code, start_date, end_date))
+
+    @staticmethod
+    def states_from_rows(calendar_rows, identities) -> Dict[str, Dict[str, Any]]:
+        """单人读取和文件批读共用同一条日期、永久编号与历史状态规则。"""
         rows: Dict[str, Dict[str, Any]] = {}
-        for row in self._query.operator_calendar_rows(self.operator_code, start_date, end_date):
+        for row in calendar_rows:
             row["date"] = _date_key(row["date"])
             rows[row["date"]] = row
         histories: Dict[str, List[Dict[str, Any]]] = {}
-        for identity in self._query.operator_identity_rows(self.operator_code, start_date, end_date):
+        for identity in identities:
             day = _date_key(identity["entity_key"].split(":", 1)[1])
             histories.setdefault(day, []).append(identity)
         result: Dict[str, Dict[str, Any]] = {}

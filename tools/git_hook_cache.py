@@ -23,7 +23,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 CACHE_SCHEMA_VERSION = 2
 STAGED_RUFF_CACHE_NAME = "staged-ruff.v2.json"
 PRE_PUSH_DAILY_CACHE_NAME = "pre-push-daily.v2.json"
-FINAL_GATE_PASS_CACHE_NAME = "final-gate-pass.v2.json"
 
 HOOK_CACHE_TOOL_PATHS = (
     ".pre-commit-config.yaml",
@@ -37,25 +36,6 @@ DAILY_GATE_TOOL_PATHS = (
     "tools/git_hook_cache.py",
     "tools/git_hook_checks.py",
     "tools/test_registry.py",
-)
-FINAL_GATE_SOURCE_PATHS = (
-    ".pre-commit-config.yaml",
-    "scripts/run_quality_gate.py",
-    "tools/git_hook_cache.py",
-    "tools/git_hook_checks.py",
-    "tools/quality_gate_shared.py",
-    "tools/quality_gate_support.py",
-    "tools/long_gate_cache.py",
-    "tools/long_gate_fingerprint.py",
-    "tools/long_gate_manifest.py",
-    "tools/long_gate_summary.py",
-)
-FINAL_GATE_ARTIFACT_PATHS = (
-    "evidence/QualityGate/v4/quality_gate_manifest.json",
-    "evidence/QualityGate/long_gate/summary.v2.json",
-    "evidence/QualityGate/long_gate/summary.v2.md",
-    "evidence/QualityGate/v4/receipts",
-    "evidence/QualityGate/v4/logs",
 )
 
 
@@ -195,10 +175,6 @@ def staged_tree_hash() -> str:
     return _run_git(["write-tree"]).strip()
 
 
-def head_sha() -> str:
-    return _run_git(["rev-parse", "HEAD"]).strip()
-
-
 def head_tree_hash() -> str:
     return _run_git(["rev-parse", "HEAD^{tree}"]).strip()
 
@@ -229,7 +205,10 @@ def _cache_key_payload(
 
 
 def _cache_matches(path: Path, key_payload: Mapping[str, Any]) -> bool:
-    payload = _load_json(path)
+    return _cache_payload_matches(_load_json(path), key_payload)
+
+
+def _cache_payload_matches(payload: Optional[Mapping[str, Any]], key_payload: Mapping[str, Any]) -> bool:
     return bool(payload and payload.get("schema_version") == CACHE_SCHEMA_VERSION
                 and payload.get("status") == "passed" and "key_payload" in payload
                 and content_equal(payload["key_payload"], dict(key_payload)))
@@ -357,17 +336,19 @@ def daily_gate_cache_key(
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     scope_extra = _daily_scope_cache_extra(scope_payload)
+    contexts = _daily_ref_contexts_cache_extra(ref_contexts)
+    # Target refs execute in their committed worktrees; manual runs use this checkout.
+    source_extra = {} if contexts else {"head_tree": head_tree_hash(), "git_status_short": git_status_lines()}
     key_payload = _cache_key_payload(
         kind="pre-push-daily",
         executable=executable,
         watched_paths=DAILY_GATE_TOOL_PATHS,
-        tool_modules=("ruff", "pytest", "pyright"),
+        tool_modules=("ruff", "pytest"),
         extra={
-            "head_tree": head_tree_hash(),
-            "git_status_short": git_status_lines(),
+            **source_extra,
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
-            "ref_contexts": _daily_ref_contexts_cache_extra(ref_contexts),
+            "ref_contexts": contexts,
             **scope_extra,
         },
     )
@@ -381,19 +362,20 @@ def pre_push_daily_cache_hit(
     remote_ref: str = "",
     scope_payload: Optional[Mapping[str, Any]] = None,
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
+    key_payload: Optional[Mapping[str, Any]] = None,
 ) -> bool:
     path = cache_path(PRE_PUSH_DAILY_CACHE_NAME)
     cached = _load_json(path)
-    if not cached or cached.get("status") != "passed" or git_status_lines():
+    if not cached or cached.get("status") != "passed" or (not ref_contexts and git_status_lines()):
         return False
-    key_payload = daily_gate_cache_key(
+    current_key = key_payload if key_payload is not None else daily_gate_cache_key(
         executable,
         remote_name=remote_name,
         remote_ref=remote_ref,
         scope_payload=scope_payload,
         ref_contexts=ref_contexts,
     )
-    return _cache_matches(path, key_payload)
+    return _cache_payload_matches(cached, current_key)
 
 
 def write_pre_push_daily_cache(
@@ -403,10 +385,11 @@ def write_pre_push_daily_cache(
     remote_ref: str = "",
     scope_payload: Optional[Mapping[str, Any]] = None,
     ref_contexts: Optional[Sequence[Mapping[str, Any]]] = None,
+    key_payload: Optional[Mapping[str, Any]] = None,
 ) -> None:
-    if git_status_lines():
+    if not ref_contexts and git_status_lines():
         raise HookCacheError("pre-push daily gate pass cache 只能在干净工作区写入")
-    key_payload = daily_gate_cache_key(
+    current_key = key_payload if key_payload is not None else daily_gate_cache_key(
         executable,
         remote_name=remote_name,
         remote_ref=remote_ref,
@@ -415,75 +398,12 @@ def write_pre_push_daily_cache(
     )
     _write_pass_cache(
         cache_path(PRE_PUSH_DAILY_CACHE_NAME),
-        key_payload=key_payload,
+        key_payload=current_key,
         extra={
-            "head_sha": head_sha(),
-            "head_tree": key_payload["extra"]["head_tree"],
             "remote_name": str(remote_name or ""),
             "remote_ref": str(remote_ref or ""),
-            "changed_paths": key_payload["extra"]["changed_paths"],
-            "impact_pytest_target_paths": key_payload["extra"]["impact_pytest_target_paths"],
-            "ruff_target_paths": key_payload["extra"]["ruff_target_paths"],
-        },
-    )
-
-
-def _path_content(rel_path: str) -> Dict[str, Any]:
-    normalized = normalize_repo_path(rel_path)
-    abs_path = REPO_ROOT / normalized
-    if abs_path.is_file():
-        return {"kind": "file", "path": normalized, "content_base64": read_file_content(str(abs_path))}
-    if abs_path.is_dir():
-        rows = []
-        for root, dirs, files in os.walk(str(abs_path)):
-            dirs.sort()
-            files.sort()
-            for filename in files:
-                file_path = Path(root) / filename
-                rel_file = normalize_repo_path(str(file_path.relative_to(REPO_ROOT)))
-                rows.append({"path": rel_file, "content_base64": read_file_content(str(file_path))})
-        return {"kind": "directory", "path": normalized, "files": rows}
-    return {"kind": "missing", "path": normalized}
-
-
-def final_gate_artifact_contents() -> List[Dict[str, Any]]:
-    return [_path_content(path) for path in FINAL_GATE_ARTIFACT_PATHS]
-
-
-def final_gate_cache_key(executable: str) -> Dict[str, Any]:
-    artifacts = final_gate_artifact_contents()
-    key_payload = _cache_key_payload(
-        kind="final-gate-exact-head",
-        executable=executable,
-        watched_paths=FINAL_GATE_SOURCE_PATHS,
-        tool_modules=("ruff", "pytest", "pyright"),
-        extra={
-            "head_sha": head_sha(),
-            "head_tree": head_tree_hash(),
-            "git_status_short": git_status_lines(),
-            "artifacts": artifacts,
-        },
-    )
-    return key_payload
-
-
-def final_gate_cache_hit(executable: str) -> bool:
-    cached = _load_json(cache_path(FINAL_GATE_PASS_CACHE_NAME))
-    if not cached or cached.get("status") != "passed" or git_status_lines():
-        return False
-    key_payload = final_gate_cache_key(executable)
-    return _cache_matches(cache_path(FINAL_GATE_PASS_CACHE_NAME), key_payload)
-
-
-def write_final_gate_cache(executable: str) -> None:
-    if git_status_lines():
-        raise HookCacheError("final gate pass cache 只能在干净工作区写入")
-    key_payload = final_gate_cache_key(executable)
-    _write_pass_cache(
-        cache_path(FINAL_GATE_PASS_CACHE_NAME),
-        key_payload=key_payload,
-        extra={
-            "head_sha": key_payload["extra"]["head_sha"],
-            "head_tree": key_payload["extra"]["head_tree"],
+            "changed_paths": current_key["extra"]["changed_paths"],
+            "impact_pytest_target_paths": current_key["extra"]["impact_pytest_target_paths"],
+            "ruff_target_paths": current_key["extra"]["ruff_target_paths"],
         },
     )

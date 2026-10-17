@@ -52,6 +52,8 @@ hook 字段与返回协议见 [OpenAI Hooks 文档](https://learn.chatgpt.com/do
 
 所有选中的测试和尚未覆盖的冒烟节点合并为一次单进程 pytest。已经选中冒烟文件时直接复用该文件的执行，不重复跑节点，也不启动 xdist worker。日常入口由这一次 pytest 收集实际选中的目标；全仓收集证明仍由完整门禁负责。旧 `--workbench-ui-evidence` 浏览器证据入口已退役，保留的 UI Node 契约进入普通 pytest。
 
+pre-push 从 Git 原始输入识别待推送提交，在对应的临时 worktree 执行快门禁；成功缓存绑定目标 refs、影响范围、工具内容和环境。当前 checkout 的无关 README 修改或提交不触发同一目标重测。手工运行且未指定目标 refs 时，缓存仍要求当前工作区干净。
+
 它不是最终 clean proof：不声明 full-test-debt proof，不声明干净工作区证明，也不代表 CI 或收口门禁已经通过。`.pre-commit-config.yaml` 的 pre-push hook 现在默认跑这条快门禁，目的是先挡明显问题，不再让每次日常 push 都完整执行 full-test-debt。
 
 ### 统一完整门禁入口
@@ -85,6 +87,8 @@ full-test-debt proof 证明当前没有未登记的 full pytest 失败，并且�
 long gate cache 是给长耗时完整门禁准备的本地成功缓存，需要显式传入 `--long-gate-cache` 才会尝试复用。当前 enabled long gate entry 是 `pytest_collect_all`、`full_test_debt`、`ruff_check_full`、`pyright_gate_full`、`pyright_tools_full`、`required_regressions`、`debt_ledger_sync`、`quickref_vs_routes`、`import_cycles_production` 和 `import_cycles_with_tests`。旧 `startup_runtime_regressions` 和 `architecture_fitness` 专项 entry 已退役。
 
 完整门禁在同次缓存判定中共享源码快照与工具 metadata；实际命令执行后会重新取得需要刷新的输入证据。`aps-full-selftest` 核验同 HEAD 的干净证明时，可复用仍匹配输入、环境、日志、输出且与本次 receipt 一致的 long-gate 成功结果；缺少或变化的证据继续重放对应命令，未覆盖的独立步骤照常执行。禁用重放仍是 `STRUCTURAL_ONLY`，不能当作通过证明。
+
+完整输入、输出和日志证据由 long-gate 结果缓存与 shared proof 保存；long-gate summary 只保存执行结果、计数、耗时、变更原因和文件引用。旧 `run-final-quality-gate-if-needed` 入口与 `run-final-quality-gate` 一样进入共同 runner，由同一套 long-gate 规则决定复用；原 `.git/aps-hook-cache` 中复制整套完整门禁证据的顶层缓存已退役，历史文件保留原位。
 
 当前 shared proof/receipt 为 schema 4，manifest、current/summary、专项 proof、receipts 和日志写入 `evidence/QualityGate/v4/`；测试收集写入 `evidence/QualityGate/collect_nodeids.v2.json`。long gate 为版本 2，成功/失败缓存分别写入 `evidence/QualityGate/long_gate/results/<entry>.v2.success.json` 与 `<entry>.v2.failure.json`，对应日志和 summary 使用 `.v2` 文件名。单独运行 `.venv\Scripts\python tools/check_full_test_debt.py` 只写本次 v4 current/summary 证明；要生成完整门禁可复用的成功缓存，运行 `.venv\Scripts\python scripts/run_quality_gate.py --require-clean-worktree --long-gate-cache`。旧文件保留原件，缺少原内容的旧摘要缓存首次明确 miss，由新运行生成当前证明。
 

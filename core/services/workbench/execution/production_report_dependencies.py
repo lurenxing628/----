@@ -38,13 +38,18 @@ def _predecessors(rows):
 
 
 def _reachable(graph, ref):
-    result, pending = set(), list(graph[ref])
+    return sorted(_reachable_from(graph, graph[ref]))
+
+
+def _reachable_from(graph, pending):
+    """Walk a set of starting edges once, without retaining per-root closures."""
+    result, pending = set(), list(pending)
     while pending:
         current = pending.pop()
         if current not in result:
             result.add(current)
             pending.extend(graph[current])
-    return sorted(result)
+    return result
 
 
 class ReportDependencies:
@@ -56,6 +61,8 @@ class ReportDependencies:
         self.merged = {}
         self.sequences = {}
         self.cycles = defaultdict(list)
+        self._relative_scope = None
+        self._relative_rows = {}
 
     def _route(self, batch_id):
         if batch_id in self.routes:
@@ -94,15 +101,28 @@ class ReportDependencies:
         ref = operation["operation_ref"]
         if ref not in parents:
             reject("原工序不在当前工艺中，未修改报工。", "execution_dependencies_unproven", 409)
-        reachable = _reachable(parents if predecessors else children, ref)
-        return [other for other in reachable if not self.same_merged_cycle(ref, other)]
+        scope = operation["batch_id"], ref
+        if self._relative_scope != scope:
+            self._relative_scope, self._relative_rows = scope, {}
+        if predecessors not in self._relative_rows:
+            reachable = _reachable(parents if predecessors else children, ref)
+            self._relative_rows[predecessors] = [other for other in reachable if not self.same_merged_cycle(ref, other)]
+        return self._relative_rows[predecessors]
 
     def prepare(self, operations):
-        refs = set()
+        batches = defaultdict(set)
         for operation in operations:
-            refs.update(self.relatives(operation))
-            refs.update(self.relatives(operation, predecessors=True))
-            refs.update(self.cycle_peers(operation))
+            batches[operation["batch_id"]].add(operation["operation_ref"])
+        refs, cycles = set(), set()
+        for batch_id, roots in batches.items():
+            parents, children = self._route(batch_id)
+            if not roots.issubset(parents):
+                reject("原工序不在当前工艺中，未修改报工。", "execution_dependencies_unproven", 409)
+            for graph in (parents, children):
+                refs.update(_reachable_from(graph, (other for ref in roots for other in graph[ref])))
+            cycles.update(self.merged[ref] for ref in roots if ref in self.merged)
+        for cycle in cycles:
+            refs.update(self.cycles[cycle])
         self.projections(sorted(refs))
 
     def projections(self, refs):

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from core.services.capacity.plan_calendar_intervals import IntervalIndex
 from core.services.common.degradation import DegradationCollector
 
 from .calculation_helpers import is_internal_source, is_valid_interval, overlap_seconds, parse_dt
@@ -121,14 +122,25 @@ def _downtime_seconds(downtime_intervals: Sequence[TimeInterval], start_dt: date
 
 
 def _schedule_overlap(downtime_intervals: Sequence[TimeInterval], schedule_segments: Sequence[ScheduleSegment]) -> Tuple[float, int]:
+    if not downtime_intervals or not schedule_segments:
+        return 0.0, 0
+    if len(downtime_intervals) == 1:
+        # One window already needs only one pass; an index adds no useful work.
+        start, end = downtime_intervals[0]
+        overlap_sec, impact_count = 0.0, 0
+        for low, high in schedule_segments:
+            seconds = overlap_seconds(start, end, low, high)
+            if seconds > 0:
+                overlap_sec += seconds
+                impact_count += 1
+        return overlap_sec, impact_count
+    downtime_index = IntervalIndex.from_normalized(downtime_intervals)
     overlap_sec = 0.0
     impact_count = 0
-    for ds, de in downtime_intervals:
-        for ss, se in schedule_segments:
-            sec = overlap_seconds(ds, de, ss, se)
-            if sec > 0:
-                overlap_sec += sec
-                impact_count += 1
+    for start, end in schedule_segments:
+        seconds, count = downtime_index.seconds_and_count_between(start, end)
+        overlap_sec += seconds
+        impact_count += count
     return overlap_sec, impact_count
 
 

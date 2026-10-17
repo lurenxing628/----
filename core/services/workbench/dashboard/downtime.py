@@ -27,8 +27,11 @@ def _index(raw, refs):
             invalid.add(row["machine_id"])
     indexes = {key: IntervalIndex.from_normalized(union([(low, high) for low, high, _ in values]))
                for key, values in by_machine.items()}
+    machine_identities = defaultdict(list, {
+        key: [identity for row in values for identity in identity_rows[row["id"]]]
+        for key, values in all_rows.items()})
     return {"identities": identities, "windows": by_machine, "invalid": invalid, "indexes": indexes,
-            "all_rows": all_rows, "identity_rows": identity_rows}
+            "all_rows": all_rows, "machine_identities": machine_identities}
 
 
 def _overlaps(windows, identities, low, high):
@@ -61,8 +64,7 @@ def _task(task, raw_task, resource_rows, index):
                      False: ("no_overlap", "正式安排与已登记有效停机无重叠。")}[active]
     result = observation("downtime", task["task_ref"], task["batch_id"] + " · " + task["process_label"], source, active, code, message,
                          {"task": raw_task, "resource": resource, "downtimes": index["all_rows"][key],
-                          "identity": [identity for row in index["all_rows"][key]
-                                       for identity in index["identity_rows"][row["id"]]]})
+                          "identity": index["machine_identities"][key]})
     return result, bad, len(details)
 
 

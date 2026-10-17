@@ -16,9 +16,10 @@ from .schema_probe import table_columns
 
 
 @contextmanager
-def open_readonly_immutable(path: str) -> Iterator[sqlite3.Connection]:
+def open_readonly_immutable(path: str, *, detect_types: int = 0, row_factory=None) -> Iterator[sqlite3.Connection]:
     uri = Path(path).absolute().as_uri() + "?mode=ro&immutable=1"
-    with closing(sqlite3.connect(uri, uri=True)) as conn:
+    with closing(sqlite3.connect(uri, uri=True, detect_types=detect_types)) as conn:
+        conn.row_factory = row_factory
         yield conn
 
 

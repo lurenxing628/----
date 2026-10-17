@@ -45,7 +45,7 @@ from .workbench_run_schema import workbench_run_contract_issues, workbench_run_o
 from .workbench_template_lineage_schema import template_lineage_contract_issues, template_lineage_objects
 from .workbench_trial_schema import workbench_trial_contract_issues, workbench_trial_objects
 
-CURRENT_SCHEMA_VERSION = 43
+CURRENT_SCHEMA_VERSION = 44
 
 
 class MigrationContractError(RuntimeError):
@@ -299,9 +299,11 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
     issues.extend(calendar_periods_contract_issues(conn, structure=structure))
     issues.extend(machine_capabilities_contract_issues(conn, structure=structure))
     issues.extend(material_stages_contract_issues(conn, structure=structure))
+    from .efficiency_indexes_schema import contract_issues as efficiency_index_contract_issues
     from .single_pass_indexes_schema import contract_issues as index_contract_issues
     if get_schema_version(conn) in (0, CURRENT_SCHEMA_VERSION):
         issues.extend(index_contract_issues(conn, structure=structure))
+        issues.extend(efficiency_index_contract_issues(conn, structure=structure))
     if full_data and structure.has_table("Schedule") and structure.has_table("ScheduleHistory"):
         issues.extend(schedule_history_data_issues(conn))
     return issues

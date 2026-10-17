@@ -13,7 +13,7 @@ from core.services.workbench.facts.table_index import ResourceTableIndex
 from data.repositories.workbench_resource_dependencies import DEPENDENCIES
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
-from .metrics import _KEYS, _index, _status
+from .metrics import _KEYS, _READ_FACTS, _index, _status
 
 _OP_TYPE_DEPENDENCIES = {
     "machine_capabilities": "MachineOpTypes.op_type_id", "machines": "Machines.op_type_id",
@@ -21,6 +21,72 @@ _OP_TYPE_DEPENDENCIES = {
     "skills": "OperatorSkill.op_type_id", "part_operations": "PartOperations.op_type_id",
     "batch_operations": "BatchOperations.op_type_id",
 }
+
+
+def _change_relations(repo, roots, machine_authorizations):
+    authorizations = repo.relation_rows("authorizations", (("operator_id", roots["operator"]),
+        ("machine_id", roots["machine"] if machine_authorizations else ())))
+    # Permissions compare complete states for old and newly requested machines.
+    # Expand these owners before reading machine capabilities and group bindings.
+    roots["machine"].update(row["machine_id"] for row in authorizations if row["operator_id"] in roots["operator"])
+    scopes = {
+        "groups": (("machine_id", roots["machine"]), ("group_id", roots["machine_group"])),
+        "operator_profiles": (("operator_id", roots["operator"]), ("shift_profile_id", roots["shift_profile"])),
+        "supplier_profiles": (("supplier_id", roots["supplier"]),),
+        "policies": (("op_type_id", roots["op_type"]),),
+        "skills": (("operator_id", roots["operator"]),),
+        "machine_capabilities": (("machine_id", roots["machine"]),),
+        "capabilities": (("supplier_id", roots["supplier"]),),
+    }
+    return {"authorizations": authorizations,
+            **{name: repo.relation_rows(name, selections) for name, selections in scopes.items()}}
+
+
+def _related_change_codes(data, roots):
+    codes = {kind: set() for kind in _KEYS}
+    for name in ("machine", "supplier", "skills", "machine_capabilities", "capabilities"):
+        codes["op_type"].update(row["op_type_id"] for row in data[name] if row["op_type_id"] is not None)
+    codes["machine_group"].update(row["group_id"] for row in data["groups"] if row["machine_id"] in roots["machine"])
+    codes["shift_profile"].update(row["shift_profile_id"] for row in data["operator_profiles"]
+                                  if row["operator_id"] in roots["operator"] and row["shift_profile_id"] is not None)
+    codes["machine"].update(row["machine_id"] for row in data["authorizations"] if row["operator_id"] in roots["operator"])
+    return codes
+
+
+def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_codes=None, machine_authorizations=False):
+    """Feed the same state projections with only this command's resource closure."""
+    repo = WorkbenchResourceTableRepository(metrics.conn, metrics.logger)
+    roots = {kind: set((codes or {}).get(kind, ())) for kind in _KEYS}
+    current = repo.identities_by_refs(refs)
+    identities = {(row["kind"], row["entity_key"]): row for row in current}
+    for identity in current:
+        if identity["kind"] in roots:
+            roots[identity["kind"]].add(identity["entity_key"])
+    wanted = {kind: values | set((selected_codes or {}).get(kind, ())) for kind, values in roots.items()}
+    for identity in repo.identities_by_refs(selected_refs):
+        if identity["kind"] in wanted:
+            wanted[identity["kind"]].add(identity["entity_key"])
+            identities[(identity["kind"], identity["entity_key"])] = identity
+    data = {kind: repo.raw_rows(kind, values) for kind, values in wanted.items()}
+    data.update(_change_relations(repo, roots, machine_authorizations))
+    additional_machines = roots["machine"] - wanted["machine"]
+    data["machine"].extend(repo.raw_rows("machine", additional_machines))
+    wanted["machine"].update(additional_machines)
+    related = _related_change_codes(data, roots)
+    for kind, values in related.items():
+        data[kind].extend(repo.raw_rows(kind, values - wanted[kind]))
+        wanted[kind].update(values)
+    shifts = sorted(roots["shift_profile"] | related["shift_profile"])
+    data["shift_pattern"] = []
+    for start in range(0, len(shifts), 400):
+        chunk = shifts[start:start + 400]
+        patterns = repo.page_relations("shift_profile", chunk)["pattern"]
+        data["shift_pattern"].extend(row for code in chunk for row in patterns[code])
+    for kind, values in wanted.items():
+        missing = values - {code for current_kind, code in identities if current_kind == kind}
+        identities.update(((row["kind"], row["entity_key"]), row) for row in repo.identities_by_codes(kind, missing))
+    metrics.facts = {name: data.get(name, []) for name in _READ_FACTS["op_type"]}
+    return ResourceTableFacts(metrics, identities.values())
 
 
 class ResourceTableFacts:

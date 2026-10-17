@@ -9,6 +9,7 @@ from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
+from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_scoring import _collect_sgs_candidates
 
 _TOPOLOGY_FIELD = "_prepared_graph_ready_topology"
@@ -173,7 +174,7 @@ def _graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tu
     if not isinstance(value, dict):
         raise ValidationError("图评分上下文缺少 graph_priority_key_by_op_id 映射。", field="graph_ready_context")
     _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图评分 key")
-    normalized: Dict[int, Tuple[float, ...]] = {}
+    normalized: Dict[int, Tuple[float, ...]] = ValidatedGraphPriorityKeys()
     for op_id in sorted(schedulable_ids):
         if op_id not in value:
             raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")

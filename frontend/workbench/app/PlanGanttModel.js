@@ -88,13 +88,7 @@
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, { resource: row,
       segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({ start: instant(item.start), end: instant(item.end) })) }]));
-    const conflictMembers = new Map();
-    for (const row of data.projections.occupancy.resources) for (const segment of row.conflict_segments || []) {
-      const start = instant(segment.start), end = instant(segment.end);
-      conflictMembers.set(row.resource_ref + ':' + segment.start + ':' + segment.end,
-        (resourceMembers.get(row.resource_ref) || []).filter(item => item.start < end && item.end > start));
-    }
-    return { labels, directory, items, before, taskIndex, beforeIndex, comparisons, changed, occupancy, resourceMembers, conflictMembers,
+    return { labels, directory, items, before, taskIndex, beforeIndex, comparisons, changed, occupancy, resourceMembers,
       start: instant(data.plan_span.start), end: instant(data.plan_span.end) };
   }
   function groupPrepared(prepared, mode) {

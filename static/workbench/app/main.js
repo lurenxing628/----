@@ -25214,12 +25214,6 @@ function SMExport({
         end: instant(item.end)
       }))
     }]));
-    const conflictMembers = new Map();
-    for (const row of data.projections.occupancy.resources) for (const segment of row.conflict_segments || []) {
-      const start = instant(segment.start),
-        end = instant(segment.end);
-      conflictMembers.set(row.resource_ref + ':' + segment.start + ':' + segment.end, (resourceMembers.get(row.resource_ref) || []).filter(item => item.start < end && item.end > start));
-    }
     return {
       labels,
       directory,
@@ -25231,7 +25225,6 @@ function SMExport({
       changed,
       occupancy,
       resourceMembers,
-      conflictMembers,
       start: instant(data.plan_span.start),
       end: instant(data.plan_span.end)
     };
@@ -27484,6 +27477,19 @@ function SMExport({
           };
         }
       }, [data]);
+    const visible = React.useMemo(() => {
+      if (read.error) return [];
+      const current = Math.min(page, Math.max(0, Math.ceil(read.rows.length / 20) - 1));
+      return read.rows.slice(current * 20, current * 20 + 20).map(row => {
+        const start = M.instant(row.start),
+          end = M.instant(row.end);
+        const tasks = (prepared.resourceMembers.get(row.resource_ref) || []).filter(item => item.start < end && item.end > start).map(item => item.task);
+        return {
+          row,
+          tasks
+        };
+      });
+    }, [read, prepared, page]);
     if (read.error) return /*#__PURE__*/React.createElement("section", {
       className: "plan-projections",
       "aria-label": "\u8D44\u6E90\u91CD\u53E0\u660E\u7EC6"
@@ -27520,13 +27526,16 @@ function SMExport({
       scope: "col",
       className: index === 0 ? 'wb-col-key' : undefined,
       key: label
-    }, label)))), /*#__PURE__*/React.createElement("tbody", null, rows.slice(current * 20, current * 20 + 20).map(row => /*#__PURE__*/React.createElement("tr", {
+    }, label)))), /*#__PURE__*/React.createElement("tbody", null, visible.map(({
+      row,
+      tasks
+    }) => /*#__PURE__*/React.createElement("tr", {
       key: row.resource_ref + ':' + row.start + ':' + row.end
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
     }, row.label || labels.get(row.resource_ref) || '资源名称未填写', /*#__PURE__*/React.createElement("div", {
       className: "plan-muted"
-    }, M.kindLabels[row.kind])), /*#__PURE__*/React.createElement("td", null, prepared.conflictMembers.get(row.resource_ref + ':' + row.start + ':' + row.end).map(item => item.task).map(task => /*#__PURE__*/React.createElement("div", {
+    }, M.kindLabels[row.kind])), /*#__PURE__*/React.createElement("td", null, tasks.map(task => /*#__PURE__*/React.createElement("div", {
       key: task.task_ref
     }, task.batch_id, " \xB7 ", task.sequence, " ", task.process_label))), /*#__PURE__*/React.createElement("td", {
       title: M.timeLabel(row.start) + ' 至 ' + M.timeLabel(row.end) + '（不含结束时刻）'
@@ -51674,9 +51683,9 @@ function SMExport({
     ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未填写'))));
     return ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
   }
-  function matching(data, scope, query, changed, name) {
+  function matching(data, scope, query, changed, name, batchRefs) {
     const needle = query.trim().toLowerCase();
-    return data.tasks.filter(t => (!changed || t.changed) && (!scope.range_start || window.PointContract.overlaps(t, scope.range_start, scope.range_end)) && (!scope.batch_refs || scope.batch_refs.includes(t.batch_ref)) && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref) && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
+    return data.tasks.filter(t => (!changed || t.changed) && (!scope.range_start || window.PointContract.overlaps(t, scope.range_start, scope.range_end)) && (!batchRefs || batchRefs.has(t.batch_ref)) && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref) && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
   }
   function Gantt({
     data,
@@ -51728,8 +51737,9 @@ function SMExport({
     });
     const [hover, setHover] = React.useState(null);
     const name = React.useMemo(() => resourceNames(data), [data.resources]);
-    const scope = limit ? data.scope : EMPTY_SCOPE,
-      filtered = React.useMemo(() => matching(data, scope, query, changed, name), [data, scope, query, changed, name]);
+    const scope = limit ? data.scope : EMPTY_SCOPE;
+    const batchRefs = React.useMemo(() => scope.batch_refs ? new Set(scope.batch_refs) : null, [scope.batch_refs]);
+    const filtered = React.useMemo(() => matching(data, scope, query, changed, name, batchRefs), [data, scope, query, changed, name, batchRefs]);
     const key = view === 'batch' ? 'batch_ref' : view + '_ref',
       board = React.useRef(null),
       axisHost = React.useRef(null);
@@ -63605,6 +63615,26 @@ function SystemLiveOverview({
     const prepared = React.useMemo(() => M.prepare(data), [data]);
     const grouped = React.useMemo(() => M.groupPrepared(prepared, mode), [prepared, mode]);
     const model = React.useMemo(() => M.layoutPrepared(grouped, width), [grouped, width]);
+    const picker = React.useMemo(() => {
+      const byRef = new Map(),
+        firstByBatch = new Map();
+      let hasPoints = false;
+      const options = model.tasks.map(task => {
+        byRef.set(task.task_ref, task);
+        if (!firstByBatch.has(task.batch_ref)) firstByBatch.set(task.batch_ref, task);
+        if (window.PointContract.isPoint(task)) hasPoints = true;
+        return /*#__PURE__*/React.createElement("option", {
+          key: task.task_ref,
+          value: task.task_ref
+        }, task.batch_id, " \xB7 ", task.sequence, " ", task.process_label, " \xB7 ", M.timeLabel(task.start));
+      });
+      return {
+        byRef,
+        firstByBatch,
+        options,
+        hasPoints
+      };
+    }, [model.tasks]);
     const measure = () => {
       const node = board.current;
       if (node) setPosition({
@@ -63631,8 +63661,9 @@ function SystemLiveOverview({
       setHover(null);
     }, [position.left, position.top, mode]);
     React.useEffect(() => {
-      const task = model.tasks.find(row => row.task_ref === focusTask && row.batch_ref === selectedBatch) || model.tasks.find(row => row.batch_ref === selectedBatch),
-        location = task && model.locations.get(task.task_ref);
+      const focused = picker.byRef.get(focusTask),
+        task = focused && focused.batch_ref === selectedBatch ? focused : picker.firstByBatch.get(selectedBatch);
+      const location = task && model.locations.get(task.task_ref);
       if (!location || !board.current) return;
       board.current.scrollTop = Math.max(0, location.top - 60);
       const left = (location.item.start - model.start) / (model.end - model.start) * width;
@@ -63698,18 +63729,15 @@ function SystemLiveOverview({
       className: "dy-run-picker"
     }, "\u5B9A\u4F4D\u5DE5\u5E8F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5B9A\u4F4D\u5206\u6790\u65F6\u95F4\u8F74\u4E2D\u7684\u5DE5\u5E8F",
-      value: model.tasks.some(row => row.task_ref === focusTask && row.batch_ref === selectedBatch) ? focusTask : '',
+      value: picker.byRef.has(focusTask) && picker.byRef.get(focusTask).batch_ref === selectedBatch ? focusTask : '',
       onChange: event => {
-        const task = model.tasks.find(row => row.task_ref === event.target.value);
+        const task = picker.byRef.get(event.target.value);
         setFocusTask(event.target.value);
         if (task) onSelect(task.batch_ref);
       }
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u9009\u62E9\u9700\u8981\u67E5\u770B\u7684\u5DE5\u5E8F"), model.tasks.map(task => /*#__PURE__*/React.createElement("option", {
-      key: task.task_ref,
-      value: task.task_ref
-    }, task.batch_id, " \xB7 ", task.sequence, " ", task.process_label, " \xB7 ", M.timeLabel(task.start))))), /*#__PURE__*/React.createElement("div", {
+    }, "\u9009\u62E9\u9700\u8981\u67E5\u770B\u7684\u5DE5\u5E8F"), picker.options)), /*#__PURE__*/React.createElement("div", {
       className: "dy-timeline-board",
       ref: board,
       onScroll: measure,
@@ -63804,7 +63832,7 @@ function SystemLiveOverview({
       className: "dy-on-time-swatch"
     }), "\u9884\u8BA1\u6309\u671F"), /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "dy-selected-swatch"
-    }), "\u9009\u4E2D\u6279\u6B21"), model.tasks.some(window.PointContract.isPoint) && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
+    }), "\u9009\u4E2D\u6279\u6B21"), picker.hasPoints && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "dy-point-swatch"
     }), "\u96F6\u5DE5\u65F6\u5DE5\u5E8F"), mode === 'downtime' && /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("i", {
       className: "dy-downtime-swatch"

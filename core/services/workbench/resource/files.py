@@ -16,7 +16,7 @@ from core.models.workbench_resource_action import (
     resource_refs,
     resource_scope,
 )
-from core.models.workbench_resource_file import READONLY, WRITABLE, import_request
+from core.models.workbench_resource_file import READONLY, RELATIONS, WRITABLE, import_request
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
 from core.models.workbench_resource_query import ResourcePageRequest
@@ -53,9 +53,9 @@ class WorkbenchResourceFileService:
         request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
         source, notices = prepared.parsed()
         with self.tx.transaction():
-            preparation = self.reader.preparation()
             codes = sorted({item["values"]["business_code"].strip() for item in source
                             if isinstance(item["values"].get("business_code"), str)})
+            preparation = self._capture_import(source, codes)
             existing = [code for code in codes if preparation.find_identity(self.kind, code) is not None]
             references = preparation.capture_references(self.repo, self.kind, existing)
             states = preparation.states(self.kind, existing)
@@ -68,6 +68,19 @@ class WorkbenchResourceFileService:
                 self._duplicates(rows, "label")
             preview = ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
             return preview, [change for _row, change in planned]
+
+    def _capture_import(self, source, codes):
+        original = {item["values"]["business_code"] for item in source
+                    if type(item["values"].get("business_code")) is str}
+        selected = {}
+        for field, (_target, kind, _category) in RELATIONS[self.kind].items():
+            for item in source:
+                value = item["values"].get(field)
+                selected.setdefault(kind, set()).update(code for code in (value if type(value) is list else [value])
+                                                        if type(code) is str)
+        labels = {item["values"]["label"].strip() for item in source if type(item["values"].get("label")) is str}
+        return self.reader.preparation(codes={self.kind: set(codes) | original}, selected_codes=selected,
+            names={"op_type": labels} if self.kind == "op_type" else None, machine_authorizations=True)
 
     @staticmethod
     def _duplicates(rows, field):

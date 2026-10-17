@@ -101,7 +101,8 @@ def test_permission_replacement_reuses_capture_and_rejects_stale_before_writing(
     assert result.result == "committed"
     assert _rows(conn) == [("M2", "expert", "no"), ("M3", "normal", "yes")]
     assert Counter(written) == Counter([("O1", "M1", "remove"), ("O1", "M2", "update"), ("O1", "M3", "add")])
-    assert sum(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql) == 1
+    assert sum(statement.startswith("SELECT * FROM OperatorMachine WHERE operator_id IN") for statement in sql) == 1
+    assert not any(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql)
 
     preview = service.preview(ref, desired)
     conn.execute("UPDATE Machines SET name='changed' WHERE machine_id='M3'")
@@ -130,8 +131,8 @@ def test_relation_import_applies_implicit_primary_change_once_and_keeps_untouche
     conn.set_trace_callback(None)
     assert _rows(conn) == [("M1", "expert", "no"), ("M2", "expert", "no"), ("M3", "normal", "yes")]
     assert len(written) == 3 and len(set(written)) == 3
-    assert sum(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql) == 1
-    assert not any("WHERE operator_id IN" in statement for statement in sql)
+    assert sum(statement.startswith("SELECT * FROM OperatorMachine WHERE operator_id IN") for statement in sql) == 1
+    assert not any(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql)
 
     # An imported no-op preserves historical aliases and even multiple legacy primaries.
     conn.execute("UPDATE OperatorMachine SET skill_level='skilled',is_primary='是' WHERE machine_id='M1'")

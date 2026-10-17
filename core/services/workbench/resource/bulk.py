@@ -33,7 +33,7 @@ class WorkbenchResourceBulkService:
 
     def _prepare_delete(self, refs, scope):
         request = {"refs": resource_refs(refs), "scope": resource_scope(self.kind, scope)}
-        preparation = self.reader.preparation()
+        preparation = self.reader.preparation(refs=request["refs"], machine_authorizations=True)
         identities = [preparation.find_by_ref(self.kind, ref) for ref in request["refs"]]
         codes = [identity.entity_key for identity in identities if identity is not None]
         references = preparation.capture_references(self.repo, self.kind, codes)

@@ -8,6 +8,7 @@ import pytest
 
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithms.greedy import scheduler as scheduler_module
+from core.algorithms.greedy.dispatch.sgs_graph import _graph_priority_key_map
 from core.algorithms.greedy.dispatch.sgs_priority_frontier import make_priority_queue
 from core.algorithms.greedy.dispatch.sgs_priority_pruning import GraphPriorityPruning
 from core.errors import ValidationError
@@ -179,6 +180,54 @@ def _pruning(case, calendar, *, strict_mode=True):
     hours = {op.id: float(op.setup_hours + op.unit_hours * case["batches"][op.batch_id].quantity)
              for op in case["operations"] if op.source == "internal"}
     return GraphPriorityPruning(graph, case["batches"], hours, strict_mode=strict_mode, calendar=calendar), graph
+
+
+@pytest.mark.parametrize("admitted", [False, True])
+def test_priority_pruning_reuses_admission_and_preserves_raw_key_checks(admitted):
+    case = _saturated_case(batch_count=4, ops_per_batch=1)
+    keys = {op.id: (float((op.id - 1) // 2), 0.0) for op in case["operations"]}
+    if admitted:
+        keys = _graph_priority_key_map(keys, schedulable_ids=set(keys))
+    case["graph_ready_context"]["graph_priority_key_by_op_id"] = keys
+    checks, original = [], GraphPriorityPruning._key_valid
+
+    def check(pruning, key):
+        checks.append(key)
+        return original(pruning, key)
+
+    with native_calendar() as calendar, patch.object(GraphPriorityPruning, "_key_valid", check):
+        pruning, graph = _pruning(case, calendar)
+        candidates = list(graph["op_by_id"].values())
+        assert pruning.supported
+        assert [[op.id for _batch, op in pruning.frontier(candidates[index:], graph)]
+                for index in (0, 1)] == [[1, 2], [2]]
+        assert len(checks) == (0 if admitted else 4 + 4 + 3)
+        first_key = keys.pop(1)
+        assert pruning.frontier(candidates, graph) is None
+        keys[1] = first_key
+        graph["graph_priority_key_by_op_id"] = dict(keys)
+        graph["graph_priority_key_by_op_id"][1] = (float("nan"), 0.0)
+        assert pruning.frontier(candidates, graph) is None
+
+
+def test_priority_pruning_requires_uniform_admitted_key_width():
+    case = _saturated_case(batch_count=2, ops_per_batch=1)
+    case["graph_ready_context"]["graph_priority_key_by_op_id"] = _graph_priority_key_map(
+        {1: (0.0,), 2: (1.0, 0.0)}, schedulable_ids={1, 2},
+    )
+    with native_calendar() as calendar:
+        pruning, _graph = _pruning(case, calendar)
+    assert not pruning.supported
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf")])
+def test_priority_key_admission_keeps_nonfinite_input_error(invalid):
+    case = _saturated_case(batch_count=2, ops_per_batch=1)
+    case["graph_ready_context"]["graph_priority_key_by_op_id"][1] = (invalid, 0.0)
+    with native_calendar() as calendar, pytest.raises(ValidationError) as exc:
+        _decode(calendar, case, cache_enabled=True)
+    assert exc.value.field == "graph_ready_context"
+    assert exc.value.message == "图评分 key 不能包含 NaN 或 Inf。"
 
 
 def test_external_calendar_override_disables_both_narrowing_paths_without_disabling_internal_timing():

@@ -44,6 +44,54 @@ from tests._support.optimizer_graph_ready_benchmark import (
 )
 
 
+def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_errors(monkeypatch):
+    from core.services.scheduler.run.optimizer.graph import candidates
+    from core.services.scheduler.run.optimizer.graph.ready import SharedGraphFeatures
+
+    operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
+    metrics = enrich_graph_ready_v2_metrics(
+        graph_ready_benchmark_context()["node_metrics_by_op_id"], operations=operations, batches=batches,
+        start_dt=START_DT, include_baseline_ordering=True,
+    )
+    ranks = candidates.build_v2_common_rank_cache(metrics)
+    owner = SharedGraphFeatures(metrics, ranks)
+    profiles = graph_ready_v2_profiles(max_candidate_profiles=60)[0]
+    profile = next(item for item in profiles if item.formula_version.startswith("graph_ready_v2")
+                   and item.feature_basis == SUCCESSOR_WORKLOAD_BASIS)
+    original = deepcopy((metrics, ranks))
+    validate = candidates._validate_decision_features
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(kwargs["profile"])
+        return validate(*args, **kwargs)
+
+    monkeypatch.setattr(candidates, "_validate_decision_features", counted)
+    owner.decision_features.validate(profile)
+    owner.decision_features.validate(replace(profile, slug="repair-label", candidate_origin="graph_ready_v2_repaired"))
+    owner.decision_features.validate(replace(profile, candidate_origin="graph_ready_v2_iterated_greedy"))
+    assert len(calls) == 1
+    for changed in (replace(profile, formula_slug="spt" if profile.formula_slug != "spt" else "edd"),
+                    replace(profile, feature_basis=BATCH_WORKLOAD_BASIS),
+                    replace(profile, jitter_seed=profile.jitter_seed + 1),
+                    replace(profile, effective_weights=dict(profile.effective_weights, critical_path=99.0))):
+        owner.decision_features.validate(changed)
+    assert len(calls) == 5
+    assert (metrics, ranks) == original
+
+    broken = deepcopy(metrics)
+    broken[next(iter(broken))]["impact_count"] = float("nan")
+    failed_owner = SharedGraphFeatures(broken, ranks)  # Admission stays at the first actual decision.
+    with pytest.raises(ValidationError) as expected:
+        validate(broken, profile=profile, v2_common_rank_cache=ranks)
+    for _ in range(2):
+        with pytest.raises(ValidationError) as actual:
+            failed_owner.decision_features.validate(profile)
+        assert (actual.value.field, str(actual.value), actual.value.details) == (
+            expected.value.field, str(expected.value), expected.value.details)
+    assert len(calls) == 7
+
+
 def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downtime(monkeypatch):
     from core.models.objective import target_objectives_for
     from core.services.scheduler.run.optimizer.graph import candidates

@@ -27,15 +27,16 @@ class PlanReadQuery(_PagePlanQueryService):
 
 
 class PlanReadContext:
-    def __init__(self, conn, logger=None, *, references=None, entities=None, captured_machines=None):
+    def __init__(self, conn, logger=None, *, references=None, entities=None, captured_machines=None, repo=None):
         if not conn.in_transaction:
             raise RuntimeError("Plan facts require a caller-owned read transaction")
         self.conn, self.logger = conn, logger
         self.references = references if references is not None else WorkbenchPlanIdentityRepository(conn, logger=logger)
         self.entities = entities if entities is not None else WorkbenchIdentityRepository(conn, logger=logger)
         self.captured_machines = captured_machines
-        self.repo = PointPlanCatalogRepository(conn, logger=logger, context=self)
+        self.repo = repo if repo is not None else PointPlanCatalogRepository(conn, logger=logger, context=self)
         self._locators, self._selected, self._details, self._scoped = {}, {}, {}, {}
+        self._enriched = {}
         self._entities, self._points, self._tasks, self._calendar_selections = {}, {}, {}, {}
         self._adopted, self._task_memberships, self._task_resources, self._task_work = {}, {}, {}, {}
         self._intervals, self._datetime_intervals, self._plan_time_maps = {}, {}, {}
@@ -125,13 +126,19 @@ class PlanReadContext:
         query = self.query(entry)
         key = self.source_key(query)
         if key not in self._details:
-            prepared = self.repo.prepared_rows(**query)
-            rows = self.repo.enrich_arrangements(prepared, version=query["version"], captured_machines=self.captured_machines)
-            rows.sort(key=lambda row: (row["start_time"], row["schedule_id"]))
-            points = {row["id"]: row["_point_work"] for row in prepared if row.get("_point_work")}
-            self._details[key] = [dict(row, _point_work=points[row["schedule_id"]])
-                                 if row["schedule_id"] in points else row for row in rows]
+            self._details[key] = self._enrich_rows(entry, self.repo.prepared_rows(**query))
         return self._details[key]
+
+    def _enrich_rows(self, entry, prepared):
+        query = self.query(entry)
+        cache = self._enriched.setdefault(self.source_key(query), {})
+        missing = [row for row in prepared if row["id"] not in cache]
+        if missing:
+            rows = self.repo.enrich_arrangements(missing, version=query["version"], captured_machines=self.captured_machines)
+            points = {row["id"]: row["_point_work"] for row in missing if row.get("_point_work")}
+            cache.update((row["schedule_id"], dict(row, _point_work=points[row["schedule_id"]])
+                          if row["schedule_id"] in points else row) for row in rows)
+        return sorted((cache[row["id"]] for row in prepared), key=lambda row: (row["start_time"], row["schedule_id"]))
 
     def intervals(self, entry):
         query = self.query(entry)
@@ -145,19 +152,22 @@ class PlanReadContext:
         return self._intervals[key]
 
     def scoped_rows(self, entry, scope):
-        key = (self.source_key(self.query(entry)), scope.range_start, scope.range_end)
+        query = self.query(entry)
+        source_key = self.source_key(query)
+        key = (source_key, scope.range_start, scope.range_end)
         if key not in self._scoped:
-            rows = self.detail_rows(entry)
-            times = self.intervals(entry)
             if scope.range_start is None:
-                self._scoped[key] = rows
+                self._scoped[key] = self.detail_rows(entry)
             else:
+                times = self.intervals(entry)
+                complete = source_key in self._details
+                rows = self._details[source_key] if complete else self.repo.prepared_rows(**query)
                 selected = []
                 for row in rows:
-                    low, high = times[row["schedule_id"]]
+                    low, high = times[row["schedule_id"] if complete else row["id"]]
                     if overlaps(low.replace(" ", "T"), high.replace(" ", "T"), scope.range_start, scope.range_end):
                         selected.append(row)
-                self._scoped[key] = selected
+                self._scoped[key] = selected if complete else self._enrich_rows(entry, selected)
         return self._scoped[key]
 
     def admit_scope(self, entry, scope, rows):

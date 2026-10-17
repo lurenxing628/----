@@ -86,6 +86,30 @@ def test_night_tail_priority_overlay_and_downtime_use_exact_half_open_window():
     assert invalid["state"] == "unavailable" and invalid["issues"][0]["code"] == "downtime_invalid"
 
 
+def test_machine_downtime_history_is_parsed_once_and_bad_states_keep_their_window(monkeypatch):
+    from core.services.workbench.facts import archived_calendar
+
+    saved = archive()
+    old_start, old_end = "2020-01-01T08:00:00", "2020-01-01T09:00:00"
+    saved["tables"]["MachineDowntimes"] = [
+        {"machine_id": "M1", "start_time": old_start, "end_time": old_end, "status": "active"}
+        for _ in range(100)] + [
+        {"machine_id": "M1", "start_time": "bad-cancelled", "end_time": None, "status": "cancelled"},
+        {"machine_id": "M1", "start_time": "2026-10-15T08:00:00", "end_time": "2026-10-15T09:00:00", "status": "unknown"}]
+    parsed, original = [], archived_calendar.instant
+
+    def instant(value):
+        if value in (old_start, old_end):
+            parsed.append(value)
+        return original(value)
+
+    monkeypatch.setattr(archived_calendar, "instant", instant)
+    result = project(saved, "2026-10-12T00:00:00", "2026-10-16T00:00:00", resources=RESOURCES[:1])[MACHINE]
+    assert len(parsed) == 200
+    assert [row["state"] for row in result["days"]] == ["available", "available", "available", "unavailable"]
+    assert result["days"][-1]["issues"][0]["code"] == "downtime_invalid"
+
+
 def test_microsecond_calendar_and_occupancy_preserve_device_and_person_hours():
     saved = archive()
     saved["tables"]["WorkCalendar"] = [day("2026-10-12", efficiency=0.5)]

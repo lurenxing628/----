@@ -312,13 +312,19 @@ def run_quality_gate(args: argparse.Namespace) -> int:
         remote_ref = ",".join(sorted(dict.fromkeys(ref.remote_ref for ref in refs if ref.remote_ref)))
     scope_payload = _daily_scope_for_refs(refs, remote_name=remote_name)
     ref_contexts = _pre_push_contexts_payload(refs)
+    daily_cache_key = None
     try:
+        daily_cache_key = git_hook_cache.daily_gate_cache_key(
+            executable, remote_name=remote_name, remote_ref=remote_ref,
+            scope_payload=scope_payload, ref_contexts=ref_contexts,
+        )
         if git_hook_cache.pre_push_daily_cache_hit(
             executable,
             remote_name=remote_name,
             remote_ref=remote_ref,
             scope_payload=scope_payload,
             ref_contexts=ref_contexts,
+            key_payload=daily_cache_key,
         ):
             print(
                 "[git-hook-cache] pre-push daily gate: reuse passed cache for unchanged tree and impact scope",
@@ -340,7 +346,7 @@ def run_quality_gate(args: argparse.Namespace) -> int:
     else:
         command = _daily_gate_command(executable)
         returncode = subprocess.call(command, cwd=str(REPO_ROOT), env=_quality_gate_env())
-    if int(returncode) == 0:
+    if int(returncode) == 0 and daily_cache_key is not None:
         try:
             git_hook_cache.write_pre_push_daily_cache(
                 executable,
@@ -348,6 +354,7 @@ def run_quality_gate(args: argparse.Namespace) -> int:
                 remote_ref=remote_ref,
                 scope_payload=scope_payload,
                 ref_contexts=ref_contexts,
+                key_payload=daily_cache_key,
             )
         except git_hook_cache.HookCacheError as exc:
             print(f"[git-hook-cache] pre-push daily gate cache write skipped: {exc}", flush=True)
@@ -370,28 +377,8 @@ def run_final_quality_gate(_args: argparse.Namespace) -> int:
 
 
 def run_final_quality_gate_if_needed(_args: argparse.Namespace) -> int:
-    try:
-        executable = _project_python_executable()
-    except RuntimeError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
-    try:
-        if git_hook_cache.final_gate_cache_hit(executable):
-            print(
-                "[git-hook-cache] final gate: same clean HEAD already has local final proof cache",
-                flush=True,
-            )
-            return 0
-    except git_hook_cache.HookCacheError as exc:
-        print(f"[git-hook-cache] final gate cache unavailable: {exc}", flush=True)
-
-    returncode = run_final_quality_gate(_args)
-    if int(returncode) == 0:
-        try:
-            git_hook_cache.write_final_gate_cache(executable)
-        except git_hook_cache.HookCacheError as exc:
-            print(f"[git-hook-cache] final gate cache write skipped: {exc}", flush=True)
-    return int(returncode)
+    """保留旧入口，复用判断统一交给 long-gate runner。"""
+    return run_final_quality_gate(_args)
 
 
 def run_fast_static_precheck(_args: argparse.Namespace) -> int:

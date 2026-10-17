@@ -7,6 +7,7 @@ from flask import current_app, g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import MAX_RESPONSE_BYTES
+from core.services.workbench.decision_file_export import write_decision_xlsx
 from core.services.workbench.run.decision import read_run_decision, read_run_decision_summary
 from core.services.workbench.run.decision_completion_queries import read_completion_batches
 from core.services.workbench.run.decision_export import read_decision_export, write_run_decision_export
@@ -216,7 +217,8 @@ def run_decision_export(run_ref):
     with PLAN_READ_SLOTS.slot():
         data, scope, state = read_decision_export(g.db, run_ref, section, **values)
         snapshot = bind_read_snapshot(scope, state, token)
-        download = write_run_decision_export(data, snapshot, fmt, section)
+    download = (write_decision_xlsx("run", data, snapshot, section) if fmt == "xlsx" else
+                write_run_decision_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
     response.headers["Cache-Control"] = "no-store"

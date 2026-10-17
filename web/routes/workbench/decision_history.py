@@ -6,6 +6,7 @@ from flask import g, request, send_file
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_decision_history import QUERY_FIELDS
+from core.services.workbench.decision_file_export import write_decision_xlsx
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
@@ -46,7 +47,8 @@ def decision_history_export():
 
         data, scope, state = read_history_export(g.db, values)
         snapshot = bind_read_snapshot(scope, state, token)
-        download = write_history_export(data, snapshot, fmt, section)
+    download = (write_decision_xlsx("history", data, snapshot, section) if fmt == "xlsx" else
+                write_history_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
     response.headers["Cache-Control"] = "no-store"

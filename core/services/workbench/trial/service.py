@@ -109,11 +109,7 @@ class WorkbenchTrialService:
             checked = validator.evaluate_saved(), validator.frozen
         result = draft_projection(head, rows, checked[0], live, self.context_factory, checked[1],
                                   source_prepared=source_prepared)
-        changes = self.repo.changes(head["draft_ref"]) if changes is None else changes
-        for item in changes:
-            for side in ("before", "after"):
-                item[side] = {key: item[side][key] for key in ("machine_ref", "operator_ref", "start", "end")}
-        result["change_history"] = changes
+        result["change_history"] = self.repo.public_history(head["draft_ref"]) if changes is None else changes
         return result
 
     def get(self, draft_ref):

@@ -134,8 +134,10 @@ class ReportBatchPreparation:
                 _reject_row(exc, index)
         self.projections = self.ledger.project_loaded(self.facts, contexts=False)
         dependencies = ReportDependencies(self.ledger, self.projections)
+        facts_changed = {after.operation_ref: execution_facts_changed(before[after.operation_ref], after)
+                         for after in self.projections}
         dependencies.prepare(self.facts["operations"][after.operation_ref] for after in self.projections
-                             if execution_facts_changed(before[after.operation_ref], after))
+                             if facts_changed[after.operation_ref])
         changed_by_operation = {}
         for row in self.appended:
             changed_by_operation.setdefault(row["operation_ref"], []).append(row)
@@ -147,7 +149,7 @@ class ReportBatchPreparation:
                                       after, changed)
                 revisions = [row for row in changed if row["sequence"] > 1]
                 conflicts = execution_conflicts(self.ledger, self.facts, before[after.operation_ref], after, revisions,
-                    dependencies=dependencies, protect_plan=bool(revisions))
+                    dependencies=dependencies, protect_plan=bool(revisions), facts_changed=facts_changed[after.operation_ref])
                 if conflicts:
                     raise ReportBatchRejected("constraint_conflict", "这次报工会影响前后道工序或已采用的排产安排。请先处理下面列出的影响。", conflicts=conflicts)
             except WorkbenchCommandRejected as exc:

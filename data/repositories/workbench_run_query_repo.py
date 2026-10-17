@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from core.infrastructure.efficiency_indexes_schema import run_history_sort_expressions
+
 from .base_repo import BaseRepository
 
 
@@ -34,8 +36,8 @@ class WorkbenchRunHistoryQueryRepository(BaseRepository):
         # Padding only the fractional part retains exact datetime ordering and
         # treats 12:00:00 and 12:00:00.000000 as the same instant.
         field, order = "j." + scope.sort, scope.order.upper()
-        sorting = (field + " IS NULL ASC,substr(" + field + ",1,19) " + order
-                   + ",substr(" + field + " || '0000000',21,6) " + order + ",j.run_ref " + order)
+        seconds, fraction = run_history_sort_expressions(field)
+        sorting = (seconds + " " + order + " NULLS LAST," + fraction + " " + order + ",j.run_ref " + order)
         values.extend((scope.size, (scope.page - 1) * scope.size))
         return self.fetchall("""SELECT j.run_ref,j.request_key,j.input_ref,j.state,j.stage,
             j.accepted_at,j.started_at,j.finished_at,j.executor_ref,

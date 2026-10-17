@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import AppError, ErrorCode
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
@@ -171,10 +172,39 @@ def validate_execution_guard_before_persist(prepared, *, validated_schedule_payl
 
 
 def _validate_unselected_resource_overlap(*, payload, reservations):
+    if not reservations:
+        return
+    intervals = _schedule_resource_intervals(payload.schedule_rows)
     for reservation in reservations:
-        for row in payload.schedule_rows:
-            if ((row.machine_id == reservation.machine_id or row.operator_id == reservation.operator_id)
-                    and row.start_time < reservation.end_time and row.end_time > reservation.start_time):
-                raise _execution_guard_conflict(
-                    "新排程与未选中的在制工序占用冲突，本次没有写入新排程。请刷新后重新排。",
-                    reason="unselected_execution_resource_overlap", op_id=reservation.op_id)
+        if any(_resource_interval_overlaps(intervals.get((kind, resource)), reservation.start_time, reservation.end_time)
+               for kind, resource in (("machine", reservation.machine_id), ("operator", reservation.operator_id))):
+            raise _execution_guard_conflict(
+                "新排程与未选中的在制工序占用冲突，本次没有写入新排程。请刷新后重新排。",
+                reason="unselected_execution_resource_overlap", op_id=reservation.op_id)
+
+
+def _schedule_resource_intervals(rows: List[ValidatedScheduleRow]) -> Dict[Tuple[str, str], Tuple[List[datetime], List[datetime]]]:
+    grouped: Dict[Tuple[str, str], List[Tuple[datetime, datetime]]] = {}
+    for row in rows:
+        for kind, resource in (("machine", row.machine_id), ("operator", row.operator_id)):
+            # Reservations name factory resource IDs; absent/external resources cannot match them.
+            if isinstance(resource, str):
+                grouped.setdefault((kind, resource), []).append((row.start_time, row.end_time))
+    indexed = {}
+    for resource, intervals in grouped.items():
+        intervals.sort(key=lambda interval: interval[0])
+        starts, latest_ends = [], []
+        for start, end in intervals:
+            starts.append(start)
+            latest_ends.append(max(end, latest_ends[-1]) if latest_ends else end)
+        indexed[resource] = starts, latest_ends
+    return indexed
+
+
+def _resource_interval_overlaps(intervals: Optional[Tuple[List[datetime], List[datetime]]],
+                               start: datetime, end: datetime) -> bool:
+    if intervals is None:
+        return False
+    starts, latest_ends = intervals
+    index = bisect_left(starts, end) - 1
+    return index >= 0 and latest_ends[index] > start

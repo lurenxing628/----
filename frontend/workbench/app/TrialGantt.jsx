@@ -9,10 +9,10 @@
     const names = new Map(); ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未填写'))));
     return ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
   }
-  function matching(data, scope, query, changed, name) {
+  function matching(data, scope, query, changed, name, batchRefs) {
     const needle = query.trim().toLowerCase();
     return data.tasks.filter(t => (!changed || t.changed) && (!scope.range_start || window.PointContract.overlaps(t, scope.range_start, scope.range_end))
-      && (!scope.batch_refs || scope.batch_refs.includes(t.batch_ref))
+      && (!batchRefs || batchRefs.has(t.batch_ref))
       && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref)
       && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
   }
@@ -32,7 +32,9 @@
     const [chart, setChart] = React.useState({ width: 1000, viewport: 1000, left: 0 });
     const [hover, setHover] = React.useState(null);
     const name = React.useMemo(() => resourceNames(data), [data.resources]);
-    const scope = limit ? data.scope : EMPTY_SCOPE, filtered = React.useMemo(() => matching(data, scope, query, changed, name), [data, scope, query, changed, name]);
+    const scope = limit ? data.scope : EMPTY_SCOPE;
+    const batchRefs = React.useMemo(() => scope.batch_refs ? new Set(scope.batch_refs) : null, [scope.batch_refs]);
+    const filtered = React.useMemo(() => matching(data, scope, query, changed, name, batchRefs), [data, scope, query, changed, name, batchRefs]);
     const key = view === 'batch' ? 'batch_ref' : view + '_ref', board = React.useRef(null), axisHost = React.useRef(null);
     const rows = React.useMemo(() => {
       const entries = [];

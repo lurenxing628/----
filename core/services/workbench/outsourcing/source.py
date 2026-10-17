@@ -51,9 +51,10 @@ class WorkbenchOutsourcingSourceService:
     def __init__(self, conn, *, repo=None):
         self.repo = WorkbenchOutsourcingSourceRepository(conn) if repo is None else repo
 
-    def capture(self, targets, *, entities=()):
+    def capture(self, targets, *, entities=(), include_routes=False):
         """Resolve the same source rules from facts owned by this read snapshot."""
-        return WorkbenchOutsourcingSourceService(None, repo=self.repo.capture(targets, entities=entities))
+        return WorkbenchOutsourcingSourceService(None, repo=self.repo.capture(
+            targets, entities=entities, include_routes=include_routes))
 
     def entity(self, ref, kind):
         identity = self.repo.entity_identity(ref, kind)

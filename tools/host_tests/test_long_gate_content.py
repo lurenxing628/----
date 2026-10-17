@@ -16,6 +16,7 @@ from tools import long_gate_fingerprint as fingerprint
 from tools.long_gate_collect import COLLECT_NODEIDS_REL, build_collect_nodeids_payload, write_collect_nodeids
 from tools.long_gate_manifest import build_manifest_from_quality_gate_plan
 from tools.long_gate_schema import canonical_content, content_equal, read_file_content
+from tools.long_gate_summary import build_long_gate_summary, build_summary_entry, write_long_gate_summary
 from tools.quality_gate_shared import build_quality_gate_command_plan, normalize_quality_gate_command
 from tools.verify_required_regressions_from_full_test_debt import (
     RequiredRegressionProofError,
@@ -168,6 +169,43 @@ class LongGateContentTests(unittest.TestCase):
         path.write_text(json.dumps(saved))
         (self.root / saved["stderr_log_path"]).write_bytes(b"other error!\n")
         self.assertIn("logs", cache.decide_failure_reuse(entry, current, repo_root=str(self.root))["reason"])
+
+    def test_summary_references_owned_content_and_preserves_actual_results(self):
+        current = self.current()
+        cached = "evidence/QualityGate/long_gate/results/host_content.v2.success.json"
+        receipt = "evidence/QualityGate/v4/receipts/01_host_content.json"
+        result = {
+            **self.result, "execution_mode": "reused_success_cache", "duration_kind": "reuse_overhead",
+            "original_duration_s": 3.0, "stdout_log_path": "logs/stdout.log", "stderr_log_path": "logs/stderr.log",
+        }
+        decision = {
+            "decision": "reuse", "current_fingerprint": current, "previous_result_path": cached,
+            "fingerprint_diff": [{"component": "files", "reason": "modified input file", "path": "source.py",
+                                  "previous": {"content_base64": "previous-source-bytes"}, "current": current}],
+        }
+        summary_entry = build_summary_entry(
+            index=1, entry=self.entry, decision=decision, result=result, receipt_path=receipt,
+            output_files=[{"path": "result.bin", "content_base64": read_file_content(str(self.output))}],
+        )
+        summary = build_long_gate_summary(
+            run_id="host-run", repo_root=str(self.root), head_sha="host-head", worktree_clean=True,
+            cache_enabled=True, mode="run", entries=[summary_entry],
+        )
+        paths = write_long_gate_summary(summary, str(self.root))
+        stored = json.loads((self.root / paths["summary_json"]).read_text())
+        row = stored["entries"][0]
+        self.assertEqual(row["input_snapshot"], {"schema_version": 2, "path_count": 1})
+        self.assertEqual(row["fingerprint_diff"], [
+            {"component": "files", "reason": "modified input file", "path": "source.py"},
+        ])
+        self.assertEqual(row["output_files"], [{"path": "result.bin"}])
+        self.assertEqual((row["previous_result_path"], row["receipt_path"]), (cached, receipt))
+        self.assertEqual((row["returncode"], row["duration_s"], row["original_duration_s"]), (0, 0.25, 3.0))
+        self.assertEqual(stored["counts"]["reused"], 1)
+        self.assertNotIn("current_fingerprint", row)
+        self.assertNotIn("content_base64", canonical_content(stored))
+        self.assertEqual(base64.b64decode(current["components"]["files"]["files"][0]["content_base64"]),
+                         self.source.read_bytes())
 
     def test_real_gate_entries_track_execution_inputs_and_ignore_bytecode(self):
         repo_root = Path(__file__).resolve().parents[2]
