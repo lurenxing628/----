@@ -5,6 +5,10 @@ import json
 import math
 from datetime import date, datetime
 
+_JSON_SCALARS = frozenset((str, int, bool, type(None)))
+_RESERVED_KEYS = frozenset((frozenset(("$sqlite_blob",)), frozenset(("$sqlite_real",)),
+                            frozenset(("$sqlite_dict",)), frozenset(("storage_type", "iso"))))
+
 
 def packed(value, *, json_input=False):
     if isinstance(value, (date, datetime)):
@@ -20,12 +24,12 @@ def packed(value, *, json_input=False):
             raise ValueError("JSON input does not support non-finite numbers")
         return {"$sqlite_real": value.hex()}
     if type(value) is dict:
-        keys = set(value)
-        if keys in ({"$sqlite_blob"}, {"$sqlite_real"}, {"$sqlite_dict"}, {"storage_type", "iso"}):
+        if len(value) in (1, 2) and frozenset(value) in _RESERVED_KEYS:
             return {"$sqlite_dict": {key: packed(item, json_input=json_input) for key, item in value.items()}}
-        return {key: packed(item, json_input=json_input) for key, item in value.items()}
+        return {key: item if type(item) in _JSON_SCALARS else packed(item, json_input=json_input)
+                for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [packed(item, json_input=json_input) for item in value]
+        return [item if type(item) in _JSON_SCALARS else packed(item, json_input=json_input) for item in value]
     return value
 
 
@@ -48,8 +52,38 @@ def unpacked(value):
     return value
 
 
+def _encoding_value(value, *, json_input=False):
+    """Share unchanged JSON containers only for the immediate private encoding.
+
+    Public packed() still returns independent container snapshots. Encoding only
+    needs new paths where SQLite values or literal marker dictionaries change.
+    """
+    kind = type(value)
+    if kind is dict:
+        result = value
+        for key, item in value.items():
+            converted = item if type(item) in _JSON_SCALARS else _encoding_value(item, json_input=json_input)
+            if converted is not item:
+                if result is value:
+                    result = dict(value)
+                result[key] = converted
+        if len(value) in (1, 2) and frozenset(value) in _RESERVED_KEYS:
+            return {"$sqlite_dict": result}
+        return result
+    if kind in (list, tuple):
+        result = value
+        for index, item in enumerate(value):
+            converted = item if type(item) in _JSON_SCALARS else _encoding_value(item, json_input=json_input)
+            if converted is not item:
+                if result is value:
+                    result = list(value)
+                result[index] = converted
+        return result
+    return packed(value, json_input=json_input)
+
+
 def content_text(value, *, json_input=False):
-    return json.dumps(packed(value, json_input=json_input), ensure_ascii=False, sort_keys=True,
+    return json.dumps(_encoding_value(value, json_input=json_input), ensure_ascii=False, sort_keys=True,
                       separators=(",", ":"), allow_nan=False)
 
 

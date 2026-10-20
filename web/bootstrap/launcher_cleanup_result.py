@@ -213,6 +213,9 @@ def _contracts_match(left: dict, right: dict) -> bool:
 
 def _matching_contract_error(mirror_log_dir_abs: str, payload: dict) -> str:
     result = read_runtime_contract_result(mirror_log_dir_abs)
+    # 服务退出和停止端会先后清理同一镜像；缺失表示已清理，删除前仍会复核当前归属。
+    if result.status == CONTRACT_STATUS_MISSING:
+        return ""
     if not result.ok or not isinstance(result.payload, dict):
         return f"matching_contract_{result.status}:{result.reason or result.error or 'unavailable'}"
     if not _contracts_match(payload, result.payload):

@@ -68,6 +68,6 @@ def resolve_log_snapshot(scope, token):
         window = _windows().get(token)
         if window is None:
             raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-        data = json.loads(window.document)
     snapshot = bind_read_snapshot(_bound_scope(scope), window.document, token)
+    data = json.loads(window.document)
     return data["rows"], data["sources"], snapshot

@@ -2,7 +2,17 @@
 
 from collections import deque
 from contextlib import contextmanager
+from dataclasses import dataclass
 from threading import Condition
+from typing import Optional
+
+from core.models.workbench_command import WorkbenchCommandRejected
+
+
+@dataclass(eq=False)
+class _Waiter:
+    lane: Optional[str]
+    superseded: bool = False
 
 
 class ReadBudget:
@@ -14,18 +24,29 @@ class ReadBudget:
         self._waiting = deque()
 
     @contextmanager
-    def slot(self):
-        ticket = object()
+    def slot(self, lane: Optional[str] = None):
+        ticket = _Waiter(lane)
         with self._condition:
+            if lane and self._waiting:
+                remaining = deque()
+                for waiter in self._waiting:
+                    if waiter.lane == lane:
+                        waiter.superseded = True
+                    else:
+                        remaining.append(waiter)
+                self._waiting = remaining
             self._waiting.append(ticket)
             self._condition.notify_all()
             try:
-                while self._waiting[0] is not ticket or not self._available:
+                while not ticket.superseded and (self._waiting[0] is not ticket or not self._available):
                     self._condition.wait()
+                if ticket.superseded:
+                    raise WorkbenchCommandRejected("request_superseded", "筛选条件已更新，前一次读取已取消。", 499)
                 self._waiting.popleft()
                 self._available -= 1
             except BaseException:
-                self._waiting.remove(ticket)
+                if not ticket.superseded:
+                    self._waiting.remove(ticket)
                 self._condition.notify_all()
                 raise
             self._condition.notify_all()

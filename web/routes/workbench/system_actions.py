@@ -38,13 +38,13 @@ def system_result(request_key):
         row = journal().lookup(request_key)
         if row:
             return query_payload({"kind": "file_operation", "operation": journal().public(row, True)})
-    result = WorkbenchCommandService(g.db, current_app.logger).lookup(request_key)
-    if result:
+    commands = WorkbenchCommandService(g.db, current_app.logger)
+    stored = commands.repo.get(request_key)
+    if stored is not None:
         # This endpoint is system-only, even if a caller provides another domain's key.
-        stored = WorkbenchCommandService(g.db, current_app.logger).repo.get(request_key)
-        if stored is None or stored["action"] != "system.config.save":
+        if stored["action"] != "system.config.save":
             raise WorkbenchCommandRejected("entity_not_found", "暂无这次操作的结果。请稍后点「查询结果」再看，不要重复提交。", 404)
-        return query_payload({"kind": "config", "command": result})
+        return query_payload({"kind": "config", "command": commands.repo.public_result(stored, replayed=True)})
     return query_payload({"kind": "not_recorded", "message": messages.pending("操作")})
 
 
@@ -85,14 +85,15 @@ def _audit_file(result):
 def system_file_action(action):
     body = command_body()
     object_fields(body["input"], () if action == "create" else ("backup_ref",))
+    commands = WorkbenchCommandService(g.db, current_app.logger)
     if action == "restore":
         # No maintenance window may be held while the host waits for other
         # admitted requests: their existing maintenance/write work must finish.
-        if journal().lookup(body["request_key"]) is None and WorkbenchCommandService(g.db, current_app.logger).lookup(body["request_key"]):
+        if journal().lookup(body["request_key"]) is None and commands.repo.get(body["request_key"]) is not None:
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         return _execute_file_action(action, body)
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_file"):
-        if WorkbenchCommandService(g.db, current_app.logger).lookup(body["request_key"]):
+        if commands.repo.get(body["request_key"]) is not None:
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         return _execute_file_action(action, body)
 

@@ -8,7 +8,7 @@ from core.errors import ValidationError
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
-from web.public_token_registry import issue_public_token, resolve_public_token
+from web.public_token_registry import PublicTokenIssuer, resolve_public_token
 
 _SCOPE = "workbench-read-v1"
 
@@ -43,6 +43,7 @@ def bind_read_snapshot(scope, fingerprint, token=None, *, as_of=None, binding=No
         as_of = datetime.now()
     if isinstance(as_of, DateTimeValue):
         as_of = as_of.isoformat(timespec="seconds")
-    payload = ReadBinding(scope_value, facts, as_of)
-    reference = issue_public_token(_SCOPE, payload, key=(scope_value, as_of), group=facts, ttl_seconds=900)
+    issuer = PublicTokenIssuer(_SCOPE, group=facts, ttl_seconds=900)
+    reference, _ = issuer.issue_bound_with_expiry(
+        lambda canonical: ReadBinding(scope_value, canonical, as_of), key=(scope_value, as_of))
     return {"snapshot_ref": reference, "as_of": as_of}

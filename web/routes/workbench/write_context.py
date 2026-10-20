@@ -45,10 +45,10 @@ class WriteContextFactory:
             if not allowed or any(not isinstance(action, str) or not action for action in allowed):
                 raise ValueError("未提供允许执行的操作。")
             actions_value = tuple(sorted(set(allowed)))
-            binding = WriteBinding(subject_ref, actions_value, facts)
-            token, expiry = issuer.issue_with_expiry(binding, key=(subject_ref, actions_value))
+            token, expiry = issuer.issue_bound_with_expiry(
+                lambda canonical: WriteBinding(subject_ref, actions_value, canonical), key=(subject_ref, actions_value))
             return {"write_token": token, "expires_at": datetime.fromtimestamp(expiry).isoformat(timespec="seconds"),
-                    "capabilities": {action: True for action in binding.actions}, "blocked_reasons": []}
+                    "capabilities": {action: True for action in actions_value}, "blocked_reasons": []}
 
         return issue
 

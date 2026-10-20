@@ -246,6 +246,12 @@ def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, mo
     assert not (logs / "aps_runtime.json").exists()
     assert not (configured_logs / "aps_runtime.json").exists()
 
+    repeated = cleanup_mod.delete_runtime_contract_files_result(
+        str(logs), expected_lock=state["payload"], expected_contract=state["contract"],
+    )
+    assert repeated.ok, "服务退出已删除镜像契约，停止命令重复清理应成功"
+    assert str(configured_logs / "aps_runtime.json") in repeated.missing_paths
+
     new_lock = _acquire(runtime_dir, logs, database)
     publication = _publish_claim(runtime_dir, logs, database, new_lock, "new-exit-instance")
     current = Path(publication["path"]).read_bytes()
@@ -279,6 +285,30 @@ def test_stop_retains_initial_shell_database_and_contract_through_wait(tmp_path,
     assert lock_mod.read_runtime_lock(str(logs))["started_at"] == new["lock"]["started_at"]
     assert lock_mod.read_runtime_lock_result_from_path(db_scope_lock_path(str(database))).payload["started_at"] == new["lock"]["db_lock"]["started_at"]
     assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=new["lock"])
+
+
+def test_stop_succeeds_after_server_exit_cleans_configured_log_mirror(tmp_path, monkeypatch):
+    runtime_dir, logs, database = tmp_path / "app", tmp_path / "app" / "logs", tmp_path / "aps.db"
+    configured_logs = tmp_path / "configured-logs"
+    claim = _acquire(runtime_dir, logs, database)
+    publication = _publish_claim(runtime_dir, configured_logs, database, claim, "normal-stop-instance")
+    contract = publication["payload"]
+    active = dict(state="active", state_dir=str(logs), lock=claim, contract=contract)
+    monkeypatch.setattr(stop_mod, "_classify_runtime_state", lambda directory: active)
+    monkeypatch.setattr(stop_mod, "_request_runtime_shutdown", lambda *args, **kwargs: True)
+
+    def server_exits(*args):
+        result = cleanup_mod.delete_runtime_contract_files_result(
+            str(logs), expected_lock=claim, expected_contract=contract,
+        )
+        assert result.ok
+        assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=claim)
+        return dict(state="absent", state_dir=str(logs), endpoint_up=False, lock=None, contract=None)
+
+    monkeypatch.setattr(stop_mod, "_wait_for_runtime_stop", server_exits)
+    assert stop_mod.stop_runtime_from_dir(str(runtime_dir)) == 0
+    assert not (logs / "aps_runtime.json").exists()
+    assert not (configured_logs / "aps_runtime.json").exists()
 
 
 def _make_real_lock_deps(tmp_path: Path, events: List[str], state: Dict[str, Any], *, prelaunch_log_dir: Path) -> EntryPointDeps:

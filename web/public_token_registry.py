@@ -23,7 +23,7 @@ import heapq
 import secrets
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from flask import current_app
 
@@ -140,17 +140,27 @@ class PublicTokenIssuer:
         if value is None or isinstance(value, str) and not value.strip():
             raise ValueError("公开 token 的内容不能为空。")
         index_key = value if key is None else key
+        return self._issue_with_expiry(lambda _group: value, index_key)
+
+    def issue_bound_with_expiry(self, binding: Callable[[Any], Any], *, key: Any) -> Tuple[str, float]:
+        """Build the retained binding from the group's canonical facts under the lock."""
+        return self._issue_with_expiry(binding, key)
+
+    def _issue_with_expiry(self, binding: Callable[[Any], Any], index_key: Any) -> Tuple[str, float]:
         with _LOCK:
             now = time.time()
             state = self._state
             _cleanup_scope(state, now)
             index = self._index
+            new_index = False
             if index is None or not index.attached:
                 index = state["by_value"].get(self._group)
                 if index is None:
                     index = _ValueIndex(self._group)
-                    state["by_value"][self._group] = index
+                    new_index = True
+            if not new_index:
                 self._index = index
+                self._group = index.group
             tokens = state["tokens"]
             existing_token = index.get(index_key)
             if existing_token:
@@ -158,6 +168,10 @@ class PublicTokenIssuer:
                 if entry is not None and _expires_at(entry) - now >= self._ttl * _REUSE_MIN_REMAINING_RATIO:
                     entry["last_used_at"] = now
                     return existing_token, _expires_at(entry)
+            value = binding(index.group)
+            if new_index:
+                state["by_value"][index.group] = index
+                self._index, self._group = index, index.group
             for _attempt in range(16):
                 token = secrets.token_urlsafe(_TOKEN_BYTES)
                 if token not in tokens:
