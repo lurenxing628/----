@@ -1,6 +1,7 @@
 """Full selected-template facts, including hidden fields and retained history."""
 
 import math
+from collections import defaultdict
 from datetime import date, datetime
 
 from core.infrastructure.connection_guards import foreign_keys_enabled, schema_contract_memo
@@ -13,7 +14,7 @@ from data.repositories.workbench_process_part_facts_repo import WorkbenchProcess
 from .projection import require_ref
 
 
-def check_process_template(operations, groups, part_no, all_operations):
+def check_process_template(operations, groups, part_no, group_parts):
     group_keys = {row["group_id"] for row in groups}
     for row in operations:
         require_ref(row["ref"], "模板工序")
@@ -25,7 +26,7 @@ def check_process_template(operations, groups, part_no, all_operations):
         require_ref(row["ref"], "模板外协组")
         if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
             raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围说不清，算不准影响面。请到基础资料核对外协组起止序。", 422)
-    if any(row["part_no"] != part_no and row["ext_group_id"] in group_keys for row in all_operations):
+    if any(owner != part_no for group_id in group_keys for owner in group_parts.get(group_id, ())):
         raise WorkbenchCommandRejected("group_invalid", "这个外协组还被别的零件工序用着，不能在当前零件解除。请先到那些零件上解除。", 422)
 
 
@@ -35,9 +36,14 @@ def checked_process_facts(identity, facts):
     part = next((row for row in facts["parts"] if row["part_no"] == part_no), None)
     if part is None:
         raise WorkbenchCommandRejected("entity_not_found", "这个零件不存在。请刷新列表后重新选择。", 404)
-    operations = [row for row in facts["operations"] if row["part_no"] == part_no]
     groups = [row for row in facts["groups"] if row["part_no"] == part_no]
-    check_process_template(operations, groups, part_no, facts["operations"])
+    operations, group_parts = [], defaultdict(set)
+    for row in facts["operations"]:
+        if row["part_no"] == part_no:
+            operations.append(row)
+        if groups and row["ext_group_id"] is not None:
+            group_parts[row["ext_group_id"]].add(row["part_no"])
+    check_process_template(operations, groups, part_no, group_parts)
     return identity, part, operations, groups, facts["workflow"][part_no]["workflow"]
 
 

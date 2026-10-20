@@ -43,13 +43,12 @@ def _change_relations(repo, roots, machine_authorizations):
 
 
 def _related_change_codes(data, roots):
-    codes = {kind: set() for kind in _KEYS}
+    codes = {"op_type": set(), "machine_group": set(), "shift_profile": set()}
     for name in ("machine", "supplier", "skills", "machine_capabilities", "capabilities"):
         codes["op_type"].update(row["op_type_id"] for row in data[name] if row["op_type_id"] is not None)
     codes["machine_group"].update(row["group_id"] for row in data["groups"] if row["machine_id"] in roots["machine"])
     codes["shift_profile"].update(row["shift_profile_id"] for row in data["operator_profiles"]
                                   if row["operator_id"] in roots["operator"] and row["shift_profile_id"] is not None)
-    codes["machine"].update(row["machine_id"] for row in data["authorizations"] if row["operator_id"] in roots["operator"])
     return codes
 
 
@@ -67,15 +66,18 @@ def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_cod
         if identity["kind"] in wanted:
             wanted[identity["kind"]].add(identity["entity_key"])
             identities[(identity["kind"], identity["entity_key"])] = identity
-    data = {kind: repo.raw_rows(kind, values) for kind, values in wanted.items()}
+    data = {kind: repo.raw_rows(kind, values) if values else [] for kind, values in wanted.items()}
     data.update(_change_relations(repo, roots, machine_authorizations))
     additional_machines = roots["machine"] - wanted["machine"]
-    data["machine"].extend(repo.raw_rows("machine", additional_machines))
-    wanted["machine"].update(additional_machines)
+    if additional_machines:
+        data["machine"].extend(repo.raw_rows("machine", additional_machines))
+        wanted["machine"].update(additional_machines)
     related = _related_change_codes(data, roots)
     for kind, values in related.items():
-        data[kind].extend(repo.raw_rows(kind, values - wanted[kind]))
-        wanted[kind].update(values)
+        missing = values - wanted[kind]
+        if missing:
+            data[kind].extend(repo.raw_rows(kind, missing))
+            wanted[kind].update(missing)
     shifts = sorted(roots["shift_profile"] | related["shift_profile"])
     data["shift_pattern"] = []
     for start in range(0, len(shifts), 400):
@@ -84,15 +86,17 @@ def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_cod
         data["shift_pattern"].extend(row for code in chunk for row in patterns[code])
     for kind, values in wanted.items():
         missing = values - {code for current_kind, code in identities if current_kind == kind}
-        identities.update(((row["kind"], row["entity_key"]), row) for row in repo.identities_by_codes(kind, missing))
+        if missing:
+            identities.update(((row["kind"], row["entity_key"]), row) for row in repo.identities_by_codes(kind, missing))
     metrics.facts = {name: data.get(name, []) for name in _READ_FACTS["op_type"]}
     return ResourceTableFacts(metrics, identities.values())
 
 
 class ResourceTableFacts:
-    def __init__(self, metrics, identities, *, scope_state=None):
+    def __init__(self, metrics, identities, *, scope_state=None, identity_kinds=None):
         self.metrics = metrics
         self.identities = {(row["kind"], row["entity_key"]): row for row in identities if row["active"] == 1}
+        self.identity_kinds = set(identity_kinds) if identity_kinds is not None else set(_KEYS)
         self._maps, self._groups = {}, {}
         self._raw_maps = {}
         self.repo = WorkbenchResourceTableRepository(metrics.conn, metrics.logger)
@@ -101,7 +105,18 @@ class ResourceTableFacts:
             for name, rows in scope_state["dependencies"].items()
         })
 
+    def load_identity_kinds(self, kinds):
+        missing = sorted(set(kinds) - self.identity_kinds)
+        if missing:
+            self.identities.update(
+                ((row["kind"], row["entity_key"]), row)
+                for row in self.repo.identities(missing) if row["active"] == 1
+            )
+            self.identity_kinds.update(missing)
+
     def identity(self, kind, code):
+        if kind not in self.identity_kinds:
+            self.load_identity_kinds([kind])
         row = self.identities.get((kind, code))
         if row is None or type(row["ref"]) is not str or re.fullmatch(r"[0-9a-f]{48}", row["ref"]) is None:
             raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，列表没有打开，数据也没有被改动。请到资料总览核对后重试。", 500)

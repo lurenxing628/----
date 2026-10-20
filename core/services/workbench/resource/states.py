@@ -40,6 +40,9 @@ class ResourceChangePreparation:
         return identity
 
     def find_by_ref(self, kind, ref):
+        if kind not in self.facts.identity_kinds:
+            self.facts.load_identity_kinds([kind])
+            self._identities = {row["ref"]: row for row in self.facts.identities.values()}
         row = self._identities.get(ref)
         if row is None or row["kind"] != kind:
             return None
@@ -57,6 +60,8 @@ class ResourceChangePreparation:
         return current
 
     def find_identity(self, kind, code):
+        if kind not in self.facts.identity_kinds:
+            self.facts.load_identity_kinds([kind])
         return self.identity_by_code(kind, code) if (kind, code) in self.facts.identities else None
 
     def raw(self, kind, code):
@@ -153,10 +158,13 @@ class WorkbenchResourceStateService:
             raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，操作未执行。请从列表重新选择。", 404)
         if current != identity:
             raise WorkbenchCommandRejected("stale_write", "资源或相关资料已经变了，操作没有执行。请刷新后重新核对。")
-        raw = self.repo.get_raw(kind, current.entity_key)
+        return current, self._raw_from_current(current)
+
+    def _raw_from_current(self, current):
+        raw = self.repo.get_raw(current.kind, current.entity_key)
         if raw is None:
             raise WorkbenchCommandRejected("storage_failure", "这条资源的编号和实际记录对不上，操作没有执行。请联系维护人员核对数据。", 500)
-        return current, raw
+        return raw
 
     def by_ref(self, kind, ref):
         identity = self.identities.get(ref)
@@ -168,12 +176,15 @@ class WorkbenchResourceStateService:
         identity = self.identities.find_active(kind, code)
         if identity is None:
             raise WorkbenchCommandRejected("storage_failure", "这条资源的关联记录在资料里查不到编号，操作没有执行，资料也没有被改动。请到资料总览核对后重试。", 500)
-        current, raw = self.current(identity, kind)
-        return {"identity": asdict(current), "record": raw}
+        raw = self._raw_from_current(identity)
+        return {"identity": asdict(identity), "record": raw}
 
     def snapshot(self, identity, *, kind=None):
         current, raw = self.current(identity, identity.kind if kind is None else kind)
         return self._snapshot_from_current(current, raw)
+
+    def snapshot_current(self, identity):
+        return self._snapshot_from_current(identity, self._raw_from_current(identity))
 
     def _snapshot_from_current(self, current, raw):
         """Project current identity/raw facts without querying them again."""

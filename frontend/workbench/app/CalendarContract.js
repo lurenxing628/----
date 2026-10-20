@@ -118,10 +118,11 @@
     // A default date has no stored row; creating it must not inherit different domain defaults.
     if (!original || !original.explicit) return converted;
     const output = {};
+    const baseDraft = draft(original);
     keys.forEach(key => {
       // 有逐段时段时工时由时段算出：时段没改就不比较、不提交工时，免得换算末位差异被当成改了工时。
       if (key === 'hours' && C.own(converted, 'periods') && JSON.stringify(converted.periods) === JSON.stringify(original.fields.periods)) return;
-      const before = ['shiftStart', 'shiftEnd'].includes(key) ? draft(original)[key] || null
+      const before = ['shiftStart', 'shiftEnd'].includes(key) ? baseDraft[key] || null
         : (['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key]);
       if (C.own(converted, key) && JSON.stringify(converted[key]) !== JSON.stringify(before)) output[key] = converted[key];
     });

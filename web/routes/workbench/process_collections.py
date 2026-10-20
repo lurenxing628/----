@@ -3,7 +3,7 @@
 from flask import current_app, g
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
-from core.models.workbench_process_actions import process_part_refs, process_part_scope
+from core.models.workbench_process_actions import process_part_scope
 from core.models.workbench_process_query import ProcessPageRequest
 from core.models.workbench_process_table_query import ProcessTablePageRequest
 from core.services.workbench import messages
@@ -59,12 +59,11 @@ def process_bulk_preview():
         raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，零件没有删除。请刷新页面后重新点「检查删除范围」。", 400)
     if type(body["snapshot_ref"]) is not str or not body["snapshot_ref"]:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-    refs = process_part_refs(body["refs"])
     scope, query_scope = collection_scope(body["scope"], body.get("page_size", 20))
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(query_scope, state, body["snapshot_ref"])
-        preview = WorkbenchProcessPartActionService(g.db, current_app.logger).preview_delete(refs, scope=scope)
+        preview = WorkbenchProcessPartActionService(g.db, current_app.logger).preview_delete_normalized(body["refs"], scope=scope)
         result = action_preview(preview, "process_bulk.confirm", extra={
             "columns": [{"key": key, "label": label} for key, label in DELETE_COLUMNS]})
     return query_success(result, snapshot)

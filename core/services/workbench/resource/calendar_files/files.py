@@ -288,34 +288,25 @@ class WorkbenchCalendarFileService:
 
     # ---------- 导出 ----------
 
-    def range_snapshot(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """导出范围的原读内容；月视图只覆盖它所选的月份。"""
+    def _states_and_rows(self, start_date: str, end_date: str):
         if not self.conn.in_transaction:
             raise RuntimeError("日历范围读取必须在快照事务中执行。")
         check_range(start_date, end_date)
-        return range_fingerprint(self.calendar.range_states(start_date, end_date))
-
-    def _rows_for(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
-        """只导出这段时间里单独配置过的日期；没配置过的天按默认规则走，导出来回导会把默认固化成数据。"""
         states = self.calendar.range_states(start_date, end_date)
+        return range_fingerprint(states), self._rows_from_states(states)
+
+    def _rows_from_states(self, states: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
-        for _, state in sorted(states.items()):
+        for state in states.values():
             public = self._public(state["row"])
             if public is not None:
                 rows.append(public)
         return rows
 
-    def preview_export(self, *, start_date: str, end_date: str):
-        if not self.conn.in_transaction:
-            raise RuntimeError("日历导出预览必须在已验证的查询快照事务中执行。")
-        check_range(start_date, end_date)
-        return ({"start_date": start_date, "end_date": end_date}, len(self._rows_for(start_date, end_date)))
+    def preview_export(self, *, start_date: str, end_date: str, rows):
+        return ({"start_date": start_date, "end_date": end_date}, len(rows))
 
-    def export(self, file_format, *, start_date: str, end_date: str) -> CalendarFileDownload:
-        if not self.conn.in_transaction:
-            raise RuntimeError("日历导出必须在已验证的查询快照事务中执行。")
-        check_range(start_date, end_date)
-        rows = self._rows_for(start_date, end_date)
+    def export(self, file_format, *, rows) -> CalendarFileDownload:
         check_capacity(len(rows), file_format)
         return write_calendar_file(self.kind, rows, file_format)
 

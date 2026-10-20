@@ -6,6 +6,6 @@ from .base_repo import BaseRepository
 class WorkbenchResourceSummaryRepository(BaseRepository):
     def calendar_rows(self, start, end):
         rows = self.fetchall(
-            "SELECT CAST(date AS TEXT) AS date,day_type,shift_start,shift_end,shift_hours,efficiency,allow_normal,allow_urgent "
+            "SELECT CAST(date AS TEXT) AS date,day_type,shift_start,shift_end,shift_hours,efficiency,allow_normal,allow_urgent,periods_json "
             "FROM WorkCalendar WHERE date>=? AND date<=? ORDER BY date", (start, end))
         return {row["date"]: row for row in rows}

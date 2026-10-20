@@ -20,7 +20,6 @@ from __future__ import annotations
 from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
-from core.models.workbench_material_file import normalize_refs
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
 from core.services.workbench.material.files import WorkbenchMaterialFileService
@@ -45,12 +44,11 @@ def material_bulk_preview():
     body = json_body({"action", "refs", "scope", "snapshot_ref"}, {"page_size"})
     if body["action"] != "delete":
         raise WorkbenchCommandRejected("invalid_input", "批量操作只支持删除选中的物料，这次没有改动任何物料。请先勾选要删除的物料。", 400)
-    refs = normalize_refs(body["refs"])
     scope, query_scope, token = scope_input(body)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
         snapshot = check_source_snapshot(query_scope, fingerprint, token)
-        preview = WorkbenchMaterialBulkService(g.db, current_app.logger).preview_delete(refs, scope=scope)
+        preview = WorkbenchMaterialBulkService(g.db, current_app.logger).preview_delete(body["refs"], scope=scope)
         data = issue_preview(preview)
     return query_success(data, snapshot)
 
@@ -75,14 +73,11 @@ def _upload():
 @read_endpoint
 def material_import_preview():
     content, file_format, mode = _upload()
-    reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     service = WorkbenchMaterialFileService(g.db, current_app.logger)
-    source = service.prepare_import(content, file_format=file_format, mode=mode, scope={})
-    with reader.read_snapshot(capture_fingerprint=False):
-        preview = service.preview_import(source, file_format=file_format, mode=mode, scope={})
-        data = issue_preview(preview, source)
-        snapshot = bind_read_snapshot({"kind": "material", "operation": "material.import",
-                                       "preview_ref": data["preview_ref"]}, data["preview_ref"])
+    preview = service.preview_import(content, file_format=file_format, mode=mode, scope={})
+    data = issue_preview(preview, preview.source)
+    snapshot = bind_read_snapshot({"kind": "material", "operation": "material.import",
+                                   "preview_ref": data["preview_ref"]}, data["preview_ref"])
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 

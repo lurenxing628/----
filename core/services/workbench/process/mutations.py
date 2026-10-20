@@ -99,9 +99,9 @@ class WorkbenchProcessMutationService:
                 raise WorkbenchCommandRejected("stage_not_ready", "前置阶段尚未确认或已变化，请先重新核对。")
         if stage == "groups":
             catalog = source_catalog(self.conn, self.logger, facts)
-            changes, affected = prepare_groups(self.conn, payload, operations, groups, identities, catalog=catalog)
+            changes, affected = prepare_groups(payload, operations, groups, identities, catalog=catalog)
             names = {key: row["name"] for key, row in catalog[1].items()}
-            auxiliary = group_changes(self.conn, changes, affected, operations, names=names)
+            auxiliary = group_changes(changes, affected, operations, names=names)
         elif stage == "hours":
             confirmations = {code: state["operations"] for code, state in facts["workflow"].items()} if facts else None
             changes = prepare_hours(self.conn, payload, operations, groups, confirmations=confirmations)
@@ -110,8 +110,8 @@ class WorkbenchProcessMutationService:
             changes, sequences = prepare_route(self.conn, self.logger, payload, operations, facts=facts)
             affected, auxiliary = affected_group_rows(groups, operations, sequences), None
         else:
-            changes, _ = prepare_source(self.conn, self.logger, payload, operations, identities,
-                                         catalog=source_catalog(self.conn, self.logger, facts))
+            changes, _ = prepare_source(payload, operations, identities,
+                                        catalog=source_catalog(self.conn, self.logger, facts))
             affected, auxiliary = source_group_changes(changes, operations, groups)
         return PreparedProcessChange(action, payload, checked, changes, affected, auxiliary, identities)
 

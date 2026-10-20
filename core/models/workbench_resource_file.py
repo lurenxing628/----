@@ -82,7 +82,7 @@ SHEET_NAME = "资源"
 _VALUE_HINTS = {
     "business_code": "这一类资料的编号，例如 M001；不填就不知道改哪一条",
     "label": "名称；新增时必须填，已有的留空保持原样",
-    "status": "选择本表的中文状态，例如可用、停用；也兼容旧文件里的英文代号",
+    "status": "只填固定状态值；新增时必须填，已有的留空保持原样",
     "category": "填写自制、外协或自制和外协都可，与页面上的适用归属相同",
     "default_merge_mode": "填写分别设置或合并设置；要清除请填 \\N（大写）",
     "remark": "随便写；要清除请填 \\N（大写）",
@@ -115,16 +115,16 @@ _READONLY_HINTS = {
 _ERROR_HINTS = {
     "business_code": "留空、有首尾空格、或同一份文件里出现了两次",
     "label": "新增时留空，或填了系统不接受的字符",
-    "status": "填了这一类资料没有的状态，请按本表下拉选项填写",
-    "category": "填了自制、外协及其旧英文代号以外的词",
+    "status": "新增时留空，或填了固定状态值以外的文字",
+    "category": "填了" + "、".join(ENUM_LABELS["category"].values()) + "及其旧英文代号以外的词",
     "default_merge_mode": "填了分别设置、合并设置及其旧英文代号以外的词",
     "remark": "填了 \\N 以外的清除写法",
-    "op_type_code": "这个工种编号在系统里找不到，或者不是自制工种",
+    "op_type_code": "这个工种编号在系统里找不到",
     "group_code": "这个设备组编号在系统里找不到",
     "skill_codes": "列表里有空项、重复编号、引号不配对，或者工种编号找不到",
     "shift_profile_code": "这个班次编号在系统里找不到",
     "default_days": "新增供应商时留空、不大于 0、不是数字、或者带了单位和千分位逗号",
-    "op_type_codes": "列表有空项或重复编号、引号不配对，或者工种编号找不到、不是外协工种",
+    "op_type_codes": "列表有空项或重复编号、引号不配对，或者工种编号找不到",
 }
 #: 四类资源的规则大同小异，但不能共用一份：工种表没有状态列也没有多值列，
 #: 把"状态填英文代号""多值列要写 JSON 数组"贴到工种的填写说明上，用户会去找根本不存在的列。
@@ -181,13 +181,20 @@ def table_descriptor(kind):
     for item in public_columns(kind):
         key = item["key"]
         readonly = key in READONLY[kind]
+        value_hint = _READONLY_HINTS[key] if readonly else _VALUE_HINTS[key]
+        error_hint = "这一列不校验" if readonly else _ERROR_HINTS[key]
+        relation = RELATIONS[kind].get(key)
+        if relation and relation[1] == "op_type":
+            source = ENUM_LABELS["category"][relation[2]]
+            value_hint += "；适用归属为" + source + "或" + ENUM_LABELS["category"]["both"]
+            error_hint += "，或工种归属不支持" + source
         columns.append({
             "key": key,
             "label": item["label"],
             "required": key in REQUIRED[kind],
             "readonly": readonly,
-            "value_hint": _READONLY_HINTS[key] if readonly else _VALUE_HINTS[key],
-            "error_hint": "这一列不校验" if readonly else _ERROR_HINTS[key],
+            "value_hint": value_hint,
+            "error_hint": error_hint,
             "enum": ENUMS[kind].get(key) if not readonly else None,
             "nullable": key in NULLABLE,
         })
@@ -205,16 +212,18 @@ def table_descriptor(kind):
     }
 
 
-def public_columns(kind):
-    result = []
-    for key in file_columns(kind):
+def column_label(kind: str, key: str) -> str:
+    if kind == "machine" and key == "op_type_codes":
+        label = "可做工种编号"
+    else:
         label = ("归属" if kind == "op_type" else "设备类别") if key == "category" else LABELS[key]
-        if kind == "machine" and key == "op_type_codes":
-            label = "可做工种编号"
-        if key in READONLY[kind] and "只读" not in label:
-            label += "（只读）"
-        result.append({"key": key, "label": label})
-    return result
+    if key in READONLY[kind] and "只读" not in label:
+        label += "（只读）"
+    return label
+
+
+def public_columns(kind):
+    return [{"key": key, "label": column_label(kind, key)} for key in file_columns(kind)]
 
 
 def import_request(kind, content, file_format, mode, scope):

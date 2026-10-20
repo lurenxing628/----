@@ -4261,7 +4261,8 @@ function SMExport({
     body,
     signal,
     readOnly = false,
-    binary = false
+    binary = false,
+    timeout = 20000
   } = {}) {
     const target = new URL(url, location.href);
     if (target.origin !== location.origin || !target.pathname.startsWith(prefix)) throw problem('数据地址不属于本机工作台。', false);
@@ -4288,7 +4289,7 @@ function SMExport({
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, 20000);
+    }, timeout);
     try {
       const response = await fetch(target.href, {
         method,
@@ -4441,8 +4442,9 @@ function SMExport({
         if (terminal(result) || result && result.ok === true && result.state === 'not_recorded' && result.receipt === null && result.may_be_in_flight === true) return result;
         throw problem('上次操作的结果还没确认，请保留当前页面并点「查询结果」。', 'unknown');
       },
-      download(path, scope, signal) {
+      download(path, scope, signal, options = {}) {
         return send(queryPath(path, scope), {
+          ...options,
           signal,
           binary: true
         });
@@ -5627,7 +5629,7 @@ function SMExport({
         store.running = false;
       }
     }
-    async function submit(kind, action, ref, context, input, category) {
+    async function submit(kind, action, ref, context, input, listCategory) {
       if (store.running || ['sending', 'pending', 'checking', 'done'].includes(store.state.phase)) return;
       if (typeof adapter.command !== 'function') {
         publish(store, {
@@ -5638,13 +5640,14 @@ function SMExport({
       }
       let intent;
       try {
+        // category keeps the source list; the entity's category belongs to input.fields.
         intent = {
           kind,
           action,
           ref,
           request_key: C.requestKey(),
           input,
-          category
+          category: listCategory
         };
         if (typeof adapter.savePending === 'function') adapter.savePending(intent);
       } catch (error) {
@@ -6470,7 +6473,9 @@ function SMExport({
       checked: selected.includes(item.ref),
       disabled: disabled || !selected.includes(item.ref) && !selectable(item),
       onChange: event => choose(item.ref, event.target.checked)
-    }), item.label, !selectable(item) ? '（停用 / 未确认）' : ''))) : /*#__PURE__*/React.createElement("select", {
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "wb-choice-label"
+    }, item.label, !selectable(item) ? '（停用 / 未确认）' : '')))) : /*#__PURE__*/React.createElement("select", {
       id: id,
       value: value,
       disabled: disabled,
@@ -7157,10 +7162,11 @@ function SMExport({
     // A default date has no stored row; creating it must not inherit different domain defaults.
     if (!original || !original.explicit) return converted;
     const output = {};
+    const baseDraft = draft(original);
     keys.forEach(key => {
       // 有逐段时段时工时由时段算出：时段没改就不比较、不提交工时，免得换算末位差异被当成改了工时。
       if (key === 'hours' && C.own(converted, 'periods') && JSON.stringify(converted.periods) === JSON.stringify(original.fields.periods)) return;
-      const before = ['shiftStart', 'shiftEnd'].includes(key) ? draft(original)[key] || null : ['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key];
+      const before = ['shiftStart', 'shiftEnd'].includes(key) ? baseDraft[key] || null : ['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key];
       if (C.own(converted, key) && JSON.stringify(converted[key]) !== JSON.stringify(before)) output[key] = converted[key];
     });
     return output;
@@ -10376,7 +10382,8 @@ function SMExport({
     onClose,
     refreshState,
     onRefresh,
-    Feedback
+    Feedback,
+    externalRevision = 0
   }) {
     const ref = entity.ref;
     const [month, setMonth] = React.useState(todayMonth);
@@ -10400,13 +10407,15 @@ function SMExport({
         mounted.current = false;
       };
     }, []);
+    const done = command.phase === 'done',
+      completedReceipt = done ? command.result.receipt_ref : null;
     const request = S.useQuery(async signal => {
       if (typeof adapter.query !== 'function') throw C.failure('dependency not wired: adapter.query');
       return O.month(await adapter.query(PATH(ref) + '/month', month, signal), {
         ...month,
         ref
       });
-    }, [adapter, ref, month.year, month.month]);
+    }, [adapter, ref, month.year, month.month, externalRevision, completedReceipt]);
     const result = request.result,
       data = result && result.data;
     if (result) lastResult.current = result;
@@ -10415,10 +10424,15 @@ function SMExport({
     const previous = lastResult.current && lastResult.current.data;
     const baseline = data || (previous && previous.year === month.year && previous.month === month.month ? previous : null);
     const shown = data || (request.loading ? baseline : null);
-    const done = command.phase === 'done',
-      disabled = command.locked || done || request.loading || busy;
+    const editorData = data || (done ? baseline : null);
+    const disabled = command.locked || done || request.loading || busy;
+    const combinedRefresh = {
+      done: Boolean(refreshState && refreshState.done && result),
+      loading: Boolean(refreshState && refreshState.loading || request.loading),
+      error: refreshState && refreshState.error || request.error
+    };
     // 刷新开始或失败时 data 会暂时为空，但不能因此把尚未保存的草稿判成 clean。
-    // baseline 只给草稿身份和 dirty guard 用；保存仍由下方 data 门禁只使用最新写入上下文。
+    // baseline 保留草稿身份、dirty guard 和完成态展示；保存仍只使用最新的 data。
     const current = baseline && selected ? baseline.days.find(day => day.date === selected) : null;
     React.useEffect(() => {
       if (current && (!draft || draft.date !== current.date)) {
@@ -10429,7 +10443,7 @@ function SMExport({
         setEditBase(current);
       }
     }, [current && current.date, current && current.calendar_ref]);
-    const staleDraft = !!current && !!editBase && (current.calendar_ref !== editBase.calendar_ref || JSON.stringify(O.draftOf(current)) !== JSON.stringify(O.draftOf(editBase)));
+    const staleDraft = !done && !!current && !!editBase && (current.calendar_ref !== editBase.calendar_ref || JSON.stringify(O.draftOf(current)) !== JSON.stringify(O.draftOf(editBase)));
     const dirty = !done && mode === 'day' && !!current && !!draft && draft.date === current.date && JSON.stringify(draft) !== JSON.stringify({
       ...O.draftOf(editBase || current),
       date: current.date
@@ -10541,9 +10555,9 @@ function SMExport({
       if (!command.reset()) return;
       command.submit('operator', 'calendar_range_clear', ref, preview.data.write_context, preview.data.range);
     }
-    const saveReason = staleDraft ? '这一天的配置已变化，请先采用最新配置后重新填写。' : capability('calendar_upsert');
-    const clearReason = capability('calendar_delete');
-    const rangeReason = !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。' : capability('calendar_range_clear');
+    const saveReason = done ? '' : staleDraft ? '这一天的配置已变化，请先采用最新配置后重新填写。' : capability('calendar_upsert');
+    const clearReason = done ? '' : capability('calendar_delete');
+    const rangeReason = done ? '' : !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。' : capability('calendar_range_clear');
     return /*#__PURE__*/React.createElement("div", {
       className: "plana resource-calendar wb-operator-calendar"
     }, /*#__PURE__*/React.createElement(Modal, {
@@ -10642,7 +10656,7 @@ function SMExport({
           overflowWrap: 'anywhere'
         }
       }, meta.text));
-    })), data && mode === 'day' && current && draft && /*#__PURE__*/React.createElement(DayEditor, {
+    })), editorData && mode === 'day' && current && draft && /*#__PURE__*/React.createElement(DayEditor, {
       day: current,
       draft: draft,
       setDraft: setDraft,
@@ -10652,14 +10666,14 @@ function SMExport({
       onClear: clearDay,
       saveReason: saveReason,
       clearReason: clearReason,
-      clearing: clearing && current.explicit,
+      clearing: clearing && (current.explicit || done),
       onClearing: value => {
         setClearing(value);
         setError(null);
       }
-    }), data && mode === 'day' && !current && /*#__PURE__*/React.createElement("p", {
+    }), editorData && mode === 'day' && !current && /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u70B9\u4E00\u5929\u5F00\u59CB\u7EF4\u62A4\u3002"), data && mode === 'range' && /*#__PURE__*/React.createElement(RangeClear, {
+    }, "\u70B9\u4E00\u5929\u5F00\u59CB\u7EF4\u62A4\u3002"), editorData && mode === 'range' && /*#__PURE__*/React.createElement(RangeClear, {
       range: range,
       setRange: next => {
         setRange(next);
@@ -10676,7 +10690,7 @@ function SMExport({
       error: error
     }), /*#__PURE__*/React.createElement(Feedback, {
       command: command
-    }), staleDraft && !done && /*#__PURE__*/React.createElement("div", {
+    }), staleDraft && /*#__PURE__*/React.createElement("div", {
       role: "status"
     }, /*#__PURE__*/React.createElement("p", null, "\u8FD9\u4E00\u5929\u5DF2\u88AB\u4FEE\u6539\uFF0C\u65E7\u8349\u7A3F\u4E0D\u4F1A\u8986\u76D6\u6700\u65B0\u914D\u7F6E\u3002\u91C7\u7528\u6700\u65B0\u914D\u7F6E\u4F1A\u653E\u5F03\u672C\u6B21\u672A\u4FDD\u5B58\u7684\u5185\u5BB9\u3002"), /*#__PURE__*/React.createElement(Button, {
       disabled: command.locked || request.loading,
@@ -10690,8 +10704,11 @@ function SMExport({
         command.reset();
       }
     }, "\u91C7\u7528\u6700\u65B0\u914D\u7F6E\u5E76\u91CD\u65B0\u586B\u5199")), done && /*#__PURE__*/React.createElement(RefreshResult, {
-      state: refreshState,
-      onRefresh: onRefresh
+      state: combinedRefresh,
+      onRefresh: () => {
+        if (refreshState && refreshState.error && onRefresh) onRefresh();
+        if (request.error) request.reload();
+      }
     }))));
   }
   window.OperatorCalendarPanel = OperatorCalendarPanel;
@@ -10942,7 +10959,7 @@ function SMExport({
         if (adjustingStock) inputDraft.fields.stock_qty = draft.fields.stock_qty;
         const input = action === 'delete' ? {} : C.input(kind, inputDraft, entity, category);
         setError(null);
-        await command.submit(kind, action, entity ? entity.ref : null, writeContext, input, draft.fields.category);
+        await command.submit(kind, action, entity ? entity.ref : null, writeContext, input, category);
       } catch (failure) {
         setError(failure);
       }
@@ -11684,7 +11701,10 @@ function SMExport({
         kind: kind,
         entity: entity
       })
-    }])];
+    }])].map(column => ({
+      width: 180,
+      ...column
+    }));
     function resize(key, width) {
       if (headerDisabled || !Number.isFinite(width)) return;
       const current = {};
@@ -11697,6 +11717,7 @@ function SMExport({
       });
     }
     const filtered = !!(scope && (scope.query || scope.status || Object.keys(scope.column_filters || {}).length));
+    const tableWidth = widths ? Object.values(widths).reduce((sum, width) => sum + width, 0) : 44 + 216 + cols.reduce((sum, column) => sum + column.width, 0);
     return /*#__PURE__*/React.createElement("div", {
       className: "card"
     }, /*#__PURE__*/React.createElement("div", {
@@ -11704,15 +11725,14 @@ function SMExport({
       "data-sticky-head": true,
       "data-sticky-actions": true,
       style: {
-        '--wb-table-min': '850px'
+        '--wb-table-min': tableWidth + 'px'
       }
     }, /*#__PURE__*/React.createElement("table", {
       ref: table,
       className: "tbl wb-table",
       "aria-label": C.resourceName(kind, opCategory) + '列表',
       style: widths ? {
-        width: Object.values(widths).reduce((sum, width) => sum + width, 0),
-        minWidth: 0
+        width: tableWidth
       } : undefined,
       "aria-busy": loading
     }, /*#__PURE__*/React.createElement("caption", {
@@ -11721,9 +11741,9 @@ function SMExport({
       scope: "col",
       className: "cbx",
       "data-column": "__selection",
-      style: widths ? {
-        width: widths.__selection
-      } : undefined
+      style: {
+        width: widths ? widths.__selection : 44
+      }
     }, /*#__PURE__*/React.createElement("input", {
       ref: selectAll,
       type: "checkbox",
@@ -12789,8 +12809,7 @@ function SMExport({
       setDialog(current => ({
         ...current,
         action,
-        stockOnly,
-        category: detail.result.data.fields.category
+        stockOnly
       }));
     }
     function close() {
@@ -12835,10 +12854,6 @@ function SMExport({
           source: result.meta.source,
           entity: dialog.ref ? result.data : null
         });
-        if (dialog.ref && dialog.kind === 'op_type') setDialog(current => ({
-          ...current,
-          category: result.data.fields.category
-        }));
         setContextReview(result);
       } catch (error) {
         setContextError(error);
@@ -12863,10 +12878,6 @@ function SMExport({
           ...(sameView ? effectiveScope : scopeFor(intentNode)),
           snapshot_ref: undefined
         };
-        if (intent.kind === 'op_type') {
-          delete readScope.status;
-          readScope.category = intent.category;
-        }
         let refreshedList;
         if (sameView) {
           setRequestScope(readScope);
@@ -13016,6 +13027,7 @@ function SMExport({
       className: "muted"
     }, "\u5DE5\u827A\u5DE5\u4F5C\u533A\u5C1A\u672A\u5F00\u901A\u3002") : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({
       onCommitted: refresh,
+      externalRevision,
       summaryState: counts.summary,
       rememberEnabled: rememberEnabled && !navigationError && !deferred,
       initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined
@@ -13127,6 +13139,7 @@ function SMExport({
       onClose: close,
       refreshState: refreshState,
       onRefresh: readAfterCommand,
+      externalRevision: externalRevision,
       Feedback: Forms.Feedback
     }), editorReady && !['view', 'machine_permissions', 'operator_calendar', 'downtimes'].includes(dialog.action) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Forms, {
       key: dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action,
@@ -14080,6 +14093,7 @@ function SMExport({
   function ResourceCalendar({
     adapter,
     onCommitted,
+    externalRevision = 0,
     initialContext,
     onNavigationReady,
     onOpenFile,
@@ -14114,7 +14128,7 @@ function SMExport({
     const [navigationError, setNavigationError] = React.useState(target.error || null),
       located = React.useRef(false),
       root = React.useRef(null);
-    const request = S.useQuery(async signal => K.month(await adapter.query(K.path + '/month', month, signal), month.year, month.month), [adapter, month.year, month.month]);
+    const request = S.useQuery(async signal => K.month(await adapter.query(K.path + '/month', month, signal), month.year, month.month), [adapter, month.year, month.month, externalRevision]);
     const result = request.result,
       data = result && result.data,
       source = result && result.meta.source;
@@ -15263,7 +15277,7 @@ function SMExport({
         body.append('format', job.format);
         body.append('mode', 'upsert');
         if (M.kind === 'op_type') body.append('category', M.category(original));
-      } else body = M.requestBody(effectiveMode, original, job.selection);
+      } else body = job.body;
       const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
       if (isExport) {
         const result = M.exportPreview(raw, job.selection, original);
@@ -15351,11 +15365,12 @@ function SMExport({
       try {
         if (M.category) M.category(original);
         if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，请选择后重试。');
-        if (effectiveMode !== 'import') M.requestBody(effectiveMode, original, selection);
+        const body = effectiveMode !== 'import' ? M.requestBody(effectiveMode, original, selection) : null;
         setJob({
           file,
           format,
-          selection
+          selection,
+          body
         });
         setNow(Date.now());
       } catch (failure) {
@@ -16369,7 +16384,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("div", {
       className: "rowact"
     }, /*#__PURE__*/React.createElement(Button, {
-      className: "mini",
+      className: "mini rc-icon-button",
       icon: "square-pen",
       "aria-label": '编辑 ' + entity.business_code,
       disabled: disabled,
@@ -17127,7 +17142,7 @@ function SMExport({
     const done = !!saved,
       dirty = !done && Object.values(draft).some(value => value !== ''),
       locked = visible.locked || opening || reading;
-    const preview = S.useQuery(async signal => A.deletePreview(await adapter.bulkPreview(A.deleteBody(original), signal), original), [adapter, job], !!job);
+    const preview = S.useQuery(async signal => A.deletePreview(await adapter.bulkPreview(job.body, signal), original), [adapter, job], !!job);
     const result = preview.result,
       data = result && result.data;
     React.useEffect(() => () => {
@@ -17162,8 +17177,10 @@ function SMExport({
       setAck(false);
       try {
         if (typeof adapter.bulkPreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.bulkPreview');
-        A.deleteBody(original);
-        setJob({});
+        const body = A.deleteBody(original);
+        setJob({
+          body
+        });
         setNow(Date.now());
       } catch (failure) {
         setError(failure);
@@ -22237,12 +22254,14 @@ function SMExport({
       }),
       renderCalendar: ({
         onCommitted,
+        externalRevision,
         initialContext,
         rememberEnabled,
         summaryState
       }) => /*#__PURE__*/React.createElement(window.ResourceCalendar, {
         adapter: adapters.calendar,
         onCommitted: onCommitted,
+        externalRevision: externalRevision,
         initialContext: initialContext,
         rememberEnabled: rememberEnabled,
         summaryState: summaryState,
@@ -22250,8 +22269,7 @@ function SMExport({
         onOpenFile: (mode, context) => adapters.base.openCalendarFile(mode, {
           refs: [],
           scope: {},
-          ...context,
-          onCommitted
+          ...context
         })
       })
     }), auxiliary && (auxiliary.type === 'catalog' ? /*#__PURE__*/React.createElement(window.ResourceCatalog, {

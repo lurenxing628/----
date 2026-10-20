@@ -55,7 +55,7 @@
       { key: 'label', title: C.nameLabel(kind), width: 160, sortable: true, render: entity => entity.label },
       ...(kind === 'op_type' ? opColumns(opCategory) : columns[kind] || []),
       ...(kind === 'op_type' ? [] : [{ key: 'status', title: '状态', width: 145, render: entity => <Status kind={kind} entity={entity} /> }])
-    ];
+    ].map(column => ({ width: 180, ...column }));
     function resize(key, width) {
       if (headerDisabled || !Number.isFinite(width)) return;
       const current = {};
@@ -63,10 +63,12 @@
       setWidths({ ...current, [key]: Math.max(56, width) });
     }
     const filtered = !!(scope && (scope.query || scope.status || Object.keys(scope.column_filters || {}).length));
-    return <div className="card"><div className="wb-table-frame wb-table-shell" data-sticky-head data-sticky-actions style={{ '--wb-table-min': '850px' }}><table ref={table} className="tbl wb-table" aria-label={C.resourceName(kind, opCategory) + '列表'}
-      style={widths ? { width: Object.values(widths).reduce((sum, width) => sum + width, 0), minWidth: 0 } : undefined} aria-busy={loading}>
+    const tableWidth = widths ? Object.values(widths).reduce((sum, width) => sum + width, 0)
+      : 44 + 216 + cols.reduce((sum, column) => sum + column.width, 0);
+    return <div className="card"><div className="wb-table-frame wb-table-shell" data-sticky-head data-sticky-actions style={{ '--wb-table-min': tableWidth + 'px' }}><table ref={table} className="tbl wb-table" aria-label={C.resourceName(kind, opCategory) + '列表'}
+      style={widths ? { width: tableWidth } : undefined} aria-busy={loading}>
       <caption className="wb-visually-hidden">{C.resourceName(kind, opCategory)}列表，编号与操作列固定。</caption>
-      <thead><tr><th scope="col" className="cbx" data-column="__selection" style={widths ? { width: widths.__selection } : undefined}><input ref={selectAll} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !entities.length} onChange={event => {
+      <thead><tr><th scope="col" className="cbx" data-column="__selection" style={{ width: widths ? widths.__selection : 44 }}><input ref={selectAll} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !entities.length} onChange={event => {
         const visible = new Set(entities.map(item => item.ref));
         onSelect(event.target.checked ? Array.from(new Set(selected.concat(Array.from(visible)))) : selected.filter(ref => !visible.has(ref)));
       }} /></th>

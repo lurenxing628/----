@@ -16,11 +16,12 @@ class WorkbenchDowntimeService:
         self.repo = MachineDowntimeRepository(conn, logger)
 
     def snapshot(self, ref):
-        record = self.reader.detail(ref)
-        rows = self.facts.rows(record.identity.entity_key)
+        identity = self.reader.resolve(ref)
+        state = self.reader.domain.snapshot_current(identity)
+        rows = self.facts.rows(identity.entity_key)
         if any(row["ref"] is None for row in rows):
             raise WorkbenchCommandRejected("storage_failure", "停机记录的系统编号不完整，请联系维护人员核对。", 503)
-        return {"machine": record.state, "machine_id": record.identity.entity_key, "rows": rows}
+        return {"machine": state, "machine_id": identity.entity_key, "rows": rows}
 
     @staticmethod
     def public(state):
@@ -28,9 +29,11 @@ class WorkbenchDowntimeService:
         return {"rows": [{key: row[key] for key in keys} for row in state["rows"]], "reasons": REASONS}
 
     def apply(self, ref, action, payload, state):
+        return self.apply_normalized(ref, action, normalize_downtime(action, payload), state)
+
+    def apply_normalized(self, ref, action, payload, state):
         if not self.conn.in_transaction:
             raise RuntimeError("停机维护必须在工作台命令事务内执行。")
-        payload = normalize_downtime(action, payload)
         row = self._target(action, payload, state)
         if action == "cancel":
             if row is None:

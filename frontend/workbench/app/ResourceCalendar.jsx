@@ -11,7 +11,7 @@
     const holidayText = holiday.status === 'known' ? window.WorkbenchFormat.number(holiday.value * 100, { digits: 1, trim: true }) + '%' : statusLabels[holiday.status] || '暂无数据';
     return <><p>未单独设置的日期按默认规则排产。标准工时 / 日：{standardText}；假期录入默认效率：{holidayText}。</p><p className="muted">{value.basis}</p></>;
   }
-  function ResourceCalendar({ adapter, onCommitted, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true, summaryState }) {
+  function ResourceCalendar({ adapter, onCommitted, externalRevision = 0, initialContext, onNavigationReady, onOpenFile, rememberEnabled = true, summaryState }) {
     const [target] = React.useState(() => {
       if (initialContext == null) return { context: null };
       const parsed = window.ResourceWorkspace.navigation(initialContext);
@@ -23,7 +23,7 @@
     const command = S.useCommand(adapter), handled = React.useRef(null), awaitingRefresh = React.useRef(false);
     const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
     const [navigationError, setNavigationError] = React.useState(target.error || null), located = React.useRef(false), root = React.useRef(null);
-    const request = S.useQuery(async signal => K.month(await adapter.query(K.path + '/month', month, signal), month.year, month.month), [adapter, month.year, month.month]);
+    const request = S.useQuery(async signal => K.month(await adapter.query(K.path + '/month', month, signal), month.year, month.month), [adapter, month.year, month.month, externalRevision]);
     const result = request.result, data = result && result.data, source = result && result.meta.source;
     // 刷新本月时继续显示同月数据并标 aria-busy；翻月时不把旧月网格放到新标题下。
     const last = React.useRef(null); if (result) last.current = result;

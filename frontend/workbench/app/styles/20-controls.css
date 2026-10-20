@@ -90,8 +90,10 @@ body.aps-workbench :is(button.pg,button.sm-icon-button,button.modal-x,button.cal
 }
 /* override: body.aps-workbench button.mini; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench button.mini { min-height: var(--wb-control-mini-height) !important; padding: var(--space-1) 9px !important; }
-/* override: body.aps-workbench .resource-catalog .rc-list button.mini; preserve shared control geometry against legacy inline and prototype declarations. */
-body.aps-workbench .resource-catalog .rc-list button.mini { width: var(--wb-control-mini-height); min-width: var(--wb-control-mini-height); padding: var(--space-1) !important; }
+/* override: the shared multiline button rule; catalog action columns reserve room for complete single-line actions. */
+body.aps-workbench .resource-catalog .rc-list button.mini { white-space: nowrap !important; }
+/* override: mini side padding; only the catalog's explicit icon button uses square geometry. */
+body.aps-workbench .resource-catalog .rc-list button.rc-icon-button { width: var(--wb-control-mini-height); min-width: var(--wb-control-mini-height); padding: var(--space-1) !important; }
 /* override: body.aps-workbench button.modal-x; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench button.modal-x { background: transparent !important; border-color: transparent !important; color: var(--ui-info-muted) !important; }
 /* 主按钮底色 / 字色走 00-tokens 的 --wb-primary-button-*：深色下 --ui-info-text 是浅蓝，直接当底色会和链接撞色、明暗反转。 */

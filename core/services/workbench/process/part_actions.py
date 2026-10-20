@@ -56,7 +56,6 @@ class WorkbenchProcessPartActionService:
     def create(self, input):
         self._require_transaction()
         payload = self.normalize_create(input)
-        check_part_action_storage(self.conn, self.contracts)
         return self.apply_create(self.prepare_create(payload))
 
     def prepare_create(self, payload, *, parts=None, route_parsed="no"):
@@ -82,7 +81,10 @@ class WorkbenchProcessPartActionService:
                 "business_code": part.part_no, "workflow": workflow})
 
     def preview_delete(self, refs, *, scope):
-        request = {"refs": process_part_refs(refs), "scope": process_part_scope(scope)}
+        return self.preview_delete_normalized(refs, scope=process_part_scope(scope))
+
+    def preview_delete_normalized(self, refs, *, scope):
+        request = {"refs": process_part_refs(refs), "scope": scope}
         with self.tx.transaction():
             check_part_action_storage(self.conn, self.contracts)
             preview, _ = self._prepare_delete(request)

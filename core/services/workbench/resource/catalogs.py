@@ -24,6 +24,9 @@ class WorkbenchResourceCatalogService:
     def snapshot(self, identity):
         return self.state.snapshot(identity, kind=self.kind)
 
+    def snapshot_current(self, identity):
+        return self.state.snapshot_current(identity)
+
     def apply(self, action, payload, identity=None):
         from .queries import WorkbenchResourceQueryService
 

@@ -77,14 +77,15 @@
       } catch (error) { publish(store, { intent, phase: 'pending', error }); }
       finally { store.running = false; }
     }
-    async function submit(kind, action, ref, context, input, category) {
+    async function submit(kind, action, ref, context, input, listCategory) {
       if (store.running || ['sending', 'pending', 'checking', 'done'].includes(store.state.phase)) return;
       if (typeof adapter.command !== 'function') {
         publish(store, { phase: 'rejected', error: C.failure('dependency not wired: adapter.command') }); return;
       }
       let intent;
       try {
-        intent = { kind, action, ref, request_key: C.requestKey(), input, category };
+        // category keeps the source list; the entity's category belongs to input.fields.
+        intent = { kind, action, ref, request_key: C.requestKey(), input, category: listCategory };
         if (typeof adapter.savePending === 'function') adapter.savePending(intent);
       }
       catch (error) { publish(store, { phase: 'rejected', error }); return; }

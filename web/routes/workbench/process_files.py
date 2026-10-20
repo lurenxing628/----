@@ -39,14 +39,14 @@ def process_file_preview(kind):
     content, fmt, mode, target = _upload(kind)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     service = WorkbenchProcessFileService(g.db, current_app.logger, reader)
-    source = service.prepare_import(kind, content, file_format=fmt, mode=mode, target_ref=target)
-    # 文件事实只解析一次；每次预检仍在服务读快照中比对当前工艺资料。
-    preview, extra = service.preview_import(kind, source, file_format=fmt, mode=mode, target_ref=target)
-    state = preview.as_dict()["request"]["state"]
-    data = action_preview(preview, file_operation(kind), kind=kind, content=source, extra=extra)
+    # 文件事实只解析、校验一次；每次预检仍在服务读快照中比对当前工艺资料。
+    preview, extra = service.preview_import(kind, content, file_format=fmt, mode=mode, target_ref=target)
+    source = preview.source
+    body = preview.as_dict()
+    data = action_preview(preview, file_operation(kind), kind=kind, content=source, extra=extra, body=body)
     snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": file_operation(kind),
-                                   "preview_ref": data["preview_ref"], "target_ref": target}, state)
-    return query_success(data, snapshot, preview.as_dict()["notices"])
+                                   "preview_ref": data["preview_ref"], "target_ref": target}, body["request"]["state"])
+    return query_success(data, snapshot, body["notices"])
 
 
 @api_endpoint

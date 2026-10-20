@@ -98,7 +98,7 @@
         + preview.data.days.map(day => day.date).join('、') : '这段时间里没有单独设置过的日期，不需要清除。'}</p>}
     </div>;
   }
-  function OperatorCalendarPanel({ adapter, entity, source, command, onClose, refreshState, onRefresh, Feedback }) {
+  function OperatorCalendarPanel({ adapter, entity, source, command, onClose, refreshState, onRefresh, Feedback, externalRevision = 0 }) {
     const ref = entity.ref;
     const [month, setMonth] = React.useState(todayMonth);
     const [editBase, setEditBase] = React.useState(null);
@@ -110,10 +110,11 @@
     const [error, setError] = React.useState(null), [clearing, setClearing] = React.useState(false);
     const mounted = React.useRef(true), lastResult = React.useRef(null);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+    const done = command.phase === 'done', completedReceipt = done ? command.result.receipt_ref : null;
     const request = S.useQuery(async signal => {
       if (typeof adapter.query !== 'function') throw C.failure('dependency not wired: adapter.query');
       return O.month(await adapter.query(PATH(ref) + '/month', month, signal), { ...month, ref });
-    }, [adapter, ref, month.year, month.month]);
+    }, [adapter, ref, month.year, month.month, externalRevision, completedReceipt]);
     const result = request.result, data = result && result.data;
     if (result) lastResult.current = result;
     // 刷新本月时保留上一次读到的月历，不把整块清空闪烁；写入仍只认最新读到的 data。
@@ -121,14 +122,16 @@
     const previous = lastResult.current && lastResult.current.data;
     const baseline = data || (previous && previous.year === month.year && previous.month === month.month ? previous : null);
     const shown = data || (request.loading ? baseline : null);
-    const done = command.phase === 'done', disabled = command.locked || done || request.loading || busy;
+    const editorData = data || (done ? baseline : null);
+    const disabled = command.locked || done || request.loading || busy;
+    const combinedRefresh = { done: Boolean(refreshState && refreshState.done && result), loading: Boolean(refreshState && refreshState.loading || request.loading), error: refreshState && refreshState.error || request.error };
     // 刷新开始或失败时 data 会暂时为空，但不能因此把尚未保存的草稿判成 clean。
-    // baseline 只给草稿身份和 dirty guard 用；保存仍由下方 data 门禁只使用最新写入上下文。
+    // baseline 保留草稿身份、dirty guard 和完成态展示；保存仍只使用最新的 data。
     const current = baseline && selected ? baseline.days.find(day => day.date === selected) : null;
     React.useEffect(() => {
       if (current && (!draft || draft.date !== current.date)) { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); }
     }, [current && current.date, current && current.calendar_ref]);
-    const staleDraft = !!current && !!editBase && (current.calendar_ref !== editBase.calendar_ref
+    const staleDraft = !done && !!current && !!editBase && (current.calendar_ref !== editBase.calendar_ref
       || JSON.stringify(O.draftOf(current)) !== JSON.stringify(O.draftOf(editBase)));
     const dirty = !done && mode === 'day' && !!current && !!draft && draft.date === current.date
       && JSON.stringify(draft) !== JSON.stringify({ ...O.draftOf(editBase || current), date: current.date });
@@ -202,9 +205,9 @@
       if (!command.reset()) return;
       command.submit('operator', 'calendar_range_clear', ref, preview.data.write_context, preview.data.range);
     }
-    const saveReason = staleDraft ? '这一天的配置已变化，请先采用最新配置后重新填写。' : capability('calendar_upsert');
-    const clearReason = capability('calendar_delete');
-    const rangeReason = !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。'
+    const saveReason = done ? '' : staleDraft ? '这一天的配置已变化，请先采用最新配置后重新填写。' : capability('calendar_upsert');
+    const clearReason = done ? '' : capability('calendar_delete');
+    const rangeReason = done ? '' : !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。'
       : capability('calendar_range_clear');
     return <div className="plana resource-calendar wb-operator-calendar">
       <Modal title={(entity.business_code || '') + ' · ' + window.WorkbenchTerms.personal_calendar} icon="calendar-days" onClose={close} guardOwner={owner} locked={command.locked}
@@ -241,15 +244,18 @@
                 onClick={() => openDay(cell)}><span className="d">{cell.day}</span>
                 <span className="tag" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{meta.text}</span></button>;
             })}</div>}
-          {data && mode === 'day' && current && draft && <DayEditor day={current} draft={draft} setDraft={setDraft}
+          {editorData && mode === 'day' && current && draft && <DayEditor day={current} draft={draft} setDraft={setDraft}
             disabled={disabled} error={error} onSave={save} onClear={clearDay} saveReason={saveReason} clearReason={clearReason}
-            clearing={clearing && current.explicit} onClearing={value => { setClearing(value); setError(null); }} />}
-          {data && mode === 'day' && !current && <p role="status">点一天开始维护。</p>}
-          {data && mode === 'range' && <RangeClear range={range} setRange={next => { setRange(next); setPreview(null); }} disabled={disabled} error={error}
+            clearing={clearing && (current.explicit || done)} onClearing={value => { setClearing(value); setError(null); }} />}
+          {editorData && mode === 'day' && !current && <p role="status">点一天开始维护。</p>}
+          {editorData && mode === 'range' && <RangeClear range={range} setRange={next => { setRange(next); setPreview(null); }} disabled={disabled} error={error}
             preview={preview} onPreview={previewRange} onConfirm={confirmRange} reason={rangeReason} busy={busy} />}
           <ErrorBox error={error} /><Feedback command={command} />
-          {staleDraft && !done && <div role="status"><p>这一天已被修改，旧草稿不会覆盖最新配置。采用最新配置会放弃本次未保存的内容。</p><Button disabled={command.locked || request.loading} onClick={() => { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); setError(null); command.reset(); }}>采用最新配置并重新填写</Button></div>}
-          {done && <RefreshResult state={refreshState} onRefresh={onRefresh} />}
+          {staleDraft && <div role="status"><p>这一天已被修改，旧草稿不会覆盖最新配置。采用最新配置会放弃本次未保存的内容。</p><Button disabled={command.locked || request.loading} onClick={() => { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); setError(null); command.reset(); }}>采用最新配置并重新填写</Button></div>}
+          {done && <RefreshResult state={combinedRefresh} onRefresh={() => {
+            if (refreshState && refreshState.error && onRefresh) onRefresh();
+            if (request.error) request.reload();
+          }} />}
         </div></Modal></div>;
   }
   window.OperatorCalendarPanel = OperatorCalendarPanel;

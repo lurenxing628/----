@@ -19,18 +19,24 @@ from .process_action_context import EXPORT_SCOPE
 from .process_collections import collection_scope
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot, resolve_read_snapshot
-from .resource_action_context import read_endpoint, resolve_context, retain_context
-from .resource_file_exports import _response
+from .resource_action_context import (
+    file_response,
+    read_endpoint,
+    resolve_context,
+    retain_context,
+)
 
 
 def _query_scope(body):
-    scope = body["scope"]
-    _, query_scope = collection_scope(scope, body["page_size"])
+    scope, query_scope = collection_scope(body["scope"], body["page_size"])
+    if "direction" in scope:
+        scope = {"query": scope["query"], "stage": scope["stage"],
+                 "sort": [{"field": scope["sort"], "direction": scope["direction"]}]}
     if "target_ref" in body:
-        if scope:
+        if body["scope"]:
             raise WorkbenchCommandRejected("invalid_input", "当前详情导出不需要其他筛选条件，没有开始下载。请直接点「导出」。", 400)
         query_scope = {"kind": "part", "entity_ref": body["target_ref"]}
-    return query_scope
+    return scope, query_scope
 
 
 @read_endpoint
@@ -40,21 +46,18 @@ def process_file_export_preview(kind):
     required = {"format", "selection", "scope", "snapshot_ref", "page_size"}
     if not required <= set(body) or set(body) - required - {"refs", "target_ref"}:
         raise WorkbenchCommandRejected("invalid_input", "导出范围不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
-    if ("refs" in body) != (body["selection"] == "explicit"):
-        raise WorkbenchCommandRejected("invalid_input", "只有导出选中项时才能带选中的零件，没有开始下载。请先勾选零件，或改成导出当前筛选。", 400)
     check_format(body["format"])
     token = opaque_ref(body["snapshot_ref"], "snapshot_ref")
-    query_scope = _query_scope(body)
+    scope, query_scope = _query_scope(body)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as state:
         read_binding = resolve_read_snapshot(token)
         snapshot = bind_read_snapshot(query_scope, state, token, binding=read_binding)
-        parts, scope = select_export_parts(reader, selection=body["selection"], scope=body["scope"],
-                                          refs=body.get("refs"), target_ref=body.get("target_ref"))
+        parts, scope = select_export_parts(reader, body, scope=scope)
         facts = reader.facts()
     # 读事务已结束：逐格试算导出只用读快照里的工艺资料。
     count = count_process_export_rows(kind, parts, facts, body["format"])
-    document = {"kind": kind, "body": body, "query_scope": query_scope,
+    document = {"kind": kind, "body": body, "query_scope": query_scope, "scope": scope,
                 "row_count": count, "part_count": len(parts)}
     ref, expiry = retain_context(EXPORT_SCOPE, document, read_binding,
                                  key=(kind, read_binding.scope, token, content_text(body)))
@@ -79,14 +82,13 @@ def process_file_export(kind):
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(saved["query_scope"], state, body["snapshot_ref"], binding=read_binding)
-        parts, _ = select_export_parts(reader, selection=body["selection"], scope=body["scope"],
-                                      refs=body.get("refs"), target_ref=body.get("target_ref"))
+        parts, _ = select_export_parts(reader, body, scope=saved["scope"])
         facts = reader.facts()
     # 读事务已结束：文件只用读快照里的工艺资料生成，编码再久也不挡别人提交写入。
     download = encode_process_file(kind, process_export_rows(kind, parts, facts), body["format"])
     if download.row_count != saved["row_count"] or len(parts) != saved["part_count"]:
         raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的记录条数有变化，一行都没有下载。请点「重新预检」。")
-    response = _response(download)
+    response = file_response(download)
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     return response
@@ -96,4 +98,4 @@ def process_file_export(kind):
 def process_file_template(kind):
     file_columns(kind)
     _args({"format"})
-    return _response(encode_process_file(kind, [], request.args["format"], template=True))
+    return file_response(encode_process_file(kind, [], request.args["format"], template=True))

@@ -14,7 +14,7 @@
     if (command.phase === 'done') { try { saved = A.receipt(command.result, command.intent, !create && !recovery ? original.refs : undefined); } catch (failure) { receiptError = failure; } }
     const visible = receiptError ? { ...command, phase: 'pending', locked: true, error: receiptError } : command;
     const done = !!saved, dirty = !done && Object.values(draft).some(value => value !== ''), locked = visible.locked || opening || reading;
-    const preview = S.useQuery(async signal => A.deletePreview(await adapter.bulkPreview(A.deleteBody(original), signal), original), [adapter, job], !!job);
+    const preview = S.useQuery(async signal => A.deletePreview(await adapter.bulkPreview(job.body, signal), original), [adapter, job], !!job);
     const result = preview.result, data = result && result.data;
     React.useEffect(() => () => { if (controller.current) controller.current.abort(); }, []);
     window.WorkbenchGuards.useDirtyGuard({ dirty, locked: visible.locked,
@@ -37,7 +37,7 @@
     function preflight() {
       if (disabled || locked || done || recovery || !command.reset()) return;
       setError(null); setAck(false);
-      try { if (typeof adapter.bulkPreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.bulkPreview'); A.deleteBody(original); setJob({}); setNow(Date.now()); }
+      try { if (typeof adapter.bulkPreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.bulkPreview'); const body = A.deleteBody(original); setJob({ body }); setNow(Date.now()); }
       catch (failure) { setError(failure); }
     }
     async function readCurrent() {

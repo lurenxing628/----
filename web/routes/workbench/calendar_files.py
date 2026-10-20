@@ -113,13 +113,13 @@ def calendar_export_preview(kind):
     provided = opaque_ref(body["snapshot_ref"], "snapshot_ref") if body.get("snapshot_ref") else None
     service = _service(kind)
     with TransactionManager(g.db).transaction():
-        fingerprint = service.range_snapshot(start_date, end_date, **extra)
+        fingerprint, rows = service._states_and_rows(start_date, end_date, **extra)
         query_scope = {"kind": kind, "start_date": start_date, "end_date": end_date, **extra}
         read_binding = resolve_read_snapshot(provided) if provided is not None else None
         snapshot = bind_read_snapshot(query_scope, fingerprint, provided, binding=read_binding)
         if read_binding is None:
             read_binding = resolve_read_snapshot(snapshot["snapshot_ref"])
-        arguments, count = service.preview_export(start_date=start_date, end_date=end_date, **extra)
+        arguments, count = service.preview_export(start_date=start_date, end_date=end_date, rows=rows, **extra)
         document = {"kind": kind, "query_scope": query_scope,
                     "snapshot_ref": snapshot["snapshot_ref"], "arguments": arguments}
         ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
@@ -138,9 +138,9 @@ def calendar_export(kind):
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
     service = _service(kind)
     with TransactionManager(g.db).transaction():
-        fingerprint = service.range_snapshot(**binding["arguments"])
+        fingerprint, rows = service._states_and_rows(**binding["arguments"])
         snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
-        download = service.export(fmt, **binding["arguments"])
+    download = service.export(fmt, rows=rows)
     response = file_response(download)
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]

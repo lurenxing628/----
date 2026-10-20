@@ -14,7 +14,7 @@ from data.repositories.workbench_identity_repo import WorkbenchIdentityRepositor
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 from .projection import capabilities, project_group, project_operation, project_part, public_sequence
-from .route_choices import preview_existing_route
+from .route_choices import changed_route_sequences, preview_existing_route, route_choice_context
 
 _PLAIN_SCALARS = frozenset((str, int, bool, type(None)))
 
@@ -145,37 +145,37 @@ class WorkbenchProcessQueryService:
     def detail(self, ref):
         if ref in self._details:
             return self._details[ref]
-        identity = self.resolve(ref)
+        return self.resolved_detail(self.resolve(ref))
+
+    def resolved_detail(self, identity):
         facts = self.facts()
         row = next((row for row in facts["parts"] if row["ref"] == identity.ref), None)
         if row is None:
             raise WorkbenchCommandRejected("storage_failure", "零件编号和实际模板对不上。请刷新重试；仍不行请联系维护人员。", 500)
         operations = [row for row in facts["operations"] if row["part_no"] == identity.entity_key]
         workflow = facts["workflow"][identity.entity_key]
+        part_groups = [row for row in facts["groups"] if row["part_no"] == identity.entity_key]
+        return self._project_detail(identity, row, operations, part_groups, workflow, facts["operations"])
+
+    def _project_detail(self, identity, row, operations, part_groups, workflow, all_operations):
         entity = project_part(row, operations, workflow["workflow"])
+        group_ids = {group["group_id"] for group in part_groups}
         members = defaultdict(list)
-        for operation in facts["operations"]:
-            if operation["status"] == "active" and operation["ext_group_id"] is not None:
-                members[operation["ext_group_id"]].append(operation)
-        groups = {row["group_id"]: project_group(row, members[row["group_id"]])
-                  for row in facts["groups"] if row["part_no"] == identity.entity_key}
+        if group_ids:
+            for operation in all_operations:
+                if operation["status"] == "active" and operation["ext_group_id"] in group_ids:
+                    members[operation["ext_group_id"]].append(operation)
+        groups = {group["group_id"]: project_group(group, members[group["group_id"]]) for group in part_groups}
         missing = {key: {"state": "unconfirmed", "confirmed_at": None, "confirmed_by": None} for key in ("source", "hours")}
         entity.update({"operations": [project_operation(row, workflow["operations"].get(row["ref"], missing),
                                                        groups.get(row["ext_group_id"])) for row in operations],
                        "external_groups": list(groups.values()),
                        "capabilities": capabilities()})
         if self._facts is not None:
-            self._details[ref] = entity
+            self._details[identity.ref] = entity
         return entity
 
-    def route_difference(self, ref, preview):
-        entity = self.detail(ref)
-        from .route_choices import route_choice_context
-
-        operations = [row for row in self.facts()["operations"] if row["part_no"] == entity["business_code"]]
-        if not preview.get("_choices_projected"):
-            preview = preview_existing_route(self.conn, preview, operations,
-                                             route_choice_context(self.conn, operations, self.facts()))
+    def route_difference(self, ref, preview, entity):
         active = [row for row in entity["operations"] if row["status"] == "active"]
         changes, invalid = _route_changes(active, preview["operations"])
         result = {**preview, "part_ref": ref, "baseline": {"operation_count": len(active),
@@ -195,22 +195,23 @@ class WorkbenchProcessQueryService:
     def prepare_route(self, ref, body):
         """Parse and prepare the current route once, then project its review."""
         from .part_actions_facts import checked_process_facts
-        from .route_apply import affected_group_rows, prepare_route
+        from .route_apply import affected_group_rows
         from .route_preview import ProcessRoutePreviewService
 
         facts = self.facts()
         checked = checked_process_facts(self.resolve(ref), facts)
-        _, _, operations, groups, _ = checked
+        identity, part, operations, groups, _ = checked
         parser = ProcessRoutePreviewService(self.conn, facts=facts)
         with parser.reference_snapshot():
             preview = parser.preview(body)
         # Invalid routes are still useful review results; preparation must not
         # reject them before the complete diagnostics reach the page.
-        from .route_choices import route_choice_context
-        preview = preview_existing_route(self.conn, preview, operations,
-                                         route_choice_context(self.conn, operations, facts))
+        changed = changed_route_sequences({row["seq"]: row for row in operations}, preview["operations"])
+        preview = preview_existing_route(preview, operations, route_choice_context(self.conn, operations, facts),
+                                         changed=changed)
         affected = []
         if preview["can_confirm_route"]:
-            preview, sequences = prepare_route(self.conn, None, {"route": body}, operations, facts=facts, preview=preview)
-            affected = affected_group_rows(groups, operations, sequences)
-        return self.route_difference(ref, preview), checked, affected
+            affected = affected_group_rows(groups, operations, changed)
+        entity = self._project_detail(identity, part, operations, groups, facts["workflow"][identity.entity_key],
+                                      facts["operations"])
+        return self.route_difference(ref, preview, entity), checked, affected

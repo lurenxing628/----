@@ -2,6 +2,7 @@
 
 from flask import current_app, g, request
 
+from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_downtime import normalize_downtime
 from core.services.workbench.commands import WorkbenchCommandService
@@ -21,7 +22,7 @@ def machine_downtimes(ref):
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "停机记录不接受额外查询条件，请重新打开设备详情。", 400)
     service = WorkbenchDowntimeService(g.db, current_app.logger)
-    with service.reader.read_snapshot(capture_fingerprint=False):
+    with TransactionManager(g.db).transaction():
         state = service.snapshot(ref)
         data = {"entity_ref": ref, **service.public(state), "write_context": issue_write_context(ref, ACTIONS, state)}
         snapshot = bind_read_snapshot({"kind": "machine_downtimes", "ref": ref}, state)
@@ -44,7 +45,7 @@ def machine_downtime_command(ref, action):
 
     return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=name, context_ref=ref, normalized_input=payload,
-        guard=guard, mutate=lambda state: service.apply(ref, action, payload, state)))
+        guard=guard, mutate=lambda state: service.apply_normalized(ref, action, payload, state)))
 
 
 def register_downtime_routes(bp):

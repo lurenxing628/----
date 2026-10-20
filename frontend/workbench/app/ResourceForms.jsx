@@ -106,7 +106,7 @@
         const inputDraft = adjustingStock ? C.draft(kind, entity, category) : draft;
         if (adjustingStock) inputDraft.fields.stock_qty = draft.fields.stock_qty;
         const input = action === 'delete' ? {} : C.input(kind, inputDraft, entity, category);
-        setError(null); await command.submit(kind, action, entity ? entity.ref : null, writeContext, input, draft.fields.category);
+        setError(null); await command.submit(kind, action, entity ? entity.ref : null, writeContext, input, category);
       } catch (failure) { setError(failure); }
     }
     async function catalog(field, reload) {

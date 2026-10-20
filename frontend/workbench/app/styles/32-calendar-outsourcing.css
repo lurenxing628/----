@@ -71,9 +71,9 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-toolbar .field { min-width:130px; }
 /* 工具栏里的选择框走 32px 标准档（.field 内默认是 36px 编辑档，改高度变量才能连 min-height 一起降下来，与旁边的搜索框同高）。 */
 .resource-catalog .rc-toolbar .field select { --wb-field-height: var(--wb-control-height); }
-.resource-catalog table.tbl { min-width:0; width:100%; table-layout:fixed; }
+.resource-catalog table.tbl { width:100%; table-layout:fixed; }
 .resource-catalog .rc-list th:first-child { width:40%; }
-.resource-catalog .rc-list th:last-child { width:112px; }
+.resource-catalog .rc-list th:last-child { width:144px; }
 .resource-catalog .rc-wrap { overflow-wrap:anywhere; }
 .resource-catalog .rc-error { color:var(--ui-danger-text); }
 .resource-catalog .rc-pattern { margin-top:20px; border-top:1px solid var(--ui-border); padding-top:14px; }
@@ -87,7 +87,8 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-note { display:block; margin-top:var(--space-3); }
 .resource-catalog .rc-facts { overflow-wrap:anywhere; }
 .resource-catalog .rc-list td, .resource-catalog .rc-pattern-table td { vertical-align:middle; }
-.resource-catalog .rc-list .rowact { gap:var(--space-2); }
+.resource-catalog .rc-list .rowact { align-items:center; flex-wrap:nowrap; gap:var(--space-2); }
+.resource-catalog .rc-list .rowact > .wb-button-host { flex:none; }
 .resource-catalog .rc-list .mini { flex:none; }
 .resource-catalog .rc-list .mini svg { width:18px; height:18px; flex:none; }
 .resource-catalog .rc-pattern-table td { padding:var(--space-2) 6px; }

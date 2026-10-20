@@ -205,7 +205,7 @@
       setDialog({ ...history.pop(), history }); setContextError(null); setEditContext(null); setContextReview(null);
     }
     function edit(action, stockOnly = false) {
-      setDialog(current => ({ ...current, action, stockOnly, category: detail.result.data.fields.category }));
+      setDialog(current => ({ ...current, action, stockOnly }));
     }
     function close() { if (!command.locked && !contextBusy && command.reset()) { setDialog(null); setEditContext(null); setContextReview(null); refreshGeneration.current++; } }
     function continueNavigation() {
@@ -225,7 +225,6 @@
         if (!command.reset()) return;
         setEditContext({ context: dialog.ref ? result.data.write_context : result.data.create_context,
           source: result.meta.source, entity: dialog.ref ? result.data : null });
-        if (dialog.ref && dialog.kind === 'op_type') setDialog(current => ({ ...current, category: result.data.fields.category }));
         setContextReview(result);
       } catch (error) { setContextError(error); }
       finally { setContextBusy(false); }
@@ -240,7 +239,6 @@
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
         const sameView = config && config.kind === intent.kind && (intent.kind !== 'op_type' || config.category === intent.category);
         const readScope = { ...(sameView ? effectiveScope : scopeFor(intentNode)), snapshot_ref: undefined };
-        if (intent.kind === 'op_type') { delete readScope.status; readScope.category = intent.category; }
         let refreshedList;
         if (sameView) {
           setRequestScope(readScope);
@@ -296,7 +294,7 @@
           <div className="chead wb-page-heading"><h2>{config.label}{node === 'material' ? ' · 基础资料' : ''}</h2></div></>}
           <ErrorBox error={external.error} />{external.busy && <p role="status">正在打开维护向导…</p>}
           {external.result && <Forms.Feedback command={{ phase: 'done', result: external.result }} action={external.action} />}
-          {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
+          {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, externalRevision, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
             <window.ResourceMetrics node={node} data={data} />
             {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && <> · <span>含非当前页记录</span></>}</p>}
             <Toolbar config={config} scope={effectiveScope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
@@ -318,7 +316,7 @@
         command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
       {editorReady && dialog.action === 'downtimes' && <window.MachineDowntimePanel adapter={adapter} entity={editorEntity} source={detail.result.meta.source} onClose={close} onCommitted={refresh} />}
       {editorReady && dialog.action === 'operator_calendar' && <window.OperatorCalendarPanel adapter={adapter} entity={editorEntity} source={detail.result.meta.source}
-        command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} Feedback={Forms.Feedback} />}
+        command={command} onClose={close} refreshState={refreshState} onRefresh={readAfterCommand} externalRevision={externalRevision} Feedback={Forms.Feedback} />}
       {editorReady && !['view', 'machine_permissions', 'operator_calendar', 'downtimes'].includes(dialog.action) && <><Forms key={dialog.kind + ':' + (dialog.ref || 'create') + ':' + dialog.action} adapter={adapter} kind={dialog.kind} action={dialog.action} entity={editorEntity} category={dialog.category} stockOnly={!!dialog.stockOnly}
         acceptedEntity={editContext && editContext.entity}
         writeContext={editContext ? editContext.context : editorEntity ? editorEntity.write_context : dialog.createContext} source={editContext ? editContext.source : editorEntity ? detail.result.meta.source : dialog.source}

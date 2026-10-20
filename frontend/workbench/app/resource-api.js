@@ -53,7 +53,7 @@
       && typeof payload.receipt_ref === 'string' && !!payload.receipt_ref && typeof payload.replayed === 'boolean'
       && object(payload.data) && Array.isArray(payload.warnings);
   }
-  async function send(url, { method = 'GET', body, signal, readOnly = false, binary = false } = {}) {
+  async function send(url, { method = 'GET', body, signal, readOnly = false, binary = false, timeout = 20000 } = {}) {
     const target = new URL(url, location.href);
     if (target.origin !== location.origin || !target.pathname.startsWith(prefix)) throw problem('数据地址不属于本机工作台。', false);
     const writing = method !== 'GET' && !readOnly;
@@ -69,7 +69,7 @@
     let timedOut = false;
     const abort = () => controller.abort();
     if (signal) signal.addEventListener('abort', abort, { once: true });
-    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 20000);
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeout);
     try {
       const response = await fetch(target.href, { method, body: payload, headers, signal: controller.signal,
         credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
@@ -199,7 +199,7 @@
         if (terminal(result) || result && result.ok === true && result.state === 'not_recorded' && result.receipt === null && result.may_be_in_flight === true) return result;
         throw problem('上次操作的结果还没确认，请保留当前页面并点「查询结果」。', 'unknown');
       },
-      download(path, scope, signal) { return send(queryPath(path, scope), { signal, binary: true }); },
+      download(path, scope, signal, options = {}) { return send(queryPath(path, scope), { ...options, signal, binary: true }); },
       readPending() {
         try {
           const raw = sessionStorage.getItem(pendingKey);

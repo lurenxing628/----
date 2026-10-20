@@ -10,27 +10,21 @@ from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.part_repo import PartRepository
 
-from .route_choices import preview_existing_route
+from .route_choices import changed_route_sequences, preview_existing_route
 from .route_preview import ProcessRoutePreviewService
 
 
-def prepare_route(conn, logger, payload, operations, *, facts=None, preview=None):
-    if preview is None:
-        parser = ProcessRoutePreviewService(conn, logger, facts=facts)
-        with parser.reference_snapshot() if conn.in_transaction else nullcontext():
-            preview = parser.preview(payload["route"])
+def prepare_route(conn, logger, payload, operations, *, facts=None):
+    parser = ProcessRoutePreviewService(conn, logger, facts=facts)
+    with parser.reference_snapshot() if conn.in_transaction else nullcontext():
+        preview = parser.preview(payload["route"])
     from .route_choices import route_choice_context
 
-    if not preview.get("_choices_projected"):
-        context = route_choice_context(conn, operations, facts) if operations else None
-        preview = preview_existing_route(conn, preview, operations, context)
+    changed = changed_route_sequences({row["seq"]: row for row in operations}, preview["operations"])
+    context = route_choice_context(conn, operations, facts) if operations else None
+    preview = preview_existing_route(preview, operations, context, changed=changed)
     if not preview["can_confirm_route"]:
         raise WorkbenchCommandRejected("route_invalid", "路线预检未通过，请核对完整诊断后重新确认。", 422)
-    existing = {row["seq"]: row for row in operations}
-    incoming = {row["sequence"]: row for row in preview["operations"]}
-    changed = {seq for seq, row in existing.items() if row["status"] == "active" and
-               (seq not in incoming or row["op_type_name"] != incoming[seq]["op_type_name"])}
-    changed.update(seq for seq in incoming if seq not in existing or existing[seq]["status"] != "active")
     return preview, changed
 
 

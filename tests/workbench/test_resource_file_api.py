@@ -199,3 +199,46 @@ def test_resource_export_shares_captured_facts_for_preview_and_csv(client, monke
     assert int(result.headers["X-Workbench-Row-Count"]) == approved.get_json()["data"]["row_count"] == len(expected)
     assert {key: data[0][key] for key in ("名称", "自制工种编号", "设备组编号", "可做工种编号")} == {
         "名称": "Lathe", "自制工种编号": "EXPORT-T1", "设备组编号": "EXPORT-G1", "可做工种编号": "EXPORT-T1、EXPORT-T2"}
+
+
+@pytest.mark.parametrize("kind", ("machine", "operator", "supplier"))
+def test_resource_status_instructions_match_new_and_existing_row_rules(client, kind):
+    from core.models.workbench_resource_file import REQUIRED, table_descriptor
+
+    status = next(column for column in table_descriptor(kind)["columns"] if column["key"] == "status")
+    assert REQUIRED[kind] == ("business_code",) and status["required"] is False
+    assert status["value_hint"] == "只填固定状态值；新增时必须填，已有的留空保持原样"
+    assert status["error_hint"] == "新增时留空，或填了固定状态值以外的文字"
+    missing = upload(client, kind, [("T20-NEW", "New resource", "")])
+    assert missing.status_code == 200, missing.get_json()
+    rejected = missing.get_json()["data"]
+    assert rejected["can_confirm"] is False
+    assert any(error["field"] == "status" and "新增" in error["message"] for error in rejected["rows"][0]["errors"])
+    assert command(client, kind, new_preview(client, kind)).status_code == 200
+    unchanged_status = upload(client, kind, [("R1", "Renamed resource", "")])
+    assert unchanged_status.status_code == 200, unchanged_status.get_json()
+    row = unchanged_status.get_json()["data"]["rows"][0]
+    assert row["errors"] == [] and row["before"]["status"] == row["after"]["status"] == "active"
+
+
+@pytest.mark.parametrize("kind,label,other_label", (("machine", "可做工种编号", "外协工种编号"),
+                                                   ("supplier", "外协工种编号", "可做工种编号")))
+def test_resource_work_type_errors_use_the_same_kind_specific_column_label(client, kind, label, other_label):
+    from core.models.workbench_resource_file import column_label, public_columns
+
+    assert column_label(kind, "op_type_codes") == label
+    assert next(column["label"] for column in public_columns(kind) if column["key"] == "op_type_codes") == label
+    assert column_label("operator", "shift_profile_code") == "班次编号"
+    assert column_label("machine", "remark") == "备注（只读）"
+    headers = ["business_code", "label", "status", "op_type_codes"]
+    values = ["T20-MISSING", "Missing work type", "active", "T20-UNKNOWN-TYPE"]
+    if kind == "supplier":
+        headers.append("default_days")
+        values.append("2.5")
+    response = upload(client, kind, [values], headers=headers)
+    assert response.status_code == 200, response.get_json()
+    data = response.get_json()["data"]
+    assert data["can_confirm"] is False
+    error, = data["rows"][0]["errors"]
+    assert error["field"] == "op_type_codes"
+    assert label in error["message"] and other_label not in error["message"]

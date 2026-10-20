@@ -9,7 +9,6 @@ Each new intent records a confirmation, including unchanged-value reconfirmation
 """
 
 from datetime import datetime
-from types import MappingProxyType
 
 from flask import g, request
 
@@ -60,7 +59,7 @@ def _snapshot_time(token, scope):
         return datetime.now().replace(microsecond=0), None
     try:
         saved = resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")
-        if saved["scope"] != content_text(scope):
+        if saved["scope"] != scope:
             raise ValueError("scope changed")
         return factory_time(saved["as_of"]), saved
     except (ValidationError, ValueError, TypeError, KeyError) as exc:
@@ -89,9 +88,9 @@ def _read(kind, ref=None):
         if saved is not None and saved["content"] != facts:
             reject("外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。", "snapshot_stale", 409)
         if token is None:
-            scope_value, stamp = content_text(scope), now.isoformat(timespec="seconds")
-            token = issue_public_token(_SCOPE, MappingProxyType({"scope": scope_value, "content": facts, "as_of": stamp}),
-                                       key=(scope_value, stamp), group=facts, ttl_seconds=900)
+            stamp = now.isoformat(timespec="seconds")
+            token = issue_public_token(_SCOPE, {"scope": scope, "content": facts, "as_of": stamp},
+                                       key=(content_text(scope), stamp), group=facts, ttl_seconds=900)
     response = query_success(data, {"snapshot_ref": token, "as_of": now.isoformat(timespec="seconds")}, byte_limit=MAX_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response

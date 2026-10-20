@@ -1,11 +1,14 @@
 """Process review and atomic stage confirmations using the shared receipt protocol."""
 
+from collections import defaultdict
+
 from flask import current_app, g
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.process.projection import project_group
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import failure, json_response, query_success
 
@@ -40,17 +43,28 @@ def process_stage_preview(ref):
         normalized = domain.normalize(body["action"], body["input"])
         reader = WorkbenchProcessQueryService(g.db, current_app.logger)
         with reader.read_snapshot() as state:
-            entity = reader.detail(ref)
+            identity = reader.resolve(ref)
             bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, body["snapshot_ref"])
-            if entity["workflow"]["route"]["state"] != "confirmed":
+            checked = domain.checked_facts(identity, reader.facts())
+            _, _, operations, groups, workflow = checked
+            if workflow["route"]["state"] != "confirmed":
                 raise WorkbenchCommandRejected("stage_locked", "工艺路线还没有确认，归属没有保存。请先点「确认保存路线」，再点「保存归属并继续」。")
             action = body["action"]
-            checked = domain.checked_facts(reader.resolve(ref), reader.facts())
             prepared = domain.prepare_review(action, normalized, checked, facts=reader.facts())
             affected = {row["ref"] for row in prepared.affected} if action == "source_confirm" else set()
+            if action == "source_confirm" and affected:
+                group_ids = {row["group_id"] for row in groups if row["ref"] in affected}
+                members = defaultdict(list)
+                for operation in operations:
+                    if operation["status"] == "active" and operation["ext_group_id"] in group_ids:
+                        members[operation["ext_group_id"]].append(operation)
+                affected_groups = [project_group(row, members[row["group_id"]])
+                                   for row in groups if row["ref"] in affected]
+            else:
+                affected_groups = []
             binding = {"state": state, "input": reviewed_input(action, normalized)}
             data = {"part_ref": ref, "action": action,
-                    "affected_groups": [row for row in entity["external_groups"] if row["ref"] in affected],
+                    "affected_groups": affected_groups,
                     "write_context": issue_write_context(ref, ["process." + action], binding)}
             if action == "groups_confirm":
                 data["changes"] = prepared.auxiliary

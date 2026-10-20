@@ -37,9 +37,9 @@ class WorkbenchSupplierService:
             raise WorkbenchCommandRejected("entity_not_found", "这条供应商记录已失效，请刷新后重新选择。", 404)
         if current != identity:
             raise WorkbenchCommandRejected("stale_write", "供应商资料已更新，请刷新后重新核对。")
-        return self._snapshot_from_current(current)
+        return self.snapshot_current(current)
 
-    def _snapshot_from_current(self, identity):
+    def snapshot_current(self, identity):
         supplier = self._query.get_by_ref(identity.ref)
         if supplier is None:
             raise WorkbenchCommandRejected("entity_not_found", "供应商已不存在，请刷新。", 404)

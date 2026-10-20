@@ -323,7 +323,7 @@
         {options.map(item => <label key={item.ref} className={'fchip wb-choice-option' + (selected.includes(item.ref) ? ' on' : '')}>
           <input type="checkbox" className="wb-choice-check" checked={selected.includes(item.ref)}
             disabled={disabled || (!selected.includes(item.ref) && !selectable(item))} onChange={event => choose(item.ref, event.target.checked)} />
-          {item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</label>)}</div> :
+          <span className="wb-choice-label">{item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</span></label>)}</div> :
         <select id={id} value={value} disabled={disabled} aria-invalid={invalid || undefined} aria-describedby={describedBy} onChange={event => choose(event.target.value)}>
           <option value="">未选</option>{options.map(item => <option key={item.ref} value={item.ref} disabled={!selectable(item) && item.ref !== value}>
             {item.label}{!selectable(item) ? '（停用 / 未确认）' : ''}</option>)}</select>}

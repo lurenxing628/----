@@ -32,8 +32,9 @@ def _service(operator_code):
     return WorkbenchOperatorCalendarService(g.db, operator_code, current_app.logger, clock=calendar_now)
 
 
-def _operator_code(reader, ref):
-    return reader.resolve(ref).entity_key
+def _operator_state(reader, ref):
+    identity = reader.resolve(ref)
+    return identity.entity_key, reader.domain.snapshot_current(identity)
 
 
 def _month_input():
@@ -48,8 +49,8 @@ def _month_input():
     return values
 
 
-def _month_binding(record, month):
-    return {"resource": record.state, "year": month["year"], "month": month["month"],
+def _month_binding(resource_state, month):
+    return {"resource": resource_state, "year": month["year"], "month": month["month"],
             "default_periods": month["default_periods"],
             "days": [{key: day[key] for key in ("date", "row", "identity", "history")} for day in month["days"]]}
 
@@ -59,8 +60,8 @@ def operator_calendar_month(ref):
     values = _month_input()
     reader = _reader()
     with reader.read_snapshot(capture_fingerprint=False):
-        record = reader.detail(ref)
-        service = _service(_operator_code(reader, ref))
+        code, resource_state = _operator_state(reader, ref)
+        service = _service(code)
         month = service.month(**values)
         days = []
         for day in month["days"]:
@@ -71,7 +72,7 @@ def operator_calendar_month(ref):
         data = {key: month[key] for key in ("year", "month", "as_of", "time_basis", "previous_month", "next_month", "stats")}
         data.update(operator_ref=ref, days=days,
                     cells=[by_date[cell["date"]] if cell is not None else None for cell in month["cells"]])
-        binding = _month_binding(record, month)
+        binding = _month_binding(resource_state, month)
         data["write_context"] = issue_write_context(ref, [ACTIONS["upsert"], ACTIONS["delete"], ACTIONS["range_clear"]], binding)
         snapshot = bind_read_snapshot({"kind": "operator_calendar", "ref": ref, **values}, binding,
                                       request.args.get("snapshot_ref"))
@@ -85,33 +86,39 @@ def _command_body(extra=()):
     return body
 
 
-def _guarded_day(ref, action, write_token, service, day):
+def _guarded_day(ref, action, write_token, day):
     """Bind the original month, including calendar revisions and absence history."""
-    record = _reader().detail(ref)
+    code, resource_state = _operator_state(_reader(), ref)
+    service = _service(code)
     month = service.month(int(day[:4]), int(day[5:7]))
-    validate_write_context(write_token, ref, ACTIONS[action], _month_binding(record, month))
+    validate_write_context(write_token, ref, ACTIONS[action], _month_binding(resource_state, month))
     state = next(item for item in month["days"] if item["date"] == day)
-    return {key: state[key] for key in ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history")}
+    checked_state = {key: state[key] for key in ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history")}
+    return service, checked_state
 
 
-def _guarded_range(ref, write_token, service, payload):
-    record = _reader().detail(ref)
+def _guarded_range(ref, write_token, payload):
+    code, resource_state = _operator_state(_reader(), ref)
+    service = _service(code)
     preview = service.preview_range_clear(payload)
-    validate_write_context(write_token, ref, ACTIONS["range_clear"], {"resource": record.state, "preview": preview})
-    return preview
+    validate_write_context(write_token, ref, ACTIONS["range_clear"], {"resource": resource_state, "preview": preview})
+    return service, preview
 
 
 @api_endpoint
 def operator_calendar_command(ref, action):
     body = _command_body()
-    reader = _reader()
-    service = _service(_operator_code(reader, ref))
-    payload = service.normalize(action, body["input"])
+    payload = WorkbenchOperatorCalendarService.normalize(action, body["input"])
+
+    def mutate(checked):
+        service, checked_state = checked
+        return service._apply_checked(action, payload, checked_state)
+
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTIONS[action], context_ref=ref,
         normalized_input={"operator_ref": ref, **payload},
-        guard=lambda: _guarded_day(ref, action, body["write_token"], service, payload["date"]),
-        mutate=lambda checked: service._apply_checked(action, payload, checked))
+        guard=lambda: _guarded_day(ref, action, body["write_token"], payload["date"]),
+        mutate=mutate)
     return json_response(outcome)
 
 
@@ -121,11 +128,12 @@ def operator_calendar_range_preview(ref):
     reader = _reader()
     # 只借 read_snapshot 的读事务；这次的快照要绑这段日期的个人日历内容，不是整份人员列表。
     with reader.read_snapshot(capture_fingerprint=False):
-        service = _service(_operator_code(reader, ref))
+        code, resource_state = _operator_state(reader, ref)
+        service = _service(code)
         preview = service.preview_range_clear(body["input"])
         data = {"operator_ref": ref, "range": preview["request"], "count": preview["count"],
                 "days": [WorkbenchOperatorCalendarService.public_day(day) for day in preview["days"]],
-                "write_context": issue_write_context(ref, [ACTIONS["range_clear"]], {"resource": reader.detail(ref).state, "preview": preview})}
+                "write_context": issue_write_context(ref, [ACTIONS["range_clear"]], {"resource": resource_state, "preview": preview})}
         snapshot = bind_read_snapshot({"kind": "operator_calendar_range", "ref": ref, **preview["request"]},
                                       preview["days"])
     return query_success(data, snapshot)
@@ -134,14 +142,17 @@ def operator_calendar_range_preview(ref):
 @api_endpoint
 def operator_calendar_range_clear(ref):
     body = _command_body()
-    reader = _reader()
-    service = _service(_operator_code(reader, ref))
-    payload = service.normalize("range_clear", body["input"])
+    payload = WorkbenchOperatorCalendarService.normalize("range_clear", body["input"])
+
+    def mutate(checked):
+        service, checked_state = checked
+        return service._apply_checked("range_clear", payload, checked_state)
+
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=ACTIONS["range_clear"], context_ref=ref,
         normalized_input={"operator_ref": ref, **payload},
-        guard=lambda: _guarded_range(ref, body["write_token"], service, payload),
-        mutate=lambda checked: service._apply_checked("range_clear", payload, checked))
+        guard=lambda: _guarded_range(ref, body["write_token"], payload),
+        mutate=mutate)
     return json_response(outcome)
 
 

@@ -43,6 +43,7 @@ class WorkbenchResourceQueryService:
         self._table_facts = None
         self._table_indexes = None
         self._table_identities = None
+        self._identities_by_ref = None
         self._snapshot_scope = None
         if kind == "supplier":
             self.domain = WorkbenchSupplierService(conn, logger=logger)
@@ -55,16 +56,18 @@ class WorkbenchResourceQueryService:
     def read_snapshot(self, *, capture_fingerprint=True):
         with TransactionManager(self.conn).transaction():
             previous = (self._snapshot_metrics, self._table_facts, self._table_indexes,
-                        self._table_identities, self._snapshot_scope)
+                        self._table_identities, self._identities_by_ref, self._snapshot_scope)
             try:
                 self._snapshot_metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
                 self._table_facts, self._table_indexes = None, {}
-                self._table_identities = self._read_identities() if capture_fingerprint else None
+                identities = self._read_identities() if capture_fingerprint else None
+                self._table_identities = identities
+                self._identities_by_ref = None if identities is None else {row["ref"]: row for row in identities}
                 self._snapshot_scope = None
                 yield self.state_fingerprint() if capture_fingerprint else None
             finally:
                 (self._snapshot_metrics, self._table_facts, self._table_indexes,
-                 self._table_identities, self._snapshot_scope) = previous
+                 self._table_identities, self._identities_by_ref, self._snapshot_scope) = previous
 
     def _metrics_reader(self):
         return self._snapshot_metrics or WorkbenchResourceMetricsService(self.conn, self.logger)
@@ -87,6 +90,8 @@ class WorkbenchResourceQueryService:
 
     def preparation(self, *, refs=None, codes=None, selected_refs=(), selected_codes=None, names=None,
                     machine_authorizations=False):
+        if self._table_identities is not None:
+            return ResourceChangePreparation(self._table_reader())
         repo = WorkbenchResourceTableRepository(self.conn, self.logger)
         if refs is not None or codes is not None:
             metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
@@ -95,15 +100,8 @@ class WorkbenchResourceQueryService:
                                          machine_authorizations=machine_authorizations)
             owners = {kind: repo.name_owners(kind, values) for kind, values in (names or {}).items()}
             return ResourceChangePreparation(facts, name_reader=repo.name_owners, names=owners)
-        identities = self._table_identities
-        if identities is None:
-            identities = repo.identities()
-        else:
-            missing = {"op_type", "machine", "operator", "supplier", "machine_group", "shift_profile"} - set(
-                self._metrics_reader().identity_kinds(self.kind))
-            identities = identities + repo.identities(sorted(missing)) if missing else identities
-        facts = ResourceTableFacts(self._metrics_reader(), identities, scope_state=self._snapshot_scope)
-        return ResourceChangePreparation(facts)
+        return ResourceChangePreparation(ResourceTableFacts(self._metrics_reader(), repo.identities(),
+                                                           scope_state=self._snapshot_scope))
 
     def preparation_for(self, action, payload, *, ref=None):
         selected = [ref for value in payload.get("relationships", {}).values()
@@ -137,14 +135,24 @@ class WorkbenchResourceQueryService:
     def resolve(self, ref):
         if type(ref) is not str or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
             raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404)
-        identity = self.identities.get(ref)
-        if identity is None or identity.kind != self.kind or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了。请从列表重新选择。", 404)
-        return identity
+        if self._identities_by_ref is not None:
+            row = self._identities_by_ref.get(ref)
+            if row is not None and row["kind"] == self.kind:
+                return WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], True)
+        else:
+            identity = self.identities.get(ref)
+            if identity is not None and identity.kind == self.kind and identity.active:
+                return identity
+        raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了。请从列表重新选择。", 404)
 
     def detail(self, ref):
         identity = self.resolve(ref)
-        state = self.domain.snapshot(identity)
+        if self._table_identities is not None and self.kind != "supplier":
+            if self.kind == "op_type":
+                return self._op_type_page([{"ref": identity.ref, "business_code": identity.entity_key,
+                                           "revision": identity.revision}], self._metrics_reader())[0]
+            return self._table_page_records([{"business_code": identity.entity_key}])[0]
+        state = self.domain.snapshot_current(identity)
         projection = {}
         if self.kind == "op_type":
             metrics = self._metrics_reader()
@@ -179,7 +187,10 @@ class WorkbenchResourceQueryService:
         for row in rows:
             code = row["business_code"]
             identity = WorkbenchEntityIdentity(row["ref"], "op_type", code, row["revision"], True)
-            state = {"identity": asdict(identity), "record": metrics.records["op_type"][code],
+            record = metrics.records["op_type"].get(code)
+            if record is None:
+                raise WorkbenchCommandRejected("storage_failure", "这条资源的编号和实际记录对不上，操作没有执行。请联系维护人员核对数据。", 500)
+            state = {"identity": asdict(identity), "record": record,
                      "profile": metrics.policies.get(code), "dependencies": dependencies[code]}
             entity = project_resource("op_type", identity, state, availability=metrics.availability(code),
                                       availability_issues=metrics.availability_issues(code))
@@ -190,7 +201,8 @@ class WorkbenchResourceQueryService:
         if self._table_facts is not None:
             return self._table_facts
         identities = self._table_identities if self._table_identities is not None else self._read_identities()
-        facts = ResourceTableFacts(self._metrics_reader(), identities, scope_state=self._snapshot_scope)
+        facts = ResourceTableFacts(self._metrics_reader(), identities, scope_state=self._snapshot_scope,
+                                   identity_kinds=self._metrics_reader().identity_kinds(self.kind))
         if self._table_indexes is not None:
             self._table_facts = facts
         return facts

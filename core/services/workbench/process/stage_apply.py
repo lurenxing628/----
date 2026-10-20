@@ -51,8 +51,8 @@ def source_catalog(conn, logger=None, facts=None):
     return types, suppliers, capabilities
 
 
-def require_supplier(conn, operation, supplier_key, type_key, catalog=None):
-    types, suppliers, capabilities = source_catalog(conn) if catalog is None else catalog
+def require_supplier(operation, supplier_key, type_key, catalog):
+    types, suppliers, capabilities = catalog
     supplier = suppliers.get(supplier_key)
     label = supplier["name"] if supplier else supplier_key
     prefix = "工序 {} 的供应商 {}".format(operation["seq"], label)
@@ -67,9 +67,8 @@ def require_supplier(conn, operation, supplier_key, type_key, catalog=None):
     return supplier
 
 
-def prepare_source(conn, logger, payload, operations, identities, *, catalog=None):
+def prepare_source(payload, operations, identities, *, catalog):
     active = exact_operations(payload, operations)
-    catalog = source_catalog(conn, logger) if catalog is None else catalog
     types = catalog[0]
     changes, affected, cache = [], set(), {}
     for row in payload["operations"]:
@@ -80,7 +79,7 @@ def prepare_source(conn, logger, payload, operations, identities, *, catalog=Non
         supplier_key = None
         if row["source"] == "external":
             supplier_key = _related(identities, row["supplier_ref"], "supplier", cache)
-            require_supplier(conn, old, supplier_key, type_key, catalog)
+            require_supplier(old, supplier_key, type_key, catalog)
         values = (row["source"], type_key, supplier_key)
         if values != (old["source"], old["op_type_id"], old["supplier_id"]):
             changes.append(values + (old["id"],))

@@ -54,10 +54,8 @@ class WorkbenchOutsourcingCommandService:
 
     def execute(self, payload, *, request_key, validate_context):
         normalized = normalize_input(payload)
-        subject = (normalized["outsourcing_ref"] if "outsourcing_ref" in normalized
-                   else cast(dict, normalized["target"])["batch_ref"])
-        if type(subject) is not str:
-            raise RuntimeError("Validated outsourcing subject must be a permanent text reference")
+        subject = cast(str, normalized["outsourcing_ref"] if "outsourcing_ref" in normalized
+                       else cast(dict, normalized["target"])["batch_ref"])
 
         def guard():
             self.reader.require_schema()

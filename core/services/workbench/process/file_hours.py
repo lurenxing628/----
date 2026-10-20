@@ -11,33 +11,25 @@ from core.services.process.template_hours import ProcessTemplateHours
 from data.repositories.workbench_process_hours_repo import WorkbenchProcessHoursRepository
 
 from .file_hours_preview import HoursFilePreview
-from .zero_hours import require_zero_confirmation
 
 
 class ProcessHoursFileOperations:
     def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
         self.repo = WorkbenchProcessHoursRepository(conn, logger)
-        self.facts = None
+        self.facts = {}
 
     def preview_rows(self, decoded_rows, facts, target_ref=None):
         self.facts = facts
         rows, extra = HoursFilePreview(facts, target_ref).build(decoded_rows)
-        extra["zero_review_required"] = any(row["requires_confirmation"] for row in rows)
         return rows, extra
 
     def apply_rows(self, rows, *, discard_group_refs, confirm_zero_unit_hours):
         if not self.conn.in_transaction:
             raise RuntimeError("工时文件写入必须在外层 BEGIN IMMEDIATE 事务中执行。")
         with TransactionManager(self.conn).transaction():
-            self._check_rows(rows, discard_group_refs, confirm_zero_unit_hours)
             hours = ProcessTemplateHours(self.conn)
-            current = (hours.current([row["expected"]["operation_ref"] for row in rows]) if self.facts is None else
-                       {row["ref"]: row for row in self.facts["operations"]})
-            self._check_current(rows, current)
-            require_zero_confirmation(self.conn, [(current[row["expected"]["operation_ref"]], row["after"])
-                                                 for row in rows], confirm_zero_unit_hours,
-                                      states={code: value["operations"] for code, value in self.facts["workflow"].items()} if self.facts else None)
+            current = {row["ref"]: row for row in self.facts["operations"]}
             groups = self._group_updates(rows)
             results, affected = [], set()
             for row in rows:
@@ -49,26 +41,6 @@ class ProcessHoursFileOperations:
             for group, total in groups.values():
                 self._group_update(group, total)
             return results, sorted(affected)
-
-    @staticmethod
-    def _check_rows(rows, discarded, zero_ack):
-        if type(discarded) is not list or discarded:
-            raise WorkbenchCommandRejected("group_discard_mismatch", "工时导入不会解除外协组，请不要提交要解除的外协组。", 422)
-        if type(zero_ack) is not bool:
-            raise WorkbenchCommandRejected("invalid_input", "必须明确提供是否已复核零工时。", 422)
-        if any(row["errors"] or row["result"] not in ("update", "unchanged") or row["input"] is None for row in rows):
-            raise WorkbenchCommandRejected("constraint_conflict", "预检里有被拒绝的行，这批一条都没写入。请改好文件后重新预检。", 422)
-        refs = [row["expected"]["operation_ref"] for row in rows]
-        if len(refs) != len(set(refs)):
-            raise WorkbenchCommandRejected("duplicate_entry", "这批里有重复工序，一条都没写入。请合并重复行后重新导入。", 422)
-
-    @staticmethod
-    def _check_current(rows, current):
-        for row in rows:
-            old = row["expected"]["operation"]
-            live = current[row["expected"]["operation_ref"]]
-            if any(old[key] != live[key] for key in ("id", "part_no", "seq", "revision")):
-                raise WorkbenchCommandRejected("stale_write", "预检时的工序已经变了，这批没有写入。请重新预检。")
 
     @staticmethod
     def _group_updates(rows):

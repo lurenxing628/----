@@ -40,17 +40,24 @@ class WorkbenchResourceFileService:
         self.tx = TransactionManager(conn)
 
     def prepare_import(self, content, *, file_format, scope, mode="upsert"):
+        return self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)[0]
+
+    def _prepare_source(self, content, *, file_format, scope, mode):
         request = import_request(self.kind, content, file_format, mode, scope)
         source, notices = read_resource_file(self.kind, content, file_format)
-        return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
+        prepared = PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
+        request["actual_source_ref"] = prepared.source_ref
+        return prepared, request
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
         return self._prepare_import(content, file_format=file_format, scope=scope, mode=mode)[0]
 
     def _prepare_import(self, content, *, file_format, scope, mode="upsert"):
-        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
-            content, file_format=file_format, scope=scope, mode=mode)
-        request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
+        if isinstance(content, PreparedImportSource):
+            prepared = content
+            request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
+        else:
+            prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
         source, notices = prepared.parsed()
         with self.tx.transaction():
             codes = sorted({item["values"]["business_code"].strip() for item in source
@@ -190,7 +197,8 @@ class WorkbenchResourceFileService:
         preparation = self.reader.preparation()
         if selected_refs is None:
             query = ResourcePageRequest(kind=self.kind, **scope)
-            index = preparation.facts.index(query, self.reader.repo.toolbar_keys(query))
+            index = (self.reader.table_index(query) if self.reader._table_indexes is not None else
+                     preparation.facts.index(query, self.reader.repo.toolbar_keys(query)))
             matching = index.matching_keys(query)
             rows, count = (index.rows[code] for code in matching), len(matching)
         else:

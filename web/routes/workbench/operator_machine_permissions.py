@@ -6,7 +6,6 @@ from core.models.workbench_command import WorkbenchCommandRejected, validate_req
 from core.models.workbench_resource_action import ResourceActionPreview
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.operator_machine_permissions import OPERATION, WorkbenchOperatorMachinePermissions
-from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
@@ -20,10 +19,9 @@ SCOPE = "workbench-operator-machine-permissions-v1"
 @read_endpoint
 def operator_machine_preview(ref):
     body = json_body({"machine_permissions", "write_token"})
-    reader = WorkbenchResourceQueryService(g.db, "operator", current_app.logger)
     service = WorkbenchOperatorMachinePermissions(g.db, current_app.logger)
-    with reader.read_snapshot() as fingerprint:
-        preparation = service.capture(ref, body["machine_permissions"])
+    with service.reader.read_snapshot() as fingerprint:
+        preparation = service.reader.preparation()
         identity = preparation.identity("operator", ref)
         validate_write_context(body["write_token"], ref, "operator.update", preparation.state("operator", identity.entity_key))
         preview = service.preview(ref, body["machine_permissions"], preparation=preparation)

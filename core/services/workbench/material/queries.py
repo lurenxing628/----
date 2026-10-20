@@ -1,4 +1,4 @@
-"""Read actual material facts without defaults, metadata repair, or demo fallback."""
+"""Read actual material facts once per snapshot, without metadata repair or demo fallback."""
 
 from __future__ import annotations
 
@@ -24,6 +24,11 @@ class MaterialReadRecord:
     identity: WorkbenchEntityIdentity
     entity: Dict[str, Any]
     state: Dict[str, Any]
+
+
+def _validate_ref(ref):
+    if not isinstance(ref, str) or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
+        raise WorkbenchCommandRejected("entity_not_found", "物料记录不存在，请返回列表重新选择。", 404)
 
 
 def _project(row):
@@ -72,6 +77,7 @@ class WorkbenchMaterialQueryService:
         fingerprint = {"state": state, "rows": self.repo.table_rows(requirements=state["requirements"])}
         if snapshot is not None:
             snapshot["fingerprint"] = fingerprint
+            snapshot["by_ref"] = {row["ref"]: row for row in fingerprint["rows"] if row.get("ref") is not None}
         return fingerprint
 
     def _toolbar_rows(self, query):
@@ -112,19 +118,31 @@ class WorkbenchMaterialQueryService:
         return self.repo.metrics(query.query, query.status)
 
     def resolve(self, ref):
-        if not isinstance(ref, str) or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
-            raise WorkbenchCommandRejected("entity_not_found", "物料记录不存在，请返回列表重新选择。", 404)
+        _validate_ref(ref)
+        if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
+            row = self._snapshot["by_ref"].get(ref)
+            if row is not None:
+                return self._record(row).identity
+        return self._resolve_identity(ref)
+
+    def _resolve_identity(self, ref):
         identity = self.identities.get(ref)
         if identity is None or not identity.active or identity.kind != "material":
             raise WorkbenchCommandRejected("entity_not_found", "这条物料已经不在了，请重新选择。请刷新后重新选择。", 404)
         return identity
 
     def detail(self, ref):
-        identity = self.resolve(ref)
-        row = self.repo.get_by_ref(identity.ref)
+        _validate_ref(ref)
+        if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
+            row = self._snapshot["by_ref"].get(ref)
+            if row is None:
+                self._resolve_identity(ref)
+        else:
+            identity = self._resolve_identity(ref)
+            row = self.repo.get_by_ref(identity.ref)
         if row is None:
             raise WorkbenchCommandRejected("storage_failure", "物料的系统编号和实际记录对不上。请刷新重试；仍不行请联系维护人员。", 500)
-        return _project(row)
+        return self._record(row)
 
     def page(self, query: MaterialPageRequest):
         if table_query_required(query):

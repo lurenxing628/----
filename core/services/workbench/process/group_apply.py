@@ -3,10 +3,9 @@
 from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
-from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 from .group_defaults import create_group
-from .stage_apply import require_supplier, source_catalog
+from .stage_apply import require_supplier
 
 
 def _members(row, active, positions):
@@ -24,7 +23,7 @@ def _members(row, active, positions):
     return members
 
 
-def _prepare_group(conn, row, members, old, replaced, identities, catalog):
+def _prepare_group(row, members, old, replaced, identities, catalog):
     if any(op["ext_group_id"] is not None and op["ext_group_id"] not in replaced for op in members):
         raise WorkbenchCommandRejected("group_overlap", "所选工序仍属于其他外协段。请先调整或明确解除原段，不能覆盖其他段。", 422,
                                        operation_refs=row["operation_refs"])
@@ -32,11 +31,11 @@ def _prepare_group(conn, row, members, old, replaced, identities, catalog):
     if supplier is None or not supplier.active or supplier.kind != "supplier":
         raise WorkbenchCommandRejected("invalid_relation", "所选供应商已失效，请重新选择。", 422)
     for member in members:
-        require_supplier(conn, member, supplier.entity_key, member["op_type_id"], catalog)
+        require_supplier(member, supplier.entity_key, member["op_type_id"], catalog)
     return {"old": old, "members": members, "supplier_id": supplier.entity_key, "total_days": row["total_days"]}
 
 
-def prepare_groups(conn, payload, operations, groups, identities, *, catalog=None):
+def prepare_groups(payload, operations, groups, identities, *, catalog):
     active = {row["ref"]: row for row in operations if row["status"] == "active"}
     positions = {row["ref"]: index for index, row in enumerate(sorted(active.values(), key=lambda op: op["seq"]))}
     stored = {row["ref"]: row for row in groups}
@@ -44,15 +43,14 @@ def prepare_groups(conn, payload, operations, groups, identities, *, catalog=Non
     if touched - set(stored):
         raise WorkbenchCommandRejected("group_invalid", "要修改或解除的外协段已删除或属于其他零件。请刷新后重新选择。", 422)
     replaced = {stored[ref]["group_id"] for ref in touched}
-    prepared, catalog = [], source_catalog(conn) if catalog is None else catalog
+    prepared = []
     for row in payload["groups"]:
         members = _members(row, active, positions)
-        prepared.append(_prepare_group(conn, row, members, stored.get(row["ref"]), replaced, identities, catalog))
+        prepared.append(_prepare_group(row, members, stored.get(row["ref"]), replaced, identities, catalog))
     return prepared, [stored[ref] for ref in payload["discard_group_refs"]]
 
 
-def group_changes(conn, prepared, discarded, operations, *, names=None):
-    names = {row["supplier_id"]: row["name"] for row in WorkbenchProcessQueryRepository(conn).supplier_reference_rows()} if names is None else names
+def group_changes(prepared, discarded, operations, *, names):
     by_group = {}
     for op in operations:
         if op["status"] == "active" and op["ext_group_id"] is not None:
@@ -80,8 +78,7 @@ def group_changes(conn, prepared, discarded, operations, *, names=None):
     return changes
 
 
-def apply_groups(conn, part_no, prepared, discarded, operations, *, changes=None):
-    changes = group_changes(conn, prepared, discarded, operations) if changes is None else changes
+def apply_groups(conn, part_no, prepared, discarded, operations, *, changes):
     if not changes:
         return False
     op_repo, group_repo = PartOperationRepository(conn), ExternalGroupRepository(conn)

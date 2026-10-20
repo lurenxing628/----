@@ -16,8 +16,9 @@ Referenced updates are flagged requires_confirmation in the approved preview.
 
 export_rows(file_format, *, scope=None, selected_refs=None) requires the caller's
 already validated read-snapshot transaction and exactly one explicit scope or
-ref list. Filters export every matching row in query order; selected refs retain
-their explicit order. The 2000-row import cap does not apply to either selection.
+ref list. Pass that snapshot's reader to the service to reuse its captured rows.
+Filters export every matching row in query order; selected refs retain their
+explicit order. The 2000-row import cap does not apply to either selection.
 XLSX is limited only by worksheet capacity; CSV has no worksheet row/cell cap.
 write_export(rows, file_format) encodes those rows after the read transaction
 ends and returns MaterialFileDownload(filename, mime_type, content: bytes, row_count).
@@ -77,22 +78,30 @@ def local_created_at(value):
 
 
 class WorkbenchMaterialFileService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, reader=None):
         self.conn = conn
         self.adapter = WorkbenchMaterialService(conn, logger=logger)
         self.query = WorkbenchMaterialQueryRepository(conn, logger=logger)
+        self.reader = reader if reader is not None else WorkbenchMaterialQueryService(conn, logger=logger)
         self.repo = WorkbenchMaterialFileRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
     def prepare_import(self, content, *, file_format, scope, mode="upsert"):
+        return self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)[0]
+
+    def _prepare_source(self, content, *, file_format, scope, mode="upsert"):
         request = file_request(content, file_format, mode, scope)
         source, notices = read_material_file(content, file_format)
-        return PreparedImportSource.build("material.import", request, source, notices, content=content)
+        prepared = PreparedImportSource.build("material.import", request, source, notices, content=content)
+        request["actual_source_ref"] = prepared.source_ref
+        return prepared, request
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
-        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
-            content, file_format=file_format, scope=scope, mode=mode)
-        request = prepared.request_for("material.import", file_format, mode, normalize_scope(scope))
+        if isinstance(content, PreparedImportSource):
+            prepared = content
+            request = content.request_for("material.import", file_format, mode, normalize_scope(scope))
+        else:
+            prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
         with self.tx.transaction():
             preview, _ = self._prepare_import(prepared, request)
             return preview
@@ -213,12 +222,16 @@ class WorkbenchMaterialFileService:
             raise ValidationError("导出要么按筛选范围，要么按勾选的记录，只能选一种。", field="scope")
         if selected_refs is None:
             query = MaterialPageRequest(**normalize_scope(scope))
-            index = WorkbenchMaterialQueryService(self.conn).table_index(query)
+            index = self.reader.table_index(query)
             matching = index.matching_keys(query)
             rows, total = (index.rows[code].state["material"] for code in matching), len(matching)
         else:
             refs = normalize_refs(selected_refs, allow_empty=True)
-            captured = {row["ref"]: row for row in self.query.export_by_refs(refs)}
+            snapshot = self.reader._snapshot
+            if snapshot is not None and snapshot["fingerprint"] is not None:
+                captured = snapshot["by_ref"]
+            else:
+                captured = {row["ref"]: row for row in self.query.export_by_refs(refs)}
             rows, total = (captured.get(ref) for ref in refs), len(refs)
         check_export_capacity(total, file_format)
         return list(self._export_rows(rows))

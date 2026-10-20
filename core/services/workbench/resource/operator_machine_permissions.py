@@ -38,9 +38,9 @@ def _permission_row(number, ref, machine, previous, target):
 
 
 class WorkbenchOperatorMachinePermissions:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, *, reader=None):
         self.conn = conn
-        self.reader = WorkbenchResourceQueryService(conn, "operator", logger)
+        self.reader = reader if reader is not None else WorkbenchResourceQueryService(conn, "operator", logger)
         self.domain = OperatorMachineService(conn, logger=logger)
         self.tx = TransactionManager(conn)
 

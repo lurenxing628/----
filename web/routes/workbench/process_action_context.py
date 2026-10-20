@@ -15,9 +15,10 @@ PREVIEW_SCOPE = "workbench-process-action-preview-v1"
 EXPORT_SCOPE = "workbench-process-file-export-v1"
 
 
-def action_preview(preview, command, *, kind=None, content=None, extra=None):
+def action_preview(preview, command, *, kind=None, content=None, extra=None, body=None):
     ref, expiry = retain_context(PREVIEW_SCOPE, preview.document, content)
-    body = preview.as_dict()
+    if body is None:
+        body = preview.as_dict()
     context = preview_write_context(ref, expiry, [command])
     rejected = bool(body["summary"]["rejected"])
     if rejected:

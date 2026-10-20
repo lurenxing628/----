@@ -131,8 +131,8 @@
         rememberEnabled={!auxiliary && !deferred && !hostError && !boot.error && !boot.target.error}
         initialContext={deferred || boot.error ? undefined : boot.target.context} onNavigationReady={setNavigationReady}
         renderPart={({ onRefresh, initialContext, rememberEnabled }) => <window.ProcessWorkspace adapter={adapters.process} onCommitted={onRefresh} initialContext={initialContext} rememberEnabled={rememberEnabled} onNavigationReady={setNavigationReady} />}
-        renderCalendar={({ onCommitted, initialContext, rememberEnabled, summaryState }) => <window.ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} initialContext={initialContext} rememberEnabled={rememberEnabled} summaryState={summaryState} onNavigationReady={setNavigationReady}
-          onOpenFile={(mode, context) => adapters.base.openCalendarFile(mode, { refs: [], scope: {}, ...context, onCommitted })} />} />
+        renderCalendar={({ onCommitted, externalRevision, initialContext, rememberEnabled, summaryState }) => <window.ResourceCalendar adapter={adapters.calendar} onCommitted={onCommitted} externalRevision={externalRevision} initialContext={initialContext} rememberEnabled={rememberEnabled} summaryState={summaryState} onNavigationReady={setNavigationReady}
+          onOpenFile={(mode, context) => adapters.base.openCalendarFile(mode, { refs: [], scope: {}, ...context })} />} />
       {auxiliary && (auxiliary.type === 'catalog' ? <window.ResourceCatalog kind={auxiliary.kind} adapter={adapters.catalog} onClose={close} onCommitted={committed} /> :
         calendarFileKinds.includes(auxiliary.kind) ? <window.CalendarFileActions kind={auxiliary.kind} month={auxiliary.request.month} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.imports[auxiliary.kind]} onClose={close} onCommitted={committed} /> :
           importOnlyKinds.includes(auxiliary.kind) ? <window.RelationFileActions kind={auxiliary.kind} mode={auxiliary.type} request={auxiliary.request} adapter={adapters.imports[auxiliary.kind]} onClose={close} onCommitted={committed} /> :

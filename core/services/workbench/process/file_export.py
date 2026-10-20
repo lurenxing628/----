@@ -24,12 +24,16 @@ def count_process_export_rows(kind, parts, facts, file_format):
     return count
 
 
-def select_export_parts(reader, *, selection, scope, refs=None, target_ref=None):
-    if selection not in ("all", "filtered", "explicit") or (refs is not None) != (selection == "explicit"):
+def select_export_parts(reader, request, *, scope):
+    selection = request["selection"]
+    if ("refs" in request) != (selection == "explicit"):
+        raise WorkbenchCommandRejected("invalid_input", "只有导出选中项时才能带选中的零件，没有开始下载。请先勾选零件，或改成导出当前筛选。", 400)
+    refs, target_ref = request.get("refs"), request.get("target_ref")
+    if selection not in ("all", "filtered", "explicit") or selection == "explicit" and refs is None:
         raise WorkbenchCommandRejected("invalid_input", "请选择全部、全部筛选结果，或者勾选具体记录；只有勾选方式才认记录编号。", 400)
-    if target_ref is not None and (selection != "explicit" or refs != [target_ref] or scope):
+    if target_ref is not None and (selection != "explicit" or refs != [target_ref] or request["scope"]):
         raise WorkbenchCommandRejected("invalid_input", "详情只能导出当前零件，不能切换为其他范围。", 400)
-    normalized = process_table_scope(scope)
+    normalized = scope
     parts = {row["ref"]: row for row in reader.facts()["parts"]}
     if selection == "explicit":
         selected = resource_refs(refs, allow_empty=True)

@@ -221,8 +221,8 @@ class WorkbenchOperatorCalendarFileService:
                 reject_action_row(row, "系统里找不到这个工号，这一行没有导入。请先在人员资料里维护好再导入。",
                                   field="operator_code")
                 continue
-            row["expected"] = {"operator": dict(raw)}
-            row["values"]["operator_label"] = dict(raw).get("name")
+            row["expected"] = {"operator": raw}
+            row["values"]["operator_label"] = raw.get("name")
 
     def _load_states(self, rows) -> Dict[str, Dict[str, Dict[str, Any]]]:
         """按工号分块读回日历和永久编号历史。"""
@@ -367,13 +367,7 @@ class WorkbenchOperatorCalendarFileService:
         reader = self._reader()
         if selected_refs is not None:
             return [reader.resolve(ref).entity_key for ref in resource_refs(selected_refs, allow_empty=True)]
-        codes = []
-        for item in reader.matching_rows(ResourcePageRequest(kind="operator")):
-            if item["ref"] is None:
-                raise WorkbenchCommandRejected(
-                    "storage_failure", "有人员在资料里查不到编号，没有开始下载，资料也没有被改动。请到资料总览核对后重试。", 500)
-            codes.append(reader.resolve(item["ref"]).entity_key)
-        return codes
+        return reader.matching_keys(ResourcePageRequest(kind="operator"))
 
     def _rows_for(self, start_date: str, end_date: str, codes: List[str]) -> List[Dict[str, Any]]:
         """只导出这段时间里单独设置过的日期；没设置过的天按班次或全局日历走，不出现在文件里。"""
@@ -383,33 +377,25 @@ class WorkbenchOperatorCalendarFileService:
         states = self._states_for(codes, start_date, end_date)
         for code in codes:
             raw = operators.get(code)
-            label = dict(raw).get("name") if raw is not None else None
-            for _, state in sorted(states[code].items()):
+            label = raw.get("name") if raw is not None else None
+            for state in states[code].values():
                 if state["row"] is not None:
                     rows.append(self._public(state["row"], label))
-        rows.sort(key=lambda item: (item["operator_code"], item["date"]))
         return rows
 
-    def range_snapshot(self, start_date: str, end_date: str, selected_refs=None) -> List[Dict[str, Any]]:
+    def _states_and_rows(self, start_date: str, end_date: str, selected_refs=None):
         if not self.conn.in_transaction:
             raise RuntimeError("个人日历范围读取必须在快照事务中执行。")
         check_range(start_date, end_date)
-        return self._rows_for(start_date, end_date, self._codes_for(selected_refs))
+        rows = self._rows_for(start_date, end_date, self._codes_for(selected_refs))
+        return rows, rows
 
-    def preview_export(self, *, start_date: str, end_date: str, selected_refs=None):
-        if not self.conn.in_transaction:
-            raise RuntimeError("个人日历导出预览必须在已验证的查询快照事务中执行。")
-        check_range(start_date, end_date)
-        count = len(self._rows_for(start_date, end_date, self._codes_for(selected_refs)))
+    def preview_export(self, *, start_date: str, end_date: str, selected_refs=None, rows):
         arguments: Dict[str, Any] = {"start_date": start_date, "end_date": end_date}
         if selected_refs is not None:
             arguments["selected_refs"] = resource_refs(selected_refs, allow_empty=True)
-        return arguments, count
+        return arguments, len(rows)
 
-    def export(self, file_format, *, start_date: str, end_date: str, selected_refs=None) -> CalendarFileDownload:
-        if not self.conn.in_transaction:
-            raise RuntimeError("个人日历导出必须在已验证的查询快照事务中执行。")
-        check_range(start_date, end_date)
-        rows = self._rows_for(start_date, end_date, self._codes_for(selected_refs))
+    def export(self, file_format, *, rows) -> CalendarFileDownload:
         check_capacity(len(rows), file_format)
         return write_calendar_file(self.kind, rows, file_format)

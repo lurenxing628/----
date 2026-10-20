@@ -38,7 +38,7 @@
         await M.validateFile(job.file, job.format);
         body = new FormData(); body.append('file', job.file); body.append('format', job.format); body.append('mode', 'upsert');
         if (M.kind === 'op_type') body.append('category', M.category(original));
-      } else body = M.requestBody(effectiveMode, original, job.selection);
+      } else body = job.body;
       const raw = await adapter.preview(M.paths[effectiveMode], body, signal);
       if (isExport) {
         const result = M.exportPreview(raw, job.selection, original);
@@ -90,8 +90,8 @@
       try {
         if (M.category) M.category(original);
         if (effectiveMode === 'bulk' && !M.selection(original).length) throw C.failure('未选中' + label + '，请选择后重试。');
-        if (effectiveMode !== 'import') M.requestBody(effectiveMode, original, selection);
-        setJob({ file, format, selection }); setNow(Date.now());
+        const body = effectiveMode !== 'import' ? M.requestBody(effectiveMode, original, selection) : null;
+        setJob({ file, format, selection, body }); setNow(Date.now());
       } catch (failure) { setJob(null); setError(failure); }
     }
     const needsAcknowledgement = data && !isExport && (effectiveMode === 'bulk' || data.rows.some(row => row.requires_confirmation));

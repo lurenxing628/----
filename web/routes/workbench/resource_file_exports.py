@@ -1,8 +1,6 @@
 """Frozen scoped all/filtered/selected exports, independent from list pagination."""
 
-from io import BytesIO
-
-from flask import current_app, g, request, send_file
+from flask import current_app, g, request
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -14,6 +12,8 @@ from web.api_responses import query_success
 from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .resource_action_context import (
     EXPORT_SCOPE,
+    download_args,
+    file_response,
     json_body,
     opaque_ref,
     read_endpoint,
@@ -48,27 +48,10 @@ def resource_export_preview(kind):
                           "row_count": count, "scope": arguments["scope"], "formats": ["csv", "xlsx"]}, snapshot)
 
 
-def _download_args(required):
-    if set(request.args) != required or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
-    fmt = request.args["format"]
-    if fmt not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "下载只支持 CSV 或 XLSX 格式，没有开始下载。请重新选择格式后点「导出」。", 400)
-    return fmt
-
-
-def _response(download):
-    response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
-                         download_name=download.filename, max_age=0)
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Workbench-Row-Count"] = str(download.row_count)
-    return response
-
-
 @read_endpoint
 def resource_export(kind):
     action_kind(kind)
-    fmt = _download_args({"export_ref", "format"})
+    fmt = download_args({"export_ref", "format"})
     ref = opaque_ref(request.args["export_ref"], "export_ref")
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
@@ -79,7 +62,7 @@ def resource_export(kind):
         snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
         rows = service.export_rows(fmt, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
-    response = _response(service.write_export(rows, fmt, scope=binding["arguments"]["scope"]))
+    response = file_response(service.write_export(rows, fmt, scope=binding["arguments"]["scope"]))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     return response
@@ -88,5 +71,5 @@ def resource_export(kind):
 @read_endpoint
 def resource_template(kind):
     action_kind(kind)
-    fmt = _download_args({"format", "category"} if kind == "op_type" else {"format"})
-    return _response(WorkbenchResourceFileService.template(kind, fmt, category=request.args.get("category")))
+    fmt = download_args({"format", "category"} if kind == "op_type" else {"format"})
+    return file_response(WorkbenchResourceFileService.template(kind, fmt, category=request.args.get("category")))

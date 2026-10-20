@@ -1,6 +1,5 @@
 """Preview the choices that route confirmation will actually persist."""
 
-from copy import deepcopy
 from types import SimpleNamespace
 
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -49,7 +48,7 @@ def route_choice_context(conn, operations, facts=None):
             "group_rows": group_rows, "groups": {key: project_group(row, members.get(key, [])) for key, row in group_rows.items()}}
 
 
-def _changed_route_sequences(existing, proposed):
+def changed_route_sequences(existing, proposed):
     incoming = {row["sequence"]: row for row in proposed}
     changed = {seq for seq, old in existing.items() if old["status"] == "active" and
                (seq not in incoming or old["op_type_name"] != incoming[seq]["op_type_name"])}
@@ -63,8 +62,9 @@ def _intersects_changed_range(group, changed):
     return any(type(seq) is int and group["start_seq"] <= seq <= group["end_seq"] for seq in changed)
 
 
-def _discarded_groups(existing, proposed, context):
-    changed = _changed_route_sequences(existing, proposed)
+def _discarded_groups(existing, proposed, context, *, changed=None):
+    if changed is None:
+        changed = changed_route_sequences(existing, proposed)
     linked = {old["ext_group_id"] for seq, old in existing.items() if seq in changed and old["ext_group_id"]}
     return linked | {key for key, group in context["group_rows"].items() if _intersects_changed_range(group, changed)}
 
@@ -125,20 +125,15 @@ def _preview_existing_operation(row, old, result, context, discarded):
     return replace
 
 
-def preview_existing_route(conn, preview, operations, context=None):
-    if preview.get("_choices_projected"):
-        return preview
-    result = deepcopy(preview)
-    result["_choices_projected"] = True
+def preview_existing_route(preview, operations, context, *, changed=None):
     existing = {row["seq"]: row for row in operations}
     if not existing:
-        return result
-    context = route_choice_context(conn, operations) if context is None else context
-    discarded = _discarded_groups(existing, result["operations"], context)
-    for row in result["operations"]:
+        return preview
+    discarded = _discarded_groups(existing, preview["operations"], context, changed=changed)
+    for row in preview["operations"]:
         old = existing.get(row["sequence"])
         if old is not None:
-            _preview_existing_operation(row, old, result, context, discarded)
-    result["counts"]["recognized"] = sum(row["op_type_ref"] is not None for row in result["operations"])
-    result["counts"]["unknown"] = len(result["operations"]) - result["counts"]["recognized"]
-    return result
+            _preview_existing_operation(row, old, preview, context, discarded)
+    preview["counts"]["recognized"] = sum(row["op_type_ref"] is not None for row in preview["operations"])
+    preview["counts"]["unknown"] = len(preview["operations"]) - preview["counts"]["recognized"]
+    return preview

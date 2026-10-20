@@ -160,7 +160,7 @@ class WorkbenchRelationFileService:
         for entity, codes in wanted.items():
             for code in sorted(codes):
                 raw = preparation.raw(entity, code)
-                loaded[entity][code] = dict(raw) if raw is not None else None
+                loaded[entity][code] = raw
         return loaded
 
     def _resolve_entities(self, row, entities) -> None:
@@ -334,29 +334,24 @@ class WorkbenchRelationFileService:
         scope = resource_scope("operator", scope)
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
-            codes = [self._reader().resolve(ref).entity_key for ref in refs]
-            return {"scope": scope, "selected_refs": refs}, len(self._rows_for(codes))
+            reader = self._reader()
+            codes = [reader.resolve(ref).entity_key for ref in refs]
+            count = len(self.links.list_simple_rows_for_operators(codes)) if codes else 0
+            return {"scope": scope, "selected_refs": refs}, count
         effective = resource_scope("operator", {}) if selection == "all" else scope
         codes = self._codes_for_scope(effective)
-        return {"scope": effective}, len(self._rows_for(codes))
+        count = len(self.links.list_simple_rows_for_operators(codes)) if codes else 0
+        return {"scope": effective}, count
 
     def _codes_for_scope(self, scope) -> List[str]:
-        reader = self._reader()
-        matching = reader.matching_rows(ResourcePageRequest(kind="operator", **scope))
-        codes = []
-        for row in matching:
-            if row["ref"] is None:
-                raise WorkbenchCommandRejected(
-                    "storage_failure", "有人员在资料里查不到编号，没有开始下载，资料也没有被改动。请到资料总览核对后重试。", 500)
-            codes.append(reader.resolve(row["ref"]).entity_key)
-        return codes
+        return self._reader().matching_keys(ResourcePageRequest(kind="operator", **scope))
 
     def _rows_for(self, codes) -> List[Dict[str, Any]]:
         if not codes:
             return []
         names = {"operator": {}, "machine": {}}
         rows = []
-        for link in self.links.list_simple_rows_for_operators(sorted(set(codes))):
+        for link in self.links.list_simple_rows_for_operators(codes):
             # 导出写中文：文件里的下拉和填写说明都是中文，格子里却留英文代号的话，
             # 用户点一下下拉就改了值，想照原样填回 normal 又会被数据校验拒掉。
             # 直接下标不兜底：normalize_*_stored 保证给的是规范值，取不到说明契约破了，
@@ -372,10 +367,9 @@ class WorkbenchRelationFileService:
                 code = row[key]
                 if code not in names[entity]:
                     raw = self.repo.raw(entity, code)
-                    names[entity][code] = (dict(raw).get("name") if raw is not None else None)
+                    names[entity][code] = raw.get("name") if raw is not None else None
             row["operator_label"] = names["operator"][row["operator_code"]]
             row["machine_label"] = names["machine"][row["machine_code"]]
-        rows.sort(key=lambda item: (item["operator_code"], item["machine_code"]))
         return rows
 
     def export_rows(self, file_format, *, scope, selected_refs=None):

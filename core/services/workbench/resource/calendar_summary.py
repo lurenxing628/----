@@ -32,13 +32,14 @@ def _holiday_efficiency(conn, logger):
     return result
 
 
-def owned_hours(engine, day):
+def owned_hours(engine, day, *, policy=None):
     """按开始日期归到这一天的班次里，排产真正归它用的小时数（不乘效率）。
 
     次日班次与这一天的跨夜尾巴重叠时，排产引擎把重叠段判给次日（_effective_segments），
     按日期相加的合计同样扣掉，不重复计时。零点前的部分总归这一天，不读前一天，坏掉的前一天不牵连它。
     """
-    policy = engine._policy_for_date(day.isoformat())
+    if policy is None:
+        policy = engine._policy_for_date(day.isoformat())
     midnight = datetime.max if day == date.max else datetime.combine(day + timedelta(days=1), time.min)
     windows = policy.work_windows()
     total = sum((min(end, midnight) - start).total_seconds() for start, end in windows if start < midnight)
@@ -80,7 +81,7 @@ def _day_summary(service, day, row, today):
         # The datetime API can belong to yesterday's night shift. This rail groups
         # shift windows by their start date, using the facade's actual date policy.
         policy = service._engine._policy_for_date(day.isoformat())
-        result["effective"] = _effective(policy, owned_hours(service._engine, day))
+        result["effective"] = _effective(policy, owned_hours(service._engine, day, policy=policy))
     except (ValidationError, ValueError, TypeError, OverflowError) as exc:
         result.update(status="unavailable", issues=[{"code": "calendar_day_unavailable", "message": str(exc)}])
     if row is not None:
@@ -117,8 +118,10 @@ def resource_calendar_summary(conn, logger=None, *, clock=None):
     today = now.date()
     first = today - timedelta(days=today.weekday())
     last = first + timedelta(days=6)
-    rows = WorkbenchResourceSummaryRepository(conn, logger=logger).calendar_rows(first.isoformat(), last.isoformat())
+    rows = WorkbenchResourceSummaryRepository(conn, logger=logger).calendar_rows(
+        first.isoformat(), (last + timedelta(days=1)).isoformat())
     service = CalendarService(conn, logger=logger)
+    service._engine._captured_global_rows = rows
     days = [_day_summary(service, first + timedelta(days=index), rows.get((first + timedelta(days=index)).isoformat()), today)
             for index in range(7)]
     stats = _week_stats(days)

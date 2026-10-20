@@ -35,10 +35,12 @@ class MasterOverviewService:
     def __init__(self, conn):
         self.facts = MasterOverviewFacts(conn)
         self.graph = None
+        self._overview = None
         self.entities, self.issues = [], []
 
     @contextmanager
     def read_snapshot(self):
+        self._overview = None
         with self.facts.read_snapshot() as as_of:
             self.graph = MasterOverviewGraph(self.facts)
             add_resources(self.graph)
@@ -55,20 +57,26 @@ class MasterOverviewService:
     def overview(self):
         if self.graph is None:
             raise RuntimeError("Master overview requires an explicit read snapshot.")
+        if self._overview is not None:
+            return self._overview
+        by_domain = {domain: [] for domain, _ in DOMAINS}
+        for entity in self.entities:
+            by_domain[entity["domain"]].append(entity)
         domains = []
         for domain, label in DOMAINS:
-            rows = [entity for entity in self.entities if entity["domain"] == domain]
+            rows = by_domain[domain]
             loaded = self.facts.available(*SOURCES[domain], "WorkbenchEntityRefs")
             domains.append({"id": domain, "label": label, "loaded": loaded, "count": len(rows) if loaded else None,
                             "attention": sum(bool(row["issue_count"]) for row in rows) if loaded else None,
                             "unknown": sum(not row["checks_complete"] for row in rows) if loaded else None})
         complete = all(row["loaded"] for row in domains)
         relation_complete = complete and all(row["relations_complete"] for row in self.entities)
-        return {"domains": domains, "complete": complete, "basis": BASIS, "gaps": self.facts.gaps,
-                "stats": {"entities": len(self.entities), "issues": len(self.issues),
-                          "affected": sum(bool(row["issue_count"]) for row in self.entities),
-                          "relations": len(self.graph.edges) if relation_complete else None,
-                          "known_relation_pairs": len(self.graph.edges)}}
+        self._overview = {"domains": domains, "complete": complete, "basis": BASIS, "gaps": self.facts.gaps,
+                          "stats": {"entities": len(self.entities), "issues": len(self.issues),
+                                    "affected": sum(bool(row["issue_count"]) for row in self.entities),
+                                    "relations": len(self.graph.edges) if relation_complete else None,
+                                    "known_relation_pairs": len(self.graph.edges)}}
+        return self._overview
 
     def matched(self, scope):
         rows = self.issues if scope.view == "issues" else self.entities
@@ -90,8 +98,8 @@ class MasterOverviewService:
         known.sort(key=lambda row: row[scope.sort], reverse=scope.direction == "desc")
         return known + unknown
 
-    def page(self, scope, number=1):
-        rows = self.matched(scope)
+    def page(self, scope, number=1, *, matched_rows=None):
+        rows = self.matched(scope) if matched_rows is None else matched_rows
         pages = max(1, (len(rows) + scope.size - 1) // scope.size)
         if number > pages:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
@@ -124,7 +132,7 @@ class MasterOverviewService:
         scope = MasterOverviewScope(view="entities", domain=domain, sort="business_code", direction="asc", size=old_scope.size)
         rows = self.matched(scope)
         number = next(index for index, row in enumerate(rows) if row["ref"] == ref) // scope.size + 1
-        result = self.page(scope, number)
+        result = self.page(scope, number, matched_rows=rows)
         result["selected"] = {"domain": domain, "entity_ref": entity["ref"]}
         return scope, result
 

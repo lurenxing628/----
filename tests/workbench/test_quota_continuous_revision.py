@@ -15,7 +15,7 @@ from core.services.process.workflow_state import record_confirmation
 from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.files import WorkbenchProcessFileService
 from core.services.workbench.process.route_apply import apply_route, prepare_route
-from core.services.workbench.process.stage_apply import apply_hours, apply_source, prepare_source
+from core.services.workbench.process.stage_apply import apply_hours, apply_source, prepare_source, source_catalog
 from data.repositories.process_query_repo import ProcessQueryRepository
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -146,8 +146,9 @@ def test_actual_work_type_change_clears_old_hours_without_lock(ready_adoption_ca
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
         if entry == 'source':
-            changes, _ = prepare_source(case.conn, None, {'operations': [
-                {'ref': old['ref'], 'op_type_ref': ref, 'source': 'internal', 'supplier_ref': None}]}, [old], identities)
+            changes, _ = prepare_source({'operations': [
+                {'ref': old['ref'], 'op_type_ref': ref, 'source': 'internal', 'supplier_ref': None}]}, [old], identities,
+                                       catalog=source_catalog(case.conn))
             apply_source(case.conn, changes, [old])
         else:
             preview, _ = prepare_route(case.conn, None, {'route': {'mode': 'rows', 'rows': [{'seq': 1, 'op_type_name': 'Milling'}]}}, [old])

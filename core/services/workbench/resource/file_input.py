@@ -9,21 +9,20 @@ from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_resource_file import (
     ENUM_CODES,
-    LABELS,
     MULTI_CODES,
     NULLABLE,
     NUMERIC_FIELDS,
     RELATIONS,
     WRITABLE,
+    column_label,
     file_status,
     status_words,
 )
 
 
-def _column(field):
+def _column(kind, field):
     """提示里按“列 英文名（中文说明）”称呼文件里的列，英文名是文件格式的一部分，必须留。"""
-    label = LABELS.get(field)
-    return "列 " + field + "（" + label + "）" if label else "列 " + field
+    return "列 " + field + "（" + column_label(kind, field) + "）"
 
 
 def same_value(left, right, field):
@@ -98,28 +97,28 @@ class ResourceFileInput:
         if self.kind == "op_type":
             changes.setdefault("category", scope["category"])
         elif "status" not in changes:
-            raise ValidationError("新增的记录必须填状态，这一行没有导入。请在" + _column("status") + "里填好状态。", field="status")
+            raise ValidationError("新增的记录必须填状态，这一行没有导入。请在" + _column(self.kind, "status") + "里填好状态。", field="status")
 
     def _status_choice(self, changes):
         """要改的状态不在本表选项里时，用中文业务词说清能填什么，不把英文代号甩给用户。"""
         allowed = ENUM_CODES[self.kind].get("status")
         status = changes.get("status")
         if allowed and type(status) is str and status.strip() and status not in allowed:
-            raise ValidationError(_column("status") + "只能填" + status_words(self.kind) + "，这一行没有导入。请照下拉选项填写。", field="status")
+            raise ValidationError(_column(self.kind, "status") + "只能填" + status_words(self.kind) + "，这一行没有导入。请照下拉选项填写。", field="status")
 
     def _clear_fields(self, changes):
         for key, value in changes.items():
             if value is None and key not in NULLABLE:
-                raise ValidationError(_column(key) + "不能用 \\N 清除，这一行没有导入。要移除全部工种请填清除。", field=key)
+                raise ValidationError(_column(self.kind, key) + "不能用 \\N 清除，这一行没有导入。要移除全部工种请填清除。", field=key)
             if type(value) is str and not value.strip():
-                raise ValidationError(_column(key) + "只填了空格，这不算清除，这一行没有导入。要清除请填 \\N（大写），要留着原值请把格子空着。", field=key)
+                raise ValidationError(_column(self.kind, key) + "只填了空格，这不算清除，这一行没有导入。要清除请填 \\N（大写），要留着原值请把格子空着。", field=key)
 
     def _relation(self, value, field, kind, category):
         multiple = field in MULTI_CODES
         if multiple and (type(value) is not list or any(type(code) is not str for code in value)):
-            raise ValidationError(_column(field) + "要填一组用引号括起来的编号，这一行没有导入。请按 [\"A\",\"B\"] 这样填。", field=field)
+            raise ValidationError(_column(self.kind, field) + "要填一组用引号括起来的编号，这一行没有导入。请按 [\"A\",\"B\"] 这样填。", field=field)
         if multiple and len(value) != len(set(value)):
-            raise ValidationError(_column(field) + "里的编号有重复，这一行没有导入。请去掉重复的编号。", field=field)
+            raise ValidationError(_column(self.kind, field) + "里的编号有重复，这一行没有导入。请去掉重复的编号。", field=field)
         if not multiple and value is None:
             return None, None
         refs, evidence = [], []
@@ -131,10 +130,10 @@ class ResourceFileInput:
 
     def _selected_code(self, code, kind, category, field):
         if type(code) is not str or not code or code != code.strip():
-            raise ValidationError(_column(field) + "要填准确的编号，不能填空格或名称，这一行没有导入。请改填编号。", field=field)
+            raise ValidationError(_column(self.kind, field) + "要填准确的编号，不能填空格或名称，这一行没有导入。请改填编号。", field=field)
         identity = self.preparation.find_identity(kind, code)
         if identity is None:
-            raise ValidationError(_column(field) + "里的编号 " + code + " 在资料里找不到，这一行没有导入。请先在资料总览新增它，或者改填已有编号。", field=field)
+            raise ValidationError(_column(self.kind, field) + "里的编号 " + code + " 在资料里找不到，这一行没有导入。请先在资料总览新增它，或者改填已有编号。", field=field)
         return self.preparation.selected_record(kind, identity, category=category)
 
     def _unique_name(self, code, payload):
@@ -147,7 +146,7 @@ class ResourceFileInput:
     def _policy(payload, scope):
         mode = payload["fields"].get("default_merge_mode")
         if mode is not None and not supports_source(scope["category"], "external"):
-            raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有导入。请把归属改成外协，或者清掉" + _column("default_merge_mode") + "。")
+            raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有导入。请把归属改成外协，或者清掉" + _column("op_type", "default_merge_mode") + "。")
 
 
 def proposed_fields(kind, code, before, payload, related):

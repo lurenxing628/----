@@ -4877,8 +4877,10 @@ body.aps-workbench :is(button.pg,button.sm-icon-button,button.modal-x,button.cal
 }
 /* override: body.aps-workbench button.mini; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench button.mini { min-height: var(--wb-control-mini-height) !important; padding: var(--space-1) 9px !important; }
-/* override: body.aps-workbench .resource-catalog .rc-list button.mini; preserve shared control geometry against legacy inline and prototype declarations. */
-body.aps-workbench .resource-catalog .rc-list button.mini { width: var(--wb-control-mini-height); min-width: var(--wb-control-mini-height); padding: var(--space-1) !important; }
+/* override: the shared multiline button rule; catalog action columns reserve room for complete single-line actions. */
+body.aps-workbench .resource-catalog .rc-list button.mini { white-space: nowrap !important; }
+/* override: mini side padding; only the catalog's explicit icon button uses square geometry. */
+body.aps-workbench .resource-catalog .rc-list button.rc-icon-button { width: var(--wb-control-mini-height); min-width: var(--wb-control-mini-height); padding: var(--space-1) !important; }
 /* override: body.aps-workbench button.modal-x; preserve shared control geometry against legacy inline and prototype declarations. */
 body.aps-workbench button.modal-x { background: transparent !important; border-color: transparent !important; color: var(--ui-info-muted) !important; }
 /* 主按钮底色 / 字色走 00-tokens 的 --wb-primary-button-*：深色下 --ui-info-text 是浅蓝，直接当底色会和链接撞色、明暗反转。 */
@@ -5602,7 +5604,7 @@ body.aps-workbench .wb-guard-host > .modal-bg { z-index: var(--wb-z-popup); }
 
 /* workbench/app/styles/22-shared-controls.css */
 body.aps-workbench .wb-field { min-width: 0; }
-body.aps-workbench .wb-field label { display: block; }
+body.aps-workbench .wb-field > label { display: block; }
 body.aps-workbench .wb-field .fhint,
 body.aps-workbench .wb-field-error { display: block; overflow-wrap: anywhere; margin-top: 5px; }
 body.aps-workbench .wb-field-error { color: var(--ui-danger-text); font-size: var(--font-size-1); }
@@ -5683,8 +5685,10 @@ body.aps-workbench .chip.wb-chip-wrap { white-space: normal; overflow-wrap: anyw
 body.aps-workbench .wb-choice { min-width: 0; }
 body.aps-workbench .wb-choice-search { flex: 1 1 auto; min-width: 0; max-width: 100%; }
 body.aps-workbench .wb-choice-options { max-height: 160px; overflow-y: auto; }
-body.aps-workbench .wb-choice-option { display: inline-flex; align-items: center; gap: 6px; white-space: normal; overflow-wrap: anywhere; }
-/* .wb-choice-check 原内联 15px 被 20-controls 复选框合同（16px !important、flex:none）钉死，从未生效，不另写规则。 */
+body.aps-workbench .wb-choice-option { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; max-width: 100%; box-sizing: border-box; line-height: 20px; white-space: normal; overflow-wrap: anywhere; }
+body.aps-workbench .wb-choice-label { min-width: 0; }
+/* 复选框沿用共享的 16px 固定尺寸，与首行文字居中；长名称在独立文字项中换行。 */
+body.aps-workbench .wb-choice-option > .wb-choice-check { margin-top: 2px; }
 .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-grid { height: 250px; grid-template-rows: repeat(4,minmax(0,1fr)); }
 .wb-date-picker[data-picker-view="months"]:not([data-picker-type="month"]) .wb-picker-day { height: 100%; min-height: 0; max-height: none; }
 .wb-date-picker[data-picker-view="months"] .wb-picker-day[data-view-month="true"]:not([aria-selected="true"]) { border-color: var(--ui-border); }
@@ -6094,9 +6098,9 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-toolbar .field { min-width:130px; }
 /* 工具栏里的选择框走 32px 标准档（.field 内默认是 36px 编辑档，改高度变量才能连 min-height 一起降下来，与旁边的搜索框同高）。 */
 .resource-catalog .rc-toolbar .field select { --wb-field-height: var(--wb-control-height); }
-.resource-catalog table.tbl { min-width:0; width:100%; table-layout:fixed; }
+.resource-catalog table.tbl { width:100%; table-layout:fixed; }
 .resource-catalog .rc-list th:first-child { width:40%; }
-.resource-catalog .rc-list th:last-child { width:112px; }
+.resource-catalog .rc-list th:last-child { width:144px; }
 .resource-catalog .rc-wrap { overflow-wrap:anywhere; }
 .resource-catalog .rc-error { color:var(--ui-danger-text); }
 .resource-catalog .rc-pattern { margin-top:20px; border-top:1px solid var(--ui-border); padding-top:14px; }
@@ -6110,7 +6114,8 @@ body.aps-workbench .outsourcing-live .wb-table-frame[data-sticky-actions] > tabl
 .resource-catalog .rc-note { display:block; margin-top:var(--space-3); }
 .resource-catalog .rc-facts { overflow-wrap:anywhere; }
 .resource-catalog .rc-list td, .resource-catalog .rc-pattern-table td { vertical-align:middle; }
-.resource-catalog .rc-list .rowact { gap:var(--space-2); }
+.resource-catalog .rc-list .rowact { align-items:center; flex-wrap:nowrap; gap:var(--space-2); }
+.resource-catalog .rc-list .rowact > .wb-button-host { flex:none; }
 .resource-catalog .rc-list .mini { flex:none; }
 .resource-catalog .rc-list .mini svg { width:18px; height:18px; flex:none; }
 .resource-catalog .rc-pattern-table td { padding:var(--space-2) 6px; }

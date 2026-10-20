@@ -14,7 +14,7 @@ from .part_actions import WorkbenchProcessPartActionService
 from .part_actions_facts import check_process_template
 from .projection import project_group, public_sequence, require_ref
 from .route_apply import affected_group_rows
-from .route_choices import preview_existing_route, route_choice_context
+from .route_choices import changed_route_sequences, preview_existing_route, route_choice_context
 from .route_preview import ProcessRoutePreviewService
 
 
@@ -34,16 +34,6 @@ def reject_duplicates(rows):
                 if not any(error["code"] == "duplicate_entry" for error in row["errors"]):
                     reject_action_row(row, "同一图号在文件中重复，这批不能导入。请合并重复行后重新导入。",
                                       field="business_code", code="duplicate_entry")
-
-
-def _changed_sequences(operations, preview):
-    # Match prepare_route's preserving diff, sharing one parser snapshot per file.
-    existing = {row["seq"]: row for row in operations}
-    incoming = {row["sequence"]: row for row in preview["operations"]}
-    changed = {seq for seq, row in existing.items() if row["status"] == "active" and
-               (seq not in incoming or row["op_type_name"] != incoming[seq]["op_type_name"])}
-    changed.update(seq for seq in incoming if seq not in existing or existing[seq]["status"] != "active")
-    return changed
 
 
 def _same_template_route(part, existing, preview):
@@ -75,8 +65,11 @@ class RouteFilePreview:
         self.parts = {row["part_no"]: row for row in facts["parts"]}
         self.identities = {row["ref"]: row for row in facts["identities"]}
         self.operations, self.groups = defaultdict(list), defaultdict(list)
+        self.group_parts = defaultdict(set)
         for row in facts["operations"]:
             self.operations[row["part_no"]].append(row)
+            if row["ext_group_id"] is not None:
+                self.group_parts[row["ext_group_id"]].add(row["part_no"])
         for row in facts["groups"]:
             self.groups[row["part_no"]].append(row)
         self.target_ref, self.stack = target_ref, stack
@@ -168,7 +161,7 @@ class RouteFilePreview:
 
     def _check_template(self, code):
         operations, groups = self.operations[code], self.groups[code]
-        check_process_template(operations, groups, code, self.facts["operations"])
+        check_process_template(operations, groups, code, self.group_parts)
         return operations, groups
 
     def _route(self, row, part):
@@ -177,7 +170,7 @@ class RouteFilePreview:
             raise ValidationError("已有工艺路线不能用 \\N 清除；文件导入不会据此删掉原模板。请到基础资料操作。", field="route_raw")
         code = row["business_code"]
         existing = self.operations[code] if part is not None else []
-        preview = self._parse_route(raw, existing)
+        preview, changed = self._parse_route(raw, existing)
         row["route_summary"] = _route_summary(preview, existing)
         if not preview["can_confirm_route"]:
             raise WorkbenchCommandRejected("route_invalid", "工艺路线无效，这批不能导入。请按下面的逐条提示改好后重新预检。", 422)
@@ -187,7 +180,9 @@ class RouteFilePreview:
             row["after"]["route_raw"] = row["before"]["route_raw"]
             return []
         operations, groups = self._check_template(code) if part is not None else ([], [])
-        affected = affected_group_rows(groups, operations, _changed_sequences(operations, preview))
+        if changed is None:
+            changed = changed_route_sequences({op["seq"]: op for op in operations}, preview["operations"])
+        affected = affected_group_rows(groups, operations, changed)
         row["related"] = {"route": preview, "affected_groups": [{"ref": group["ref"], "group_id": group["group_id"]}
                                                                for group in affected]}
         if part is not None:
@@ -203,11 +198,13 @@ class RouteFilePreview:
             self.parser_ready = True
         preview = self.parser.preview({"mode": "text", "route_raw": raw})
         if not existing:
-            return preview
+            return preview, None
+        existing_by_seq = {op["seq"]: op for op in existing}
+        changed = changed_route_sequences(existing_by_seq, preview["operations"])
         if self.choices is None:
-            self.choices = route_choice_context(self.parser.conn,
-                                                [op for rows in self.operations.values() for op in rows], self.facts)
-        return preview_existing_route(self.parser.conn, preview, existing, context=self.choices)
+            self.choices = route_choice_context(self.parser.conn, self.facts["operations"], self.facts)
+        preview = preview_existing_route(preview, existing, self.choices, changed=changed)
+        return preview, changed
 
     def affected_groups(self, rows):
         refs = {group["ref"] for row in rows if row["result"] != "rejected"
