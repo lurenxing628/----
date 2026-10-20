@@ -81,7 +81,7 @@
     const selected = data.candidates.find(row => row.candidate_ref === recommendation.candidate_ref), scope = recommendation.completion_scope;
     const completionSummary = scope ? T.completion_summary(scope) : '';
     const mainBenefit = comparison.benefits.find(item => item.value !== null && item.value !== 0), mainCost = comparison.costs.find(item => item.value !== null && item.value !== 0);
-    const mainCause = data.selection_basis && data.selection_basis.explanation && data.selection_basis.explanation.headline || recommendation.headline;
+    const mainCause = (selected && data.selection_basis && data.selection_basis.explanation && data.selection_basis.explanation.headline) || recommendation.headline;
     const sameReference = comparison.reference.kind === 'candidate' && comparison.reference.candidate_ref === recommendation.candidate_ref;
     const supplement = data.scope.reference_state === 'available' && !sameReference ? [mainBenefit && mainBenefit.label + '，' + difference(mainBenefit), mainCost && mainCost.label + '，' + difference(mainCost)].filter(Boolean).join('；') : '';
     const tradeoffs = <div className="rd-tradeoffs" aria-label={'推荐方案相对' + (data.baseline.label || '当前查看基准')}>
@@ -90,7 +90,7 @@
         {comparison[key].length ? <TradeoffItems items={comparison[key]} onSupport={onSupport} /> : <p>{data.scope.reference_state === 'available' ? '暂无明确' + label.slice(2) : window.RunDecisionComparison.referenceNotice(data)}</p>}</div>)}
     </div>;
     return <section className={'rd-recommendation' + (compact ? ' rd-recommendation-compact' : '')} aria-label="推荐方案与推荐理由" data-recommendation-type={recommendation.recommendation_type}>
-      <div className="rd-recommend-main"><div className="rd-recommend-heading"><h3>{selected ? (compact ? '本次建议：' : titles[recommendation.recommendation_type] + '：') + selected.label : '这次排产的选择依据待补齐'}</h3>
+      <div className="rd-recommend-main"><div className="rd-recommend-heading"><h3>{selected ? (compact ? '本次建议：' : titles[recommendation.recommendation_type] + '：') + selected.label : '本次排产暂无推荐方案'}</h3>
         {selected && <C.Button icon="search" className="btn link" aria-label={'查看推荐方案：' + selected.label} onClick={() => onSelect(selected)}>{compact ? '查看方案' : '查看推荐方案'}</C.Button>}</div>
         {!compact && selected && completionSummary && <small className="rd-recommend-coverage">{completionSummary}</small>}
       </div>

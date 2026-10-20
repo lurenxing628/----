@@ -13,7 +13,6 @@ from .decision_impact import (
     DELIVERY_FILTERS,
     OPERATION_CHANGES,
     OPERATION_SORTS,
-    batch_impacts,
     filter_options,
 )
 from .decision_source import DecisionSource
@@ -59,9 +58,13 @@ def decision_details(source, section, filters, *, page: Union[int, str] = 1, siz
             reject("entity_not_found", "所选批次不在这次排产的归档范围。", 404)
     if filters["resource_ref"] is not None and filters["resource_ref"] not in {item["ref"] for item in options["resources"]}:
         reject("entity_not_found", "所选资源不在这次排产的归档安排。", 404)
-    batches, summary = batch_impacts(source)
-    selected_batch = next((row for row in batches if row["batch_ref"] == filters.get("selected_batch_ref")), None)
-    rows = batches if section == "batches" else source.operation_impacts
+    if section == "batches":
+        batches, summary = source.batch_impacts
+        selected_batch = next((row for row in batches if row["batch_ref"] == filters.get("selected_batch_ref")), None)
+        rows = batches
+    else:
+        summary = source.batch_impact_summary
+        rows = source.operation_impacts
     rows = [row for row in rows if _matches(row, filters)]
     rows = _ordered(rows, filters)
     page, size = _page(page), _page(size, size=True)

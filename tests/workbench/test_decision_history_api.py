@@ -11,7 +11,15 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import load_workbook
 
-from tests.workbench.decision_history_support import BASE, api, clone_run, copy_case, four_source_case, read
+from tests.workbench.decision_history_support import (
+    BASE,
+    api,
+    clone_run,
+    copy_case,
+    exported_history_references,
+    four_source_case,
+    read,
+)
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.run_candidate_support import compute, retained
 
@@ -411,7 +419,8 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
         try:
             native = list(workbook["历史条目"].values)
             columns = {label: index for index, label in enumerate(native[0])}
-            legacy_metrics = {row[columns["指标键"]]: row for row in native[1:] if row[columns["历史条目编号"]] == legacy_ref}
+            legacy_metrics = {row[columns["指标键"]]: row for row in native[1:]
+                              if row[columns["历史条目编号"]] == legacy_ref and row[columns["记录类型"]] == "指标值"}
             for kind in ("machine", "operator"):
                 row = legacy_metrics[kind + "_utilization_ratio"]
                 assert row[columns["数值"]] is None and row[columns["分母工时（小时）"]] is None
@@ -538,25 +547,40 @@ def test_filtered_twenty_and_fifty_pages_export_all_native_rows_and_reject_stale
         assert csv_response.status_code == 200, csv_response.get_data(as_text=True)
         csv_rows = list(csv.reader(io.StringIO(csv_response.data.decode("utf-8-sig"))))
         header, exported = csv_rows[0], csv_rows[1:]
-        assert len(header) == len(set(header)) and len(exported) == 51 * 3
-        assert int(csv_response.headers["X-Workbench-Row-Count"]) == 51 * 3
+        assert len(header) == len(set(header)) and len(exported) > 51 * 3
+        assert int(csv_response.headers["X-Workbench-Row-Count"]) == len(exported)
+        assert csv_response.headers["X-Workbench-Export-Version"] == "2"
+        csv_references = exported_history_references(header, exported)
         xlsx_response = client.get(BASE + "/export", query_string=dict(export_query, format="xlsx", section="all"))
         assert xlsx_response.status_code == 200, xlsx_response.get_data(as_text=True)
         workbook = load_workbook(io.BytesIO(xlsx_response.data), read_only=True, data_only=True)
         try:
-            native = list(workbook["历史条目"].values)
-            assert tuple(header) == native[0] and len(native) == 1 + 51 * 3
+            native = list(workbook["历史条目"].iter_rows(max_col=len(header), values_only=True))
+            assert tuple(header) == native[0] and len(native) == 1 + len(exported)
             assert len(set(native[0])) == len(native[0])
+            assert xlsx_response.headers["X-Workbench-Export-Version"] == "2"
+            native_references = exported_history_references(header, native[1:])
+            assert native_references == csv_references
+            primary_count = len(native) - 1 + sum(sum(1 for _row in workbook[title].values) - 1
+                                                for title in ("生产条件", "算法配置"))
+            assert int(xlsx_response.headers["X-Workbench-Row-Count"]) == primary_count
             for value in (0,):
                 assert any(type(cell) in (int, float) and cell == value for row in native[1:] for cell in row)
             assert any(type(cell) is float and cell > 0 for row in native[1:] for cell in row)
             assert any(cell is None for row in native[1:] for cell in row)
             entry_index, key_index = header.index("历史条目编号"), header.index("指标键")
-            csv_by_key = {(row[entry_index], row[key_index]): row for row in exported}
-            native_by_key = {(row[entry_index], row[key_index]): row for row in native[1:]}
+            record_index = header.index("记录类型")
+            csv_by_key = {(row[entry_index], row[key_index]): row for row in exported if row[record_index] == "指标值"}
+            native_by_key = {(row[entry_index], row[key_index]): row for row in native[1:] if row[record_index] == "指标值"}
             assert set(csv_by_key) == set(native_by_key) == {(ref, key) for ref in expected for key in query["metric_keys"]}
             for ref, entry in entries.items():
                 quantity = entry["scope"]["batch_quantity"]
+                for path, value in (("scope.batch_quantity.covered_batch_refs", quantity["covered_batch_refs"]),
+                                    ("scope.batch_refs", entry["scope"]["batch_refs"]),
+                                    ("scope.operation_refs", entry["scope"]["operation_refs"]),
+                                    ("reading_context.resource_window.cohort.machine_refs", entry["reading_context"]["resource_window"]["cohort"]["machine_refs"]),
+                                    ("reading_context.resource_window.cohort.operator_refs", entry["reading_context"]["resource_window"]["cohort"]["operator_refs"])):
+                    assert csv_references[ref, None, path] == value
                 for key in query["metric_keys"]:
                     source_metric = entry["metrics"][key]
                     csv_row, native_row = csv_by_key[ref, key], native_by_key[ref, key]
@@ -574,8 +598,10 @@ def test_filtered_twenty_and_fifty_pages_export_all_native_rows_and_reject_stale
                         number = native_row[header.index(label)]
                         assert type(number) in (int, float) and number == quantity[field]
                         assert float(csv_row[header.index(label)]) == quantity[field]
-                    covered = header.index("批次总量覆盖批次永久编号")
-                    assert json.loads(csv_row[covered]) == json.loads(native_row[covered]) == quantity["covered_batch_refs"]
+                    assert native_row[header.index("导出格式版本")] == 2
+                    assert csv_row[header.index("导出格式版本")] == "2"
+                    for field in ("covered_batch_refs", "covered_operation_refs", "covered_resource_refs"):
+                        assert csv_references[ref, key, field] == source_metric[field]
                     for label in ("批次总量缺项编码", "批次总量缺项说明"):
                         assert native_row[header.index(label)] is None and csv_row[header.index(label)] == ""
                     value = source_metric["value"]
@@ -604,8 +630,13 @@ def test_filtered_twenty_and_fifty_pages_export_all_native_rows_and_reject_stale
         try:
             native_row = next(row for row in book["历史条目"].iter_rows(max_col=len(columns), values_only=True)
                               if row[columns["历史条目编号"]] == legacy_ref)
-            for label in ("批次总量", "批次总量已知小计", "批次总量覆盖批次永久编号"):
+            for label in ("批次总量", "批次总量已知小计"):
                 assert native_row[columns[label]] is None and csv_row[columns[label]] == ""
+            csv_references = exported_history_references(csv_rows[0], csv_rows[1:])
+            native_rows = list(book["历史条目"].iter_rows(max_col=len(columns), values_only=True))
+            native_references = exported_history_references(native_rows[0], native_rows[1:])
+            assert csv_references == native_references
+            assert csv_references[legacy_ref, None, "scope.batch_quantity.covered_batch_refs"] is None
             for label, field in (("批次总量已知批次数", "known_count"), ("批次总量未知批次数", "unknown_count"),
                                  ("批次总量总批次数", "total_count")):
                 assert type(native_row[columns[label]]) is int and native_row[columns[label]] == quantity[field]

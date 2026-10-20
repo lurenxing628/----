@@ -179,7 +179,8 @@
   }
   function decision(payload, runRef, query = {}) {
     const data = decisionCore(payload, runRef, query);
-    data.candidates.forEach(row => data.metric_definitions.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key])
+    const extraMetrics = data.metric_definitions.filter(metric => !coreMetricKeys.includes(metric.key));
+    data.candidates.forEach(row => extraMetrics.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key])
       && row.metrics[metric.key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[metric.key]), '比较指标资料不完整，请点“刷新方案对比”。')));
     completionGroups(data);
     return data;

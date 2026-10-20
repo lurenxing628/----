@@ -14,6 +14,7 @@ from ..run.decision_export import _csv as csv_content
 from ..run.decision_export import _csv_cell as csv_cell
 
 FILENAME = "排产历史趋势"
+HISTORY_EXPORT_VERSION = 2
 CSV_CONTENT_TYPE = "text/csv; charset=utf-8"
 XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 SECTION_TITLES = {"entries": "历史条目", "conditions": "生产条件", "configurations": "算法配置"}
@@ -33,19 +34,17 @@ ENTRY_FIELDS = (
     ("批次总量单位", "scope.batch_quantity.unit"), ("批次总量覆盖状态", "scope.batch_quantity.state"),
     ("批次总量指标范围", "scope.batch_quantity.scope"), ("批次总量指标版本", "scope.batch_quantity.metric_version"),
     ("批次总量已知批次数", "scope.batch_quantity.known_count"), ("批次总量未知批次数", "scope.batch_quantity.unknown_count"),
-    ("批次总量总批次数", "scope.batch_quantity.total_count"), ("批次总量覆盖批次永久编号", "scope.batch_quantity.covered_batch_refs"),
+    ("批次总量总批次数", "scope.batch_quantity.total_count"),
     ("批次总量来源类型", "scope.batch_quantity.source.kind"), ("批次总量来源编号", "scope.batch_quantity.source.ref"),
     ("批次总量来源字段", "scope.batch_quantity.source.path"), ("批次总量缺项编码", "scope.batch_quantity.reason.code"),
     ("批次总量缺项说明", "scope.batch_quantity.reason.message"),
-    ("需求工时（小时）", "scope.demand_hours"), ("范围批次永久编号", "scope.batch_refs"),
-    ("范围工序永久编号", "scope.operation_refs"), ("范围缺项编码", "scope.reason.code"), ("范围缺项说明", "scope.reason.message"),
+    ("需求工时（小时）", "scope.demand_hours"),
+    ("范围缺项编码", "scope.reason.code"), ("范围缺项说明", "scope.reason.message"),
     ("结果读取方式", "reading_context.metric_basis"), ("资源窗口方式", "reading_context.resource_window.mode"),
     ("资源窗口起点（含）", "reading_context.resource_window.start"), ("资源窗口终点（不含）", "reading_context.resource_window.end"),
     ("资源窗口天数", "reading_context.resource_window.days"), ("资源窗口起点依据", "reading_context.resource_window.anchor"),
     ("资源窗口时间依据", "reading_context.resource_window.time_basis"), ("资源窗口边界", "reading_context.resource_window.boundary"),
     ("资源窗口状态", "reading_context.resource_window.state"),
-    ("窗口设备永久编号", "reading_context.resource_window.cohort.machine_refs"),
-    ("窗口人员永久编号", "reading_context.resource_window.cohort.operator_refs"),
     ("资源窗口缺项编码", "reading_context.resource_window.reason.code"),
     ("资源窗口缺项说明", "reading_context.resource_window.reason.message"),
 )
@@ -55,12 +54,24 @@ METRIC_FIELDS = (
     ("已知数量", "known_count"), ("未知数量", "unknown_count"), ("总数量", "total_count"),
     ("分子工时（小时）", "numerator_hours"), ("分母工时（小时）", "denominator_hours"),
     ("班内未知任务数", "unknown_workload_count"),
-    ("指标覆盖批次永久编号", "covered_batch_refs"), ("指标覆盖工序永久编号", "covered_operation_refs"),
-    ("指标覆盖资源永久编号", "covered_resource_refs"), ("指标缺项编码", "reason.code"), ("指标缺项说明", "reason.message"),
+    ("指标缺项编码", "reason.code"), ("指标缺项说明", "reason.message"),
 )
-COMMON_HEADERS = ("历史格式版本", "读取编号", "读取时间")
-ENTRY_HEADERS = COMMON_HEADERS + tuple(label for label, _path in ENTRY_FIELDS) + ("指标键", "指标", "单位", "数值", "已知小计") \
-    + tuple(label for label, _path in METRIC_FIELDS)
+ENTRY_REFERENCE_FIELDS = (
+    ("批次总量覆盖批次永久编号", "scope.batch_quantity.covered_batch_refs", "批次"),
+    ("范围批次永久编号", "scope.batch_refs", "批次"),
+    ("范围工序永久编号", "scope.operation_refs", "工序"),
+    ("窗口设备永久编号", "reading_context.resource_window.cohort.machine_refs", "设备"),
+    ("窗口人员永久编号", "reading_context.resource_window.cohort.operator_refs", "人员"),
+)
+METRIC_REFERENCE_FIELDS = (
+    ("指标覆盖批次永久编号", "covered_batch_refs", "批次"),
+    ("指标覆盖工序永久编号", "covered_operation_refs", "工序"),
+    ("指标覆盖资源永久编号", "covered_resource_refs", "资源"),
+)
+REFERENCE_HEADERS = ("引用字段", "引用名称", "引用对象类型", "引用原值类型", "引用数量", "引用顺序", "引用永久编号")
+COMMON_HEADERS = ("历史格式版本", "导出格式版本", "读取编号", "读取时间")
+ENTRY_HEADERS = COMMON_HEADERS + ("记录类型",) + tuple(label for label, _path in ENTRY_FIELDS) \
+    + ("指标键", "指标", "单位", "数值", "已知小计") + tuple(label for label, _path in METRIC_FIELDS) + REFERENCE_HEADERS
 PAIR_HEADERS = COMMON_HEADERS + ("时间线", "所选条目编号", "基准条目编号", "明确基准运行编号")
 SIDE_HEADERS = ("值已保存", "值状态", "原值类型", "原值", "来源类型", "来源编号", "来源字段", "缺项编码", "缺项说明")
 DETAIL_HEADERS = PAIR_HEADERS + ("记录类型", "条件类别", "类别名称", "实体编号", "实体名称", "字段", "对照状态") \
@@ -88,7 +99,7 @@ def _at(document, path):
 
 
 def _common(data, snapshot):
-    return [data["history_version"], snapshot["snapshot_ref"], snapshot["as_of"]]
+    return [data["history_version"], HISTORY_EXPORT_VERSION, snapshot["snapshot_ref"], snapshot["as_of"]]
 
 
 def _entry_ref(entry):
@@ -112,8 +123,29 @@ def entry_rows(data, snapshot):
         identity = [_native_value(_at(entry, path)) for _label, path in ENTRY_FIELDS]
         for key in data["filters"]["metric_keys"]:
             metric, definition = entry["metrics"][key], definitions[key]
-            yield common + identity + [key, definition["label"], metric["unit"], _display_number(metric["value"], metric["unit"]),
-                _display_number(metric["known_subtotal"], metric["unit"])] + [_native_value(_at(metric, path)) for _label, path in METRIC_FIELDS]
+            yield common + ["指标值"] + identity + [key, definition["label"], metric["unit"], _display_number(metric["value"], metric["unit"]),
+                _display_number(metric["known_subtotal"], metric["unit"])] \
+                + [_native_value(_at(metric, path)) for _label, path in METRIC_FIELDS] + [None] * len(REFERENCE_HEADERS)
+        yield from entry_reference_rows(entry, common, data["filters"]["metric_keys"])
+
+
+def entry_reference_rows(entry, common, metric_keys):
+    """Preserve each collection and member without packing arbitrary scope into one cell."""
+    # Reference rows link to their scalar history/metric row; they do not repeat
+    # all history values for every member. Null and an explicit empty array each
+    # keep one row, so an unused coverage axis is not changed into a known zero.
+    identity = [_at(entry, path) if path in ("entry_ref", "timeline") else None for _label, path in ENTRY_FIELDS]
+    metric_blanks = [None] * len(METRIC_FIELDS)
+    scopes = [("范围引用", None, entry, ENTRY_REFERENCE_FIELDS)]
+    scopes.extend(("指标覆盖引用", key, entry["metrics"][key], METRIC_REFERENCE_FIELDS) for key in metric_keys)
+    for record_type, metric_key, source, fields in scopes:
+        prefix = common + [record_type] + identity + [metric_key, None, None, None, None] + metric_blanks
+        for label, path, kind in fields:
+            values = _at(source, path)
+            value_type, count = ("null", None) if values is None else ("array", len(values))
+            members = enumerate(values, 1) if values else ((None, None),)
+            for index, reference in members:
+                yield prefix + [path, label, kind, value_type, count, index, reference]
 
 
 def _side_values(side):
@@ -144,7 +176,8 @@ def definition_rows(data):
 
 def scope_rows(data, snapshot):
     selection, comparison = data["selection"], data["comparison"]
-    fields = [("历史格式版本", data["history_version"]), ("读取编号", snapshot["snapshot_ref"]), ("读取时间", snapshot["as_of"]),
+    fields = [("历史格式版本", data["history_version"]), ("导出格式版本", HISTORY_EXPORT_VERSION),
+              ("读取编号", snapshot["snapshot_ref"]), ("读取时间", snapshot["as_of"]),
               ("明细范围", "筛选结果全部页"), ("所选条目编号", _entry_ref(selection["entry"])),
               ("基准条目编号", _entry_ref(selection["reference"])), ("运行时间线条目数", data["totals"]["run"]),
               ("正式采用时间线条目数", data["totals"]["official"]), ("当前筛选条目数", data["totals"]["filtered"]),
@@ -152,7 +185,10 @@ def scope_rows(data, snapshot):
               ("比较原因编码", _at(comparison, "conclusion.reason.code")), ("比较原因说明", _at(comparison, "conclusion.reason.message")),
               ("生产条件状态", comparison["conditions"]["state"]), ("算法配置状态", comparison["configurations"]["state"]),
               ("生产条件和配置方向", "基准值 → 所选值"), ("百分比输出方式", "保存比例乘100；分子、分母工时仍按小时"),
-              ("计算耗时单位", "秒，保留保存数值"), ("目录版本说明", "指标口径表列出当前目录；每条历史指标的实际版本和来源保留在历史条目表")]
+              ("计算耗时单位", "秒，保留保存数值"), ("目录版本说明", "指标口径表列出当前目录；每条历史指标的实际版本和来源保留在历史条目表"),
+              ("条目记录类型", "指标值、范围引用、指标覆盖引用；按历史条目编号和指标键关联"),
+              ("引用集合说明", "引用原值类型为null时数量与成员留空；array数量0为空集合；成员按引用顺序逐行保留"),
+              ("导出记录数说明", "响应记录数包含主分区的指标值、引用明细和空/null占位行；不含指标口径、比较范围、数据缺项三张附表")]
     for key, value in data["filters"].items():
         if key not in ("page", "size", "condition_page", "condition_size", "snapshot_ref"):
             fields.append(("筛选." + key, value))
@@ -198,15 +234,19 @@ def issue_rows(data, snapshot):
 def write_history_export(data, snapshot, fmt, section="entries"):
     sections = tuple(SECTION_TITLES) if section == "all" else (section,)
     tables, count = {}, 0
+
+    def counted(rows):
+        nonlocal count
+        for row in rows:
+            count += 1
+            yield row
+
     for name in sections:
         if name == "entries":
             headers, rows = ENTRY_HEADERS, entry_rows(data, snapshot)
-            count += len(data["entries"]) * len(data["filters"]["metric_keys"])
         else:
             headers, rows = DETAIL_HEADERS, detail_rows(data, snapshot, name)
-            pair = data["selection"]
-            count += 1 if pair["entry"] is None or pair["reference"] is None else len(data["comparison"][name]["rows"])
-        tables[SECTION_TITLES[name]] = headers, rows
+        tables[SECTION_TITLES[name]] = headers, counted(rows)
     if fmt == "csv":
         headers, rows = next(iter(tables.values()))
         content = csv_content(headers, _csv_rows(rows))

@@ -314,6 +314,18 @@ class DecisionSource:
             reference_task_intervals=self.task_intervals("reference"))
 
     @cached_property
+    def batch_impacts(self):
+        from .decision_impact import batch_impacts
+        return batch_impacts(self)
+
+    @cached_property
+    def batch_impact_summary(self):
+        if "batch_impacts" in self.__dict__:
+            return self.batch_impacts[1]
+        from .decision_impact import batch_impact_summary
+        return batch_impact_summary(self)
+
+    @cached_property
     def operation_impacts(self):
         from .decision_impact import operation_impacts
         return operation_impacts(self)

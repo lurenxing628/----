@@ -36,6 +36,8 @@ def _quantity(value, unit):
 
 
 def _selection_headline(basis, evidence, health, labels, units, candidates, artifact):
+    if not basis["selected_candidate_ref"]:
+        return "本次排产尚未保存推荐方案。"
     if evidence is None:
         return "推荐方案已保存；这条旧记录未保存具体选择依据。"
     def quantity(value, unit):
@@ -128,7 +130,8 @@ def selection_explanation(basis, artifact, candidates):
         "；关键工序时间比较基准为 " + labels.get(basis.get("health_reference_candidate_ref"), "未记录") + "。",
         state="complete" if basis["selected_candidate_ref"] else "unavailable"))
     if evidence is None:
-        issues.append({"code": "selection_detail_missing", "message": "这条旧记录未保存交期上限检查和指标相同时的选择依据。"})
+        if basis["selected_candidate_ref"]:
+            issues.append({"code": "selection_detail_missing", "message": "这条旧记录未保存交期上限检查和指标相同时的选择依据。"})
     else:
         selected, raw = evidence.get("selected") or {}, (evidence.get("anchors") or {}).get("raw_score_best") or {}
         before, after = raw.get("score") or [], selected.get("score") or []
@@ -175,7 +178,8 @@ def selection_explanation(basis, artifact, candidates):
                                   "保留按目标比较选出的方案。",
                                   ))
     if health is None:
-        issues.append({"code": "health_detail_missing", "message": "这条记录未保存关键工序时间的比较数值和评价分项。"})
+        if basis["selected_candidate_ref"] or evidence is not None:
+            issues.append({"code": "health_detail_missing", "message": "这条记录未保存关键工序时间的比较数值和评价分项。"})
         saved = artifact.get("health") or {}
         for key, label in _HEALTH.items():
             if saved.get(key) is not None:

@@ -43,7 +43,11 @@ def decision_history_export():
     if not token:
         raise WorkbenchCommandRejected("invalid_input", "请刷新历史资料后导出。", 422)
     with PLAN_READ_SLOTS.slot():
-        from core.services.workbench.history.export import read_history_export, write_history_export
+        from core.services.workbench.history.export import (
+            HISTORY_EXPORT_VERSION,
+            read_history_export,
+            write_history_export,
+        )
 
         data, scope, state = read_history_export(g.db, values)
         snapshot = bind_read_snapshot(scope, state, token)
@@ -53,6 +57,7 @@ def decision_history_export():
                          download_name=download.filename, max_age=0)
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
+    response.headers["X-Workbench-Export-Version"] = str(HISTORY_EXPORT_VERSION)
     response.headers["X-Workbench-Row-Count"] = str(download.row_count)
     return response
 

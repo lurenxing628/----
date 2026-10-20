@@ -21,6 +21,15 @@ OPERATION_SORTS = ("sequence", "start_delta_hours", "end_delta_hours", "batch_id
 DELIVERY_FILTERS = ("all", "attention", "overdue", "deferred", "unplanned", "on_time")
 
 
+def batch_impact_summary(source):
+    before = reference_delivery(source)
+    after = source.completion.delivery(source.selected_ref)
+    changes = operation_change_metrics(source.operation_comparisons.values(), source.scope["operation_refs"],
+        source.baseline["state"] == "available", selected_available=source.result_available(source.selected_ref))
+    return {"before": delivery_summary(before), "after": delivery_summary(after), **common_delivery(before, after),
+            "operation_changes": changes}
+
+
 def batch_impacts(source):
     before = reference_delivery(source)
     tasks = source.tasks(source.selected_ref)
@@ -28,20 +37,17 @@ def batch_impacts(source):
     old, new = ({row["batch_ref"]: row for row in rows} for rows in (before, after))
     selected_by_batch, reference_by_batch = (_by_batch(rows) for rows in (tasks, source.before_tasks))
     operation_rows = defaultdict(list)
-    comparisons = source.operation_comparisons
-    for op_ref, row in comparisons.items():
-        operation = source.facts.tables["BatchOperations"][source.facts.operations[op_ref]]
-        operation_rows[source.facts.entity_refs[("batch", operation["batch_id"])]].append(row)
     expected_by_batch = defaultdict(set)
-    for op_ref in source.scope["operation_refs"]:
-        operation = source.facts.tables["BatchOperations"][source.facts.operations[op_ref]]
-        expected_by_batch[source.facts.entity_refs.get(("batch", operation["batch_id"]))].add(op_ref)
+    for op_ref, row in source.operation_comparisons.items():
+        batch_ref = source.operation_batch_ref(op_ref)
+        operation_rows[batch_ref].append(row)
+        expected_by_batch[batch_ref].add(op_ref)
     result = []
     available = source.result_available(source.selected_ref)
     for ref in source.scope["batch_refs"]:
         previous, current = old[ref], new[ref]
         labels = {key: current[key] for key in ("batch_ref", "batch_id", "part_no", "part_label", "priority", "quantity", "due_date", "due_state", "due_issue")}
-        delta = delivery_batch_delta(previous, current) if source.baseline["state"] == "available" and source.result_available(source.selected_ref) else {
+        delta = delivery_batch_delta(previous, current) if source.baseline["state"] == "available" and available else {
             "finish_delta_hours": None, "delay_delta_hours": None, "change_kinds": ["unknown"]}
         changes = operation_rows[ref]
         changed = sum(bool(row["changed_fields"]) for row in changes)
@@ -59,10 +65,7 @@ def batch_impacts(source):
                        "deferred_operation_refs": sorted(expected & source.deferred_refs) if available else None,
                        "drill": {"selected": _drill(source, tasks=selected_by_batch[ref], batch_ref=ref) if available else None,
                                  "reference": _drill(source, tasks=reference_by_batch[ref], batch_ref=ref, before=True)}})
-    changes = operation_change_metrics(comparisons.values(), source.scope["operation_refs"],
-        source.baseline["state"] == "available", selected_available=available)
-    return result, {"before": delivery_summary(before), "after": delivery_summary(after), **common_delivery(before, after),
-                    "operation_changes": changes}
+    return result, batch_impact_summary(source)
 
 
 def _attention_kinds(delivery):

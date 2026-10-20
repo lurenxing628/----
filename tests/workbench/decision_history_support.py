@@ -30,6 +30,41 @@ from tests.workbench.trial_support import trial_case
 BASE = "/api/workbench/v1/scheduling/decision-history"
 
 
+def exported_history_references(headers, rows):
+    """Reconstruct exported collections, preserving null, empty and member order."""
+    columns = {label: index for index, label in enumerate(headers)}
+    groups = {}
+    for row in rows:
+        kind = row[columns["记录类型"]]
+        if kind == "指标值":
+            continue
+        assert kind in ("范围引用", "指标覆盖引用")
+        metric = row[columns["指标键"]] or None
+        assert (metric is None) == (kind == "范围引用")
+        key = row[columns["历史条目编号"]], metric, row[columns["引用字段"]]
+        groups.setdefault(key, []).append(row)
+    result = {}
+    for key, members in groups.items():
+        first = members[0]
+        value_type = first[columns["引用原值类型"]]
+        count = first[columns["引用数量"]]
+        if value_type == "null":
+            assert len(members) == 1 and count in (None, "")
+            result[key] = None
+        else:
+            assert value_type == "array" and len(members) == max(1, int(count))
+            result[key] = []
+        for position, row in enumerate(members, 1):
+            reference, order = row[columns["引用永久编号"]], row[columns["引用顺序"]]
+            assert row[columns["引用原值类型"]] == value_type and row[columns["引用数量"]] == count
+            if value_type == "null" or int(count) == 0:
+                assert reference in (None, "") and order in (None, "")
+            else:
+                assert int(order) == position
+                result[key].append(reference[1:] if reference.startswith("'") else reference)
+    return result
+
+
 @contextmanager
 def four_source_case(directory):
     """Compute the existing small fixture once; every later history point reuses its archive."""

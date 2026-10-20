@@ -85,7 +85,7 @@
       {format && <C.Modal title="导出历史走势" icon="download" onClose={cancel} footer={<><C.Button onClick={cancel}>{busy ? '取消导出' : '取消'}</C.Button><C.Button transfer="export" className="btn primary" busy={busy} onClick={save}>下载 {format.toUpperCase()}</C.Button></>}><div className="modal-b dh-export-fields">
         <label>文件格式<select aria-label="历史导出文件格式" value={format} disabled={busy} onChange={event => { setFormat(event.target.value); if (event.target.value === 'csv' && section === 'all') setSection('entries'); }}><option value="xlsx">XLSX</option><option value="csv">CSV</option></select></label>
         <label>导出内容<select aria-label="历史导出内容" value={section} disabled={busy} onChange={event => setSection(event.target.value)}><option value="entries">当前筛选的全部历史条目</option><option value="conditions">选中条目与基准的生产条件</option><option value="configurations">选中条目与基准的算法配置</option>{format === 'xlsx' && <option value="all">全部分区及指标口径、范围和缺项</option>}</select></label>
-        <p>条目文件包含当前筛选的全部页面。生产条件与算法配置对应当前选中条目和明确基准。</p><ErrorBox error={error} /></div></C.Modal>}</>;
+        <p>条目文件包含当前筛选的全部页面；记录含指标值、范围引用和指标覆盖引用，永久编号按明细行完整保留。生产条件与算法配置对应当前选中条目和明确基准。</p><ErrorBox error={error} /></div></C.Modal>}</>;
   }
   const adapters = new WeakMap(); let nextAdapter = 0;
   function Session({ adapter, start, pageContext, navigation, onNavigate, renderTopics }) {

@@ -37872,7 +37872,8 @@ function SMExport({
   }
   function decision(payload, runRef, query = {}) {
     const data = decisionCore(payload, runRef, query);
-    data.candidates.forEach(row => data.metric_definitions.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key]) && row.metrics[metric.key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[metric.key]), '比较指标资料不完整，请点“刷新方案对比”。')));
+    const extraMetrics = data.metric_definitions.filter(metric => !coreMetricKeys.includes(metric.key));
+    data.candidates.forEach(row => extraMetrics.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key]) && row.metrics[metric.key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[metric.key]), '比较指标资料不完整，请点“刷新方案对比”。')));
     completionGroups(data);
     return data;
   }
@@ -38782,7 +38783,7 @@ function SMExport({
     const completionSummary = scope ? T.completion_summary(scope) : '';
     const mainBenefit = comparison.benefits.find(item => item.value !== null && item.value !== 0),
       mainCost = comparison.costs.find(item => item.value !== null && item.value !== 0);
-    const mainCause = data.selection_basis && data.selection_basis.explanation && data.selection_basis.explanation.headline || recommendation.headline;
+    const mainCause = selected && data.selection_basis && data.selection_basis.explanation && data.selection_basis.explanation.headline || recommendation.headline;
     const sameReference = comparison.reference.kind === 'candidate' && comparison.reference.candidate_ref === recommendation.candidate_ref;
     const supplement = data.scope.reference_state === 'available' && !sameReference ? [mainBenefit && mainBenefit.label + '，' + difference(mainBenefit), mainCost && mainCost.label + '，' + difference(mainCost)].filter(Boolean).join('；') : '';
     const tradeoffs = /*#__PURE__*/React.createElement("div", {
@@ -38807,7 +38808,7 @@ function SMExport({
       className: "rd-recommend-main"
     }, /*#__PURE__*/React.createElement("div", {
       className: "rd-recommend-heading"
-    }, /*#__PURE__*/React.createElement("h3", null, selected ? (compact ? '本次建议：' : titles[recommendation.recommendation_type] + '：') + selected.label : '这次排产的选择依据待补齐'), selected && /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement("h3", null, selected ? (compact ? '本次建议：' : titles[recommendation.recommendation_type] + '：') + selected.label : '本次排产暂无推荐方案'), selected && /*#__PURE__*/React.createElement(C.Button, {
       icon: "search",
       className: "btn link",
       "aria-label": '查看推荐方案：' + selected.label,
@@ -49515,7 +49516,7 @@ function SMExport({
       value: "configurations"
     }, "\u9009\u4E2D\u6761\u76EE\u4E0E\u57FA\u51C6\u7684\u7B97\u6CD5\u914D\u7F6E"), format === 'xlsx' && /*#__PURE__*/React.createElement("option", {
       value: "all"
-    }, "\u5168\u90E8\u5206\u533A\u53CA\u6307\u6807\u53E3\u5F84\u3001\u8303\u56F4\u548C\u7F3A\u9879"))), /*#__PURE__*/React.createElement("p", null, "\u6761\u76EE\u6587\u4EF6\u5305\u542B\u5F53\u524D\u7B5B\u9009\u7684\u5168\u90E8\u9875\u9762\u3002\u751F\u4EA7\u6761\u4EF6\u4E0E\u7B97\u6CD5\u914D\u7F6E\u5BF9\u5E94\u5F53\u524D\u9009\u4E2D\u6761\u76EE\u548C\u660E\u786E\u57FA\u51C6\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
+    }, "\u5168\u90E8\u5206\u533A\u53CA\u6307\u6807\u53E3\u5F84\u3001\u8303\u56F4\u548C\u7F3A\u9879"))), /*#__PURE__*/React.createElement("p", null, "\u6761\u76EE\u6587\u4EF6\u5305\u542B\u5F53\u524D\u7B5B\u9009\u7684\u5168\u90E8\u9875\u9762\uFF1B\u8BB0\u5F55\u542B\u6307\u6807\u503C\u3001\u8303\u56F4\u5F15\u7528\u548C\u6307\u6807\u8986\u76D6\u5F15\u7528\uFF0C\u6C38\u4E45\u7F16\u53F7\u6309\u660E\u7EC6\u884C\u5B8C\u6574\u4FDD\u7559\u3002\u751F\u4EA7\u6761\u4EF6\u4E0E\u7B97\u6CD5\u914D\u7F6E\u5BF9\u5E94\u5F53\u524D\u9009\u4E2D\u6761\u76EE\u548C\u660E\u786E\u57FA\u51C6\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }))));
   }

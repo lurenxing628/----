@@ -191,6 +191,9 @@ def test_candidate_scope_and_window_errors_are_rejected_before_comparison(candid
     assert pending_summary["recommendation"]["state"] == "unavailable"
     assert pending_summary["baseline"]["state"] == "selection_required"
     assert pending_summary["baseline"]["metrics"] == {} and pending_summary["candidates"] == []
+    explanation = pending_summary["selection_basis"]["explanation"]
+    assert explanation["headline"] == "本次排产尚未保存推荐方案。"
+    assert explanation["issues"] == []
     second = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     second_candidate = second["candidates"][0]["candidate_ref"]
     completed_path = BASE + "/runs/" + second["run_ref"] + "/decision"
@@ -395,3 +398,19 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
         invalid = dict(target, decision_history_context=dict(history_state, **patch))
         with pytest.raises(WorkbenchNavigationInvalid):
             read_navigation("analysis", {"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})})
+
+
+@pytest.mark.parametrize("status", ("queued", "running", "failed", "cancelled"))
+def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence(status):
+    from core.services.workbench.facts.decision_selection import selection_basis
+
+    candidate = {"candidate_ref": "a" * 48, "status": status,
+                 "artifact": {"candidate_key": "unfinished", "label": "Candidate"}}
+    basis = selection_basis(None, [candidate])
+    assert basis["selected_candidate_ref"] is None and basis["evidence_state"] == "unavailable"
+    assert basis["explanation"]["headline"] == "本次排产尚未保存推荐方案。"
+    assert basis["explanation"]["issues"] == []
+    legacy = selection_basis({"selection": {"selected_candidate_ref": candidate["candidate_ref"]}},
+                             [dict(candidate, status="completed")])["explanation"]
+    assert legacy["headline"] == "推荐方案已保存；这条旧记录未保存具体选择依据。"
+    assert {issue["code"] for issue in legacy["issues"]} == {"selection_detail_missing", "health_detail_missing"}
