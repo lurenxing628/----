@@ -161,7 +161,7 @@ def test_trial_new_permanent_resource_ref_stays_unknown_in_original_archive(tria
 
 def test_current_dashboard_two_kinds_share_fact_contract_without_rederiving_pressure(dashboard_case, monkeypatch):
     client = api(dashboard_case, monkeypatch)
-    response = client.get('/api/workbench/v1/dashboard/analysis')
+    response = client.get('/api/workbench/v1/dashboard/analysis', query_string={'section': 'pressure'})
     assert response.status_code == 200
     document = response.get_json()
     data = document["data"]

@@ -29,10 +29,16 @@ class BatchImportPreview:
         self.facts = facts
         self.mode = mode
         self.projection = BatchProjection(facts)
+        self._entities = {}
         self.existing = {row["batch_id"]: row for row in facts["Batches"]}
-        self.validator = get_batch_row_validate_and_normalize(
-            parts_cache={row["part_no"]: row for row in facts["Parts"]})
+        self.validator = get_batch_row_validate_and_normalize(parts_cache=self.projection.parts)
         self.seen = set()
+
+    def _entity(self, batch):
+        code = batch["batch_id"]
+        if code not in self._entities:
+            self._entities[code] = self.projection.entity(batch)
+        return self._entities[code]
 
     def _relations(self, batch):
         """整份文件共用投影按同一份数据建好的关联索引；逐行重算会让大文件预检随行数平方变慢。"""
@@ -53,7 +59,8 @@ class BatchImportPreview:
             self.seen.add(code)
             batch = self.existing.get(code)
             if batch is not None:
-                row.update(entity_ref=self.projection.ref("batch", code), before=self.projection.entity(batch))
+                before = self._entity(batch)
+                row.update(entity_ref=before["ref"], before=before)
             kept = self._kept(parsed["values"], row["before"]) if batch is not None and self.mode == "overwrite" else ()
             source = self._validated(source, kept)
             if batch is not None and self.mode == "append":
@@ -103,11 +110,11 @@ class BatchImportPreview:
         return {key for key in _COMPARED if original.get(key) not in (None, "")
                 and type(original[key]) is type(exported[HEADER_FIELDS[key]]) and original[key] == exported[HEADER_FIELDS[key]]}
 
-    def _input(self, source, original, batch, kept=()):
+    def _input(self, source, original, batch, kept):
         create = batch is None or self.mode == "replace"
         fields = {HEADER_FIELDS[key]: value for key, value in source.items() if HEADER_FIELDS[key] in FIELDS
                   and (create or original.get(key) not in (None, "") and key not in kept)}
-        if batch is None or self.mode == "replace":
+        if create:
             for key in ("due_date", "ready_date", "remark"):
                 fields.setdefault(key, None)
             return "create", {"business_code": source["批次号"],
@@ -117,12 +124,14 @@ class BatchImportPreview:
         return "update", {"fields": self._readiness(fields, batch)}
 
     def _readiness(self, fields, batch):
-        if fields.get("quantity", batch["quantity"]) != batch["quantity"]:
-            require_unreferenced(self.facts, batch, self._relations(batch))
-            if self._relations(batch)["materials"]:
+        relations = self._relations(batch)
+        quantity_changed = fields.get("quantity", batch["quantity"]) != batch["quantity"]
+        if quantity_changed:
+            require_unreferenced(self.facts, batch, relations)
+            if relations["materials"]:
                 fields["ready_status"] = "no"
-        if "ready_status" in fields and fields["ready_status"] != batch["ready_status"] and self._relations(batch)["materials"]:
-            if fields.get("quantity", batch["quantity"]) == batch["quantity"]:
+        if "ready_status" in fields and fields["ready_status"] != batch["ready_status"] and relations["materials"]:
+            if not quantity_changed:
                 raise ValidationError("此批次的齐套按物料需求计算，请在物料需求中核对后保存。")
         return fields
 
@@ -132,8 +141,8 @@ class BatchImportPreview:
         return [self._deletion(batch) for batch in self.facts["Batches"]]
 
     def _deletion(self, batch):
-        item = {"entity_ref": self.projection.ref("batch", batch["batch_id"]),
-                "before": self.projection.entity(batch), "errors": []}
+        before = self._entity(batch)
+        item = {"entity_ref": before["ref"], "before": before, "errors": []}
         try:
             require_deletable(self.facts, batch, self._relations(batch))
         except WorkbenchCommandRejected as exc:

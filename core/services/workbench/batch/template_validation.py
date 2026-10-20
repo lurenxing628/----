@@ -8,10 +8,10 @@ from .projection import issue
 from .resource_choices import BatchResourceFacts
 
 
-def template_diagnostics(rows, facts, batch, resources=None):
+def template_diagnostics(rows, facts, batch, resources):
     diagnostics = []
     sequences = set()
-    types = {row["op_type_id"]: row for row in facts["OpTypes"]}
+    types = resources.catalogs["op_type"]
     groups, suppliers = _source_catalogs(rows, facts, batch, resources)
     for row in rows:
         if type(row["seq"]) is not int or row["seq"] <= 0:
@@ -66,9 +66,10 @@ def _supplier_valid(supplier, op_type_id):
     return valid_supplier(dict(supplier, capable=op_type_id in supplier["capabilities"])) if supplier else False
 
 
-def template_status(facts, batch, resources=None):
+def template_status(facts, batch, resources, *, rows=None):
     """The detail and replacement preview apply the same completeness policy."""
-    rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
+    if rows is None:
+        rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
     workflow = facts["workflow"][batch["part_no"]]["workflow"]
     diagnostics = template_diagnostics(rows, facts, batch, resources)
     if not rows:

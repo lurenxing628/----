@@ -39,9 +39,10 @@ class _Authorizations(OperatorMachineRepository):
 
 
 class TaskConstraints:
-    def __init__(self, calendar_facts):
+    def __init__(self, calendar_facts, *, calendar_lookup=None):
         self.available = calendar_facts["sources"] is not None
         self.resources = calendar_facts["resources"]
+        self.calendar_lookup = calendar_lookup
         self.issues = defaultdict(set)
         self.indexes, self.qualification_cache, self.skills_cache = {}, {}, {}
         if not self.available:
@@ -130,9 +131,14 @@ class TaskConstraints:
         mode = "normal" if priority == "normal" else "urgent"
         cache_key = kind, key, mode
         if cache_key not in self.indexes:
-            projection = self.resources[kind].get(key)
-            windows = available_intervals(projection, mode) if projection is not None else None
-            self.indexes[cache_key] = IntervalIndex.from_normalized(windows) if windows is not None else None
+            projection = (self.calendar_lookup(kind, key) if self.calendar_lookup is not None
+                          else self.resources[kind].get(key))
+            # A streamed projection owns a whole resource window. Retain its
+            # two permission indexes and release the daily projection at once.
+            modes = ("normal", "urgent") if self.calendar_lookup is not None else (mode,)
+            for selected_mode in modes:
+                windows = available_intervals(projection, selected_mode) if projection is not None else None
+                self.indexes[kind, key, selected_mode] = IntervalIndex.from_normalized(windows) if windows is not None else None
         index = self.indexes[cache_key]
         if index is None:
             self._add("assignment_calendar_unavailable", op_id)

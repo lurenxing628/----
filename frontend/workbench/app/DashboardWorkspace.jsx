@@ -112,13 +112,9 @@
             {!external && tab === 'analysis' && <>
               {analysisRead.loading && <p role="status">正在读取同一正式计划的分析依据。</p>}
               {analysisRead.error && <Button icon="refresh-cw" onClick={reload}>刷新分析</Button>}
-              {analysisData && <>
-                {q.category === 'material' ? <window.DashboardAnalysisPanels.Material data={analysisData} showIssues={false} /> : analysisData.plan && (q.category === 'downtime'
-                  ? <window.DashboardAnalysisPanels.Downtime data={analysisData} selected={analysisBatch} onSelect={setAnalysisBatch} />
-                  : q.category === 'actual' ? <window.DashboardAnalysisPanels.Actual data={analysisData} navigate={navigate} />
-                  : <window.DashboardAnalysisPanels.Delivery data={analysisData} selected={analysisBatch} onSelect={setAnalysisBatch} onCompare={() => setTab('compare')} />)}
-                {!['material', 'actual'].includes(q.category) && <P.Pressure data={data} showIssues={false} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}
-              </>}
+              {analysisData && <window.DashboardAnalysisPanels.Workspace key={(data.plan ? data.plan.plan_ref : 'no-plan') + q.category + revision}
+                data={data} category={q.category} selected={analysisBatch} onSelect={setAnalysisBatch} onCompare={() => setTab('compare')}
+                navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}
             </>}
             {!external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? <>
               <window.DashboardCandidates key={q.category} catalog={data.candidate_catalog} initialContext={comparisonState.context} onState={onComparisonState}

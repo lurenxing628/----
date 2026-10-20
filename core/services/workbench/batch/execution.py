@@ -6,9 +6,10 @@ from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+
+from .snapshot_content import record_content, shared_content
 
 
 def load_execution(conn, operation_refs):
@@ -27,8 +28,7 @@ def load_execution(conn, operation_refs):
     ledger = ExecutionLedgerService(conn)
     refs = list(operation_refs)
     with ledger.read_snapshot():
-        chunks = [ledger.load(refs[start:start + MAX_OPERATIONS]) for start in range(0, len(refs), MAX_OPERATIONS)]
-        return {"available": True, "refs": refs, "chunks": chunks, "now": ledger.clock()}
+        return {"available": True, "refs": refs, "facts": ledger.load_many(refs), "now": ledger.clock()}
 
 
 def project_execution_snapshot(raw):
@@ -36,7 +36,7 @@ def project_execution_snapshot(raw):
     if not raw["available"]:
         return raw
     ledger = ExecutionLedgerService(None, clock=lambda: raw["now"])
-    projections = {row.operation_ref: row.to_dict() for facts in raw["chunks"] for row in ledger.project_loaded(facts)}
+    projections = {row.operation_ref: row for row in ledger.project_loaded(raw["facts"], contexts=False)}
     if set(projections) != set(raw["refs"]):
         raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序的报工记录读取失败，请联系维护人员核对。")
     # BatchFacts already includes every projection; global plan/ledger clocks add no
@@ -44,23 +44,40 @@ def project_execution_snapshot(raw):
     return {"available": True, "projections": projections, "issues": []}
 
 
+def execution_content(execution):
+    """Preserve every execution field without repeating names and shared values.
+
+    Captured ledger DTOs stay private and read-only. Only the fingerprint uses
+    this compact representation; public details still use to_dict snapshots.
+    Dictionary insertion order is not a fact, so operation keys are sorted
+    before their values become a record matrix and a shared-value catalog.
+    """
+    if not execution["available"]:
+        return execution
+    refs = sorted(execution["projections"])
+    rows = [dict(vars(execution["projections"][ref]),
+                 reports=[vars(report) for report in execution["projections"][ref].reports]) for ref in refs]
+    shared = shared_content(rows, ("plan_identity",))
+    return dict(execution, projections={"refs": refs, "shared": shared, "records": record_content(rows)})
+
+
 def protects_execution(projection):
-    return bool(projection["reports"] or projection["legacy_facts"] or projection["execution_state"] != "unreported"
-                or projection["data_quality"] == "invalid")
+    return bool(projection.reports or projection.legacy_facts or projection.execution_state != "unreported"
+                or projection.data_quality == "invalid")
 
 
-def operation_execution_fields(row, ref, facts):
+def operation_execution_fields(row, ref, facts, *, include_details=True):
     execution = facts["projections"].get(ref)
-    gaps = list(execution["data_gaps"] if execution else facts["issues"])
-    state = execution["execution_state"] if execution else None
-    quality = execution["data_quality"] if execution else "unavailable"
+    gaps = list(execution.data_gaps if execution else facts["issues"])
+    state = execution.execution_state if execution else None
+    quality = execution.data_quality if execution else "unavailable"
     if execution and row["status"] == "completed" and state != "complete":
         gaps.append({"code": "completion_inconsistent", "message": "工序标着已完工，但报工记录还对不上；系统保留原来的完工标记和删除保护，请核对。"})
-        quality = "invalid" if quality == "invalid" or execution["reports"] or execution["legacy_facts"] else "legacy_incomplete"
+        quality = "invalid" if quality == "invalid" or execution.reports or execution.legacy_facts else "legacy_incomplete"
     status = {"complete": "completed", "started": "processing", "partial": "processing",
               "paused": "paused", "exception": "exception"}.get(state, row["status"]) if state is not None else row["status"]
     return {"status": "completed" if row["status"] == "completed" else status,
-            "stored_status": row["status"], "execution": execution, "execution_state": state,
+            "stored_status": row["status"], "execution": execution.to_dict() if execution and include_details else None, "execution_state": state,
             "data_quality": quality, "data_gaps": gaps, "completed": state == "complete" or row["status"] == "completed"}
 
 

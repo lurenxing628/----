@@ -92,9 +92,11 @@ class WorkbenchBatchMaterialService:
         return ReadyStatus.PARTIAL.value if any(flag[1] for flag in flags) else ReadyStatus.NO.value
 
     def apply(self, ref, payload):
+        return self.apply_normalized(ref, normalize_material_changes(payload))
+
+    def apply_normalized(self, ref, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("物料需求维护必须由工作台命令事务持有。")
-        payload = normalize_material_changes(payload)
         batch, facts = self.reader.batch(ref), self.reader.load()
         if type(batch["quantity"]) is not int or batch["quantity"] < 0:
             raise WorkbenchCommandRejected("constraint_conflict", "请先在批次基础信息中填好数量，再核对物料需求。")

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.services.workbench.dashboard.execution import actual
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from tests.workbench.dashboard_support import NOW, api
@@ -24,7 +25,7 @@ def source_and_analysis(case):
         sources = reader.load()
     reader.project(sources)
     original = copy.deepcopy(actual(sources.facts)[0][0]["source"])
-    compact = reader.analysis(sources)
+    compact = reader.analysis(sources, DashboardAnalysisQuery("actual"))
     assert actual(sources.facts)[0][0]["source"] == original
     return original, compact
 
@@ -66,19 +67,23 @@ def test_http_analysis_dedup_does_not_reduce_list_or_detail_evidence(dashboard_c
     document = listing.get_json()
     item = next(row for row in document["data"]["items"] if row["category"] == "actual")
     assert TASK_FIELDS <= set(item["source"])
-    compact = document["data"]["analysis"]["execution"][0]["source"]
-    assert not TASK_FIELDS.intersection(compact)
+    overview = document["data"]["analysis"]
+    assert overview["execution"] == [] and overview["pagination"]["totals"]["execution"] == 1
     detail = client.get(BASE + "/items/" + item["item_ref"], query_string={"snapshot_ref": document["meta"]["snapshot_ref"]})
     assert detail.status_code == 200
     assert detail.get_json()["data"]["item"]["source"] == item["source"]
-    standalone = client.get(BASE + "/analysis")
+    standalone = client.get(BASE + "/analysis", query_string={"section": "actual"})
     assert standalone.status_code == 200
-    assert standalone.get_json()["data"]["execution"] == document["data"]["analysis"]["execution"]
+    analysis = standalone.get_json()["data"]
+    compact = analysis["execution"][0]["source"]
+    assert not TASK_FIELDS.intersection(compact)
+    assert compact == {key: value for key, value in item["source"].items() if key not in TASK_FIELDS}
+    assert analysis["pagination"]["total"] == overview["pagination"]["totals"]["execution"]
 
 
 def test_shipped_react_analysis_uses_task_identity_for_both_navigation_handlers(dashboard_case, monkeypatch):
     client = api(dashboard_case, monkeypatch)
-    document = client.get(BASE + "/analysis").get_json()
+    document = client.get(BASE + "/analysis", query_string={"section": "actual"}).get_json()
     program = r"""
 const w = h.runtime, data = w.DashboardAnalysisAPI.validate(sourceData);
 const tasks = new Map(data.tasks.map(task => [task.task_ref, task]));

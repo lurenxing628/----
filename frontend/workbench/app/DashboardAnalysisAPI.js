@@ -17,13 +17,17 @@
   async function request(url, fetcher, signal) {
     const controller = new AbortController(), abort = () => controller.abort();
     if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
-    const timer = setTimeout(abort, C.READ_TIMEOUT_MS);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; abort(); }, C.READ_TIMEOUT_MS);
     try {
       const response = await fetcher(url, { method: 'GET', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal });
       C.check((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '读到的数据不完整，请刷新后重试。');
       const payload = await response.json();
       if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '影响分析读取失败，请刷新后重试。');
       C.check(response.status === 200); return payload;
+    } catch (error) {
+      if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
+      throw error;
     } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
   }
   function pressure(value) {
@@ -36,11 +40,40 @@
       && ['available_hours', 'occupied_hours', 'inside_available_hours', 'outside_available_hours', 'overlap_hours', 'utilization']
         .every(key => nullable(number)(day[key]))));
   }
-  function validate(payload, planRef) {
+  const sections = ['overview', 'delivery', 'actual', 'downtime', 'material', 'pressure', 'resource_days', 'timeline'];
+  const totals = ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'resource_days'];
+  function scope(value = {}) {
+    const q = { section: 'delivery', page: 1, size: 20, ...value };
+    C.check(C.object(value) && Object.keys(q).every(key => ['section', 'page', 'size', 'snapshot_ref', 'resource_ref', 'locate_batch_ref'].includes(key))
+      && sections.includes(q.section) && count(q.page) && q.page >= 1 && q.page <= 100000 && count(q.size) && q.size >= 1 && q.size <= 100
+      && (q.snapshot_ref === undefined || typeof q.snapshot_ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(q.snapshot_ref))
+      && (q.section === 'resource_days' ? C.ref(q.resource_ref) : q.resource_ref === undefined)
+      && (q.locate_batch_ref === undefined || q.section === 'timeline' && C.ref(q.locate_batch_ref)), '影响分析的页码或范围无效，请重新选择。');
+    return q;
+  }
+  function pagination(value, q, payload) {
+    C.check(shape(value, ['section', 'number', 'size', 'total', 'pages', 'totals']) && sections.includes(value.section)
+      && count(value.number) && value.number > 0 && count(value.size) && value.size >= 1 && value.size <= 100
+      && count(value.total) && value.pages === Math.max(1, Math.ceil(value.total / value.size))
+      && shape(value.totals, totals) && totals.every(key => count(value.totals[key])), '影响分析的分页资料不完整，请刷新分析。');
+    if (q) {
+      C.check(value.section === q.section && value.size === q.size && (q.locate_batch_ref ? value.number <= value.pages : value.number === q.page), '影响分析返回的页码或范围和当前选择不一致，请刷新分析。');
+      C.check(!q.snapshot_ref || payload.meta.snapshot_ref === q.snapshot_ref, '分析资料已更新，请刷新分析后继续翻页。');
+    }
+    const key = { delivery: 'deliveries', actual: 'execution', material: 'pending', pressure: 'resources', timeline: 'tasks', resource_days: 'resource_days' }[value.section];
+    C.check(value.total === (key ? value.totals[key] : value.section === 'downtime' ? Math.max(value.totals.downtimes, value.totals.overlaps) : 0));
+    return value;
+  }
+  function validate(payload, planRef, query) {
+    return _validate(payload, planRef, query ? scope(query) : null);
+  }
+  function _validate(payload, planRef, q) {
     const d = envelope(payload);
-    C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis', 'resource_common'])
+    C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis', 'resource_common', 'pagination'])
       && d.basis === 'current_official_plan_and_readiness_sources' && C.equal(d.capabilities, { view: true, adopt: false })
       && time(d.as_of) && ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'issues'].every(k => Array.isArray(d[k])) && d.issues.every(issue));
+    const page = pagination(d.pagination, q, payload), section = page.section;
+    const pageLength = total => Math.min(page.size, Math.max(0, total - (page.number - 1) * page.size));
     if (d.plan === null) C.check(!planRef && d.state !== 'available' && d.time_scope === null && !d.tasks.length && !d.resources.length && d.pressure.count === null);
     else C.check(C.object(d.plan) && C.ref(d.plan.plan_ref) && d.plan.kind === 'official' && d.plan.is_current_official === true
       && (!planRef || d.plan.plan_ref === planRef) && d.state === 'available' && C.object(d.time_scope)
@@ -51,9 +84,11 @@
       && Math.abs(task.span_hours - (Date.parse(task.end + 'Z') - Date.parse(task.start + 'Z')) / 3600000) < 0.000001
       && (task.start !== task.end || task.event_kind === 'point' && task.duration_seconds === 0 && task.occupies_resources === false)));
     C.check(new Set(d.tasks.map(task => task.task_ref)).size === d.tasks.length);
+    if (q && q.locate_batch_ref) C.check(d.tasks.some(task => task.batch_ref === q.locate_batch_ref
+      && task.source === 'internal' && task.machine_ref), '影响分析返回的工序和所选批次不一致，请刷新分析。');
     const tasks = new Map(d.tasks.map(task => [task.task_ref, task]));
     d.resources.forEach(resource => { pressure(resource); C.check(C.ref(resource.resource_ref) && ['machine', 'operator'].includes(resource.kind)
-      && Array.isArray(resource.task_refs) && resource.task_refs.every(ref => tasks.has(ref) && tasks.get(ref)[resource.kind + '_ref'] === resource.resource_ref)); });
+      && Array.isArray(resource.task_refs) && resource.task_refs.length === 0); });
     C.check(new Set(d.resources.map(row => row.resource_ref)).size === d.resources.length);
     d.downtimes.forEach(row => C.check(C.ref(row.downtime_ref) && C.ref(row.machine_ref) && typeof row.valid === 'boolean'
       && nullable(time)(row.start) && nullable(time)(row.end) && (!row.valid || row.start !== null && row.end !== null && row.start < row.end)
@@ -63,22 +98,33 @@
     d.execution.forEach(row => C.check(C.object(row.source) && tasks.has(row.source.task_ref) && row.batch_ref === tasks.get(row.source.task_ref).batch_ref));
     const pending = d.pending;
     C.check(C.object(pending) && Array.isArray(pending.items) && nullable(count)(pending.count) && count(pending.known_count)
-      && pending.known_count === pending.items.length && (pending.count === null || pending.count === pending.items.length)
+      && pending.known_count === page.totals.pending && (pending.count === null || pending.count === pending.known_count)
       && pending.basis === 'stored_pending_batch_pool');
     pending.items.forEach(row => C.check(C.ref(row.batch_ref) && C.text(row.batch_id) && row.stored_status === 'pending'
       && nullable(number)(row.quantity) && Array.isArray(row.readiness_issues)));
     const p = d.pressure;
     C.check(C.object(p) && p.threshold === 0.9 && count(p.known_count) && nullable(count)(p.count)
-      && p.resource_count === d.resources.length && p.basis === 'same_range_daily_peak_available_occupancy');
+      && p.resource_count === page.totals.resources && p.known_count <= p.resource_count && p.basis === 'same_range_daily_peak_available_occupancy');
+    const arrays = { tasks: ['timeline', 'actual', 'downtime'], resources: ['pressure', 'resource_days'],
+      downtimes: ['downtime'], overlaps: ['downtime'], deliveries: ['delivery', 'timeline', 'downtime'], execution: ['actual'] };
+    Object.entries(arrays).forEach(([key, allowed]) => C.check(allowed.includes(section) || d[key].length === 0));
+    C.check(section === 'material' ? pending.items.length === pageLength(page.totals.pending) : pending.items.length === 0);
+    const primary = { delivery: 'deliveries', actual: 'execution', pressure: 'resources', timeline: 'tasks' }[section];
+    if (primary) C.check(d[primary].length === pageLength(page.total));
+    if (section === 'downtime') ['downtimes', 'overlaps'].forEach(key => C.check(d[key].length === pageLength(page.totals[key])));
+    if (section === 'resource_days' && d.plan) C.check(d.resources.length === 1 && d.resources[0].days.length === pageLength(page.total)
+      && (!q || d.resources[0].resource_ref === q.resource_ref));
+    if (section === 'pressure') C.check(d.resources.every(resource => resource.days.length === 0));
     C.check(d.plan === null ? d.resource_common === null : window.ResourceProjectionContract.common(d.resource_common, 'current_transaction_snapshot'));
     return d;
   }
   function create(fetcher = window.fetch.bind(window)) {
-    return { async read(planRef, signal) {
+    return { async read(planRef, signal, query = {}) {
       C.check(planRef === null || planRef === undefined || C.ref(planRef));
-      const value = await request('/api/workbench/v1/dashboard/analysis' + (planRef ? '?plan_ref=' + planRef : ''), fetcher, signal);
-      validate(value, planRef); return value;
+      const q = scope(query), args = { ...q, ...(planRef ? { plan_ref: planRef } : {}) };
+      const value = await request('/api/workbench/v1/dashboard/analysis?' + new URLSearchParams(args), fetcher, signal);
+      _validate(value, planRef, q); return value;
     } };
   }
-  window.DashboardAnalysisAPI = { create, validate, envelope, request, pressure, shape, number, count, nullable, issue };
+  window.DashboardAnalysisAPI = { create, validate, scope, envelope, request, pressure, shape, number, count, nullable, issue };
 })();

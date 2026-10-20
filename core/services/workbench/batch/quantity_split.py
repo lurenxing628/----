@@ -13,7 +13,7 @@ from data.repositories.batch_material_stage_repo import BatchMaterialStageReposi
 from data.repositories.batch_repo import BatchRepository
 
 from .bulk import WorkbenchBatchBulkService
-from .facts import BatchFacts, require_unreferenced
+from .facts import BatchFacts, related, require_unreferenced
 from .materials import WorkbenchBatchMaterialService
 from .service import WorkbenchBatchService
 
@@ -45,8 +45,7 @@ def allocate(row, entries, needed, day):
     return float(take), float(initial - take), child, source
 
 
-def _require_splittable_batch(batch, facts):
-    operations = [op for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]]
+def _require_splittable_batch(batch, operations):
     if batch["status"] != "pending" or not operations or any(op["status"] != "pending" or op["piece_id"] is not None for op in operations):
         raise WorkbenchCommandRejected("constraint_conflict", "仅支持已有整批工序、尚未排产和开工的待排批次拆分数量。")
     if type(batch["quantity"]) is not int or batch["quantity"] <= 1:
@@ -59,10 +58,16 @@ class WorkbenchQuantitySplitService:
         self.reader = reader if reader is not None else BatchFacts(conn, logger)
 
     def plan(self, ref, payload):
-        payload = normalize_split(payload)
+        return self.plan_normalized(ref, normalize_split(payload))
+
+    def plan_normalized(self, ref, payload):
+        return self._plan_normalized(ref, payload)[0]
+
+    def _plan_normalized(self, ref, payload):
         batch, facts = self.reader.batch(ref), self.reader.load()
-        require_unreferenced(facts, batch)
-        _require_splittable_batch(batch, facts)
+        relations = related(facts, batch)
+        require_unreferenced(facts, batch, relations)
+        _require_splittable_batch(batch, relations["operations"])
         original = batch["quantity"]
         availability = MaterialAvailability(facts)
         maximum = availability.splittable_quantity(batch, payload["as_of_date"])
@@ -82,13 +87,15 @@ class WorkbenchQuantitySplitService:
         return {"entity_ref": ref, "operation": "batch.split_confirm", "source_code": batch["batch_id"], "child_code": code,
                 "original_quantity": original, "quantity": count, "remaining_quantity": original - count,
                 "maximum_quantity": maximum, "as_of_date": payload["as_of_date"], "materials": materials,
-                "commit_policy": "atomic", "warnings": []}
+                "commit_policy": "atomic", "warnings": []}, batch, facts, relations["operations"]
 
     def apply(self, ref, payload):
+        return self.apply_normalized(ref, normalize_split(payload))
+
+    def apply_normalized(self, ref, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("Quantity split requires the workbench command transaction.")
-        plan = self.plan(ref, payload)
-        batch, facts = self.reader.batch(ref), self.reader.load()
+        plan, batch, facts, source_operations = self._plan_normalized(ref, payload)
         code = plan["child_code"]
         source_rows, child_rows = [], []
         for row in plan["materials"]:
@@ -102,7 +109,6 @@ class WorkbenchQuantitySplitService:
         if batch["ready_date"] is not None and ready_day is None:
             raise WorkbenchCommandRejected("constraint_conflict", "原批次齐套日期无效，请先核对后再拆分。")
         writer = TemplateLineageWriter(self.conn)
-        source_operations = [op for op in facts["BatchOperations"] if op["batch_id"] == batch["batch_id"]]
         prepared = writer.prepare_instances(source_operations, facts=facts)
         domain = WorkbenchBatchService(self.conn, facts=self.reader)
         change = domain.preparation(facts).copy(batch, code, quantity=plan["quantity"],

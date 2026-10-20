@@ -131,7 +131,7 @@ def batch_command(action, ref=None):
 
     def mutate(_checked):
         if action == "materials_update":
-            return WorkbenchBatchMaterialService(g.db, current_app.logger, reader=reader).apply(ref, normalized)
+            return WorkbenchBatchMaterialService(g.db, current_app.logger, reader=reader).apply_normalized(ref, normalized)
         if action == "operation_update":
             operations = WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader)
             return operations.apply_update(operations.prepare_update(ref, normalized))
@@ -159,17 +159,15 @@ def batch_preview(action, ref=None):
         if action in ("sync_confirm", "split_confirm"):
             bind_read_snapshot({"kind": "batch", "ref": ref}, fingerprint, body["snapshot_ref"])
             if action == "split_confirm":
-                data = WorkbenchQuantitySplitService(g.db, current_app.logger, reader=reader).plan(ref, payload)
+                data = WorkbenchQuantitySplitService(g.db, current_app.logger, reader=reader).plan_normalized(ref, payload)
                 data["materials"] = [{"business_code": row["material_id"], **{key: value for key, value in row.items()
                                      if key not in ("requirement_id", "operation_id", "material_id")}} for row in data["materials"]]
             else:
-                data = WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).sync_preview(ref, payload)
+                data = WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).sync_preview_normalized(ref)
         else:
             scope = batch_scope(body["scope"])
             bind_read_snapshot(snapshot_scope(scope), fingerprint, body["snapshot_ref"])
-            data = WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).plan(payload)
-            if not isinstance(body["snapshot_ref"], str) or not body["snapshot_ref"]:
-                raise WorkbenchCommandRejected("invalid_input", "数据已更新，还没有保存。请刷新页面后" + retry_hint(action, payload) + "。", 400)
+            data = WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).plan_normalized(payload)
         preview, expires_at = save_preview(action, ref, payload, fingerprint, with_expiry=True)
         data.update(preview_ref=preview, expires_at=expires_at,
                     write_context=preview_write_context(preview, expires_at, ["batch." + action]),
@@ -218,10 +216,10 @@ def batch_confirm(action, ref=None):
 
     def mutate(payload):
         if action == "split_confirm":
-            return WorkbenchQuantitySplitService(g.db, current_app.logger, reader=reader).apply(ref, payload)
+            return WorkbenchQuantitySplitService(g.db, current_app.logger, reader=reader).apply_normalized(ref, payload)
         if action == "bulk_confirm":
-            return WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).apply(payload)
-        return WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).sync(ref, payload)
+            return WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).apply_normalized(payload)
+        return WorkbenchBatchOperationService(g.db, current_app.logger, reader=reader).sync_normalized(ref)
 
     with reader.command_snapshot():
         return json_response(WorkbenchCommandService(g.db, current_app.logger).execute(request_key=body["request_key"], action="batch." + action,

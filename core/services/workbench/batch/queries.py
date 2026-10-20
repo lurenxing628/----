@@ -21,7 +21,7 @@ def matches_entity(query, batch, entity):
         return False
     if query["focus"] == "unready" and cell(entity, "ready_status") == "yes":
         return False
-    if query["focus"] == "gaps" and entity["operations"] and not entity["relationships"]["gap_count"]:
+    if query["focus"] == "gaps" and entity["relationships"]["operation_count"] and not entity["relationships"]["gap_count"]:
         return False
     return all(cell(entity, key) in values for key, values in query["column_filters"].items())
 
@@ -40,7 +40,7 @@ class WorkbenchBatchQueryService(BatchFacts):
                 continue
             if query["batch_ids"] is not None and batch["batch_id"] not in query["batch_ids"]:
                 continue
-            entity = projection.entity(batch)
+            entity = projection.summary(batch)
             if matches_entity(query, batch, entity):
                 rows.append(entity)
         rows.sort(key=lambda row: row["business_code"])
@@ -60,7 +60,7 @@ class WorkbenchBatchQueryService(BatchFacts):
         return self.details([ref])[0]
 
     def details(self, refs):
-        """Project the whole ledger once for every requested batch, e.g. a file export."""
+        """Expand complete operation details only for the requested batches."""
         rows = [self.batch(ref) for ref in refs]
         facts = self.load()
         projection = BatchProjection(facts)
@@ -71,6 +71,12 @@ class WorkbenchBatchQueryService(BatchFacts):
             entity["template"] = template_status(facts, row, projection.resources)
             entities.append(entity)
         return entities
+
+    def summaries(self, refs):
+        """Selected-list consumers share the same summary as filtered lists."""
+        rows = [self.batch(ref) for ref in refs]
+        projection = BatchProjection(self.load())
+        return [projection.summary(row) for row in rows]
 
     def choices(self, batch_ref=None, operation_ref=None):
         facts = self.load()

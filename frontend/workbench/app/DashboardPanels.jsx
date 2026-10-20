@@ -118,16 +118,20 @@
         <Evidence source={item.source} /><p>这条记录和它的处置状态都没有变。</p><ErrorBox error={error} /></div>
     </Modal>;
   }
+  function PressureDetails({ resource, planRef }) {
+    const [open, setOpen] = React.useState(false), w = resource.window_metrics;
+    return <details onToggle={event => setOpen(event.currentTarget.open)}><summary>计算与资料</summary><dl className="dy-facts">
+      <div><dt>班内工序累计（小时）</dt><dd>{hoursValue(w.summed_load_hours)}</dd></div><div><dt>班内重复计时（小时）</dt><dd>{hoursValue(w.overlap_hours)}</dd></div>
+      <div><dt>班内工序累计 / 可排时间</dt><dd>{window.WorkbenchFormat.percent(w.demand_ratio)}</dd></div><div><dt>资料状态</dt><dd>{T.resource_states[w.state]}{w.unknown_days > 0 && ' · ' + w.unknown_days + ' 天班表未记录'}</dd></div>
+      </dl><Issues issues={w.issues} /><window.DashboardAnalysisPanels.ResourceDays planRef={planRef} resourceRef={resource.resource_ref} enabled={open} /></details>;
+  }
   function Pressure({ data, navigate, canNavigate, showIssues = true }) {
     const p = data.resource_pressure, common = data.analysis && data.analysis.resource_common, rows = data.analysis && data.analysis.resources;
     return <section aria-label="资源压力"><div className="dy-heading"><h3>正式计划资源压力</h3>{data.plan && <Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'gantt', context: { plan_ref: data.plan.plan_ref }, enabled: true })}>计划甘特</Button>}</div>
       {showIssues && <Issues issues={p.issues} />}
       {!rows || !rows.length ? <window.WorkbenchListControls.EmptyState kind="empty" title={!rows ? '资源压力暂时无法计算。' : '当前正式计划没有资源占用数据。'} /> : <div className="dy-scroll"><table className="dy-resource"><caption className="wb-sr-only">正式计划资源压力</caption><thead><tr><th scope="col">资源</th><th scope="col">可排总时长（小时）</th><th scope="col">班内已占（小时）</th><th scope="col">占用比例</th><th scope="col">重叠时长（小时）</th><th scope="col">班外占用（小时）</th><th scope="col">详情</th></tr></thead><tbody>{rows.map(r => { const w = r.window_metrics; return <tr key={r.kind + r.resource_ref} data-resource-ref={r.resource_ref}><td><b>{r.label || '名称未填写'}</b><div className="dy-muted">{T.resource_kinds[r.kind]} · {value(w.operation_count)} 道工序</div></td>
         <td>{hoursValue(w.available_hours)}</td><td>{hoursValue(w.occupied_hours)}</td><td>{window.WorkbenchFormat.percent(w.utilization_ratio)}</td>
-        <td>{hoursValue(w.overlap_span_hours)}</td><td>{hoursValue(w.outside_calendar_hours)}</td><td><details><summary>计算与资料</summary><dl className="dy-facts">
-          <div><dt>班内工序累计（小时）</dt><dd>{hoursValue(w.summed_load_hours)}</dd></div><div><dt>班内重复计时（小时）</dt><dd>{hoursValue(w.overlap_hours)}</dd></div>
-          <div><dt>班内工序累计 / 可排时间</dt><dd>{window.WorkbenchFormat.percent(w.demand_ratio)}</dd></div><div><dt>资料状态</dt><dd>{T.resource_states[w.state]}{w.unknown_days > 0 && ' · ' + w.unknown_days + ' 天班表未记录'}</dd></div>
-          </dl><Issues issues={w.issues} /></details></td></tr>; })}</tbody></table></div>}
+        <td>{hoursValue(w.overlap_span_hours)}</td><td>{hoursValue(w.outside_calendar_hours)}</td><td><PressureDetails resource={r} planRef={data.plan.plan_ref} /></td></tr>; })}</tbody></table></div>}
       <details className="dy-evidence"><summary>统计范围与计算说明</summary>{p.time_scope && <p>从 {window.WorkbenchFormat.dateTime(p.time_scope.range_start, { seconds: true, fractions: true })} 至 {window.WorkbenchFormat.dateTime(p.time_scope.range_end, { seconds: true, fractions: true })}，结束时刻不计入。</p>}
         {common && <p>使用本次读取的正式计划班表，包含 {common.cohort.length} 项设备、人员。</p>}<p>班内已占时间按班表内有工序安排的时段计一次。重叠时长按同时安排多道工序的时段计时，班内重复计时按多占的份数累计。班外占用包括跨休息和夜间的安排。</p>
       </details>

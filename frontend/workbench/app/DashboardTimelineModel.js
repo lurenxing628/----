@@ -2,12 +2,16 @@
   'use strict';
   const G = window.PlanGanttModel;
   function prepare(data) {
-    const stops = data.downtimes.filter(row => row.valid).map(row => ({ ...row, startAt: G.instant(row.start), endAt: G.instant(row.end) }));
+    const stopRows = new Map(data.downtimes.map(row => [row.downtime_ref, row]));
+    data.overlaps.forEach(row => row.source.downtimes.forEach(stop => {
+      if (!stopRows.has(stop.downtime_ref)) stopRows.set(stop.downtime_ref, { ...stop, machine_ref: row.source.machine_ref, valid: true, recorded_at: null });
+    }));
+    const stops = Array.from(stopRows.values()).filter(row => row.valid).map(row => ({ ...row, startAt: G.instant(row.start), endAt: G.instant(row.end) }));
     const affected = new Set(stops.map(row => row.machine_ref)), windows = new Map();
     for (const row of stops) { if (!windows.has(row.machine_ref)) windows.set(row.machine_ref, []); windows.get(row.machine_ref).push(row); }
     const tasks = data.tasks.filter(row => row.source === 'internal' && row.machine_ref);
     const facts = G.prepare({ tasks, plan_span: { start: data.time_scope.range_start, end: data.time_scope.range_end },
-      resources: data.resources.map(row => ({ ref: row.resource_ref, label: row.label })),
+      resources: data.resource_common.cohort.map(row => ({ ref: row.ref, label: row.label })),
       projections: { calendar: { resources: [] }, occupancy: { resources: [] }, baseline: { state: 'unavailable' } } });
     return { facts, stops, affected, windows, risks: new Map(data.deliveries.map(row => [row.batch_ref, row.risk])) };
   }

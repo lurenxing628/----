@@ -9,6 +9,7 @@ import pytest
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 from core.infrastructure.workbench_outsourcing_schema import objects as outsourcing_objects
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.services.capacity.plan_calendar_io import CalendarFacts, CapturedCalendarInputs, ProjectionLimit
 from core.services.workbench.dashboard import downtime, execution
 from core.services.workbench.dashboard import facts as facts_module
@@ -76,7 +77,7 @@ def test_one_capture_reuses_projections_and_only_reads_new_identity_keys(dashboa
     assert facts.observations("actual")[0] is rows
     assert "handling_count" not in facts.observations("actual")[1]
     facts.observations("downtime")
-    projected = project_dashboard_analysis(facts, material)
+    projected = project_dashboard_analysis(facts, material, query=DashboardAnalysisQuery("actual"))
     assert len(projected["tasks"]) == 1 and calls == {"actual": 1, "downtime": 1}
     normalized = [" ".join(statement.upper().replace('"', '').split()) for statement in sql]
     assert sum(" FROM SQLITE_MASTER" in statement for statement in normalized) == 1

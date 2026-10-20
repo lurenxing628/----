@@ -45,11 +45,9 @@ class WorkbenchBatchBulkService:
         self.domain = WorkbenchBatchService(conn, logger, facts=self.reader)
 
     def plan(self, payload):
-        return self._plan(payload)[0]
+        return self.plan_normalized(normalize_bulk(payload))
 
-    def _plan(self, payload):
-        """预检结果连同算它用的投影一起返回：确认时直接沿用投影里那份关联索引，不再按同一份数据重建。"""
-        payload = normalize_bulk(payload)
+    def plan_normalized(self, payload):
         facts = self.reader.load()
         projection = BatchProjection(facts)
         used = {row["batch_id"] for row in facts["Batches"]}
@@ -80,7 +78,7 @@ class WorkbenchBatchBulkService:
             rows.append({"entity_ref": ref, "before": before, "after": after})
         return {"operation": "batch.bulk_confirm", "action": payload["action"], "rows": rows, "count": len(rows), "commit_policy": "atomic",
                 "warnings": ([{"code": "copied_materials_unconfirmed", "message": "复制时保留物料需求，到料量从 0 开始，齐套和齐套日期需要重新核对。"}]
-                             if payload["action"] == "copy" else [])}, projection
+                             if payload["action"] == "copy" else [])}
 
     @staticmethod
     def _copy_code(code, used, successors=None):
@@ -110,9 +108,11 @@ class WorkbenchBatchBulkService:
         raise WorkbenchCommandRejected("constraint_conflict", "无法为复制批次分配有效编号，请手工新增。")
 
     def apply(self, payload):
+        return self.apply_normalized(normalize_bulk(payload))
+
+    def apply_normalized(self, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("批量保存必须由工作台命令事务持有。")
-        payload = normalize_bulk(payload)
         facts = self.reader.load()
         preparation = self.domain.preparation(facts)
         prepared, successors = [], {}

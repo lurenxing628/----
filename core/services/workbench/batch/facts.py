@@ -9,11 +9,22 @@ from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.services.process.workflow_state import load_workflow_snapshot, project_workflow_snapshot
-from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
+from data.repositories.workbench_batch_facts_repo import (
+    BATCH_FACT_TABLES,
+    VERSIONED_FACT_TABLES,
+    WorkbenchBatchFactsRepository,
+)
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .execution import load_execution, old_event_bindings, project_execution_snapshot, protects_execution
+from .execution import (
+    execution_content,
+    load_execution,
+    old_event_bindings,
+    project_execution_snapshot,
+    protects_execution,
+)
+from .snapshot_content import record_content
 
 
 class BatchFacts:
@@ -87,8 +98,14 @@ class BatchFacts:
         return result
 
     def fingerprint(self):
-        # One pass over the facts; the execution projections inside carry no hash of their own.
-        return content_text(self.load())
+        # Every read/write/preview guard uses this same complete fact domain.
+        # Only its private representation changes: column names and shared
+        # execution values are encoded once rather than once per operation.
+        facts = self.load()
+        compact = dict(facts, execution=execution_content(facts["execution"]))
+        for name in BATCH_FACT_TABLES + VERSIONED_FACT_TABLES:
+            compact[name] = record_content(facts[name])
+        return content_text(["batch-facts-v2", compact])
 
     @contextmanager
     def _pin(self, facts):
@@ -230,8 +247,8 @@ def index_relations(facts):
         ref = facts["operation_refs"][row["id"]]
         if execution["available"]:
             projected = execution["projections"][ref]
-            group["events"].extend(projected["legacy_facts"])
-            group["reports"].extend(projected["reports"])
+            group["events"].extend(projected.legacy_facts)
+            group["reports"].extend(projected.reports)
             group["execution_protected"] |= protects_execution(projected)
         else:
             group["events"].extend(legacy.get(ref, []))

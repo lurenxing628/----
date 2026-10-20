@@ -19,7 +19,19 @@
       </div>
     </Modal>;
   }
-  function BatchTable({ rows, scope, selected, setSelected, onOpen, onDelete, onSort, onFilter, onClear, onRetry, error, loading, disabled }) {
+  function OperationOverview({ adapter, row }) {
+    const [expanded, setExpanded] = React.useState(false);
+    const read = S.useQuery(async signal => B.detail(await adapter.detail('batch', row.ref, signal), row.ref), [adapter, row], expanded && row.relationships.operation_count > 0);
+    return <details onToggle={event => setExpanded(event.currentTarget.open)} aria-busy={expanded && read.loading}>
+      <summary>工序概况{row.relationships.gap_count ? ' · 待补 ' + row.relationships.gap_count : ''}</summary>
+      {expanded && (row.relationships.operation_count === 0 ? '尚未生成工序' : <>
+        {read.loading && <p role="status">正在读取工序…</p>}<ErrorBox error={read.error} />
+        {read.error && <Button onClick={read.reload}>重新读取工序</Button>}
+        {read.result && (read.result.data.operations.length ? read.result.data.operations.map(op => <div key={op.ref}>{op.sequence} · {op.label}{op.issues.length ? ' · 待补齐' : ''}</div>) : '尚未生成工序')}
+      </>)}
+    </details>;
+  }
+  function BatchTable({ adapter, rows, scope, selected, setSelected, onOpen, onDelete, onSort, onFilter, onClear, onRetry, error, loading, disabled }) {
     const checkbox = React.useRef(null), all = rows.length > 0 && rows.every(row => selected.includes(row.ref));
     const [widths, setWidths] = React.useState(Object.fromEntries(B.columns.map(([key, , width]) => [key, width]))), drag = React.useRef(null);
     function resize(key, value) { setWidths(current => ({ ...current, [key]: Math.max(80, Math.min(600, value)) })); }
@@ -39,7 +51,7 @@
       <tbody>{rows.map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'选择 ' + row.business_code} checked={selected.includes(row.ref)} disabled={disabled} onChange={event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td>
         <td className="wb-col-key"><Button className="linkbtn" onClick={() => onOpen(row.ref)} disabled={disabled}>{row.business_code}</Button></td><td><strong>{row.relationships.part_no}</strong><div className="muted">{row.label}</div></td>
         <td>{window.WorkbenchFormat.number(row.fields.quantity, { digits: 0 })}</td><td>{window.WorkbenchFormat.date(row.fields.due_date)}</td><td><div className="batch-progress"><progress aria-label={row.business_code + '已完成工序'} value={row.relationships.completed_count} max={row.relationships.operation_count || 1} /><span>{row.relationships.completed_count} / {row.relationships.operation_count}</span></div>
-          <details><summary>工序概况{row.relationships.gap_count ? ' · 待补 ' + row.relationships.gap_count : ''}</summary>{row.operations.length ? row.operations.map(op => <div key={op.ref}>{op.sequence} · {op.label}{op.issues.length ? ' · 待补齐' : ''}</div>) : '尚未生成工序'}</details></td>
+          <OperationOverview adapter={adapter} row={row} /></td>
         {['priority', 'ready_status', 'status'].map(key => <td key={key}><span className={'pill ' + (key === 'ready_status' ? B.readyStatus(row) === 'yes' ? 'ok' : 'warn' : key === 'priority' ? row.fields[key] === 'normal' ? 'off' : 'warn' : row.status === 'completed' ? 'ok' : row.status === 'processing' ? 'warn' : 'off')}>{B.label(key, key === 'status' ? row.status : key === 'ready_status' ? B.readyStatus(row) : row.fields[key])}</span></td>)}
         <td className="wb-col-actions"><div className="batch-head"><Button icon="square-pen" onClick={() => onOpen(row.ref)} disabled={disabled}>查看/编辑</Button><Button icon="trash-2" className="btn danger" aria-label={'删除批次 ' + row.business_code} onClick={() => onDelete(row)} disabled={disabled} reasonDisplay="tooltip" reason={B.reason(row.write_context, 'delete', 'production')}>删除</Button></div></td>
       </tr>)}{!rows.length && <tr><td colSpan={10}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}

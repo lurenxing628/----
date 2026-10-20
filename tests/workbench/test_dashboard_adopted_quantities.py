@@ -28,13 +28,14 @@ def _read_quantities(client, case, plan_ref):
     actual = read(client, ACTUAL, plan_ref=plan_ref)["data"]
     field = read(client, FIELD + "/tasks", plan_ref=plan_ref, size=100)["data"]
     merged = read(client, DASHBOARD, size=100)["data"]
-    standalone = read(client, DASHBOARD + "/analysis", plan_ref=plan_ref)["data"]
+    standalone = read(client, DASHBOARD + "/analysis", plan_ref=plan_ref, section="timeline", size=100)["data"]
     assert merged["analysis_error"] is None
+    assert merged["analysis"]["tasks"] == [] and merged["analysis"]["pagination"]["totals"]["tasks"] == 8
     assert actual["items_complete"] is True and actual["task_count"] == 8
     assert plan["tasks_complete"] is True and plan["task_count"] == 8
     task_sets = {
         "plan": plan["tasks"], "actual": [item["task"] for item in actual["items"]],
-        "field": field["tasks"], "merged": merged["analysis"]["tasks"],
+        "field": field["tasks"],
         "standalone": standalone["tasks"],
     }
     result = {}

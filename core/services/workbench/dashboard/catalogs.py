@@ -1,18 +1,14 @@
-"""Reuse bounded resource occupancy and run catalog without selecting a candidate."""
+"""Capture current calendar constraints and saved runs without selecting a candidate."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_history import RunHistoryScope
-from core.services.workbench.plan.calendar import project_plan_calendar
-from core.services.workbench.plan.occupancy import project_plan_occupancy
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 
+from .calendar_capture import capture_resource_pressure
 
-def resource_pressure(conn, arguments, *, captured_calendar=None):
-    calendar, facts = project_plan_calendar(conn, captured_calendar=captured_calendar, **arguments)
-    occupancy, private = project_plan_occupancy(conn, calendar_facts=facts, **arguments)
-    return {"state": occupancy["state"], "plan_ref": occupancy["plan_ref"], "time_scope": occupancy["time_scope"],
-            "basis": occupancy["basis"], "resources": occupancy["resources"], "issues": occupancy["issues"],
-            "calendar_state": calendar["state"]}, private
+
+def resource_pressure(conn, arguments, *, captured_calendar):
+    return capture_resource_pressure(conn, captured_calendar=captured_calendar, **arguments)
 
 
 def candidate_catalog(conn):

@@ -28,11 +28,11 @@ def _legacy_day(row):
             "reason": row["issues"][0]["code"] if row["issues"] else None, "window_metrics": row}
 
 
-def pressure_from_index(index, resource, calendar):
+def pressure_from_index(index, resource, calendar, *, include_days=True):
     """Adapt the common result to the established daily-pressure read protocol."""
     window = index.window(resource, calendar)
     state = {"complete": "available", "not_applicable": "available", "partial": "partial", "unavailable": "unavailable"}[window["state"]]
-    return {"state": state, "days": [_legacy_day(row) for row in index.days(resource, calendar)],
+    return {"state": state, "days": [_legacy_day(row) for row in index.days(resource, calendar)] if include_days else [],
             "peak_utilization": window["peak_utilization"],
             "reason": window["issues"][0]["code"] if window["issues"] else None,
             "zero_capacity_days": window["zero_capacity_days"], "unknown_days": window["unknown_days"],

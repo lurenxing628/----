@@ -10,7 +10,7 @@ from core.services.scheduler.contracts.external_context import context_problem, 
 from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
 from data.repositories.batch_operation_repo import BatchOperationRepository
 
-from .facts import BatchFacts, require_unreferenced
+from .facts import BatchFacts, related, require_unreferenced
 from .projection import BatchProjection
 from .resource_choices import BatchResourceFacts
 from .template_preview import template_after, template_changes
@@ -42,23 +42,25 @@ class WorkbenchBatchOperationService:
         # Older strict clients remain valid; replacement always checks completeness.
         return {}
 
-    def _prepare_sync(self, ref, payload):
-        self.normalize_sync(payload)
-        batch = self.reader.batch(ref)
-        facts = self.reader.load()
-        require_unreferenced(facts, batch)
+    def _prepare_sync(self, batch, facts, *, relations, resources):
+        require_unreferenced(facts, batch, relations)
         bound = {row["operation_id"] for row in facts.get("BatchMaterialStages", [])}
-        if any(row["id"] in bound for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]):
+        if any(row["id"] in bound for row in relations["operations"]):
             raise WorkbenchCommandRejected("constraint_conflict", "物料需求已绑定本批使用工序，请先在物料需求中改为开工前用料，再更新工艺并重新选择使用工序。")
-        status = template_status(facts, batch)
+        rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
+        status = template_status(facts, batch, resources, rows=rows)
         if status["diagnostics"]:
             raise WorkbenchCommandRejected("constraint_conflict", "\n".join(row["message"] for row in status["diagnostics"]))
-        rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
-        return batch, facts, rows
+        return rows
 
     def sync_preview(self, ref, payload):
-        batch, facts, rows = self._prepare_sync(ref, payload)
+        self.normalize_sync(payload)
+        return self.sync_preview_normalized(ref)
+
+    def sync_preview_normalized(self, ref):
+        batch, facts = self.reader.batch(ref), self.reader.load()
         projection = BatchProjection(facts)
+        rows = self._prepare_sync(batch, facts, relations=projection.relations[batch["batch_id"]], resources=projection.resources)
         before = projection.entity(batch)
         after = template_after(rows, facts, projection)
         return {"entity_ref": ref, "business_code": batch["batch_id"], "operation": "batch.sync_confirm", "completeness_checked": True,
@@ -66,9 +68,14 @@ class WorkbenchBatchOperationService:
                 "warnings": [], "commit_policy": "atomic"}
 
     def sync(self, ref, payload):
+        self.normalize_sync(payload)
+        return self.sync_normalized(ref)
+
+    def sync_normalized(self, ref):
         if not self.conn.in_transaction:
             raise RuntimeError("工序同步必须由工作台命令事务持有。")
-        batch, facts, rows = self._prepare_sync(ref, payload)
+        batch, facts = self.reader.batch(ref), self.reader.load()
+        rows = self._prepare_sync(batch, facts, relations=related(facts, batch), resources=BatchResourceFacts(facts))
         writer = TemplateLineageWriter(self.conn)
         prepared = writer.prepare_templates(rows, facts=facts)
         BatchOperationRepository(self.conn).delete_by_batch(batch["batch_id"])

@@ -299,7 +299,7 @@ async function contract(h, assert) {
     const asOf = '2026-10-10T08:00:00';
     return { ok: true, schema_version: 1, warnings: [], meta: { request_ref: '1'.repeat(32), snapshot_ref: 'S'.repeat(32), source: 'production', time_basis: 'factory_local', as_of: asOf },
       data: { as_of: asOf, plan: null, items: [], categories, page: { number: 1, size: 20, total: 0, pages: 1 },
-        resource_pressure: { state: 'unavailable', resources: null, issues: [] },
+        resource_pressure: { state: 'unavailable', resource_count: null, detail_target: '/api/workbench/v1/dashboard/analysis?section=pressure', issues: [] },
         candidate_catalog: { state: 'no_data', selection: null, run_count: 0, runs: [], issues: [], page: { has_more: false } }, analysis_error: null,
         analysis: { plan: null, state: 'unavailable', time_scope: null, resource_common: null, tasks: [], resources: [], downtimes: [], overlaps: [], deliveries: [], execution: [],
           issues: [planIssue], as_of: asOf, capabilities: { view: true, adopt: false }, basis: 'current_official_plan_and_readiness_sources',
@@ -307,17 +307,39 @@ async function contract(h, assert) {
           pressure: { count: null, known_count: 0, resource_count: 0, threshold: 0.9, unknown_resources: 0, zero_capacity_resources: 0,
             basis: 'same_range_daily_peak_available_occupancy' } } } };
   }
+  function analysisPage(source, section, resourceRef) {
+    const analysis = JSON.parse(JSON.stringify(source));
+    const totals = Object.fromEntries(['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution'].map(key => [key, source[key].length]));
+    totals.pending = source.pending.known_count;
+    const resource = source.resources.find(row => row.resource_ref === resourceRef);
+    totals.resource_days = resource ? resource.days.length : 0;
+    const key = { delivery: 'deliveries', actual: 'execution', material: 'pending', pressure: 'resources', timeline: 'tasks', resource_days: 'resource_days' }[section];
+    const total = key ? totals[key] : section === 'downtime' ? Math.max(totals.downtimes, totals.overlaps) : 0;
+    analysis.pagination = { section, number: 1, size: 20, total, pages: Math.max(1, Math.ceil(total / 20)), totals };
+    const allowed = { tasks: ['timeline', 'actual', 'downtime'], resources: ['pressure', 'resource_days'], downtimes: ['downtime'], overlaps: ['downtime'], deliveries: ['delivery', 'timeline'], execution: ['actual'] };
+    for (const [key, sections] of Object.entries(allowed)) if (!sections.includes(section)) analysis[key] = [];
+    if (section !== 'material') analysis.pending.items = [];
+    if (section === 'pressure') analysis.resources = analysis.resources.map(row => ({ ...row, days: [], task_refs: [] }));
+    if (section === 'resource_days') analysis.resources = resource ? [{ ...resource, task_refs: [] }] : [];
+    return analysis;
+  }
   async function dashboardResult(payload, category) {
     const q = w.DashboardContract.scope({ category }), scope = { kind: 'dashboard', ...q }; delete scope.page;
-    payload.data.scope = scope;
-    const result = await w.DashboardContract.create(async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => payload })).list(q);
+    const input = JSON.parse(JSON.stringify(payload)), detailAnalysis = input.data.analysis;
+    input.data.scope = scope; input.data.analysis = analysisPage(detailAnalysis, 'overview');
+    const result = await w.DashboardContract.create(async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => input })).list(q);
     assert.strictEqual(result.data.analysis_error, null, 'The representative analysis DTO must pass the actual API contract');
+    result.detailAnalysis = detailAnalysis;
     return result;
   }
   function dashboardTree(result, category, command = { busy: false, saved: null, storageError: null }, states = {}, detail = null) {
     let readIndex = 0;
     w.DashboardSession.useCommand = () => command;
-    w.DashboardSession.useRead = () => ({ result: ++readIndex === 1 ? result : readIndex === 3 ? detail : null, loading: false, error: null });
+    w.DashboardSession.useRead = (_load, dependencies, enabled = true) => {
+      const query = dependencies && dependencies[2];
+      if (query && query.section) return { result: enabled ? { ...result, data: analysisPage(result.detailAnalysis, query.section, query.resource_ref) } : null, loading: false, error: null };
+      return { result: ++readIndex === 1 ? result : readIndex === 3 ? detail : null, loading: false, error: null };
+    };
     return h.render(w.WorkbenchDashboardWorkspace, { initialContext: { scope: { category }, tab: 'analysis', ...(detail ? { item_ref: detail.data.item.item_ref } : {}) } }, states);
   }
   const unavailable = dashboardFixture();
@@ -413,10 +435,8 @@ async function contract(h, assert) {
     recorded_at: '2026-10-09T07:00:00', recorded_at_basis: 'local_time', valid: false }];
   a.pressure.resource_count = 1; a.pressure.unknown_resources = 1;
   a.pending = { state: 'available', count: 0, known_count: 0, items: [], issues: [], basis: 'stored_pending_batch_pool' };
-  d.resource_pressure = { state: 'partial', plan_ref: plan.plan_ref, time_scope: timeScope, issues: [pressureIssue], resources: [{
-    resource_ref: analysisTask.machine_ref, label: 'Lathe', kind: 'machine', operation_count: 1, arranged_hours: 2, occupied_hours: 2,
-    available_hours: null, available_occupied_hours: null, overlap_hours: 0, outside_available_hours: null, utilization: null,
-    capacity_shortfall_hours: null, capacity_insufficient: null, has_overlap: false, segments: [], issues: [resourceIssue] }] };
+  d.resource_pressure = { state: 'partial', plan_ref: plan.plan_ref, time_scope: timeScope, issues: [pressureIssue], resource_count: 1,
+    detail_target: '/api/workbench/v1/dashboard/analysis?section=pressure' };
   const independentTree = dashboardTree(await dashboardResult(independent, 'all'), 'all');
   for (const issue of [pressureIssue, analysisIssue]) once(independentTree, issue.message);
   // The resource-specific cause has one owner in its native, keyboard-expandable details.

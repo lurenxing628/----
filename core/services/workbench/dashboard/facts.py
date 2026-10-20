@@ -60,9 +60,15 @@ class DashboardFacts:
         self.raw, self.plan, self.delivery, self.tasks, self.execution = {}, None, None, [], None
         self.plan_state, self.plan_issues, self.execution_issues = "no_official_plan", [], []
         self.task_rows, self.execution_facts, self.delivery_facts = [], None, None
-        self.pressure = {"state": "unavailable", "resources": None, "issues": []}
+        self.pressure = {"state": "unavailable", "resource_count": None, "issues": []}
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
         self._ledger = None
+        self._calendar_factory = None
+        self._resource_pressure_cache = {}
+        self._resource_pressure_index = None
+        self._resource_pressure_window = None
+        self._resource_pressure_cohort = None
+        self._resource_pressure_identity_issues = []
         self._entity_refs = {}
         self._observations = {}
 
@@ -151,14 +157,14 @@ class DashboardFacts:
             original_rows = context.scoped_rows(entry, scope)
             self.task_rows = [dict(row, source=read_source_type(row["source"])) for row in original_rows]
             self.raw["plan_task_sources"] = [(row["schedule_id"], row["source"]) for row in original_rows]
-            self.tasks, _, resources, resource_state = context.scoped_tasks(ref, entry, scope)
+            self.tasks, _, resources, resource_state = context.projected_tasks(ref, entry, original_rows)
             self.raw["plan_resource_identities"] = resource_state
             self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"
             self._capture_calendar_inputs(resource_ids(original_rows, "machine"))
-            self.pressure, self.raw["resource_pressure"] = resource_pressure(self.conn, {
-                "entry": entry, "scope": scope, "rows": original_rows, "resources": resources, "plan_span": span,
-                "context": context}, captured_calendar=self.calendar_inputs)
+            self.pressure, self.raw["resource_pressure"], self._calendar_factory = resource_pressure(self.conn, {
+                "entry": entry, "scope": scope, "resources": resources, "identities": resource_state, "plan_span": span,
+                "context": context, "facts": self}, captured_calendar=self.calendar_inputs)
         except WorkbenchPlanReferenceError as exc:
             self._plan_failure("plan_binding_invalid", "正式计划记录已失效，请刷新重试。")
             self.raw["plan_reference_failure"] = exc.code
@@ -177,7 +183,7 @@ class DashboardFacts:
         ledger = ExecutionLedgerService(self.conn, clock=lambda: self.now)
         try:
             ledger.require_schema()
-            facts = ledger.load([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
+            facts = ledger.load_many([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
             self.raw["execution_operation_sources"] = {ref: row["source"] for ref, row in facts["operations"].items()}
             facts = {**facts, "operations": {ref: dict(row, source=read_source_type(row["source"]))
                                             for ref, row in facts["operations"].items()}}

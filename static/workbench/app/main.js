@@ -22346,14 +22346,20 @@ function SMExport({
   function operation(row) {
     return object(row) && ref(row.ref) && row.operation_ref === row.ref && text(row.business_code) && text(row.label) && (Number.isSafeInteger(row.sequence) || text(row.sequence)) && nullableText(row.source) && nullableText(row.status) && typeof row.completed === 'boolean' && row.completed === (row.status === 'completed') && ['setup_hours', 'unit_hours', 'external_days'].every(key => finite(row[key])) && ['machine_ref', 'operator_ref', 'supplier_ref', 'op_type_ref'].every(key => row[key] === null || ref(row[key])) && object(row.resources) && (row.external_group === null || object(row.external_group) && ref(row.external_group.ref) && finite(row.external_group.total_days)) && issueRows(row.issues) && typeof row.editable === 'boolean';
   }
+  function base(row) {
+    return C.entity(row) && ref(row.ref) && context(row.write_context) && object(row.fields) && finite(row.fields.quantity) && fields.slice(1).every(key => nullableText(row.fields[key])) && ref(row.relationships.part_ref) && text(row.relationships.part_no) && text(row.relationships.part_name) && ['operation_count', 'completed_count', 'gap_count', 'plan_reference_count', 'execution_reference_count', 'material_requirement_count'].every(key => count(row.relationships[key])) && row.relationships.completed_count <= row.relationships.operation_count && row.relationships.gap_count <= row.relationships.operation_count && row.all_operations_complete === (row.relationships.operation_count > 0 && row.relationships.completed_count === row.relationships.operation_count) && typeof row.protected === 'boolean' && issueRows(row.issues);
+  }
+  function summary(row) {
+    return base(row) && !C.own(row, 'operations');
+  }
   function entity(row) {
-    return C.entity(row) && ref(row.ref) && context(row.write_context) && object(row.fields) && finite(row.fields.quantity) && fields.slice(1).every(key => nullableText(row.fields[key])) && ref(row.relationships.part_ref) && text(row.relationships.part_no) && text(row.relationships.part_name) && ['operation_count', 'completed_count', 'gap_count', 'plan_reference_count', 'execution_reference_count', 'material_requirement_count'].every(key => count(row.relationships[key])) && Array.isArray(row.operations) && row.operations.every(operation) && new Set(row.operations.map(op => op.ref)).size === row.operations.length && row.relationships.operation_count === row.operations.length && row.relationships.completed_count === row.operations.filter(op => op.completed).length && row.all_operations_complete === (!!row.operations.length && row.operations.every(op => op.completed)) && typeof row.protected === 'boolean' && issueRows(row.issues);
+    return base(row) && Array.isArray(row.operations) && row.operations.every(operation) && new Set(row.operations.map(op => op.ref)).size === row.operations.length && row.relationships.operation_count === row.operations.length && row.relationships.completed_count === row.operations.filter(op => op.completed).length;
   }
   function list(result, scope) {
     C.query(result, 'list');
     const d = result.data,
       p = d.page;
-    if (!d.entities.every(entity) || !context(d.create_context) || !d.create_context || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) || p.sort.length !== 1 || p.sort[0].field !== scope.sort || p.sort[0].direction !== scope.direction || scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('读到的批次列表不完整，请刷新后重试。');
+    if (!d.entities.every(summary) || !context(d.create_context) || !d.create_context || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) || p.sort.length !== 1 || p.sort[0].field !== scope.sort || p.sort[0].direction !== scope.direction || scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('读到的批次列表不完整，请刷新后重试。');
     return result;
   }
   function detail(result, expected) {
@@ -22467,6 +22473,7 @@ function SMExport({
     ref,
     context,
     operation,
+    summary,
     entity,
     list,
     detail,
@@ -23795,7 +23802,27 @@ function SMExport({
       onChange: event => setSelected(event.target.checked ? chosen.concat([value]) : chosen.filter(item => item !== value))
     }), B.label(field, value)))))));
   }
+  function OperationOverview({
+    adapter,
+    row
+  }) {
+    const [expanded, setExpanded] = React.useState(false);
+    const read = S.useQuery(async signal => B.detail(await adapter.detail('batch', row.ref, signal), row.ref), [adapter, row], expanded && row.relationships.operation_count > 0);
+    return /*#__PURE__*/React.createElement("details", {
+      onToggle: event => setExpanded(event.currentTarget.open),
+      "aria-busy": expanded && read.loading
+    }, /*#__PURE__*/React.createElement("summary", null, "\u5DE5\u5E8F\u6982\u51B5", row.relationships.gap_count ? ' · 待补 ' + row.relationships.gap_count : ''), expanded && (row.relationships.operation_count === 0 ? '尚未生成工序' : /*#__PURE__*/React.createElement(React.Fragment, null, read.loading && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "\u6B63\u5728\u8BFB\u53D6\u5DE5\u5E8F\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
+      error: read.error
+    }), read.error && /*#__PURE__*/React.createElement(Button, {
+      onClick: read.reload
+    }, "\u91CD\u65B0\u8BFB\u53D6\u5DE5\u5E8F"), read.result && (read.result.data.operations.length ? read.result.data.operations.map(op => /*#__PURE__*/React.createElement("div", {
+      key: op.ref
+    }, op.sequence, " \xB7 ", op.label, op.issues.length ? ' · 待补齐' : '')) : '尚未生成工序'))));
+  }
   function BatchTable({
+    adapter,
     rows,
     scope,
     selected,
@@ -23940,9 +23967,10 @@ function SMExport({
       "aria-label": row.business_code + '已完成工序',
       value: row.relationships.completed_count,
       max: row.relationships.operation_count || 1
-    }), /*#__PURE__*/React.createElement("span", null, row.relationships.completed_count, " / ", row.relationships.operation_count)), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u5DE5\u5E8F\u6982\u51B5", row.relationships.gap_count ? ' · 待补 ' + row.relationships.gap_count : ''), row.operations.length ? row.operations.map(op => /*#__PURE__*/React.createElement("div", {
-      key: op.ref
-    }, op.sequence, " \xB7 ", op.label, op.issues.length ? ' · 待补齐' : '')) : '尚未生成工序')), ['priority', 'ready_status', 'status'].map(key => /*#__PURE__*/React.createElement("td", {
+    }), /*#__PURE__*/React.createElement("span", null, row.relationships.completed_count, " / ", row.relationships.operation_count)), /*#__PURE__*/React.createElement(OperationOverview, {
+      adapter: adapter,
+      row: row
+    })), ['priority', 'ready_status', 'status'].map(key => /*#__PURE__*/React.createElement("td", {
       key: key
     }, /*#__PURE__*/React.createElement("span", {
       className: 'pill ' + (key === 'ready_status' ? B.readyStatus(row) === 'yes' ? 'ok' : 'warn' : key === 'priority' ? row.fields[key] === 'normal' ? 'off' : 'warn' : row.status === 'completed' ? 'ok' : row.status === 'processing' ? 'warn' : 'off')
@@ -24688,8 +24716,14 @@ function SMExport({
     }, "\u6E05\u9664\u5168\u90E8\u7B5B\u9009"), onNav && /*#__PURE__*/React.createElement(Button, {
       icon: returnSource ? 'arrow-left' : 'arrow-right',
       disabled: blocked,
-      onClick: () => typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)
+      onClick: () => !returnSource ? onNav(returnTarget, selected.length > 0 ? {
+        scope: {
+          source: 'production',
+          batch_refs: selected
+        }
+      } : {}) : typeof returnTarget === 'string' ? onNav(returnTarget) : onNav(returnTarget.view, returnTarget.context)
     }, !returnSource ? '下一步 · 去排产' : returnView === 'dashboard' ? '返回值班台' : '返回排产'))), /*#__PURE__*/React.createElement(window.BatchTable, {
+      adapter: adapter,
       rows: data ? data.entities : [],
       scope: scope,
       selected: selected,
@@ -63074,6 +63108,7 @@ function SystemLiveOverview({
   const BASE = '/api/workbench/v1/dashboard',
     RECEIPTS = '/api/workbench/v1/commands/';
   const READ_TIMEOUT_MS = 60000;
+  const laneId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const categories = {
     all: '全部风险',
     delivery: '交期风险',
@@ -63161,9 +63196,8 @@ function SystemLiveOverview({
     } else row.navigation.forEach(n => check(object(n) && ['gantt', 'fieldgantt', 'batches', 'analysis'].includes(n.view) && object(n.context) && typeof n.enabled === 'boolean' && Object.keys(n.context).every(k => ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref'].includes(k) && ref(n.context[k]))));
     return row;
   }
-  function envelope(v, q) {
+  function envelope(v, s) {
     check(object(v) && v.ok === true && v.schema_version === 1 && object(v.meta) && v.meta.source === 'production' && v.meta.time_basis === 'factory_local' && text(v.meta.snapshot_ref) && text(v.meta.as_of) && Array.isArray(v.warnings) && object(v.data));
-    const s = q && scope(q);
     if (s) {
       check(!s.snapshot_ref || s.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。');
       const expected = {
@@ -63214,25 +63248,24 @@ function SystemLiveOverview({
     check(new Set(d.items.map(r => r.item_ref)).size === d.items.length && object(d.resource_pressure) && object(d.candidate_catalog));
     const p = d.resource_pressure,
       c = d.candidate_catalog;
-    check(p.resources === null || Array.isArray(p.resources));
-    if (p.resources) {
-      check(d.plan !== null && p.plan_ref === d.plan.plan_ref && object(p.time_scope) && text(p.time_scope.range_start) && text(p.time_scope.range_end) && p.time_scope.time_basis === 'factory_local' && p.time_scope.boundary === 'half_open');
-      p.resources.forEach(r => check(object(r) && ['machine', 'operator'].includes(r.kind) && ['arranged_hours', 'occupied_hours', 'available_hours', 'overlap_hours', 'outside_available_hours', 'utilization'].every(k => r[k] === null || typeof r[k] === 'number' && Number.isFinite(r[k]) && r[k] >= 0) && (r.utilization === null || r.utilization <= 1 && r.available_hours > 0) && Array.isArray(r.segments)));
-    }
+    check(p.resource_count === null || count(p.resource_count));
+    check(p.detail_target === '/api/workbench/v1/dashboard/analysis?section=pressure' && !Object.prototype.hasOwnProperty.call(p, 'resources'));
+    if (p.resource_count !== null && d.plan !== null) check(p.plan_ref === d.plan.plan_ref && object(p.time_scope) && text(p.time_scope.range_start) && text(p.time_scope.range_end) && p.time_scope.time_basis === 'factory_local' && p.time_scope.boundary === 'half_open');
     check(['loaded', 'no_data', 'unavailable'].includes(c.state) && Array.isArray(c.runs));
     if (c.state !== 'unavailable') check(c.selection === null && count(c.run_count) && object(c.page) && c.runs.length <= 20 && typeof c.page.has_more === 'boolean');
     c.runs.forEach(r => check(ref(r.run_ref) && text(r.accepted_at) && count(r.candidate_count)));
     return v;
   }
   function detail(v, q, selected, historyPage) {
-    const d = envelope(v, q);
+    const s = scope(q),
+      d = envelope(v, s);
     item(d.item);
     check(d.item.item_ref === selected, '详情内容和所选条目不一致，页面没有切换。请刷新后重试。');
     if (historyPage !== undefined) {
       check(object(d.history) && Array.isArray(d.history.items));
       pagination(d.history.page, {
         page: historyPage,
-        size: q.size
+        size: s.size
       });
       d.history.items.forEach(h => {
         check(ref(h.history_ref) && count(h.sequence) && ['transition', 'reopen'].includes(h.action) && text(h.receipt_ref) && text(h.local_operator) && text(h.recorded_at) && object(h.source_snapshot) && h.source_snapshot.snapshot_ref === h.history_ref && h.source_snapshot.source.item_ref === selected && h.source_snapshot.time_basis === 'factory_local');
@@ -63279,10 +63312,14 @@ function SystemLiveOverview({
     return error;
   }
   function create(fetcher = window.fetch.bind(window)) {
-    async function request(url, body, signal, intent) {
+    async function request(url, body, signal, intent, listRead = false) {
       const controller = new AbortController(),
-        abort = () => controller.abort(),
-        timer = setTimeout(abort, body === undefined ? READ_TIMEOUT_MS : 30000);
+        abort = () => controller.abort();
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = body === undefined;
+        abort();
+      }, body === undefined ? READ_TIMEOUT_MS : 30000);
       if (signal) {
         signal.addEventListener('abort', abort, {
           once: true
@@ -63296,7 +63333,11 @@ function SystemLiveOverview({
           cache: 'no-store',
           redirect: 'error',
           signal: controller.signal,
-          ...(body === undefined ? {} : {
+          ...(body === undefined ? listRead ? {
+            headers: {
+              'X-Workbench-Read-Lane': 'dashboard-list:' + laneId
+            }
+          } : {} : {
             headers: {
               'Content-Type': 'application/json'
             },
@@ -63305,9 +63346,13 @@ function SystemLiveOverview({
         });
         check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '值班台读到的数据不完整，请刷新后重试。');
         const v = await r.json();
+        if (r.status === 499 && v.error && v.error.code === 'request_superseded') throw new DOMException('读取已被更新请求替代', 'AbortError');
         if (!r.ok || v.ok === false) throw failure(v, r.status, intent);
         check(r.status === 200);
         return v;
+      } catch (error) {
+        if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
+        throw error;
       } finally {
         clearTimeout(timer);
         if (signal) signal.removeEventListener('abort', abort);
@@ -63315,12 +63360,16 @@ function SystemLiveOverview({
     }
     return {
       async list(q, signal) {
-        const value = catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal), q);
+        const value = catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal, undefined, true), q);
         try {
           if (value.data.analysis_error !== null) check(text(value.data.analysis_error) && value.data.analysis === null);else window.DashboardAnalysisAPI.validate({
             ...value,
             data: value.data.analysis
-          }, value.data.plan && value.data.plan.plan_ref);
+          }, value.data.plan && value.data.plan.plan_ref, {
+            section: 'overview',
+            page: 1,
+            size: 20
+          });
         } catch (error) {
           value.data.analysis = null;
           value.data.analysis_error = '影响分析读取失败：' + error.message;
@@ -63403,7 +63452,11 @@ function SystemLiveOverview({
       });
       if (signal.aborted) abort();
     }
-    const timer = setTimeout(abort, C.READ_TIMEOUT_MS);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      abort();
+    }, C.READ_TIMEOUT_MS);
     try {
       const response = await fetcher(url, {
         method: 'GET',
@@ -63417,6 +63470,9 @@ function SystemLiveOverview({
       if (!response.ok || payload.ok !== true) throw new Error(payload && payload.error && C.text(payload.error.message) ? payload.error.message : '影响分析读取失败，请刷新后重试。');
       C.check(response.status === 200);
       return payload;
+    } catch (error) {
+      if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
+      throw error;
     } finally {
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', abort);
@@ -63427,38 +63483,101 @@ function SystemLiveOverview({
     C.check(C.object(value) && ['available', 'partial', 'unavailable'].includes(value.state) && Array.isArray(value.days) && nullable(number)(value.peak_utilization) && count(value.zero_capacity_days) && count(value.unknown_days) && R.window(value.window_metrics));
     value.days.forEach(day => C.check(C.object(day) && time(day.start) && time(day.end) && day.start <= day.end && day.date === day.start.slice(0, 10) && R.day(day.window_metrics) && ['available_hours', 'occupied_hours', 'inside_available_hours', 'outside_available_hours', 'overlap_hours', 'utilization'].every(key => nullable(number)(day[key]))));
   }
-  function validate(payload, planRef) {
+  const sections = ['overview', 'delivery', 'actual', 'downtime', 'material', 'pressure', 'resource_days', 'timeline'];
+  const totals = ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'resource_days'];
+  function scope(value = {}) {
+    const q = {
+      section: 'delivery',
+      page: 1,
+      size: 20,
+      ...value
+    };
+    C.check(C.object(value) && Object.keys(q).every(key => ['section', 'page', 'size', 'snapshot_ref', 'resource_ref', 'locate_batch_ref'].includes(key)) && sections.includes(q.section) && count(q.page) && q.page >= 1 && q.page <= 100000 && count(q.size) && q.size >= 1 && q.size <= 100 && (q.snapshot_ref === undefined || typeof q.snapshot_ref === 'string' && /^[A-Za-z0-9_-]{32}$/.test(q.snapshot_ref)) && (q.section === 'resource_days' ? C.ref(q.resource_ref) : q.resource_ref === undefined) && (q.locate_batch_ref === undefined || q.section === 'timeline' && C.ref(q.locate_batch_ref)), '影响分析的页码或范围无效，请重新选择。');
+    return q;
+  }
+  function pagination(value, q, payload) {
+    C.check(shape(value, ['section', 'number', 'size', 'total', 'pages', 'totals']) && sections.includes(value.section) && count(value.number) && value.number > 0 && count(value.size) && value.size >= 1 && value.size <= 100 && count(value.total) && value.pages === Math.max(1, Math.ceil(value.total / value.size)) && shape(value.totals, totals) && totals.every(key => count(value.totals[key])), '影响分析的分页资料不完整，请刷新分析。');
+    if (q) {
+      C.check(value.section === q.section && value.size === q.size && (q.locate_batch_ref ? value.number <= value.pages : value.number === q.page), '影响分析返回的页码或范围和当前选择不一致，请刷新分析。');
+      C.check(!q.snapshot_ref || payload.meta.snapshot_ref === q.snapshot_ref, '分析资料已更新，请刷新分析后继续翻页。');
+    }
+    const key = {
+      delivery: 'deliveries',
+      actual: 'execution',
+      material: 'pending',
+      pressure: 'resources',
+      timeline: 'tasks',
+      resource_days: 'resource_days'
+    }[value.section];
+    C.check(value.total === (key ? value.totals[key] : value.section === 'downtime' ? Math.max(value.totals.downtimes, value.totals.overlaps) : 0));
+    return value;
+  }
+  function validate(payload, planRef, query) {
+    return _validate(payload, planRef, query ? scope(query) : null);
+  }
+  function _validate(payload, planRef, q) {
     const d = envelope(payload);
-    C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis', 'resource_common']) && d.basis === 'current_official_plan_and_readiness_sources' && C.equal(d.capabilities, {
+    C.check(shape(d, ['plan', 'state', 'time_scope', 'tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'pending', 'pressure', 'issues', 'as_of', 'capabilities', 'basis', 'resource_common', 'pagination']) && d.basis === 'current_official_plan_and_readiness_sources' && C.equal(d.capabilities, {
       view: true,
       adopt: false
     }) && time(d.as_of) && ['tasks', 'resources', 'downtimes', 'overlaps', 'deliveries', 'execution', 'issues'].every(k => Array.isArray(d[k])) && d.issues.every(issue));
+    const page = pagination(d.pagination, q, payload),
+      section = page.section;
+    const pageLength = total => Math.min(page.size, Math.max(0, total - (page.number - 1) * page.size));
     if (d.plan === null) C.check(!planRef && d.state !== 'available' && d.time_scope === null && !d.tasks.length && !d.resources.length && d.pressure.count === null);else C.check(C.object(d.plan) && C.ref(d.plan.plan_ref) && d.plan.kind === 'official' && d.plan.is_current_official === true && (!planRef || d.plan.plan_ref === planRef) && d.state === 'available' && C.object(d.time_scope) && time(d.time_scope.range_start) && time(d.time_scope.range_end) && d.time_scope.range_start <= d.time_scope.range_end);
     d.tasks.forEach(task => C.check(C.object(task) && C.ref(task.task_ref) && C.ref(task.operation_ref) && C.ref(task.batch_ref) && task.plan_ref === d.plan.plan_ref && C.text(task.batch_id) && C.text(task.process_label) && ['internal', 'external'].includes(task.source) && nullable(C.ref)(task.machine_ref) && time(task.start) && time(task.end) && task.start <= task.end && number(task.span_hours) && Math.abs(task.span_hours - (Date.parse(task.end + 'Z') - Date.parse(task.start + 'Z')) / 3600000) < 0.000001 && (task.start !== task.end || task.event_kind === 'point' && task.duration_seconds === 0 && task.occupies_resources === false)));
     C.check(new Set(d.tasks.map(task => task.task_ref)).size === d.tasks.length);
+    if (q && q.locate_batch_ref) C.check(d.tasks.some(task => task.batch_ref === q.locate_batch_ref && task.source === 'internal' && task.machine_ref), '影响分析返回的工序和所选批次不一致，请刷新分析。');
     const tasks = new Map(d.tasks.map(task => [task.task_ref, task]));
     d.resources.forEach(resource => {
       pressure(resource);
-      C.check(C.ref(resource.resource_ref) && ['machine', 'operator'].includes(resource.kind) && Array.isArray(resource.task_refs) && resource.task_refs.every(ref => tasks.has(ref) && tasks.get(ref)[resource.kind + '_ref'] === resource.resource_ref));
+      C.check(C.ref(resource.resource_ref) && ['machine', 'operator'].includes(resource.kind) && Array.isArray(resource.task_refs) && resource.task_refs.length === 0);
     });
     C.check(new Set(d.resources.map(row => row.resource_ref)).size === d.resources.length);
     d.downtimes.forEach(row => C.check(C.ref(row.downtime_ref) && C.ref(row.machine_ref) && typeof row.valid === 'boolean' && nullable(time)(row.start) && nullable(time)(row.end) && (!row.valid || row.start !== null && row.end !== null && row.start < row.end) && nullable(time)(row.recorded_at) && row.recorded_at_basis === 'local_time'));
     d.overlaps.forEach(row => C.check(tasks.has(row.task_ref) && row.batch_ref === tasks.get(row.task_ref).batch_ref && C.object(row.source) && row.source.task_ref === row.task_ref && number(row.source.known_overlap_hours)));
     d.execution.forEach(row => C.check(C.object(row.source) && tasks.has(row.source.task_ref) && row.batch_ref === tasks.get(row.source.task_ref).batch_ref));
     const pending = d.pending;
-    C.check(C.object(pending) && Array.isArray(pending.items) && nullable(count)(pending.count) && count(pending.known_count) && pending.known_count === pending.items.length && (pending.count === null || pending.count === pending.items.length) && pending.basis === 'stored_pending_batch_pool');
+    C.check(C.object(pending) && Array.isArray(pending.items) && nullable(count)(pending.count) && count(pending.known_count) && pending.known_count === page.totals.pending && (pending.count === null || pending.count === pending.known_count) && pending.basis === 'stored_pending_batch_pool');
     pending.items.forEach(row => C.check(C.ref(row.batch_ref) && C.text(row.batch_id) && row.stored_status === 'pending' && nullable(number)(row.quantity) && Array.isArray(row.readiness_issues)));
     const p = d.pressure;
-    C.check(C.object(p) && p.threshold === 0.9 && count(p.known_count) && nullable(count)(p.count) && p.resource_count === d.resources.length && p.basis === 'same_range_daily_peak_available_occupancy');
+    C.check(C.object(p) && p.threshold === 0.9 && count(p.known_count) && nullable(count)(p.count) && p.resource_count === page.totals.resources && p.known_count <= p.resource_count && p.basis === 'same_range_daily_peak_available_occupancy');
+    const arrays = {
+      tasks: ['timeline', 'actual', 'downtime'],
+      resources: ['pressure', 'resource_days'],
+      downtimes: ['downtime'],
+      overlaps: ['downtime'],
+      deliveries: ['delivery', 'timeline', 'downtime'],
+      execution: ['actual']
+    };
+    Object.entries(arrays).forEach(([key, allowed]) => C.check(allowed.includes(section) || d[key].length === 0));
+    C.check(section === 'material' ? pending.items.length === pageLength(page.totals.pending) : pending.items.length === 0);
+    const primary = {
+      delivery: 'deliveries',
+      actual: 'execution',
+      pressure: 'resources',
+      timeline: 'tasks'
+    }[section];
+    if (primary) C.check(d[primary].length === pageLength(page.total));
+    if (section === 'downtime') ['downtimes', 'overlaps'].forEach(key => C.check(d[key].length === pageLength(page.totals[key])));
+    if (section === 'resource_days' && d.plan) C.check(d.resources.length === 1 && d.resources[0].days.length === pageLength(page.total) && (!q || d.resources[0].resource_ref === q.resource_ref));
+    if (section === 'pressure') C.check(d.resources.every(resource => resource.days.length === 0));
     C.check(d.plan === null ? d.resource_common === null : window.ResourceProjectionContract.common(d.resource_common, 'current_transaction_snapshot'));
     return d;
   }
   function create(fetcher = window.fetch.bind(window)) {
     return {
-      async read(planRef, signal) {
+      async read(planRef, signal, query = {}) {
         C.check(planRef === null || planRef === undefined || C.ref(planRef));
-        const value = await request('/api/workbench/v1/dashboard/analysis' + (planRef ? '?plan_ref=' + planRef : ''), fetcher, signal);
-        validate(value, planRef);
+        const q = scope(query),
+          args = {
+            ...q,
+            ...(planRef ? {
+              plan_ref: planRef
+            } : {})
+          };
+        const value = await request('/api/workbench/v1/dashboard/analysis?' + new URLSearchParams(args), fetcher, signal);
+        _validate(value, planRef, q);
         return value;
       }
     };
@@ -63466,6 +63585,7 @@ function SystemLiveOverview({
   window.DashboardAnalysisAPI = {
     create,
     validate,
+    scope,
     envelope,
     request,
     pressure,
@@ -63586,7 +63706,16 @@ function SystemLiveOverview({
 
   const G = window.PlanGanttModel;
   function prepare(data) {
-    const stops = data.downtimes.filter(row => row.valid).map(row => ({
+    const stopRows = new Map(data.downtimes.map(row => [row.downtime_ref, row]));
+    data.overlaps.forEach(row => row.source.downtimes.forEach(stop => {
+      if (!stopRows.has(stop.downtime_ref)) stopRows.set(stop.downtime_ref, {
+        ...stop,
+        machine_ref: row.source.machine_ref,
+        valid: true,
+        recorded_at: null
+      });
+    }));
+    const stops = Array.from(stopRows.values()).filter(row => row.valid).map(row => ({
       ...row,
       startAt: G.instant(row.start),
       endAt: G.instant(row.end)
@@ -63604,8 +63733,8 @@ function SystemLiveOverview({
         start: data.time_scope.range_start,
         end: data.time_scope.range_end
       },
-      resources: data.resources.map(row => ({
-        ref: row.resource_ref,
+      resources: data.resource_common.cohort.map(row => ({
+        ref: row.ref,
         label: row.label
       })),
       projections: {
@@ -63770,6 +63899,7 @@ function SystemLiveOverview({
       height: 330
     });
     const pendingCenter = React.useRef(null),
+      selection = React.useRef(null),
       labelWidth = position.width < 550 ? 140 : 170;
     const viewport = Math.max(80, position.width - labelWidth),
       width = viewport * zoom;
@@ -63822,6 +63952,12 @@ function SystemLiveOverview({
       setHover(null);
     }, [position.left, position.top, mode]);
     React.useEffect(() => {
+      if (!selection.current || selection.current.batch !== selectedBatch || selection.current.task !== focusTask) selection.current = {
+        batch: selectedBatch,
+        task: focusTask,
+        located: false
+      };
+      if (selection.current.located) return;
       const focused = picker.byRef.get(focusTask),
         task = focused && focused.batch_ref === selectedBatch ? focused : picker.firstByBatch.get(selectedBatch);
       const location = task && model.locations.get(task.task_ref);
@@ -63829,8 +63965,9 @@ function SystemLiveOverview({
       board.current.scrollTop = Math.max(0, location.top - 60);
       const left = (location.item.start - model.start) / (model.end - model.start) * width;
       if (left < position.left || left > position.left + viewport) board.current.scrollLeft = Math.max(0, left - viewport / 3);
-      // Only a new selection scrolls; zoom and resize rebuild the model but must keep the user's own position.
-    }, [selectedBatch, focusTask]);
+      selection.current.located = true;
+      // Wait for the selected task's page, then locate once; later data, zoom and resize keep the user's position.
+    }, [selectedBatch, focusTask, picker, model]);
     const axis = V.axis({
       start: model.start,
       end: model.end,
@@ -64007,7 +64144,7 @@ function SystemLiveOverview({
         seconds: true,
         fractions: true
       })
-    }, window.WorkbenchFormat.compactRange(M.wire(model.start), M.wire(model.end))), /*#__PURE__*/React.createElement("span", null, model.tasks.length, " \u9053\u8BA1\u5212\u5DE5\u5E8F", mode === 'downtime' ? ' · 阴影为已登记停机' : '')), hover && /*#__PURE__*/React.createElement("div", {
+    }, window.WorkbenchFormat.compactRange(M.wire(model.start), M.wire(model.end))), /*#__PURE__*/React.createElement("span", null, data.pagination ? '本页关联 ' : '', model.tasks.length, " \u9053\u8BA1\u5212\u5DE5\u5E8F", mode === 'downtime' ? ' · 阴影为已登记停机' : '')), hover && /*#__PURE__*/React.createElement("div", {
       role: "tooltip",
       className: "dy-analysis-tooltip",
       style: {
@@ -64025,7 +64162,8 @@ function SystemLiveOverview({
 
   const {
       Button,
-      Issues
+      Issues,
+      ErrorBox
     } = window.ResourceControls,
     M = window.DashboardTimelineModel;
   // Counts stay whole numbers; hours and other measured values keep two decimals.
@@ -64058,11 +64196,7 @@ function SystemLiveOverview({
     onSelect,
     onCompare
   }) {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.DashboardTimeline, {
-      data: data,
-      selectedBatch: selected,
-      onSelect: onSelect
-    }), /*#__PURE__*/React.createElement("section", {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5F71\u54CD\u6279\u6B21"
     }, /*#__PURE__*/React.createElement("div", {
       className: "dy-heading"
@@ -64145,7 +64279,7 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("h3", null, "\u767B\u8BB0\u4F9D\u636E"), data.downtimes.map(row => /*#__PURE__*/React.createElement("dl", {
       className: "dy-facts",
       key: row.downtime_ref
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BBE\u5907"), /*#__PURE__*/React.createElement("dd", null, value((data.resources.find(r => r.resource_ref === row.machine_ref) || {}).label))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u56E0"), /*#__PURE__*/React.createElement("dd", null, value(row.reason))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F00\u59CB / \u7ED3\u675F"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.start), " / ", M.timeLabel(row.end))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u767B\u8BB0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.recorded_at)))))));
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8BBE\u5907"), /*#__PURE__*/React.createElement("dd", null, value(row.machine_label))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u539F\u56E0"), /*#__PURE__*/React.createElement("dd", null, value(row.reason))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5F00\u59CB / \u7ED3\u675F"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.start), " / ", M.timeLabel(row.end))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u767B\u8BB0\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, M.timeLabel(row.recorded_at)))))));
   }
   function Material({
     data,
@@ -64156,7 +64290,7 @@ function SystemLiveOverview({
       "aria-label": "\u5F85\u6392\u6279\u6B21\u4E0E\u9F50\u5957\u65E5\u671F"
     }, /*#__PURE__*/React.createElement("h3", null, "\u5F85\u6392\u6279\u6B21\u4E0E\u9F50\u5957\u65E5\u671F"), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u5F85\u6392 ", value(p.count), " \u6279 \xB7 \u5DF2\u8BFB\u53D6 ", p.known_count, " \u6279"), showIssues && /*#__PURE__*/React.createElement(Issues, {
+    }, "\u5F85\u6392 ", value(p.count), " \u6279 \xB7 \u672C\u9875 ", p.items.length, " \u6279 \xB7 \u5DF2\u786E\u8BA4\u5F85\u6392 ", p.known_count, " \u6279"), showIssues && /*#__PURE__*/React.createElement(Issues, {
       issues: p.issues
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-scroll"
@@ -64183,7 +64317,7 @@ function SystemLiveOverview({
       partial: '部分齐套'
     }[row.ready_status] || '未知'), /*#__PURE__*/React.createElement("td", null, value(row.ready_date))))))), !p.items.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
-      title: p.count === 0 ? '当前没有待排批次。' : '待排批次没有完整读到，数量可能不全。'
+      title: p.count === 0 ? '当前没有待排批次。' : '当前页没有待排批次。'
     }), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
     }, "\u5F53\u524D\u8303\u56F4\uFF1A\u5168\u90E8\u5F85\u6392\u6279\u6B21 \xB7 \u9F50\u5957\u68C0\u67E5\u548C\u7F3A\u8BBE\u5907\u4EBA\u5458\u7684\u89C4\u5219\u5728\u300C\u6267\u884C\u6392\u4EA7\u300D\u91CC\u6309\u672C\u6B21\u9009\u62E9\u8BBE\u5B9A\uFF0C\u5DF2\u4FDD\u5B58\u5019\u9009\u65B9\u6848\u7684\u89C4\u5219\u89C1\u300C\u65B9\u6848\u5BF9\u6BD4\u300D\u3002"));
@@ -64241,11 +64375,224 @@ function SystemLiveOverview({
       }, "\u73B0\u573A\u5B9E\u9645\u7518\u7279")));
     })))));
   }
+  function Section({
+    section,
+    planRef,
+    resourceRef,
+    locateBatchRef,
+    enabled = true,
+    label,
+    render
+  }) {
+    const api = React.useMemo(() => window.DashboardAnalysisAPI.create(), []);
+    const loadedPage = React.useRef(null);
+    const base = React.useMemo(() => ({
+      section,
+      page: 1,
+      size: 20,
+      ...(resourceRef ? {
+        resource_ref: resourceRef
+      } : {}),
+      ...(locateBatchRef ? {
+        locate_batch_ref: locateBatchRef
+      } : {})
+    }), [section, planRef, resourceRef, locateBatchRef]);
+    const [paging, setPaging] = React.useState(() => ({
+      base,
+      query: base
+    }));
+    const query = React.useMemo(() => {
+      if (paging.base === base) return paging.query;
+      const loaded = loadedPage.current;
+      // An in-page task selection keeps this read identity and its mounted timeline focus.
+      if (loaded && loaded.planRef === planRef && loaded.section === section && loaded.resourceRef === resourceRef && loaded.query.size === paging.query.size && loaded.batches.has(locateBatchRef)) return loaded.query;
+      return {
+        ...base,
+        size: paging.query.size
+      };
+    }, [base, paging]);
+    const read = window.DashboardSession.useRead(signal => api.read(planRef, signal, query), [api, planRef, query], enabled);
+    const result = read.result,
+      data = result && result.data;
+    React.useEffect(() => {
+      if (data) loadedPage.current = {
+        planRef,
+        section,
+        resourceRef,
+        query,
+        batches: new Set(data.tasks.filter(task => task.source === 'internal' && task.machine_ref).map(task => task.batch_ref))
+      };
+    }, [data, query, planRef, section, resourceRef]);
+    function reload() {
+      setPaging({
+        base,
+        query: {
+          ...base,
+          size: query.size
+        }
+      });
+    }
+    function page(number) {
+      const next = {
+        ...query,
+        page: number,
+        snapshot_ref: result.meta.snapshot_ref
+      };
+      delete next.locate_batch_ref;
+      setPaging({
+        base,
+        query: next
+      });
+    }
+    function size(value) {
+      setPaging({
+        base,
+        query: {
+          ...base,
+          size: value
+        }
+      });
+    }
+    if (!enabled) return null;
+    return /*#__PURE__*/React.createElement("section", {
+      "data-analysis-section": section,
+      "data-analysis-section-ready": !!data && !read.loading && !read.error,
+      "aria-busy": read.loading
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "dy-heading"
+    }, /*#__PURE__*/React.createElement("h3", null, label), /*#__PURE__*/React.createElement(Button, {
+      reasonDisplay: "inline",
+      icon: "refresh-cw",
+      "aria-label": '刷新' + label,
+      busy: read.loading,
+      onClick: reload
+    }, "\u5237\u65B0")), /*#__PURE__*/React.createElement(ErrorBox, {
+      error: read.error
+    }), read.loading && /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "\u6B63\u5728\u8BFB\u53D6", label, "\u3002"), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "dy-context"
+    }, "\u672C\u8282\u5171 ", data.pagination.total, " \u9879 \xB7 \u7B2C ", data.pagination.number, " / ", data.pagination.pages, " \u9875"), render(data), /*#__PURE__*/React.createElement(window.DashboardPanels.Pager, {
+      page: data.pagination,
+      busy: read.loading,
+      onPage: page,
+      onSize: size,
+      label: label
+    })));
+  }
+  function ResourceDays({
+    planRef,
+    resourceRef,
+    enabled
+  }) {
+    return /*#__PURE__*/React.createElement(Section, {
+      section: "resource_days",
+      planRef: planRef,
+      resourceRef: resourceRef,
+      enabled: enabled,
+      label: "\u8D44\u6E90\u9010\u65E5\u660E\u7EC6",
+      render: data => /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+        className: "dy-scroll"
+      }, /*#__PURE__*/React.createElement("table", {
+        className: "dy-analysis-table"
+      }, /*#__PURE__*/React.createElement("caption", {
+        className: "wb-sr-only"
+      }, "\u8D44\u6E90\u9010\u65E5\u660E\u7EC6"), /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+        scope: "col"
+      }, "\u65E5\u671F / \u8303\u56F4"), /*#__PURE__*/React.createElement("th", {
+        scope: "col"
+      }, "\u53EF\u6392\u65F6\u957F\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
+        scope: "col"
+      }, "\u73ED\u5185\u5DF2\u5360\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
+        scope: "col"
+      }, "\u5360\u7528\u6BD4\u4F8B"), /*#__PURE__*/React.createElement("th", {
+        scope: "col"
+      }, "\u73ED\u5916\u5360\u7528\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("th", {
+        scope: "col"
+      }, "\u8D44\u6599\u72B6\u6001"))), /*#__PURE__*/React.createElement("tbody", null, data.resources.flatMap(resource => resource.days.map(day => /*#__PURE__*/React.createElement("tr", {
+        key: day.date,
+        "data-resource-day": day.date
+      }, /*#__PURE__*/React.createElement("td", null, day.date, /*#__PURE__*/React.createElement("small", null, M.timeLabel(day.start), " / ", M.timeLabel(day.end))), /*#__PURE__*/React.createElement("td", null, value(day.available_hours)), /*#__PURE__*/React.createElement("td", null, value(day.inside_available_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(day.utilization)), /*#__PURE__*/React.createElement("td", null, value(day.outside_available_hours)), /*#__PURE__*/React.createElement("td", null, T.resource_states[day.window_metrics.state], /*#__PURE__*/React.createElement(Issues, {
+        issues: day.window_metrics.issues
+      })))))))), data.pagination.total === 0 && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+        kind: "empty",
+        title: "\u5F53\u524D\u8D44\u6E90\u6CA1\u6709\u9010\u65E5\u8D44\u6599\u3002"
+      }))
+    });
+  }
+  function Workspace({
+    data,
+    category,
+    selected,
+    onSelect,
+    onCompare,
+    navigate,
+    canNavigate
+  }) {
+    const planRef = data.plan && data.plan.plan_ref,
+      section = ['actual', 'downtime', 'material'].includes(category) ? category : 'delivery';
+    const labels = {
+      delivery: '批次交付明细',
+      actual: '工序执行明细',
+      downtime: '停机影响明细',
+      material: '待排齐套明细'
+    };
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Section, {
+      section: section,
+      planRef: planRef,
+      label: labels[section],
+      render: analysis => section === 'material' ? /*#__PURE__*/React.createElement(Material, {
+        data: analysis,
+        showIssues: false
+      }) : !analysis.plan ? /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+        kind: "empty",
+        title: "\u5F53\u524D\u6CA1\u6709\u53EF\u5206\u6790\u7684\u6B63\u5F0F\u8BA1\u5212\u3002"
+      }) : section === 'actual' ? /*#__PURE__*/React.createElement(Actual, {
+        data: analysis,
+        navigate: navigate
+      }) : section === 'downtime' ? /*#__PURE__*/React.createElement(Downtime, {
+        data: analysis,
+        selected: selected,
+        onSelect: onSelect
+      }) : /*#__PURE__*/React.createElement(Delivery, {
+        data: analysis,
+        selected: selected,
+        onSelect: onSelect,
+        onCompare: onCompare
+      })
+    }), section === 'delivery' && data.plan && /*#__PURE__*/React.createElement(Section, {
+      section: "timeline",
+      planRef: planRef,
+      locateBatchRef: selected,
+      label: "\u8BA1\u5212\u65F6\u95F4\u8F74\u5DE5\u5E8F",
+      render: analysis => analysis.plan ? /*#__PURE__*/React.createElement(window.DashboardTimeline, {
+        data: analysis,
+        selectedBatch: selected,
+        onSelect: onSelect
+      }) : null
+    }), !['material', 'actual'].includes(section) && /*#__PURE__*/React.createElement(Section, {
+      section: "pressure",
+      planRef: planRef,
+      label: "\u8D44\u6E90\u538B\u529B\u660E\u7EC6",
+      render: analysis => /*#__PURE__*/React.createElement(window.DashboardPanels.Pressure, {
+        data: {
+          ...data,
+          analysis
+        },
+        showIssues: false,
+        navigate: navigate,
+        canNavigate: canNavigate
+      })
+    }));
+  }
   window.DashboardAnalysisPanels = {
     Delivery,
     Downtime,
     Material,
     Actual,
+    Section,
+    ResourceDays,
+    Workspace,
     value,
     risk
   };
@@ -65869,6 +66216,24 @@ function SystemLiveOverview({
       error: error
     })));
   }
+  function PressureDetails({
+    resource,
+    planRef
+  }) {
+    const [open, setOpen] = React.useState(false),
+      w = resource.window_metrics;
+    return /*#__PURE__*/React.createElement("details", {
+      onToggle: event => setOpen(event.currentTarget.open)
+    }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u4E0E\u8D44\u6599"), /*#__PURE__*/React.createElement("dl", {
+      className: "dy-facts"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u73ED\u5185\u5DE5\u5E8F\u7D2F\u8BA1\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("dd", null, hoursValue(w.summed_load_hours))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u73ED\u5185\u91CD\u590D\u8BA1\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("dd", null, hoursValue(w.overlap_hours))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u73ED\u5185\u5DE5\u5E8F\u7D2F\u8BA1 / \u53EF\u6392\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchFormat.percent(w.demand_ratio))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8D44\u6599\u72B6\u6001"), /*#__PURE__*/React.createElement("dd", null, T.resource_states[w.state], w.unknown_days > 0 && ' · ' + w.unknown_days + ' 天班表未记录'))), /*#__PURE__*/React.createElement(Issues, {
+      issues: w.issues
+    }), /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.ResourceDays, {
+      planRef: planRef,
+      resourceRef: resource.resource_ref,
+      enabled: open
+    }));
+  }
   function Pressure({
     data,
     navigate,
@@ -65925,11 +66290,10 @@ function SystemLiveOverview({
         "data-resource-ref": r.resource_ref
       }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, r.label || '名称未填写'), /*#__PURE__*/React.createElement("div", {
         className: "dy-muted"
-      }, T.resource_kinds[r.kind], " \xB7 ", value(w.operation_count), " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, hoursValue(w.available_hours)), /*#__PURE__*/React.createElement("td", null, hoursValue(w.occupied_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(w.utilization_ratio)), /*#__PURE__*/React.createElement("td", null, hoursValue(w.overlap_span_hours)), /*#__PURE__*/React.createElement("td", null, hoursValue(w.outside_calendar_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u7B97\u4E0E\u8D44\u6599"), /*#__PURE__*/React.createElement("dl", {
-        className: "dy-facts"
-      }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u73ED\u5185\u5DE5\u5E8F\u7D2F\u8BA1\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("dd", null, hoursValue(w.summed_load_hours))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u73ED\u5185\u91CD\u590D\u8BA1\u65F6\uFF08\u5C0F\u65F6\uFF09"), /*#__PURE__*/React.createElement("dd", null, hoursValue(w.overlap_hours))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u73ED\u5185\u5DE5\u5E8F\u7D2F\u8BA1 / \u53EF\u6392\u65F6\u95F4"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchFormat.percent(w.demand_ratio))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u8D44\u6599\u72B6\u6001"), /*#__PURE__*/React.createElement("dd", null, T.resource_states[w.state], w.unknown_days > 0 && ' · ' + w.unknown_days + ' 天班表未记录'))), /*#__PURE__*/React.createElement(Issues, {
-        issues: w.issues
-      }))));
+      }, T.resource_kinds[r.kind], " \xB7 ", value(w.operation_count), " \u9053\u5DE5\u5E8F")), /*#__PURE__*/React.createElement("td", null, hoursValue(w.available_hours)), /*#__PURE__*/React.createElement("td", null, hoursValue(w.occupied_hours)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.percent(w.utilization_ratio)), /*#__PURE__*/React.createElement("td", null, hoursValue(w.overlap_span_hours)), /*#__PURE__*/React.createElement("td", null, hoursValue(w.outside_calendar_hours)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(PressureDetails, {
+        resource: r,
+        planRef: data.plan.plan_ref
+      })));
     })))), /*#__PURE__*/React.createElement("details", {
       className: "dy-evidence"
     }, /*#__PURE__*/React.createElement("summary", null, "\u7EDF\u8BA1\u8303\u56F4\u4E0E\u8BA1\u7B97\u8BF4\u660E"), p.time_scope && /*#__PURE__*/React.createElement("p", null, "\u4ECE ", window.WorkbenchFormat.dateTime(p.time_scope.range_start, {
@@ -66766,27 +67130,16 @@ function SystemLiveOverview({
     }, "\u6B63\u5728\u8BFB\u53D6\u540C\u4E00\u6B63\u5F0F\u8BA1\u5212\u7684\u5206\u6790\u4F9D\u636E\u3002"), analysisRead.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: reload
-    }, "\u5237\u65B0\u5206\u6790"), analysisData && /*#__PURE__*/React.createElement(React.Fragment, null, q.category === 'material' ? /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Material, {
-      data: analysisData,
-      showIssues: false
-    }) : analysisData.plan && (q.category === 'downtime' ? /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Downtime, {
-      data: analysisData,
-      selected: analysisBatch,
-      onSelect: setAnalysisBatch
-    }) : q.category === 'actual' ? /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Actual, {
-      data: analysisData,
-      navigate: navigate
-    }) : /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Delivery, {
-      data: analysisData,
+    }, "\u5237\u65B0\u5206\u6790"), analysisData && /*#__PURE__*/React.createElement(window.DashboardAnalysisPanels.Workspace, {
+      key: (data.plan ? data.plan.plan_ref : 'no-plan') + q.category + revision,
+      data: data,
+      category: q.category,
       selected: analysisBatch,
       onSelect: setAnalysisBatch,
-      onCompare: () => setTab('compare')
-    })), !['material', 'actual'].includes(q.category) && /*#__PURE__*/React.createElement(P.Pressure, {
-      data: data,
-      showIssues: false,
+      onCompare: () => setTab('compare'),
       navigate: navigate,
       canNavigate: typeof onNavigate === 'function'
-    }))), !external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.DashboardCandidates, {
+    })), !external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.DashboardCandidates, {
       key: q.category,
       catalog: data.candidate_catalog,
       initialContext: comparisonState.context,

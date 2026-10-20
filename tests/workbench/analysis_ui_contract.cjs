@@ -157,17 +157,20 @@ const planned = (id, machine, batch, start, end) => ({ task_ref: reference(id), 
 const timelineData = { time_scope: { range_start: stamp(12, '22'), range_end: stamp(13, '02') },
   tasks: [planned(1, 200, 300, stamp(12, '23'), stamp(13, '01')), planned(2, 200, 301, stamp(12, '23'), stamp(13, '00')),
     planned(3, 200, 300, stamp(13, '01'), stamp(13, '01')), planned(4, 201, 302, stamp(12, '22'), stamp(12, '23'))],
-  resources: [200, 201].map(id => ({ resource_ref: reference(id), label: '设备 ' + id })),
-  deliveries: [{ batch_ref: reference(300), risk: 'overdue' }, { batch_ref: reference(301), risk: 'on_time' }],
+  resources: [], resource_common: { cohort: [200, 201].map(id => ({ ref: reference(id), label: '设备 ' + id, kind: 'machine' })) },
+  pagination: { section: 'timeline', number: 1, size: 20, total: 4, pages: 1 },
+  overlaps: [], deliveries: [{ batch_ref: reference(300), risk: 'overdue' }, { batch_ref: reference(301), risk: 'on_time' }],
   downtimes: [{ downtime_ref: reference(500), machine_ref: reference(200), valid: true,
     start: stamp(12, '23'), end: stamp(13, '00'), recorded_at: stamp(12, '20'), reason: '保养' }] };
 const timelineBefore = JSON.stringify(timelineData), selectedBatches = [];
 for (const mode of ['delivery', 'downtime']) {
   const model = real.DashboardTimelineModel.layoutPrepared(real.DashboardTimelineModel.groupPrepared(real.DashboardTimelineModel.prepare(timelineData), mode), 800);
   assert.equal(model.tasks.length, mode === 'delivery' ? 4 : 3);
+  assert(model.rows.every(row => row.label === '设备 200' || row.label === '设备 201'), '分页时间轴沿用全局资源目录中的名称');
   assert.equal(model.locations.get(reference(1)).item.end - model.locations.get(reference(1)).item.start, 7200000, '跨午夜不折叠夜间');
   assert(model.rows.some(row => row.point) && model.rows.filter(row => row.point).every(row => row.overlap === 0), '点轨不是重叠冲突');
   const timeline = expand(h(real.DashboardTimeline, { data: timelineData, mode, selectedBatch: reference(300), onSelect: value => selectedBatches.push(value) }));
+  assert(text(timeline).includes('本页关联'), '分页时间轴明确说明工序为当前页范围');
   const all = nodes(timeline), bands = all.filter(row => row.props.className === 'wb-gantt-axis-band');
   assert.equal(bands.length, 2); assert(bands.some(row => text(row).includes('10-13')), '跨日日期分层来自共用时间轴');
   const bar = all.find(row => row.props['data-analysis-task'] === reference(1));
@@ -180,6 +183,11 @@ for (const mode of ['delivery', 'downtime']) {
   assert(!text(timeline).includes('关键链') && !text(timeline).includes('初始计划'), '分析轴没有未经支持的链或基线含义');
 }
 assert.deepEqual(selectedBatches, [reference(300), reference(300)]);
+const overlapPage = { ...timelineData, downtimes: [], overlaps: [{ source: { machine_ref: reference(200), downtimes: timelineData.downtimes } }] };
+const overlapPrepared = real.DashboardTimelineModel.prepare(overlapPage);
+const overlapModel = real.DashboardTimelineModel.layoutPrepared(real.DashboardTimelineModel.groupPrepared(overlapPrepared, 'downtime'), 800);
+assert.equal(overlapModel.tasks.length, 3, '停机登记和重叠任务独立分页时，本页关联停机依据仍保留任务及阴影');
+assert.equal(overlapModel.windows.get(reference(200))[0].downtime_ref, reference(500));
 assert.equal(JSON.stringify(timelineData), timelineBefore, '展示和选择不改计划或停机数据');
 console.log('analysis UI source evidence contracts passed');
 

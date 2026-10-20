@@ -2,6 +2,7 @@
   'use strict';
   const BASE = '/api/workbench/v1/dashboard', RECEIPTS = '/api/workbench/v1/commands/';
   const READ_TIMEOUT_MS = 60000;
+  const laneId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const categories = { all: '全部风险', delivery: '交期风险', actual: '执行偏差', external: '外协回厂', downtime: '停机影响', material: '齐套缺口', candidate: '候选方案待确认' };
   const statuses = { new: '待分析', following: '跟进中', awaiting_verification: '待验证', closed: '已关闭' };
   const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_connected: '尚未开通', not_applicable: '未指定交期' };
@@ -46,10 +47,9 @@
       && Object.keys(n.context).every(k => ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref'].includes(k) && ref(n.context[k]))));
     return row;
   }
-  function envelope(v, q) {
+  function envelope(v, s) {
     check(object(v) && v.ok === true && v.schema_version === 1 && object(v.meta) && v.meta.source === 'production'
       && v.meta.time_basis === 'factory_local' && text(v.meta.snapshot_ref) && text(v.meta.as_of) && Array.isArray(v.warnings) && object(v.data));
-    const s = q && scope(q);
     if (s) {
       check(!s.snapshot_ref || s.snapshot_ref === v.meta.snapshot_ref, '数据已更新，请刷新后重试。刚才的选择已保留。');
       const expected = { kind: 'dashboard', ...s }; delete expected.page; delete expected.snapshot_ref;
@@ -98,20 +98,19 @@
     d.items.forEach(row => { item(row); check((q.category === 'all' || row.category === q.category) && (q.status === 'all' || q.status === 'open' && row.handling.status !== 'closed' || q.status === row.handling.status)); });
     check(new Set(d.items.map(r => r.item_ref)).size === d.items.length && object(d.resource_pressure) && object(d.candidate_catalog));
     const p = d.resource_pressure, c = d.candidate_catalog;
-    check(p.resources === null || Array.isArray(p.resources));
-    if (p.resources) { check(d.plan !== null && p.plan_ref === d.plan.plan_ref && object(p.time_scope) && text(p.time_scope.range_start) && text(p.time_scope.range_end)
-      && p.time_scope.time_basis === 'factory_local' && p.time_scope.boundary === 'half_open'); p.resources.forEach(r => check(object(r) && ['machine', 'operator'].includes(r.kind)
-      && ['arranged_hours', 'occupied_hours', 'available_hours', 'overlap_hours', 'outside_available_hours', 'utilization'].every(k => r[k] === null || typeof r[k] === 'number' && Number.isFinite(r[k]) && r[k] >= 0)
-      && (r.utilization === null || r.utilization <= 1 && r.available_hours > 0) && Array.isArray(r.segments))); }
+    check(p.resource_count === null || count(p.resource_count));
+    check(p.detail_target === '/api/workbench/v1/dashboard/analysis?section=pressure' && !Object.prototype.hasOwnProperty.call(p, 'resources'));
+    if (p.resource_count !== null && d.plan !== null) check(p.plan_ref === d.plan.plan_ref && object(p.time_scope)
+      && text(p.time_scope.range_start) && text(p.time_scope.range_end) && p.time_scope.time_basis === 'factory_local' && p.time_scope.boundary === 'half_open');
     check(['loaded', 'no_data', 'unavailable'].includes(c.state) && Array.isArray(c.runs));
     if (c.state !== 'unavailable') check(c.selection === null && count(c.run_count) && object(c.page) && c.runs.length <= 20 && typeof c.page.has_more === 'boolean');
     c.runs.forEach(r => check(ref(r.run_ref) && text(r.accepted_at) && count(r.candidate_count)));
     return v;
   }
   function detail(v, q, selected, historyPage) {
-    const d = envelope(v, q); item(d.item); check(d.item.item_ref === selected, '详情内容和所选条目不一致，页面没有切换。请刷新后重试。');
+    const s = scope(q), d = envelope(v, s); item(d.item); check(d.item.item_ref === selected, '详情内容和所选条目不一致，页面没有切换。请刷新后重试。');
     if (historyPage !== undefined) {
-      check(object(d.history) && Array.isArray(d.history.items)); pagination(d.history.page, { page: historyPage, size: q.size });
+      check(object(d.history) && Array.isArray(d.history.items)); pagination(d.history.page, { page: historyPage, size: s.size });
       d.history.items.forEach(h => { check(ref(h.history_ref) && count(h.sequence) && ['transition', 'reopen'].includes(h.action) && text(h.receipt_ref)
         && text(h.local_operator) && text(h.recorded_at) && object(h.source_snapshot) && h.source_snapshot.snapshot_ref === h.history_ref
         && h.source_snapshot.source.item_ref === selected && h.source_snapshot.time_basis === 'factory_local'); handling(h.before); handling(h.after); });
@@ -139,22 +138,30 @@
     return error;
   }
   function create(fetcher = window.fetch.bind(window)) {
-    async function request(url, body, signal, intent) {
-      const controller = new AbortController(), abort = () => controller.abort(), timer = setTimeout(abort, body === undefined ? READ_TIMEOUT_MS : 30000);
+    async function request(url, body, signal, intent, listRead = false) {
+      const controller = new AbortController(), abort = () => controller.abort();
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = body === undefined; abort(); }, body === undefined ? READ_TIMEOUT_MS : 30000);
       if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) abort(); }
       try {
         const r = await fetcher(url, { method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
-          ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+          ...(body === undefined ? listRead ? { headers: { 'X-Workbench-Read-Lane': 'dashboard-list:' + laneId } } : {}
+            : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
         check((r.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() === 'application/json', '值班台读到的数据不完整，请刷新后重试。');
-        const v = await r.json(); if (!r.ok || v.ok === false) throw failure(v, r.status, intent); check(r.status === 200); return v;
+        const v = await r.json();
+        if (r.status === 499 && v.error && v.error.code === 'request_superseded') throw new DOMException('读取已被更新请求替代', 'AbortError');
+        if (!r.ok || v.ok === false) throw failure(v, r.status, intent); check(r.status === 200); return v;
+      } catch (error) {
+        if (timedOut) throw new Error('值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
+        throw error;
       } finally { clearTimeout(timer); if (signal) signal.removeEventListener('abort', abort); }
     }
     return {
       async list(q, signal) {
-        const value = catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal), q);
+        const value = catalog(await request(BASE + '?' + new URLSearchParams(q), undefined, signal, undefined, true), q);
         try {
           if (value.data.analysis_error !== null) check(text(value.data.analysis_error) && value.data.analysis === null);
-          else window.DashboardAnalysisAPI.validate({ ...value, data: value.data.analysis }, value.data.plan && value.data.plan.plan_ref);
+          else window.DashboardAnalysisAPI.validate({ ...value, data: value.data.analysis }, value.data.plan && value.data.plan.plan_ref, { section: 'overview', page: 1, size: 20 });
         } catch (error) {
           value.data.analysis = null;
           value.data.analysis_error = '影响分析读取失败：' + error.message;

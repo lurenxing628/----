@@ -24,7 +24,7 @@
   function Timeline({ data, mode = 'delivery', selectedBatch, onSelect }) {
     const board = React.useRef(null), [zoom, setZoom] = React.useState(1), [hover, setHover] = React.useState(null), [focusTask, setFocusTask] = React.useState('');
     const [position, setPosition] = React.useState({ left: 0, top: 0, width: 900, height: 330 });
-    const pendingCenter = React.useRef(null), labelWidth = position.width < 550 ? 140 : 170;
+    const pendingCenter = React.useRef(null), selection = React.useRef(null), labelWidth = position.width < 550 ? 140 : 170;
     const viewport = Math.max(80, position.width - labelWidth), width = viewport * zoom;
     const prepared = React.useMemo(() => M.prepare(data), [data]);
     const grouped = React.useMemo(() => M.groupPrepared(prepared, mode), [prepared, mode]);
@@ -50,14 +50,18 @@
     }, [width]);
     React.useEffect(() => { setHover(null); }, [position.left, position.top, mode]);
     React.useEffect(() => {
+      if (!selection.current || selection.current.batch !== selectedBatch || selection.current.task !== focusTask)
+        selection.current = { batch: selectedBatch, task: focusTask, located: false };
+      if (selection.current.located) return;
       const focused = picker.byRef.get(focusTask), task = focused && focused.batch_ref === selectedBatch ? focused : picker.firstByBatch.get(selectedBatch);
       const location = task && model.locations.get(task.task_ref);
       if (!location || !board.current) return;
       board.current.scrollTop = Math.max(0, location.top - 60);
       const left = (location.item.start - model.start) / (model.end - model.start) * width;
       if (left < position.left || left > position.left + viewport) board.current.scrollLeft = Math.max(0, left - viewport / 3);
-      // Only a new selection scrolls; zoom and resize rebuild the model but must keep the user's own position.
-    }, [selectedBatch, focusTask]);
+      selection.current.located = true;
+      // Wait for the selected task's page, then locate once; later data, zoom and resize keep the user's position.
+    }, [selectedBatch, focusTask, picker, model]);
     const axis = V.axis({ start: model.start, end: model.end, width, left: position.left, viewport });
     const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
     const rangeStart = model.start + position.left / width * (model.end - model.start), rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
@@ -109,7 +113,7 @@
         {picker.hasPoints && <span><i className="dy-point-swatch" />零工时工序</span>}
         {mode === 'downtime' && <span><i className="dy-downtime-swatch" />停机时段</span>}</div>
       <div className="dy-context"><span title={'显示范围：' + window.WorkbenchFormat.dateTime(M.wire(model.start), { seconds: true, fractions: true }) + ' 至 ' + window.WorkbenchFormat.dateTime(M.wire(model.end), { seconds: true, fractions: true })}>{window.WorkbenchFormat.compactRange(M.wire(model.start), M.wire(model.end))}</span>
-        <span>{model.tasks.length} 道计划工序{mode === 'downtime' ? ' · 阴影为已登记停机' : ''}</span></div>
+        <span>{data.pagination ? '本页关联 ' : ''}{model.tasks.length} 道计划工序{mode === 'downtime' ? ' · 阴影为已登记停机' : ''}</span></div>
       {hover && <div role="tooltip" className="dy-analysis-tooltip" style={{ left: Math.max(8, Math.min(hover.x, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 8, window.innerHeight - 220)) }}>{hover.text}</div>}
     </section>;
   }

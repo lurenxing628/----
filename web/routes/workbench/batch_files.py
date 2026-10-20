@@ -107,7 +107,7 @@ def batch_export_preview():
             if len(set(refs)) != len(refs):
                 raise WorkbenchCommandRejected("invalid_input", "选中的批次有重复，没有开始下载。请重新选择后点「下载批次清单」。", 400)
             for ref in refs:
-                reader.resolve(public_ref(ref))
+                reader.resolve(ref)
         else:
             if "refs" in body:
                 raise WorkbenchCommandRejected("invalid_input", "导出当前筛选时不能再带选中的批次，没有开始下载。请重新选择后点「下载批次清单」。", 400)
@@ -127,7 +127,7 @@ def batch_export():
     with batch_read_snapshot(reader) as fingerprint:
         if binding["fingerprint"] != fingerprint:
             raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的批次有变化，没有开始下载。请重新点「下载批次清单」。")
-        entities = reader.details(binding["input"]["refs"])
+        entities = reader.summaries(binding["input"]["refs"])
     content = WorkbenchBatchFileService.export(entities)
     return download(content, "批次清单.xlsx", len(entities))
 

@@ -69,7 +69,8 @@ def _read(item_ref=None, history=False):
     query, token, history_page = _arguments(item_ref is not None, history)
     binding = resolve_read_snapshot(token) if token is not None else None
     reader = WorkbenchDashboardService(g.db, context_factory=issue_write_context)
-    with PLAN_READ_SLOTS.slot():
+    admission = PLAN_READ_SLOTS.slot(lane=request.headers.get("X-Workbench-Read-Lane")) if item_ref is None else PLAN_READ_SLOTS.slot()
+    with admission:
         with reader.read_snapshot():
             sources = reader.load(_time(token, binding))
             records = _history(reader, item_ref, history_page, query.size) if history else None
@@ -96,18 +97,7 @@ def _read(item_ref=None, history=False):
             result["history"], error = records
             if error is not None:
                 raise error
-    try:
-        response = query_success(result, snapshot, byte_limit=MAX_BYTES)
-    except (WorkbenchCommandRejected, TypeError, ValueError) as exc:
-        if item_ref is not None or result["analysis"] is None:
-            raise
-        result["analysis"] = None
-        if isinstance(exc, WorkbenchCommandRejected):
-            result["analysis_error"] = "影响分析超过值班台读取上限，已保留风险与处置清单。"
-        else:
-            current_app.logger.exception("Dashboard analysis could not be serialized with the list")
-            result["analysis_error"] = "分析数据没有读出来，请刷新重试。"
-        response = query_success(result, snapshot, byte_limit=MAX_BYTES)
+    response = query_success(result, snapshot, byte_limit=MAX_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response
 

@@ -8,9 +8,9 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import (
     CATEGORIES,
+    DashboardAnalysisQuery,
     DashboardQuery,
     allowed_transitions,
-    bounded,
     empty_handling,
     page,
     reference,
@@ -154,13 +154,11 @@ class WorkbenchDashboardService:
         stored = sources.stored
         items = self._merge(observations, sources, categories, facts.now)
         items.extend(self._decorate(item, saved, identity, facts.now) for item, saved, identity in external_items)
-        bounded(items)
         categories = _category_counts(categories, observations, stored)
         categories["external"] = external_summary
         snapshot_contents = facts.snapshot_contents(view={
             "stored": stored, "external_stored": external_stored,
-            "items": [(row["item_ref"], {key: value for key, value in row["_snapshot"].items() if key != "facts"})
-                      for row in items]})
+            "items": [(row["item_ref"], row["_guard"]) for row in items]})
         return {"plan": facts.plan, "as_of": facts.now.isoformat(timespec="seconds"), "items": items,
                 "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
                 "categories": {name: categories[name] for name in CATEGORIES}, "snapshot_contents": snapshot_contents}
@@ -184,7 +182,7 @@ class WorkbenchDashboardService:
             item["navigation"] = navigation(item, current=False)
             identity = found_identity(sources.identities[reference(ref)])
             items.append(self._decorate(item, saved, identity, now))
-        return bounded(items)
+        return items
 
     @staticmethod
     def _identified(observations, loaded):
@@ -201,16 +199,22 @@ class WorkbenchDashboardService:
 
     def _decorate(self, item, saved, identity, now):
         handling = saved["handling"] if saved else empty_handling()
-        item["_facts"] = typed(item["_facts"])
-        snapshot = {"facts": item["_facts"], "source_state": item["source_state"],
-                    "identity": identity, "revision": saved["revision"] if saved else 0,
-                    "source": item["source"], "risk": item["risk"], "handling": handling}
+        item["_guard"] = typed({"source_state": item["source_state"], "identity": identity,
+                                "revision": saved["revision"] if saved else 0,
+                                "source": item["source"], "risk": item["risk"], "handling": handling})
         item.update(handling=_handling_view(item, saved, now), allowed_transitions=allowed_transitions(handling["status"]),
-                    _handling=handling, _snapshot=typed(snapshot))
+                    _handling=handling)
         item["write_context"] = None
         return item
 
+    @staticmethod
+    def _materialize_item(item):
+        if "_snapshot" not in item:
+            item["_facts"] = typed(item["_facts"])
+            item["_snapshot"] = {"facts": item["_facts"], **item["_guard"]}
+
     def public_item(self, item):
+        self._materialize_item(item)
         public = {key: value for key, value in item.items() if not key.startswith("_") and key != "anchor_ref"}
         if self.context_factory:
             actions = ["reopen"] if item["handling"]["status"] == "closed" else ["transition"]
@@ -239,17 +243,21 @@ class WorkbenchDashboardService:
     def workspace(self, data, query):
         selected = self.selected(data, query)
         items, pagination = page(selected, query.number, query.size, [{"field": query.sort, "direction": query.direction}])
+        pressure = data["resource_pressure"]
+        pressure_summary = dict(pressure, detail_target="/api/workbench/v1/dashboard/analysis?section=pressure")
         return {"plan": data["plan"], "as_of": data["as_of"], "categories": data["categories"],
-                "resource_pressure": data["resource_pressure"], "candidate_catalog": data["candidate_catalog"],
+                "resource_pressure": pressure_summary,
+                "candidate_catalog": data["candidate_catalog"],
                 "items": [self.public_item(item) for item in items], "page": pagination, "scope": query.scope()}
 
-    def analysis(self, sources):
-        return project_dashboard_analysis(sources.facts, sources.material)
+    def analysis(self, sources, query=None):
+        return project_dashboard_analysis(sources.facts, sources.material, query=query or DashboardAnalysisQuery("overview"))
 
     def detail(self, data, item_ref, query=None):
         reference(item_ref)
         selected = self.selected(data, query or DashboardQuery())
         for item in selected:
             if item["item_ref"] == item_ref:
+                self._materialize_item(item)
                 return item
         raise WorkbenchCommandRejected("entity_not_found", "这一条不在当前查询范围里，系统不会改去读别的来源。请刷新后重试。", 404)

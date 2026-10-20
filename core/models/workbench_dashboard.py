@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
 
@@ -61,6 +61,34 @@ class DashboardQuery:
         return {"kind": "dashboard", "source": self.source, "category": self.category,
                 "status": self.status, "query": self.query.strip(), "sort": self.sort,
                 "direction": self.direction, "size": self.size}
+
+
+@dataclass(frozen=True)
+class DashboardAnalysisQuery:
+    section: str = "delivery"
+    number: int = 1
+    size: int = 20
+    resource_ref: Optional[str] = None
+    locate_batch_ref: Optional[str] = None
+
+    def __post_init__(self):
+        if (self.section not in ("overview", "delivery", "timeline", "actual", "downtime", "material", "pressure", "resource_days")
+                or type(self.number) is not int or not 1 <= self.number <= 100000
+                or type(self.size) is not int or not 1 <= self.size <= 100):
+            raise WorkbenchCommandRejected("invalid_input", "影响分析的分页范围无效，请重新选择。", 400)
+        if self.section == "resource_days":
+            reference(self.resource_ref)
+        elif self.resource_ref is not None:
+            raise WorkbenchCommandRejected("invalid_input", "只有资源逐日明细可以指定资源。", 400)
+        if self.locate_batch_ref is not None:
+            if self.section != "timeline":
+                raise WorkbenchCommandRejected("invalid_input", "只有计划时间轴可以定位批次。", 400)
+            reference(self.locate_batch_ref)
+
+    def scope(self, plan_ref):
+        # Locating a batch resolves a page within the same complete source scope.
+        return {"kind": "dashboard-analysis", "plan_ref": plan_ref, "section": self.section,
+                "size": self.size, "resource_ref": self.resource_ref}
 
 
 def page(items, number, size, sort):

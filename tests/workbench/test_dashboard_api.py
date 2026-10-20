@@ -165,14 +165,14 @@ def test_merged_response_budget_keeps_the_complete_readable_list(dashboard_case,
     case.conn.commit()
     client = api(case, monkeypatch)
 
-    standalone = client.get(ROOT + "/analysis")
+    standalone = client.get(ROOT + "/analysis", query_string={"section": "downtime"})
     assert standalone.status_code == 200 and len(standalone.data) <= MAX_BYTES
     assert standalone.get_json()["data"]["overlaps"]
     response = client.get(ROOT)
     assert response.status_code == 200 and len(response.data) <= MAX_BYTES
     body = response.get_json()
-    assert body["data"]["analysis"] is None
-    assert "读取上限" in body["data"]["analysis_error"]
+    assert body["data"]["analysis"]["pagination"]["section"] == "overview"
+    assert body["data"]["analysis_error"] is None
     assert body["data"]["page"]["total"] == len(body["data"]["items"]) == 4
     downtime = next(row for row in body["data"]["items"] if row["category"] == "downtime")
     assert len(downtime["source"]["downtimes"][0]["reason"]) == 3 * 1024 * 1024
@@ -221,14 +221,15 @@ def test_standalone_analysis_over_budget_preserves_complete_list(dashboard_case,
     case.conn.execute("UPDATE MachineDowntimes SET reason_detail=?", (reason,))
     case.conn.commit()
     client = api(case, monkeypatch)
-    analysis = client.get(ROOT + "/analysis")
+    analysis = client.get(ROOT + "/analysis", query_string={"section": "downtime"})
     assert analysis.status_code == 413
     assert analysis.get_json()["error"]["code"] == "query_too_large"
     merged = client.get(ROOT)
     assert merged.status_code == 200
     body = merged.get_json()
     assert len(merged.data) <= MAX_BYTES
-    assert body["data"]["analysis"] is None and "读取上限" in body["data"]["analysis_error"]
+    assert body["data"]["analysis"]["pagination"]["section"] == "overview"
+    assert body["data"]["analysis_error"] is None
     assert body["data"]["page"]["total"] == len(body["data"]["items"]) == 4
     downtime = next(row for row in body["data"]["items"] if row["category"] == "downtime")
     assert downtime["source"]["downtimes"][0]["reason"] == reason
@@ -253,10 +254,195 @@ def test_candidate_comparison_uses_dashboard_envelope_budget(candidate_case, mon
 def test_dashboard_analysis_envelopes_never_return_nonfinite_json(dashboard_case, monkeypatch, endpoint, reader_name):
     import web.routes.workbench.dashboard_analysis as module
 
-    monkeypatch.setattr(module, reader_name, lambda *args: ({"unserializable_number": float("nan")}, "fault-snapshot"))
+    monkeypatch.setattr(module, reader_name, lambda *args, **kwargs: (
+        {"as_of": "2026-09-10T12:00:00", "unserializable_number": float("nan")}, "fault-snapshot"))
     response = api(dashboard_case, monkeypatch).get(ROOT + endpoint)
     assert response.status_code == 500
     body = response.get_json()
     assert body["ok"] is False and body["committed"] is False
     assert body["error"]["code"] == "storage_failure"
     assert b"NaN" not in response.data
+
+
+def test_read_budget_replaces_only_queued_requests_from_the_same_nonempty_lane():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from web.routes.workbench.read_budget import ReadBudget
+
+    budget, acquired = ReadBudget(1), []
+
+    def read(name, lane):
+        with budget.slot(lane=lane):
+            acquired.append(name)
+
+    def queued(lanes):
+        with budget._condition:
+            assert budget._condition.wait_for(lambda: [waiter.lane for waiter in budget._waiting] == lanes, timeout=5)
+
+    with ThreadPoolExecutor(max_workers=5) as workers:
+        with budget.slot(lane="page-a"):
+            old = workers.submit(read, "old", "page-a")
+            queued(["page-a"])
+            other = workers.submit(read, "other", "page-b")
+            queued(["page-a", "page-b"])
+            untagged = workers.submit(read, "untagged", None)
+            queued(["page-a", "page-b", None])
+            empty = workers.submit(read, "empty", "")
+            queued(["page-a", "page-b", None, ""])
+            latest = workers.submit(read, "latest", "page-a")
+            queued(["page-b", None, "", "page-a"])
+            with pytest.raises(WorkbenchCommandRejected) as rejected:
+                old.result(timeout=5)
+            assert rejected.value.code == "request_superseded" and rejected.value.status == 499
+            assert acquired == [] and budget._available == 0
+        for future in (other, untagged, empty, latest):
+            future.result(timeout=5)
+    assert acquired == ["other", "untagged", "empty", "latest"]
+    assert budget._available == 1 and not budget._waiting
+
+
+def test_dashboard_read_lane_is_used_only_for_list_admission(dashboard_case, monkeypatch):
+    from contextlib import contextmanager
+
+    from web.routes.workbench.read_budget import PLAN_READ_SLOTS
+
+    original, lanes = PLAN_READ_SLOTS.slot, []
+
+    @contextmanager
+    def slot(lane=None):
+        lanes.append(lane)
+        with original(lane=lane):
+            yield
+
+    monkeypatch.setattr(PLAN_READ_SLOTS, "slot", slot)
+    client = api(dashboard_case, monkeypatch)
+    listed = client.get(ROOT, headers={"X-Workbench-Read-Lane": "dashboard-page-a"})
+    assert listed.status_code == 200
+    body = listed.get_json()
+    item = body["data"]["items"][0]
+    path = ROOT + "/items/" + item["item_ref"]
+    detail = client.get(path, query_string={"snapshot_ref": body["meta"]["snapshot_ref"]},
+                        headers={"X-Workbench-Read-Lane": "dashboard-page-a"})
+    assert detail.status_code == 200 and lanes == ["dashboard-page-a", None]
+    response = client.post(path + "/transition", json={"request_key": "dashboard-lane-command-01",
+        "write_token": item["write_context"]["write_token"], "input": follow()},
+        headers={"X-Workbench-Read-Lane": "dashboard-page-a"})
+    assert response.status_code == 200, response.get_json()
+    assert len(lanes) > 2 and all(lane is None for lane in lanes[2:])
+
+
+def test_dashboard_materializes_only_page_and_detail_facts_without_changing_snapshot(dashboard_case, monkeypatch):
+    from core.models.workbench_dashboard import DashboardQuery
+    from core.services.workbench.dashboard import service
+    from tests.workbench.dashboard_support import NOW
+
+    reader = service.WorkbenchDashboardService(dashboard_case.conn, clock=lambda: NOW)
+    with reader.read_snapshot():
+        sources = reader.load()
+    original, calls = service.typed, []
+
+    def typed(value):
+        calls.append(value)
+        return original(value)
+
+    monkeypatch.setattr(service, "typed", typed)
+    data = reader.project(sources)
+    assert len(data["items"]) > 1 and all("_snapshot" not in item for item in data["items"])
+    assert len(calls) == len(data["items"]) and all("facts" not in value for value in calls)
+    legacy_guards = []
+    for item in data["items"]:
+        snapshot = original({"facts": original(item["_facts"]), "source_state": item["source_state"],
+            "identity": item["_guard"]["identity"], "revision": item["_guard"]["revision"],
+            "source": item["source"], "risk": item["risk"], "handling": item["_handling"]})
+        legacy_guards.append((item["item_ref"], {key: value for key, value in snapshot.items() if key != "facts"}))
+    expected = sources.facts.snapshot_contents(view={"stored": sources.stored,
+        "external_stored": sources.external[2], "items": legacy_guards})
+    assert data["snapshot_contents"] == expected
+    guard_calls = len(calls)
+    public = reader.workspace(data, DashboardQuery(size=1))
+    assert len(public["items"]) == 1 and len(calls) == guard_calls + 1
+    item = next(item for item in data["items"] if "_snapshot" in item)
+    snapshot = item["_snapshot"]
+    assert snapshot["facts"] is item["_facts"] and snapshot["source"] is item["_guard"]["source"]
+    reader.public_item(item)
+    assert item["_snapshot"] is snapshot and len(calls) == guard_calls + 1
+    untouched = next(item for item in data["items"] if "_snapshot" not in item)
+    detail = reader.detail(data, untouched["item_ref"])
+    assert detail is untouched and "_snapshot" in detail and len(calls) == guard_calls + 2
+    assert data["snapshot_contents"] == expected
+
+
+def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_geometry(dashboard_case, monkeypatch):
+    from collections import Counter
+
+    from core.models.workbench_dashboard import DashboardAnalysisQuery
+    from core.services.workbench.dashboard import analysis_projection, calendar_capture
+    from core.services.workbench.dashboard.service import WorkbenchDashboardService
+    from tests.workbench.dashboard_support import NOW
+
+    case = dashboard_case
+    case.conn.execute("UPDATE SchemaVersion SET version=33 WHERE id=1")
+    case.conn.commit()
+    original, calls = calendar_capture.calendar_from_sources, Counter()
+    index_type, indexes = calendar_capture.ResourceTaskIndex, []
+
+    def resource_task_index(*args, **kwargs):
+        index = index_type(*args, **kwargs)
+        indexes.append(index)
+        return index
+
+    def calendar_factory(*args, **kwargs):
+        factory = original(*args, **kwargs)
+        stream = factory.iter_resources
+
+        def tracked(resources, start, end):
+            for resource in resources:
+                calls[resource["kind"], resource["ref"]] += 1
+            yield from stream(resources, start, end)
+
+        monkeypatch.setattr(factory, "iter_resources", tracked)
+        return factory
+
+    monkeypatch.setattr(calendar_capture, "calendar_from_sources", calendar_factory)
+    monkeypatch.setattr(calendar_capture, "ResourceTaskIndex", resource_task_index)
+    monkeypatch.setattr(analysis_projection, "ResourceTaskIndex", resource_task_index)
+    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    with reader.read_snapshot():
+        sources = reader.load()
+    facts = sources.facts.project()
+    captured = facts.snapshot_contents()
+    assert len(calls) == len(facts._resource_pressure_cache) == 2 and set(calls.values()) == {1}
+    assert len(indexes) == 1 and indexes[0] is facts._resource_pressure_index
+    assert facts._resource_pressure_index.retain_statistics_values is False
+    assert facts._resource_pressure_index._measurements == {}
+    assert facts.raw["resource_pressure"]["calendar"]["resources"] is None
+    assert facts.raw["resource_pressure"]["occupancy"] is None
+    assert "_resource_pressure_cache" not in facts.raw
+
+    def no_geometry(value):
+        if isinstance(value, dict):
+            assert not value.get("days") and "windows" not in value
+            for nested in value.values():
+                no_geometry(nested)
+        elif isinstance(value, (list, tuple)):
+            for nested in value:
+                no_geometry(nested)
+
+    no_geometry(facts._resource_pressure_cache)
+    overview = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
+    assert set(calls.values()) == {1}
+    missed = next(iter(facts._resource_pressure_cache))
+    facts._resource_pressure_cache.pop(missed)
+    repeated = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
+    assert repeated == overview and calls[missed[:2]] == 2
+    assert all(count == (2 if key == missed[:2] else 1) for key, count in calls.items())
+    resource = next(row for row in overview["resources"] if row["resource_ref"] == missed[1])
+    detailed = reader.analysis(sources, DashboardAnalysisQuery("resource_days", resource_ref=missed[1], size=100))
+    assert detailed["resources"][0]["window_metrics"] == resource["window_metrics"]
+    assert detailed["resources"][0]["days"] and calls[missed[:2]] == 3
+    assert len(indexes) == 1 and indexes[0] is facts._resource_pressure_index
+    assert facts._resource_pressure_index.retain_statistics_values is False
+    assert facts._resource_pressure_index._measurements == {}
+    no_geometry(facts._resource_pressure_cache)
+    assert facts.snapshot_contents() == captured

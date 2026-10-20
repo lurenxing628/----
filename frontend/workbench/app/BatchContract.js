@@ -30,19 +30,24 @@
       && object(row.resources) && (row.external_group === null || object(row.external_group) && ref(row.external_group.ref) && finite(row.external_group.total_days))
       && issueRows(row.issues) && typeof row.editable === 'boolean';
   }
-  function entity(row) {
+  function base(row) {
     return C.entity(row) && ref(row.ref) && context(row.write_context) && object(row.fields)
       && finite(row.fields.quantity) && fields.slice(1).every(key => nullableText(row.fields[key]))
       && ref(row.relationships.part_ref) && text(row.relationships.part_no) && text(row.relationships.part_name)
       && ['operation_count', 'completed_count', 'gap_count', 'plan_reference_count', 'execution_reference_count', 'material_requirement_count'].every(key => count(row.relationships[key]))
-      && Array.isArray(row.operations) && row.operations.every(operation) && new Set(row.operations.map(op => op.ref)).size === row.operations.length
-      && row.relationships.operation_count === row.operations.length && row.relationships.completed_count === row.operations.filter(op => op.completed).length
-      && row.all_operations_complete === (!!row.operations.length && row.operations.every(op => op.completed))
+      && row.relationships.completed_count <= row.relationships.operation_count && row.relationships.gap_count <= row.relationships.operation_count
+      && row.all_operations_complete === (row.relationships.operation_count > 0 && row.relationships.completed_count === row.relationships.operation_count)
       && typeof row.protected === 'boolean' && issueRows(row.issues);
+  }
+  function summary(row) { return base(row) && !C.own(row, 'operations'); }
+  function entity(row) {
+    return base(row)
+      && Array.isArray(row.operations) && row.operations.every(operation) && new Set(row.operations.map(op => op.ref)).size === row.operations.length
+      && row.relationships.operation_count === row.operations.length && row.relationships.completed_count === row.operations.filter(op => op.completed).length;
   }
   function list(result, scope) {
     C.query(result, 'list'); const d = result.data, p = d.page;
-    if (!d.entities.every(entity) || !context(d.create_context) || !d.create_context || p.number !== scope.page || p.size !== scope.size
+    if (!d.entities.every(summary) || !context(d.create_context) || !d.create_context || p.number !== scope.page || p.size !== scope.size
         || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) || p.sort.length !== 1 || p.sort[0].field !== scope.sort || p.sort[0].direction !== scope.direction
         || scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('读到的批次列表不完整，请刷新后重试。');
     return result;
@@ -134,5 +139,5 @@
     }
     return errors;
   }
-  window.APSBatchContract = { ref, context, operation, entity, list, detail, receipt, preview, reason, readyStatus, label, draft, input, inputErrors, fields, fieldNames, actions, priority, ready, statuses, columns };
+  window.APSBatchContract = { ref, context, operation, summary, entity, list, detail, receipt, preview, reason, readyStatus, label, draft, input, inputErrors, fields, fieldNames, actions, priority, ready, statuses, columns };
 })();

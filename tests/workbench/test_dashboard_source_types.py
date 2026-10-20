@@ -15,25 +15,32 @@ from tests.workbench.dashboard_support import dashboard_case as dashboard_case  
 from tests.workbench.node_runtime_support import node_runtime
 
 ROOT = "/api/workbench/v1/dashboard"
-FRONTEND_LIST = r"""
+FRONTEND_READ = r"""
 const fs = require('node:fs'), vm = require('node:vm');
-const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+const {payload, query} = JSON.parse(fs.readFileSync(0, 'utf8'));
 const window = {}, context = vm.createContext({window, AbortController, URLSearchParams, setTimeout, clearTimeout});
 for (const name of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js']) {
   vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context);
 }
-window.DashboardContract.create(async () => ({
+const fetcher = async () => ({
   ok: true, status: 200, headers: {get: () => 'application/json'}, json: async () => payload
-})).list({}).then(value => process.stdout.write(JSON.stringify(value.data)))
+});
+const reading = query === null ? window.DashboardContract.create(fetcher).list({})
+  : window.DashboardAnalysisAPI.create(fetcher).read(payload.data.plan.plan_ref, undefined, query);
+reading.then(value => process.stdout.write(JSON.stringify(value.data)))
   .catch(error => { console.error(error); process.exitCode = 1; });
 """
 
 
-def frontend_data(response):
+def frontend_result(response, query=None):
     assert response.status_code == 200, response.get_json()
-    result = subprocess.run([node_runtime(), "-e", FRONTEND_LIST],
-        input=json.dumps(response.get_json()), text=True, encoding="utf-8", capture_output=True,
+    return subprocess.run([node_runtime(), "-e", FRONTEND_READ],
+        input=json.dumps({"payload": response.get_json(), "query": query}), text=True, encoding="utf-8", capture_output=True,
         cwd=str(Path(__file__).resolve().parents[2]), timeout=30)
+
+
+def frontend_data(response, query=None):
+    result = frontend_result(response, query)
     assert result.returncode == 0, result.stdout + result.stderr
     return json.loads(result.stdout)
 
@@ -52,15 +59,22 @@ def test_legacy_internal_keeps_analysis_downtime_and_execution_readable(dashboar
     assert list(sources.facts.raw["execution_operation_sources"].values()) == [stored_source]
     assert not source_gap_rows(case.conn, 1)
 
-    data = frontend_data(api(case, monkeypatch).get(ROOT))
+    client = api(case, monkeypatch)
+    data = frontend_data(client.get(ROOT))
     assert data["analysis_error"] is None
-    analysis = data["analysis"]
-    task = analysis["tasks"][0]
+    assert data["analysis"]["pagination"]["section"] == "overview"
+    assert data["analysis"]["tasks"] == data["analysis"]["resources"] == []
+    actual = frontend_data(client.get(ROOT + "/analysis?section=actual"), {"section": "actual"})
+    task = actual["tasks"][0]
     assert task["source"] == "internal"
-    assert analysis["resources"][0]["task_refs"] == [task["task_ref"]]
-    assert len(analysis["downtimes"]) == 1 and analysis["overlaps"][0]["source"]["known_overlap_hours"] == 1
+    pressure = frontend_data(client.get(ROOT + "/analysis?section=pressure"), {"section": "pressure"})
+    assert any(row["resource_ref"] == task["machine_ref"] for row in pressure["resources"])
+    assert all(row["task_refs"] == row["days"] == [] for row in pressure["resources"])
+    downtime = frontend_data(client.get(ROOT + "/analysis?section=downtime"), {"section": "downtime"})
+    assert len(downtime["downtimes"]) == 1 and downtime["overlaps"][0]["source"]["known_overlap_hours"] == 1
+    assert downtime["tasks"][0]["source"] == "internal"
     assert data["categories"]["downtime"]["unknown_count"] == 0
-    assert analysis["execution"][0]["source"]["data_quality"] != "invalid"
+    assert actual["execution"][0]["source"]["data_quality"] != "invalid"
     assert case.conn.execute("SELECT source FROM BatchOperations WHERE id=?", (case.op,)).fetchone()[0] == stored_source
     with pytest.raises(WorkbenchCommandRejected) as rejected:
         case.report()
@@ -76,11 +90,13 @@ def test_legacy_external_keeps_analysis_and_reports_unassessed_logistics(externa
         "VALUES(1,?,'2026-09-09T08:00:00','2026-09-11T10:00:00')", (op,))
     case.conn.commit()
 
-    data = frontend_data(api(case, monkeypatch).get(ROOT))
+    client = api(case, monkeypatch)
+    data = frontend_data(client.get(ROOT))
     assert data["analysis_error"] is None
-    task = next(row for row in data["analysis"]["tasks"] if row["batch_id"] == "XB1")
+    analysis = frontend_data(client.get(ROOT + "/analysis?section=actual"), {"section": "actual"})
+    task = next(row for row in analysis["tasks"] if row["batch_id"] == "XB1")
     assert task["source"] == "external" and task["machine_ref"] is None
-    actual = next(row for row in data["analysis"]["execution"] if row["source"]["task_ref"] == task["task_ref"])
+    actual = next(row for row in analysis["execution"] if row["source"]["task_ref"] == task["task_ref"])
     assert actual["source"]["hours"]["basis"] == "not_currently_evaluated"
     assert actual["source"]["data_quality"] != "invalid"
     external = data["categories"]["external"]
@@ -98,9 +114,18 @@ def test_unknown_source_stays_unknown_and_preserves_readable_list(external_case,
     case.conn.execute("UPDATE BatchOperations SET source=? WHERE id=?", (stored_source, case.op))
     case.conn.commit()
 
-    data = frontend_data(api(case, monkeypatch).get(ROOT))
+    client = api(case, monkeypatch)
+    data = frontend_data(client.get(ROOT))
     assert data["plan"] is not None and data["items"]
-    assert data["analysis"] is None and data["analysis_error"]
+    assert data["analysis_error"] is None and data["analysis"]["pagination"]["section"] == "overview"
+    assert data["analysis"]["tasks"] == []
+    assert data["analysis"]["pagination"]["totals"]["tasks"] > 0
+    for section in ("timeline", "actual"):
+        response = client.get(ROOT + "/analysis?section=" + section)
+        assert response.status_code == 200
+        assert any(row["source"] not in ("internal", "external") for row in response.get_json()["data"]["tasks"])
+        rejected = frontend_result(response, {"section": section})
+        assert rejected.returncode == 1 and "值班台读到的数据不完整" in rejected.stderr
     assert data["categories"]["downtime"]["unknown_count"] == 1
     external = data["categories"]["external"]
     assert external["risk_count"] is None and external["source_gap_count"] == 1

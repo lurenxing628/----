@@ -80,33 +80,26 @@ class BatchProjection:
             return None
         return {"ref": self.ref(kind, key), "business_code": key, "label": row["name"], "status": row.get("status")}
 
-    def group(self, batch, op):
-        context = self.external_contexts.get(op["id"])
-        if context_problem(context, operation_id=op["id"], part_no=batch["part_no"], sequence=op["seq"]):
-            return None
-        group = group_from_context(context)
-        if group is not None:
-            group["start_sequence"] = public_sequence(group["start_sequence"])
-            group["end_sequence"] = public_sequence(group["end_sequence"])
-        return group
-
-    def internal_issues(self, row, resources, numbers, issues):
+    def internal_issues(self, row, numbers, issues):
         for key in ("setup_hours", "unit_hours"):
             numbers[key] = numeric(row[key], issues, "换型工时" if key == "setup_hours" else "单件工时")
-        for kind in ("machine", "operator"):
-            if resources[kind] is None or resources[kind]["status"] != "active":
-                issues.append(issue("设备未补齐或不可用。" if kind == "machine" else "人员未补齐或不在岗。"))
         machine = self.catalogs["machine"].get(row["machine_id"])
+        operator = self.catalogs["operator"].get(row["operator_id"])
+        if machine is None or machine["status"] != "active":
+            issues.append(issue("设备未补齐或不可用。"))
+        if operator is None or operator["status"] != "active":
+            issues.append(issue("人员未补齐或不在岗。"))
         if machine and row["op_type_id"] not in self.machine_types.get(row["machine_id"], set()):
             issues.append(issue("设备与工序工种不匹配。"))
         issues.extend(self.resources.operator_issues(row["operator_id"], row["op_type_id"], row["machine_id"]))
 
-    def operation_issues(self, row, resources, group, numbers):
+    def operation_issues(self, row, group, numbers):
         issues = []
         if row["source"] == "internal":
-            self.internal_issues(row, resources, numbers, issues)
+            self.internal_issues(row, numbers, issues)
         elif row["source"] == "external":
-            if resources["supplier"] is None or resources["supplier"]["status"] != "active":
+            supplier = self.catalogs["supplier"].get(row["supplier_id"])
+            if supplier is None or supplier["status"] != "active":
                 issues.append(issue("供应商未补齐或已停用。"))
             elif not self.resources.supplier_capable(row["supplier_id"], row["op_type_id"]):
                 issues.append(issue("这家供应商没有登记这道外协工序的能力。"))
@@ -116,7 +109,7 @@ class BatchProjection:
                 numbers["ext_days"] = numeric(row["ext_days"], issues, "外协周期", positive=True)
         else:
             issues.append(issue("归属未明确。"))
-        if not resources["op_type"]:
+        if row["op_type_id"] not in self.catalogs["op_type"]:
             issues.append(issue("工序工种未登记。"))
         # Hidden hours of external operations remain raw in storage, not defaulted.
         for key, value in numbers.items():
@@ -125,14 +118,19 @@ class BatchProjection:
                 numbers[key] = None
         return issues
 
-    def operation(self, batch, row, protected=False):
-        resources = {kind: self.resource(kind, row[kind + "_id"]) for kind in ("machine", "operator", "supplier", "op_type")}
-        group = self.group(batch, row) if row["source"] == "external" else None
-        numbers = {key: row[key] for key in ("setup_hours", "unit_hours", "ext_days")}
-        issues = self.operation_issues(row, resources, group, numbers)
-        context = self.external_contexts.get(row["id"]) if row["source"] == "external" else None
+    def _operation_values(self, batch, row, *, include_details):
+        group = context = None
         if row["source"] == "external":
+            context = self.external_contexts.get(row["id"])
             problem = context_problem(context, operation_id=row["id"], part_no=batch["part_no"], sequence=row["seq"])
+            if not problem:
+                group = group_from_context(context)
+                if include_details and group is not None:
+                    group["start_sequence"] = public_sequence(group["start_sequence"])
+                    group["end_sequence"] = public_sequence(group["end_sequence"])
+        numbers = {key: row[key] for key in ("setup_hours", "unit_hours", "ext_days")}
+        issues = self.operation_issues(row, group, numbers)
+        if row["source"] == "external":
             if not problem:
                 problem = merged_supplier_problem(context, row["supplier_id"],
                     self.external_members.get((row["batch_id"], context_group_key(context), row["piece_id"])))
@@ -140,8 +138,17 @@ class BatchProjection:
                 issues.append(issue(problem, "external_context_invalid"))
                 numbers["ext_days"] = None
         ref = self.facts["operation_refs"][row["id"]]
-        execution = operation_execution_fields(row, ref, self.facts["execution"])
+        execution = operation_execution_fields(row, ref, self.facts["execution"], include_details=include_details)
         issues.extend(execution["data_gaps"])
+        return group, numbers, execution, issues, context, ref
+
+    def operation_summary(self, batch, row):
+        _, _, execution, issues, _, _ = self._operation_values(batch, row, include_details=False)
+        return {"completed": execution["completed"], "execution_state": execution["execution_state"], "issues": issues}
+
+    def operation(self, batch, row, protected=False):
+        group, numbers, execution, issues, context, ref = self._operation_values(batch, row, include_details=True)
+        resources = {kind: self.resource(kind, row[kind + "_id"]) for kind in ("machine", "operator", "supplier", "op_type")}
         return {"ref": ref, "operation_ref": ref, "business_code": row["op_code"], "sequence": public_sequence(row["seq"]),
                 "piece_id": row["piece_id"], "label": row["op_type_name"], "source": row["source"], **execution,
                 "setup_hours": numbers["setup_hours"], "unit_hours": numbers["unit_hours"],
@@ -150,12 +157,19 @@ class BatchProjection:
                 "editable": not protected and row["status"] == "pending" and row["source"] in ("internal", "external")}
 
     def entity(self, row):
+        return self._entity(row, include_operations=True)
+
+    def summary(self, row):
+        return self._entity(row, include_operations=False)
+
+    def _entity(self, row, *, include_operations):
         facts = self.relations[row["batch_id"]]
         issues = list(self.facts["execution"]["issues"])
         part = self.parts.get(row["part_no"])
         if part is None:
             raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
-        ops = [self.operation(row, op, facts["protected"]) for op in sorted(facts["operations"], key=lambda op: (op["seq"], op["id"]))]
+        ops = [self.operation(row, op, facts["protected"]) if include_operations else self.operation_summary(row, op)
+               for op in sorted(facts["operations"], key=lambda op: (op["seq"], op["id"]))]
         fields = {key: row[key] for key in FIELDS}
         fields["quantity"] = numeric(row["quantity"], issues, "数量", integer=True)
         for key in ("due_date", "ready_date"):
@@ -168,7 +182,7 @@ class BatchProjection:
         done, all_complete, status = batch_progress(ops, row["status"])
         if row["status"] == "completed" and (not ops or done != len(ops)):
             issues.append(issue("批次标着完成，但工序状态对不上，不能认定整批已完成。", "completion_inconsistent"))
-        return {"ref": self.ref("batch", row["batch_id"]), "business_code": row["batch_id"], "label": part["part_name"],
+        entity = {"ref": self.ref("batch", row["batch_id"]), "business_code": row["batch_id"], "label": part["part_name"],
                 "status": status, "stored_status": row["status"], "execution_available": self.facts["execution"]["available"],
                 "fields": fields, "display_ready_status": display_ready, "relationships": {"part_ref": self.ref("part", row["part_no"]),
                     "part_no": row["part_no"], "part_name": part["part_name"], "operation_count": len(ops), "completed_count": done,
@@ -178,8 +192,11 @@ class BatchProjection:
                     "execution_reference_count": len(facts["events"]) + len(facts["reports"]),
                     "report_count": len(facts["reports"]), "legacy_fact_count": len(facts["events"]),
                     "material_requirement_count": len(facts["materials"])},
-                "operations": ops, "all_operations_complete": all_complete, "issues": issues,
+                "all_operations_complete": all_complete, "issues": issues,
                 "write_context": None, "protected": facts["protected"]}
+        if include_operations:
+            entity["operations"] = ops
+        return entity
 
     def materials(self, batch):
         from core.models.workbench_batch_material import material_row_key, numbered_material_requirements
