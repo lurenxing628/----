@@ -28442,12 +28442,39 @@ function SMExport({
     const [year, month, day, hour = '0', minute = '0', second = '0'] = match.slice(1);
     return year + '-' + month.padStart(2, '0') + '-' + day.trim().padStart(2, '0') + 'T' + hour.padStart(2, '0') + ':' + minute.padStart(2, '0') + ':' + second.padStart(2, '0');
   }
+  function legacyResources(scope, gaps) {
+    const scopeRefs = new Set(scope.map(fact => fact.legacy_fact_ref)),
+      result = {};
+    for (const key of ['actual_machine_ref', 'actual_operator_ref']) {
+      const unresolved = gaps.some(gap => gap.code === 'legacy_resource_identity_unresolved' && scopeRefs.has(gap.legacy_fact_ref) && gap.fields.includes(key));
+      const refs = [...new Set(scope.map(fact => fact[key]).filter(value => value != null))];
+      result[key] = !unresolved && refs.length === 1 ? refs[0] : null;
+    }
+    return result;
+  }
+  function legacyValues(task, legacyFactRef) {
+    if (!legacyFactRef) return null;
+    const e = task.execution,
+      finish = e.legacy_facts.find(fact => fact.legacy_fact_ref === legacyFactRef && fact.event_type === 'finish');
+    if (!finish) return null;
+    const scope = e.legacy_facts.filter(fact => fact.recorded_against_task_ref === finish.recorded_against_task_ref);
+    const starts = [...new Set(scope.filter(fact => fact.event_type === 'start').map(fact => legacyTime(fact.event_time)).filter(Boolean))];
+    const known = {},
+      end = legacyTime(finish.event_time);
+    if (starts.length === 1) known.actual_start = starts[0];
+    if (end) known.actual_end = end;
+    if (finish.quantity_done !== null && finish.quantity_done !== undefined) known.completed_quantity = String(finish.quantity_done);
+    const resources = legacyResources(scope, e.data_gaps);
+    for (const key of ['actual_machine_ref', 'actual_operator_ref']) if (resources[key]) known[key] = resources[key];
+    return known;
+  }
   function initialize({
     task,
     record,
     legacy,
     action,
     retained,
+    knownLegacy,
     now = new Date()
   }) {
     if (retained) return {
@@ -28464,15 +28491,7 @@ function SMExport({
     const draft = C.draft(record),
       suggestions = {};
     if (legacy) {
-      const scope = task.execution.legacy_facts.filter(fact => fact.recorded_against_task_ref === legacy.recorded_against_task_ref);
-      const start = scope.find(fact => fact.event_type === 'start');
-      draft.actual_start = start ? legacyTime(start.event_time) : '';
-      draft.actual_end = legacyTime(legacy.event_time);
-      draft.completed_quantity = legacy.quantity_done === null ? '' : String(legacy.quantity_done);
-      for (const key of ['actual_machine_ref', 'actual_operator_ref']) {
-        const refs = [...new Set(scope.map(fact => fact[key]).filter(value => value != null))];
-        draft[key] = refs.length === 1 ? refs[0] : '';
-      }
+      Object.assign(draft, knownLegacy === undefined ? legacyValues(task, legacy.legacy_fact_ref) : knownLegacy);
     } else if (action === 'create' && !record) {
       const last = previous(task),
         current = localNow(now);
@@ -28511,6 +28530,9 @@ function SMExport({
   }
   window.FieldDraftModel = {
     previous,
+    legacyTime,
+    legacyResources,
+    legacyValues,
     initialize,
     copyPrevious,
     continuation
@@ -28697,16 +28719,42 @@ function SMExport({
       className: 'field-state ' + value
     }, window.FieldContract.states[value] || '未读取');
   }
+  function Conflicts({
+    rows = []
+  }) {
+    const C = window.FieldContract;
+    return rows.length > 0 ? /*#__PURE__*/React.createElement("section", {
+      className: "field-note",
+      "aria-label": "\u62A5\u5DE5\u5F71\u54CD\u660E\u7EC6"
+    }, /*#__PURE__*/React.createElement("ul", null, rows.map((item, index) => /*#__PURE__*/React.createElement("li", {
+      key: index,
+      "data-field-conflict": item.operation_ref
+    }, /*#__PURE__*/React.createElement("strong", null, [item.batch_id, item.operation_label, item.piece_id ? '分件 ' + item.piece_id : ''].filter(Boolean).join(' · ')), "\uFF1A", item.message, item.plan && /*#__PURE__*/React.createElement("div", null, "\u6B63\u5F0F v", item.plan.version, " \u5B89\u6392\uFF1A", C.date(item.plan.start), " \u81F3 ", C.date(item.plan.end)), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      label: "\u5173\u8054\u8BB0\u5F55\u7F16\u53F7",
+      entries: {
+        '工序编号': item.operation_ref,
+        '工序代码': item.operation_code,
+        '正式计划编号': item.plan && item.plan.plan_ref,
+        '安排编号': item.plan && item.plan.task_ref,
+        '定额采用编号': item.adoption_ref,
+        '模板工序编号': item.template_operation_ref,
+        '约束编号': item.code
+      }
+    }))))) : null;
+  }
   function Feedback({
     command,
     onDone,
     excludePaths = []
   }) {
+    const error = command.error && (command.error.error || command.error);
     return /*#__PURE__*/React.createElement("div", {
       "aria-live": "polite"
     }, /*#__PURE__*/React.createElement(ErrorBox, {
       error: command.error,
       excludePaths: excludePaths
+    }), /*#__PURE__*/React.createElement(Conflicts, {
+      rows: error && error.conflicts || []
     }), command.locked && /*#__PURE__*/React.createElement("div", {
       className: "field-note"
     }, command.phase === 'sending' ? '正在保存，请保留当前页面。' : window.WorkbenchTerms.outcomes.pending('报工'), " ", /*#__PURE__*/React.createElement(Button, {
@@ -28727,7 +28775,8 @@ function SMExport({
     Modal,
     Issues,
     State,
-    Feedback
+    Feedback,
+    Conflicts
   };
 })();
 
@@ -28842,10 +28891,14 @@ function SMExport({
     disabled,
     first,
     change,
-    error
+    error,
+    knownLegacy
   }) {
     const Field = window.ResourceControls.Field;
-    const readonly = key => disabled || action === 'supplement' && record[key] !== null && record[key] !== '';
+    const readonly = key => {
+      const hasKnownLegacy = Boolean(knownLegacy && Object.prototype.hasOwnProperty.call(knownLegacy, key) && knownLegacy[key] !== '');
+      return disabled || hasKnownLegacy && (!record || String(record[key] ?? '') === knownLegacy[key]) || action === 'supplement' && record[key] != null && record[key] !== '';
+    };
     const choices = (key, label, kind) => /*#__PURE__*/React.createElement(window.ResourceControls.Choice, {
       adapter: adapter,
       field: {
@@ -28867,7 +28920,7 @@ function SMExport({
     const amount = value => value !== '' && Number.isFinite(Number(value)) ? Number(value) : null;
     const quantity = amount(draft.completed_quantity),
       effectiveHours = amount(draft.effective_processing_hours);
-    const previousQuantity = record && record.completed_quantity !== null ? record.completed_quantity : 0;
+    const previousQuantity = knownLegacy && knownLegacy.completed_quantity !== undefined && (!record || record.completed_quantity == null) ? Number(knownLegacy.completed_quantity) : record ? Number(record.completed_quantity) : 0;
     const cumulative = quantity === null || !Number.isSafeInteger(quantity) || quantity < 0 || task.execution.known_completed_quantity === null ? null : task.execution.known_completed_quantity - previousQuantity + quantity;
     const start = draft.actual_start ? Date.parse(draft.actual_start + 'Z') : NaN,
       end = draft.actual_end ? Date.parse(draft.actual_end + 'Z') : NaN;
@@ -28905,13 +28958,13 @@ function SMExport({
       disabled: readonly('completed_quantity'),
       onClick: () => change('completed_quantity', '0')
     }, "\u586B 0"), action === 'create' && /*#__PURE__*/React.createElement(Button, {
-      disabled: disabled || task.execution.remaining_quantity === null,
+      disabled: disabled || task.execution.remaining_quantity === null || readonly('completed_quantity'),
       onClick: () => change('completed_quantity', String(task.execution.remaining_quantity))
     }, "\u586B\u5269\u4F59\u6570")), /*#__PURE__*/React.createElement("p", {
       className: "field-note"
     }, "\u5DF2\u77E5\u7D2F\u8BA1 ", /*#__PURE__*/React.createElement("output", {
       "aria-label": "\u5DF2\u77E5\u7D2F\u8BA1"
-    }, cumulative === null ? '未核对' : cumulative), " / \u6267\u884C\u76EE\u6807 ", C.quantity(task.execution.target_quantity), " \u4EF6", task.execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("small", null, " \xB7 \u539F\u8BB0\u5F55\u6570\u91CF\u5F85\u8865 ", task.execution.unknown_record_count, " \u6761"))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5B9E\u9645\u8D77\u6B62"), timeHints && /*#__PURE__*/React.createElement("p", {
+    }, cumulative === null ? '未核对' : cumulative), " / \u6267\u884C\u76EE\u6807 ", C.quantity(task.execution.target_quantity), " \u4EF6", readonly('completed_quantity') && /*#__PURE__*/React.createElement("small", null, " \xB7 \u65E7\u5B8C\u5DE5\u6570\u91CF\u53D7\u4FDD\u62A4\uFF0C\u672C\u6B21\u4FDD\u7559\u539F\u7D2F\u8BA1\u6570\u91CF"), task.execution.unknown_record_count > 0 && /*#__PURE__*/React.createElement("small", null, " \xB7 \u539F\u8BB0\u5F55\u6570\u91CF\u5F85\u8865 ", task.execution.unknown_record_count, " \u6761"))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h4", null, "\u5B9E\u9645\u8D77\u6B62"), timeHints && /*#__PURE__*/React.createElement("p", {
       className: "field-suggestion",
       role: "status"
     }, "\u8BF7\u6838\u5BF9\u9884\u586B\u65F6\u95F4\uFF1B\u4E0D\u786E\u5B9A\u7684\u65F6\u95F4\u8BF7\u6E05\u9664\u3002"), /*#__PURE__*/React.createElement("div", {
@@ -29022,12 +29075,15 @@ function SMExport({
     onClose,
     onDone
   }) {
+    const legacyRef = legacy ? legacy.legacy_fact_ref : record && record.legacy_fact_ref;
+    const knownLegacy = React.useMemo(() => M.legacyValues(task, legacyRef), [task.execution, legacyRef]);
     const [initial] = React.useState(() => M.initialize({
       task,
       record,
       legacy,
       action,
-      retained
+      retained,
+      knownLegacy
     }));
     const [draft, setDraft] = React.useState(initial.draft),
       [suggestions, setSuggestions] = React.useState(initial.suggestions);
@@ -29064,7 +29120,8 @@ function SMExport({
         block: 'start',
         inline: 'nearest'
       });
-      first.current.focus({
+      const target = first.current.disabled ? form.current.querySelector('input:not(:disabled),select:not(:disabled),textarea:not(:disabled)') : first.current;
+      if (target) target.focus({
         preventScroll: true
       });
     }, []);
@@ -29150,6 +29207,7 @@ function SMExport({
       disabled,
       first,
       change,
+      knownLegacy,
       error: shownError
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
@@ -29318,9 +29376,9 @@ function SMExport({
       className: "field-note"
     }, /*#__PURE__*/React.createElement("h4", null, "\u64A4\u9500\u540E"), /*#__PURE__*/React.createElement("p", null, "\u7D2F\u8BA1\u5B8C\u6210 ", C.quantity(preview.before.known_completed_quantity), " \u2192 ", C.quantity(preview.after.known_completed_quantity), " \u4EF6\uFF1B\u5269\u4F59 ", C.quantity(preview.after.remaining_quantity), " \u4EF6\uFF1B\u72B6\u6001 ", C.states[preview.after.execution_state], "\u3002"), preview.downstream_impacts.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       role: "alert"
-    }, "\u4EE5\u4E0B\u5173\u8054\u8BB0\u5F55\u9700\u8981\u5148\u5904\u7406\uFF0C\u672C\u6B21\u4E0D\u80FD\u64A4\u9500\uFF1A"), /*#__PURE__*/React.createElement("ul", null, preview.downstream_impacts.map((item, index) => /*#__PURE__*/React.createElement("li", {
-      key: index
-    }, item.operation_label, "\uFF1A", item.message)))), /*#__PURE__*/React.createElement(Issues, {
+    }, "\u4EE5\u4E0B\u5173\u8054\u8BB0\u5F55\u9700\u8981\u5148\u5904\u7406\uFF0C\u672C\u6B21\u4E0D\u80FD\u64A4\u9500\uFF1A"), /*#__PURE__*/React.createElement(window.FieldControls.Conflicts, {
+      rows: preview.downstream_impacts
+    })), /*#__PURE__*/React.createElement(Issues, {
       issues: preview.warnings
     }), preview.state === 'voided' && /*#__PURE__*/React.createElement("p", null, "\u8FD9\u6761\u62A5\u5DE5\u5DF2\u7ECF\u64A4\u9500\uFF0C\u4E0D\u4F1A\u91CD\u590D\u6263\u51CF\u3002")), changed && /*#__PURE__*/React.createElement("p", {
       role: "alert"
@@ -29993,7 +30051,11 @@ function SMExport({
       rejected: '拒绝',
       committed: '将变更',
       pending: '未执行'
-    }[row.result] || '待核对'), /*#__PURE__*/React.createElement("td", null, (row.errors || []).map(item => item.message).join('；'))))))), preview.summary.rejected > 0 && /*#__PURE__*/React.createElement(Button, {
+    }[row.result] || '待核对'), /*#__PURE__*/React.createElement("td", null, (row.errors || []).map((item, issue) => /*#__PURE__*/React.createElement("div", {
+      key: issue
+    }, item.message, /*#__PURE__*/React.createElement(window.FieldControls.Conflicts, {
+      rows: item.conflicts || []
+    }))))))))), preview.summary.rejected > 0 && /*#__PURE__*/React.createElement(Button, {
       transfer: "export",
       disabled: locked,
       onClick: () => run('errors')
@@ -30104,6 +30166,8 @@ function SMExport({
       setNotice('');
       setScope({
         ...next,
+        task_ref: undefined,
+        operation_ref: undefined,
         page: 1,
         size: scope.size,
         snapshot_ref: undefined
@@ -30278,7 +30342,7 @@ function SMExport({
       snapshot: snapshot,
       command: command,
       onClose: () => {
-        if (command.reset()) setFiles(false);
+        if (command.phase === 'done') done();else if (command.reset()) setFiles(false);
       },
       onDone: done
     }));
@@ -30338,16 +30402,20 @@ function SMExport({
       forecastLate: value.forecast_late
     };
   }
-  function searchText(item, labels) {
+  function fieldSearchText(item, labels) {
     const t = item.task,
       e = item.execution;
     const text = [t.batch_id, t.sequence, t.process_label, t.piece_id, labels.get(t.machine_ref), labels.get(t.operator_ref)];
     if (e) {
       e.reports.forEach(r => text.push(r.report_no, labels.get(r.actual_machine_ref), labels.get(r.actual_operator_ref)));
       e.legacy_facts.forEach(fact => text.push(labels.get(fact.actual_machine_ref), labels.get(fact.actual_operator_ref)));
-      if (e.remaining_plan) text.push(labels.get(e.remaining_plan.machine_ref), labels.get(e.remaining_plan.operator_ref));
     }
     return text.map(value => value == null ? '' : value).join(' ').toLowerCase();
+  }
+  function searchText(item, labels) {
+    const text = fieldSearchText(item, labels),
+      remaining = item.execution && item.execution.remaining_plan;
+    return remaining ? text + ' ' + [labels.get(remaining.machine_ref), labels.get(remaining.operator_ref)].join(' ').toLowerCase() : text;
   }
   function filter(prepared, view) {
     const query = view.query.trim().toLowerCase();
@@ -30379,16 +30447,15 @@ function SMExport({
     heap[at] = last;
     return first;
   }
-  function tracks(reports) {
+  function tracks(segments) {
     const owners = new Map(),
       result = [];
-    reports.slice().sort((a, b) => a.start - b.start || a.report.report_ref.localeCompare(b.report.report_ref)).forEach(fact => {
-      const report = fact.report;
-      if (!report.actual_start || !report.actual_end || fact.start === fact.end) {
+    segments.sort((a, b) => a.start - b.start || a.key.localeCompare(b.key)).forEach(fact => {
+      if (!Number.isFinite(fact.start) || !Number.isFinite(fact.end) || fact.start === fact.end) {
         result.push([fact]);
         return;
       }
-      const key = JSON.stringify([report.actual_machine_ref, report.actual_operator_ref]);
+      const key = JSON.stringify([fact.actual_machine_ref, fact.actual_operator_ref]);
       if (!owners.has(key)) owners.set(key, []);
       const heap = owners.get(key),
         index = heap.length && heap[0].end <= fact.start ? pop(heap).index : result.length;
@@ -30399,6 +30466,46 @@ function SMExport({
         index
       });
     });
+    return result;
+  }
+  function prepareLegacy(e) {
+    if (!e || !e.legacy_facts.length || e.data_gaps.some(gap => gap.code === 'invalid_legacy_sequence')) return [];
+    const covered = new Set(e.reports.map(report => report.legacy_fact_ref).filter(Boolean)),
+      scopes = new Map(),
+      result = [];
+    for (const fact of e.legacy_facts) {
+      if (!fact.recorded_against_task_ref) continue;
+      if (!scopes.has(fact.recorded_against_task_ref)) scopes.set(fact.recorded_against_task_ref, []);
+      scopes.get(fact.recorded_against_task_ref).push(fact);
+    }
+    for (const [scopeRef, scope] of scopes) {
+      const startFact = scope.find(fact => fact.event_type === 'start'),
+        finish = scope.find(fact => fact.event_type === 'finish');
+      if (!startFact || !finish || covered.has(finish.legacy_fact_ref) || typeof startFact.event_time !== 'string' || typeof finish.event_time !== 'string') continue;
+      const start = instant(window.FieldDraftModel.legacyTime(startFact.event_time)),
+        end = instant(window.FieldDraftModel.legacyTime(finish.event_time));
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) continue;
+      const resources = window.FieldDraftModel.legacyResources(scope, e.data_gaps);
+      const point = start === end,
+        key = 'legacy:' + scopeRef;
+      result.push({
+        key,
+        legacy: finish,
+        start,
+        end,
+        ...resources,
+        mark: {
+          key,
+          kind: point ? 'legacy-point' : 'legacy',
+          legacy: finish,
+          start,
+          end,
+          ...resources,
+          y: point ? 20 : 14,
+          height: point ? 24 : 38
+        }
+      });
+    }
     return result;
   }
   function prepare(data, asOf) {
@@ -30436,9 +30543,12 @@ function SMExport({
           end = instant(report.actual_end || report.actual_start),
           point = !report.actual_end || start === end;
         return {
+          key: report.report_ref,
           report,
           start,
           end,
+          actual_machine_ref: report.actual_machine_ref,
+          actual_operator_ref: report.actual_operator_ref,
           mark: report.actual_start ? {
             key: report.report_ref,
             kind: point ? 'point' : 'actual',
@@ -30450,6 +30560,7 @@ function SMExport({
           } : null
         };
       }) : [];
+      const legacyMarks = prepareLegacy(e);
       const remaining = e && e.remaining_plan ? {
         key: 'remaining',
         kind: 'remaining',
@@ -30464,10 +30575,15 @@ function SMExport({
         include(reportRange, report.start);
         include(reportRange, report.end);
       }
+      for (const segment of legacyMarks) {
+        include(reportRange, segment.start);
+        include(reportRange, segment.end);
+      }
       const fact = {
         item,
         baseline,
         reports,
+        legacyMarks,
         reportIndex: new Map(reports.map(report => [report.report.report_ref, report])),
         remaining,
         search: searchText(item, labels),
@@ -30476,7 +30592,7 @@ function SMExport({
       facts.push(fact);
       taskIndex.set(task.task_ref, fact);
     }
-    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point'));
+    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point') || fact.legacyMarks.some(segment => segment.mark.kind === 'legacy-point'));
     const axis = window.PointGanttModel.bounds(instant(data.axis_span.start), instant(data.axis_span.end), hasPoints);
     const dataRange = Number.isFinite(planRange.start) ? planRange : Number.isFinite(reportRange.start) ? reportRange : null;
     return {
@@ -30510,6 +30626,7 @@ function SMExport({
         baseline: false,
         reports: [],
         legacy: [],
+        legacyMarks: [],
         remaining: false
       });
       return members.get(key);
@@ -30529,10 +30646,14 @@ function SMExport({
           operator_ref: legacy.actual_operator_ref
         }).legacy.push(legacy);
       });
+      fact.legacyMarks.forEach(segment => group(fact, {
+        machine_ref: segment.actual_machine_ref,
+        operator_ref: segment.actual_operator_ref
+      }).legacyMarks.push(segment));
       if (e.execution_state !== 'complete' && e.remaining_quantity !== 0) group(fact, e.remaining_plan || item.task).remaining = true;
     }
     for (const g of groups.values()) for (const member of g.members.values()) {
-      const ts = tracks(member.reports);
+      const ts = tracks(member.reports.concat(member.legacyMarks));
       if (!ts.length) ts.push([]);
       member.reportCount = member.reports.length;
       member.legacyCount = member.legacy.length;
@@ -30547,17 +30668,17 @@ function SMExport({
           member.knownHours += report.effective_processing_hours;
         }
       }
-      member.rows = ts.map((reports, i) => ({
+      member.rows = ts.map((segments, i) => ({
         key: g.id + ':' + member.item.task.task_ref + ':' + i,
         item: member.item,
-        reports: reports.map(fact => fact.report),
+        reports: segments.filter(fact => fact.report).map(fact => fact.report),
         baseline: i === 0 && member.baseline,
         kind: 'actual',
         height: 88,
         track: i + 1,
         trackCount: ts.length,
         planEnd: member.fact.baseline.end,
-        marks: (i === 0 && member.baseline ? [member.fact.baseline] : []).concat(reports.map(fact => fact.mark).filter(Boolean))
+        marks: (i === 0 && member.baseline ? [member.fact.baseline] : []).concat(segments.map(fact => fact.mark).filter(Boolean))
       }));
       if (member.remaining) member.rows.push({
         key: g.id + ':' + member.item.task.task_ref + ':remaining',
@@ -30725,6 +30846,7 @@ function SMExport({
     return result;
   }
   function markTitle(mark, item, labels) {
+    if (mark.legacy) return [mark.kind === 'legacy-point' ? '历史实际时刻' : '历史实际时段', '历史事件记录 · 有效工时未记录', '实际：' + time(wire(mark.start)) + ' 至 ' + time(wire(mark.end)), '旧已知累计：' + number(mark.legacy.quantity_done) + ' 件 · 有效工时：未知', '实际资源：' + (labels.get(mark.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(mark.actual_operator_ref) || '人员未填写')].concat(describe(item, labels)).join('\n');
     const heading = mark.kind === 'plan-point' ? '原计划 · 零工时工序' : mark.kind === 'plan' ? '原计划' : mark.kind === 'remaining' ? '已有剩余安排' : mark.kind === 'point' ? mark.report.actual_end ? '报工时刻' : '报工开工时刻 · 结束未填写' : '实际报工时段';
     return [heading].concat(describe(item, labels, mark.report)).join('\n');
   }
@@ -30752,6 +30874,7 @@ function SMExport({
     names,
     finishDeviation,
     deadlines,
+    fieldSearchText,
     searchText,
     filter,
     tracks,
@@ -30827,7 +30950,7 @@ function SMExport({
     const scale = width / (model.end - model.start),
       x = (mark.start - model.start) * scale - left;
     const size = (mark.end - mark.start) * scale,
-      point = mark.kind === 'point' || mark.kind === 'plan-point';
+      point = mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point';
     const hitWidth = point ? 24 : Math.max(4, size);
     const hitLeft = point ? x - 12 : Math.max(0, Math.min(width - hitWidth, x + left - (hitWidth - size) / 2)) - left;
     return {
@@ -31045,7 +31168,9 @@ function SMExport({
       },
       async export(context, signal) {
         const scope = C.scope(context, true),
-          output = await base.download('actual-gantt/export', C.transport(scope), signal);
+          output = await base.download('actual-gantt/export', C.transport(scope), signal, {
+            timeout: 60000
+          });
         if (!output || !output.blob || !output.blob.size || output.contentType.split(';')[0] !== 'text/csv' || !/^attachment;/i.test(output.disposition)) throw window.APSResourceContract.failure('下载的现场实际甘特不是有效的 CSV 附件。');
         return output;
       }
@@ -31362,7 +31487,7 @@ function SMExport({
   function palette(node) {
     const style = getComputedStyle(node),
       colors = {};
-    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']]) colors[kind] = {
+    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['legacy', 'primary'], ['legacy-point', 'primary'], ['remaining', 'primary']]) colors[kind] = {
       fill: style.getPropertyValue('--wb-gantt-' + tone + '-fill').trim(),
       edge: style.getPropertyValue('--wb-gantt-' + tone + '-edge').trim()
     };
@@ -31404,7 +31529,7 @@ function SMExport({
         ctx.fillStyle = colors[mark.kind].fill;
         ctx.strokeStyle = chosen || critical || related ? colors.selected : colors[mark.kind].edge;
         ctx.setLineDash([]);
-        if (mark.kind === 'point' || mark.kind === 'plan-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);else {
+        if (mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);else {
           ctx.fillRect(x, mark.y, size, mark.height);
           ctx.lineWidth = Math.min(chosen ? 2 : related ? 1.5 : 1, size);
           ctx.setLineDash(['plan', 'remaining'].includes(mark.kind) ? [3, 2] : []);
@@ -31510,7 +31635,7 @@ function SMExport({
       },
       onMouseLeave: () => onHover(null),
       onKeyDown: keyDown
-    }), visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point').map(mark => renderMark(mark, true)));
+    }), visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point').map(mark => renderMark(mark, true)));
   }
   window.ActualGanttCanvas = {
     DenseRow
@@ -31559,6 +31684,7 @@ function SMExport({
       } = box;
     const kind = {
       actual: 'act',
+      legacy: 'act',
       plan: 'plan',
       remaining: 'remaining'
     }[mark.kind];
@@ -31593,9 +31719,12 @@ function SMExport({
         y: rect.top
       });
     }
-    if (mark.kind === 'plan-point' || mark.kind === 'point') return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
+    if (mark.kind === 'plan-point' || mark.kind === 'point' || mark.kind === 'legacy-point') return /*#__PURE__*/React.createElement(window.PointGantt.Marker, {
       ...emphasis,
-      task: mark.report ? {
+      task: mark.legacy ? {
+        task_ref: mark.key,
+        start: M.wire(mark.start)
+      } : mark.report ? {
         task_ref: mark.report.report_ref,
         start: mark.report.actual_start
       } : row.item.task,
@@ -31645,7 +31774,7 @@ function SMExport({
         left: box.faceLeft,
         width: size
       }
-    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.hours(mark.report.effective_processing_hours) : M.time(row.item.execution.remaining_plan.start)))));
+    }, size >= 55 && mark.kind !== 'plan' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("span", null, mark.legacy ? '历史事件记录 · 有效工时未记录' : mark.report ? mark.report.report_no : '剩余 ' + M.number(row.item.execution.remaining_quantity) + ' 件'), size >= 150 && /*#__PURE__*/React.createElement("span", null, mark.legacy ? '旧已知累计 ' + M.number(mark.legacy.quantity_done) + ' 件' : mark.report ? M.number(mark.report.completed_quantity) + ' 件 · ' + M.hours(mark.report.effective_processing_hours) : M.time(row.item.execution.remaining_plan.start)))));
   }
   function Rows({
     model,
@@ -31707,6 +31836,8 @@ function SMExport({
         e = item.execution,
         t = item.task,
         marks = row.marks;
+      const hasLegacy = !row.reports.length && marks.some(mark => mark.legacy);
+      const emptyText = row.kind === 'actual' && !row.reports.length && !hasLegacy ? emptyReports(row, view.mode) : '';
       const renderMark = (mark, canvasPainted = false) => /*#__PURE__*/React.createElement(Bar, {
         key: mark.key,
         mark,
@@ -31747,8 +31878,8 @@ function SMExport({
         title: '计划应做 ' + M.number(t.quantity) + ' 件 · 批次 ' + M.number(t.batch_quantity) + ' 件'
       }, row.kind === 'remaining' ? '执行剩余 ' + M.number(e.remaining_quantity) + ' 件' : e ? M.states[e.execution_state] + ' · 已知 ' + M.number(e.known_completed_quantity) + ' / 计划 ' + M.number(t.quantity) : '计划应做 ' + M.number(t.quantity) + ' 件 · 报工记录不可用'), /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption",
-        title: !row.reports.length && row.kind === 'actual' ? emptyReports(row, view.mode) : undefined
-      }, row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : emptyReports(row, view.mode)), row.kind !== 'remaining' && (deviation || timing.unclosed || timing.forecastLate) && /*#__PURE__*/React.createElement("span", {
+        title: emptyText || undefined
+      }, row.kind === 'remaining' ? e.remaining_plan ? '已有剩余安排' : pending : row.reports.length ? row.reports.length + ' 次报工' + (row.trackCount > 1 ? ' · 分行 ' + row.track + '/' + row.trackCount : '') : hasLegacy ? '0 次报工 · 历史现场记录' : emptyText), row.kind !== 'remaining' && (deviation || timing.unclosed || timing.forecastLate) && /*#__PURE__*/React.createElement("span", {
         className: "fg-row-caption",
         title: deviation || undefined,
         "data-finish-deviation": deviation || undefined
@@ -31792,9 +31923,9 @@ function SMExport({
         selected: view.selected
       }) : visibleMarks.map(mark => renderMark(mark)), row.kind === 'remaining' && !e.remaining_plan && /*#__PURE__*/React.createElement("span", {
         className: "fg-wait"
-      }, pending, " \xB7 ", M.number(e.remaining_quantity), " \u4EF6"), row.kind === 'actual' && !row.reports.length && /*#__PURE__*/React.createElement("span", {
+      }, pending, " \xB7 ", M.number(e.remaining_quantity), " \u4EF6"), emptyText && /*#__PURE__*/React.createElement("span", {
         className: "fg-wait"
-      }, emptyReports(row, view.mode)), row.reports.some(r => !r.actual_start) && /*#__PURE__*/React.createElement("span", {
+      }, emptyText), row.reports.some(r => !r.actual_start) && /*#__PURE__*/React.createElement("span", {
         className: "fg-wait"
       }, "\u672C\u6B21\u5F00\u5DE5\u5F85\u8865\uFF0C\u672A\u7ED8\u5236\u65F6\u6BB5")));
     }));
@@ -32285,6 +32416,19 @@ function SMExport({
       };
       // Actual uses [] for all batches; Field represents that scope by omission.
       if (viewName === 'field' && Array.isArray(destinationScope.batch_ids) && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
+      const task = selected && selected.task;
+      let locator;
+      if (viewName === 'field') {
+        const query = view.query.trim().toLowerCase();
+        const targetTask = selected && M.fieldSearchText(selected, model.labels).includes(query) ? task : null;
+        locator = targetTask ? {
+          task_ref: targetTask.task_ref,
+          operation_ref: targetTask.operation_ref
+        } : {};
+      } else locator = {
+        task_ref: view.selected,
+        operation_ref: task ? task.operation_ref : undefined
+      };
       if (snapshotPosition) remember(JSON.stringify(returnContext), {
         scope,
         view,
@@ -32293,8 +32437,7 @@ function SMExport({
       });
       if (typeof onNavigate === 'function') onNavigate(viewName, {
         plan_ref: scope.plan_ref,
-        task_ref: view.selected,
-        operation_ref: selected ? selected.task.operation_ref : undefined,
+        ...locator,
         scope: destinationScope,
         return_to: {
           view: 'fieldgantt',

@@ -238,9 +238,15 @@
       // Actual uses [] for all batches; Field represents that scope by omission.
       if (viewName === 'field' && Array.isArray(destinationScope.batch_ids) && destinationScope.batch_ids.length === 0)
         delete destinationScope.batch_ids;
+      const task = selected && selected.task;
+      let locator;
+      if (viewName === 'field') {
+        const query = view.query.trim().toLowerCase();
+        const targetTask = selected && M.fieldSearchText(selected, model.labels).includes(query) ? task : null;
+        locator = targetTask ? { task_ref: targetTask.task_ref, operation_ref: targetTask.operation_ref } : {};
+      } else locator = { task_ref: view.selected, operation_ref: task ? task.operation_ref : undefined };
       if (snapshotPosition) remember(JSON.stringify(returnContext), { scope, view, zoom, position: snapshotPosition });
-      if (typeof onNavigate === 'function') onNavigate(viewName, { plan_ref: scope.plan_ref, task_ref: view.selected,
-        operation_ref: selected ? selected.task.operation_ref : undefined,
+      if (typeof onNavigate === 'function') onNavigate(viewName, { plan_ref: scope.plan_ref, ...locator,
         scope: destinationScope, return_to: { view: 'fieldgantt', context: returnContext } });
     }
     return <div className="plana fg-page fg-live" data-actual-gantt>

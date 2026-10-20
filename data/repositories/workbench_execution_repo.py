@@ -11,6 +11,16 @@ from core.infrastructure.workbench_execution_ledger_schema import execution_ledg
 from core.infrastructure.workbench_execution_void_schema import execution_void_contract_issues
 from data.repositories.base_repo import BaseRepository
 
+_TASK_ROWS_SQL = """SELECT t.ref AS task_ref, t.plan_ref, r.operation_ref,
+    r.operation_id AS op_id, r.version, r.kind AS identity_kind,
+    r.source_table AS identity_source_table, r.source_key AS row_source_key, r.owner_key,
+    s.id AS schedule_id, s.start_time, s.end_time, s.machine_id,
+    s.operator_id, s.lock_status FROM WorkbenchPlanSourceRefs r
+    JOIN WorkbenchTaskRefs t ON t.row_ref=r.ref AND t.plan_ref=?
+    LEFT JOIN Schedule s ON r.kind='schedule_row' AND s.id=CAST(r.source_key AS INTEGER)
+        AND s.op_id=r.operation_id AND s.version=r.version
+    WHERE r.active=1"""
+
 
 def chunks(values, size=300):
     for start in range(0, len(values), size):
@@ -72,16 +82,20 @@ class WorkbenchExecutionRepository(BaseRepository):
             return rows
         for chunk in chunks(list(operation_refs)):
             marks = ",".join("?" for _ in chunk)
-            rows.extend(self.fetchall(f"""SELECT t.ref AS task_ref, t.plan_ref, r.operation_ref,
-                r.operation_id AS op_id, r.version, r.kind AS identity_kind,
-                r.source_table AS identity_source_table, r.source_key AS row_source_key, r.owner_key,
-                s.id AS schedule_id, s.start_time, s.end_time, s.machine_id,
-                s.operator_id, s.lock_status FROM WorkbenchPlanSourceRefs r
-                JOIN WorkbenchTaskRefs t ON t.row_ref=r.ref AND t.plan_ref=?
-                LEFT JOIN Schedule s ON r.kind='schedule_row' AND s.id=CAST(r.source_key AS INTEGER)
-                    AND s.op_id=r.operation_id AND s.version=r.version
-                WHERE r.operation_ref IN ({marks}) AND r.active=1""", [plan_ref] + chunk))
+            rows.extend(self.fetchall(_TASK_ROWS_SQL + f" AND r.operation_ref IN ({marks})", [plan_ref] + chunk))
         return rows
+
+    def cohort_task_rows(self, operation_refs, plan_ref):
+        """Stream a plan once for a large cohort; keep only its requested identities.
+
+        Small directed reads retain task_rows. A complete cohort avoids rescanning
+        the same plan for each SQL parameter chunk. Other plan rows are discarded
+        as they arrive; requested duplicate bindings remain visible to the reader.
+        """
+        selected = set(operation_refs)
+        if plan_ref is None or not selected:
+            return iter(())
+        return (row for row in self.iter_rows(_TASK_ROWS_SQL, (plan_ref,)) if row["operation_ref"] in selected)
 
     def page_tasks(self, plan_ref, size, after):
         """Up to size + 1 task rows after the cursor so the caller can detect a further page."""

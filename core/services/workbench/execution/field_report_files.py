@@ -6,16 +6,14 @@ from typing import List, Optional, Union
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import REPORT_FIELDS, REQUIRED_FIELDS
-from core.models.workbench_field_report_source import PreparedFieldReportSource
 from core.services.workbench.facts.execution_projection import (
     COMPLETION_BASIS_TEXT,
     DATA_QUALITY_TEXT,
     EXECUTION_STATE_TEXT,
 )
-from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 
-from .field_report_files_codec import decode_reports, encode_reports
+from .field_report_files_codec import encode_reports
 from .field_report_files_identity import identity_values, matched_task, task_indexes
 
 
@@ -44,8 +42,7 @@ class FieldReportFileService:
             raise WorkbenchCommandRejected('invalid_input', '填的设备或人员在系统里找不到，或者有重名分不清，请核对。', 422)
         return next(iter(options))
 
-    def _items(self, content, tasks, decoded, *, source_ref):
-        rows = decode_reports(content) if decoded is None else decoded
+    def _items(self, tasks, rows, *, source_ref):
         by_scope, by_ref = task_indexes(tasks)
         resources, items, positions = self._resource_index(), [], []
         for row in rows:
@@ -95,20 +92,13 @@ class FieldReportFileService:
             raise WorkbenchCommandRejected('invalid_input', '已有多条内容相同的导入报工，请填写要核对的原报工编号。', 422)
         return matches[0]['report_no'] if matches else number
 
-    def preview(self, content, cohort, decoded=None):
-        """decoded: rows the caller already parsed from these bytes before its read snapshot (used once)."""
-        return self.prepare_preview(content, cohort, decoded)[0]
-
     def prepare_source(self, source, cohort):
         """Rebuild current business checks from the retained original file facts."""
-        return self.prepare_preview(source.content, cohort, source.parsed(), source_ref=source.source_ref)
+        return self.prepare_preview(cohort, source.parsed(), source_ref=source.source_ref)
 
-    def prepare_preview(self, content, cohort, decoded=None, *, source_ref=None):
+    def prepare_preview(self, cohort, decoded, *, source_ref):
         """Return the public preview and its private, already checked batch facts."""
-        if source_ref is None:
-            source = PreparedFieldReportSource.build(content, decode_reports(content) if decoded is None else decoded)
-            source_ref, decoded = source.source_ref, source.parsed()
-        rows, items, positions = self._items(content, cohort['tasks'], decoded, source_ref=source_ref)
+        rows, items, positions = self._items(cohort['tasks'], decoded, source_ref=source_ref)
         check, preparation = None, None
         if not any(row['errors'] for row in rows):
             try:
@@ -141,16 +131,9 @@ class FieldReportFileService:
         if target is None:
             raise exc
         target['result'] = 'rejected'
-        target['errors'].append({'row': original, 'message': str(exc), 'code': exc.code})
+        target['errors'].append({'row': original, 'message': str(exc), 'code': exc.code, 'conflicts': exc.conflicts})
 
-    def rows(self, cohort, template=False):
-        refs = {report.get('actual_' + kind + '_ref') for task in cohort['tasks']
-                for report in task['execution']['reports'] for kind in ('machine', 'operator')}
-        if template:
-            refs.update(task.get('planned_' + kind + '_ref') for task in cohort['tasks']
-                        for kind in ('machine', 'operator'))
-        codes = {row['ref']: row['business_code']
-                 for row in WorkbenchExecutionRepository(self.conn).resources(refs - {None})}
+    def rows(self, cohort, template=False, *, resource_codes):
         result = []
         for task in cohort['tasks']:
             p = task['execution']
@@ -160,7 +143,7 @@ class FieldReportFileService:
             if template:
                 reports = [row for row in reports if any(row[key] is None for key in REQUIRED_FIELDS)] or [None]
             for report in reports:
-                result.append(self._export_row(report, task, template, codes))
+                result.append(self._export_row(report, task, template, resource_codes))
         return result
 
     @staticmethod
@@ -174,8 +157,8 @@ class FieldReportFileService:
                                'operator_label': codes.get(row.get('actual_operator_ref') or (task['planned_operator_ref'] if template else None)),
                 'remark': row.get('remark', ''), **identity_values(task)}
 
-    def download(self, cohort, template=False):
-        rows = self.rows(cohort, template)
+    def download(self, cohort, template=False, *, resource_codes):
+        rows = self.rows(cohort, template, resource_codes=resource_codes)
         summaries: List[List[Optional[Union[str, int, float]]]] = [['批次号', '工序', '应做数量', '累计完成', '剩余数量', '工序状态', '完成依据', '资料完整性']]
         metadata: List[List[Optional[Union[str, int, float]]]] = [['报工编号', '录入时间', '报工来源', '补齐及更正次数']]
         for task in cohort['tasks']:

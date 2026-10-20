@@ -22,18 +22,25 @@ def json_response(payload, *, byte_limit=None, too_large_code="query_too_large",
     return Response(content, status=status, content_type="application/json; charset=utf-8")
 
 
-def failure_payload(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None, request_key=None):
+def failure_payload(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None,
+                    request_key=None, conflicts=None, row_number=None):
     reference = uuid.uuid4().hex
     error = {"code": code, "message": message, "fields": fields or [],
              "retryable": status >= 500, "request_ref": reference}
+    if conflicts:
+        error["conflicts"] = conflicts
+    if row_number is not None:
+        error["row_number"] = row_number
     if request_key is not None:
         error["request_key"] = request_key
         error["result_target"] = url_for("workbench.command_receipt", request_key=request_key)
     return {"ok": False, "committed": committed, "error": error}
 
 
-def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None, request_key=None):
-    response = json_response(failure_payload(code, message, status, committed=committed, fields=fields, request_key=request_key), status=status)
+def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None,
+            request_key=None, conflicts=None, row_number=None):
+    response = json_response(failure_payload(code, message, status, committed=committed, fields=fields,
+        request_key=request_key, conflicts=conflicts, row_number=row_number), status=status)
     response.headers["Cache-Control"] = "no-store"
     return response
 

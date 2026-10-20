@@ -212,13 +212,25 @@ def encode_issues(rows):
     if sheet is None:
         raise RuntimeError('New issue workbook has no active worksheet.')
     sheet.title = '导入问题'
-    sheet.append(['Excel 行号', '问题'])
+    sheet.append(['Excel 行号', '问题', '关联批次', '关联工序', '分件', '正式版本', '计划开始', '计划结束',
+                  '工序编号', '安排编号', '正式计划编号', '约束编号'])
     for row in rows:
         for issue in row['errors']:
             sheet.append([row['row'], issue['message']])
             sheet.cell(sheet.max_row, 2).data_type = TYPE_STRING
+            for conflict in issue.get('conflicts', []):
+                plan = conflict.get('plan')
+                sheet.append([row['row'], conflict['message'], conflict.get('batch_id'), conflict.get('operation_label'),
+                    conflict.get('piece_id'), plan['version'] if plan else None, plan['start'] if plan else None,
+                    plan['end'] if plan else None, conflict['operation_ref'], plan['task_ref'] if plan else None,
+                    plan['plan_ref'] if plan else None, conflict['code']])
+                for column in (2, 3, 4, 5, 7, 8, 9, 10, 11, 12):
+                    sheet.cell(sheet.max_row, column).data_type = TYPE_STRING
     sheet.column_dimensions['A'].width = 15
     sheet.column_dimensions['B'].width = 85
+    for column, width in (('C', 22), ('D', 22), ('E', 16), ('F', 12), ('G', 23), ('H', 23),
+                          ('I', 52), ('J', 52), ('K', 52), ('L', 34)):
+        sheet.column_dimensions[column].width = width
     sheet.freeze_panes = 'A2'
     for cells in sheet:
         for cell in cells:

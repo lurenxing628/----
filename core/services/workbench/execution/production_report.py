@@ -41,9 +41,7 @@ class WorkbenchProductionReportService:
         return self.prepare_batch(items).public()
 
     def prepare_batch(self, items):
-        normalized = normalize_items(items)
-        with self.ledger.read_snapshot():
-            return self._prepare(normalized)
+        return self._prepare(normalize_items(items))
 
     def execute(self, action, ref, payload, *, request_key, validate_context):
         if action == "report_void":
@@ -129,7 +127,7 @@ class WorkbenchProductionReportService:
 
     def _execute(self, items, request_key, action, context_ref, guard):
         def mutate(prepared):
-            prepared.materialize(self.ledger.clock(), self.actor_provider())
+            prepared.materialize(self.ledger.clock())
             repo = WorkbenchExecutionReportRepository(self.conn)
             allocated = {}
             for row in prepared.appended:

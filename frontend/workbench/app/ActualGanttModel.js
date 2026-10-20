@@ -28,15 +28,18 @@
     const value = item.deviation;
     return { finishLate: value.finish_late, unclosed: value.unclosed, forecastLate: value.forecast_late };
   }
-  function searchText(item, labels) {
+  function fieldSearchText(item, labels) {
     const t = item.task, e = item.execution;
     const text = [t.batch_id, t.sequence, t.process_label, t.piece_id, labels.get(t.machine_ref), labels.get(t.operator_ref)];
     if (e) {
       e.reports.forEach(r => text.push(r.report_no, labels.get(r.actual_machine_ref), labels.get(r.actual_operator_ref)));
       e.legacy_facts.forEach(fact => text.push(labels.get(fact.actual_machine_ref), labels.get(fact.actual_operator_ref)));
-      if (e.remaining_plan) text.push(labels.get(e.remaining_plan.machine_ref), labels.get(e.remaining_plan.operator_ref));
     }
     return text.map(value => value == null ? '' : value).join(' ').toLowerCase();
+  }
+  function searchText(item, labels) {
+    const text = fieldSearchText(item, labels), remaining = item.execution && item.execution.remaining_plan;
+    return remaining ? text + ' ' + [labels.get(remaining.machine_ref), labels.get(remaining.operator_ref)].join(' ').toLowerCase() : text;
   }
   function filter(prepared, view) {
     const query = view.query.trim().toLowerCase();
@@ -57,17 +60,36 @@
     }
     heap[at] = last; return first;
   }
-  function tracks(reports) {
+  function tracks(segments) {
     const owners = new Map(), result = [];
-    reports.slice().sort((a, b) => a.start - b.start || a.report.report_ref.localeCompare(b.report.report_ref)).forEach(fact => {
-      const report = fact.report;
-      if (!report.actual_start || !report.actual_end || fact.start === fact.end) { result.push([fact]); return; }
-      const key = JSON.stringify([report.actual_machine_ref, report.actual_operator_ref]);
+    segments.sort((a, b) => a.start - b.start || a.key.localeCompare(b.key)).forEach(fact => {
+      if (!Number.isFinite(fact.start) || !Number.isFinite(fact.end) || fact.start === fact.end) { result.push([fact]); return; }
+      const key = JSON.stringify([fact.actual_machine_ref, fact.actual_operator_ref]);
       if (!owners.has(key)) owners.set(key, []);
       const heap = owners.get(key), index = heap.length && heap[0].end <= fact.start ? pop(heap).index : result.length;
       if (!result[index]) result[index] = [];
       result[index].push(fact); push(heap, { end: fact.end, index });
     });
+    return result;
+  }
+  function prepareLegacy(e) {
+    if (!e || !e.legacy_facts.length || e.data_gaps.some(gap => gap.code === 'invalid_legacy_sequence')) return [];
+    const covered = new Set(e.reports.map(report => report.legacy_fact_ref).filter(Boolean)), scopes = new Map(), result = [];
+    for (const fact of e.legacy_facts) {
+      if (!fact.recorded_against_task_ref) continue;
+      if (!scopes.has(fact.recorded_against_task_ref)) scopes.set(fact.recorded_against_task_ref, []);
+      scopes.get(fact.recorded_against_task_ref).push(fact);
+    }
+    for (const [scopeRef, scope] of scopes) {
+      const startFact = scope.find(fact => fact.event_type === 'start'), finish = scope.find(fact => fact.event_type === 'finish');
+      if (!startFact || !finish || covered.has(finish.legacy_fact_ref) || typeof startFact.event_time !== 'string' || typeof finish.event_time !== 'string') continue;
+      const start = instant(window.FieldDraftModel.legacyTime(startFact.event_time)), end = instant(window.FieldDraftModel.legacyTime(finish.event_time));
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) continue;
+      const resources = window.FieldDraftModel.legacyResources(scope, e.data_gaps);
+      const point = start === end, key = 'legacy:' + scopeRef;
+      result.push({ key, legacy: finish, start, end, ...resources,
+        mark: { key, kind: point ? 'legacy-point' : 'legacy', legacy: finish, start, end, ...resources, y: point ? 20 : 14, height: point ? 24 : 38 } });
+    }
     return result;
   }
   function prepare(data, asOf) {
@@ -78,15 +100,19 @@
       const baseline = { key: 'plan', kind: point ? 'plan-point' : 'plan', start: instant(task.start), end: instant(task.end), y: point ? 64 : 74, height: point ? 24 : 7 };
       const reports = e ? e.reports.map(report => {
         const start = instant(report.actual_start), end = instant(report.actual_end || report.actual_start), point = !report.actual_end || start === end;
-        return { report, start, end, mark: report.actual_start ? { key: report.report_ref, kind: point ? 'point' : 'actual', report, start, end, y: point ? 20 : 14, height: point ? 24 : 38 } : null };
+        return { key: report.report_ref, report, start, end, actual_machine_ref: report.actual_machine_ref, actual_operator_ref: report.actual_operator_ref,
+          mark: report.actual_start ? { key: report.report_ref, kind: point ? 'point' : 'actual', report, start, end, y: point ? 20 : 14, height: point ? 24 : 38 } : null };
       }) : [];
+      const legacyMarks = prepareLegacy(e);
       const remaining = e && e.remaining_plan ? { key: 'remaining', kind: 'remaining', start: instant(e.remaining_plan.start), end: instant(e.remaining_plan.end), y: 14, height: 34 } : null;
       include(planRange, baseline.start); include(planRange, baseline.end);
       for (const report of reports) { include(reportRange, report.start); include(reportRange, report.end); }
-      const fact = { item, baseline, reports, reportIndex: new Map(reports.map(report => [report.report.report_ref, report])), remaining, search: searchText(item, labels), deadlines: deadlines(item) };
+      for (const segment of legacyMarks) { include(reportRange, segment.start); include(reportRange, segment.end); }
+      const fact = { item, baseline, reports, legacyMarks, reportIndex: new Map(reports.map(report => [report.report.report_ref, report])), remaining, search: searchText(item, labels), deadlines: deadlines(item) };
       facts.push(fact); taskIndex.set(task.task_ref, fact);
     }
-    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point'));
+    const hasPoints = facts.some(fact => fact.baseline.kind === 'plan-point' || fact.reports.some(report => report.mark && report.mark.kind === 'point')
+      || fact.legacyMarks.some(segment => segment.mark.kind === 'legacy-point'));
     const axis = window.PointGanttModel.bounds(instant(data.axis_span.start), instant(data.axis_span.end), hasPoints);
     const dataRange = Number.isFinite(planRange.start) ? planRange : Number.isFinite(reportRange.start) ? reportRange : null;
     return { labels, facts, taskIndex, dataRange, start: axis.start, end: axis.end, asOf: instant(asOf),
@@ -98,7 +124,7 @@
       const ref = mode === 'batch' ? fact.item.task.batch_id : owner[mode + '_ref'] || 'unbound';
       if (!groups.has(ref)) groups.set(ref, { id: ref, label: mode === 'batch' ? ref : labels.get(ref) || views[mode] + '未填写', members: new Map() });
       const members = groups.get(ref).members, key = fact.item.task.task_ref;
-      if (!members.has(key)) members.set(key, { fact, item: fact.item, baseline: false, reports: [], legacy: [], remaining: false });
+      if (!members.has(key)) members.set(key, { fact, item: fact.item, baseline: false, reports: [], legacy: [], legacyMarks: [], remaining: false });
       return members.get(key);
     }
     for (const fact of prepared.facts) {
@@ -107,20 +133,21 @@
       if (!e) continue;
       fact.reports.forEach(report => group(fact, { machine_ref: report.report.actual_machine_ref, operator_ref: report.report.actual_operator_ref }).reports.push(report));
       e.legacy_facts.forEach(legacy => { if (legacy.actual_machine_ref || legacy.actual_operator_ref) group(fact, { machine_ref: legacy.actual_machine_ref, operator_ref: legacy.actual_operator_ref }).legacy.push(legacy); });
+      fact.legacyMarks.forEach(segment => group(fact, { machine_ref: segment.actual_machine_ref, operator_ref: segment.actual_operator_ref }).legacyMarks.push(segment));
       if (e.execution_state !== 'complete' && e.remaining_quantity !== 0) group(fact, e.remaining_plan || item.task).remaining = true;
     }
     for (const g of groups.values()) for (const member of g.members.values()) {
-      const ts = tracks(member.reports); if (!ts.length) ts.push([]);
+      const ts = tracks(member.reports.concat(member.legacyMarks)); if (!ts.length) ts.push([]);
       member.reportCount = member.reports.length; member.legacyCount = member.legacy.length;
       member.knownCount = 0; member.knownHours = 0; member.unknownHours = 0;
       for (const { report } of member.reports) {
         if (report.effective_processing_hours == null) member.unknownHours++;
         else { member.knownCount++; member.knownHours += report.effective_processing_hours; }
       }
-      member.rows = ts.map((reports, i) => ({ key: g.id + ':' + member.item.task.task_ref + ':' + i, item: member.item,
-        reports: reports.map(fact => fact.report), baseline: i === 0 && member.baseline, kind: 'actual', height: 88,
+      member.rows = ts.map((segments, i) => ({ key: g.id + ':' + member.item.task.task_ref + ':' + i, item: member.item,
+        reports: segments.filter(fact => fact.report).map(fact => fact.report), baseline: i === 0 && member.baseline, kind: 'actual', height: 88,
         track: i + 1, trackCount: ts.length, planEnd: member.fact.baseline.end,
-        marks: (i === 0 && member.baseline ? [member.fact.baseline] : []).concat(reports.map(fact => fact.mark).filter(Boolean)) }));
+        marks: (i === 0 && member.baseline ? [member.fact.baseline] : []).concat(segments.map(fact => fact.mark).filter(Boolean)) }));
       if (member.remaining) member.rows.push({ key: g.id + ':' + member.item.task.task_ref + ':remaining', item: member.item,
         reports: [], baseline: false, kind: 'remaining', height: 64, marks: member.fact.remaining ? [member.fact.remaining] : [] });
     }
@@ -211,6 +238,11 @@
     return result;
   }
   function markTitle(mark, item, labels) {
+    if (mark.legacy) return [mark.kind === 'legacy-point' ? '历史实际时刻' : '历史实际时段', '历史事件记录 · 有效工时未记录',
+      '实际：' + time(wire(mark.start)) + ' 至 ' + time(wire(mark.end)),
+      '旧已知累计：' + number(mark.legacy.quantity_done) + ' 件 · 有效工时：未知',
+      '实际资源：' + (labels.get(mark.actual_machine_ref) || '设备未填写') + ' / ' + (labels.get(mark.actual_operator_ref) || '人员未填写')]
+      .concat(describe(item, labels)).join('\n');
     const heading = mark.kind === 'plan-point' ? '原计划 · 零工时工序' : mark.kind === 'plan' ? '原计划' : mark.kind === 'remaining' ? '已有剩余安排' : mark.kind === 'point' ? (mark.report.actual_end ? '报工时刻' : '报工开工时刻 · 结束未填写') : '实际报工时段';
     return [heading].concat(describe(item, labels, mark.report)).join('\n');
   }
@@ -218,5 +250,5 @@
     const value = data.execution_summary;
     return { complete: value.complete, reported: value.reported, pending: value.pending, average: value.average_finish_deviation_minutes };
   }
-  window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, searchText, filter, tracks, prepare, groupPrepared, selectPrepared, layoutPrepared, visibleRows, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
+  window.ActualGanttModel = { instant, wire, time, fileStamp, number, hours, pieceLabel, taskLabel, states, views, lateLabels, names, finishDeviation, deadlines, fieldSearchText, searchText, filter, tracks, prepare, groupPrepared, selectPrepared, layoutPrepared, visibleRows, graphLocations, tickStep, tickLabel, ticks, describe, markTitle, metrics };
 })();

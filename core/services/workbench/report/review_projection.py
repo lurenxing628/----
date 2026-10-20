@@ -52,13 +52,8 @@ def _resource_selected(scope, operation, projection):
     return matches_execution_resource(operation, projection, scope.resource_type, ref)
 
 
-def _selected(scope, operation, projection):
-    end = operation["planned_end"]
-    if scope.plan_finish_date_from and (end is None or not scope.plan_finish_date_from <= end[:10] <= scope.plan_finish_date_to):
-        return False
-    if scope.batch_ref and operation["batch_ref"] != scope.batch_ref:
-        return False
-    if scope.query.strip().casefold() not in (operation["batch_label"] + " " + operation["operation_label"]).casefold():
+def _selected(scope, operation, projection, *, needle):
+    if needle not in (operation["batch_label"] + " " + operation["operation_label"]).casefold():
         return False
     if scope.focus == "unreported":
         selected = operation["execution_state"] == "unreported"
@@ -69,8 +64,7 @@ def _selected(scope, operation, projection):
     return selected and (not scope.resource_ref or _resource_selected(scope, operation, projection))
 
 
-def _project_entry(row, label, projection, facts, directory, as_of):
-    operation = project_operation(row, projection, label, facts, as_of)
+def _Complete_entry(operation, projection, directory, as_of):
     events = project_records(projection, operation, directory, as_of)
     operation.update(hour_totals(events))
     operation.update({"event_count": len(projection["legacy_facts"]), "record_count": len(events),
@@ -84,13 +78,15 @@ def _project_entry(row, label, projection, facts, directory, as_of):
 
 
 def project_cohort(facts, as_of):
+    needle = facts["scope"].query.strip().casefold()
     projections = {row["operation_ref"]: row for row in facts["ledger"]["projections"]}
     directory = resource_directory(facts)
     operations, records, labels = [], [], {}
     for row, label in zip(facts["rows"], facts["labels"]):
         projection = projections[facts["operation_refs"][row["op_id"]]]
-        operation, events = _project_entry(row, label, projection, facts, directory, as_of)
-        if _selected(facts["scope"], operation, projection):
+        operation = project_operation(row, projection, label, facts, as_of)
+        if _selected(facts["scope"], operation, projection, needle=needle):
+            operation, events = _Complete_entry(operation, projection, directory, as_of)
             operations.append(operation)
             records.extend(events)
             labels[operation["operation_ref"]] = export_labels(label, operation, directory)
@@ -98,23 +94,26 @@ def project_cohort(facts, as_of):
 
 
 def project_detail(facts, as_of, operation_ref):
+    needle = facts["scope"].query.strip().casefold()
     projection = next((row for row in facts["ledger"]["projections"] if row["operation_ref"] == operation_ref), None)
     if projection is not None:
         directory = resource_directory(facts)
         for row, label in zip(facts["rows"], facts["labels"]):
             if facts["operation_refs"][row["op_id"]] != operation_ref:
                 continue
-            operation, records = _project_entry(row, label, projection, facts, directory, as_of)
-            if _selected(facts["scope"], operation, projection):
+            operation = project_operation(row, projection, label, facts, as_of)
+            if _selected(facts["scope"], operation, projection, needle=needle):
+                operation, records = _Complete_entry(operation, projection, directory, as_of)
                 return {"operation": operation, "records": records}
             break
     raise WorkbenchCommandRejected("entity_not_found", "这道工序不在当前筛选结果里，详情没有打开。请调整筛选条件后重新点这一行。", 404)
 
 
 def validate_selected_refs(scope, facts):
-    for kind, ref in (("batch", scope.batch_ref), (scope.resource_type, scope.resource_ref)):
-        if ref and ref != "unassigned":
-            identity = facts["reader"].plans.entities.get(ref)
-            historical = kind in ("machine", "operator") and ref in facts["choices"][kind]
-            if identity is None or identity.kind != kind or (not identity.active and not historical):
-                raise WorkbenchCommandRejected("entity_not_found", "筛选记录已失效或类型不符，请重新选择。", 404)
+    kind, ref = scope.resource_type, scope.resource_ref
+    if ref and ref != "unassigned":
+        if kind in ("machine", "operator") and ref in facts["choices"][kind]:
+            return
+        identity = facts["reader"].plans.entities.get(ref)
+        if identity is None or identity.kind != kind or not identity.active:
+            raise WorkbenchCommandRejected("entity_not_found", "筛选记录已失效或类型不符，请重新选择。", 404)

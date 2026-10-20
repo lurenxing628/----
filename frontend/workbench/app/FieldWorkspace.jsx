@@ -45,7 +45,7 @@
       setOpened(next); setEditor(saved ? saved.editor : null);
     }
     // The save notice describes the read that follows a save; any user-initiated read replaces it.
-    function filter(next) { if (blocked) return; setNotice(''); setScope({ ...next, page: 1, size: scope.size, snapshot_ref: undefined }); setOpened(null); }
+    function filter(next) { if (blocked) return; setNotice(''); setScope({ ...next, task_ref: undefined, operation_ref: undefined, page: 1, size: scope.size, snapshot_ref: undefined }); setOpened(null); }
     function refresh() {
       if (blocked) return;
       setNotice('');
@@ -94,7 +94,7 @@
       {selectedTask && <window.FieldDetail key={selectedTask.task_ref} adapter={api} taskRef={selectedTask.task_ref} scope={effectiveScope} snapshot={snapshot} revision={revision} command={command} editor={editor}
         retained={drafts.current.get(selectedTask.task_ref)?.retained} onDraft={retainDraft} nextDraft={nextDraft} onContinueReady={continueReady}
         onEdit={value => { if (command.reset()) setEditor(value); }} onCloseEditor={closeEditor} onDone={done} onNavigate={onNavigate} />}
-      {files && <window.FieldFiles adapter={api} scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.reset()) setFiles(false); }} onDone={done} />}
+      {files && <window.FieldFiles adapter={api} scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.phase === 'done') done(); else if (command.reset()) setFiles(false); }} onDone={done} />}
     </section>;
   }
   window.FieldWorkspace = FieldWorkspace;

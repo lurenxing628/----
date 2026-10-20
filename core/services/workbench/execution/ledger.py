@@ -116,8 +116,8 @@ class ExecutionLedgerService(ExecutionLedgerReader):
 
     def workspace_projection(self, plan_ref, tasks):
         with self.read_snapshot():
-            refs = [public_ref(task["operation_ref"]) for task in tasks]
-            facts = self.load(refs, comparison_plan_ref=plan_ref)
+            refs = [task["operation_ref"] for task in tasks]
+            facts = self.load_many(refs, comparison_plan_ref=plan_ref)
             _check_workspace_tasks(tasks, facts, plan_ref)
             projections = self.project_loaded(facts)
             resources = _actual_resources(self, projections)

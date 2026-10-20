@@ -12,7 +12,7 @@
         return C.related(await base.query('actual-gantt/chain', { ...C.transport(scope), target_task_ref: target }, signal), scope, original, target);
       },
       async export(context, signal) {
-        const scope = C.scope(context, true), output = await base.download('actual-gantt/export', C.transport(scope), signal);
+        const scope = C.scope(context, true), output = await base.download('actual-gantt/export', C.transport(scope), signal, { timeout: 60000 });
         if (!output || !output.blob || !output.blob.size || output.contentType.split(';')[0] !== 'text/csv' || !/^attachment;/i.test(output.disposition))
           throw window.APSResourceContract.failure('下载的现场实际甘特不是有效的 CSV 附件。');
         return output;

@@ -182,6 +182,13 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
     case.install()
     case.path = case.conn.execute('PRAGMA database_list').fetchone()[2]
     plan_ref, projected, statements = case.plan_ref(2), [], []
+    enriched, enrich_rows = [], actual_gantt.PlanReadContext._enrich_rows
+
+    def enrich(context, entry, prepared):
+        enriched.append(len(prepared))
+        return enrich_rows(context, entry, prepared)
+
+    monkeypatch.setattr(actual_gantt.PlanReadContext, "_enrich_rows", enrich)
     original = actual_gantt.ledger_projection
 
     def project(conn, ref, tasks):
@@ -213,11 +220,20 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
         assert data['critical_chain']['visible_node_count'] == expected
         source_reads = [' '.join(sql.upper().replace('"', '').split()) for sql in statements]
         assert sum(' FROM SCHEDULE R WHERE R.VERSION = 2 ' in sql for sql in source_reads) == 1
+        if scope.get("plan_finish_date_from"):
+            enriched.clear()
+            with monkeypatch.context() as patch:
+                patch.setattr(actual_gantt, "plan_chain", lambda *args, **kwargs: pytest.fail("Export rebuilt the full chain"))
+                exported = client.get(ACTUAL + "/export", query_string=dict(plan_ref=plan_ref, format="csv",
+                    snapshot_ref=response.get_json()["meta"]["snapshot_ref"], **scope))
+            assert exported.status_code == 200, exported.get_json()
+            assert exported.headers["X-Workbench-Operation-Count"] == str(expected)
+            assert enriched and max(enriched) == expected and sum(enriched) == expected
     response = client.get(ACTUAL, query_string={'plan_ref': plan_ref})
     assert response.status_code == 413 and projected[-1] == 20000
     error = response.get_json()['error']
-    assert error['code'] == 'query_too_large' and '10000' in error['message']
-    assert '计划完工日期' in error['message'] and '批次' in error['message']
+    assert error['code'] == 'query_too_large' and '现场甘特数据太多' in error['message']
+    assert '日期范围' in error['message'] and '批次' in error['message']
 
 
 def test_actual_resource_filter_keeps_planned_and_reported_owners(ledger_case):
@@ -235,3 +251,33 @@ def test_actual_resource_filter_keeps_planned_and_reported_owners(ledger_case):
     for key, expected in (('M1', refs), ('M2', refs[:1])):
         data = read(client, ACTUAL, resource_ref=case.ref('machine', key), **scope)['data']
         assert {item['task']['task_ref'] for item in data['items']} == set(expected)
+
+
+def test_actual_export_skips_chain_and_keeps_workspace_snapshot_and_deviations(ledger_case, monkeypatch):
+    from core.services.workbench.execution import actual_gantt
+    from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
+
+    case = ledger_case
+    plan_ref, _ = _three_tasks(case)
+    service = actual_gantt.ActualGanttService(case.conn)
+    scope = ActualGanttScope.parse({"plan_ref": plan_ref})
+    with service.read_snapshot():
+        full, full_state = service.workspace(scope)
+    with service.read_snapshot():
+        exported, export_state = service.workspace(scope, include_chain=False)
+    assert "critical_chain" in full and "critical_chain" not in exported
+    assert full_state == export_state
+    actual_gantt.bind_axis_time(exported, "2026-09-10T12:00:00", "snapshot")
+    assert all("deviation" in item for item in exported["items"])
+    client = app_for(case).test_client()
+    listed = read(client, ACTUAL, plan_ref=plan_ref)
+
+    def unused_chain(*args, **kwargs):
+        pytest.fail("CSV export rebuilt the unconsumed critical chain")
+
+    monkeypatch.setattr(actual_gantt, "plan_chain", unused_chain)
+    response = client.get(ACTUAL + "/export", query_string={"plan_ref": plan_ref, "format": "csv",
+        "snapshot_ref": listed["meta"]["snapshot_ref"]})
+    assert response.status_code == 200, response.get_json()
+    assert response.headers["X-Workbench-Snapshot-Ref"] == listed["meta"]["snapshot_ref"]
+    assert response.headers["X-Workbench-Operation-Count"] == "3"

@@ -2,7 +2,9 @@
   'use strict';
   const C = window.FieldContract, M = window.FieldDraftModel, { Button, ErrorBox, Feedback } = window.FieldControls;
   function FieldEditor({ task, record, legacy, action, adapter, command, retained, onDraft, onClose, onDone }) {
-    const [initial] = React.useState(() => M.initialize({ task, record, legacy, action, retained }));
+    const legacyRef = legacy ? legacy.legacy_fact_ref : record && record.legacy_fact_ref;
+    const knownLegacy = React.useMemo(() => M.legacyValues(task, legacyRef), [task.execution, legacyRef]);
+    const [initial] = React.useState(() => M.initialize({ task, record, legacy, action, retained, knownLegacy }));
     const [draft, setDraft] = React.useState(initial.draft), [suggestions, setSuggestions] = React.useState(initial.suggestions);
     const [error, setError] = React.useState(null), [continueAfter, setContinueAfter] = React.useState(false);
     const currentBaseline = { task_ref: task.task_ref, plan_ref: task.plan_ref, report_ref: record ? record.report_ref : null,
@@ -17,7 +19,11 @@
     const disabled = command.locked || command.phase === 'done' || changed;
     const reason = changed ? '原记录或任务已变化，暂存内容未写入；请取消后重新核对。' : C.blocked(context, action);
     const shownError = error || command.error;
-    React.useEffect(() => { form.current.scrollIntoView({ block: 'start', inline: 'nearest' }); first.current.focus({ preventScroll: true }); }, []);
+    React.useEffect(() => {
+      form.current.scrollIntoView({ block: 'start', inline: 'nearest' });
+      const target = first.current.disabled ? form.current.querySelector('input:not(:disabled),select:not(:disabled),textarea:not(:disabled)') : first.current;
+      if (target) target.focus({ preventScroll: true });
+    }, []);
     React.useEffect(() => { if (shownError) window.ResourceControls.focusFirstInvalid(form.current); }, [shownError]);
     React.useEffect(() => {
       if (command.phase !== 'done' || !['committed', 'unchanged'].includes(command.result.result)) return undefined;
@@ -50,7 +56,7 @@
     return <form ref={form} className="field-editor" aria-label={title} noValidate onSubmit={event => { event.preventDefault(); save(draft); }}>
       <div className="field-editor-heading"><h3>{title}{record ? ' · ' + record.report_no : ''}</h3>
         {fresh && <Button disabled={disabled} reason={!M.previous(task) ? '同任务同工序暂无可复制的有效报工。' : ''} reasonDisplay="inline" onClick={copy}>复制上一条</Button>}</div>
-      <window.FieldEditorFields {...{ task, record, legacy, action, adapter, draft, suggestions, disabled, first, change }} error={shownError} />
+      <window.FieldEditorFields {...{ task, record, legacy, action, adapter, draft, suggestions, disabled, first, change, knownLegacy }} error={shownError} />
       <ErrorBox error={error} excludePaths={mapped} /><Feedback command={command} onDone={onDone} excludePaths={mapped} />
       <div className="field-footer"><Button onClick={onClose} disabled={command.locked}>取消</Button>
         {fresh && <Button disabled={disabled} reason={reason} reasonDisplay="tooltip" onClick={() => save(draft, true)}>保存并继续</Button>}

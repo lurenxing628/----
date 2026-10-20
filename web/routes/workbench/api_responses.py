@@ -35,7 +35,7 @@ def api_endpoint(function):
         except WorkbenchCommandRejected as exc:
             if exc.status >= 500:
                 current_app.logger.exception("工作台请求失败 code=%s", exc.code)
-            return failure(exc.code, str(exc), exc.status)
+            return failure(exc.code, str(exc), exc.status, conflicts=exc.conflicts, row_number=exc.row_number)
         except WorkbenchCommandUncertain as exc:
             current_app.logger.exception("工作台写入结果待核实 request_key=%s", exc.request_key)
             return failure("storage_failure", str(exc), 500, committed="unknown", request_key=exc.request_key)

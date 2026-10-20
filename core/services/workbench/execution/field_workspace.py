@@ -11,9 +11,8 @@ from core.services.workbench.facts.execution_projection import attach_context
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .field_workspace_scope import STATES, matches
+from .field_workspace_scope import STATES, matches, matches_plan
 
 
 class FieldWorkspaceService:
@@ -26,12 +25,16 @@ class FieldWorkspaceService:
         self.queries = WorkbenchFieldQueryRepository(conn)
         self.plans = WorkbenchPlanQueryService(conn)
         self._loaded = None
+        self.resource_codes = None
 
     @contextmanager
     def read_snapshot(self):
-        with self.plans.read_snapshot():
-            with self.ledger.read_snapshot():
-                yield
+        try:
+            with self.plans.read_snapshot():
+                with self.ledger.read_snapshot():
+                    yield
+        finally:
+            self.resource_codes = None
 
     def _plan_ref(self, scope):
         if scope.get('plan_ref'):
@@ -39,15 +42,17 @@ class FieldWorkspaceService:
         version = self.queries.latest_schedule_version()
         if version is None:
             return None
-        return WorkbenchPlanIdentityRepository(self.conn).get_plan_ref(WorkbenchPlanLocator(version, 'adopted'))
+        return self.plans.references.get_plan_ref(WorkbenchPlanLocator(version, 'adopted'))
 
-    def _labels(self, projections, plan):
+    def _labels(self, projections, plan_tasks):
         refs = {row[key] for p in projections.values() for row in p['reports'] + [item['report'] for item in p['voided_reports']]
                 for key in ('actual_machine_ref', 'actual_operator_ref') if row[key]}
-        refs.update(task[key] for task in plan['tasks'] for key in ('machine_ref', 'operator_ref') if task[key])
+        refs.update(task[key] for task in plan_tasks for key in ('machine_ref', 'operator_ref') if task[key])
         refs.update(row[key] for p in projections.values() for row in p['legacy_facts']
                     for key in ('actual_machine_ref', 'actual_operator_ref') if row[key])
-        return {row['ref']: row['label'] for row in self.repo.resources(refs)}
+        rows = self.repo.resources(refs)
+        self.resource_codes = {row['ref']: row['business_code'] for row in rows}
+        return {row['ref']: row['label'] for row in rows}
 
     def cohort(self, scope):
         if not self.conn.in_transaction:
@@ -56,25 +61,27 @@ class FieldWorkspaceService:
             return self._cohort(scope)
 
     def _cohort(self, scope):
+        self.resource_codes = {}
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
             return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, content_text(self.ledger.revision_clock())
         plan, plan_state = self.plans.execution_workspace(
             PlanReadScope(plan_ref, scope.get('range_start'), scope.get('range_end')),
         )
-        refs = [task['operation_ref'] for task in plan['tasks']]
-        with self.ledger.read_snapshot():
-            facts = self.ledger.load(refs, comparison_plan_ref=plan_ref)
-            # 整份计划只投影、不签发写令牌：令牌只发给本次返回的那一页或那一条（page/detail）。
-            # 几千道任务逐条签发会把各页面共用的令牌登记表挤满，刚显示的报工令牌随即失效。
-            loaded = {item.operation_ref: item for item in self.ledger.project_loaded(facts, contexts=False)}
+        plan_tasks = [task for task in plan['tasks'] if matches_plan(task, scope)]
+        refs = [task['operation_ref'] for task in plan_tasks]
+        facts = self.ledger.load_many(refs, comparison_plan_ref=plan_ref)
+        # 整份计划只投影、不签发写令牌：令牌只发给本次返回的那一页或那一条（page/detail）。
+        # 几千道任务逐条签发会把各页面共用的令牌登记表挤满，刚显示的报工令牌随即失效。
+        loaded = {item.operation_ref: item for item in self.ledger.project_loaded(facts, contexts=False)}
         self._loaded = (facts, loaded)
         projections = {ref: item.to_dict() for ref, item in loaded.items()}
-        labels = self._labels(projections, plan)
+        labels = self._labels(projections, plan_tasks)
         names = self.queries.batch_part_names()
         tasks, scope_tasks = [], []
-        count_scope = {key: value for key, value in scope.items() if key != 'state'}
-        for row in plan['tasks']:
+        count_scope = {key: value for key, value in scope.items()
+                       if key not in ('state', 'batch_ids', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to')}
+        for row in plan_tasks:
             task = self._task(row, projections[row['operation_ref']], labels, names)
             # 报工页据此对外协工序不提供实际设备、人员选择；写入时仍以服务端校验为准。
             task['source'] = facts['operations'][row['operation_ref']]['source']
@@ -119,12 +126,18 @@ class FieldWorkspaceService:
     @staticmethod
     def _summary(tasks, scope_tasks=None):
         counted = tasks if scope_tasks is None else scope_tasks
-        state_counts = {state: sum(task['execution']['execution_state'] == state for task in counted) for state in STATES}
+        state_counts = dict.fromkeys(STATES, 0)
+        for task in counted:
+            state_counts[task['execution']['execution_state']] += 1
         reports = [report for task in counted for report in task['execution']['reports']]
         legacy = [fact for task in counted for fact in task['execution']['legacy_facts']]
         hours = hour_totals(reports + legacy)
-        return {'tasks': len(tasks), 'reports': sum(len(task['execution']['reports']) for task in tasks),
-                'complete': sum(task['execution']['execution_state'] == 'complete' for task in tasks),
+        if scope_tasks is None:
+            report_count, complete_count = len(reports), state_counts['complete']
+        else:
+            report_count = sum(len(task['execution']['reports']) for task in tasks)
+            complete_count = sum(task['execution']['execution_state'] == 'complete' for task in tasks)
+        return {'tasks': len(tasks), 'reports': report_count, 'complete': complete_count,
                 'incomplete': sum(task['execution']['data_quality'] != 'complete' for task in tasks),
                 'state_counts': state_counts, 'state_scope_tasks': len(counted),
                 'effective_processing_hours': hours['effective_processing_hours'],

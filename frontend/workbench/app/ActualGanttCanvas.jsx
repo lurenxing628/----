@@ -3,7 +3,7 @@
   const M = window.ActualGanttModel;
   function palette(node) {
     const style = getComputedStyle(node), colors = {};
-    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['remaining', 'primary']])
+    for (const [kind, tone] of [['plan', 'plan'], ['plan-point', 'plan'], ['actual', 'primary'], ['point', 'primary'], ['legacy', 'primary'], ['legacy-point', 'primary'], ['remaining', 'primary']])
       colors[kind] = { fill: style.getPropertyValue('--wb-gantt-' + tone + '-fill').trim(), edge: style.getPropertyValue('--wb-gantt-' + tone + '-edge').trim() };
     colors.remaining.fill = style.getPropertyValue('--wb-gantt-reference-fill').trim();
     colors.selected = style.getPropertyValue('--wb-gantt-gold').trim(); return colors;
@@ -22,7 +22,7 @@
         if (graphActive.target && !related && !critical) ctx.globalAlpha = .66;
         ctx.fillStyle = colors[mark.kind].fill; ctx.strokeStyle = chosen || critical || related ? colors.selected : colors[mark.kind].edge;
         ctx.setLineDash([]);
-        if (mark.kind === 'point' || mark.kind === 'plan-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);
+        if (mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point') window.PointGanttModel.paint(ctx, x, mark.y + 12, ctx.fillStyle, ctx.strokeStyle, chosen || critical, related ? 1.5 : 1);
         else { ctx.fillRect(x, mark.y, size, mark.height); ctx.lineWidth = Math.min(chosen ? 2 : related ? 1.5 : 1, size); ctx.setLineDash(['plan', 'remaining'].includes(mark.kind) ? [3, 2] : []);
           if (size > 0) ctx.strokeRect(x + ctx.lineWidth / 2, mark.y + ctx.lineWidth / 2, size - ctx.lineWidth, mark.height - ctx.lineWidth);
           if (critical && mark.kind === 'actual') { ctx.fillStyle = colors.selected; ctx.fillRect(x, mark.y, size, 3); }
@@ -68,7 +68,7 @@
       onClick={e => { const mark = hit(e); if (mark) { setActiveKey(mark.key); onSelect(row.item, mark.report); } }}
       onMouseMove={e => { const mark = hit(e); onHover(mark ? { item: row.item, report: mark.report, title: M.markTitle(mark, row.item, model.labels), x: e.clientX, y: e.clientY } : null); }} onMouseLeave={() => onHover(null)}
       onKeyDown={keyDown} />
-      {visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point')
+      {visibleMarks.filter(mark => mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point')
         .map(mark => renderMark(mark, true))}</>;
   }
   window.ActualGanttCanvas = { DenseRow };

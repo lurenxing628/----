@@ -5,7 +5,6 @@ import re
 from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.zero_duration_evidence import overlaps
 
 from .actual_gantt_scope import matches_execution_resource
 
@@ -95,12 +94,6 @@ def page_input(value):
 
 
 def matches(task, scope, labels):
-    if scope.get('batch_ids') and task['batch_id'] not in scope['batch_ids']:
-        return False
-    if scope.get('range_start') and not overlaps(task['planned_start'], task['planned_end'], scope['range_start'], scope['range_end']):
-        return False
-    if scope.get('state') and task['execution']['execution_state'] != scope['state']:
-        return False
     if scope.get('query'):
         searchable = [task['batch_id'], task['operation_label'], task['part_name'], task.get('piece_id'),
                       task.get('planned_machine_label'), task.get('planned_operator_label')]
@@ -110,9 +103,16 @@ def matches(task, scope, labels):
             searchable.extend(labels.get(fact[key]) for key in ('actual_machine_ref', 'actual_operator_ref'))
         if scope['query'].casefold() not in ' '.join(value for value in searchable if isinstance(value, str)).casefold():
             return False
-    if scope.get('plan_finish_date_from') and not scope['plan_finish_date_from'] <= task['planned_end'][:10] <= scope['plan_finish_date_to']:
-        return False
     return _matches_resource(task, scope)
+
+
+def matches_plan(task, scope):
+    """Only plan-owned conditions may narrow the execution facts cohort."""
+    if scope.get('batch_ids') and task['batch_id'] not in scope['batch_ids']:
+        return False
+    if scope.get('plan_finish_date_from') and not scope['plan_finish_date_from'] <= task['end'][:10] <= scope['plan_finish_date_to']:
+        return False
+    return True
 
 
 def _matches_resource(task, scope):

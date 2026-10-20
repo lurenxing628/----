@@ -12,8 +12,6 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
-from .production_report_dependencies import ReportDependencies
-
 
 def _reject_external_resources(operation, values):
     # 外协不占本厂设备和人员，排产守卫也按这条拒绝；保留原资源的更正同样不放行，
@@ -253,6 +251,12 @@ def _actual_period_basis(projection):
     return tuple(coverage), unresolved
 
 
+def _report_resource_segments(projection):
+    return tuple((report.actual_start, report.actual_end, report.actual_machine_ref, report.actual_operator_ref)
+                 for report in sorted(projection.reports,
+                                      key=lambda report: (report.actual_start or "", report.actual_end or "")))
+
+
 def _constraint_signature(projection):
     # A linked report may only add hours to facts the old events already prove.
     # Removing that detail must not look like withdrawing the actual execution.
@@ -263,7 +267,9 @@ def _constraint_signature(projection):
 
 
 def execution_facts_changed(before, after):
-    return _constraint_signature(before) != _constraint_signature(after)
+    return (_constraint_signature(before) != _constraint_signature(after)
+            or (bool(before.reports and after.reports and (len(before.reports) > 1 or len(after.reports) > 1))
+                and _report_resource_segments(before) != _report_resource_segments(after)))
 
 
 def _downstream_conflicts(before, after, downstream, plans, dependencies):
@@ -299,7 +305,11 @@ def _actual_resources_changed(before, after, source):
         # 外协不占本厂设备人员，排产也从不按外协报工的设备人员安排（守卫见外协带资源即拒绝）；
         # 只把旧记录里的设备人员清空不算改了采用依据，否则这类旧数据既改不掉、也挡住所有排产。
         return False
-    return before_resources != after_resources
+    return before_resources != after_resources or (
+        source != "external" and bool(before.reports and after.reports)
+        and (len(before.reports) > 1 or len(after.reports) > 1)
+        and _report_resource_segments(before) != _report_resource_segments(after)
+    )
 
 
 def _adopted_conflicts(before, after, current, revisions, source):
@@ -317,20 +327,46 @@ def _adopted_conflicts(before, after, current, revisions, source):
     return conflicts
 
 
-def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies=None, protect_plan=True,
-                        facts_changed=None):
+def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies, protect_plan=True,
+                        include_downstream_active=False):
     """Check final actual neighbours; corrections also retain adopted-plan protection."""
-    if not (execution_facts_changed(before, after) if facts_changed is None else facts_changed):
-        return []
     operation = facts["operations"][before.operation_ref]
-    if dependencies is None:
-        dependencies = ReportDependencies(ledger, [after])
-        dependencies.prepare([operation])
     refs = dependencies.relatives(operation)
     upstream = dependencies.projections(dependencies.relatives(operation, predecessors=True))
     downstream = dependencies.projections(refs)
     current = facts["current_tasks"].get(before.operation_ref)
     plans = ledger.task_map(refs, facts["plan"]["plan_ref"]) if protect_plan else {}
-    return (_upstream_conflicts(after, upstream, dependencies)
-            + _downstream_conflicts(before, after, downstream, plans, dependencies)
-            + _adopted_conflicts(before, after, current, revisions, operation["source"]))
+    conflicts = (_upstream_conflicts(after, upstream, dependencies)
+                 + _downstream_conflicts(before, after, downstream, plans, dependencies)
+                 + _adopted_conflicts(before, after, current, revisions, operation["source"]))
+    if include_downstream_active:
+        for row in downstream:
+            if row.execution_state != "unreported" and not any(item["operation_ref"] == row.operation_ref for item in conflicts):
+                conflicts.append({"code": "downstream_execution_exists", "operation_ref": row.operation_ref})
+    return conflicts
+
+
+def execution_conflict_details(ledger, facts, conflicts):
+    """Public identities, reasons and exact official arrangements for report rejection/preview."""
+    refs = list(dict.fromkeys(item["operation_ref"] for item in conflicts))
+    operations = ledger.operation_rows(refs)
+    plans = ledger.task_map(refs, facts["plan"]["plan_ref"])
+    messages = {"upstream_time_conflict": "前道工序的实际完工时间与变更后保留的开工记录冲突",
+                "downstream_execution_exists": "后道工序已有开工或报工记录",
+                "downstream_requires_completion": "后道工序的执行或正式安排依赖本工序完工",
+                "downstream_time_conflict": "后道工序时间与变更后的完工记录冲突",
+                "adopted_execution_basis_changed": "当前正式计划使用了这次报工的数量或开工记录",
+                "adopted_completion_required": "当前正式计划依赖这次完工记录",
+                "adopted_actual_period_changed": "当前正式计划使用了这次报工的实际执行时段，变更会改变已确认的时段依据",
+                "adopted_actual_resource_changed": "当前正式计划使用了这次报工的实际资源"}
+    result = []
+    for item in conflicts:
+        operation = operations[item["operation_ref"]]
+        task = plans.get(item["operation_ref"])
+        plan = None if task is None else {"plan_ref": task["plan_ref"], "task_ref": task["task_ref"],
+            "version": task["version"], "start": task["start_time"].replace(" ", "T"),
+            "end": task["end_time"].replace(" ", "T")}
+        result.append(dict(item, batch_id=operation["batch_id"], operation_code=operation["op_code"],
+            piece_id=operation["piece_id"], operation_label=str(operation["seq"]) + " " + str(operation["op_type_name"] or ""),
+            message=messages[item["code"]], plan=plan))
+    return result

@@ -9,13 +9,17 @@ from typing import Any, Dict, List, Optional
 
 
 class WorkbenchCommandRejected(ValueError):
-    def __init__(self, code: str, message: str, status: int = 409, *, operation_refs: Optional[List[str]] = None):
+    def __init__(self, code: str, message: str, status: int = 409, *, operation_refs: Optional[List[str]] = None,
+                 conflicts: Optional[List[Dict[str, Any]]] = None, row_number: Optional[int] = None):
         super().__init__(message)
         self.code = code
         self.status = status
         self.committed = False
         # Operations a field-level rejection points at; empty for whole-command rejections.
         self.operation_refs: List[str] = [] if operation_refs is None else operation_refs
+        # Public business conflicts remain available through every API rejection boundary.
+        self.conflicts: List[Dict[str, Any]] = [] if conflicts is None else conflicts
+        self.row_number = row_number
 
 
 class WorkbenchCommandUncertain(RuntimeError):

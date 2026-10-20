@@ -203,7 +203,7 @@ class WorkbenchPlanQueryService:
         rows = context.scoped_rows(entry, scope)
         if not execution_only and len(rows) > MAX_PLAN_TASKS:
             raise WorkbenchCommandRejected("query_too_large", "本次范围的安排超过 10000 条，请缩小时间范围后重试。", 413)
-        tasks, task_facts, resources, resource_state = context.scoped_tasks(scope.plan_ref, entry, scope)
+        tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, entry, rows)
         if execution_only:
             projections, facts = {}, {}
             if include_calendar:

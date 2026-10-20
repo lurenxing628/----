@@ -117,9 +117,10 @@ def download(template):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             cohort, state = reader.cohort(normalize_scope(args))
+            resource_codes = reader.resource_codes
             snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, token)
     # 读事务和读额度都已释放：XLSX 只用已读出的现场范围生成。
-    content, count = FieldReportFileService(g.db).download(cohort, template)
+    content, count = FieldReportFileService(g.db).download(cohort, template, resource_codes=resource_codes)
     response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True,
                          download_name='现场分次报工模板.xlsx' if template else '现场报工导出.xlsx', max_age=0)
     response.headers['Cache-Control'] = 'no-store'

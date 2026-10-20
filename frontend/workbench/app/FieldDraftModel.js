@@ -20,19 +20,35 @@
     return year + '-' + month.padStart(2, '0') + '-' + day.trim().padStart(2, '0') + 'T'
       + hour.padStart(2, '0') + ':' + minute.padStart(2, '0') + ':' + second.padStart(2, '0');
   }
-  function initialize({ task, record, legacy, action, retained, now = new Date() }) {
+  function legacyResources(scope, gaps) {
+    const scopeRefs = new Set(scope.map(fact => fact.legacy_fact_ref)), result = {};
+    for (const key of ['actual_machine_ref', 'actual_operator_ref']) {
+      const unresolved = gaps.some(gap => gap.code === 'legacy_resource_identity_unresolved'
+        && scopeRefs.has(gap.legacy_fact_ref) && gap.fields.includes(key));
+      const refs = [...new Set(scope.map(fact => fact[key]).filter(value => value != null))];
+      result[key] = !unresolved && refs.length === 1 ? refs[0] : null;
+    }
+    return result;
+  }
+  function legacyValues(task, legacyFactRef) {
+    if (!legacyFactRef) return null;
+    const e = task.execution, finish = e.legacy_facts.find(fact => fact.legacy_fact_ref === legacyFactRef && fact.event_type === 'finish');
+    if (!finish) return null;
+    const scope = e.legacy_facts.filter(fact => fact.recorded_against_task_ref === finish.recorded_against_task_ref);
+    const starts = [...new Set(scope.filter(fact => fact.event_type === 'start').map(fact => legacyTime(fact.event_time)).filter(Boolean))];
+    const known = {}, end = legacyTime(finish.event_time);
+    if (starts.length === 1) known.actual_start = starts[0];
+    if (end) known.actual_end = end;
+    if (finish.quantity_done !== null && finish.quantity_done !== undefined) known.completed_quantity = String(finish.quantity_done);
+    const resources = legacyResources(scope, e.data_gaps);
+    for (const key of ['actual_machine_ref', 'actual_operator_ref']) if (resources[key]) known[key] = resources[key];
+    return known;
+  }
+  function initialize({ task, record, legacy, action, retained, knownLegacy, now = new Date() }) {
     if (retained) return { draft: { ...retained.draft }, initialDraft: { ...retained.initialDraft }, suggestions: { ...retained.suggestions } };
     const draft = C.draft(record), suggestions = {};
     if (legacy) {
-      const scope = task.execution.legacy_facts.filter(fact => fact.recorded_against_task_ref === legacy.recorded_against_task_ref);
-      const start = scope.find(fact => fact.event_type === 'start');
-      draft.actual_start = start ? legacyTime(start.event_time) : '';
-      draft.actual_end = legacyTime(legacy.event_time);
-      draft.completed_quantity = legacy.quantity_done === null ? '' : String(legacy.quantity_done);
-      for (const key of ['actual_machine_ref', 'actual_operator_ref']) {
-        const refs = [...new Set(scope.map(fact => fact[key]).filter(value => value != null))];
-        draft[key] = refs.length === 1 ? refs[0] : '';
-      }
+      Object.assign(draft, knownLegacy === undefined ? legacyValues(task, legacy.legacy_fact_ref) : knownLegacy);
     } else if (action === 'create' && !record) {
       const last = previous(task), current = localNow(now);
       draft.actual_start = last && last.actual_end <= current ? last.actual_end : current;
@@ -55,5 +71,5 @@
     if (!previousContext || context.write_token === previousContext.write_token) return '本页数据已过期，没有打开新的报工草稿。请点「刷新现场记录」后再新增。';
     return '';
   }
-  window.FieldDraftModel = { previous, initialize, copyPrevious, continuation };
+  window.FieldDraftModel = { previous, legacyTime, legacyResources, legacyValues, initialize, copyPrevious, continuation };
 })();

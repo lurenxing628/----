@@ -36,7 +36,7 @@
   }
   function markBox(mark, model, width, left = 0) {
     const scale = width / (model.end - model.start), x = (mark.start - model.start) * scale - left;
-    const size = (mark.end - mark.start) * scale, point = mark.kind === 'point' || mark.kind === 'plan-point';
+    const size = (mark.end - mark.start) * scale, point = mark.kind === 'point' || mark.kind === 'plan-point' || mark.kind === 'legacy-point';
     const hitWidth = point ? 24 : Math.max(4, size);
     const hitLeft = point ? x - 12 : Math.max(0, Math.min(width - hitWidth, x + left - (hitWidth - size) / 2)) - left;
     return { x, size, hitWidth, hitLeft, faceLeft: x - hitLeft };

@@ -197,4 +197,30 @@ const disabledPanel = context.window.BatchSplitPanel({ refs: [refA], day: input.
 assert(nodes(disabledPanel, node => node.type === 'input')[0].props.disabled);
 nodes(disabledPanel, node => node.type === 'button' && text(node) === '查看可做数量')[0].props.onClick();
 assert.equal(reads, 0);
+
+// Report rejections, withdrawal preview and import rows share complete, readable conflict facts.
+context.window.ResourceControls.ErrorBox = props => ErrorBox({ ...props, error: props.error && (props.error.error || props.error) });
+load('WorkbenchFormat.js'); load('FieldContract.js'); load('FieldControls.jsx');
+const conflicts = [
+  { code: 'downstream_requires_completion', operation_ref: 'c'.repeat(48), operation_code: 'STRESS-B-001_20',
+    batch_id: 'STRESS-B-001', operation_label: '20 热处理', piece_id: null,
+    message: '后道工序的执行或正式安排依赖本工序完工',
+    plan: { plan_ref: 'd'.repeat(48), task_ref: 'e'.repeat(48), version: 5, start: '2026-10-20T08:30:17.123456', end: '2026-10-23T08:00:00' } },
+  { code: 'downstream_requires_completion', operation_ref: 'f'.repeat(48), operation_code: 'STRESS-B-001_30',
+    batch_id: 'STRESS-B-001', operation_label: '30 检验', piece_id: 'A',
+    message: '后道工序的执行或正式安排依赖本工序完工',
+    plan: { plan_ref: 'd'.repeat(48), task_ref: '1'.repeat(48), version: 5, start: '2026-10-26T10:44:00', end: '2026-10-26T13:44:00' } }
+];
+const rejected = { phase: 'idle', locked: false, error: { message: '请先处理下面列出的影响。', committed: false,
+  error: { message: '请先处理下面列出的影响。', code: 'constraint_conflict', conflicts } } };
+const failureTree = context.window.FieldControls.Feedback({ command: rejected }), visibleFailure = text(failureTree, true);
+for (const label of ['20 热处理', '30 检验', '分件 A']) assert(visibleFailure.includes(label));
+assert.equal((visibleFailure.match(/后道工序的执行或正式安排依赖本工序完工/g) || []).length, 2);
+assert.equal((visibleFailure.match(/请先处理下面列出的影响/g) || []).length, 1);
+assert(visibleFailure.includes('正式 v') && visibleFailure.includes('08:30:17.123456') && visibleFailure.includes('2026-10-26'));
+for (const conflict of conflicts) {
+  assert(text(failureTree).includes(conflict.operation_ref) && text(failureTree).includes(conflict.plan.task_ref));
+  assert(!visibleFailure.includes(conflict.operation_ref) && !visibleFailure.includes(conflict.code));
+}
+assert.equal(context.window.FieldControls.Conflicts({ rows: [] }), null);
 process.stdout.write('WorkbenchTerms, references and material rule contracts passed (isolated React element fixture).\n');

@@ -77,6 +77,9 @@ class ExecutionLedgerReader:
 
     def operation_rows(self, refs):
         values = list(dict.fromkeys(public_ref(ref) for ref in refs))
+        return self._operation_rows(values)
+
+    def _operation_rows(self, values):
         if len(values) > MAX_OPERATIONS:
             reject("执行工序超过单次10000条读取上限。", "query_too_large", 413)
         stored = self._snapshot_operations
@@ -98,7 +101,7 @@ class ExecutionLedgerReader:
             reject("任务不存在或报工关联资料缺失，请刷新重选。", "entity_not_found", 404)
         return row
 
-    def task_map(self, operation_refs, plan_ref):
+    def task_map(self, operation_refs, plan_ref, *, cohort=False):
         refs = list(operation_refs)
         if plan_ref is None:
             return {}
@@ -106,7 +109,8 @@ class ExecutionLedgerReader:
         missing = refs if stored is None else [ref for ref in refs if ref not in stored]
         result = {}
         if missing:
-            for row in self.repo.task_rows(missing, plan_ref):
+            rows = self.repo.cohort_task_rows(missing, plan_ref) if cohort else self.repo.task_rows(missing, plan_ref)
+            for row in rows:
                 if row["operation_ref"] in result:
                     reject("同一份计划里这道工序出现了两条安排，系统没有继续读取，请联系维护人员核对数据。", "constraint_conflict", 409)
                 result[row["operation_ref"]] = row
@@ -226,9 +230,9 @@ class ExecutionLedgerReader:
             self._snapshot_plan_read = True
         return self._snapshot_plan
 
-    def load(self, operation_refs, *, comparison_plan_ref=None):
+    def load(self, operation_refs, *, comparison_plan_ref=None, _admitted_refs=False):
         """Private stored facts, not a public response or a second ledger."""
-        operations = self.operation_rows(operation_refs)
+        operations = self._operation_rows(operation_refs) if _admitted_refs else self.operation_rows(operation_refs)
         plan = self._current_plan()
         if comparison_plan_ref is not None and (plan is None or comparison_plan_ref != plan["plan_ref"]):
             admitted = self._snapshot_comparison_plans
@@ -273,6 +277,35 @@ class ExecutionLedgerReader:
                 "current_tasks": current_tasks, "comparison_tasks": comparison_tasks, "plan": plan,
                 "unresolved": stored["unresolved"].intersection(operations), "clock": self.revision_clock()}
 
+    def load_many(self, operation_refs, *, comparison_plan_ref=None):
+        """Read a complete cohort in bounded batches under one ledger snapshot.
+
+        The operation/fact limits apply to each repository read, not to a
+        paginated consumer's complete cohort. Merge facts before projection so
+        reports, revisions, voids and task bindings keep the same semantics as
+        one admitted load.
+        """
+        refs = list(dict.fromkeys(public_ref(ref) for ref in operation_refs))
+        with self.read_snapshot():
+            if len(refs) <= MAX_OPERATIONS:
+                return self.load(refs, comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+            # A SQL parameter chunk otherwise scans the same plan again.
+            # Keep only this cohort in the existing, request-local map;
+            # operation and report facts still use their bounded loads.
+            plan = self._current_plan()
+            for plan_ref in dict.fromkeys([plan["plan_ref"] if plan else None, comparison_plan_ref]):
+                self.task_map(refs, plan_ref, cohort=True)
+            result = self.load(refs[:MAX_OPERATIONS], comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+            for start in range(MAX_OPERATIONS, len(refs), MAX_OPERATIONS):
+                batch = self.load(refs[start:start + MAX_OPERATIONS],
+                                  comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
+                for key in ("operations", "reports", "voids", "legacy", "current_tasks", "comparison_tasks"):
+                    result[key].update(batch[key])
+                for key in ("states", "changes"):
+                    result["legacy_source"][key].update(batch["legacy_source"][key])
+                result["unresolved"].update(batch["unresolved"])
+            return result
+
     def project_loaded(self, facts):
         now = self.clock()
         if not isinstance(now, datetime) or now.tzinfo is not None:
@@ -293,7 +326,9 @@ class ExecutionLedgerReader:
             projection = project_execution(op, reports, evidence_by_operation[ref],
                 current_task=facts["current_tasks"].get(ref), comparison_task=facts["comparison_tasks"].get(ref),
                 plan_identity=facts["plan"], unresolved=ref in facts["unresolved"])
-            result.append(_attach_source_changes(replace(projection, voided_reports=voided), facts["legacy_source"]))
+            if voided:
+                projection = replace(projection, voided_reports=voided)
+            result.append(_attach_source_changes(projection, facts["legacy_source"]))
         return result
 
     def project_operations(self, operation_refs, *, comparison_plan_ref=None):

@@ -44,7 +44,7 @@
       </window.ResourceControls.Field></div>
       {preview && <section aria-label="撤销影响" className="field-note"><h4>撤销后</h4>
         <p>累计完成 {C.quantity(preview.before.known_completed_quantity)} → {C.quantity(preview.after.known_completed_quantity)} 件；剩余 {C.quantity(preview.after.remaining_quantity)} 件；状态 {C.states[preview.after.execution_state]}。</p>
-        {preview.downstream_impacts.length > 0 && <><p role="alert">以下关联记录需要先处理，本次不能撤销：</p><ul>{preview.downstream_impacts.map((item, index) => <li key={index}>{item.operation_label}：{item.message}</li>)}</ul></>}
+        {preview.downstream_impacts.length > 0 && <><p role="alert">以下关联记录需要先处理，本次不能撤销：</p><window.FieldControls.Conflicts rows={preview.downstream_impacts} /></>}
         <Issues issues={preview.warnings} />
         {preview.state === 'voided' && <p>这条报工已经撤销，不会重复扣减。</p>}
       </section>}

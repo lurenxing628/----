@@ -69,7 +69,7 @@ class WorkbenchReportFacts:
         scope, plan, resolution, span = self.current_plan_metadata(scope)
         version = resolution.version
         batch = self.plans.entities.get(scope.batch_ref) if scope.batch_ref else None
-        if scope.batch_ref and (batch is None or batch.kind != "batch"):
+        if scope.batch_ref and (batch is None or batch.kind != "batch" or not batch.active):
             raise WorkbenchCommandRejected("entity_not_found", "筛选记录已失效或类型不符，请重新选择。", 404)
         rows = self.repo.plan_rows(version, date_from=scope.plan_finish_date_from,
             date_to=scope.plan_finish_date_to, batch_id=batch.entity_key if batch else None,

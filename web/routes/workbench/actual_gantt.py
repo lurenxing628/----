@@ -27,13 +27,17 @@ def _scope(export=False, related=False):
     return ActualGanttScope.parse({key: request.args[key] for key in COHORT_KEYS if key in request.args})
 
 
-def _read(scope, *, chain_target=None):
+def _read(scope, *, chain_target=None, bind_axis=True, include_chain=True):
     reader = ActualGanttService(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            data, state = reader.workspace(scope, chain_target=chain_target)
+            data, state = reader.workspace(scope, chain_target=chain_target, include_chain=include_chain)
     snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
-    return bind_axis_time(data, snapshot["as_of"], snapshot["snapshot_ref"]), snapshot
+    if bind_axis:
+        data = bind_axis_time(data, snapshot["as_of"], snapshot["snapshot_ref"])
+    elif data.get("critical_chain") is not None:
+        data["critical_chain"]["snapshot_ref"] = snapshot["snapshot_ref"]
+    return data, snapshot
 
 
 @api_endpoint
@@ -52,7 +56,7 @@ def actual_gantt_related_chain():
     public_ref(target)
     if not request.args.get("snapshot_ref"):
         raise WorkbenchCommandRejected("snapshot_required", "数据已更新，关联工序还没有打开。请点「刷新」后重新选择。", 400)
-    data, snapshot = _read(scope, chain_target=target)
+    data, snapshot = _read(scope, chain_target=target, bind_axis=False)
     response = query_success({key: data[key] for key in ("plan", "scope", "critical_chain")}, snapshot,
                              byte_limit=MAX_ACTUAL_RESPONSE_BYTES)
     response.headers["Cache-Control"] = "no-store"
@@ -64,7 +68,7 @@ def actual_gantt_export():
     scope = _scope(export=True)
     if not request.args.get("snapshot_ref") or request.args.get("format") != "csv":
         raise WorkbenchCommandRejected("invalid_input", "数据已更新，没有开始下载。请点「刷新」后重新点「导出」，再点「下载 CSV」。", 400)
-    data, snapshot = _read(scope)
+    data, snapshot = _read(scope, include_chain=False)
     content, rows, operations = actual_gantt_csv(data, snapshot, {key: request.args[key] for key in VIEW_KEYS if key in request.args})
     if len(content) > MAX_ACTUAL_RESPONSE_BYTES:
         raise WorkbenchCommandRejected("query_too_large", "现场甘特 CSV 超过 32 MB，请缩小范围后重新导出。", 413)

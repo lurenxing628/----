@@ -1,6 +1,6 @@
 """In-memory batch simulation. No SQL writes, including preview and import checks."""
 
-from typing import Any, Dict, List, NoReturn, Optional, cast
+from typing import Any, Dict, List, NoReturn, cast
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import (
@@ -15,6 +15,7 @@ from data.repositories.workbench_execution_report_repo import new_ref
 from .production_report_dependencies import ReportDependencies
 from .production_report_validation import (
     ReportResourceValidator,
+    execution_conflict_details,
     execution_conflicts,
     execution_facts_changed,
     legacy_link_values,
@@ -26,18 +27,15 @@ from .production_report_validation import (
 
 
 class ReportBatchRejected(WorkbenchCommandRejected):
-    def __init__(self, code: str, message: str, status: int = 409, *,
-                 row_number: Optional[int] = None, conflicts: Optional[List[Dict[str, str]]] = None):
-        super().__init__(code, message, status)
-        self.row_number = row_number
-        self.conflicts = [] if conflicts is None else conflicts
+    """Batch rejection with the common public conflict and row identity contract."""
 
 
 def _reject_row(error: WorkbenchCommandRejected, row_number: int) -> NoReturn:
     if isinstance(error, ReportBatchRejected):
         error.row_number = row_number
         raise error
-    raise ReportBatchRejected(error.code, str(error), error.status, row_number=row_number) from error
+    raise ReportBatchRejected(error.code, str(error), error.status, row_number=row_number,
+                              operation_refs=error.operation_refs, conflicts=error.conflicts) from error
 
 
 def normalize_items(items):
@@ -148,10 +146,12 @@ class ReportBatchPreparation:
                 validate_merged_cycle(dependencies, self.facts["operations"][after.operation_ref], before[after.operation_ref],
                                       after, changed)
                 revisions = [row for row in changed if row["sequence"] > 1]
-                conflicts = execution_conflicts(self.ledger, self.facts, before[after.operation_ref], after, revisions,
-                    dependencies=dependencies, protect_plan=bool(revisions), facts_changed=facts_changed[after.operation_ref])
+                conflicts = (execution_conflicts(self.ledger, self.facts, before[after.operation_ref], after, revisions,
+                    dependencies=dependencies, protect_plan=bool(revisions))
+                    if facts_changed[after.operation_ref] else [])
                 if conflicts:
-                    raise ReportBatchRejected("constraint_conflict", "这次报工会影响前后道工序或已采用的排产安排。请先处理下面列出的影响。", conflicts=conflicts)
+                    raise ReportBatchRejected("constraint_conflict", "这次报工会影响前后道工序或已采用的排产安排。请先处理下面列出的影响。",
+                                              conflicts=execution_conflict_details(self.ledger, self.facts, conflicts))
             except WorkbenchCommandRejected as exc:
                 _reject_row(exc, max(row["row_number"] for row in self.rows if row["operation_ref"] == after.operation_ref))
         return self
@@ -229,9 +229,11 @@ class ReportBatchPreparation:
         return {"row_number": index, "action": action or row["action"], "ref": item["ref"], "report_ref": row["report_ref"],
                 "report_no": row["report_no"], "revision_ref": row["revision_ref"], "operation_ref": row["operation_ref"], "result": result}
 
-    def materialize(self, now, actor):
+    def materialize(self, now, actor=None):
         """Convert this checked simulation into commit identities and current server timestamps."""
-        if not isinstance(actor, str) or not actor.strip():
+        if actor is None:
+            actor = self.actor
+        elif not isinstance(actor, str) or not actor.strip():
             raise ValueError("Local application operator must be supplied by the server")
         stamp = now.isoformat(timespec="seconds")
         report_refs, revision_refs = {}, {}

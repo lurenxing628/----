@@ -34,7 +34,7 @@ def bind_axis_time(data, as_of, snapshot_ref=None):
     start = clock.isoformat(timespec="seconds")
     end = (clock + timedelta(hours=1)).isoformat(timespec="seconds")
     data["axis_span"] = {"start": min(data["axis_span"]["start"], start), "end": max(data["axis_span"]["end"], end)}
-    if snapshot_ref is not None:
+    if "critical_chain" in data:
         data["critical_chain"]["snapshot_ref"] = snapshot_ref
     for item in data["items"]:
         item["deviation"] = execution_deviation(item["task"]["end"], item["execution"], as_of)
@@ -114,13 +114,20 @@ class ActualGanttService:
     def _planned(self, scope, context):
         plan_scope = PlanReadScope(scope.plan_ref, scope.range_start, scope.range_end)
         _, entry, span = context.selected(scope.plan_ref)
-        rows = context.scoped_rows(entry, plan_scope)
-        if scope.plan_finish_date_from is not None or scope.batch_ids:
-            times, batches = context.intervals(entry), set(scope.batch_ids)
-            rows = [row for row in rows
-                    if (not batches or row["batch_id"] in batches)
-                    and (scope.plan_finish_date_from is None or scope.plan_finish_date_from <=
-                         times[row["schedule_id"]][1][:10] <= scope.plan_finish_date_to)]
+        if scope.range_start is None and scope.plan_finish_date_from is not None:
+            times = context.intervals(entry)
+            prepared = context.repo.prepared_rows(**context.query(entry))
+            rows = context._enrich_rows(entry, [row for row in prepared
+                if scope.plan_finish_date_from <= times[row["id"]][1][:10] <= scope.plan_finish_date_to])
+        else:
+            rows = context.scoped_rows(entry, plan_scope)
+            if scope.plan_finish_date_from is not None:
+                times = context.intervals(entry)
+                rows = [row for row in rows if scope.plan_finish_date_from <=
+                        times[row["schedule_id"]][1][:10] <= scope.plan_finish_date_to]
+        if scope.batch_ids:
+            batches = set(scope.batch_ids)
+            rows = [row for row in rows if row["batch_id"] in batches]
         tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, entry, rows)
         selected = selected_context(self.conn, entry, plan_scope, rows, resources, span, read_context=context)
         calendar, calendar_facts = project_plan_calendar(self.conn, entry=entry, scope=plan_scope, rows=rows,
@@ -156,12 +163,13 @@ class ActualGanttService:
             resources = _merge_resources(planned["resources"], projection["resources"])
         return projection, items, resources, availability
 
-    def workspace(self, scope, *, chain_target=None):
+    def workspace(self, scope, *, chain_target=None, include_chain=True):
         context = PlanReadContext(self.conn)
         with context.read_scope():
             planned, plan_state = self._planned(scope, context)
         projection, items, resources, availability = self._execution(planned, scope)
-        items = [item for item in items if cohort_match(item, scope)]
+        if scope.resource_ref is not None:
+            items = [item for item in items if cohort_match(item, scope)]
         _, _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref, context=context)
         data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
                 "axis_span": _span(planned["plan_span"], items), "availability": availability,
@@ -174,6 +182,7 @@ class ActualGanttService:
                               "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
         state = content_text({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
                                    "data": data})
-        data["critical_chain"] = plan_chain(scope.plan_ref,
-            {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)
+        if include_chain:
+            data["critical_chain"] = plan_chain(scope.plan_ref,
+                {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)
         return data, state
