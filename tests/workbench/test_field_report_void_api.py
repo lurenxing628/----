@@ -74,7 +74,9 @@ def test_field_preview_confirm_refresh_and_original_receipt_replay(field_api):
     assert response.status_code == 409 and response.get_json()['error']['code'] == 'constraint_conflict'
     assert all_rows(case.conn) == before
     payload, data = preview(api, actual)
-    assert not data['can_confirm'] and {item['code'] for item in data['downstream_impacts']} == {'adopted_actual_period_changed'}
+    # The zero-quantity row still owns the adopted machine/operator interval 12–13.
+    assert not data['can_confirm'] and {item['code'] for item in data['downstream_impacts']} == {
+        'adopted_actual_period_changed', 'adopted_actual_resource_changed'}
     assert data['before']['known_completed_quantity'] == data['after']['known_completed_quantity'] == 10
     with pytest.raises(WorkbenchCommandRejected) as error:
         case.command('report_void', actual['report_ref'], payload)
