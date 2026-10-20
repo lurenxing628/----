@@ -1,6 +1,11 @@
 """Fresh calibration pagination keeps snapshot, detail and export bindings."""
 
+import csv
+from io import BytesIO, StringIO
+
+import pytest
 from flask import Blueprint, Flask, g
+from openpyxl import load_workbook
 
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
@@ -66,6 +71,19 @@ def test_calibration_restores_page_once_and_keeps_scope_source_and_expiry(lineag
         assert missing.status_code == 400 and missing.get_json()["error"]["code"] == "snapshot_required"
         bound = client.get(target, query_string={**query, "snapshot_ref": token})
         assert bound.status_code == 200, bound.get_json()
+    for format_name in ("csv", "xlsx"):
+        exported = client.get(path + "/export", query_string={**query, "snapshot_ref": token, "format": format_name})
+        assert exported.status_code == 200
+        if format_name == "csv":
+            values = list(csv.reader(StringIO(exported.data.decode("utf-8-sig"))))
+        else:
+            workbook = load_workbook(BytesIO(exported.data), read_only=True)
+            try:
+                values = list(workbook.worksheets[0].values)
+            finally:
+                workbook.close()
+        assert len(values[0]) == 22 and tuple(values[0][3:5]) == ("工序名称", "工序来源")
+        assert len(values) == 3 and all(len(row) == 22 and row[4] == "自制" for row in values[1:])
     wrong_scope = client.get(path, query_string={**query, "source": "external", "snapshot_ref": token})
     assert wrong_scope.status_code == 409 and wrong_scope.get_json()["error"]["code"] == "snapshot_stale"
     now = public_token_registry.time.time()
@@ -168,3 +186,99 @@ def test_direct_token_reissue_keeps_old_expiry_and_lru_drops_empty_groups(monkey
         public_token_registry.issue_public_token("lru", "third")
         public_token_registry.issue_public_token("lru", "fourth")
         assert public_token_registry.resolve_public_token("lru", active, message="expired", field="token") == "active"
+
+
+def test_new_read_times_and_write_subjects_share_one_registered_fact_text(monkeypatch):
+    import pytest
+
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from web.routes.workbench import read_context, write_context
+
+    app, clock = Flask("canonical-binding-retention"), [1000.0]
+    monkeypatch.setattr(public_token_registry.time, "time", lambda: clock[0])
+    with app.app_context():
+        text = "canonical manufacturing facts " * 1000
+        read_tokens, write_tokens = [], []
+        for index in range(6):
+            copied = ("fresh:" + text)[6:]
+            assert copied == text and copied is not text
+            read = read_context.bind_read_snapshot({"kind": "batch"}, copied, as_of="2026-10-18T04:00:0" + str(index))
+            read_tokens.append(read["snapshot_ref"])
+            write_tokens.append(write_context.issue_write_context(str(index), ["save"], copied)["write_token"])
+        reads = [read_context.resolve_read_snapshot(token) for token in read_tokens]
+        writes = [public_token_registry.resolve_public_token(write_context._SCOPE, token, message="expired", field="token")
+                  for token in write_tokens]
+        assert len(set(read_tokens)) == len(read_tokens)
+        assert all(row.fingerprint is reads[0].fingerprint for row in reads)
+        assert all(row.snapshot is writes[0].snapshot for row in writes)
+        assert reads[0].fingerprint[1] is writes[0].snapshot[1]
+        for index, token in enumerate(write_tokens):
+            write_context.validate_write_context(token, str(index), "save", text)
+        with pytest.raises(WorkbenchCommandRejected):
+            write_context.validate_write_context(write_tokens[0], "0", "save", text + " changed")
+        assert read_context.bind_read_snapshot({"kind": "batch"}, text, read_tokens[0])["snapshot_ref"] == read_tokens[0]
+        clock[0] = 1451.0
+        refreshed = write_context.issue_write_context("0", ["save"], ("fresh:" + text)[6:])["write_token"]
+        assert refreshed != write_tokens[0]
+        renewed = public_token_registry.resolve_public_token(write_context._SCOPE, refreshed, message="expired", field="token")
+        assert renewed.snapshot is writes[0].snapshot
+        write_context.validate_write_context(write_tokens[0], "0", "save", text)
+        clock[0] = 1900.0
+        with pytest.raises(WorkbenchCommandRejected):
+            write_context.validate_write_context(write_tokens[0], "0", "save", text)
+        write_context.validate_write_context(refreshed, "0", "save", text)
+
+
+def test_group_binding_uses_canonical_group_under_lock_and_failure_leaves_no_group(monkeypatch):
+    import pytest
+
+    app, held = Flask("canonical-binding-lock"), []
+    original_lock = public_token_registry._LOCK
+
+    class ObservedLock:
+        def __enter__(self):
+            original_lock.acquire()
+            held.append(True)
+
+        def __exit__(self, *args):
+            held.pop()
+            original_lock.release()
+
+    monkeypatch.setattr(public_token_registry, "_LOCK", ObservedLock())
+    with app.app_context():
+        first = public_token_registry.PublicTokenIssuer("bound-lock", group=("facts", "same"))
+        old, _ = first.issue_bound_with_expiry(lambda group: group, key="old")
+        canonical = public_token_registry.resolve_public_token("bound-lock", old, message="expired", field="token")
+        copied = tuple(["facts", "same"])
+        assert copied == canonical and copied is not canonical
+        second = public_token_registry.PublicTokenIssuer("bound-lock", group=copied)
+
+        def bind(group):
+            assert held and group is canonical
+            return {"facts": group}
+
+        new, _ = second.issue_bound_with_expiry(bind, key="new")
+        assert public_token_registry.resolve_public_token("bound-lock", new, message="expired", field="token")["facts"] is canonical
+        failed = public_token_registry.PublicTokenIssuer("bound-failure", group=("facts", "different"))
+
+        def fail(_group):
+            raise RuntimeError("binding failed")
+
+        with pytest.raises(RuntimeError, match="binding failed"):
+            failed.issue_bound_with_expiry(fail, key="row")
+        state = public_token_registry._registry()["bound-failure"]
+        assert not state["tokens"] and not state["by_value"]
+        recovered, _ = failed.issue_bound_with_expiry(lambda group: group, key="row")
+        assert public_token_registry.resolve_public_token("bound-failure", recovered, message="expired", field="token") == ("facts", "different")
+
+
+@pytest.mark.parametrize("source,label", (("internal", "自制"), ("external", "外协"), ("unknown", "未确认"), (None, "未确认")))
+def test_calibration_export_source_labels_are_shared_by_csv_and_xlsx(source, label):
+    from core.services.workbench.calibration.export import COLUMNS, _export_values
+
+    row = {key: None for key, _ in COLUMNS}
+    row["source"] = source
+    source_index = next(index for index, (key, _) in enumerate(COLUMNS) if key == "source")
+    for format_name in ("csv", "xlsx"):
+        values, = _export_values([row], "{}", format_name)
+        assert len(values) == 22 and values[source_index] == label

@@ -11,7 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize("name", ("workbench-format.cjs", "workbench-terms-and-ids.cjs", "workbench-density.cjs", "workbench-guards.cjs",
-                                  "workbench/analysis_ui_contract.cjs", "workbench/ui_refinement_reports_review_contract.cjs",
+                                  "workbench/analysis_ui_contract.cjs", "workbench/dashboard_analysis_pagination_contract.cjs",
+                                  "workbench/ui_refinement_reports_review_contract.cjs",
+                                  "workbench/batch_summary_contract.cjs",
                                   "workbench/runtime_reuse_contract.cjs", "workbench/quota_revision_contract.cjs", "workbench/resource_rail_presentation_contract.cjs",
                                   "workbench-calendar-zero-hours.cjs", "workbench/notice_ownership_contract.cjs",
                                   "workbench/scheduling_preferences_contract.cjs", "workbench/gantt_graph_contract.cjs",

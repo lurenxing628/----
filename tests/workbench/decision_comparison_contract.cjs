@@ -313,6 +313,16 @@ function recommendationContracts() {
     assert.equal(tree.props['data-recommendation-type'], kind); assert(visibleText(tree).includes(value.candidates.find(candidate => candidate.candidate_ref === value.recommendation.candidate_ref).label), '推荐类别和候选身份沿用后端保存结果');
     assert(!visibleText(tree).includes('建议采用'), '算法推荐标题与当前采用预检分别表达');
   }
+  for (const compact of [false, true]) {
+    const unavailable = clone(data);
+    unavailable.recommendation.candidate_ref = null;
+    unavailable.recommendation.headline = '所有候选均未完成计算，暂无可推荐方案。';
+    const panel = expand(h(D.Recommendation, { data: unavailable, onSelect: () => {}, compact }));
+    assert.equal(text(nodes(panel).find(node => node.type === 'h3')), '本次排产暂无推荐方案');
+    assert.equal(text(nodes(panel).find(node => node.props.className === 'rd-recommend-cause')), unavailable.recommendation.headline,
+      'Without a selected recommendation, its actual outcome takes precedence over saved selection-basis wording');
+    assert(!nodes(panel).some(node => node.type === 'button' && node.props.icon === 'search'));
+  }
   const tree = expand(h(D.Recommendation, { data, onSelect: () => {} })), full = text(tree), shown = visibleText(tree);
   const compact = expand(h(D.Recommendation, { data, onSelect: () => {}, compact: true })), compactShown = visibleText(compact);
   assert(compactShown.includes('本次建议') && compactShown.includes(data.baseline.label) && compactShown.includes(data.recommendation.current_comparison.benefits[0].label) && compactShown.includes(data.recommendation.current_comparison.costs[0].label), '顶区固定推荐与当前真实收益、代价分别显示');
@@ -446,7 +456,8 @@ function hooks() {
     useRef(initial) { const index = cursor++; if (!slots[index]) slots[index] = { current: initial }; return slots[index]; },
     useState(initial) { const index = cursor++; if (!slots[index]) slots[index] = { value: typeof initial === 'function' ? initial() : initial }; return [slots[index].value, update => { slots[index].value = typeof update === 'function' ? update(slots[index].value) : update; }]; },
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
-    render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); } };
+    render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); },
+    unmount() { effects.length = 0; slots.forEach(slot => { if (slot.cleanup) { slot.cleanup(); slot.cleanup = null; } }); } };
 }
 function schedulingNavigationContracts() {
   const localReact = { ...React, useMemo: make => make() }, links = [], historyQuery = { state: 'complete', sort: 'accepted_at', order: 'desc', page: 2, size: 20 };
@@ -1639,10 +1650,164 @@ async function unifiedGenerationContracts() {
     target_objectives: algorithm.target_objectives, algorithm_metadata_equal: true, identity_reads: calls.length, decision_summary: true, process_directions: 3,
     real_improvement_ms: improved.summary.last_improvement_elapsed_ms, sampled_improvement_ms: sampled.summary.last_improvement_elapsed_ms } }));
 }
+async function adoptionContextContracts() {
+  const state = hooks(), values = new Map(), listeners = new Map(), calls = [];
+  let random = 0;
+  const storage = { getItem: key => values.has(key) ? values.get(key) : null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+  const local = { ...window, localStorage: storage, crypto: { getRandomValues(bytes) { bytes.fill(++random); return bytes; } },
+    WorkbenchHandlerMemory: { read: () => ({ value: '经办人' }), write() {}, useHint: () => '' },
+    addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
+    removeEventListener(type, fn) { if (listeners.has(type)) listeners.get(type).delete(fn); },
+    dispatchEvent(event) { for (const fn of listeners.get(event.type) || []) fn(event); } };
+  class CustomEvent { constructor(type, options) { this.type = type; this.detail = options.detail; } }
+  const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+    sources: ['RunAdoptionAPI.js', 'RunAdoptionControls.jsx', 'RunAdoptionAction.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
+  const context = vm.createContext({ React: state.React, window: local, AbortController, DOMException, CustomEvent, URLSearchParams, setTimeout, clearTimeout });
+  outputs.forEach(output => vm.runInContext(output.code, context, { filename: output.path }));
+  const A = local.RunAdoptionAPI, oldContext = JSON.stringify({ database_scope: '/old.db', successful_restores: [] }),
+    newContext = JSON.stringify({ database_scope: '/current.db', successful_restores: ['e'.repeat(32)] });
+  const summary = { candidate_ref: first, run_ref: runRef, baseline: { plan_ref: planRef, version: 7 }, task_count: 3, scope_complete: true },
+    input = { confirm: true, reason: '核对后采用', declared_operator: '经办人' };
+  const status = (intent, resolution) => ({ ok: true, result: 'not_recorded', request_key: intent.request_key,
+    may_be_in_flight: resolution === 'unresolved', resolution, data_context_ref: newContext,
+    message: resolution === 'context_replaced' ? '数据库已切换或恢复，请切回原来源查询，或结束旧来源记录。' : '采用结果仍待确认。' });
+  const receipt = intent => ({ ok: true, result: 'committed', receipt_ref: '9'.repeat(32), replayed: true, warnings: [],
+    data: { candidate_ref: intent.candidate_ref, run_ref: intent.preview.run_ref, row_count: intent.preview.task_count,
+      official_plan: { plan_ref: '8'.repeat(48), version: 8, kind: 'official', is_current_official: true, display_name: '正式计划 v8',
+        source_run_ref: intent.preview.run_ref, baseline_ref: intent.preview.baseline.plan_ref, completeness: 'complete',
+        capabilities: { view: true, edit_draft: false, adopt: false, report_actual: true }, blocked_reasons: [] } } });
+  const preview = candidateRef => ({ ok: true, schema_version: 1, data: { ...summary, candidate_ref: candidateRef, data_context_ref: newContext,
+    validation: { status: 'valid', can_adopt: true, issues: [] }, write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-20T10:00:00',
+      capabilities: { 'scheduling.candidate.adopt': true }, blocked_reasons: [] } },
+    warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-20T09:00:00' } });
+  const legacy = A.pending().begin(summary, input);
+  assert.equal(legacy.schema_version, 1); assert.equal(A.validIntent(legacy), true);
+  const proof = A.lookup(status(legacy, 'context_replaced'), legacy);
+  assert.equal(A.lookup(status(legacy, 'unresolved'), legacy), null, 'An in-flight record remains protected');
+  assert.throws(() => A.pending().dismissReplaced(legacy, clone(proof)), /不能丢弃/, 'A copied or forged proof cannot authorize dismissal');
+  const changed = { ...legacy, input: { ...legacy.input, reason: '另一个提交内容' } };
+  storage.setItem(A.PENDING_KEY, JSON.stringify(changed));
+  assert.throws(() => A.pending().dismissReplaced(changed, proof), /不能丢弃/, 'Proofs bind the entire original intent, not just its request key');
+  assert.throws(() => A.pending().dismissReplaced(legacy, proof), /记录已变化/, 'CAS preserves a newer stored record');
+  assert.deepEqual(clone(A.pending().read()), clone(changed));
+  storage.setItem(A.PENDING_KEY, JSON.stringify(legacy));
+  const blockedStorage = { ...storage, removeItem() { throw new Error('disk full'); } };
+  assert.throws(() => A.pending(blockedStorage).dismissReplaced(legacy, proof), /存不下/);
+  assert.equal(A.pending().read().request_key, legacy.request_key);
+  A.pending().dismissReplaced(clone(legacy), proof); assert.equal(A.pending().read(), null);
+  const modern = A.pending().begin({ ...summary, data_context_ref: oldContext }, input);
+  assert.equal(modern.schema_version, 2); assert.equal(modern.data_context_ref, oldContext); assert(A.validIntent(modern));
+  assert(!A.validIntent({ ...modern, data_context_ref: JSON.stringify({ database_scope: '/old.db', successful_restores: [true] }) }));
+  assert(A.validIntent({ ...modern, data_context_ref: 'd'.repeat(64) }), 'Existing hashed source identities remain readable');
+  const transportCalls = [], transport = A.create(async (url, options) => {
+    transportCalls.push({ url: new URL(url, 'http://localhost'), options });
+    return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => status(modern, 'context_replaced') };
+  });
+  const raw = await transport.lookup(modern);
+  assert.equal(raw.resolution, 'context_replaced');
+  assert.equal(transportCalls[0].url.pathname, '/api/workbench/v1/scheduling/candidates/' + first + '/adoption-commands/' + modern.request_key);
+  assert.equal(transportCalls[0].url.searchParams.get('run_ref'), runRef);
+  assert.equal(transportCalls[0].url.searchParams.get('data_context_ref'), oldContext);
+  assert.equal(transportCalls[0].options.method, 'GET');
+  await transport.lookup(legacy);
+  assert.equal(transportCalls.at(-1).url.searchParams.has('data_context_ref'), false);
+  A.preview(preview(third), third);
+  assert.strictEqual(A.lookup(receipt(modern), modern).data.candidate_ref, first, 'Committed results from another candidate remain recoverable');
+  storage.setItem(A.PENDING_KEY, JSON.stringify(legacy));
+  let lookupValue = status(legacy, 'context_replaced'), previews = 0;
+  const props = { candidateRef: third, candidateCatalog: data.candidates, adapter: {
+    async lookup(intent) { calls.push(intent.request_key); return lookupValue; },
+    async preview(candidateRef) { previews++; return preview(candidateRef); }
+  } };
+  let tree;
+  const render = () => { tree = state.render(() => { const session = local.RunAdoptionAction(props); return session.type(session.props); }); state.flush(); return tree; };
+  const settle = async () => { for (let index = 0; index < 3; index++) { render(); await turns(); } return render(); };
+  const dialog = () => nodes(tree).find(node => node.type === local.RunAdoptionControls.Dialog);
+  const footer = () => nodes(expand(dialog().type(dialog().props).props.footer));
+  await settle(); nodes(tree).find(node => node.type === 'button').props.onClick(); await settle();
+  assert(dialog().props.notice.includes('另一个候选方案') && dialog().props.notice.includes('数据库已切换或恢复'),
+    'Cross-candidate notices do not hide the source-replacement explanation');
+  assert(footer().some(node => node.type === 'button' && text(node) === '结束旧来源待确认记录'));
+  let resolveLookup;
+  lookupValue = new Promise(resolve => { resolveLookup = resolve; });
+  dialog().props.onLookup(); render(); render();
+  assert.equal(dialog().props.replacedInfo, null, 'Starting a new query invalidates the previous dismissal proof');
+  resolveLookup(status(legacy, 'unresolved')); await settle();
+  assert.equal(dialog().props.replacedInfo, null); assert(!footer().some(node => text(node) === '结束旧来源待确认记录'));
+  assert.equal(A.pending().read().request_key, legacy.request_key);
+  lookupValue = status(legacy, 'context_replaced'); dialog().props.onLookup(); await settle();
+  const next = { ...legacy, request_key: 'adoption-' + 'f'.repeat(48), candidate_ref: third, preview: { ...legacy.preview, candidate_ref: third } };
+  lookupValue = status(next, 'unresolved'); storage.setItem(A.PENDING_KEY, JSON.stringify(next));
+  local.dispatchEvent(new CustomEvent(A.EVENT, { detail: next })); render(); render();
+  assert.equal(dialog().props.replacedInfo, null, 'A storage event cannot transfer source-replacement proof to another pending record');
+  await settle(); assert(!dialog().props.notice.includes('数据库已切换或恢复'));
+  lookupValue = receipt(next); dialog().props.onLookup(); await settle();
+  assert(dialog().props.result); assert.equal(dialog().props.replacedInfo, null);
+  dialog().props.onFinish(); await settle(); assert.equal(A.pending().read(), null);
+  storage.setItem(A.PENDING_KEY, JSON.stringify(legacy)); lookupValue = status(legacy, 'context_replaced');
+  local.dispatchEvent(new CustomEvent(A.EVENT, { detail: legacy })); await settle();
+  nodes(tree).find(node => node.type === 'button').props.onClick(); await settle();
+  nodes(expand(dialog().type(dialog().props).props.footer)).find(node => node.type === 'button' && text(node) === '结束旧来源待确认记录').props.onClick();
+  await settle(); assert.equal(A.pending().read(), null); assert.equal(dialog(), undefined);
+  nodes(tree).find(node => node.type === 'button').props.onClick(); await settle();
+  assert.equal(previews, 1); assert.equal(dialog().props.preview.candidate_ref, third, 'Ending the proven old-source record restores current-candidate actions');
+  state.unmount();
+}
+async function dashboardReadContracts() {
+  const state = hooks(), timers = new Map(), requests = [];
+  let timerId = 0;
+  const local = { ...window }, context = vm.createContext({ window: local, React: state.React, AbortController, DOMException, URLSearchParams,
+    setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; }, clearTimeout(id) { timers.delete(id); } });
+  const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
+    sources: ['resource-session.js', 'DashboardContract.js', 'DashboardAnalysisAPI.js'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
+  outputs.forEach(output => vm.runInContext(output.code, context, { filename: output.path }));
+  const C = local.DashboardContract, Q = local.DashboardAnalysisAPI;
+  for (const analysis of [false, true]) {
+    const abortError = new DOMException('cancelled', 'AbortError');
+    const fetcher = (url, options) => new Promise((resolve, reject) => {
+      requests.push({ url, options }); options.signal.addEventListener('abort', () => reject(abortError), { once: true });
+    });
+    const read = signal => analysis ? Q.request('/api/workbench/v1/dashboard/analysis', fetcher, signal) : C.create(fetcher).list(C.scope(), signal);
+    const waiting = read();
+    assert.equal(timers.size, 1); const timer = [...timers.values()][0]; assert.equal(timer.delay, 60000);
+    timer.fn();
+    await assert.rejects(waiting, error => error !== abortError && error.message === '值班台读取超时（超过 60 秒），请重试或缩小筛选范围。');
+    assert.equal(timers.size, 0);
+    const controller = new AbortController(), cancelled = read(controller.signal); controller.abort();
+    await assert.rejects(cancelled, error => error === abortError, 'An external abort is not misreported as a timeout');
+    assert.equal(timers.size, 0);
+    const networkError = new Error('offline');
+    const failed = () => { throw networkError; };
+    await assert.rejects(analysis ? Q.request('/analysis', failed) : C.create(failed).list(C.scope()), error => error === networkError);
+  }
+  const response = (value, status) => ({ ok: status === 200, status, headers: { get: () => 'application/json' }, json: async () => value });
+  const refusal = { ok: false, committed: false, error: { code: 'snapshot_stale', message: '快照已变化。', fields: [] } };
+  const denied = C.create(async (url, options) => { requests.push({ url, options }); return response(refusal, 409); });
+  await assert.rejects(denied.list(C.scope()), error => error.code === 'snapshot_stale' && C.isRejected(error), 'Business rejection identity survives the timeout catch');
+  const lane = requests.at(-1).options.headers['X-Workbench-Read-Lane'];
+  assert.match(lane, /^dashboard-list:[A-Za-z0-9-]+$/);
+  await assert.rejects(C.create(async (url, options) => { requests.push({ url, options }); return response(refusal, 409); }).list(C.scope()));
+  assert.equal(requests.at(-1).options.headers['X-Workbench-Read-Lane'], lane, 'The page lane is shared across adapter recreation');
+  await assert.rejects(denied.detail(first, C.scope()), error => C.isRejected(error));
+  assert.equal(requests.at(-1).options.headers, undefined, 'Detail and history reads never replace the list lane');
+  await assert.rejects(denied.command({ item_ref: first, action: 'transition', request_key: 'dashboard-' + first }, 'token'), error => C.isRejected(error));
+  assert.equal(requests.at(-1).options.headers['X-Workbench-Read-Lane'], undefined);
+  assert.equal(requests.at(-1).options.headers['Content-Type'], 'application/json');
+  const superseded = { ok: false, committed: false, error: { code: 'request_superseded', message: 'replaced', fields: [] } };
+  await assert.rejects(C.create(async () => response(superseded, 499)).list(C.scope()), error => error.name === 'AbortError' && !C.isRejected(error));
+  let resolveOld, version = 0;
+  const api = C.create(() => new Promise(resolve => { resolveOld = resolve; }));
+  const render = () => state.render(() => local.APSResourceSession.useQuery(signal => version === 0 ? api.list(C.scope(), signal) : Promise.resolve('latest'), [version]));
+  render(); state.flush(); await turns(); version = 1; render(); state.flush(); await turns();
+  resolveOld(response(superseded, 499)); await turns();
+  const current = render(); assert.equal(current.result, 'latest'); assert.equal(current.error, null, 'A superseded old read cannot overwrite the current query');
+  state.unmount(); assert.equal(timers.size, 0);
+}
 async function main() {
   comparisonHeaderContracts(schedulingNavigationContracts());
   detailContracts(); referenceContracts(); recommendationContracts(); await transportContracts(); await workspaceContracts(); await paneContracts(); await completionContracts();
   processReadContracts(); attemptComparisonContracts(); processEvaluationScopeContracts(); processChartContracts(); await processPaneContracts(); await processTransportContracts(); await unifiedGenerationContracts();
+  await adoptionContextContracts(); await dashboardReadContracts();
   console.log('decision comparison contract: candidate/formal scope, recommendation/completion, process owners/unknowns, single-leaf paging/export, verified curve segments, cancellation and original-viewer gantt return passed');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

@@ -383,6 +383,82 @@ async function main() {
   assert.equal(find(resourceTree, resourceForms).refreshState.detail.data.ref, operatorRef);
   assert.equal(resourceSnapshots.at(-1)[0].read_view.scope.page, 2); resourceHooks.unmount();
 
+  // Op-type entity membership can be both; command readback keeps the originating list.
+  async function opTypeWorkspace(initialNode, existing = false) {
+    const workspaceHooks = hooks(), localWindow = {
+      ResourceControls: Object.fromEntries(['Button', 'Icon', 'ErrorBox', 'Issues', 'Status', 'Modal', 'Choice', 'Relation', 'Field'].map(name => [name, name])),
+      ResourceRail: 'resource-rail', ResourceMetrics: 'resource-metrics',
+      ResourceTableFilterModel: { restore: filters => ({ filters, notice: '' }) }, WorkbenchPageContext: { useSnapshot() {} },
+      WorkbenchGuards: { useDirtyGuard: () => 'op-type-form', confirmLeave: async () => true }, WorkbenchTerms: { refresh_latest: '刷新最新资料' },
+      crypto: { getRandomValues: bytes => bytes.fill(1) }, addEventListener() {}, removeEventListener() {}
+    };
+    localWindow.ResourceControls.focusFirstInvalid = () => {};
+    const tables = () => null; tables.Pager = 'resource-pager'; localWindow.ResourceTables = tables;
+    const context = vm.createContext({ window: localWindow, React: workspaceHooks.React, AbortController, DOMException });
+    for (const name of ['resource-contract.js', 'resource-session.js', 'ResourceForms.jsx', 'ResourceWorkspace.jsx']) load(context, name);
+    localWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
+    const ref = '3'.repeat(48), supplierRef = '4'.repeat(48), requests = [], details = [], saved = [], writes = [];
+    const writeContext = { write_token: 'op-type-token', capabilities: { 'op_type.create': true, 'op_type.update': true, 'op_type.delete': true } };
+    const makeEntity = (kind, fields = {}) => ({ ref: kind === 'supplier' ? supplierRef : ref, business_code: kind === 'supplier' ? 'SUPPLIER' : 'F01-BOTH',
+      label: kind === 'supplier' ? '供应商' : '两用工种', status: kind === 'supplier' ? 'active' : null, fields, relationships: {}, issues: [], write_context: writeContext });
+    let entity = existing ? makeEntity('op_type', { category: 'both', default_merge_mode: 'separate', remark: '原备注' }) : null;
+    const envelope = data => ({ ok: true, schema_version: 1, data, warnings: [], meta: { source: 'production', time_basis: 'factory_local',
+      snapshot_ref: 'op-snapshot-' + requests.length, request_ref: 'op-request', as_of: '2026-10-18T08:00:00' } });
+    const api = {
+      async list(kind, scope) {
+        requests.push({ kind, ...JSON.parse(JSON.stringify(scope)) });
+        if (kind === 'op_type') assert(['internal', 'external'].includes(scope.category), 'List readback must use a real list category');
+        const entities = kind === 'supplier' ? [makeEntity('supplier')] : entity && [scope.category, 'both'].includes(entity.fields.category) ? [entity] : [];
+        return envelope({ entities, create_context: writeContext, page: { number: scope.page, size: scope.size, total: entities.length, pages: 1, sort: [] } });
+      },
+      async detail(kind, selectedRef) { details.push({ kind, ref: selectedRef }); assert.equal(selectedRef, kind === 'supplier' ? supplierRef : ref); return envelope(kind === 'supplier' ? makeEntity('supplier') : entity); },
+      savePending(intent) { saved.push({ category: intent.category, input: JSON.parse(JSON.stringify(intent.input)) }); }, clearPending() {},
+      async command(kind, action, selectedRef, body) {
+        assert.equal(kind, 'op_type'); writes.push({ action, input: JSON.parse(JSON.stringify(body.input)) });
+        if (action === 'create') entity = { ...makeEntity(kind), ...body.input, fields: body.input.fields };
+        else if (action === 'update') entity = { ...entity, ...body.input, fields: { ...entity.fields, ...body.input.fields } };
+        else { assert.equal(action, 'delete'); entity = null; }
+        return { ok: true, result: 'committed', receipt_ref: 'op-receipt-' + writes.length, data: { entity_ref: ref }, warnings: [] };
+      }
+    };
+    let tree, formHooks;
+    const render = () => workspaceHooks.render(() => localWindow.ResourceWorkspace({ adapter: api, initialNode }));
+    async function settle() { for (let n = 0; n < 6; n++) { tree = render(); workspaceHooks.flush(); await turns(); } return tree; }
+    const editor = () => find(tree, localWindow.ResourceForms);
+    function form() { context.React = formHooks.React; const result = formHooks.render(() => localWindow.ResourceForms(editor())); formHooks.flush(); context.React = workspaceHooks.React; return result; }
+    function change(name, value) { find(form(), name === 'category' ? 'select' : 'input', props => props.name === name).onChange({ target: { value } }); }
+    async function submit() { await find(form(), 'form').onSubmit({ preventDefault() {}, currentTarget: { elements: [] } }); await settle(); assert.equal(editor().refreshState.done, true); assert.equal(editor().refreshState.error, undefined); }
+    const anyProps = (node, matches) => { if (!node || !node.props) return null; if (matches(node.props)) return node.props; for (const child of node.props.children.flat(Infinity)) { const result = anyProps(child, matches); if (result) return result; } return null; };
+    await settle();
+    return { requests, details, saved, writes, editor, form, change, submit, settle,
+      create: async () => { anyProps(tree, props => typeof props.onCreate === 'function').onCreate(); await settle(); formHooks = hooks(); },
+      edit: async () => { find(tree, tables).onOpen(initialNode === 'supplier' ? supplierRef : ref); await settle();
+        if (initialNode === 'supplier') { find(tree, localWindow.ResourceForms.Detail).onRelated('op_type', ref, 'external'); await settle(); }
+        find(tree, localWindow.ResourceForms.Detail).onEdit(); await settle(); formHooks = hooks(); },
+      remove: async () => { find(tree, tables).onOpen(ref); await settle(); find(tree, localWindow.ResourceForms.Detail).onDelete(); await settle(); formHooks = hooks();
+        find(form(), 'input', props => props.type === 'checkbox').onChange({ target: { checked: true } }); },
+      close: async () => { editor().onClose(); await settle(); }, dispose: () => { workspaceHooks.unmount(); if (formHooks) formHooks.unmount(); }
+    };
+  }
+  for (const [node, category] of [['op_int', 'internal'], ['op_ext', 'external']]) {
+    const both = await opTypeWorkspace(node);
+    await both.create(); both.change('business_code', 'F01-BOTH'); both.change('label', '两用工种'); both.change('category', 'both'); await both.submit();
+    assert.equal(both.saved.at(-1).category, category); assert.equal(both.saved.at(-1).input.fields.category, 'both');
+    assert.equal(both.editor().refreshState.detail.data.fields.category, 'both'); await both.close();
+    await both.edit(); assert.equal(both.editor().category, category, 'Entering edit preserves the source list for a both entity');
+    await both.editor().onReloadContext(); await both.settle(); assert.equal(both.editor().category, category, 'Context reload preserves the source list');
+    both.change('label', '已更新的两用工种'); await both.submit();
+    assert.equal(both.saved.at(-1).category, category); assert.equal(both.editor().refreshState.detail.data.label, '已更新的两用工种'); await both.close();
+    await both.remove(); await both.submit(); assert.equal(both.saved.at(-1).category, category); assert.equal(both.editor().refreshState.detail, null);
+    assert.deepEqual(both.requests.map(request => request.category), Array(both.requests.length).fill(category));
+    assert.deepEqual(both.writes.map(write => write.action), ['create', 'update', 'delete']); both.dispose();
+  }
+  const relatedBoth = await opTypeWorkspace('supplier', true);
+  await relatedBoth.edit(); assert.equal(relatedBoth.editor().category, 'external'); relatedBoth.change('label', '供应商详情中的两用工种'); await relatedBoth.submit();
+  assert.equal(relatedBoth.saved[0].category, 'external');
+  assert.deepEqual(relatedBoth.requests.slice(-2).map(request => [request.kind, request.category || null]), [['op_type', 'external'], ['supplier', null]],
+    'Saving a related both entity refreshes its source category and the parent list'); relatedBoth.dispose();
+
   const modelContext = vm.createContext({ window: { WorkbenchFormat: {}, FieldContract: { quantityReasons: {}, states: {} } } });
   load(modelContext, 'PlanGanttModel.js'); load(modelContext, 'ActualGanttModel.js'); let reads = 0;
   const data = { availability: { state: 'available' }, execution_summary: { scope: 'full_response_cohort', complete: 334, pending: 333, reported: 333, average_finish_deviation_minutes: 30, known_finish_count: 334 }, items: Array.from({ length: 1000 }, (_, n) => ({ task: { end: '2026-09-09T08:00:00' },
@@ -414,7 +490,7 @@ async function main() {
   assert.equal(narrowPlan.tasks.length, 1); assert.equal(narrowPlan.rows[0].tasks.length, 1);
   assert.strictEqual(narrowPlan.locations.get('second').item, widePlan.locations.get('second').item);
   assert.equal(graphBuilds, 0); assert.strictEqual(selectedPlan.taskIndex, planFacts.taskIndex);
-  const execution = (reports, legacy = []) => ({ execution_state: 'complete', reports, legacy_facts: legacy, remaining_quantity: 0, remaining_plan: null });
+  const execution = (reports, legacy = []) => ({ execution_state: 'complete', reports, legacy_facts: legacy, data_gaps: [], remaining_quantity: 0, remaining_plan: null });
   const report = (id, start, end, hours) => ({ report_ref: id, report_no: id, actual_start: stamp(start), actual_end: stamp(end),
     actual_machine_ref: 'machine', actual_operator_ref: null, effective_processing_hours: hours });
   const actualData = { resources, gantt_graph: unavailableGraph(), axis_span: { start: stamp(8), end: stamp(12) }, availability: { state: 'available' }, items: [
@@ -439,6 +515,101 @@ async function main() {
   const initialActual = actualWindow.initial(allActual); assert(Number.isFinite(initialActual.zoom));
   assert.equal(actualWindow.anchor(allActual, 'first', 'known'), ((actualFacts.facts[0].reports[0].start + actualFacts.facts[0].reports[0].end) / 2 - allActual.start) / (allActual.end - allActual.start));
   actualWindow.anchor(firstActual, null, null); assert.equal(timeReads, actualTimes, 'Default windows and zoom anchors reuse the model time facts');
+
+  // Legacy spans are display facts, never synthesized reports or elapsed-time hours.
+  load(preparedContext, 'FieldDraftModel.js'); load(preparedContext, 'WorkbenchFormat.js');
+  Object.assign(preparedContext.window.FieldContract, { quantity: String, date: String });
+  const legacyEvents = [
+    { legacy_fact_ref: 'v3-start', recorded_against_task_ref: 'scope-v3', event_type: 'start', event_time: '2026/10/12 8：00', actual_machine_ref: 'legacy-machine', actual_operator_ref: 'legacy-operator' },
+    { legacy_fact_ref: 'v3-finish', recorded_against_task_ref: 'scope-v3', event_type: 'finish', event_time: '2026-10-12  9:00', quantity_done: 10, actual_machine_ref: null, actual_operator_ref: null },
+    { legacy_fact_ref: 'v4-start', recorded_against_task_ref: 'scope-v4', event_type: 'start', event_time: '2026-10-12 10:00', actual_machine_ref: 'legacy-machine', actual_operator_ref: 'legacy-operator' },
+    { legacy_fact_ref: 'v4-finish', recorded_against_task_ref: 'scope-v4', event_type: 'finish', event_time: '2026-10-12 11:00', quantity_done: 10, actual_machine_ref: null, actual_operator_ref: null }
+  ];
+  const historicalTask = { ...task('scope-v4', 7, 12), quantity: 10, batch_quantity: 10 };
+  const historicalItem = { task: historicalTask, deviation: { complete: true, finish_deviation_minutes: -60 }, execution: {
+    ...execution([], legacyEvents), known_completed_quantity: 10, target_quantity: 10, unknown_record_count: 0, confirmed_finish: stamp(11) } };
+  const historicalData = { ...actualData, resources: resources.concat([{ ref: 'legacy-machine', label: '原设备' }, { ref: 'legacy-operator', label: '原人员' }]), items: [historicalItem] };
+  const expectedHistory = [[8, 9], [10, 11]].map(([start, end]) => ['legacy', Date.parse(stamp(start) + 'Z'), Date.parse(stamp(end) + 'Z')]);
+  const historicalFacts = AM.prepare(historicalData, stamp(12)), historicalTimes = timeReads;
+  assert.equal(historicalFacts.facts[0].legacyMarks.length, 2);
+  assert.strictEqual(historicalItem.execution.reports.length, 0);
+  let historicalLayout;
+  for (const [mode, groupId] of [['machine', 'legacy-machine'], ['operator', 'legacy-operator'], ['batch', historicalTask.batch_id]]) {
+    const grouped = AM.groupPrepared(historicalFacts, mode), selected = AM.selectPrepared(grouped, fullView), layout = AM.layoutPrepared(selected, {});
+    const group = layout.groups.find(group => group.id === groupId), member = group.members.get(historicalTask.task_ref);
+    assert.deepEqual([group.reportCount, group.knownHours, group.unknownHours], [0, null, 0]);
+    assert.equal(member.rows.length, 1); assert.equal(member.rows[0].reports.length, 0);
+    const spans = member.rows[0].marks.filter(mark => mark.legacy);
+    assert.deepEqual(Array.from(spans, mark => [mark.kind, mark.start, mark.end]), expectedHistory);
+    assert(spans[0].end < spans[1].start, 'The unworked hour stays a real gap, not one merged historical bar');
+    assert.equal(spans[0].actual_machine_ref, 'legacy-machine'); assert.equal(spans[0].actual_operator_ref, 'legacy-operator');
+    const filtered = AM.layoutPrepared(AM.selectPrepared(grouped, { ...fullView, query: 'scope-v4' }), {});
+    assert.strictEqual(filtered.rows.find(row => row.key === member.rows[0].key).marks, member.rows[0].marks);
+    AM.layoutPrepared(selected, { [groupId]: true });
+    if (mode === 'batch') historicalLayout = layout;
+  }
+  assert.equal(timeReads, historicalTimes, 'Legacy grouping, filters and collapsed layouts reuse all parsed history times');
+  const linked = { ...report('linked-v3', 8, 9, null), legacy_fact_ref: 'v3-finish', recorded_against_task_ref: 'scope-v4',
+    actual_machine_ref: 'legacy-machine', actual_operator_ref: 'legacy-operator' };
+  const mixedItem = { ...historicalItem, execution: { ...historicalItem.execution, reports: [linked] } };
+  const mixedFacts = AM.prepare({ ...historicalData, items: [mixedItem] }, stamp(12));
+  assert.deepEqual(Array.from(mixedFacts.facts[0].legacyMarks, segment => segment.legacy.legacy_fact_ref), ['v4-finish'],
+    'Linking v3 from the current v4 task covers only the referenced original scope');
+  const mixedLayout = AM.layoutPrepared(AM.selectPrepared(AM.groupPrepared(mixedFacts, 'batch'), fullView), {});
+  const mixedRow = mixedLayout.rows.find(row => row.kind === 'actual');
+  assert.equal(mixedRow.reports.length, 1); assert.strictEqual(mixedRow.reports[0], linked);
+  assert.deepEqual(Array.from(mixedRow.marks, mark => mark.kind), ['plan', 'actual', 'legacy']);
+  assert.deepEqual([mixedLayout.groups[0].reportCount, mixedLayout.groups[0].knownHours, mixedLayout.groups[0].unknownHours], [1, null, 1]);
+  const restored = AM.prepare({ ...historicalData, items: [{ ...historicalItem, execution: { ...historicalItem.execution, voided_reports: [{ report: linked }] } }] }, stamp(12));
+  assert.equal(restored.facts[0].legacyMarks.length, 2, 'Removing the linked active report restores its historical span');
+  const withLegacy = (legacy, data_gaps = []) => AM.prepare({ ...historicalData, items: [{ ...historicalItem,
+    execution: { ...historicalItem.execution, legacy_facts: legacy, data_gaps } }] }, stamp(12));
+  assert.equal(withLegacy(legacyEvents, [{ code: 'invalid_legacy_sequence' }]).facts[0].legacyMarks.length, 0);
+  assert.equal(withLegacy([legacyEvents[1]]).facts[0].legacyMarks.length, 0);
+  assert.equal(withLegacy([{ ...legacyEvents[0], event_time: stamp(10) }, legacyEvents[1]]).facts[0].legacyMarks.length, 0);
+  assert.equal(withLegacy([{ ...legacyEvents[0], event_time: 'not a time' }, legacyEvents[1]]).facts[0].legacyMarks.length, 0);
+  const unboundHistory = withLegacy(legacyEvents.slice(0, 2).map(event => ({ ...event, actual_machine_ref: null, actual_operator_ref: null })));
+  assert.equal(unboundHistory.facts[0].legacyMarks[0].actual_machine_ref, null, 'A current planned machine never supplies an unknown historical resource');
+  const unresolvedHistory = withLegacy(legacyEvents, [{ code: 'legacy_resource_identity_unresolved', legacy_fact_ref: 'v3-start', fields: ['actual_machine_ref'] }]);
+  assert.equal(unresolvedHistory.facts[0].legacyMarks[0].actual_machine_ref, null);
+  const pointFacts = withLegacy([legacyEvents[0], { ...legacyEvents[1], event_time: legacyEvents[0].event_time }]);
+  const pointLayout = AM.layoutPrepared(AM.selectPrepared(AM.groupPrepared(pointFacts, 'batch'), fullView), {}), historicalPoint = pointFacts.facts[0].legacyMarks[0].mark;
+  assert.equal(historicalPoint.kind, 'legacy-point');
+  const historicalBox = actualWindow.markBox(historicalPoint, pointLayout, 1000);
+  assert.equal(historicalBox.hitWidth, 24);
+  assert.strictEqual(actualWindow.hitMark([historicalPoint], pointLayout, 1000, 0, historicalBox.x + 10, historicalPoint.y + 12), historicalPoint);
+
+  const historyRowsHooks = hooks(); preparedContext.React = historyRowsHooks.React;
+  Object.assign(preparedContext.window, { ResourceControls: { Button: 'button' }, PointGantt: { Marker: 'history-point' } });
+  load(preparedContext, 'ActualGanttRows.jsx');
+  const graphActive = { critical: new Set(), related: new Set(), target: null }, historySelections = [];
+  const historyRowsProps = { model: historicalLayout, view: { ...fullView, mode: 'batch' }, width: 1000, viewport: 1000, left: 0, top: 0, height: 500,
+    labelWidth: 292, dense: false, active: graphActive, onSelect: (...args) => historySelections.push(args), onHover() {}, onChainTarget() {}, patch() {} };
+  const historyTree = historyRowsHooks.render(() => preparedContext.window.ActualGanttRows(historyRowsProps));
+  assert.equal(find(historyTree, 'span', props => props.className === 'fg-wait'), null, 'The empty-report placeholder never masks real history');
+  assert(find(historyTree, 'span', props => props.children.includes('0 次报工 · 历史现场记录')));
+  const historicalBarProps = find(historyTree, preparedContext.window.ActualGanttBar, props => props.mark.kind === 'legacy');
+  const historicalBar = preparedContext.window.ActualGanttBar(historicalBarProps), barButton = find(historicalBar, 'button');
+  assert(barButton.title.includes('历史事件记录 · 有效工时未记录')); assert(barButton.title.includes('有效工时：未知'));
+  barButton.onClick({ detail: 0 }); assert.strictEqual(historySelections[0][0], historicalItem); assert.equal(historySelections[0][1], undefined);
+  const historicalPointRow = pointLayout.rows.find(row => row.kind === 'actual');
+  const pointMarker = preparedContext.window.ActualGanttBar({ ...historicalBarProps, mark: historicalPoint, row: historicalPointRow, model: pointLayout });
+  assert.equal(pointMarker.type, 'history-point'); assert.equal(pointMarker.props.task.start, stamp(8)); assert.notEqual(pointMarker.props.task.start, historicalTask.start);
+  assert.equal(pointMarker.props['data-report-ref'], undefined); historyRowsHooks.unmount();
+  let historyPaint, historyPalette; const historyDenseHooks = hooks(), paintedHistoryPoints = [];
+  preparedContext.React = historyDenseHooks.React; preparedContext.getComputedStyle = () => ({ getPropertyValue: key => key });
+  preparedContext.window.GanttPresentation = { useCanvasPaint(ref, paint, palette) { historyPaint = paint; historyPalette = palette; } };
+  preparedContext.window.PointGanttModel.paint = (_, x) => paintedHistoryPoints.push(x);
+  load(preparedContext, 'ActualGanttCanvas.jsx');
+  const denseProps = { ...historyRowsProps, row: historicalPointRow, marks: historicalPointRow.marks, visibleMarks: historicalPointRow.marks,
+    model: pointLayout, selected: null, graphActive, renderMark: (mark, canvasPainted) => ({ type: 'history-overlay', props: { mark, canvasPainted, children: [] } }) };
+  const denseTree = historyDenseHooks.render(() => preparedContext.window.ActualGanttCanvas.DenseRow(denseProps));
+  const historyColors = historyPalette({}); assert(historyColors.legacy.fill); assert(historyColors['legacy-point'].fill);
+  historyPaint({ save() {}, restore() {}, setLineDash() {}, fillRect() {}, strokeRect() {} }, 1000, 88, historyColors);
+  assert.equal(paintedHistoryPoints.length, 1);
+  assert.equal(find(denseTree, 'history-overlay').canvasPainted, true); assert.strictEqual(find(denseTree, 'history-overlay').mark, historicalPoint);
+  assert(find(denseTree, 'canvas')['aria-label'].includes('方向键切换色块'));
+  historyDenseHooks.unmount();
 
   // Candidate and baseline search share their fixed facts, including hide/show of the same baseline.
   preparedContext.window.WorkbenchTerms = {};
@@ -606,6 +777,69 @@ async function main() {
   assert.deepEqual(actualReads[3], { plan_ref: actualPlan, resource_type: 'machine', resource_ref: actualResource,
     batch_ids: ['ONLY-M1'], plan_finish_date_from: '2026-10-13', plan_finish_date_to: '2026-10-14' });
   actualHooks.unmount(); rangeHooks.unmount();
+
+  // Field navigation carries a locator only when the current cohort and field query can contain it.
+  let navigationHooks = hooks(); const navigationEvents = [], navigationSnapshots = [], selectedRef = '7'.repeat(48);
+  const plannedOperator = '9'.repeat(48), reportedMachine = 'a'.repeat(48), reportedOperator = 'b'.repeat(48),
+    historicalMachine = 'c'.repeat(48), historicalOperator = 'd'.repeat(48);
+  actualWindow.WorkbenchPageContext.useSnapshot = value => { if (value) navigationSnapshots.push(value); };
+  const navigationTask = { task_ref: selectedRef, operation_ref: '8'.repeat(48), batch_id: 'B1', sequence: 10, process_label: '加工', piece_id: 27,
+    start: '2026-10-12T08:00:00', end: '2026-10-12T10:00:00', machine_ref: actualResource, operator_ref: plannedOperator, quantity: 10, batch_quantity: 10 };
+  const navigationItem = { task: navigationTask, deviation: { complete: false, finish_late: false, unclosed: false, forecast_late: false },
+    execution: { execution_state: 'partial', known_completed_quantity: 0, remaining_quantity: 10, confirmed_finish: null, data_gaps: [],
+      reports: [{ report_ref: 'e'.repeat(48), report_no: 'RG-SEARCH-42', actual_start: navigationTask.start, actual_end: navigationTask.end,
+        actual_machine_ref: reportedMachine, actual_operator_ref: reportedOperator, effective_processing_hours: 1 }],
+      legacy_facts: [{ legacy_fact_ref: 'f'.repeat(48), recorded_against_task_ref: selectedRef, event_type: 'finish', event_time: navigationTask.end,
+        quantity_done: 10, actual_machine_ref: historicalMachine, actual_operator_ref: historicalOperator }],
+      remaining_plan: { start: '2026-10-12T12:00:00', end: '2026-10-12T14:00:00', machine_ref: otherResource, operator_ref: null } } };
+  const navigationProps = { initialContext: { plan_ref: actualPlan, task_ref: selectedRef, scope: { batch_ids: [], plan_finish_date_from: '2026-10-12', plan_finish_date_to: '2026-10-13' } },
+    adapter: { async load(input) { return { meta: { as_of: '2026-10-12T12:00:00', snapshot_ref: 'navigation-snapshot' }, data: {
+      scope: input, plan: { plan_ref: actualPlan, display_name: '正式计划', kind: 'official', is_current_official: true, version: 1 },
+      resources: [{ ref: actualResource, label: '当前设备' }, { ref: plannedOperator, label: '计划人员' }, { ref: otherResource, label: '剩余设备专名' },
+        { ref: reportedMachine, label: '实报设备' }, { ref: reportedOperator, label: '实报人员' },
+        { ref: historicalMachine, label: '历史设备' }, { ref: historicalOperator, label: '历史人员' }],
+      items: input.batch_ids.includes('NONE') ? [] : [navigationItem], task_count: input.batch_ids.includes('NONE') ? 0 : 1, availability: { state: 'available' },
+      axis_span: { start: navigationTask.start, end: '2026-10-12T16:00:00' }, execution_summary: { complete: 0, reported: 1, pending: 0, average_finish_deviation_minutes: null }, gantt_graph: {} } }; } },
+    onNavigate: (target, context) => navigationEvents.push({ target, context }) };
+  const renderNavigation = async () => {
+    let tree;
+    for (let index = 0; index < 4; index++) {
+      actualContext.React = navigationHooks.React;
+      tree = navigationHooks.render(() => actualWindow.ActualGanttSession(navigationProps)); navigationHooks.flush(); await turns();
+    }
+    return tree;
+  };
+  let navigationTree = await renderNavigation();
+  const goField = () => { find(navigationTree, 'button', props => props.children.includes('现场记录')).onClick(); return navigationEvents.at(-1).context; };
+  let fieldTarget = goField(); assert.equal(fieldTarget.task_ref, selectedRef); assert.equal(fieldTarget.operation_ref, navigationTask.operation_ref);
+  assert.equal(fieldTarget.scope.batch_ids, undefined); assert.deepEqual(Array.from(fieldTarget.return_to.context.scope.batch_ids), []);
+  find(navigationTree, actualWindow.ActualGanttControls.Toolbar).patch({ late: 'finishLate' }); navigationTree = await renderNavigation();
+  assert.equal(find(navigationTree, 'actual-rows').model.items.length, 0); assert.equal(goField().task_ref, selectedRef,
+    'A local late-only filter is not sent to field and must not discard a valid locator');
+  find(navigationTree, actualWindow.ActualGanttControls.Toolbar).patch({ query: '剩余设备专名', late: 'all' }); navigationTree = await renderNavigation();
+  assert.equal(find(navigationTree, 'actual-rows').model.items.length, 1);
+  fieldTarget = goField();
+  assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'task_ref'), false); assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'operation_ref'), false);
+  assert.equal(fieldTarget.scope.query, '剩余设备专名'); assert.equal(fieldTarget.return_to.context.task_ref, selectedRef);
+  for (const query of [' B1 ', '10', '加工', '27', '当前设备', '计划人员', '实报设备', '实报人员', ' rg-search-42 ', '历史设备', '历史人员']) {
+    find(navigationTree, actualWindow.ActualGanttControls.Toolbar).patch({ query }); navigationTree = await renderNavigation();
+    assert.equal(find(navigationTree, 'actual-rows').model.items.length, 1, query + ' matches the selected task');
+    fieldTarget = goField();
+    assert.equal(fieldTarget.task_ref, selectedRef, query + ' preserves the task locator');
+    assert.equal(fieldTarget.operation_ref, navigationTask.operation_ref, query + ' preserves the operation locator');
+    assert.equal(fieldTarget.scope.query, query);
+  }
+  find(navigationTree, actualWindow.ActualGanttControls.Range).onApply({ plan_ref: actualPlan, batch_ids: ['NONE'],
+    plan_finish_date_from: '2026-10-13', plan_finish_date_to: '2026-10-14' }); navigationTree = await renderNavigation();
+  fieldTarget = goField(); assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'task_ref'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(fieldTarget, 'operation_ref'), false);
+  assert.equal(fieldTarget.return_to.context.task_ref, selectedRef); assert.equal(fieldTarget.scope.plan_finish_date_from, '2026-10-13');
+  navigationHooks.unmount(); navigationHooks = hooks();
+  navigationProps.initialContext = fieldTarget.return_to.context;
+  load(actualContext, 'ActualGanttWorkspace.jsx', source('ActualGanttWorkspace.jsx').replace('window.ActualGanttWorkspace = ActualGanttWorkspace;', 'window.ActualGanttSession = Content;'));
+  navigationTree = await renderNavigation();
+  assert.equal(navigationSnapshots.at(-1).task_ref, selectedRef, 'A page reload drops the session cache but preserves the original return selection');
+  assert.equal(goField().return_to.context.task_ref, selectedRef); navigationHooks.unmount();
   }
 
   // R19's actual parent retains overview facts while print/fit unmount the child.
@@ -751,6 +985,69 @@ async function main() {
   assert.equal(timelineLabels, 4); assert.notStrictEqual(find(timelineTree, 'select').children[1], timelineOptions);
   assert.equal(find(timelineTree, 'select').children[1][0].props.children[4], '加工更新'); timelineHooks.unmount();
 
+  // A selected batch resolves its original timeline page; manual paging leaves that page.
+  const sectionHooks = hooks(), sectionRequests = [], sectionWindow = { APSResourceContract: {}, WorkbenchTerms: { delivery_risks: {} },
+    ResourceControls: { Button: 'button', ErrorBox: 'error' }, DashboardPanels: { Pager: 'pager' } };
+  sectionWindow.DashboardSession = { useRead: (...args) => sectionWindow.APSResourceSession.useQuery(...args) };
+  sectionWindow.DashboardAnalysisAPI = { create: () => ({ read: async (plan, signal, query) => {
+    sectionRequests.push({ ...query });
+    return { meta: { snapshot_ref: 'same-timeline-snapshot' }, data: {
+      tasks: query.page === 2 && !query.locate_batch_ref ? [{ batch_ref: 'in-page-batch', source: 'internal', machine_ref: 'machine' }] : [], pagination: {
+      number: query.locate_batch_ref ? Math.floor(40 / query.size) + 1 : query.page, size: query.size, total: 60, pages: Math.ceil(60 / query.size) } } };
+  } }) };
+  const sectionContext = vm.createContext({ window: sectionWindow, React: sectionHooks.React, AbortController, DOMException });
+  load(sectionContext, 'resource-session.js'); load(sectionContext, 'DashboardAnalysisPanels.jsx');
+  let sectionBatch = null;
+  const renderSection = () => sectionHooks.render(() => sectionWindow.DashboardAnalysisPanels.Section({ section: 'timeline', planRef: 'plan',
+    locateBatchRef: sectionBatch, label: '计划时间轴工序', render: data => sectionHooks.React.createElement('timeline-data', { data }) }));
+  const settleSection = async () => { renderSection(); sectionHooks.flush(); await turns(); const node = renderSection(); sectionHooks.flush(); return node; };
+  let sectionTree = await settleSection(); assert.equal(find(sectionTree, 'pager').page.number, 1);
+  sectionBatch = 'later-batch'; sectionTree = await settleSection();
+  assert.equal(sectionRequests.at(-1).locate_batch_ref, sectionBatch); assert.equal(find(sectionTree, 'pager').page.number, 3);
+  find(sectionTree, 'pager').onPage(1); sectionTree = await settleSection();
+  assert.equal(sectionRequests.at(-1).locate_batch_ref, undefined); assert.equal(sectionRequests.at(-1).snapshot_ref, 'same-timeline-snapshot');
+  assert.equal(find(sectionTree, 'pager').page.number, 1, '普通翻页移除locator，沿用原snapshot并能离开定位页');
+  find(sectionTree, 'pager').onPage(2); sectionTree = await settleSection();
+  const inPageSource = find(sectionTree, 'timeline-data').data, inPageReads = sectionRequests.length;
+  sectionBatch = 'in-page-batch'; sectionTree = renderSection(); sectionHooks.flush(); await turns();
+  assert.strictEqual(find(sectionTree, 'timeline-data').data, inPageSource, '本页具体工序切换批次时保留原数据和已挂载时间轴，不丢具体focus');
+  assert.equal(find(sectionTree, 'pager').page.number, 2); assert.equal(sectionRequests.length, inPageReads, '当前页已有目标批次，不跳到该批首工序页');
+  find(sectionTree, 'pager').onSize(50); sectionTree = await settleSection();
+  sectionBatch = 'another-batch'; sectionTree = await settleSection();
+  assert.equal(sectionRequests.at(-1).size, 50); assert.equal(sectionRequests.at(-1).locate_batch_ref, sectionBatch);
+  assert.equal(sectionRequests.at(-1).snapshot_ref, undefined, '换批次重置定位请求，不沿用旧页码');
+  const settledSectionReads = sectionRequests.length; await settleSection();
+  assert.equal(sectionRequests.length, settledSectionReads, '定位范围稳定后普通重渲染不重复读取');
+  const workspace = sectionWindow.DashboardAnalysisPanels.Workspace({ data: { plan: { plan_ref: 'plan' } }, category: 'delivery', selected: sectionBatch });
+  assert.equal(find(workspace, sectionWindow.DashboardAnalysisPanels.Section, props => props.section === 'timeline').locateBatchRef, sectionBatch);
+  sectionHooks.unmount();
+
+  // Keep a pending selection until its task arrives, then retain user scrolling on new data/zoom/resize.
+  const locateHooks = hooks(); let locateSelected = 'first-batch', onLocateResize;
+  let locateData = { tasks: [{ task_ref: 'first', batch_ref: 'first-batch', batch_id: 'B1', top: 260 }] };
+  const locateWindow = { ...timelineWindow, DashboardTimelineModel: { ...timelineWindow.DashboardTimelineModel, timeLabel: String,
+    layoutPrepared: value => ({ tasks: value.tasks, rows: [], start: 0, end: 3600000, height: 800,
+      locations: new Map(value.tasks.map(task => [task.task_ref, { top: task.top, item: { start: 1800000 } }])) }) } };
+  const locateContext = vm.createContext({ window: locateWindow, React: locateHooks.React,
+    ResizeObserver: class { constructor(fn) { onLocateResize = fn; } observe() {} disconnect() {} } });
+  load(locateContext, 'DashboardTimeline.jsx');
+  const renderLocate = () => locateHooks.render(() => locateWindow.DashboardTimeline({ data: locateData, selectedBatch: locateSelected, onSelect() {} }));
+  let locateTree = renderLocate();
+  const locateBoard = { scrollLeft: 0, scrollTop: 0, clientWidth: 900, clientHeight: 330 };
+  find(locateTree, 'div', props => props.className === 'dy-timeline-board').ref.current = locateBoard;
+  locateHooks.flush(); locateTree = renderLocate(); locateHooks.flush(); assert.equal(locateBoard.scrollTop, 200);
+  locateSelected = 'late-batch'; locateTree = renderLocate(); locateHooks.flush(); assert.equal(locateBoard.scrollTop, 200);
+  locateData = { tasks: [...locateData.tasks, { task_ref: 'late', batch_ref: 'late-batch', batch_id: 'B2', top: 640 }] };
+  locateTree = renderLocate(); locateHooks.flush(); assert.equal(locateBoard.scrollTop, 580, '选择不变，目标页稍后到达也完成定位');
+  locateBoard.scrollLeft = 123; locateBoard.scrollTop = 777;
+  find(locateTree, 'div', props => props.className === 'dy-timeline-board').onScroll();
+  locateData = { tasks: locateData.tasks.map(task => ({ ...task })) };
+  locateTree = renderLocate(); locateHooks.flush();
+  assert.equal(locateBoard.scrollLeft, 123); assert.equal(locateBoard.scrollTop, 777, '相同选择收到重复数据不抢滚动');
+  find(locateTree, 'zoom').onZoom(2); locateTree = renderLocate(); locateHooks.flush(); assert.equal(locateBoard.scrollTop, 777);
+  locateBoard.clientWidth = 1100; onLocateResize(); renderLocate(); locateHooks.flush(); assert.equal(locateBoard.scrollTop, 777, '缩放和尺寸变化保留用户垂直滚动');
+  locateHooks.unmount();
+
   // An unrestricted trial keeps its scope, resource names and row preparation on hover/scroll.
   const trialGanttHooks = hooks(); let trialFilters = 0, trialNames = 0, trialBatchSets = 0, trialBatchChecks = 0;
   class TrialBatchSet extends Set { constructor(values) { super(values); trialBatchSets++; } has(value) { trialBatchChecks++; return super.has(value); } }
@@ -762,9 +1059,9 @@ async function main() {
   const trialMachines = [{ ref: 'machine', business_code: 'M1', label: '机床' }];
   trialMachines.forEach = function (...args) { trialNames++; return Array.prototype.forEach.apply(this, args); };
   const trialGanttData = { tasks: trialTasks, task_count: 3, scope: { batch_refs: ['batch'] }, resources: { machines: trialMachines, operators: [] } };
-  const trialValues = { mode: 'machine', baseline: false, only_changed: false, query: '' };
+  const trialValues = { mode: 'machine', baseline: false, only_changed: false, query: '' }, trialPreferencePatches = [];
   const trialGanttWindow = { TrialControls: { Button: 'button', Tabs: 'tabs', Pager: 'pager', timeLabel: String, number: String },
-    ResourceControls: { TimelineZoom: 'zoom' }, TrialViewState: { useView: () => ({ value: trialValues, change() {} }), Notice: 'notice' },
+    ResourceControls: { TimelineZoom: 'zoom' }, TrialViewState: { useView: () => ({ value: trialValues, change(patch) { trialPreferencePatches.push(patch); Object.assign(trialValues, patch); return true; } }), Notice: 'notice' },
     GanttPresentationUI: { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, GanttPresentation: { axis: () => ({ ticks: [] }), taskLines: () => ({ primary: '加工', secondary: '' }) },
     PointContract: { isPoint: task => task.event_kind === 'point' }, PointGantt: { Marker: 'point' }, trialRowSorts: 0 };
   const trialGanttContext = vm.createContext({ window: trialGanttWindow, React: trialGanttHooks.React, Set: TrialBatchSet, innerWidth: 1280, innerHeight: 800,
@@ -773,7 +1070,8 @@ async function main() {
   vm.runInContext(`const rowSort = Array.prototype.sort; Array.prototype.sort = function (compare) {
     if (this[0] && this[0].t) window.trialRowSorts++; return rowSort.call(this, compare);
   };`, trialGanttContext);
-  const trialGanttRender = () => trialGanttHooks.render(() => trialGanttWindow.TrialGantt({ data: trialGanttData, selected: null, onSelect() {} }));
+  let trialSelected = 'point';
+  const trialGanttRender = () => trialGanttHooks.render(() => trialGanttWindow.TrialGantt({ data: trialGanttData, selected: trialSelected, onSelect() {} }));
   let trialGanttTree = trialGanttRender();
   assert.equal(trialBatchSets, 1); assert.equal(trialBatchChecks, 3);
   find(trialGanttTree, 'div', props => props.className === 'tt-board').ref.current = { scrollLeft: 100, clientWidth: 1000, querySelector: () => ({ getBoundingClientRect: () => ({ width: 100 }) }) };
@@ -792,6 +1090,33 @@ async function main() {
   assert.equal(trialBatchSets, 2, 'Typing a search reuses the batch membership set'); assert.equal(trialBatchChecks, scopedTrialChecks + 3);
   trialGanttData.scope = { batch_refs: [] }; trialGanttTree = trialGanttRender();
   assert.equal(find(trialGanttTree, 'div', props => props['data-trial-task'] !== undefined), null, 'An explicit empty batch scope still matches no task');
+  assert(find(trialGanttTree, 'div', props => props.role === 'status' && props.className === 'tt-notice'), 'A selected task filtered out of the rows has explicit feedback');
+  const patchesBeforeLimitReveal = trialPreferencePatches.length;
+  find(trialGanttTree, 'button', props => props.children.includes('显示并定位选中工序')).onClick();
+  trialGanttTree = trialGanttRender(); trialGanttHooks.flush(); trialGanttTree = trialGanttRender();
+  assert.equal(trialPreferencePatches.length, patchesBeforeLimitReveal, 'Releasing only a blocking original scope does not write empty preferences');
+  assert.equal(trialValues.query, ' 加工 ', 'A search which already matches the selection stays in place');
+  assert(find(trialGanttTree, 'div', props => props['data-trial-task'] === trialSelected));
+  trialGanttData.scope = { batch_refs: ['batch'] }; trialGanttTree = trialGanttRender();
+  find(trialGanttTree, 'label', props => props.children.includes('原显示范围')).children.find(child => child && child.type === 'input').props.onChange({ target: { checked: true } });
+  trialGanttTree = trialGanttRender(); trialValues.only_changed = true; trialGanttTree = trialGanttRender();
+  find(trialGanttTree, 'button', props => props.children.includes('显示并定位选中工序')).onClick();
+  trialGanttTree = trialGanttRender(); trialGanttHooks.flush(); trialGanttTree = trialGanttRender();
+  assert.deepEqual(JSON.parse(JSON.stringify(trialPreferencePatches.at(-1))), { only_changed: false });
+  assert.equal(find(trialGanttTree, 'label', props => props.children.includes('原显示范围')).children.find(child => child && child.type === 'input').props.checked, true,
+    'Revealing an unchanged selected task does not discard a scope that already includes it');
+  trialValues.query = 'no-match'; trialGanttTree = trialGanttRender();
+  find(trialGanttTree, 'button', props => props.children.includes('显示并定位选中工序')).onClick();
+  trialGanttTree = trialGanttRender(); trialGanttHooks.flush(); trialGanttTree = trialGanttRender();
+  assert.deepEqual(JSON.parse(JSON.stringify(trialPreferencePatches.at(-1))), { query: '' });
+  trialGanttData.tasks = Array.from({ length: 35 }, (_, index) => ({ ...trialTasks[0], task_ref: 'page-' + String(index).padStart(2, '0'), changed: index < 30 }));
+  trialGanttData.task_count = 35; trialSelected = 'page-34'; trialValues.only_changed = true; trialGanttTree = trialGanttRender();
+  find(trialGanttTree, 'button', props => props.children.includes('显示并定位选中工序')).onClick();
+  trialGanttTree = trialGanttRender(); trialGanttHooks.flush(); trialGanttTree = trialGanttRender();
+  assert.equal(find(trialGanttTree, 'pager').page.number, 2, 'The unchanged selection is located across the page boundary once filters release it');
+  assert(find(trialGanttTree, 'div', props => props['data-trial-task'] === trialSelected));
+  trialSelected = 'absent-task'; trialGanttTree = trialGanttRender();
+  assert.equal(find(trialGanttTree, 'div', props => props.role === 'status' && props.className === 'tt-notice'), null, 'A missing task is not mislabeled as filtered out');
   trialGanttHooks.unmount();
 
   // The three overdue flags share one pass and remain frozen with the data identity.
@@ -812,14 +1137,17 @@ async function main() {
   // aggregate start from another plan or replaces known time with now.
   const fieldContext = vm.createContext({ window: { APSResourceContract: { failure: message => new Error(message) },
     WorkbenchTerms: { execution_states: {}, report_actions: {} }, WorkbenchFormat: {} } });
-  load(fieldContext, 'FieldContract.js'); load(fieldContext, 'FieldDraftModel.js');
+  load(fieldContext, 'WorkbenchFormat.js'); load(fieldContext, 'FieldContract.js'); load(fieldContext, 'FieldDraftModel.js');
   const field = fieldContext.window.FieldDraftModel, contract = fieldContext.window.FieldContract;
-  const legacyTask = { execution: { first_actual_start: '2026-09-01T00:00:00', legacy_facts: [
-    { event_type: 'start', recorded_against_task_ref: 'other-plan', event_time: '2026-09-01 00:00:00', actual_machine_ref: 'other-machine', actual_operator_ref: 'other-operator' },
-    { event_type: 'start', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-08  08:00', actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator' }
-  ] } };
-  const legacy = { recorded_against_task_ref: 'selected-plan', event_time: '2026-09-09  10:00', quantity_done: 10 };
-  const initialized = field.initialize({ task: legacyTask, legacy, record: null, action: 'create', now: new Date('2030-01-01T00:00:00Z') });
+  const legacy = { legacy_fact_ref: 'selected-finish', event_type: 'finish', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-09  10:00', quantity_done: 10 };
+  const legacyTask = { task_ref: 'current-task', operation_ref: 'current-operation', plan_ref: 'current-plan', execution: {
+    first_actual_start: '2026-09-01T00:00:00', known_completed_quantity: 10, target_quantity: 10, remaining_quantity: 0, unknown_record_count: 0, data_gaps: [], legacy_facts: [
+      { legacy_fact_ref: 'other-start', event_type: 'start', recorded_against_task_ref: 'other-plan', event_time: '2026-09-01 00:00:00', actual_machine_ref: 'other-machine', actual_operator_ref: 'other-operator' },
+      { legacy_fact_ref: 'selected-start', event_type: 'start', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-08  08:00', actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator' },
+      legacy
+    ] } };
+  const knownLegacy = field.legacyValues(legacyTask, legacy.legacy_fact_ref);
+  const initialized = field.initialize({ task: legacyTask, legacy, record: null, action: 'create', knownLegacy, now: new Date('2030-01-01T00:00:00Z') });
   assert.equal(initialized.draft.actual_start, '2026-09-08T08:00:00');
   assert.equal(initialized.draft.actual_end, '2026-09-09T10:00:00');
   assert.equal(initialized.draft.actual_machine_ref, 'original-machine');
@@ -832,13 +1160,161 @@ async function main() {
     ['2026-09- 8 08:00', '2026-09- 9 10:00']
   ]) {
     legacyTask.execution.legacy_facts[1].event_time = start;
-    const normalized = field.initialize({ task: legacyTask, legacy: { ...legacy, event_time: end }, record: null, action: 'create' });
+    legacy.event_time = end;
+    const normalized = field.initialize({ task: legacyTask, legacy, record: null, action: 'create' });
     const values = contract.input(normalized.draft, null, 'create');
     assert.equal(values.actual_start, '2026-09-08T08:00:00');
     assert.equal(values.actual_end, '2026-09-09T10:00:00');
   }
-  assert.equal(field.initialize({ task: legacyTask, record: null, action: 'create',
-    legacy: { recorded_against_task_ref: 'no-start', event_time: '2026-09-09', quantity_done: 10 } }).draft.actual_start, '');
+  const noStart = { legacy_fact_ref: 'no-start-finish', event_type: 'finish', recorded_against_task_ref: 'no-start', event_time: '2026-09-09', quantity_done: 10 };
+  legacyTask.execution.legacy_facts.push(noStart);
+  const noStartDraft = field.initialize({ task: legacyTask, record: null, action: 'create', legacy: noStart }).draft;
+  assert.equal(noStartDraft.actual_start, ''); assert.equal(noStartDraft.actual_end, '2026-09-09T00:00:00');
+  assert.equal(Object.prototype.hasOwnProperty.call(knownLegacy, 'effective_processing_hours'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(knownLegacy, 'remark'), false);
+  const unresolvedValues = field.legacyValues({ ...legacyTask, execution: { ...legacyTask.execution, data_gaps: [
+    { code: 'legacy_resource_identity_unresolved', legacy_fact_ref: 'selected-start', fields: ['actual_machine_ref'] }
+  ] } }, legacy.legacy_fact_ref);
+  assert.equal(Object.prototype.hasOwnProperty.call(unresolvedValues, 'actual_machine_ref'), false); assert.equal(unresolvedValues.actual_operator_ref, 'original-operator');
+  const fieldHooks = hooks(); fieldContext.React = fieldHooks.React;
+  fieldContext.window.FieldControls = { Button: 'button', ErrorBox: 'error', Feedback: 'feedback' };
+  fieldContext.window.ResourceControls = { Field: 'field', Choice: 'choice' };
+  load(fieldContext, 'FieldEditorFields.jsx'); load(fieldContext, 'FieldEditor.jsx');
+  const renderFieldInputs = (overrides = {}) => {
+    const props = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, draft: initialized.draft, suggestions: {}, disabled: false, first: {}, change() {}, ...overrides };
+    props.knownLegacy = field.legacyValues(props.task, props.legacy ? props.legacy.legacy_fact_ref : props.record && props.record.legacy_fact_ref);
+    return fieldContext.window.FieldEditorFields(props);
+  };
+  const fieldInput = (tree, label) => find(tree, 'input', props => props['aria-label'] === label);
+  const knownTree = renderFieldInputs();
+  assert.equal(fieldInput(knownTree, '本次完成数量').disabled, true);
+  assert.equal(find(knownTree, 'output', props => props['aria-label'] === '已知累计').children[0], 10, 'An already counted legacy quantity is not previewed as 20');
+  assert.equal(find(knownTree, 'button', props => props.children.includes('填 0')).disabled, true);
+  assert.equal(find(knownTree, 'button', props => props.children.includes('填剩余数')).disabled, true, 'The remaining shortcut cannot change a protected quantity');
+  assert(find(knownTree, 'small', props => props.children.includes(' · 旧完工数量受保护，本次保留原累计数量')));
+  assert.equal(fieldInput(knownTree, '有效工时（小时）').disabled, false);
+  assert.equal(find(knownTree, 'textarea', props => props['aria-label'] === '作业备注').disabled, false);
+  const knownRecord = { legacy_fact_ref: legacy.legacy_fact_ref, completed_quantity: 10, actual_start: initialized.draft.actual_start, actual_end: initialized.draft.actual_end,
+    effective_processing_hours: 1, actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator', remark: '原备注' };
+  const knownCorrection = renderFieldInputs({ record: knownRecord, legacy: null, action: 'correct', draft: contract.draft(knownRecord) });
+  assert.equal(fieldInput(knownCorrection, '本次完成数量').disabled, true);
+  assert.equal(fieldInput(knownCorrection, '有效工时（小时）').disabled, false);
+  assert.equal(find(knownCorrection, 'textarea', props => props['aria-label'] === '作业备注').disabled, false);
+  const deviatedRecord = { ...knownRecord, completed_quantity: 9 };
+  assert.equal(fieldInput(renderFieldInputs({ record: deviatedRecord, legacy: null, action: 'correct', draft: contract.draft(deviatedRecord) }), '本次完成数量').disabled, false,
+    'A historical record which already deviates from the protected fact can still be repaired');
+  const missingQuantityRecord = { ...knownRecord, completed_quantity: null };
+  for (const action of ['correct', 'supplement']) {
+    const repairedQuantity = renderFieldInputs({ record: missingQuantityRecord, legacy: null, action,
+      draft: { ...contract.draft(missingQuantityRecord), completed_quantity: '10' } });
+    assert.equal(fieldInput(repairedQuantity, '本次完成数量').disabled, false);
+    assert.equal(find(repairedQuantity, 'output', props => props['aria-label'] === '已知累计').children[0], 10,
+      'Repairing a linked report quantity replaces the counted legacy quantity instead of adding it twice');
+  }
+  const unknownLegacy = { ...noStart, legacy_fact_ref: 'unknown-finish', quantity_done: null };
+  const unknownTask = { ...legacyTask, execution: { ...legacyTask.execution, known_completed_quantity: 0, legacy_facts: [unknownLegacy] } };
+  const unknownValues = field.legacyValues(unknownTask, unknownLegacy.legacy_fact_ref);
+  assert.equal(Object.prototype.hasOwnProperty.call(unknownValues, 'completed_quantity'), false);
+  unknownLegacy.quantity_done = undefined;
+  assert.equal(Object.prototype.hasOwnProperty.call(field.legacyValues(unknownTask, unknownLegacy.legacy_fact_ref), 'completed_quantity'), false);
+  unknownLegacy.quantity_done = null;
+  const unknownDraft = field.initialize({ task: unknownTask, legacy: unknownLegacy, record: null, action: 'create', knownLegacy: unknownValues }).draft;
+  assert.equal(unknownDraft.completed_quantity, '');
+  const unknownTree = renderFieldInputs({ task: unknownTask, legacy: unknownLegacy, draft: { ...unknownDraft, completed_quantity: '10' } });
+  assert.equal(fieldInput(unknownTree, '本次完成数量').disabled, false);
+  assert.equal(fieldInput(unknownTree, '有效工时（小时）').disabled, false);
+  assert.equal(find(unknownTree, 'textarea', props => props['aria-label'] === '作业备注').disabled, false);
+  assert.equal(find(unknownTree, 'output', props => props['aria-label'] === '已知累计').children[0], 10);
+  assert.equal(find(unknownTree, 'button', props => props.children.includes('填剩余数')).disabled, false);
+  const unknownRecord = { ...knownRecord, legacy_fact_ref: unknownLegacy.legacy_fact_ref };
+  const unknownCorrection = renderFieldInputs({ task: { ...unknownTask, execution: { ...unknownTask.execution, known_completed_quantity: 10 } },
+    record: unknownRecord, legacy: null, action: 'correct', draft: { ...contract.draft(unknownRecord), completed_quantity: '9' } });
+  assert.equal(fieldInput(unknownCorrection, '本次完成数量').disabled, false);
+  assert.equal(find(unknownCorrection, 'output', props => props['aria-label'] === '已知累计').children[0], 9);
+  const regularRecord = { ...knownRecord, legacy_fact_ref: null, completed_quantity: 0 };
+  assert.equal(fieldInput(renderFieldInputs({ record: regularRecord, legacy: null, action: 'correct', draft: contract.draft(regularRecord) }), '本次完成数量').disabled, false);
+  assert.equal(fieldInput(renderFieldInputs({ record: regularRecord, legacy: null, action: 'supplement', draft: contract.draft(regularRecord) }), '本次完成数量').disabled, true,
+    'Supplement still protects an ordinary report whose known quantity is zero');
+  let legacyPreparations = 0, legacyScopeScans = 0, editableFocuses = 0;
+  const prepareLegacyValues = field.legacyValues;
+  field.legacyValues = (...args) => { legacyPreparations++; return prepareLegacyValues(...args); };
+  legacyTask.execution.legacy_facts.filter = function (...args) { legacyScopeScans++; return Array.prototype.filter.apply(this, args); };
+  const editorProps = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, command: { phase: 'editing', locked: false } };
+  const renderLegacyEditor = () => fieldHooks.render(() => fieldContext.window.FieldEditor(editorProps));
+  const editorTree = renderLegacyEditor(), editorFields = find(editorTree, fieldContext.window.FieldEditorFields);
+  find(editorTree, 'form').ref.current = { scrollIntoView() {}, querySelector: () => ({ focus() { editableFocuses++; } }) };
+  editorFields.first.current = { disabled: true, focus() { assert.fail('A protected quantity is not the initial focus target'); } };
+  fieldHooks.flush(); editorFields.change('remark', '补齐工时'); const changedEditor = renderLegacyEditor();
+  assert.strictEqual(find(changedEditor, fieldContext.window.FieldEditorFields).knownLegacy, editorFields.knownLegacy);
+  assert.deepEqual([legacyPreparations, legacyScopeScans, editableFocuses], [1, 1, 1], 'The editor prepares legacy protection once and shares it with initialization and fields');
+  delete legacyTask.execution.legacy_facts.filter; field.legacyValues = prepareLegacyValues; fieldHooks.unmount();
+
+  // Closing a completed file command consumes it once and refreshes without the old snapshot.
+  const fieldWorkspaceHooks = hooks(), fieldWorkspaceReads = []; let fieldResets = 0;
+  const fileCommand = { phase: 'idle', locked: false, reset() { fieldResets++; this.phase = 'idle'; return true; } };
+  const fieldWorkspaceWindow = { APSResourceContract: {}, FieldControls: { Button: 'button', ErrorBox: 'error', Feedback: 'feedback' },
+    WorkbenchGuards: { useDirtyGuard: () => ({}), confirmLeave: async () => true }, WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} },
+    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, WorkbenchListControls: { Pager: 'field-pager' },
+    FieldFilters: 'field-filters', FieldTable: 'field-table', FieldDetail: 'field-detail', FieldFiles: 'field-files' };
+  const fieldWorkspaceContext = vm.createContext({ window: fieldWorkspaceWindow, React: fieldWorkspaceHooks.React, AbortController, DOMException });
+  load(fieldWorkspaceContext, 'resource-session.js'); load(fieldWorkspaceContext, 'FieldAPI.js');
+  fieldWorkspaceWindow.APSResourceSession.useCommand = () => fileCommand;
+  fieldWorkspaceWindow.FieldAPI.readView = async (api, input) => {
+    fieldWorkspaceReads.push({ ...input });
+    const { page, size, task_ref, operation_ref, snapshot_ref, ...scope } = input;
+    return { meta: { snapshot_ref: 'field-snapshot' }, data: { scope,
+      plan: { plan_ref: scope.plan_ref, display_name: '正式计划', kind: 'official', is_current_official: true, version: 1 },
+      tasks: [{ task_ref: 'field-task', operation_ref: 'field-operation' }], page: { number: page || 1, size, total: 30, pages: 2 }, summary: {} } };
+  };
+  load(fieldWorkspaceContext, 'FieldWorkspace.jsx');
+  const fieldWorkspaceProps = { adapter: {}, initialContext: { plan_ref: 'field-plan', task_ref: 'field-task', operation_ref: 'field-operation', scope: { query: 'old-query' } } };
+  const renderFieldWorkspace = () => fieldWorkspaceHooks.render(() => fieldWorkspaceWindow.FieldWorkspace(fieldWorkspaceProps));
+  const settleFieldWorkspace = async () => {
+    let tree;
+    for (let index = 0; index < 4; index++) { tree = renderFieldWorkspace(); fieldWorkspaceHooks.flush(); await turns(); }
+    return tree;
+  };
+  let fieldWorkspaceTree = await settleFieldWorkspace();
+  find(fieldWorkspaceTree, 'field-pager').onPage(2); fieldWorkspaceTree = await settleFieldWorkspace();
+  assert.equal(fieldWorkspaceReads.at(-1).snapshot_ref, 'field-snapshot');
+  find(fieldWorkspaceTree, 'button', props => props.children.includes('报工文件')).onClick(); fieldWorkspaceTree = renderFieldWorkspace();
+  assert(find(fieldWorkspaceTree, 'field-files'));
+  fileCommand.phase = 'done'; fileCommand.result = { result: 'committed' }; fieldWorkspaceTree = renderFieldWorkspace();
+  const readsBeforeFileClose = fieldWorkspaceReads.length, resetsBeforeFileClose = fieldResets;
+  find(fieldWorkspaceTree, 'field-files').onClose(); fieldWorkspaceTree = await settleFieldWorkspace();
+  assert.equal(fieldResets, resetsBeforeFileClose + 1); assert.equal(fieldWorkspaceReads.length, readsBeforeFileClose + 1);
+  assert.equal(fieldWorkspaceReads.at(-1).snapshot_ref, undefined); assert.equal(find(fieldWorkspaceTree, 'field-files'), null);
+  find(fieldWorkspaceTree, 'button', props => props.children.includes('报工文件')).onClick(); fieldWorkspaceTree = renderFieldWorkspace();
+  const readsBeforeFileCancel = fieldWorkspaceReads.length;
+  find(fieldWorkspaceTree, 'field-files').onClose(); fieldWorkspaceTree = await settleFieldWorkspace();
+  assert.equal(fieldWorkspaceReads.length, readsBeforeFileCancel, 'Closing an uncommitted file dialog does not refresh');
+  find(fieldWorkspaceTree, 'field-filters').onChange({ plan_ref: 'field-plan', query: 'new-query', task_ref: 'stale-task', operation_ref: 'stale-operation' });
+  fieldWorkspaceTree = await settleFieldWorkspace();
+  assert.equal(fieldWorkspaceReads.at(-1).task_ref, undefined); assert.equal(fieldWorkspaceReads.at(-1).operation_ref, undefined);
+  assert.equal(fieldWorkspaceReads.at(-1).page, 1); assert.equal(fieldWorkspaceReads.at(-1).query, 'new-query'); assert.equal(find(fieldWorkspaceTree, 'field-table').opened, null);
+  find(fieldWorkspaceTree, 'field-table').onClear(); fieldWorkspaceTree = await settleFieldWorkspace();
+  assert.equal(fieldWorkspaceReads.at(-1).query, undefined, 'Clearing field filters still replaces the old filter scope');
+  assert.equal(fieldWorkspaceReads.at(-1).task_ref, undefined); assert.equal(fieldWorkspaceReads.at(-1).operation_ref, undefined); fieldWorkspaceHooks.unmount();
+
+  // Only the actual CSV export gets the longer transport deadline; other downloads keep 20 seconds.
+  const downloadDeadlines = [], downloadRequests = [], downloadTimers = new Map(); let downloadTimerId = 0;
+  const downloadLocation = { href: 'http://localhost/workbench', origin: 'http://localhost' }, downloadBlob = new Blob(['csv']);
+  const downloadWindow = { APSReadBoundary: { verified: value => value }, ActualGanttContract: { scope: value => value, transport: value => value } };
+  const downloadContext = vm.createContext({ window: downloadWindow, location: downloadLocation, URL, AbortController, FormData,
+    setTimeout(fn, delay) { downloadDeadlines.push(delay); const id = ++downloadTimerId; downloadTimers.set(id, fn); return id; },
+    clearTimeout(id) { downloadTimers.delete(id); },
+    async fetch(url, options) {
+      downloadRequests.push({ url, signal: options.signal });
+      return { ok: true, headers: { get: key => key === 'content-type' ? 'text/csv' : key === 'content-disposition' ? 'attachment; filename=actual.csv' : null }, blob: async () => downloadBlob };
+    } });
+  load(downloadContext, 'resource-api.js'); load(downloadContext, 'ActualGanttAPI.js');
+  const resourceDownloads = downloadWindow.APSResourceAPI.create(), exportController = new AbortController();
+  await resourceDownloads.download('plans/plan/export', {}, exportController.signal);
+  await resourceDownloads.download('execution/files/export', {}, exportController.signal, { timeout: 35000 });
+  assert.strictEqual((await downloadWindow.ActualGanttAPI.create().export({ format: 'csv' }, exportController.signal)).blob, downloadBlob);
+  assert.deepEqual(downloadDeadlines, [20000, 35000, 60000]); assert.equal(downloadTimers.size, 0);
+  assert.equal(downloadRequests.at(-1).url, 'http://localhost/api/workbench/v1/actual-gantt/export?format=csv');
+  assert.equal(downloadRequests.some(request => request.signal.aborted), false);
   console.log(JSON.stringify({ read_identity_and_cancellation: true, same_identity_reopen_loads: reopenLoads, error_retry_and_hidden_snapshot_loads: retryLoads, unmount_refresh_waiters_cancelled: outcomes.length, unstarted_refresh_loads: queuedLoads,
     baseline_reopen_reads: 1, baseline_refresh_and_identity_reads: baselineLoads,
     resource_related_save_requests: resourceRequests.map(value => ({ kind: value.kind, page: value.page, snapshot_ref: value.snapshot_ref || null })),
