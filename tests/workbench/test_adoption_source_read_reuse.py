@@ -3,20 +3,25 @@
 import json
 import sqlite3
 from collections import Counter
+from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
 from core.infrastructure import read_evidence
 from core.infrastructure.connection_guards import query_only
 from core.infrastructure.read_evidence import read_evidence_scope, verified_read
+from core.models.content import same
 from core.models.workbench_command import canonical_json
+from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
 from core.services.batch.service import BatchService
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.facts import adoption_baseline_sources
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
-from core.services.workbench.plan import adoption_baseline, projection
+from core.services.workbench.plan import adoption_baseline, adoption_baseline_identity, projection
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from tests.workbench.plan_adoption_baseline_support import adopt_candidate, mutate_json
 from tests.workbench.plan_read_support import make_api
@@ -90,7 +95,7 @@ def test_dashboard_has_one_complete_source_proof_and_frozen_quantity(adopted_ver
     BatchService(case.conn).update("B1", quantity=7)
     before, changes = snapshot(case.conn), case.conn.total_changes
     calls = _track_sources(monkeypatch)
-    data, _ = read_dashboard_analysis(case.conn, second["plan_ref"])
+    data, _ = read_dashboard_analysis(case.conn, second["plan_ref"], query=DashboardAnalysisQuery("timeline"))
     assert len(calls) == 1
     assert data["tasks"][0]["quantity"] == data["tasks"][0]["batch_quantity"] == 5
     assert data["tasks"][0]["quantity_basis"] == "run_admission"
@@ -110,6 +115,87 @@ def test_task_facts_without_reuse_scope_still_verify_source_once(adopted_version
     assert operations[case.op_id]["source"] == "internal"
     assert len(calls) == 1
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
+
+
+def test_candidate_admission_proof_reuses_strict_fields_and_preserves_extra_official_checks(adopted_versions, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.facts import run_input_codec
+
+    case, _, second = adopted_versions
+    audit = json.loads(case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?",
+                                       (second["version"],)).fetchone()[0])
+    before, changes = snapshot(case.conn), case.conn.total_changes
+    calls = []
+    for dto in (run_input_codec.ExecutionProjection, run_input_codec.ProductionReport):
+        original = dto.__init__
+
+        def observed(self, *args, _init=original, **kwargs):
+            calls.append(type(self).__name__)
+            _init(self, *args, **kwargs)
+
+        monkeypatch.setattr(dto, "__init__", observed)
+    with TransactionManager(case.conn).transaction(), read_evidence_scope(case.conn):
+        source = adoption_baseline_sources.candidate_source_evidence(case.conn, audit)
+        proof = source["admission_proof"]
+        values = projection._source_quantities("candidate_adoption", source["arranged"], source["generation_facts"])
+        assert values[case.op_id]["quantity"] == values[case.op_id]["batch_quantity"] == 5
+        assert values[case.op_id]["quantity_reason"] is None and calls == []
+        adoption_baseline_identity.verify_capture(proof.baseline, proof.tables, admission_proof=proof)
+        official = next(row for row in proof.tables["WorkbenchPlanSourceRefs"]
+                        if row["kind"] == "official" and row["active"] == 1
+                        and row["version"] == proof.baseline["version"])
+        for field in ("source_table", "plan_role"):
+            saved = official[field]
+            official[field] = "wrong-owner"
+            try:
+                with pytest.raises(AdoptionBaselineUnavailable) as error:
+                    adoption_baseline_identity.verify_capture(proof.baseline, proof.tables, admission_proof=proof)
+                assert (error.value.code, error.value.gap) == ("adoption_snapshot_invalid", "archived_official_reference")
+            finally:
+                official[field] = saved
+    assert snapshot(case.conn) == before and case.conn.total_changes == changes
+
+
+def test_empty_admission_proof_keeps_null_version_schedule_rejection():
+    baseline = {"plan_ref": None, "version": None, "rows": []}
+    tables = {"ScheduleHistory": [], "Schedule": [{"id": 1, "op_id": 1, "version": None}]}
+    proof = SimpleNamespace(baseline=baseline, tables=tables)
+    with pytest.raises(AdoptionBaselineUnavailable) as error:
+        adoption_baseline_identity.verify_capture(baseline, tables, admission_proof=proof)
+    assert error.value.gap == "baseline_matches_archived_schedule"
+
+
+def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_intervals(monkeypatch):
+    values = [None, "M1", True, 1, 1.0, -0.0, b"M1", datetime(2026, 9, 9), {"$sqlite_blob": "TTE="}, 1 << 64]
+    base = {"machine_id": None, "operator_id": "O1", "start_time": "2026-09-09 08:00:00",
+            "end_time": "2026-09-09 09:00:00"}
+    for left in values:
+        for right in values:
+            current, candidate = dict(base, machine_id=left), dict(base, machine_id=right)
+            expected = same({key: current[key] for key in ("machine_id", "operator_id")},
+                            {key: candidate[key] for key in ("machine_id", "operator_id")})
+            assert adoption_baseline_identity._arrangement_matches(current, candidate) == expected
+    current, candidate = dict(base), dict(base, start_time="2026-09-09T08:00:00", end_time="2026-09-09T09:00:00")
+    calls = []
+    original = adoption_baseline_identity.public_time
+
+    def observed(value):
+        calls.append(value)
+        return original(value)
+
+    monkeypatch.setattr(adoption_baseline_identity, "public_time", observed)
+    assert adoption_baseline_identity._arrangement_matches(current, candidate,
+        known_times=("2026-09-09 08:00:00", "2026-09-09 09:00:00"))
+    assert calls == [candidate["start_time"], candidate["end_time"]]
+    context = PlanReadContext.__new__(PlanReadContext)
+    context._intervals = {}
+    query = {"version": 2, "source_table": "schedule", "candidate_id": None, "scenario_id": None}
+    assert context.peek_source_intervals(**query) is None
+    completed = {1: (base["start_time"], base["end_time"])}
+    context._intervals[context.source_key(query)] = completed
+    assert context.peek_source_intervals(**query) is completed
+    assert context.peek_source_intervals(**dict(query, version=3)) is None
+    assert context.peek_source_intervals(**dict(query, source_table="candidate_rows", candidate_id=1)) is None
 
 
 def test_caller_version_and_history_cannot_reuse_another_adoption(adopted_versions):

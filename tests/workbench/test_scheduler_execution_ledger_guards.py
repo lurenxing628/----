@@ -3,18 +3,41 @@
 import json
 from dataclasses import replace
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithms.greedy.run_state_setup import _prepare_run_state
+from core.algorithms.greedy.scheduler import GreedyScheduler, prepare_native_schedule_inputs
+from core.algorithms.greedy.seed import normalize_seed_results, seed_resource_segments, seed_result_for_output
 from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.services.personnel.operator_machine_service import OperatorMachineService
-from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
+from core.services.scheduler.execution.execution_ledger_guard import (
+    ensure_ledger_execution_schedulable,
+    fact_resource_segments,
+    ledger_fact_changes,
+)
 from core.services.scheduler.operation_execution_feedback_service import (
     ExecutionFeedbackContext,
     OperationExecutionFeedbackService,
 )
+from core.services.scheduler.run.schedule_execution_persistence_guard import (
+    _schedule_resource_intervals,
+    _validate_unselected_resource_overlap,
+)
+from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
+from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
 from core.services.scheduler.template_lineage import TemplateLineageWriter
+from core.services.workbench.execution.production_report_validation import (
+    _actual_resources_changed,
+    execution_facts_changed,
+)
+from core.services.workbench.run.candidate_adoption_constraints import _resource_overlaps
+from core.services.workbench.run.input import prepare_candidate_run_input
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.field_workspace_support import FieldAPI
@@ -155,3 +178,169 @@ def test_void_that_parts_merged_cycle_warns_without_blocking(candidate_case):
     assert case.command("report_void", first[1]["report_ref"], intent(first[1]))["result"] == "committed"
     blockers = PreflightService(case.conn).evaluate(case.settings())[0]["blockers"]
     assert "external_cycle_actuals_differ" not in {row["code"] for row in blockers}
+
+
+def _segmented_completion(case):
+    case.conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('M2','Second lathe','T1')")
+    case.conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('O2','Second operator')")
+    case.conn.executemany("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES (?,?)",
+                         (("O1", "M2"), ("O2", "M1"), ("O2", "M2")))
+    case.conn.commit()
+    _, refs = compute(case)
+    version = service(case.conn).adopt(refs[0], preview(case, refs[0]), "segments-first-adoption", INTENT)["data"]["official_plan"]["version"]
+    reports = []
+    for start, end, operator in ((8, 9, "O1"), (9, 10, "O2"), (10, 11, "O1")):
+        reports.append(case.command("create", case.task(version, case.op_id), case.values(
+            1, actual_start=f"2026-09-09T{start:02d}:00:00", actual_end=f"2026-09-09T{end:02d}:00:00",
+            effective_processing_hours=1, actual_operator_ref=case.ref("operator", operator)))["data"]["rows"][0])
+    return version, reports
+
+
+def test_completed_ledger_keeps_each_report_resource_pair_and_rejects_unrepresentable_segments(candidate_case):
+    case = candidate_case
+    version, _ = _segmented_completion(case)
+    fact = read_facts(case.conn, version)[case.op_id]
+    projection = case.projections("B1")[0]
+    projection = replace(projection, reports=sorted(projection.reports, key=lambda report: report.actual_start or ""))
+    assert fact.execution_protection_content is not None
+    resources = fact.execution_protection_content["resources"]
+    ensure_ledger_execution_schedulable({case.op_id: fact})
+    expected = tuple((datetime(2026, 9, 9, start), datetime(2026, 9, 9, end), "M1", operator)
+                     for start, end, operator in ((8, 9, "O1"), (9, 10, "O2"), (10, 11, "O1")))
+    assert fact_resource_segments(fact) == expected
+    assert (fact.actual_machine_id, fact.actual_operator_id) == ("M1", "O1")
+    assert fact.execution_effective_intervals == tuple(segment[:2] for segment in expected)
+    reversed_projection = replace(projection, reports=list(reversed(projection.reports)))
+    reversed_changes = ledger_fact_changes(fact, reversed_projection, resources, source="internal")
+    assert reversed_changes is not None
+    assert reversed_changes["actual_operator_id"] == "O1" and not reversed_changes["execution_protection_reasons"]
+    assert fact_resource_segments(replace(fact, execution_protection_content=None)) == ()
+
+    invalid = []
+    for field in ("actual_machine_ref", "actual_operator_ref"):
+        reports = list(projection.reports)
+        reports[1] = replace(reports[1], **{field: None})
+        invalid.append((replace(projection, reports=reports), resources,
+                        "execution_ledger_actual_resource_missing_or_multiple"))
+    operator_ref = case.ref("operator", "O2")
+    for patch in ({"available": False}, {"kind": "machine"}):
+        changed_resources = dict(resources)
+        changed_resources[operator_ref] = dict(resources[operator_ref], **patch)
+        invalid.append((projection, changed_resources, "execution_ledger_actual_resource_unavailable"))
+    invalid.append((replace(projection, legacy_facts=[{
+        "actual_machine_ref": case.ref("machine", "M2"), "actual_operator_ref": None,
+    }]), resources, "execution_ledger_actual_resource_missing_or_multiple"))
+    invalid.append((replace(projection, legacy_facts=[{
+        "actual_machine_ref": None, "actual_machine_id": "missing-machine", "actual_operator_ref": None,
+    }]), resources, "execution_ledger_actual_resource_missing_or_multiple"))
+    duplicate = replace(projection.reports[-1], actual_start=projection.reports[0].actual_start,
+                        actual_end=projection.reports[0].actual_end)
+    invalid.append((replace(projection, reports=projection.reports[:2] + [duplicate]), resources,
+                    "execution_ledger_intervals_not_representable"))
+    gapped = replace(projection.reports[1], actual_start="2026-09-09T09:15:00")
+    invalid.append((replace(projection, reports=[projection.reports[0], gapped, projection.reports[2]]), resources,
+                    "execution_ledger_intervals_not_representable"))
+    for damaged, current_resources, reason in invalid:
+        changes = ledger_fact_changes(fact, damaged, current_resources, source="internal")
+        assert changes is not None
+        assert reason in changes["execution_protection_reasons"]
+        with pytest.raises(AppError) as exc:
+            ensure_ledger_execution_schedulable({case.op_id: replace(fact, **changes)})
+        assert exc.value.details["reason"] == "execution_ledger_requires_reconciliation"
+    truncated = replace(projection, completion_basis="legacy_finish_event", reports=projection.reports[:2])
+    changes = ledger_fact_changes(fact, truncated, resources, source="internal")
+    assert changes is not None
+    assert changes["execution_effective_intervals"] == tuple(segment[:2] for segment in expected[:2])
+    with pytest.raises(AppError) as exc:
+        ensure_ledger_execution_schedulable({case.op_id: replace(fact, **changes)})
+    assert "execution_ledger_actual_interval_inconsistent" in exc.value.details["data_gaps"]
+
+
+def test_segment_metadata_survives_seed_coercion_and_occupies_only_its_actual_resources(candidate_case):
+    case = candidate_case
+    _segmented_completion(case)
+    case.batch("B2")
+    case.operation(batch="B2")
+    case.conn.commit()
+    prepared = prepare_candidate_run_input(case.conn, case.settings("B1", "B2"), case.projections("B1", "B2"))
+    seed = prepared.execution_seed_results[0]
+    fact = prepared.execution_facts[case.op_id]
+    segments = fact_resource_segments(fact)
+    assert seed["_resource_segments"] == segments
+    coerced = coerce_seed_result_item(seed, idx=0)
+    normalized, op_ids, warnings = normalize_seed_results(seed_results=[coerced], operations=prepared.algo_ops)
+    assert op_ids == {case.op_id} and warnings == []
+    assert seed_resource_segments(normalized[0]) == segments
+    assert type(seed_result_for_output(normalized[0])) is ScheduleResult
+    native = prepare_native_schedule_inputs({}, scheduler=GreedyScheduler(prepared.cal_svc),
+        operations=prepared.algo_ops, batches=prepared.batches, seed_results=normalized)
+    state = _prepare_run_state(prepared_inputs=native, params=SimpleNamespace(base_time=datetime(2026, 9, 9, 8)),
+        warnings=[], algo_stats={}, readiness_gate_enabled=False, strict_mode=True)
+    assert state.machine_timeline["M1"] == [segment[:2] for segment in segments]
+    assert state.operator_timeline["O1"] == [segments[0][:2], segments[2][:2]]
+    assert state.operator_timeline["O2"] == [segments[1][:2]]
+    assert len(state.results) == state.seed_count == 1
+    assert type(state.results[0]) is ScheduleResult and not hasattr(state.results[0], "_resource_segments")
+
+    actual = ValidatedScheduleRow(case.op_id, "M1", "O1", datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 11), "internal")
+    concurrent = ValidatedScheduleRow(case.op_id + 100, "M2", "O2",
+                                      datetime(2026, 9, 9, 9, 15), datetime(2026, 9, 9, 9, 45), "internal")
+    with pytest.raises(CandidateAdoptionBlocked) as exc:
+        _resource_overlaps([actual, concurrent], prepared.execution_facts)
+    assert exc.value.code == "candidate_resource_overlap"
+    concurrent = replace(concurrent, operator_id="O1")
+    _resource_overlaps([actual, concurrent], prepared.execution_facts)
+    intervals = _schedule_resource_intervals([actual], prepared.execution_facts)
+    assert intervals["operator", "O2"] == ([segments[1][0]], [segments[1][1]])
+    reservation = SimpleNamespace(op_id=concurrent.op_id, machine_id="M2", operator_id="O2",
+                                  start_time=concurrent.start_time, end_time=concurrent.end_time)
+    with pytest.raises(AppError) as exc:
+        _validate_unselected_resource_overlap(payload=SimpleNamespace(schedule_rows=[actual]),
+            reservations=[reservation], execution_facts=prepared.execution_facts)
+    assert exc.value.details["reason"] == "unselected_execution_resource_overlap"
+    reservation.operator_id = "O1"
+    _validate_unselected_resource_overlap(payload=SimpleNamespace(schedule_rows=[actual]),
+        reservations=[reservation], execution_facts=prepared.execution_facts)
+
+
+def test_segmented_completion_runs_and_adopts_with_full_scope_then_protects_resource_interval_binding(candidate_case):
+    case = candidate_case
+    _, reports = _segmented_completion(case)
+    case.batch("B2")
+    new_op = case.operation("B2", machine_id="M2", operator_id="O1")
+    case.conn.commit()
+    only_new = case.accept(key="segments-partial-scope-run", settings=case.settings("B2"))
+    partial = WorkbenchRunWorker(case.conn).execute(only_new["run_ref"])
+    assert partial["state"] == "complete" and partial["candidates"]
+    blocked = service(case.conn).preview(partial["candidates"][0]["candidate_ref"])
+    assert blocked["validation"]["can_adopt"] is False
+    assert "official_scope_not_covered" in {issue["code"] for issue in blocked["validation"]["issues"]}
+    accepted = case.accept(key="segments-full-scope-run", settings=case.settings("B1", "B2"))
+    result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
+    _assert_kept_worker_tasks(case, result, ("2026-09-09T08:00:00", "2026-09-09T11:00:00"))
+    ref = result["candidates"][0]["candidate_ref"]
+    tasks = [json.loads(row[0]) for row in case.conn.execute(
+        "SELECT payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (ref,))]
+    new_task = next(row for row in tasks if row["op_id"] == new_op)
+    assert (new_task["machine_id"], new_task["operator_id"]) == ("M2", "O1")
+    assert (new_task["start_time"], new_task["end_time"]) == ("2026-09-09T09:00:00", "2026-09-09T09:45:00")
+    adopted = service(case.conn).adopt(ref, preview(case, ref), "segments-full-adoption", INTENT)
+    assert adopted["result"] == "committed"
+    projection = case.ledger.get_task(case.task(adopted["data"]["official_plan"]["version"], case.op_id))
+    changed_reports = list(projection.reports)
+    last = next(index for index, report in enumerate(changed_reports) if report.report_ref == reports[-1]["report_ref"])
+    changed_reports[last] = replace(changed_reports[last], actual_operator_ref=case.ref("operator", "O2"))
+    changed = replace(projection, reports=changed_reports)
+    assert execution_facts_changed(projection, changed)
+    assert _actual_resources_changed(projection, changed, "internal")
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        case.command("correct", reports[-1]["report_ref"], {
+            "original_revision_ref": reports[-1]["revision_ref"], "actual_operator_ref": case.ref("operator", "O2"),
+            "reason": "不能偷换已采用的分段人员",
+        })
+    assert "adopted_actual_resource_changed" in {item["code"] for item in exc.value.conflicts}
+    maintained = case.command("correct", reports[-1]["report_ref"], {
+        "original_revision_ref": reports[-1]["revision_ref"], "remark": "只维护备注，不改实际占用",
+        "reason": "补充说明",
+    })
+    assert maintained["result"] == "committed"

@@ -5,8 +5,8 @@ from threading import Barrier
 
 import pytest
 
-from core.models.workbench_command import WorkbenchCommandUncertain
-from tests.workbench.run_candidate_adoption_support import INTENT, KEY, candidate, preview, service, snapshot
+from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
+from tests.workbench.run_candidate_adoption_support import BASE, INTENT, KEY, api, candidate, preview, service, snapshot
 from tests.workbench.run_candidate_adoption_support import candidate_case as _case  # noqa: F401
 from tests.workbench.run_candidate_support import connect
 
@@ -90,3 +90,114 @@ def test_adoption_reuses_one_capture_through_input_and_constraints(candidate_cas
     assert full_schema_reads == ["SELECT type, name, tbl_name, sql FROM sqlite_master"]
     assert evidence.payload.scheduled_op_ids == {case.op_id}
     assert counts and set(counts.values()) == {1}
+
+
+def test_adoption_command_resolution_keeps_live_pending_and_identifies_replaced_context(candidate_case, monkeypatch):
+    case = candidate_case
+    ref = candidate(case)
+    adopter = service(case.conn)
+    checked = adopter.preview(ref)
+    current = checked["data_context_ref"]
+    reads = []
+
+    def context_ref():
+        reads.append(case.conn.in_transaction)
+        return current
+
+    monkeypatch.setattr(adopter.data_context, "ref", context_ref)
+    state, pending = adopter.resolve_command(ref, KEY, run_ref=checked["run_ref"], data_context_ref=current)
+    assert state == "not_recorded"
+    assert pending["may_be_in_flight"] is True and pending["resolution"] == "unresolved"
+    assert pending["request_key"] == KEY and pending["data_context_ref"] == current
+    assert reads == [True]
+    state, legacy_pending = adopter.resolve_command(ref, KEY)
+    assert state == "not_recorded" and legacy_pending["resolution"] == "unresolved"
+    assert legacy_pending["may_be_in_flight"] is True
+    for candidate_ref, options in (
+        ("f" * 48, {}),
+        (ref, {"run_ref": "e" * 48}),
+        (ref, {"data_context_ref": "a" * 64}),
+    ):
+        state, replaced = adopter.resolve_command(candidate_ref, KEY, **options)
+        assert state == "not_recorded" and replaced["result"] == "not_recorded"
+        assert replaced["may_be_in_flight"] is False and replaced["resolution"] == "context_replaced"
+        assert replaced["data_context_ref"] == current
+    assert not case.conn.in_transaction
+    for options in ({"run_ref": "invalid"}, {"data_context_ref": "f" * 48}):
+        with pytest.raises(WorkbenchCommandRejected) as exc:
+            adopter.resolve_command(ref, KEY, **options)
+        assert exc.value.code == "invalid_input" and exc.value.status == 400
+    assert reads == [True] * 5
+
+
+def test_candidate_preview_does_not_read_data_context_for_missing_candidate(candidate_case, monkeypatch):
+    adopter = service(candidate_case.conn)
+
+    def unexpected_context():
+        raise AssertionError("missing candidates must not read the maintenance journal")
+
+    monkeypatch.setattr(adopter.data_context, "ref", unexpected_context)
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        adopter.preview("f" * 48)
+    assert exc.value.code == "entity_not_found" and exc.value.status == 404
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_candidate_preview_maps_data_context_failure_to_storage_failure(candidate_case, monkeypatch, enabled):
+    case = candidate_case
+    ref = candidate(case)
+    adopter = service(case.conn, enabled=enabled)
+    failure = RuntimeError("maintenance journal unavailable")
+
+    def unavailable_context():
+        raise failure
+
+    monkeypatch.setattr(adopter.data_context, "ref", unavailable_context)
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        adopter.preview(ref)
+    assert exc.value.code == "storage_failure" and exc.value.status == 500
+    assert exc.value.__cause__ is failure
+
+
+def test_recorded_adoption_replays_before_reading_the_data_context(candidate_case, monkeypatch):
+    case = candidate_case
+    ref = candidate(case)
+    adopter = service(case.conn)
+    checked = adopter.preview(ref)
+
+    def unavailable_context():
+        raise RuntimeError("maintenance journal unavailable")
+
+    monkeypatch.setattr(adopter.data_context, "ref", unavailable_context)
+    adopted = adopter.adopt(ref, checked["write_context"]["write_token"], KEY, INTENT)
+    state, replayed = adopter.resolve_command(ref, KEY, run_ref="e" * 48, data_context_ref="a" * 64)
+    assert state == "recorded" and replayed["replayed"] is True
+    assert replayed["receipt_ref"] == adopted["receipt_ref"]
+    assert adopter.adopt(ref, "", KEY, INTENT)["receipt_ref"] == adopted["receipt_ref"]
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        adopter.resolve_command("f" * 48, KEY)
+    assert exc.value.code == "request_key_conflict"
+    with pytest.raises(RuntimeError, match="maintenance journal unavailable"):
+        adopter.resolve_command(ref, "candidate-adoption-not-recorded")
+
+
+def test_candidate_adoption_resolution_route_is_read_only_and_not_cached(candidate_case):
+    case = candidate_case
+    ref = candidate(case)
+    checked = service(case.conn).preview(ref)
+    before = snapshot(case.conn)
+
+    def read_only_connection(path):
+        conn = connect(path)
+        conn.execute("PRAGMA query_only=ON")
+        return conn
+
+    client = api(case, connection_factory=read_only_connection)
+    response = client.get(BASE + ref + "/adoption-commands/" + KEY,
+                          query_string={"run_ref": checked["run_ref"], "data_context_ref": checked["data_context_ref"]})
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.get_json()["resolution"] == "unresolved"
+    replaced = client.get(BASE + "f" * 48 + "/adoption-commands/" + KEY)
+    assert replaced.status_code == 200 and replaced.get_json()["resolution"] == "context_replaced"
+    assert snapshot(case.conn) == before

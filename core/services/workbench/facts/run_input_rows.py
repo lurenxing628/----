@@ -95,10 +95,10 @@ def classify_rows(facts, settings, raw_batches, operations, projections, guarded
     blocked = [row for row in rows if row["status"] == "blocked"]
     if blocked:
         raise CandidateRunInputError("input_blocked", "排产资料还有缺项，不能开始。请先补齐下方列出的项。", issues=blocked)
-    eligible = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")}
+    eligible = {row["op_id"]: row["issues"] for row in rows if row["status"] in ("eligible", "auto_assign_required")}
     if not eligible and not cycles:
         raise CandidateRunInputError("no_eligible_operations", "选定范围内没有可排的工序。请调整范围后重试。", issues=rows)
-    mutable = [_assignable_operation(op, checks.resources(raw_by_id[op.id])) for op in operations if op.id in eligible]
+    mutable = [_assignable_operation(op, eligible[op.id]) for op in operations if op.id in eligible]
     return rows, mutable
 
 

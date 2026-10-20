@@ -131,15 +131,10 @@ def _delivery_side(batches, operations, arrangements, deferred, uncertain, block
             for ref, batch in batches.items()}
 
 
-def _blocked_delivery_batches(checked, tasks, rows):
+def _blocked_delivery_batches(checked, rows):
     if checked["constraints_status"] != "blocked":
         return set()
-    sources = {row["row_ref"]: row for row in rows}
     originals = {row["task_ref"]: row["original"] for row in rows}
-    for task in tasks:
-        source = sources.get(task.get("source_row_ref")) or sources.get(task["row_ref"])
-        if source is not None:
-            originals[task["task_ref"]] = source["original"]
     blocked = set()
     issues = checked.get("issues", [])
     if not issues:
@@ -168,7 +163,7 @@ def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None, *,
     batches, operations, deferred, deferred_issues = delivery_origin(admission, rows, facts) if origin is None else origin
     origin_issues = list(origin_issues) + list(deferred_issues)
     before = _delivery_side(batches, operations, _delivery_arrangements(rows, "original"), deferred, origin_issues)
-    blocked = _blocked_delivery_batches(checked, tasks, rows)
+    blocked = _blocked_delivery_batches(checked, rows)
     after = _delivery_side(batches, operations, _delivery_arrangements(rows, "current"), deferred, origin_issues, blocked)
     deliveries = []
     for batch_ref, batch in batches.items():
@@ -261,41 +256,49 @@ def source_projection(rows, admission):
     return facts, archive, origin, contexts
 
 
-def draft_projection(head, rows, checked, live, context_factory, frozen=None, *, source_prepared=None):
+def draft_projection(head, rows, checked, live, context_factory, frozen=None, *, source_prepared=None, scenario_ref=None):
     ref, admission = head["draft_ref"], head["admission"]
-    binding = write_snapshot(head, rows, live)
-    context = {"write_token": None, "expires_at": None,
-               "capabilities": {action: False for action in ACTIONS}, "blocked_reasons": []}
-    if head["status"] == "editing":
-        context = context_factory(ref, ACTIONS, binding)
+    if scenario_ref is None:
+        binding = write_snapshot(head, rows, live)
+        context = {"write_token": None, "expires_at": None,
+                   "capabilities": {action: False for action in ACTIONS}, "blocked_reasons": []}
+        if head["status"] == "editing":
+            context = context_factory(ref, ACTIONS, binding)
+        else:
+            context["blocked_reasons"] = [{"code": "draft_closed", "message": "该草稿已保存或明确放弃，只能读取原记录。"}]
+        current_evidence = {"kind": "trial", "draft_ref": ref}
     else:
-        context["blocked_reasons"] = [{"code": "draft_closed", "message": "该草稿已保存或明确放弃，只能读取原记录。"}]
+        current_evidence = {"kind": "scenario", "scenario_ref": scenario_ref}
     tasks = tasks_projection(rows, ref, checked, live, frozen)
     facts, archive, origin, contexts = source_projection(rows, admission) if source_prepared is None else source_prepared
-    if head["status"] != "editing":
+    if scenario_ref is None and head["status"] != "editing":
         for task in tasks:
             task["edit_context"]["can_change"] = False
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
     unplanned = _unplanned(contexts)
     ledger = operation_effort_ledger(rows, admission)
     pairs, preparation = preparation_projection(rows, admission, ledger,
-        current_evidence={"kind": "trial", "draft_ref": ref}, contexts=contexts)
+        current_evidence=current_evidence, contexts=contexts)
     apply_preparation(tasks, unplanned, pairs)
     compared = comparison(tasks, checked, rows, admission, facts=facts, origin=origin)
     compared["preparation_common"] = preparation
-    apply_changeovers(compared, trial_changeovers(rows, admission, facts=facts))
-    return {"draft_ref": ref, "status": head["status"], "base": admission["input"]["base"],
+    if scenario_ref is None:
+        apply_changeovers(compared, trial_changeovers(rows, admission, facts=facts))
+    result = {"draft_ref": ref, "status": head["status"], "base": admission["input"]["base"],
             "base_identity": admission["source"]["identity"], "scope": admission["input"]["scope"],
             "baseline": {"plan_ref": admission["baseline"]["plan_ref"], "version": admission["baseline"]["version"]},
             "created_at": head["created_at"], "updated_at": head["updated_at"], "tasks": tasks,
             "task_count": len(tasks), "tasks_complete": True, "validation": checked,
             "unplanned_operations": unplanned, "scope_complete": not unplanned,
-            "validation_at_last_write": head["validation"], "write_context": context,
+            "validation_at_last_write": head["validation"],
             "resources": resources_projection(live), "operation_effort": ledger,
             "comparison": compared,
             "capacity": trial_capacity(rows, archive, source_ref=admission["source"]["identity"]),
             "time_scope": {"start": min(row["start"] for row in tasks), "end": max(row["end"] for row in tasks),
                            "time_basis": "factory_local", "selection": "complete_base"}}
+    if scenario_ref is None:
+        result["write_context"] = context
+    return result
 
 
 def _unplanned(contexts):

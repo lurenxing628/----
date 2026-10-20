@@ -5,10 +5,12 @@ import threading
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_run_adoption import ADOPT_ACTION, CandidateAdoptionBlocked, adoption_input
-from core.models.workbench_run_job import validate_run_ref
+from core.models.workbench_run_job import valid_data_context_ref, validate_run_ref
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
+from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.run_data_context import RunDataContext
 
 from .candidate_adoption_persistence import persist_adoption_in_tx
 from .candidate_adoption_validation import validate_adoption
@@ -18,12 +20,13 @@ _ADOPTION_LOCK = threading.Lock()
 
 class WorkbenchRunCandidateAdoptionService:
     def __init__(self, conn, *, integration_enabled=False, context_factory=None, context_validator=None,
-                 point_rendering_enabled=False):
+                 point_rendering_enabled=False, data_context=None):
         self.conn = conn
         self.integration_enabled = integration_enabled is True
         self.context_factory = context_factory
         self.context_validator = context_validator
         self.point_rendering_enabled = point_rendering_enabled is True
+        self.data_context = data_context if data_context is not None else RunDataContext(conn)
 
     def _point_surface(self, evidence):
         if not self.point_rendering_enabled and any(row.start_time == row.end_time for row in evidence.payload.schedule_rows):
@@ -46,14 +49,16 @@ class WorkbenchRunCandidateAdoptionService:
         validate_run_ref(candidate_ref)
         context = {"write_token": None, "expires_at": None, "capabilities": {ADOPT_ACTION: False}, "blocked_reasons": []}
         try:
-            context_factory, _ = self._enabled()
-            evidence = validate_adoption(self.conn, candidate_ref)
-            self._point_surface(evidence)
-        except CandidateAdoptionBlocked as exc:
-            reason = {"code": exc.code, "message": str(exc), "severity": "blocker"}
-            context["blocked_reasons"] = [reason]
-            return {"candidate_ref": candidate_ref, "validation": {"status": "blocked", "can_adopt": False,
-                    "issues": [reason]}, "write_context": context}
+            try:
+                context_factory, _ = self._enabled()
+                evidence = validate_adoption(self.conn, candidate_ref)
+                self._point_surface(evidence)
+            except CandidateAdoptionBlocked as exc:
+                reason = {"code": exc.code, "message": str(exc), "severity": "blocker"}
+                context["blocked_reasons"] = [reason]
+                return {"candidate_ref": candidate_ref, "validation": {"status": "blocked", "can_adopt": False,
+                        "issues": [reason]}, "write_context": context, "data_context_ref": self.data_context.ref()}
+            data_context_ref = self.data_context.ref()
         except WorkbenchCommandRejected:
             raise
         except Exception as exc:
@@ -62,7 +67,8 @@ class WorkbenchRunCandidateAdoptionService:
         return {"candidate_ref": candidate_ref, "run_ref": evidence.run_ref,
                 "baseline": {"plan_ref": evidence.baseline["plan_ref"], "version": evidence.baseline["version"]},
                 "task_count": len(evidence.payload.schedule_rows), "scope_complete": True,
-                "validation": {"status": "valid", "can_adopt": True, "issues": []}, "write_context": context}
+                "validation": {"status": "valid", "can_adopt": True, "issues": []}, "write_context": context,
+                "data_context_ref": data_context_ref}
 
     def adopt(self, candidate_ref, write_token, request_key, value):
         self._outer()
@@ -112,3 +118,28 @@ class WorkbenchRunCandidateAdoptionService:
         if (row["action"], row["context_ref"]) != (ADOPT_ACTION, candidate_ref):
             raise WorkbenchCommandRejected("request_key_conflict", "这条操作记录不属于这个候选方案，没有查到结果。请核对上次提交的操作编号。")
         return commands.repo.public_result(row, replayed=True)
+
+    def resolve_command(self, candidate_ref, request_key, *, run_ref=None, data_context_ref=None):
+        if run_ref is not None:
+            validate_run_ref(run_ref)
+        if data_context_ref is not None and not valid_data_context_ref(data_context_ref):
+            raise WorkbenchCommandRejected("invalid_input", "这条待确认采用记录的数据来源编号无效，请核对本机保存的记录。", 400)
+        receipt = self.lookup(candidate_ref, request_key)
+        if receipt is not None:
+            return "recorded", receipt
+        store = CandidateStore(self.conn)
+        with store.snapshot():
+            saved_run_ref = store.repo.candidate_run_ref(candidate_ref)
+            current_context = self.data_context.ref()
+        replaced = (saved_run_ref is None or (run_ref is not None and saved_run_ref != run_ref)
+                    or (data_context_ref is not None and data_context_ref != current_context))
+        return "not_recorded", {
+            "ok": True, "result": "not_recorded", "request_key": request_key,
+            "may_be_in_flight": not replaced,
+            "resolution": "context_replaced" if replaced else "unresolved",
+            "data_context_ref": current_context,
+            "message": (
+                "这条待确认采用记录来自旧数据库或恢复前的历史状态，当前数据源里没有这项候选采用操作。可安全结束本机待确认记录，再对当前候选执行采用。"
+                if replaced else "尚未查到这次采用提交的处理结果；若请求仍在处理中，请稍后再次查询，避免重复提交。"
+            ),
+        }

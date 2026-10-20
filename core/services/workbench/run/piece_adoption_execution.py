@@ -18,7 +18,8 @@ def validate_piece_execution(svc, prepared, payload, scope, refs, *, purpose):
     projections = prepared.preflight_facts.execution_projections
     _quantities(scope, refs, projections)
     protected = _protected_arrangements(svc, prepared, payload, prepared.execution_seed_results, purpose=purpose)
-    _validate_unselected_resource_overlap(payload=payload, reservations=prepared.execution_reservations)
+    _validate_unselected_resource_overlap(payload=payload, reservations=prepared.execution_reservations,
+                                          execution_facts=prepared.execution_facts)
     return protected
 
 
@@ -39,11 +40,16 @@ def _protected_arrangements(svc, prepared, payload, actual_seeds, *, purpose):
 
 
 def _quantities(scope, refs, projections):
+    piece_batches = {work.batch_id for work in scope.operations if work.piece_id is not None}
     for work in scope.operations:
         item = projections[refs[work.op_id]]
         basis = "batch" if work.piece_id is None else "piece"
         if item.target_basis != basis or item.target_quantity != work.target_quantity:
             block("piece_quantity_unknown", "报工记录的目标数量和共同工序或分件工序对不上，本次没有采用。请到现场记录核对后重新排产。")
+        if (work.batch_id not in piece_batches and item.execution_state == "complete"
+                and item.completion_basis == "legacy_finish_event" and not item.reports
+                and item.data_quality != "invalid" and item.known_completed_quantity <= work.target_quantity):
+            continue
         if (item.data_quality == "invalid" or item.unknown_record_count
                 or item.known_completed_quantity > work.target_quantity or item.remaining_quantity is None
                 or item.remaining_quantity != work.target_quantity - item.known_completed_quantity):

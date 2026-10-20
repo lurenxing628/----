@@ -27,10 +27,11 @@ def _table(facts, name):
         corrupt()
     if not columns:
         corrupt()
+    column_set = frozenset(columns)
     result = []
     for row in tables[name]:
         if type(row) is dict:
-            if set(row) != set(columns):
+            if row.keys() != column_set:
                 corrupt()
             result.append(dict(row))
         elif type(row) is list and len(row) == len(columns):

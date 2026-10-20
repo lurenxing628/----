@@ -12,7 +12,7 @@ from core.services.workbench.run.input_runtime import held_arrangements
 from .materials import adoption_settings, hold_settings
 
 
-def frozen_arrangements(conn, admission, rows, live, checks):
+def frozen_arrangements(conn, admission, rows, live, checks, *, settings=None):
     """{工序: 原安排}：正式采用时按来源排产的不重排时段原样保留的工序。
 
     与试调采用复核同一口径：同一份排产输入（冻结从来源排产的起日起算）、同一份正式计划、
@@ -21,7 +21,8 @@ def frozen_arrangements(conn, admission, rows, live, checks):
     version = live["baseline"]["version"]
     if version is None:
         return {}
-    settings = adoption_settings(admission, rows, checks, live["execution"])
+    if settings is None:
+        settings = adoption_settings(admission, rows, checks, live["execution"])
     anchor = hold_settings(admission, settings)
     facts = live["preflight_facts"]
     try:

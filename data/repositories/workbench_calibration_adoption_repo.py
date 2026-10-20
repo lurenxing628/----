@@ -39,7 +39,8 @@ class WorkbenchCalibrationAdoptionRepository(BaseRepository):
                "adopted_at": adopted_at, "generated_at": evidence.generated_at,
                "method_version": suggestion["method_version"], "sample_count": suggestion["sample_count"],
                "evidence_json": evidence.audit_document(),
-               "template_before": snapshot(before), "template_after": snapshot(after)}
+               "template_before": evidence.snapshot["template"],
+               "template_after": snapshot(after)}
         self.conn.execute("INSERT INTO WorkbenchCalibrationAdoptions (" + ",".join(row) + ") VALUES (" +
                           ",".join("?" for _ in row) + ")", tuple(row.values()))
         return {key: value for key, value in row.items() if key not in ("evidence_json", "template_before", "template_after")}

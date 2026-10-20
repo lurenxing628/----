@@ -9,12 +9,14 @@
     const names = new Map(); ['machines', 'operators'].forEach(k => data.resources[k].forEach(r => names.set(r.ref, r.business_code + ' · ' + (r.label || '名称未填写'))));
     return ref => ref === null ? '无内部资源' : names.get(ref) || '原资源名称不可读';
   }
+  const matchesScope = (task, scope, batchRefs) => (!scope.range_start || window.PointContract.overlaps(task, scope.range_start, scope.range_end))
+    && (!batchRefs || batchRefs.has(task.batch_ref))
+    && (!scope.resource_ref || (scope.resource_type === 'batch' ? task.batch_ref : task[scope.resource_type + '_ref']) === scope.resource_ref);
+  const matchesQuery = (task, needle, name) => !needle
+    || [task.batch_id, task.part_no, task.part_name, task.process_label, task.piece_id, name(task.machine_ref), name(task.operator_ref)].join(' ').toLowerCase().includes(needle);
   function matching(data, scope, query, changed, name, batchRefs) {
     const needle = query.trim().toLowerCase();
-    return data.tasks.filter(t => (!changed || t.changed) && (!scope.range_start || window.PointContract.overlaps(t, scope.range_start, scope.range_end))
-      && (!batchRefs || batchRefs.has(t.batch_ref))
-      && (!scope.resource_ref || (scope.resource_type === 'batch' ? t.batch_ref : t[scope.resource_type + '_ref']) === scope.resource_ref)
-      && (!needle || [t.batch_id, t.part_no, t.part_name, t.process_label, t.piece_id, name(t.machine_ref), name(t.operator_ref)].join(' ').toLowerCase().includes(needle)));
+    return data.tasks.filter(t => (!changed || t.changed) && matchesScope(t, scope, batchRefs) && matchesQuery(t, needle, name));
   }
   function Gantt({ data, selected, onSelect, detailsOpen, onToggleDetails }) {
     const V = window.TrialViewState, preferences = V.useView(data);
@@ -69,10 +71,20 @@
         selected={selected === t.task_ref} onSelect={() => { setHover(null); onSelect(t.task_ref); }}
         onHover={event => setHover(event ? { title, x: event.clientX, y: event.clientY } : null)} />;
     }
+    const { selectedIndex, hiddenSelectedTask } = React.useMemo(() => {
+      const selectedIndex = selected ? rows.findIndex(row => !row.ghost && row.t.task_ref === selected) : -1;
+      return { selectedIndex, hiddenSelectedTask: selected && selectedIndex < 0 ? data.tasks.find(task => task.task_ref === selected) || null : null };
+    }, [rows, selected, data.tasks]);
     React.useEffect(() => {
-      if (!selected) return; const index = rows.findIndex(r => !r.ghost && r.t.task_ref === selected);
-      if (index >= 0) setPage(Math.floor(index / 30) + 1);
-    }, [selected]);
+      if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / 30) + 1);
+    }, [selected, selectedIndex]);
+    function showSelected() {
+      const patch = {};
+      if (changed && !hiddenSelectedTask.changed) patch.only_changed = false;
+      if (!matchesQuery(hiddenSelectedTask, query.trim().toLowerCase(), name)) patch.query = '';
+      if (Object.keys(patch).length) update(patch);
+      if (limit && !matchesScope(hiddenSelectedTask, scope, batchRefs)) setLimit(false);
+    }
     function bar(t) {
       const width = (wall(t.end) - wall(t.start)) / (bounds.end - bounds.start) * chart.width;
       const lines = window.GanttPresentation.taskLines({ sequence: t.sequence, process: t.process_label, batch: t.batch_id,
@@ -93,6 +105,7 @@
       <TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="试调" onZoom={setZoom} onFit={() => setZoom(1)} />
       <U.Button icon="chart-gantt" aria-label={expanded ? '收起甘特' : '展开甘特'} aria-expanded={expanded} onClick={toggleExpanded}>{expanded ? '收起' : '展开'}</U.Button>
       {onToggleDetails && <U.Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="trial-gantt-detail" onClick={onToggleDetails}>{detailsOpen ? '收起详情' : '详情'}</U.Button>}</div>
+      {hiddenSelectedTask && <div className="tt-notice" role="status"><span>选中工序在当前筛选范围外。</span><U.Button icon="eye" onClick={showSelected}>显示并定位选中工序</U.Button></div>}
       <div className="tt-board" ref={board} onScroll={() => { setHover(null); measure(); }}><div className="tt-timeline" style={{ width: zoom === 1 ? '100%' : zoom * 100 + '%' }}>
         <div className="tt-axis"><div className="tt-corner">工序 / 资源</div><div className="tt-ticks" ref={axisHost}><window.GanttPresentationUI.Axis axis={axis} width={chart.width} /></div></div>
         {visible.map((r, i) => <React.Fragment key={r.t.task_ref + ':' + r.ghost}>{(i === 0 || visible[i - 1].group !== r.group) && <div className="tt-group">{view === 'batch' ? r.t.batch_id + ' · ' + (r.t.part_name || '零件名称未填写') : name(r.group)}</div>}

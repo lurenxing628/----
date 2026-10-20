@@ -2,6 +2,18 @@
   'use strict';
   const C = window.PreflightContract, { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary } = window.PreflightControls;
   const labels = { eligible: '资料有效', auto_assign_required: '自动分配待补', skipped: '本次跳过', blocked: '缺资料', protected: '已开工保护' };
+  function resolveContext(initialContext, savedInput) {
+    const isObject = typeof initialContext === 'object' && initialContext !== null;
+    if (initialContext === undefined || isObject && Object.keys(initialContext).length === 0)
+      return savedInput === null ? undefined : savedInput;
+    if (savedInput !== null && isObject && initialContext.start_date === undefined
+        && (initialContext.scope !== undefined || initialContext.entity_ref !== undefined)) {
+      const merged = { ...savedInput, ...initialContext };
+      if (!Object.prototype.propertyIsEnumerable.call(initialContext, 'batch_refs')) delete merged.batch_refs;
+      return merged;
+    }
+    return initialContext;
+  }
   function contextState(value) {
     try { return { value: C.initial(value), error: null }; }
     catch (error) { return { value: C.defaults(), error }; }
@@ -54,7 +66,7 @@
         try {
           const saved = await adapter.preferences(controller.signal);
           if (serial.current !== id) return;
-          const next = contextState(initialContext === undefined ? saved.data.input === null ? undefined : saved.data.input : initialContext);
+          const next = contextState(resolveContext(initialContext, saved.data.input));
           setInitial(next); setValue(next.value);
           if (!next.error && next.value.batch_refs.length) await read(C.input(next.value), controller, id);
         } catch (problem) { if (serial.current === id) setError(problem); }

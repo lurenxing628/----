@@ -13,11 +13,13 @@ from core.errors import ValidationError
 
 class _SeedScheduleResult(ScheduleResult):
     # Internal transport only: not a dataclass field or part of the public result schema.
-    __slots__ = ("_external_group_identity",)
+    __slots__ = ("_external_group_identity", "_resource_segments")
 
-    def __init__(self, result: ScheduleResult, identity: Tuple[int, str, str, Optional[str]]) -> None:
+    def __init__(self, result: ScheduleResult, identity: Optional[Tuple[int, str, str, Optional[str]]] = None,
+                 segments: Any = None) -> None:
         super().__init__(**asdict(result))
         self._external_group_identity = identity
+        self._resource_segments = segments
 
 
 def with_seed_external_group_metadata(result: ScheduleResult, metadata: Any) -> ScheduleResult:
@@ -32,13 +34,14 @@ def with_seed_external_group_metadata(result: ScheduleResult, metadata: Any) -> 
     piece = metadata.get("piece_id")
     if "piece_id" in metadata and (type(piece) is not str or not piece or piece.strip() != piece):
         raise ValidationError("Frozen piece identity must be canonical.", field="seed_results")
-    seed = _SeedScheduleResult(result, (op_id, batch_id.strip(), group_id.strip(), piece))
+    seed = _SeedScheduleResult(result, (op_id, batch_id.strip(), group_id.strip(), piece),
+                               seed_resource_segments(result))
     seed_external_group_key(seed)
     return seed
 
 
 def seed_external_group_key(result: ScheduleResult) -> Optional[Tuple[str, ...]]:
-    if not isinstance(result, _SeedScheduleResult):
+    if not isinstance(result, _SeedScheduleResult) or result._external_group_identity is None:
         return None
     op_id, batch_id, group_id, piece = result._external_group_identity
     if (
@@ -49,6 +52,15 @@ def seed_external_group_key(result: ScheduleResult) -> Optional[Tuple[str, ...]]
         raise ValidationError("冻结外协种子的组身份与工序不一致，系统已停止排产。", field="seed_results")
     key = batch_id, group_id
     return key if piece is None else key + (piece,)
+
+
+def with_seed_resource_segments(result: ScheduleResult, segments: Any) -> ScheduleResult:
+    identity = result._external_group_identity if isinstance(result, _SeedScheduleResult) else None
+    return _SeedScheduleResult(result, identity, segments)
+
+
+def seed_resource_segments(result: ScheduleResult) -> Any:
+    return result._resource_segments if isinstance(result, _SeedScheduleResult) else None
 
 
 def seed_external_group_keys(seed_results: List[ScheduleResult]) -> Dict[int, Tuple[str, ...]]:

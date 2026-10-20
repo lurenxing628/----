@@ -2,7 +2,6 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
-from core.services.workbench.facts.adoption_baseline_sources import trial_adoption_facts
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 from core.services.workbench.facts.zero_duration import PointEventError
 from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, trial_point_evidence
@@ -21,16 +20,13 @@ def official_point_work(conn, version, *, evidence=None, context=None):
             evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, context=context)
         if evidence is None or evidence["audit"]["version"] != version:
             raise PointEventError("point_evidence_missing", "这一版正式计划没有可核对的采用记录，证明不了这道零工时工序。")
-        basis, audit = evidence["basis"], evidence["audit"]
+        basis = evidence["basis"]
         if basis == "candidate_adoption":
             source = evidence["candidate_source"]
             reader = CandidatePointReader(source["candidate"], source["generation_facts"])
             return {row["payload"]["op_id"]: reader.work(row["operation_ref"], row["payload"])
                     for row in source["tasks"] if row["payload"]["start_time"] == row["payload"]["end_time"]}
-        prepared = evidence.get("trial_source")
-        if prepared is None:
-            prepared = trial_adoption_facts(conn, audit["scenario_ref"])
-        _, _, rows = prepared.source
+        _, _, rows = evidence["trial_source"].source
         return {row["original"]["operation"]["id"]: {"witness": trial_point_evidence(row["original"], row["current"]),
                  **{key: row["original"][key] for key in ("operation", "batch", "execution")}}
                 for row in rows if row["current"]["start"] == row["current"]["end"]}

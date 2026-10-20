@@ -25,12 +25,13 @@
       {!readOnly && <label className="ra-consent"><input type="checkbox" checked={consent} disabled={busy} onChange={e => onConsent(e.target.checked)} />
         <span>确认将完整候选方案正式采用。</span></label>}</div>;
   }
-  function Dialog({ value, intent, result, preview, candidateDisplay, draft, consent, busy, error, storageError, notice, onReadStorage, onChange, onConsent, onClose, onPreview, onConfirm, onLookup, onFinish, onCancelRejected, onNavigate }) {
+  function Dialog({ value, intent, result, preview, candidateDisplay, draft, consent, busy, error, storageError, notice, replacedInfo, onReadStorage, onChange, onConsent, onClose, onPreview, onConfirm, onLookup, onFinish, onCancelRejected, onDismissReplaced, onNavigate }) {
     const pending = intent && intent.phase === 'pending' && !result, valid = preview && preview.validation.can_adopt === true;
     const canConfirm = valid && consent && draft.reason.trim() && draft.declared_operator.trim() && !pending && !storageError;
     return <Modal title={result ? '正式采用结果' : pending ? '查询上次采用结果' : '确认正式采用'} icon="check" onClose={onClose}
       footer={<><Button onClick={onClose}>{pending ? '关闭并保留上次操作' : result ? '关闭' : '取消'}</Button>
         {intent && intent.phase === 'rejected' && <Button disabled={busy || !!storageError} onClick={onCancelRejected}>结束本次未采用</Button>}
+        {pending && replacedInfo && <Button disabled={busy || !!storageError} onClick={onDismissReplaced}>结束旧来源待确认记录</Button>}
         {result ? <><Button icon="check" onClick={onFinish}>完成</Button><Button icon="arrow-right" className="btn primary"
           reason={typeof onNavigate === 'function' ? '' : window.WorkbenchTerms.outcomes.unavailable} onClick={() => onNavigate('analysis', { plan_ref: result.data.official_plan.plan_ref })}>进入正式计划</Button></>
           : pending ? <Button icon="refresh-cw" busy={busy} onClick={onLookup}>{window.WorkbenchTerms.actions.query_result}</Button>

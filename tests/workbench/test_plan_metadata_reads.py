@@ -1,10 +1,12 @@
 """Catalog metadata stays streaming and retains exact persisted time semantics."""
 
+import json
 import sqlite3
 
 import pytest
 
-from core.models.workbench_plan_scope import PlanCatalogScope
+from core.models.workbench_plan_scope import PlanCatalogScope, PlanReadScope
+from core.services.workbench.plan.delivery_repository import PlanDeliveryRepository
 from core.services.workbench.plan.point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
@@ -81,3 +83,51 @@ def test_metadata_time_scan_retains_raw_values_with_declared_datetime_converter(
             assert span is not None and isinstance(span["start_time"], str) and isinstance(span["end_time"], str)
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("issues", [None, "[]", '[{"code":"stored-warning","message":"保留原始记录"}]'])
+@pytest.mark.parametrize("warm_catalog", [False, True])
+def test_scenario_workspace_preserves_real_issues_from_direct_and_cached_headers(plan_api, issues, warm_catalog):
+    scenario_id = "PRIVATE-ACTIVE"
+    with plan_api.db() as conn:
+        conn.execute("UPDATE ScheduleAdjustmentScenario SET issues_json=? WHERE scenario_id=?", (issues, scenario_id))
+    ref = plan_api.ref(scenario_id=scenario_id)
+    scope = PlanReadScope(ref)
+    with plan_api.db() as conn:
+        reader = WorkbenchPlanQueryService(conn)
+        with reader.read_snapshot():
+            context = PlanReadContext(conn, references=reader.references, entities=reader.entities)
+            with context.read_scope():
+                if warm_catalog:
+                    context.repo.scenario_page(page_size=20, after_scenario_id=None)
+                data, state = reader.workspace(scope, context=context)
+                raw = context.repo.get_scenario_context(scenario_id)
+                assert raw["issues_json"] == issues
+                completion = state["projection_facts"]["delivery_risks"]["completion_record"]
+                assert completion["scenario"]["issues_json"] == issues
+                assert data["task_count"] == 1 and data["tasks_complete"] is True
+                assert len(data["projections"]["delivery_risks"]["items"]) == 1
+                assert "issues_json" not in json.dumps(data, ensure_ascii=False)
+                entry = context.selected(ref)[1]
+                standalone = PlanDeliveryRepository(conn).validate_identity(scope, entry.plan_identity)
+                assert standalone["issues_json"] == issues
+
+
+def test_changing_only_stored_scenario_issues_changes_workspace_snapshot_evidence(plan_api):
+    ref = plan_api.ref(scenario_id="PRIVATE-ACTIVE")
+
+    def workspace():
+        with plan_api.db() as conn:
+            reader = WorkbenchPlanQueryService(conn)
+            with reader.read_snapshot():
+                return reader.workspace(PlanReadScope(ref))
+
+    before, original = workspace()
+    with plan_api.db() as conn:
+        conn.execute("UPDATE ScheduleAdjustmentScenario SET issues_json='[]' WHERE scenario_id='PRIVATE-ACTIVE'")
+    after, changed = workspace()
+    assert before == after
+    old = original["projection_facts"]["delivery_risks"]["completion_record"]["scenario"]
+    new = changed["projection_facts"]["delivery_risks"]["completion_record"]["scenario"]
+    assert old["issues_json"] is None and new["issues_json"] == "[]"
+    assert original != changed

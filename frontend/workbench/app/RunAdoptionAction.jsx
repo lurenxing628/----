@@ -10,6 +10,7 @@
     const [draft, setDraft] = React.useState(() => initial.intent ? initial.intent.input : empty()), [consent, setConsent] = React.useState(false);
     const [preview, setPreview] = React.useState(null), [result, setResult] = React.useState(null), [open, setOpen] = React.useState(false);
     const [busy, setBusy] = React.useState(false), [checking, setChecking] = React.useState(false), [error, setError] = React.useState(''), [notice, setNotice] = React.useState('');
+    const [replacedInfo, setReplacedInfo] = React.useState(null);
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
     const alive = React.useRef(false), lock = React.useRef(false), previewRequest = React.useRef(null), active = React.useRef(intent), notified = React.useRef(null);
     const callback = React.useRef(onAdopted); callback.current = onAdopted; active.current = intent;
@@ -18,7 +19,7 @@
       try {
         const saved = event && event.type === A.EVENT ? event.detail : A.pending().read();
         if (saved !== active.current && JSON.stringify(saved) !== JSON.stringify(active.current)) {
-          active.current = saved; setIntent(saved); setResult(null); setPreview(null); setConsent(false);
+          active.current = saved; setIntent(saved); setResult(null); setPreview(null); setConsent(false); setReplacedInfo(null); setNotice('');
           if (saved) setDraft(saved.input);
         }
         setStorageError('');
@@ -42,6 +43,7 @@
       }
     }
     React.useEffect(() => {
+      setReplacedInfo(null);
       if (!intent || intent.phase !== 'pending' || storageError || result) return undefined;
       let disposed = false; const controller = new AbortController();
       async function query() {
@@ -50,7 +52,8 @@
         try {
           const found = A.lookup(await api.lookup(intent, controller.signal), intent);
           if (disposed) return;
-          if (found) acceptResult(found, intent);
+          if (found && found.resolution === 'context_replaced') { setReplacedInfo(found); setError(''); setNotice(found.message); }
+          else if (found) acceptResult(found, intent);
           else { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
         } catch (_) { if (!disposed) setError('查询采用结果失败，采用可能已经生效。请点「查询结果」重试，不要重新采用。'); }
         finally { if (!disposed) setChecking(false); }
@@ -80,7 +83,7 @@
           if (!acquired) throw new Error('另一个页面正在确认采用，请稍后刷新上次操作记录。');
           if (!alive.current) return;
           const original = A.pending().begin(preview, values, active.current);
-          active.current = original; setIntent(original); setDraft(values); setPreview(null); setConsent(false);
+          active.current = original; setIntent(original); setDraft(values); setPreview(null); setConsent(false); setReplacedInfo(null);
           try { acceptResult(await api.adopt(original, preview.write_context.write_token), original); }
           catch (e) {
             if (A.isRejected(e)) {
@@ -105,6 +108,12 @@
       try { A.pending().cancelRejected(intent); setOpen(false); setNotice('已结束本次未采用，原正式计划未改变。'); }
       catch (e) { setStorageError(e.message); }
     }
+    function dismissReplaced() {
+      try {
+        A.pending().dismissReplaced(intent, replacedInfo); setReplacedInfo(null); setOpen(false);
+        setNotice('已结束本机的旧来源待确认记录，原数据库中的采用结果未作更改。');
+      } catch (e) { setStorageError(e.message); }
+    }
     const pending = intent && intent.phase === 'pending';
     const label = result ? '查看采用结果' : pending ? '查询采用结果' : intent ? '重新核对采用' : '采用前核对';
     const display = preview && preview.validation.can_adopt ? preview : intent ? intent.preview : { candidate_ref: candidateRef || '未指定' };
@@ -118,10 +127,11 @@
       {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={() => { readStorage(); refresh(); }}>刷新上次操作记录</U.Button></span>}
       {intent && !open && <span className="ra-inline">{result ? '采用结果已确认。' : pending ? '上次操作已保留，结果待确认。' : '上次没有采用，请重新预检。'}</span>}
       {open && <U.Dialog value={display} intent={intent} result={result} preview={preview} draft={draft} consent={consent} busy={busy || checking}
-        candidateDisplay={targetDisplay}
+        candidateDisplay={targetDisplay} replacedInfo={replacedInfo}
         error={storageError || error} storageError={storageError} onReadStorage={() => { readStorage(); refresh(); }}
-        notice={intent && intent.candidate_ref !== candidateRef ? '另一个候选方案还有没确认的采用操作，请先确认那条记录。' : notice || (intent && intent.phase === 'rejected' && !preview ? '上次采用被拒绝了，填写内容已保留。请重新预检并再次确认。' : '')}
-        onChange={setDraft} onConsent={setConsent} onClose={close} onPreview={inspect} onConfirm={submit} onLookup={refresh} onFinish={finish} onCancelRejected={cancelRejected} onNavigate={onNavigate} />}
+        notice={[intent && intent.candidate_ref !== candidateRef ? '另一个候选方案还有没确认的采用操作，请先确认那条记录。' : '',
+          notice || (intent && intent.phase === 'rejected' && !preview ? '上次采用被拒绝了，填写内容已保留。请重新预检并再次确认。' : '')].filter(Boolean).join(' ')}
+        onChange={setDraft} onConsent={setConsent} onClose={close} onPreview={inspect} onConfirm={submit} onLookup={refresh} onFinish={finish} onCancelRejected={cancelRejected} onDismissReplaced={dismissReplaced} onNavigate={onNavigate} />}
     </span>;
   }
   window.RunAdoptionAction = function RunAdoptionAction(props) { return <Session key={props.candidateRef || 'missing'} {...props} />; };

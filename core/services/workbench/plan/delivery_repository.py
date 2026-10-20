@@ -37,7 +37,7 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
         )
         scenario = None
         if locator.scenario_id is not None:
-            raw = context.repo.get_scenario_context(locator.scenario_id) if context is not None else self.get_scenario_binding(locator.scenario_id)
+            raw = (context.repo if context is not None else self).get_scenario_context(locator.scenario_id)
             scenario = {key: raw[key] for key in ("scenario_id", "base_version", "base_plan_role", "base_source_table", "base_candidate_id", "base_candidate_key", "status", "validation_status", "row_count", "issues_json")} if raw is not None else None
             if scenario is None or scenario["status"] != "active":
                 raise WorkbenchCommandRejected("plan_unavailable", "所选试调方案无效，请到「试调排产方案」重新选择。")

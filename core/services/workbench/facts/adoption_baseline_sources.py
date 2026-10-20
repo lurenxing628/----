@@ -19,6 +19,14 @@ _TABLES = ("Schedule", "ScheduleHistory", "WorkbenchPlanSourceRefs", "WorkbenchT
            "WorkbenchEntityRefs", "BatchOperations", "Batches")
 
 
+@dataclass(frozen=True)
+class CandidateAdmissionProof:
+    """One source's verified fields, separate from mutable baseline displays."""
+
+    baseline: dict
+    tables: dict
+
+
 def _source_exists(conn, table, field, ref):
     if not has_table(conn, table):
         fail("adoption_evidence_missing", table)
@@ -65,10 +73,11 @@ def _candidate_source(conn, audit):
     facts = GenerationFacts(capture)
     tables = _candidate_tables(facts)
     AdmissionBaseline(capture, facts, scope, run["accepted_at"])
+    prepared = CandidateAdmissionProof(decoded_baseline(capture["baseline"]), tables)
     evidence = {"baseline": capture["baseline"], "tables": tables,
                 "arranged": [row["payload"] for row in tasks], "generation_facts": facts,
                 "provenance": candidate_origin(candidate, run, capture),
-                "candidate": candidate, "tasks": tasks}
+                "candidate": candidate, "tasks": tasks, "admission_proof": prepared}
     return candidate, capture, evidence
 
 
@@ -200,9 +209,7 @@ def _adoption_operation_facts(conn, evidence):
         assigned_resources = resources
         operations = resources.tables["BatchOperations"]
     else:
-        prepared = evidence.get("trial_source")
-        if prepared is None:
-            prepared = trial_adoption_facts(conn, evidence["audit"]["scenario_ref"])
+        prepared = evidence["trial_source"]
         operations = prepared.operations
         resources, assigned_resources = prepared.resources, prepared.assigned_resources
     result = {}

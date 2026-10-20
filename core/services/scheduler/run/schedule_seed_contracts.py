@@ -7,7 +7,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import ScheduleResult
-from core.algorithms.greedy.seed import _identity_int, _invalid_identity_supplied, with_seed_external_group_metadata
+from core.algorithms.greedy.seed import (
+    _identity_int,
+    _invalid_identity_supplied,
+    with_seed_external_group_metadata,
+    with_seed_resource_segments,
+)
 from core.algorithms.value_domains import INTERNAL
 from core.errors import ValidationError
 
@@ -88,7 +93,9 @@ def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
         op_type_id=_optional_seed_text(item, "op_type_id"),
     )
     if "_external_group_metadata" in item:
-        return with_seed_external_group_metadata(result, item["_external_group_metadata"])
+        result = with_seed_external_group_metadata(result, item["_external_group_metadata"])
+    if "_resource_segments" in item:
+        result = with_seed_resource_segments(result, item["_resource_segments"])
     if start_time == end_time:
         return PointSeedResult(result, item["_point_evidence"])
     return result

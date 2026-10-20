@@ -17,13 +17,15 @@ def cells(row):
             "status": text_cell("数据不足" if row["status"] == "insufficient_data" else "已有建议")}
 
 
-def filter_rows(rows, rules):
+def filter_rows(rows, rules, *, cell_cache=None):
     if not rules:
         return rows
     filters = [(key, rule["mode"], set(rule["values"])) for key, rule in rules.items()]
     selected = []
     for row in rows:
         values = cells(row)
+        if cell_cache is not None:
+            cell_cache[row["suggestion_ref"]] = values
         if all((values[key].key in keys) == (mode == "include") for key, mode, keys in filters):
             selected.append(row)
     return selected
@@ -36,12 +38,12 @@ def validate_facet(column, search, number, size):
         raise WorkbenchCommandRejected("invalid_input", "页码或每页数量填写不对，列表没有变化。", 400)
 
 
-def facet_data(rows, column, search, number, size, *, selection=False):
-    validate_facet(column, search, number, size)
+def facet_data(rows, column, search, number, size, *, selection=False, cell_cache=None):
     indexed = {row["suggestion_ref"]: row for row in rows}
     if len(indexed) != len(rows):
         raise WorkbenchCommandRejected("projection_invalid", "同一个模板在筛选结果里出现了多次。数据可能已更新，请刷新后重试。")
-    options = ResourceTableIndex(indexed, {ref: cells(row) for ref, row in indexed.items()})._options(column, search)
+    indexed_cells = {ref: cell_cache[ref] if cell_cache and ref in cell_cache else cells(row) for ref, row in indexed.items()}
+    options = ResourceTableIndex(indexed, indexed_cells)._options(column, search)
     if selection:
         return {"column": column, "basis": "toolbar_scope", "keys": [row["key"] for row in options], "total": len(options)}
     pages = max(1, (len(options) + size - 1) // size)

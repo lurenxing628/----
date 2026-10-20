@@ -229,6 +229,7 @@ class SchedulePlanQueryRepository(BaseRepository):
                 status,
                 validation_status,
                 issue_count,
+                issues_json,
                 row_count
             FROM ScheduleAdjustmentScenario
             WHERE scenario_id = ?

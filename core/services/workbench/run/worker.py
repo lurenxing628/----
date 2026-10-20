@@ -102,7 +102,8 @@ class WorkbenchRunWorker:
             projections = restore_execution_projections(raw_execution)
             computation = compute_candidate_run(
                 snapshot, normalized_input, projections,
-                on_progress=on_progress, capture=current_capture)
+                on_progress=on_progress, capture=current_capture,
+                validated_projections={row.operation_ref: row for row in projections})
             capture = {"input": normalized_input, "execution": raw_execution,
                        "baseline": json.loads(row["baseline_json"]), "facts_text": row["facts_json"],
                        "facts_hash": row["facts_hash"]}

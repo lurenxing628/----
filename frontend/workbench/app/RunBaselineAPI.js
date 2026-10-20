@@ -57,8 +57,6 @@
       && ['machine_changed', 'operator_changed', 'supplier_changed'].every(key => row.delta[key] === null || typeof row.delta[key] === 'boolean'));
     if (c) { interval(c, false); check(row.row_ref === c.row_ref && !candidateRefs.has(c.row_ref) && row.candidate_operation_status === 'scheduled'); candidateRefs.add(c.row_ref); }
     else check(row.row_ref === null && [null, 'skipped', 'unscheduled'].includes(row.candidate_operation_status));
-    const e = row.execution_at_generation;
-    check(e === null || object(e) && nullable(text)(e.execution_state) && nullable(text)(e.data_quality));
     if (q.range_start && c) {
       const sides = [c].concat(b);
       check(sides.some(v => v.start === null || v.end === null || v.start === v.end && !P.isPoint(v))

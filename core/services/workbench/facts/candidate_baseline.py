@@ -17,7 +17,7 @@ from core.models.workbench_run_compute import CandidateRunInputError
 from .candidate_facts import _index
 from .candidate_tasks import _resource
 from .candidate_values import bounded_size, gap
-from .run_input_codec import restore_execution_projections
+from .run_input_codec import prepare_execution_projections
 from .zero_duration import point_event_dto
 
 
@@ -175,15 +175,14 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
             # Historical reads retain their whole archived scope. The ordinary
             # worker decoder keeps its admission limit for each bounded chunk.
             projections = [row for offset in range(0, len(raw), MAX_OPERATIONS)
-                           for row in restore_execution_projections(raw[offset:offset + MAX_OPERATIONS])]
+                           for row in prepare_execution_projections(raw[offset:offset + MAX_OPERATIONS])]
         except (CandidateRunInputError, TypeError, ValueError):
             invalid_baseline()
-        refs = {row.operation_ref for row in projections}
-        if len(refs) != len(projections) or refs != expected:
+        if {row["operation_ref"] for row in projections} != expected:
             invalid_baseline()
         for projection in projections:
-            ref = projection.operation_ref
-            current = projection.current_task_ref
+            ref = projection["operation_ref"]
+            current = projection["current_task_ref"]
             if ref in self.by_operation:
                 task = self.tasks.get(current)
                 if (task is None or task.get("plan_ref") != self.baseline["plan_ref"]

@@ -29,7 +29,7 @@ def calibration_facets(column, selection=False):
     if type(scope) is not dict or set(scope) - {"query", "part_ref", "source", "status", "deviation", "column_filters"}:
         raise WorkbenchCommandRejected("invalid_input", "列筛选里有不支持的列，筛选没有变化。请刷新页面后重新打开列筛选。", 400)
     query = CalibrationQuery(**scope)
-    query = CalibrationQuery(**{**scope, "column_filters": {key: value for key, value in query.column_filters.items() if key != column}})
+    query.column_filters.pop(column, None)
     search, number, size = request.args.get("query", ""), _page_integer("page", "1"), _page_integer("size", "100")
     validate_facet(column, search, number, size)
     if selection and number != 1:
@@ -43,7 +43,9 @@ def calibration_facets(column, selection=False):
     bound = {"kind": "calibration_table_facets", "scope": query.scope(), "column": column, "query": search, "size": size}
     with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:
         facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of, snapshot_scope=bound, binding=binding))
-        data = facet_data(filtered_suggestions(facts["rows"], query), column, search, number, size, selection=selection)
+        cell_cache = {}
+        rows = filtered_suggestions(facts["rows"], query, cell_cache=cell_cache, sort=False)
+        data = facet_data(rows, column, search, number, size, selection=selection, cell_cache=cell_cache)
     response = query_success(data, facts["snapshot"])
     response.headers["Cache-Control"] = "no-store"
     return response

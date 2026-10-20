@@ -11,15 +11,10 @@ from core.services.workbench.facts.schema_compat import archived_columns, projec
 
 
 def capture_run_facts(conn, capture=None):
-    text = _capture_run_facts_text(conn, capture)
-    return None, text
-
-
-def _capture_run_facts_text(conn, capture=None):
     if capture is not None:
-        return capture.content()
+        return None, capture.content()
     with TransactionManager(conn).transaction():
-        return ProductionFactsCapture(conn).content()
+        return None, ProductionFactsCapture(conn).content()
 
 
 def _production_facts(value, receipt_columns):
@@ -39,11 +34,13 @@ def run_facts_unchanged(conn, captured_text, captured_hash, *, capture=None):
 
 def production_facts_match(conn, captured_text, *, capture=None):
     """Compare live inputs after the caller has verified the immutable archive once."""
-    current_text = _capture_run_facts_text(conn, capture)
+    if capture is None:
+        capture = ProductionFactsCapture(conn)
+    current_text = capture.content()
     if current_text == captured_text:
         return True
-    current, captured = json.loads(current_text), json.loads(captured_text)
-    current = _production_facts(current, archived_columns(current, "WorkbenchCommandReceipts"))
+    current = capture.archive()
+    captured = json.loads(captured_text)
     captured = _production_facts(captured, archived_columns(captured, "WorkbenchCommandReceipts"))
     return same(project_facts(current), project_facts(captured))
 

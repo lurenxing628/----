@@ -12,7 +12,7 @@ from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
 
 COLUMNS = (("part_no", "图号"), ("part_name", "零件名称"), ("sequence", "工序号"),
-           ("operation_label", "工序名称"), ("template_operation_ref", "模板工序编号"),
+           ("operation_label", "工序名称"), ("source", "工序来源"), ("template_operation_ref", "模板工序编号"),
            ("template_revision", "模板版本"), ("template_snapshot", "模板数据版本"),
            ("old_unit_hours", "旧单件定额（小时）"), ("suggested_unit_hours", "建议单件定额（小时）"),
            ("deviation_percent", "偏差百分比"), ("deviation_basis", "偏差计算状态"),
@@ -33,7 +33,8 @@ def _cell(value):
 
 
 def _export_values(rows, scope, format_name):
-    values = [[_cell(row[key]) for key, _ in COLUMNS] + [scope] for row in rows]
+    values = [[_cell({"internal": "自制", "external": "外协"}.get(row["source"], "未确认") if key == "source" else row[key])
+               for key, _ in COLUMNS] + [scope] for row in rows]
     if sum(len(str(value).encode("utf-8")) for row in values for value in row) > MAX_EXPORT_BYTES:
         raise WorkbenchCommandRejected("export_too_large", "完整导出超过 16 MB，请缩小范围后重试；系统没有截断内容。", 413)
     if format_name == "xlsx" and any(isinstance(value, str) and len(value) > 32767 for row in values for value in row):

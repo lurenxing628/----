@@ -34,15 +34,22 @@ def read_templates(repo, query):
     if len(rows) > MAX_TEMPLATES:
         raise WorkbenchCommandRejected("query_too_large", "模板范围超过10000道，请按零件缩小范围；未截断数据。", 413)
     result = []
+    seen_part_refs = set()
+    needle = query.query.casefold()
     for row in rows:
         if row["operation_ref"] is None or row["part_ref"] is None or type(row["revision"]) is not int or row["revision"] < 1:
             raise WorkbenchCommandRejected("calibration_source_unavailable", "模板或所属零件的永久身份缺失，不能补配。")
         public_ref(row["operation_ref"])
-        public_ref(row["part_ref"])
+        if row["part_ref"] not in seen_part_refs:
+            public_ref(row["part_ref"])
+            seen_part_refs.add(row["part_ref"])
         source = row["source"] if row["source"] in ("internal", "external") else "unknown"
-        text = " ".join(str(row[key] or "") for key in ("part_no", "part_name", "op_type_name", "seq"))
-        if query.source not in (None, source) or query.query.casefold() not in text.casefold():
+        if query.source not in (None, source):
             continue
+        if needle:
+            text = " ".join(str(row[key] or "") for key in ("part_no", "part_name", "op_type_name", "seq"))
+            if needle not in text.casefold():
+                continue
         result.append(CalibrationTemplate(row["operation_ref"], row["revision"], row["part_ref"],
             row["part_no"], row["part_name"], row["seq"], row["op_type_name"], row["source"], row["unit_hours"]))
     return result
@@ -86,11 +93,13 @@ class CalibrationFacts:
         refs = [row["operation_ref"] for row in instances]
         facts = self.ledger.load(refs)
         lineage = self.lineage.read(refs)
-        content = plain_plan_facts({"templates": [row.to_dict() for row in templates],
-            "instances": instances, "lineage": {key: value for key, value in lineage.items() if key != "lineages"},
-            "execution": {**facts, "unresolved": sorted(facts["unresolved"])}})
-        snapshot = bind_snapshot(content) if bind_snapshot is not None else None
+        snapshot = None
+        if bind_snapshot is not None:
+            content = plain_plan_facts({"templates": [row.to_dict() for row in templates],
+                "instances": instances, "lineage": {key: value for key, value in lineage.items() if key != "lineages"},
+                "execution": {**facts, "unresolved": sorted(facts["unresolved"])}})
+            snapshot = bind_snapshot(content)
         validate_report_histories(facts, read_report_heads(self.repo, refs), self.as_of)
         projections = {row.operation_ref: row for row in self.ledger.project_loaded(facts, contexts=False)}
         result = project_lineage_calibration(templates, instances, projections, lineage, as_of=self.as_of)
-        return {**result, "content": content, "snapshot": snapshot}
+        return {**result, "snapshot": snapshot}

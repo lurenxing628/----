@@ -27,7 +27,7 @@ def load_adoption_candidate(conn, candidate_ref):
     run_ref = store.candidate_run(candidate_ref)
     run = store.run(run_ref)
     repo = WorkbenchRunRepository(conn)
-    require_admission(repo, repo.get(run_ref))
+    require_admission(repo, repo.head(run_ref))
     receipt = store.receipt(run)
     candidates = store.candidates(run_ref)
     validate_manifest(run, candidates, receipt)

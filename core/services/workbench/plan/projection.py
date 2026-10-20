@@ -92,9 +92,10 @@ def _captured_quantities(operation, batch, execution, basis):
     gaps = []
     piece = operation.get("piece_id")
     valid_piece = "piece_id" in operation and (piece is None or type(piece) is str and piece.strip() and "\x00" not in piece)
-    quantity = number(execution.get("target_quantity"), "quantity", gaps, integer=True) if type(execution) is dict else None
+    captured = type(execution) is dict
+    quantity = number(execution.get("target_quantity"), "quantity", gaps, integer=True) if captured else None
     batch_quantity = number(batch.get("quantity"), "batch_quantity", gaps, integer=True)
-    valid = (valid_piece and type(execution) is dict
+    valid = (valid_piece and captured
              and execution.get("target_basis") == ("piece" if piece is not None else "batch"))
     return {"piece_id": piece if valid_piece else None, "quantity": quantity if valid else None,
             "batch_quantity": batch_quantity, "quantity_basis": basis,
@@ -120,8 +121,9 @@ def _read_adopted_task_facts(conn, plan_ref, *, context=None):
         evidence = context.adopted_source(plan_ref) if context is not None else _adopted_source_record(conn, plan_ref)
         if evidence is None:
             return {}, "plan_target_not_recorded", None
-        basis, audit, arranged = evidence["basis"], evidence["audit"], evidence["arranged"]
-        result = _source_quantities(conn, basis, audit, arranged, generation_facts=evidence["generation_facts"], trial_source=evidence.get("trial_source"))
+        basis, arranged = evidence["basis"], evidence["arranged"]
+        source = evidence["generation_facts"] if basis == "candidate_adoption" else evidence["trial_source"]
+        result = _source_quantities(basis, arranged, source)
         require(set(result) == {row["op_id"] for row in arranged}, "quantity.complete_operation_set")
         return result, None, read_adoption_operation_facts(conn, evidence)
     except (AdoptionBaselineUnavailable, WorkbenchPlanReferenceError):
@@ -159,12 +161,10 @@ def _adopted_source_record(conn, plan_ref, *, context=None):
     return read_adoption_source(conn, plan_ref=plan_ref, version=locator.version, history=history, context=context)
 
 
-def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None, trial_source=None):
-    from core.services.workbench.facts.adoption_baseline_sources import candidate_source_evidence, trial_adoption_facts
-
+def _source_quantities(basis, arranged, source):
     # Only the audited source can supply target work; current batch joins cannot.
     if basis == "candidate_adoption":
-        facts = generation_facts if generation_facts is not None else candidate_source_evidence(conn, audit)["generation_facts"]
+        facts = source
         refs = {key: ref for ref, key in facts.operations.items()}
         result = {}
         for item in arranged:
@@ -172,8 +172,7 @@ def _source_quantities(conn, basis, audit, arranged, *, generation_facts=None, t
             result[item["op_id"]] = _captured_quantities(op, facts.tables["Batches"][op["batch_id"]],
                                                        facts.execution.get(refs[item["op_id"]]), "run_admission")
         return result
-    prepared = trial_source if trial_source is not None else trial_adoption_facts(conn, audit["scenario_ref"])
-    _, _, saved = prepared.source
+    _, _, saved = source.source
     return {row["original"]["operation"]["id"]: _captured_quantities(
         row["original"]["operation"], row["original"]["batch"], row["original"]["execution"], "trial_creation")
         for row in saved}

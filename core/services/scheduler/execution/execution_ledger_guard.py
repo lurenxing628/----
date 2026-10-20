@@ -1,5 +1,7 @@
 """Preserve actual execution across plan versions and keep legacy duration rules."""
 
+from datetime import datetime
+
 from core.errors import AppError, ErrorCode
 from core.models.enums import SourceType
 from core.models.operation_execution_event import parse_operation_event_time
@@ -26,21 +28,27 @@ def _resource_id(refs, resources, kind, reasons):
     return resource["business_code"]
 
 
-def _actual_intervals(projection, reasons):
+def _report_segments(projection):
+    return sorted(
+        ((_actual_time(report.actual_start), _actual_time(report.actual_end), report) for report in projection.reports),
+        key=lambda segment: (segment[0] or datetime.min, segment[1] or datetime.min),
+    )
+
+
+def _actual_intervals(projection, reasons, report_segments):
     intervals = []
-    for report in projection.reports:
-        start, end = _actual_time(report.actual_start), _actual_time(report.actual_end)
+    for start, end, _ in report_segments:
         if start is None or end is None or end <= start:
             reasons.append("execution_ledger_actual_interval_missing")
         else:
             intervals.append((start, end))
-    if projection.completion_basis == "legacy_finish_event":
+    if not projection.reports and projection.completion_basis == "legacy_finish_event":
         start, end = _actual_time(projection.first_actual_start), _actual_time(projection.confirmed_finish)
         if start is not None and end is not None and end > start:
             intervals.append((start, end))
         else:
             reasons.append("execution_ledger_actual_interval_missing")
-    return tuple(sorted(set(intervals)))
+    return tuple(intervals)
 
 
 def _requires_ledger_projection(fact, projection):
@@ -69,8 +77,8 @@ def _protected_status(projection, reasons):
     return status
 
 
-def _protected_intervals(projection, status, reasons):
-    intervals = _actual_intervals(projection, reasons)
+def _protected_intervals(projection, status, reasons, report_segments):
+    intervals = _actual_intervals(projection, reasons, report_segments)
     if status == "completed" and (not intervals or any(
         left[1] != right[0] for left, right in zip(intervals, intervals[1:])
     )):
@@ -85,7 +93,7 @@ def _actual_resource_refs(projection, field):
         legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps))
 
 
-def _actual_resources(projection, resources, *, source, reasons):
+def _actual_resources(projection, resources, *, source, reasons, report_segments=()):
     machine, operator = None, None
     if source == SourceType.EXTERNAL.value:
         fields = ("actual_machine_ref", "actual_operator_ref")
@@ -93,8 +101,19 @@ def _actual_resources(projection, resources, *, source, reasons):
                 or any(legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps) for field in fields)):
             reasons.append("execution_ledger_external_resource_conflict")
     elif source == SourceType.INTERNAL.value:
-        machine = _resource_id(_actual_resource_refs(projection, "actual_machine_ref"), resources, "machine", reasons)
-        operator = _resource_id(_actual_resource_refs(projection, "actual_operator_ref"), resources, "operator", reasons)
+        if projection.reports:
+            resolved = {}
+            for field, kind in (("actual_machine_ref", "machine"), ("actual_operator_ref", "operator")):
+                refs = {getattr(report, field) for report in projection.reports}
+                codes = {ref: _resource_id((ref,), resources, kind, reasons) for ref in refs}
+                legacy_refs = legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps)
+                if None in legacy_refs or not legacy_refs <= refs:
+                    reasons.append("execution_ledger_actual_resource_missing_or_multiple")
+                resolved[field] = codes[getattr(report_segments[0][2], field)]
+            machine, operator = resolved["actual_machine_ref"], resolved["actual_operator_ref"]
+        else:
+            machine = _resource_id(_actual_resource_refs(projection, "actual_machine_ref"), resources, "machine", reasons)
+            operator = _resource_id(_actual_resource_refs(projection, "actual_operator_ref"), resources, "operator", reasons)
     else:
         reasons.append("execution_ledger_operation_source_invalid")
     return machine, operator
@@ -122,13 +141,31 @@ def ledger_fact_changes(fact, projection, resources, *, source):
         return _legacy_in_progress_changes(fact, projection, resources, source=source)
     reasons = []
     status = _protected_status(projection, reasons)
-    intervals = _protected_intervals(projection, status, reasons)
-    machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons)
+    report_segments = _report_segments(projection)
+    intervals = _protected_intervals(projection, status, reasons, report_segments)
+    machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons,
+                                          report_segments=report_segments)
     return {"actual_status": status, "actual_start_time": _actual_time(projection.first_actual_start),
             "actual_end_time": _actual_time(projection.confirmed_finish), "actual_machine_id": machine,
             "actual_operator_id": operator, "ledger_operation_ref": projection.operation_ref,
             "ledger_execution_state": projection.execution_state, "remaining_quantity": projection.remaining_quantity,
             "execution_effective_intervals": intervals, "execution_protection_reasons": tuple(dict.fromkeys(reasons))}
+
+
+def fact_resource_segments(fact):
+    """Return multi-report actual occupancy; the plan row retains the earliest resource pair."""
+    content = fact.execution_protection_content
+    if fact.actual_status == "completed" and content is not None:
+        reports = content["projection"]["reports"]
+        if len(reports) > 1:
+            resources = content["resources"]
+            return tuple(sorted(
+                (parse_operation_event_time(report["actual_start"]), parse_operation_event_time(report["actual_end"]),
+                 resources[report["actual_machine_ref"]]["business_code"],
+                 resources[report["actual_operator_ref"]]["business_code"])
+                for report in reports
+            ))
+    return ()
 
 
 def _raise_reconciliation(op_id, state, remaining_quantity, reasons):

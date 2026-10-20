@@ -14,7 +14,10 @@ from core.models.operation_execution_event import (
     EXECUTION_STATUS_PROCESSING,
 )
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
-from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
+from core.services.scheduler.execution.execution_ledger_guard import (
+    ensure_ledger_execution_schedulable,
+    fact_resource_segments,
+)
 from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 from .schedule_execution_resource_facts import collect_resource_execution_facts
@@ -94,7 +97,7 @@ def _build_execution_seed_result(
         machine_id, operator_id = None, None
     else:
         machine_id, operator_id = _execution_seed_resources(fact, op_id=op_id)
-    return {
+    result = {
         "op_id": op_id,
         "op_code": getattr(op, "op_code", None),
         "batch_id": getattr(op, "batch_id", None),
@@ -109,6 +112,11 @@ def _build_execution_seed_result(
         "seed_source": "execution_fact",
         "state_revision": fact.state_revision,
     }
+    if fact.actual_status == EXECUTION_STATUS_COMPLETED and op.source != SourceType.EXTERNAL.value:
+        segments = fact_resource_segments(fact)
+        if len(segments) > 1:
+            result["_resource_segments"] = segments
+    return result
 
 
 def _execution_status_op_ids(facts: Dict[int, ExecutionFact], statuses: Tuple[str, ...]) -> Set[int]:

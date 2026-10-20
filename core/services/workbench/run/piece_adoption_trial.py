@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_trial import issue
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
-from core.services.workbench.facts.preflight_checks import PreflightChecks
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 
 
@@ -21,7 +20,7 @@ def trial_piece_predecessors(rows, all_ops, operation_refs):
     return by_id
 
 
-def trial_piece_issues(rows, live, policy=None):
+def trial_piece_issues(rows, live, settings):
     if not any(row["original"]["operation"]["piece_id"] is not None for row in rows):
         return []
     tables = live["facts"]["tables"]
@@ -32,9 +31,7 @@ def trial_piece_issues(rows, live, policy=None):
         expected = trial_piece_predecessors(rows, operations, refs)
     except PieceAdoptionBlocked as exc:
         return [issue(exc.code, str(exc))]
-    # A trial policy brings the end date that may leave stage work pending; otherwise use the saved span.
-    settings = {"end_date": max(row["current"]["end"][:10] for row in rows), **(policy or {})}
-    if not _complete_or_deferred_scope(rows, expected, tables, operations, settings):
+    if not _complete_or_deferred_scope(rows, expected, live, operations, settings):
         return [issue("piece_scope_incomplete", "试调要包含全部共同工序和分件工序，现在有缺漏。请点「刷新当前试调」重新试调。")]
     issues = []
     for row in rows:
@@ -44,7 +41,7 @@ def trial_piece_issues(rows, live, policy=None):
     return issues
 
 
-def _complete_or_deferred_scope(rows, expected, tables, operations, settings):
+def _complete_or_deferred_scope(rows, expected, live, operations, settings):
     present = {row["original"]["operation"]["id"] for row in rows}
     if len(rows) != len(present) or present - set(expected):
         return False
@@ -53,8 +50,8 @@ def _complete_or_deferred_scope(rows, expected, tables, operations, settings):
         return True
     if settings.get("material_strategy") != "stage":
         return False
-    checks = PreflightChecks(tables)
-    batches = {row["batch_id"]: row for row in tables["Batches"]}
+    checks = live["preflight_facts"].checks()
+    batches = {row["batch_id"]: row for row in live["facts"]["tables"]["Batches"]}
     deferred = []
     for op_id in missing:
         op = operations[op_id]

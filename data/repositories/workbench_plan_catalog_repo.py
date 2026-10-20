@@ -101,7 +101,7 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         rows = self.fetchall(
             "SELECT scenario_id, source_draft_id, base_version, base_plan_role, base_source_table, "
             "base_candidate_id, base_candidate_key, scenario_name, status, validation_status, "
-            "issue_count, row_count, published_version FROM ScheduleAdjustmentScenario "
+            "issue_count, issues_json, row_count, published_version FROM ScheduleAdjustmentScenario "
             f"{where} ORDER BY scenario_id COLLATE BINARY ASC LIMIT ?",
             params + [page_size + 1],
         )

@@ -6,7 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import AppError, ErrorCode
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
-from core.services.scheduler.execution.execution_ledger_guard import ensure_ledger_execution_schedulable
+from core.services.scheduler.execution.execution_ledger_guard import (
+    ensure_ledger_execution_schedulable,
+    fact_resource_segments,
+)
 
 from .schedule_input_contracts import _op_seq
 from .schedule_input_seed_metadata import merged_external_group_identity, protected_interval_problem
@@ -152,7 +155,7 @@ def validate_execution_guard_before_persist(prepared, *, validated_schedule_payl
     facts = prepared.execution_facts
     ensure_ledger_execution_schedulable(facts)
     _validate_unselected_resource_overlap(payload=validated_schedule_payload,
-                                          reservations=prepared.execution_reservations)
+                                          reservations=prepared.execution_reservations, execution_facts=facts)
     rows = _rows_by_op_id(validated_schedule_payload)
     for op_id in sorted(prepared.execution_fixed_op_ids):
         fact, row = facts.get(op_id), rows.get(op_id)
@@ -171,10 +174,10 @@ def validate_execution_guard_before_persist(prepared, *, validated_schedule_payl
     _validate_completed_downstream_constraints(rows=rows, prepared=prepared)
 
 
-def _validate_unselected_resource_overlap(*, payload, reservations):
+def _validate_unselected_resource_overlap(*, payload, reservations, execution_facts=None):
     if not reservations:
         return
-    intervals = _schedule_resource_intervals(payload.schedule_rows)
+    intervals = _schedule_resource_intervals(payload.schedule_rows, execution_facts)
     for reservation in reservations:
         if any(_resource_interval_overlaps(intervals.get((kind, resource)), reservation.start_time, reservation.end_time)
                for kind, resource in (("machine", reservation.machine_id), ("operator", reservation.operator_id))):
@@ -183,13 +186,18 @@ def _validate_unselected_resource_overlap(*, payload, reservations):
                 reason="unselected_execution_resource_overlap", op_id=reservation.op_id)
 
 
-def _schedule_resource_intervals(rows: List[ValidatedScheduleRow]) -> Dict[Tuple[str, str], Tuple[List[datetime], List[datetime]]]:
+def _schedule_resource_intervals(rows: List[ValidatedScheduleRow], execution_facts=None) -> Dict[Tuple[str, str], Tuple[List[datetime], List[datetime]]]:
     grouped: Dict[Tuple[str, str], List[Tuple[datetime, datetime]]] = {}
     for row in rows:
-        for kind, resource in (("machine", row.machine_id), ("operator", row.operator_id)):
-            # Reservations name factory resource IDs; absent/external resources cannot match them.
-            if isinstance(resource, str):
-                grouped.setdefault((kind, resource), []).append((row.start_time, row.end_time))
+        fact = execution_facts.get(row.op_id) if execution_facts is not None else None
+        segments = fact_resource_segments(fact) if fact is not None and row.source == "internal" else ()
+        if not segments:
+            segments = ((row.start_time, row.end_time, row.machine_id, row.operator_id),)
+        for start, end, machine, operator in segments:
+            for kind, resource in (("machine", machine), ("operator", operator)):
+                # Reservations name factory resource IDs; absent/external resources cannot match them.
+                if isinstance(resource, str):
+                    grouped.setdefault((kind, resource), []).append((start, end))
     indexed = {}
     for resource, intervals in grouped.items():
         intervals.sort(key=lambda interval: interval[0])

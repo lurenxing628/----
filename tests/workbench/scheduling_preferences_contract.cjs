@@ -74,7 +74,8 @@ async function contract(h, assert) {
       included_batches: [], excluded_batches: value.batch_refs.map(batch_ref => ({ batch_ref, batch_id: 'B1' })),
       scope: { source: 'production', batch_refs: value.batch_refs }, effective_config: { ready_check: value.ready_check,
         material_strategy: value.material_strategy, missing_resource_policy: value.missing_resource_policy,
-        completed_policy: value.completed_policy, hold_window: null, hold_window_source: 'explicit' },
+        completed_policy: value.completed_policy, hold_window: value.hold_window === undefined ? null : value.hold_window,
+        hold_window_source: value.hold_window === undefined ? 'default' : 'explicit' },
       effective_start: value.start_date + 'T00:00:00', eligible_tasks: 0, auto_assign_required: 0, skipped_tasks: 0 });
   }
   // A persistent root-only hook fixture executes the real component's effects and event callbacks.
@@ -123,6 +124,64 @@ async function contract(h, assert) {
   assert(nodes(workspace.render(w.PreflightWorkspace, {})).some(node => node.type === w.PreflightControls.ErrorBox && node.props.error),
     'The workspace must expose the save failure');
   workspace.unmount();
+
+  // A fresh form restores saved rules, while a batch-only navigation replaces only the saved selection.
+  for (const hold of [undefined, null, { start: '2026-10-11T08:00', end: '2026-10-11T12:00' }]) {
+    const saved = C.input({ ...input, time_budget_seconds: 17, hold_window: hold });
+    const savedBefore = h.clone(saved);
+    for (const [context, refs] of [[{}, saved.batch_refs], [{ scope: { source: 'production', batch_refs: [other] } }, [other]],
+      [{ entity_ref: other }, [other]], [{ scope: { source: 'production', batch_refs: [] } }, []]]) {
+      const state = hooks(), props = { initialContext: context }, expected = C.input({ ...saved, batch_refs: refs });
+      route = request => request.path.endsWith('/preferences') ? preferences(saved) : checked(request.body);
+      requests.length = 0;
+      state.render(w.PreflightWorkspace, props); state.flush(); await turns();
+      const restored = state.render(w.PreflightWorkspace, props), rules = nodes(restored).find(node => node.type === w.PreflightControls.Rules);
+      h.equal(rules.props.value, expected);
+      h.equal(saved, savedBefore);
+      assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/preferences',
+        ...(refs.length ? ['/api/workbench/v1/scheduling/preflight'] : [])], 'Opening only reads preferences and checks the exact new scope');
+      if (refs.length) h.equal(requests[1].body, expected);
+      assert(!requests.some(row => row.path.endsWith('/preferences') && row.method === 'POST'), 'Opening never saves preferences');
+      state.unmount();
+    }
+  }
+  for (const context of [null, { scope: { source: 'sample', batch_refs: [other] } }, { scope: { source: 'production', batch_refs: [other] }, unknown: true }]) {
+    const state = hooks(), props = { initialContext: context };
+    route = () => preferences(input); requests.length = 0;
+    state.render(w.PreflightWorkspace, props); state.flush(); await turns();
+    assert(nodes(state.render(w.PreflightWorkspace, props)).some(node => node.type === w.PreflightControls.ErrorBox && node.props.error),
+      'An invalid explicit navigation remains invalid instead of restoring a wider saved scope');
+    assert.equal(requests.length, 1); state.unmount();
+  }
+  const explicitState = hooks(), explicitProps = { initialContext: C.input({ ...input, batch_refs: [other], start_date: '2026-10-12', hold_window: null }) };
+  route = request => request.path.endsWith('/preferences') ? preferences(input) : checked(request.body); requests.length = 0;
+  explicitState.render(w.PreflightWorkspace, explicitProps); explicitState.flush(); await turns();
+  h.equal(requests[1].body, explicitProps.initialContext); explicitState.unmount();
+  const emptyState = hooks(), emptyProps = { initialContext: {} };
+  route = () => preferences(null); requests.length = 0;
+  emptyState.render(w.PreflightWorkspace, emptyProps); emptyState.flush(); await turns();
+  assert.equal(requests.length, 1, 'Without saved preferences, an empty fresh form does not check all batches'); emptyState.unmount();
+
+  const pickerState = hooks(), pickerCalls = [], selections = [], completedRef = h.reference(40);
+  const completedRow = { ref: completedRef, business_code: 'DONE-001', label: '旧完工批次', status: 'completed',
+    fields: { due_date: '2026-10-10', priority: 'normal', ready_status: 'yes' }, relationships: { part_no: 'P1', operation_count: 1 } };
+  const pickerProps = { selected: [], onChange: refs => selections.push(refs), disabled: false, adapter: {
+    async list(scope) { pickerCalls.push({ kind: 'list', scope }); return envelope({ entities: [completedRow], page: { number: 1, size: 20, total: 1, pages: 1 } }); },
+    async selection(scope) { pickerCalls.push({ kind: 'selection', scope }); return envelope({ refs: [completedRef], count: 1 }); }
+  } };
+  pickerState.render(w.PreflightBatchPicker, pickerProps); pickerState.flush(); await turns();
+  let pickerTree = pickerState.render(w.PreflightBatchPicker, pickerProps);
+  assert(text(pickerTree).includes(w.APSBatchContract.label('status', 'completed')), 'Completed rows expose their actual status');
+  nodes(pickerTree).find(node => node.type === 'input' && node.props.type === 'checkbox').props.onChange();
+  h.equal(selections.at(-1), [completedRef]);
+  for (const label of ['全部待排', '仅齐套', '全选当前筛选']) {
+    await nodes(pickerTree).find(node => node.type === w.PreflightControls.Button && text(node) === label).props.onClick();
+    pickerTree = pickerState.render(w.PreflightBatchPicker, pickerProps);
+    h.equal(selections.at(-1), [completedRef]);
+  }
+  assert(pickerCalls.every(call => JSON.stringify(call.scope.column_filters.status) === JSON.stringify(['pending', 'scheduled', 'processing', 'completed'])),
+    'Visible and shortcut selections retain completed batches for official-scope coverage');
+  pickerState.unmount();
 
   // The automatic run preview may open confirmation, but accept only belongs to the final callback.
   const store = new Map(); w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null,
@@ -386,7 +445,7 @@ if (process.argv.includes('--source')) {
   Object.assign(runtime, { window: runtime, self: runtime, addEventListener() {}, removeEventListener() {}, dispatchEvent() {}, location: { href: 'http://localhost/workbench' },
     CustomEvent: class { constructor(type, value) { this.type = type; this.detail = value.detail; } } });
   for (const file of ['static/workbench/vendor/react-18.3.1.production.min.js', 'static/workbench/app/main.js']) vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), runtime, { filename: file });
-  const files = ['RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
+  const files = ['RunGenerationContract.js', 'RunPresentation.js', 'PreflightContract.js', 'PreflightAPI.js', 'PreflightBatchPicker.jsx', 'PreflightWorkspace.jsx', 'RunJobAPI.js', 'RunJobControls.jsx', 'RunJobPanel.jsx', 'SchedulingWorkspace.jsx'];
   for (const output of compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
     sources: files.map(name => ({ path: name, code: fs.readFileSync(path.join(root, 'frontend/workbench/app', name), 'utf8') })) }).outputs) vm.runInContext(output.code, runtime, { filename: output.path });
   const h = { runtime, mode: 'current-source', reference: number => number.toString(16).padStart(48, '0'), clone: value => JSON.parse(JSON.stringify(value)),

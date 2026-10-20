@@ -41,7 +41,7 @@ def test_new_trial_slot_persists_the_same_requirement_used_for_calendar_math(tri
     assert adjusted["comparison"]["changeover_common"]["after"]["count"] == 0
     shipped(adjusted, r"""
 const w = h.runtime, data = w.TrialContract.workspace(sourceData);
-const tree = h.render(w.TrialResults.Preparation, {data, onSelect() {}}), text = h.text(tree);
+const tree = h.render(w.TrialResults.Preparation, {data, name: w.TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
 assert(text.includes('准备标准工时') && text.includes('合计'));
 const requirementDetail = h.walk(tree).find(node => node.type === 'details' && h.text(node) === '工时详情');
 assert(requirementDetail && h.text({...requirementDetail, props:{...requirementDetail.props, open:true}}).includes('当前试调需求'));
@@ -125,7 +125,7 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     apply_preparation(deepcopy(draft["tasks"]), unplanned, pairs)
     shipped(draft, r"""
 const w = h.runtime, data = w.TrialContract.workspace(sourceData);
-const tree = h.render(w.TrialResults.Preparation, {data, onSelect() {}}), text = h.text(tree);
+const tree = h.render(w.TrialResults.Preparation, {data, name: w.TrialGantt.resourceNames(data), onSelect() {}}), text = h.text(tree);
 assert(text.includes('保留原安排'));
 const sources = h.walk(tree).filter(node => node.type === 'details' && h.text(node) === '需求依据与数量');
 assert.equal(sources.length, 2);

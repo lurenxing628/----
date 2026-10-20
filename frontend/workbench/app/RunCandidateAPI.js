@@ -110,10 +110,6 @@
       && (v.process_type_ref === undefined || v.process_type_ref === null || ref(v.process_type_ref))
       && (v.process_type_label === undefined || nullableText(v.process_type_label))
       && (v.operation_effort === undefined || window.EffortProjectionContract.compact(v.operation_effort)));
-    const e = v.execution_at_generation;
-    check(e === null || shape(e, ['target_quantity', 'known_completed_quantity', 'remaining_quantity', 'execution_state', 'data_quality', 'target_basis'])
-      && ['target_quantity', 'known_completed_quantity', 'remaining_quantity'].every(k => nullableNumber(e[k]))
-      && ['execution_state', 'data_quality', 'target_basis'].every(k => nullableText(e[k])));
     if (planned) {
       check(ref(v.row_ref) && time(v.start) && time(v.end) && (P.isPoint(v) || timeKey(v.start) < timeKey(v.end))
         && ['internal', 'external'].includes(v.source) && typeof v.locked === 'boolean');

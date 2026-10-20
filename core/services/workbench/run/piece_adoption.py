@@ -18,14 +18,12 @@ from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.schedule_input_seed_metadata import MERGED_EXECUTION_GROUP_SOURCE
-from core.services.scheduler.run.schedule_payload_contract import build_validated_schedule_payload
 from core.services.workbench.facts.piece_scope import block
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.zero_duration import (
     PointEventError,
-    candidate_point_validator,
     estimate_point_event,
     internal_duration_hours,
 )
@@ -93,12 +91,6 @@ def _payload(prepared, payload, scope, *, purpose):
         for time in (row.start_time, row.end_time):
             if not isinstance(time, datetime) or time.tzinfo is not None:
                 block("piece_time_unrepresentable", "排产结果的开始或结束时刻无效，写不进正式计划。请回「执行排产」重新排一次。")
-    if purpose == "adoption":
-        checked = build_validated_schedule_payload(list(payload.schedule_rows), allowed_op_ids=ids,
-            operations=prepared.operations, point_validator=candidate_point_validator(prepared),
-            operation_sources=prepared.operation_sources)
-        if checked != payload:
-            block("piece_payload_inconsistent", "排产结果的工序行、设备人员分配和工序编号对不上，本次没有采用。请回「执行排产」重新排一次。")
 
 
 def _precedence(payload, scope, ops):
@@ -134,7 +126,7 @@ def _constraints(conn, prepared, payload, scope, algo_ops):
     actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
     seeds = {row["op_id"] for row in prepared.seed_results}
     high = datetime.combine(prepared.end_date_norm + timedelta(days=1), datetime.min.time())
-    _resource_overlaps(payload.schedule_rows)
+    _resource_overlaps(payload.schedule_rows, prepared.execution_facts)
     for row in payload.schedule_rows:
         op, algo = ops[row.op_id], algo_ops[row.op_id]
         batch = prepared.batches[op.batch_id]

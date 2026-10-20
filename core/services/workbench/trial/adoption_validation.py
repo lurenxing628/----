@@ -22,7 +22,7 @@ from core.services.workbench.run.jobs_facts import run_execution_projections
 
 from .adoption_input import prepare_trial_adoption_input
 from .facts import live_context
-from .materials import adoption_settings, hold_settings, run_window
+from .materials import hold_settings, run_window
 from .validation import TrialValidator
 
 _INPUT_UNPROVEN = ("scenario_constraint_unproven", "试调方案的排产输入没有通过核对，正式计划没有改变。请回到试调列表重新预检。")
@@ -45,13 +45,12 @@ def validate_trial_adoption(conn, scenario_ref):
             capture, execution = ProductionFactsCapture(conn), []
             live = live_context(conn, [row["operation_ref"] for row in rows], capture=capture,
                 execution_service=execution_service, prepared_execution=execution)
-            _current_baseline(conn, admission, live)
+            _current_baseline(admission, live)
             _original_work(rows, live)
-            checked = _scenario_validation(conn, saved, admission, rows, live)
+            checked, settings = _scenario_validation(conn, saved, admission, rows, live)
             issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
             if issues:
                 raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
-            settings = adoption_settings(admission, rows, live["preflight_facts"].checks(), live["execution"])
             projections = run_execution_projections(conn, settings, capture=capture, existing=execution,
                                                     service=execution_service)
             _require_official_baseline(live["baseline"], projections)
@@ -87,7 +86,7 @@ def validate_trial_adoption(conn, scenario_ref):
         raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案的现场数据、编号或约束资料不完整，没有执行正式采用。") from exc
 
 
-def _current_baseline(conn, admission, live):
+def _current_baseline(admission, live):
     if not same(admission["baseline"], live["baseline"]):
         raise TrialAdoptionBlocked("snapshot_stale", "正式计划已更新，请基于当前正式计划重新试调。")
     if not same(admission["execution"], live["execution"]):
@@ -103,7 +102,9 @@ def _scenario_validation(conn, saved, admission, rows, live):
             if item.get(key) in mapping:
                 item[key] = mapping[item[key]]
         issues.append(item)
-    return TrialValidator(conn, dict(admission, base_issues=issues), rows, live).evaluate_saved()
+    validator = TrialValidator(conn, dict(admission, base_issues=issues), rows, live)
+    checked = validator.evaluate_saved(check_baseline=False)
+    return checked, validator.settings
 
 
 def _original_work(rows, live):

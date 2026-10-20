@@ -8,12 +8,6 @@ from .schedule_plan_query_repo import SchedulePlanQueryRepository
 
 
 class WorkbenchPlanDeliveryRepository(SchedulePlanQueryRepository):
-    def get_scenario_binding(self, scenario_id: str) -> Optional[Dict[str, Any]]:
-        return self.fetchone("SELECT scenario_id, base_version, base_plan_role, base_source_table, "
-                             "base_candidate_id, base_candidate_key, status, validation_status, row_count, "
-                             "issues_json FROM ScheduleAdjustmentScenario WHERE scenario_id = ?",
-                             (scenario_id,))
-
     def list_batches_by_ids(self, batch_ids: Sequence[str]) -> List[Dict[str, Any]]:
         marks = ",".join("?" for _ in batch_ids)
         return self.fetchall(

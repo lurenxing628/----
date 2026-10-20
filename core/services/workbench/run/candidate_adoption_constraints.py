@@ -6,6 +6,7 @@ from datetime import datetime
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
+from core.services.scheduler.execution.execution_ledger_guard import fact_resource_segments
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
     merged_external_group_identity,
@@ -24,12 +25,17 @@ def _block(code, message):
     raise CandidateAdoptionBlocked(code, message)
 
 
-def _resource_overlaps(rows):
+def _resource_overlaps(rows, execution_facts):
     timelines = defaultdict(list)
     for row in rows:
         if row.source == "internal" and row.start_time < row.end_time:
-            for kind in ("machine_id", "operator_id"):
-                timelines[kind, getattr(row, kind)].append((row.start_time, row.end_time, row.op_id))
+            fact = execution_facts.get(row.op_id)
+            segments = fact_resource_segments(fact) if fact is not None else ()
+            if not segments:
+                segments = ((row.start_time, row.end_time, row.machine_id, row.operator_id),)
+            for start, end, machine, operator in segments:
+                timelines["machine_id", machine].append((start, end, row.op_id))
+                timelines["operator_id", operator].append((start, end, row.op_id))
     for intervals in timelines.values():
         previous_end = None
         for start, end, _ in sorted(intervals):
@@ -136,7 +142,7 @@ def validate_adoption_constraints(conn, prepared, payload):
     validate_point = candidate_point_validator(prepared)
     downtime = adoption_downtimes(conn, prepared, payload)
     actual_intervals = adoption_external_intervals(prepared)
-    _resource_overlaps(payload.schedule_rows)
+    _resource_overlaps(payload.schedule_rows, prepared.execution_facts)
     for row in payload.schedule_rows:
         op, batch = ops[row.op_id], prepared.batches[ops[row.op_id].batch_id]
         raw = asdict(op)

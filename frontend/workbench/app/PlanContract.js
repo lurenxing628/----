@@ -137,22 +137,22 @@
   const inScope = (row, scope) => !!row && (scope.range_start === null || P.overlaps(row, scope.range_start, scope.range_end));
   const states = ['available', 'partial', 'unavailable'];
   function resourceDirectory(data) {
-    if (!Array.isArray(data.resources) || !uniqueRefs(data.resources, 'ref')) return false;
+    if (!Array.isArray(data.resources) || !uniqueRefs(data.resources, 'ref')) return null;
     const byRef = new Map();
     for (const row of data.resources) {
       if (!exact(row, ['kind', 'ref', 'business_code', 'label']) || !['machine', 'operator', 'supplier'].includes(row.kind)
-          || !ref(row.ref) || !label(row.business_code) || !nullableLabel(row.label)) return false;
+          || !ref(row.ref) || !label(row.business_code) || !nullableLabel(row.label)) return null;
       byRef.set(row.ref, row);
     }
     const used = new Set();
-    const tasks = data.tasks.concat(data.projections.baseline.items.flatMap(row => [row.before, row.after].filter(Boolean)));
+    const tasks = data.tasks.concat(data.projections.baseline.items.flatMap(row => [row.before, !row.after_in_scope && row.after].filter(Boolean)));
     for (const row of tasks) for (const kind of ['machine', 'operator', 'supplier']) {
       const value = row[kind + '_ref'];
       if (value === null) continue;
-      if (!byRef.has(value) || byRef.get(value).kind !== kind) return false;
+      if (!byRef.has(value) || byRef.get(value).kind !== kind) return null;
       used.add(value);
     }
-    return used.size === byRef.size;
+    return used.size === byRef.size ? byRef : null;
   }
   function baseline(value, data) {
     if (!object(value)) return false;
@@ -226,20 +226,19 @@
     return !resource || own(row, 'status') && (row.status === 'active' || row.windows.length === 0)
       && number(row.downtime_scope_hours) && number(row.downtime_available_hours) && intervals(row.downtime_windows, time, [], () => true);
   }
-  function projectedResources(rows, data) {
+  function projectedResources(rows, resourcesByRef) {
     if (!Array.isArray(rows) || !uniqueRefs(rows, 'resource_ref')) return false;
-    const directory = new Map(data.resources.map(row => [row.ref, row]));
     return rows.every(row => {
-      const resource = directory.get(row.resource_ref);
+      const resource = resourcesByRef.get(row.resource_ref);
       return resource && row.kind === resource.kind && row.label === resource.label;
     });
   }
-  function calendar(value, data) {
+  function calendar(value, data, resourcesByRef) {
     if (!exact(value, ['state', 'plan_ref', 'time_scope', 'global', 'resources', 'issues']) || !states.includes(value.state)
         || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || !projectionIssues(value.issues)
         || !calendarRow(value.global, data.time_scope)) return false;
     if (value.resources === null) return value.state === 'unavailable' && value.global.state === 'unavailable' && value.issues.length > 0;
-    if (!projectedResources(value.resources, data) || !value.resources.every(row => calendarRow(row, data.time_scope, true)) || value.issues.length) return false;
+    if (!projectedResources(value.resources, resourcesByRef) || !value.resources.every(row => calendarRow(row, data.time_scope, true)) || value.issues.length) return false;
     const all = [value.global, ...value.resources];
     return value.state === (all.every(row => row.state === 'available') ? 'available' : all.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial');
   }
@@ -272,10 +271,10 @@
       && typeof row.capacity_insufficient === 'boolean'
       && (row.available_hours === 0 ? row.utilization === null : number(row.utilization) && row.utilization <= 1);
   }
-  function occupancy(value, data) {
+  function occupancy(value, data, resourcesByRef) {
     if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state)
         || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only'
-        || !projectedResources(value.resources, data) || !projectionIssues(value.issues, true)) return false;
+        || !projectedResources(value.resources, resourcesByRef) || !projectionIssues(value.issues, true)) return false;
     const calendars = new Map((data.projections.calendar.resources || []).map(row => [row.resource_ref, row]));
     if (!value.resources.every(row => occupancyRow(row, data, calendars))) return false;
     const unknown = value.issues.some(row => row.code === 'assignment_source_unknown');
@@ -365,8 +364,11 @@
         || !Array.isArray(d.tasks) || !Number.isSafeInteger(d.task_count) || d.task_count !== d.tasks.length || d.task_count > 10000
         || d.tasks_complete !== true || !d.tasks.every(row => task(row, planRef, d.plan_span, own(query, 'range_start') ? d.time_scope : null)) || !uniqueRefs(d.tasks, 'task_ref')
         || !taskSpans(d, query) || !exact(d.projections, projections)
-        || !baseline(d.projections.baseline, d) || !resourceDirectory(d) || !calendar(d.projections.calendar, d)
-        || !occupancy(d.projections.occupancy, d) || !delivery(d.projections.delivery_risks, d)
+        || !baseline(d.projections.baseline, d))
+      throw C.failure('工序安排、时间范围或分析数据与所选计划不一致，请刷新。');
+    const resourcesByRef = resourceDirectory(d);
+    if (!resourcesByRef || !calendar(d.projections.calendar, d, resourcesByRef)
+        || !occupancy(d.projections.occupancy, d, resourcesByRef) || !delivery(d.projections.delivery_risks, d)
         || !processOrder(d.projections.process_order)
         || !window.GanttGraph.validate(d.gantt_graph, { scope: 'full_plan', tasks: d.tasks, taskRef: 'task_ref', time: localTime,
           sequence: int64, processLabel: label,

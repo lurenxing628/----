@@ -8,10 +8,12 @@ from .facts import CalibrationFacts
 from .table import filter_rows
 
 
-def filtered_suggestions(rows, query):
+def filtered_suggestions(rows, query, *, cell_cache=None, sort=True):
     selected = [row for row in rows if (query.status == "all" or row["status"] == query.status)
                 and (query.deviation == "all" or row["over_20_percent"])]
-    selected = filter_rows(selected, query.column_filters)
+    selected = filter_rows(selected, query.column_filters, cell_cache=cell_cache)
+    if not sort:
+        return selected
     # Unknowns remain last in both directions; identity is the stable tie breaker.
     known = [row for row in selected if row[query.sort] is not None]
     unknown = [row for row in selected if row[query.sort] is None]

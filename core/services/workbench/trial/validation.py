@@ -9,7 +9,6 @@ from core.models.workbench_command import WorkbenchCommandRejected, canonical_js
 from core.models.workbench_trial import issue, reject, validation
 from core.models.workbench_trial_codec import packed, same
 from core.services.personnel.operator_qualification import OperatorQualificationError
-from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 
 from .arrangements import same_arrangement
@@ -17,7 +16,7 @@ from .calendar import calendar_engine, estimate, new_slot_effort
 from .constraints import interval, relation_issues, resource_issues
 from .execution_anchors import anchor_issue, execution_anchors
 from .facts import facts_unchanged
-from .materials import deferral_policy, material_issues, run_policy
+from .materials import adoption_settings, material_issues
 from .protection import TrialProtection, frozen_arrangements, frozen_issue, frozen_note, keeps_frozen
 
 
@@ -34,7 +33,7 @@ class TrialValidator:
             self.calendar_issue = issue("calendar_unproven", "日历数据无效，请核对工作日历。")
         self.qualification = live["resource_facts"]
         self.qualification_cache = {}
-        self.ops = {row["id"]: row for row in self.tables["BatchOperations"]}
+        self._protected_state = None
         self._protect()
         self.anchors, self.anchor_error = {}, None
         try:
@@ -47,24 +46,27 @@ class TrialValidator:
 
     def _protect(self):
         # 采用输入的起止日随试调行变化（不重排时段按它裁剪）：行改过就按当前各行重新找。
-        # 直接比较各行当前安排的副本（都是文本和编号），不为判断“改没改”去算摘要。
-        state = [dict(row["current"]) for row in self.rows]
-        if same(getattr(self, "_protected_state", None), state):
+        # 只比较各行的起止时间和资源编号，不为判断“改没改”复制整个安排或计算摘要。
+        state = tuple((row["current"]["start"], row["current"]["end"],
+                       row["current"]["machine_ref"], row["current"]["operator_ref"]) for row in self.rows)
+        if self._protected_state == state:
             return
         self._protected_state = state
+        self.settings = adoption_settings(self.admission, self.rows, self.checks, self.live["execution"])
         self.frozen, self.frozen_issue = {}, None
         try:
-            self.frozen = frozen_arrangements(self.conn, self.admission, self.rows, self.live, self.checks)
+            self.frozen = frozen_arrangements(self.conn, self.admission, self.rows, self.live, self.checks,
+                                              settings=self.settings)
         except (AppError, ValueError, TypeError, KeyError, OverflowError):
             self.frozen_issue = issue("freeze_window_unavailable", "正式采用要原样保留来源排产不重排时段里的原安排，"
                                       "但正式计划里这段时间的安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。")
         self.protection = TrialProtection(self.live, self.frozen)
 
-    def evaluate_saved(self):
+    def evaluate_saved(self, *, check_baseline=True):
         issues = []
         if not facts_unchanged(self.admission, self.live):
             issues.append(issue("trial_facts_changed", "建草稿之后现场数据变了；草稿里的工序和对比基准没变，不能按旧数据正式采用。"))
-        if not same(self.admission["baseline"], self.live["baseline"]):
+        if check_baseline and not same(self.admission["baseline"], self.live["baseline"]):
             issues.append(issue("trial_baseline_changed", "建草稿时的正式计划已经变了，草稿没有自动切到最新计划。"))
         return self._evaluate(issues)
 
@@ -87,8 +89,7 @@ class TrialValidator:
         for row in self.rows:
             issues.extend(self._row(row))
         issues.extend(relation_issues(self.rows, self.live))
-        policy = deferral_policy(self.admission, self.rows, self.checks, self.live["execution"])
-        issues.extend(trial_piece_issues(self.rows, self.live, policy))
+        issues.extend(trial_piece_issues(self.rows, self.live, self.settings))
         issues.extend(resource_issues(self.rows, self.live, conn=self.conn))
         unique = {canonical_json(packed(item)): item for item in issues}
         return validation(list(unique.values()))
@@ -145,7 +146,7 @@ class TrialValidator:
                 estimated_start, estimated_end = estimate(self.engine, original, current)
                 if start != estimated_start or end != estimated_end:
                     issues.append(issue("calendar_duration_conflict", "开完工与原工时、真实日历或效率不一致。", ref))
-            if (not actual and not fixed_cycle and run_policy(self.admission)["ready_check"]
+            if (not actual and not fixed_cycle and self.settings["ready_check"]
                     and batch["ready_date"] and start < datetime.fromisoformat(batch["ready_date"])):
                 issues.append(issue("before_ready_date", "安排早于原批次可开工日期。", ref))
             if not actual:
@@ -159,7 +160,6 @@ class TrialValidator:
     def _downtimes(self, row, start, end):
         issues, ref = [], row["task_ref"]
         if start == end:
-            trial_point_evidence(row["original"], row["current"])
             return issues
         for downtime in self.downtime.get(row["current"]["machine_id"], []):
             if downtime["status"] == "cancelled":

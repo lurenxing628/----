@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const C = window.PreflightContract, { Button, ErrorBox } = window.PreflightControls;
-  const baseScope = () => ({ query: '', page: 1, size: 20, sort: 'business_code', direction: 'asc', column_filters: { status: ['pending', 'scheduled', 'processing'] } });
+  const baseScope = () => ({ query: '', page: 1, size: 20, sort: 'business_code', direction: 'asc', column_filters: { status: ['pending', 'scheduled', 'processing', 'completed'] } });
   function DueDate({ value }) {
     try { return <span>交期：{window.WorkbenchFormat.date(value)}</span>; }
     catch (error) {
@@ -63,7 +63,7 @@
         <input type="checkbox" aria-label={'选择 ' + row.business_code} checked={chosen.has(row.ref)} disabled={busy} onChange={() => toggle(row.ref)} />
         <strong>{row.business_code}</strong><span>{row.relationships.part_no} · {row.label}</span><span>{row.relationships.operation_count} 道工序</span>
         <DueDate value={row.fields.due_date} /><span>优先级：{window.APSBatchContract.label('priority', row.fields.priority)}</span>
-        <span>{window.APSBatchContract.label('ready_status', window.APSBatchContract.readyStatus(row))}</span>
+        <span>{window.APSBatchContract.label('status', row.status)} · {window.APSBatchContract.label('ready_status', window.APSBatchContract.readyStatus(row))}</span>
       </label>)}</div>}
       {data && <window.WorkbenchListControls.Pager page={data.page} size={scope.size} sizes={[20, 50, 100]} unit="批" label="批次" busy={busy}
         onSize={size => filter({ size })} onPage={page => setScope(old => ({ ...old, page, snapshot_ref: snapshot }))} />}

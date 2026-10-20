@@ -134,7 +134,7 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
         svc, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
         mutable=runtime_mutable, algo_ops=algo_outcome.value, fixed_ids=fixed, completed_ids=completed,
         execution_seeds=execution_seeds, reservations=reservations, hold_window=hold_window(conn, hold, snapshot=base_config)[0],
-        hold_start=datetime.combine(local_date(hold["start_date"]), datetime.min.time()), facts=facts,
+        hold_start=datetime.combine(local_date(hold["start_date"]), datetime.min.time()), facts=facts, piece_scope=piece_scope,
     )
     frozen, seeds, warnings, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime
     missing_ids = _missing_internal_resources(mutable)

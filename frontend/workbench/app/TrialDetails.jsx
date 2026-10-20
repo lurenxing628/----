@@ -58,7 +58,9 @@
       </form>}</>;
   }
   function Detail({ data, selected, commands, onSelect, onEditing, onRecheck, guardOwner, editorRevision, inspectFocus, onCollapse }) {
-    const task = data.tasks.find(t => t.task_ref === selected), name = window.TrialGantt.resourceNames(data);
+    const tasksByRef = React.useMemo(() => new Map(data.tasks.map(t => [t.task_ref, t])), [data.tasks]);
+    const name = React.useMemo(() => window.TrialGantt.resourceNames(data), [data]);
+    const task = tasksByRef.get(selected);
     const panel = React.useRef(null), heading = React.useRef(null);
     React.useEffect(() => {
       const focus = () => { heading.current.focus({ preventScroll: true }); panel.current.scrollIntoView({ block: 'nearest' }); };
@@ -79,7 +81,7 @@
         ['预计开工', U.timeLabel(task.start)], ['预计完工', U.timeLabel(task.end)]].map(([label, value]) =>
           <React.Fragment key={label}><dt>{label}</dt><dd>{value}</dd></React.Fragment>)}</dl>
       <div className="tt-tools">{task.predecessor_refs.map(ref => {
-        const t = data.tasks.find(t => t.task_ref === ref);
+        const t = tasksByRef.get(ref);
         const piece = typeof t.piece_id === 'string' && t.piece_id.trim() ? '分件 ' + t.piece_id :
           t.piece_id === null && !t.data_gaps.some(g => g.field === 'piece_id') ? '共同工序' : '分件未记录';
         const label = '前序 ' + piece + ' · ' + t.process_label + ' ' + t.sequence;

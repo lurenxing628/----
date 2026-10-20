@@ -102,13 +102,13 @@ class WorkbenchTrialService:
         live = live_context(self.conn, [row["operation_ref"] for row in rows], execution_service=execution_service)
         return head, rows, live
 
-    def _projection(self, head, rows, live, checked=None, *, changes=None, source_prepared=None):
+    def _projection(self, head, rows, live, checked=None, *, changes=None, source_prepared=None, scenario_ref=None):
         """checked: (核对结果, 冻结的原安排)，与这些行同一次核对；不给时现核对。"""
         if checked is None:
             validator = TrialValidator(self.conn, head["admission"], rows, live)
             checked = validator.evaluate_saved(), validator.frozen
         result = draft_projection(head, rows, checked[0], live, self.context_factory, checked[1],
-                                  source_prepared=source_prepared)
+                                  source_prepared=source_prepared, scenario_ref=scenario_ref)
         result["change_history"] = self.repo.public_history(head["draft_ref"]) if changes is None else changes
         return result
 
@@ -159,17 +159,14 @@ class WorkbenchTrialService:
         intent = save_input(value)
 
         def prepare(head, rows, live):
+            scenario_ref = new_ref()
             source_prepared = source_projection(rows, head["admission"])
-            snapshot = deepcopy(self._projection(head, rows, live, source_prepared=source_prepared))
-            return head, rows, source_prepared, snapshot
+            snapshot = self._projection(head, rows, live, source_prepared=source_prepared, scenario_ref=scenario_ref)
+            return head, rows, source_prepared, scenario_ref, snapshot
 
         def mutate(prepared):
-            head, rows, source_prepared, snapshot = prepared
-            snapshot.update(scenario_ref=new_ref(), name=intent["name"], status="saved", saved_at=self._now())
-            snapshot.pop("write_context")
-            for item in snapshot["tasks"] + snapshot["unplanned_operations"]:
-                if "operation_effort" in item:
-                    item["operation_effort"]["after"]["evidence_source"] = {"kind": "scenario", "scenario_ref": snapshot["scenario_ref"]}
+            head, rows, source_prepared, scenario_ref, snapshot = prepared
+            snapshot.update(scenario_ref=scenario_ref, name=intent["name"], status="saved", saved_at=self._now())
             for row in snapshot["tasks"]:
                 row.update(source_row_ref=row["row_ref"], source_task_ref=row["task_ref"],
                            row_ref=new_ref(), task_ref=new_ref())
@@ -177,10 +174,10 @@ class WorkbenchTrialService:
             old_to_new = {row["source_task_ref"]: row["task_ref"] for row in snapshot["tasks"]}
             for row in snapshot["tasks"]:
                 row["predecessor_refs"] = [old_to_new[ref] for ref in row["predecessor_refs"]]
-                _scenario_issue_refs(row["issues"], old_to_new)
             _scenario_issue_refs(snapshot["validation"]["issues"], old_to_new)
-            apply_changeovers(snapshot["comparison"], trial_changeovers(scenario_rows(snapshot, rows), head["admission"],
-                                                                        facts=source_prepared[0]))
+            apply_changeovers(snapshot["comparison"], trial_changeovers(
+                [dict(row, row_ref=task["row_ref"]) for row, task in zip(rows, snapshot["tasks"])],
+                head["admission"], facts=source_prepared[0]))
             snapshot["preview_target"] = "/api/workbench/v1/trial/scenarios/" + snapshot["scenario_ref"]
             encoded = encode_scenario(snapshot)
             require_advanced(self.repo.save(head, snapshot, encoded, request_key, self.actor_provider(), snapshot["saved_at"]))

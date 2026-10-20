@@ -399,13 +399,14 @@ def prepare_native_schedule_inputs(
     from core.algorithm_contracts.value_domains import INTERNAL
 
     from .external_groups import rebuild_external_group_cache_from_seeds
-    from .seed import seed_external_group_keys, seed_result_for_output
+    from .seed import seed_external_group_keys, seed_resource_segments, seed_result_for_output
 
     seed_applications, external_seed_cache = [], {}
     for seed in normalized_seeds or ():
         occupies = str(seed.source or "").strip().lower() == INTERNAL and not point_seed_valid(seed)
         seed_applications.append((seed_result_for_output(seed), normalize_text_id(seed.machine_id) if occupies else "",
-                                  normalize_text_id(seed.operator_id) if occupies else ""))
+                                  normalize_text_id(seed.operator_id) if occupies else "",
+                                  seed_resource_segments(seed) if occupies else None))
     rebuild_external_group_cache_from_seeds(
         seed_results=normalized_seeds or [], operations=operations, external_group_cache=external_seed_cache,
         warnings=warnings, algo_stats=stats, seed_group_keys=seed_external_group_keys(normalized_seeds or []),

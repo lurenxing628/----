@@ -21,20 +21,23 @@ from .preflight_facts import PreflightFacts, full_facts_content
 
 
 def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None,
-                          on_progress: Optional[Callable[[int, int], None]] = None, capture=None) -> CandidateRunComputation:
+                          on_progress: Optional[Callable[[int, int], None]] = None, capture=None,
+                          validated_projections=None) -> CandidateRunComputation:
     """Compute actual candidate rows under one read snapshot; worker owns run lock.
 
     ``on_progress(done, total)`` is only a progress sink for the worker's status ledger; it never
     receives prepared input or results and cannot influence the computation.
     """
     with candidate_read_snapshot(conn):
-        return _prepare_and_compute_in_snapshot(conn, normalized_input, execution_projections, version_override, on_progress, capture)
+        return _prepare_and_compute_in_snapshot(
+            conn, normalized_input, execution_projections, version_override, on_progress, capture,
+            validated_projections=validated_projections)
 
 
 def _prepare_and_compute_in_snapshot(
     conn, normalized_input, execution_projections, version_override,
     on_progress: Optional[Callable[[int, int], None]] = None,
-    capture=None,
+    capture=None, validated_projections=None,
 ):
     # The private continuation consumes this preparation in the same read snapshot.
     # Independent prepared inputs still capture and recheck their complete fingerprint.
@@ -42,7 +45,9 @@ def _prepare_and_compute_in_snapshot(
     if capture is not None:
         facts = PreflightFacts(conn, capture=capture)
         facts.bind_capture(capture)
-    prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections, capture_fingerprint=False, facts=facts)
+    prepared = prepare_candidate_run_input(
+        conn, normalized_input, execution_projections, capture_fingerprint=False, facts=facts,
+        validated_projections=validated_projections)
     version = _prepared_version(conn, prepared, version_override)
     return _compute_in_read_snapshot(conn, prepared, version, on_progress)
 

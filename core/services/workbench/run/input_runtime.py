@@ -171,16 +171,11 @@ def runtime_resource_facts(facts):
     return capture.runtime_resources
 
 
-def _validate_stored_runtime(facts):
-    runtime_resource_facts(facts)
-
-
 def build_runtime(svc, *, facts, cfg, prev_version, start_dt, batches, operations, mutable, algo_ops,
-                  fixed_ids, completed_ids, execution_seeds, reservations, hold_window=None, hold_start=None):
-    from .input_piece import input_piece_scope, validate_piece_seed_precedence
+                  fixed_ids, completed_ids, execution_seeds, reservations, hold_window=None, hold_start=None, piece_scope):
+    from .input_piece import validate_piece_seed_precedence
 
-    scope = input_piece_scope(operations, batches)
-    seed_validator = partial(validate_piece_seed_precedence, scope=scope, algo_ops=algo_ops) if scope is not None else None
+    seed_validator = partial(validate_piece_seed_precedence, scope=piece_scope, algo_ops=algo_ops) if piece_scope is not None else None
     resources = runtime_resource_facts(facts)
     return _build_runtime_support_inputs(
         svc, cfg=cfg, prev_version=prev_version, start_dt_norm=start_dt, run_label="排产计算",

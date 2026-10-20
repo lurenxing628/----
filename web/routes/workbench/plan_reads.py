@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import re
 from io import BytesIO
-from types import MappingProxyType
 
 from flask import current_app, g, request, send_file
 
@@ -47,14 +46,14 @@ def _response(data, snapshot):
     return response
 
 
-def _cursor(scope):
+def _cursor(scope, scope_dict):
     token = request.args.get("cursor")
     snapshot = request.args.get("snapshot_ref")
     if token is None:
         return None, snapshot
     try:
         payload = resolve_public_token(_CURSOR_SCOPE, token, message="翻页位置已失效，请回到第 1 页重新查询。", field="cursor")
-        if payload["scope"] != scope.scope() or not isinstance(payload["snapshot_ref"], str):
+        if payload["scope"] != scope_dict or not isinstance(payload["snapshot_ref"], str):
             raise ValueError("Cursor scope mismatch")
         if snapshot is not None and snapshot != payload["snapshot_ref"]:
             raise ValueError("Cursor snapshot mismatch")
@@ -76,15 +75,16 @@ def plan_list():
     if re.fullmatch(r"[1-9][0-9]?", size) is None:
         raise WorkbenchCommandRejected("invalid_input", "每页数量要填 1 至 50 的整数，列表没有变化。请回到第 1 页重新查询。", 400)
     scope = PlanCatalogScope(request.args.get("collection", "history"), int(size))
-    seek, token = _cursor(scope)
+    scope_dict = scope.scope()
+    seek, token = _cursor(scope, scope_dict)
     reader = WorkbenchPlanQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as revision:
-        snapshot = bind_read_snapshot(scope.scope(), revision, token)
+        snapshot = bind_read_snapshot(scope_dict, revision, token)
         data, next_seek = reader.catalog_page(scope, seek)
         data["page"]["next_cursor"] = None
         if next_seek is not None:
-            binding = {"scope": scope.scope(), "snapshot_ref": snapshot["snapshot_ref"], "seek": next_seek}
-            data["page"]["next_cursor"] = issue_public_token(_CURSOR_SCOPE, MappingProxyType(binding), key=(snapshot["snapshot_ref"], next_seek), ttl_seconds=PLAN_READ_TTL_SECONDS)
+            binding = {"scope": scope_dict, "snapshot_ref": snapshot["snapshot_ref"], "seek": next_seek}
+            data["page"]["next_cursor"] = issue_public_token(_CURSOR_SCOPE, binding, key=(snapshot["snapshot_ref"], next_seek), ttl_seconds=PLAN_READ_TTL_SECONDS)
     return _response(data, snapshot)
 
 
@@ -96,7 +96,7 @@ def plan_workspace(plan_ref):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             data, state = reader.workspace(scope)
-    snapshot = bind_read_snapshot(scope.scope(), state, request.args.get("snapshot_ref"))
+    snapshot = bind_read_snapshot(data["scope"], state, request.args.get("snapshot_ref"))
     return _response(data, snapshot)
 
 
@@ -111,7 +111,7 @@ def plan_export(plan_ref):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             data, state = reader.workspace(scope)
-    snapshot = bind_read_snapshot(scope.scope(), state, token)
+    snapshot = bind_read_snapshot(data["scope"], state, token)
     # 读事务和读额度都已释放：大小检查和生成文件只用已读出的计划，不再占着读锁。
     download = write_plan_export(data, snapshot, fmt)
     if len(download.content) > MAX_PLAN_RESPONSE_BYTES:

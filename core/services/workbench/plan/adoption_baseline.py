@@ -131,10 +131,11 @@ def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None, co
         evidence, prepared_trial = trial_source_evidence(conn, audit)
         baseline, tables, arranged, origin = evidence
         generation = None
-    baseline = decoded_baseline(baseline)
+    admission_proof = prepared_candidate["admission_proof"] if prepared_candidate is not None else None
+    baseline = admission_proof.baseline if admission_proof is not None else decoded_baseline(baseline)
     require(same((baseline["plan_ref"], baseline["version"]), (audit["baseline_ref"], audit["baseline_version"])),
             "adoption.recorded_baseline")
-    verify_capture(baseline, tables)
+    verify_capture(baseline, tables, admission_proof=admission_proof)
     require(len(arranged) == audit["row_count"], "adoption.complete_row_count")
     current = verify_arranged(conn, plan_ref, version, tables, arranged, context=context)
     return {"basis": basis, "audit": audit, "receipt": receipt, "baseline": baseline,

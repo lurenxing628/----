@@ -1,6 +1,5 @@
 """Verify saved scenario lineage; source draft supplies only immutable raw work."""
 
-from copy import deepcopy
 from datetime import datetime
 from types import SimpleNamespace
 from typing import NoReturn
@@ -39,8 +38,6 @@ def _load_saved_scenario(conn, scenario_ref):
             _invalid("试调方案与草稿工序不一致，请刷新后重试。")
         seen.add(source["row_ref"])
         rows.append(_saved_row(task, source))
-    if seen != set(sources):
-        _invalid("试调方案的范围和草稿不一致。请刷新后重试。")
     _require_links(saved["tasks"], rows)
     return saved, dict(head, scenario_revision=header["revision"]), rows
 
@@ -117,7 +114,7 @@ def _saved_row(task, source):
         if parsed.tzinfo is not None or parsed.isoformat() != raw:
             _invalid("试调方案里的时间格式无效，不能正式采用。请刷新后重试。")
     return {**source, "row_ref": task["row_ref"], "task_ref": task["task_ref"],
-            "current": current, "original": deepcopy(original)}
+            "current": current, "original": original}
 
 
 def _require_links(tasks, rows):

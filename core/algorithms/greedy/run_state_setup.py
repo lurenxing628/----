@@ -28,11 +28,16 @@ def _prepare_run_state(
     if bool(readiness_gate_enabled):
         _initialize_ready_progress(state=state, batches=prepared_inputs.batches, strict_mode=strict_mode)
     if prepared_inputs.seed_applications:
-        for result, machine_id, operator_id in prepared_inputs.seed_applications:
-            if machine_id:
-                occupy_resource(state.machine_timeline, machine_id, result.start_time, result.end_time)
-            if operator_id:
-                occupy_resource(state.operator_timeline, operator_id, result.start_time, result.end_time)
+        for result, machine_id, operator_id, segments in prepared_inputs.seed_applications:
+            if segments:
+                for start, end, segment_machine, segment_operator in segments:
+                    occupy_resource(state.machine_timeline, segment_machine, start, end)
+                    occupy_resource(state.operator_timeline, segment_operator, start, end)
+            else:
+                if machine_id:
+                    occupy_resource(state.machine_timeline, machine_id, result.start_time, result.end_time)
+                if operator_id:
+                    occupy_resource(state.operator_timeline, operator_id, result.start_time, result.end_time)
             state.record_seed_result(result)
         state.external_group_cache.update(prepared_inputs.seed_external_group_cache)
         warnings.extend(state.seed_resource_warnings())

@@ -3,7 +3,6 @@
 import json
 from dataclasses import replace
 from datetime import timedelta
-from unittest.mock import patch
 
 import pytest
 
@@ -144,24 +143,19 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
             publish(candidate_rows)
         assert caught.value.code == reason
 
-    with patch.object(piece_adoption, "build_validated_schedule_payload",
-                      wraps=piece_adoption.build_validated_schedule_payload) as build:
-        evidence = checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
+    evidence = checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
+        case.conn, prepared=prepared, payload=known))
+    assert evidence.protected_op_ids == (common,)
+    with pytest.raises(PieceAdoptionBlocked) as caught:
+        checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
             case.conn, prepared=prepared, payload=known))
-        assert evidence.protected_op_ids == (common,)
-        assert build.call_count == 0
-        with pytest.raises(PieceAdoptionBlocked) as caught:
-            checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
-                case.conn, prepared=prepared, payload=known))
-        assert caught.value.code == "piece_scope_incomplete"
-        checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
+    assert caught.value.code == "piece_scope_incomplete"
+    checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
+        case.conn, prepared=prepared, payload=full))
+    with pytest.raises(PieceAdoptionBlocked) as caught:
+        checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
             case.conn, prepared=prepared, payload=full))
-        assert build.call_count == 0
-        with pytest.raises(PieceAdoptionBlocked) as caught:
-            checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
-                case.conn, prepared=prepared, payload=full))
-        assert caught.value.code == "official_scope_not_covered"
-        assert build.call_count == 1
+    assert caught.value.code == "official_scope_not_covered"
 
     reject([row for row in rows if row.op_id != ids["item-A", 20]], "piece_precedence_violation")
     reject([row for row in rows if row.op_id != common], "piece_protected_seed_missing")

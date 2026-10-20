@@ -12,11 +12,9 @@ def corrupt() -> NoReturn:
 
 
 def _pairs(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("Duplicate stored JSON key")
-        result[key] = value
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError("Duplicate stored JSON key")
     return result
 
 

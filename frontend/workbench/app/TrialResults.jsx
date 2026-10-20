@@ -21,8 +21,9 @@
   function RequirementMetric({ value }) {
     return <>{value.state === 'not_applicable' ? '不适用' : U.number(value.value)}{value.value === null && <small>已知小计 {U.number(value.known_subtotal)} · 未知 {value.unknown_count} 道</small>}</>;
   }
-  function Preparation({ data, onSelect }) {
-    const c = data.comparison, p = c.preparation_common, changes = c.changeover_common, name = window.TrialGantt.resourceNames(data);
+  function Preparation({ data, name, onSelect }) {
+    const c = data.comparison, p = c.preparation_common, changes = c.changeover_common;
+    const tasksByOpRef = React.useMemo(() => new Map(data.tasks.map(row => [row.operation_ref, row])), [data.tasks]);
     const metrics = [['pending_setup_hours', '待执行准备标准工时'], ['scheduled_setup_hours', '新安排准备标准工时'],
       ['unplanned_setup_hours', '其他未安排准备标准工时'], ['deferred_setup_hours', '缺料未安排准备标准工时'],
       ['pending_processing_hours', '待执行加工标准工时'], ['scheduled_processing_hours', '新安排加工标准工时'],
@@ -34,7 +35,7 @@
     const primaryMetrics = p ? metrics.filter(([key]) => ['scheduled_setup_hours', 'unplanned_setup_hours'].includes(key)
       || key === 'deferred_setup_hours' && ['before', 'after'].some(side => p[side][key].total_count > 0)) : [];
     function operation(ref, label) {
-      const task = data.tasks.find(row => row.operation_ref === ref);
+      const task = tasksByOpRef.get(ref);
       return task ? <U.Button icon="arrow-right" onClick={() => onSelect(task.task_ref)}>{label}</U.Button> : <span>{label}</span>;
     }
     return <>
@@ -47,7 +48,7 @@
         : <p className="tt-notice">原草稿的需求保存来源缺失，原标准与实际需求在任务明细中分别查看。</p>}
       <p className="tt-muted">工时单位为小时，箭头表示原安排 → 当前试调。</p>
       <U.Table label="工序准备需求" rows={data.tasks} columns={[
-        ['批次 / 工序', task => operation(task.operation_ref, task.batch_id + ' · ' + task.process_label + ' ' + task.sequence)],
+        ['批次 / 工序', task => <U.Button icon="arrow-right" onClick={() => onSelect(task.task_ref)}>{task.batch_id + ' · ' + task.process_label + ' ' + task.sequence}</U.Button>],
         ...[['setup_standard_hours', '准备工时'], ['processing_standard_hours', '加工工时'], ['required_standard_hours', '合计']].map(([key, label]) => [label, task => {
           const pair = task.operation_effort;
           if (!pair) return '需求未保存';
@@ -93,7 +94,8 @@
         return { tab: H.restore(data.scenario_ref).tab, error: null };
       } catch (_) { return { tab: null, error: new Error('试调页签记录无法恢复，请刷新或清除本页页签记录。') }; }
     }
-    const [entry, setEntry] = React.useState(readEntry), name = window.TrialGantt.resourceNames(data), c = data.comparison;
+    const [entry, setEntry] = React.useState(readEntry), c = data.comparison;
+    const name = React.useMemo(() => window.TrialGantt.resourceNames(data), [data]);
     // When the local preference cannot be read, the result still renders with defaults and the tab choice stays on this page.
     const [local, setLocal] = React.useState(null), values = preferences.value || local || V.defaults(data);
     const tab = entry.tab || values.result_tab;
@@ -120,7 +122,7 @@
       ['delivery', '批次对比'], ['capacity', '资源占用'], ['preparation', '准备与切换'], ['history', '调整记录'], ['adoptions', '采用记录'], ['issues', '约束问题'], ['tasks', '全部安排'], ['unplanned', '未安排工序']]} />
       <div role="tabpanel" id="tt-result-panel" aria-labelledby={'tt-result-tab-' + tab}>
         {tab === 'adoptions' && (window.TrialAdoptionHistory ? <window.TrialAdoptionHistory data={data} /> : <p role="alert">{window.WorkbenchTerms.outcomes.unavailable}</p>)}
-        {tab === 'preparation' && <Preparation data={data} onSelect={onSelect} />}
+        {tab === 'preparation' && <Preparation data={data} name={name} onSelect={onSelect} />}
         {tab === 'delivery' && <><details><summary>交期数据范围</summary><p>原安排：{T.delivery_coverage(c.before_delivery_summary)}</p><p>当前试调：{T.delivery_coverage(c.delivery_summary)}</p></details>
           <U.Table rows={c.batches} label="批次交付对比" columns={[
             ['批次 / 零件', r => <>{r.batch_id}<br />{r.part_name}</>], ['批次数量', r => U.number(r.quantity)], ['交期', r => <span title={r.due_state === 'specified' ? '交期截至当日结束，次日零点起计为超期。' : undefined}>{T.due_date(r.due_date, r.due_state, r.due_issue)}</span>],

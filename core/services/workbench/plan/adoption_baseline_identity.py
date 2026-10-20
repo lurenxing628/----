@@ -19,8 +19,18 @@ from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentity
 from .projection import project_tasks, public_time
 
 
-def verify_capture(baseline, tables):
+def verify_capture(baseline, tables, *, admission_proof=None):
     version = baseline["version"]
+    if (version is not None and admission_proof is not None
+            and admission_proof.baseline is baseline and admission_proof.tables is tables):
+        # Admission already proved exact raw baseline/Schedule equality, strict
+        # history versions and the official ref. Both row views were decoded by
+        # the same lossless transform, so that complete equality is retained.
+        # The empty-history case deliberately keeps the full path below: it
+        # also detects malformed Schedule rows whose stored version is NULL.
+        require(bool(baseline["rows"]), "baseline_complete_row_count")
+        _captured_official(baseline, tables)
+        return
     history = tables["ScheduleHistory"]
     require(all(type(row.get("version")) is int and row["version"] > 0 for row in history), "archived_history_versions")
     require(version == max((row["version"] for row in history), default=None), "archived_official_baseline")
@@ -61,8 +71,14 @@ def verify_arranged(conn, plan_ref, version, tables, arranged, *, context=None):
     originals, current = indexed(arranged, "op_id"), indexed(rows, "op_id")
     if set(originals) != set(current):
         fail("adoption_plan_drift", "selected_complete_operation_set")
+    intervals = context.peek_source_intervals(version=version, source_table="schedule", candidate_id=None,
+                                             scenario_id=None) if context is not None else None
+    if intervals is not None and not {row["id"] for row in rows} <= set(intervals):
+        intervals = None
     for op_id, original in originals.items():
-        if not _arrangement_matches(current[op_id], original):
+        row = current[op_id]
+        known_times = intervals[row["id"]] if intervals is not None else None
+        if not _arrangement_matches(row, original, known_times=known_times):
             fail("adoption_plan_drift", "selected_saved_arrangement")
     references = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
     try:
@@ -80,13 +96,26 @@ def verify_arranged(conn, plan_ref, version, tables, arranged, *, context=None):
     return rows
 
 
-def _arrangement_matches(row, original):
-    expected = {key: original[key] for key in ("machine_id", "operator_id")}
-    actual = {key: row[key] for key in expected}
-    if not same(expected, actual):
+def _resources_match(row, original):
+    actual = row["machine_id"], row["operator_id"]
+    expected = original["machine_id"], original["operator_id"]
+    # These common SQLite values have an exact type/value JSON spelling. Keep
+    # complex storage values on the existing whole-dictionary canonical path.
+    if all(type(value) in (str, bool, type(None)) or type(value) is int and -(1 << 63) <= value < (1 << 63)
+           for value in actual + expected):
+        return all(type(left) is type(right) and left == right for left, right in zip(expected, actual))
+    return same({"machine_id": expected[0], "operator_id": expected[1]},
+                {"machine_id": actual[0], "operator_id": actual[1]})
+
+
+def _arrangement_matches(row, original, *, known_times=None):
+    if not _resources_match(row, original):
         return False
-    for key in ("start_time", "end_time"):
-        if type(row[key]) is not str or type(original[key]) is not str or public_time(row[key]) != public_time(original[key]):
+    for index, key in enumerate(("start_time", "end_time")):
+        if type(row[key]) is not str or type(original[key]) is not str:
+            return False
+        current = known_times[index].replace(" ", "T") if known_times is not None else public_time(row[key])
+        if current != public_time(original[key]):
             return False
     return True
 

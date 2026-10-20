@@ -144,6 +144,15 @@ class PlanReadContext:
         query = self.query(entry)
         return self._interval_map(query)
 
+    def peek_source_intervals(self, **query):
+        """Reuse only a completed whole-source map; never load or prove a plan.
+
+        Scoped selections do not populate this map. It is installed only after
+        all prepared rows and their parsed intervals have completed, so an
+        absent/in-progress source keeps the caller's ordinary validation path.
+        """
+        return self._intervals.get(self.source_key(query))
+
     def _interval_map(self, query):
         key = self.source_key(query)
         if key not in self._intervals:
