@@ -140,17 +140,19 @@
       && Array.isArray(payload.warnings) && payload.warnings.every(value => value !== null && reason(value)));
     if (q.snapshot_ref && payload.meta.snapshot_ref !== q.snapshot_ref) throw Object.assign(new Error('历史资料已更新，请刷新当前条件后继续查看。'), { code: 'snapshot_stale' });
     const d = payload.data;
+    const filterKeys = queryKeys.filter(key => key !== 'snapshot_ref');
     check(shape(d, ['history_version', 'filters', 'entries', 'page', 'totals', 'metric_definitions', 'selection', 'comparison', 'trend', 'resource_window']) && d.history_version === 'decision-history-v1'
-      && shape(d.filters, queryKeys.filter(key => key !== 'snapshot_ref')) && page(d.page, q)
+      && shape(d.filters, filterKeys) && page(d.page, q)
       && shape(d.totals, ['run', 'official', 'filtered']) && Object.values(d.totals).every(count) && d.totals.filtered === d.page.total);
-    for (const key of queryKeys.filter(key => key !== 'snapshot_ref')) {
+    for (const key of filterKeys) {
       const left = d.filters[key], right = q[key];
       check(['range_start', 'range_end'].includes(key) && left !== null && right !== null ? window.RunHistoryAPI.time(left) && timeKey(left) === timeKey(right) : JSON.stringify(left) === JSON.stringify(right), '历史返回的筛选条件已变化，请重新查询。');
     }
     check(Array.isArray(d.metric_definitions) && d.metric_definitions.every(definition => shape(definition, ['key', 'label', 'group', 'unit', 'precision', 'improvement', 'scope', 'source', 'common', 'metric_version'])
       && ['key', 'label', 'group', 'unit', 'scope', 'source', 'metric_version'].every(key => text(definition[key])) && count(definition.precision) && definition.precision <= 20
-      && ['lower', 'higher', 'neutral'].includes(definition.improvement) && typeof definition.common === 'boolean') && new Set(d.metric_definitions.map(value => value.key)).size === d.metric_definitions.length
-      && q.metric_keys.every(key => d.metric_definitions.some(value => value.key === key)));
+      && ['lower', 'higher', 'neutral'].includes(definition.improvement) && typeof definition.common === 'boolean'));
+    const metricKeys = new Set(d.metric_definitions.map(value => value.key));
+    check(metricKeys.size === d.metric_definitions.length && q.metric_keys.every(key => metricKeys.has(key)));
     check(Array.isArray(d.entries) && d.entries.length === Math.min(q.size, Math.max(0, d.page.total - (q.page - 1) * q.size)) && new Set(d.entries.map(value => value.entry_ref)).size === d.entries.length);
     d.entries.forEach(value => { entry(value, q.metric_keys); check(value.timeline === q.timeline); });
     check(shape(d.selection, ['entry', 'reference']));
@@ -167,8 +169,9 @@
     }
     check(shape(d.trend, ['point_scope', 'order', 'points']) && d.trend.point_scope === 'current_page' && d.trend.order === 'asc' && Array.isArray(d.trend.points)
       && d.trend.points.length === d.entries.length && new Set(d.trend.points.map(value => value.entry_ref)).size === d.trend.points.length);
+    const entries = new Map(d.entries.map(value => [value.entry_ref, value]));
     d.trend.points.forEach((point, index) => {
-      const row = d.entries.find(value => value.entry_ref === point.entry_ref);
+      const row = entries.get(point.entry_ref);
       check(shape(point, ['entry_ref', 'occurred_at', 'time_basis', 'label', 'state', 'metrics', 'scope', 'resource_window', 'range_changed', 'condition_state', 'connections']) && row
         && point.occurred_at === row.occurred_at && point.time_basis === row.time_basis && point.label === row.label && point.state === row.state
         && JSON.stringify(point.metrics) === JSON.stringify(row.metrics) && JSON.stringify(point.scope) === JSON.stringify(row.scope) && JSON.stringify(point.resource_window) === JSON.stringify(row.reading_context.resource_window)
@@ -231,5 +234,5 @@
     } }, ['history']);
   }
   function adapter(value) { return window.APSReadBoundary.checked(value, { history }); }
-  window.DecisionHistoryAPI = { check, returnState, historyContext, scope, context, serialized, entryRef, runRef, timeKey, states, defaultMetrics, sourceLabel, windowMetric, sameMetricDefinition, create, adapter, history, entry, metric, numberText, metricText };
+  window.DecisionHistoryAPI = { check, returnState, historyContext, scope, context, serialized, states, sourceLabel, windowMetric, sameMetricDefinition, create, adapter, history, entry, numberText, metricText };
 })();

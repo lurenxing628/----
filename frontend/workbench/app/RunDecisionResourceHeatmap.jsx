@@ -26,7 +26,6 @@
     const signals = sides.flatMap(item => item.key === 'before' && baselineState !== 'available' ? [] : warningFields
       .filter(([field]) => item.value[field] === true || item.value[field] === null)
       .map(([field, known, unknown]) => ({ key: item.key + ':' + field, confirmed: item.value[field] === true, text: (mode === 'delta' ? item.label + '：' : '') + (item.value[field] === null ? unknown : known) })));
-    const warnings = signals.filter(item => item.confirmed), unknowns = signals.filter(item => !item.confirmed);
     const facts = sides.map(item => item.label + (item.key === 'before' && baselineState !== 'available' ? '：基准缺失，归档可排 ' + R.scalar(item.value.available_hours) + ' 小时' :
       '：可排 ' + R.scalar(item.value.available_hours) + ' 小时，班表内占用 ' + R.scalar(item.value.occupied_hours) + ' 小时'
       + (mode === 'delta' ? '，占用比例 ' + R.metricText(item.value, 'utilization_ratio') : '')));
@@ -34,12 +33,9 @@
     const pressure = side && (side.high_pressure === true || side.utilization_ratio >= 1 || cell.grain === 'week' && side.high_pressure_period_count > 0), zeroCapacity = side && side.zero_capacity_task === true, conflict = side && side.conflict === true;
     const status = side ? conflict ? side.overlap_hours === null ? '已确认重叠' : '重叠 ' + R.scalar(side.overlap_hours) + ' 小时' : zeroCapacity ? null : side.utilization_ratio >= 1 ? '满载' : side.high_pressure === true ? '接近满载' : side.demand_overload === true ? '需求超载' : null : null;
     const markers = mode === 'delta' ? sides.flatMap(item => item.key === 'before' && baselineState !== 'available' ? [] : item.value.conflict === true ? [(item.key === 'after' ? '当前' : '对照') + '有重叠'] : item.value.zero_capacity_task === true ? [(item.key === 'after' ? '当前' : '对照') + '无容量仍有工作'] : item.value.high_pressure === true ? [(item.key === 'after' ? '当前' : '对照') + '高负荷'] : []) : [];
-    return { value, text, side, sides, warnings, unknowns, valueState, status, pressure, zeroCapacity, conflict, markers,
+    return { value, text, side, sides, valueState, status, pressure, zeroCapacity, conflict, markers,
       name: (row.label || T.name_missing) + '，' + exactRange(cell) + '，' + modes.find(item => item[0] === mode)[1] + ' ' + text
         + '，' + facts.join('；') + (signals.length ? '；' + signals.map(item => item.text).join('，') : '') + '。按 Enter 查看时段安排。' };
-  }
-  function cellName(row, cell, mode, pressureLabel = '高负荷', baselineState = 'available') {
-    return cellPresentation(row, cell, mode, pressureLabel, baselineState).name;
   }
   function cursor(row, cell) { return { resource_ref: row.resource_ref, bucket_key: cell.bucket_key, date: cell.date, start: cell.start, end: cell.end }; }
   function Heatmap({ data, definitions, mode = 'after', focus, onMode, onCursor, onFocus, onPage, onSize }) {
@@ -113,7 +109,7 @@
             return <td key={bucket.key} role="gridcell" aria-selected={cells.some(({ cell }) => focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key)}><div className="rres-period-cells">{continuations.map(item => <C.Button key={item.bucket_key} className="btn link rres-continuation" data-resource-continuation={item.bucket_key}
               aria-label={(row.label || T.name_missing) + '，班段延续 ' + F.compactRange(item.continuation_start, item.continuation_end) + '；查看原完整班段 ' + exactRange(item)} title={'原完整班段：' + exactRange(item)}
               onFocus={() => onCursor(cursor(row, item))} onClick={() => onFocus(row, item)}><span>班段延续</span><small>{F.compactRange(item.continuation_start, item.continuation_end)}</small></C.Button>)}{cells.map(({ cell, column: columnIndex }) => {
-              const presentation = presentations.values.get(cell), { value, side } = presentation, selected = focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key;
+              const presentation = presentations.values.get(cell), { value } = presentation, selected = focus && focus.resource_ref === row.resource_ref && focus.bucket_key === cell.bucket_key;
               return <button key={cell.bucket_key} type="button" className="rres-day-cell" data-heatmap-row={rowIndex} data-heatmap-column={columnIndex} data-resource-ref={row.resource_ref} data-resource-date={cell.date} data-resource-bucket={cell.bucket_key}
                 data-value-state={presentation.valueState} data-pressure={presentation.pressure || undefined} data-zero-capacity={presentation.zeroCapacity || undefined} data-conflict={presentation.conflict || undefined} data-change={mode === 'delta' && value !== null ? value > 0 ? 'increase' : value < 0 ? 'decrease' : 'equal' : undefined}
                 style={{ '--rres-intensity': value === null ? 0 : 0.03 + Math.min(Math.abs(value), 1) * 0.22 }} aria-label={presentation.name} title={presentation.name} aria-pressed={!!selected} tabIndex={rowIndex === cursorRow && columnIndex === cursorCell ? 0 : -1}
@@ -128,5 +124,5 @@
       <div className="rc-heading"><div className="rres-heatmap-legend"><span><i className="rres-swatch" />班内占用</span><span><i className="rres-swatch rres-swatch-pressure" />高负荷 / 满载</span><span><i className="rres-swatch rres-swatch-conflict" />班内冲突</span><span><i className="rres-swatch rres-swatch-rest" />休息</span>{presentations.unknown && <span>待确认</span>}</div><C.Pager label="热力图日期" page={heatmap.page.number} pages={Math.max(1, Math.ceil(heatmap.page.total / heatmap.page.size))} onPage={onPage} /></div>
     </section>;
   }
-  window.RunDecisionResourceHeatmap = { Heatmap, cellValue, cellText, cellName, cellPresentation, cursor };
+  window.RunDecisionResourceHeatmap = { Heatmap, cellText, cellPresentation, cursor };
 })();

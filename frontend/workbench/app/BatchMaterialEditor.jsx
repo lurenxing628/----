@@ -10,8 +10,9 @@
     const [removed, setRemoved] = React.useState([]), [error, setError] = React.useState(null), [review, setReview] = React.useState(null);
     const [scope, setScope] = React.useState({ query: '', page: 1 }), [selected, setSelected] = React.useState('');
     const form = React.useId(), done = command.phase === 'done', locked = disabled || command.locked || done;
-    const seen = React.useRef(null), changed = JSON.stringify(rows) !== JSON.stringify(toRows(entity)) || removed.length > 0;
-    const owner = window.WorkbenchGuards.useDirtyGuard({ dirty: !done && !!changed, locked: command.locked, message: '物料需求有尚未保存的修改。' });
+    const baseRows = React.useMemo(() => JSON.stringify(toRows(entity)), [entity]);
+    const seen = React.useRef(null), changed = JSON.stringify(rows) !== baseRows || removed.length > 0;
+    const owner = window.WorkbenchGuards.useDirtyGuard({ dirty: !done && changed, locked: command.locked, message: '物料需求有尚未保存的修改。' });
     const choices = S.useQuery(signal => adapter.materialChoices(scope, signal), [adapter, scope]);
     const data = choices.result && choices.result.data;
     React.useEffect(() => {
@@ -19,10 +20,7 @@
       try { B.receipt(command.result, 'materials_update', entity.ref); seen.current = command.result.receipt_ref; onCommitted(command.result); }
       catch (e) { setError(e); }
     }, [done, command.result]);
-    async function close(detail) {
-      if (command.locked) return;
-      if (detail && detail.guardConfirmed && detail.guardOwner === owner || await window.WorkbenchGuards.confirmLeave({ owner })) onClose();
-    }
+    async function close() { if (!command.locked && await window.WorkbenchGuards.confirmLeave({ owner })) onClose(); }
     function add() {
       const item = data && data.entities.find(row => row.ref === selected);
       if (!item) return;
@@ -56,7 +54,8 @@
     function accept() {
       setEntity(review); setRows(toRows(review)); setRemoved([]); setReview(null); setError(null); command.reset();
     }
-    return <Modal title={'物料需求 · ' + entity.business_code} icon="box" onClose={close} guardOwner={owner} locked={command.locked}
+    const commonOperations = entity.operations.filter(op => !op.piece_id);
+    return <Modal title={'物料需求 · ' + entity.business_code} icon="box" onClose={onClose} guardOwner={owner} locked={command.locked}
       footer={<><Button onClick={close} disabled={command.locked}>{done ? '关闭' : '取消'}</Button>{!done && <Button form={form} type="submit" className="btn primary" disabled={locked || !!review}>核对并保存需求</Button>}</>}>
       <form id={form} className="modal-b form" onSubmit={save}>
         <p>已有到料量与下方逐次到料分别累计，请勿重复登记。选择使用工序后，前面的工序可按本次排产选项先开工；未选工序的物料必须在开工前齐套。</p>
@@ -64,16 +63,16 @@
           <select aria-label="选择物料" value={selected} disabled={locked || choices.loading} onChange={e => setSelected(e.target.value)}><option value="">请选择物料</option>
             {data && data.entities.map(row => <option key={row.ref} value={row.ref}>{row.business_code} · {row.label}</option>)}</select>
           <Button onClick={add} disabled={locked || !selected}>新增物料</Button></div>
-        {data && <window.WorkbenchControls.Pager page={data.page} sizes={[20]} unit="条物料" label="物料选择" disabled={locked || choices.loading}
+        {data && <window.WorkbenchControls.Pager page={data.page} sizes={[20]} unit="条物料" label="物料选择" disabled={locked}
           onPage={page => setScope({ ...scope, page, snapshot_ref: choices.result.meta.snapshot_ref })} />}
         <div className="wb-table-frame"><table className="tbl wb-table" aria-label="维护批次物料需求"><thead><tr><th>物料</th><th>需求量</th><th>已有到料量</th><th>单位</th><th>操作</th></tr></thead><tbody>
           {rows.map((row, index) => <React.Fragment key={row.row_key || row.material_ref + index}><tr><td>{row.business_code} · {row.label}</td>
             {['required_quantity', 'available_quantity'].map((key, column) => <td key={key}><input aria-label={row.business_code + (column ? '到料量' : '需求量')} inputMode="decimal" value={row[key]} disabled={locked}
-              onChange={e => setRows(rows.map((item, i) => i === index ? { ...item, [key]: e.target.value } : item))} /></td>)}
+              onChange={e => patch(index, { [key]: e.target.value })} /></td>)}
             <td>{row.unit || '未填写'}</td><td><Button disabled={locked} onClick={() => { setRows(rows.filter((_, i) => i !== index)); if (row.row_key) setRemoved(removed.concat(row.row_key)); }}>移除需求</Button></td></tr><tr><td colSpan="5"><div className="fgrid">
             <window.ResourceControls.Field label={row.business_code + '使用工序'}><select aria-label={row.business_code + '使用工序'} value={row.operation_ref || ''} disabled={locked}
               onChange={e => patch(index, { operation_ref: e.target.value || null })}><option value="">开工前用料</option>
-              {entity.operations.filter(op => !op.piece_id).map(op => <option key={op.ref} value={op.ref}>{op.sequence} · {op.label}</option>)}</select></window.ResourceControls.Field>
+              {commonOperations.map(op => <option key={op.ref} value={op.ref}>{op.sequence} · {op.label}</option>)}</select></window.ResourceControls.Field>
             <div><strong>分次到料（按填写日期可用）</strong>{row.arrivals.map((item, n) => <div className="toolbar" key={n}>
               <input type="date" aria-label={row.business_code + '第' + (n + 1) + '次到料日期'} value={item.arrival_date} disabled={locked}
                 onChange={e => patch(index, { arrivals: row.arrivals.map((a, j) => j === n ? { ...a, arrival_date: e.target.value } : a) })} />

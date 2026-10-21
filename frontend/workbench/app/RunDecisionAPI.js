@@ -833,7 +833,6 @@
             const bucket = buckets.get(cell.group_key || cell.bucket_key);
             return bucket && cell.date === bucket.date && typeof cell.bucket_key === 'string' && time(cell.start) && time(cell.end)
               && timeKey(cell.start) < timeKey(cell.end) && timeKey(cell.start) >= timeKey(bucket.start)
-              && timeKey(cell.start) < timeKey(bucket.end)
               && timeKey(cell.end) <= timeKey(q.grain === 'shift' ? data.scope.range_end : bucket.end)
               && windowSource(cell.before) && windowSource(cell.after);
           })), '热力图的设备人员或实际时段已变化，请点“刷新资源影响”。');

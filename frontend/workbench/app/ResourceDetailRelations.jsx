@@ -22,7 +22,7 @@
         || new Set(data.entities.map(item => item.ref)).size !== data.entities.length
         || !C.object(page) || page.number !== scope.page || page.size !== scope.size || !count(page.total)
         || !count(page.pages) || page.pages !== Math.max(1, Math.ceil(page.total / page.size))
-        || page.number < 1 || page.number > Math.max(1, page.pages)
+        || page.number < 1 || page.number > page.pages
         || data.entities.length !== Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size))
         || !Array.isArray(page.sort) || page.sort.length !== 1 || page.sort[0].field !== 'business_code' || page.sort[0].direction !== 'asc'
         || scope.snapshot_ref && meta.snapshot_ref !== scope.snapshot_ref)
@@ -57,7 +57,7 @@
                 {typeof item.fields.qualification_matches === 'boolean' && (item.fields.qualification_matches ? ' · 工种资格匹配' : ' · 工种资格不匹配')}</span>}</span>
             <Status kind={item.kind} entity={item} /><Icon name="chevron-right" />
           </button><Issues issues={item.issues} /></div>)}</div>
-        {!data.entities.length && !read.loading && !read.error && <window.WorkbenchControls.EmptyState kind={scope.query ? 'filtered' : 'empty'}
+        {!data.entities.length && <window.WorkbenchControls.EmptyState kind={scope.query ? 'filtered' : 'empty'}
           action={scope.query ? <Button onClick={() => { setSearch(''); setScope({ relation, query: '', page: 1, size: 5 }); }}>清除筛选</Button> : undefined} />}
         {data.page.pages > 1 && <window.WorkbenchControls.Pager page={data.page} sizes={[5]} unit="项" label={title} disabled={read.loading} onPage={next} />}
         <Issues issues={read.result.warnings} /></>}
@@ -65,12 +65,11 @@
   }
   function ResourceDetailRelations({ adapter, entity, onOpen }) {
     const relations = entity.fields.category === 'both' ? ['machines', 'operators', 'suppliers'] : entity.fields.category === 'internal' ? ['machines', 'operators'] : ['suppliers'];
+    const available = C.availability(entity.availability);
     return <div className="wb-resource-relations">
-      {null}
-      {['internal', 'both'].includes(entity.fields.category) && <p className="muted">当前可用数量：设备 {C.availability(entity.availability) ? entity.availability.machines : '未知'} 台 · 人员 {C.availability(entity.availability) ? entity.availability.operators : '未知'} 人。关联列表包含停用及资格待核对的记录。</p>}
+      {['internal', 'both'].includes(entity.fields.category) && <p className="muted">当前可用数量：设备 {available ? entity.availability.machines : '未知'} 台 · 人员 {available ? entity.availability.operators : '未知'} 人。关联列表包含停用及资格待核对的记录。</p>}
       {relations.map(relation => <Association key={relation} adapter={adapter} entity={entity} relation={relation} onOpen={onOpen} />)}
     </div>;
   }
-  ResourceDetailRelations.query = query;
   window.ResourceDetailRelations = ResourceDetailRelations;
 })();

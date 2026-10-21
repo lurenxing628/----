@@ -27,9 +27,17 @@
       <div className="aw-chart-body"><div className="aw-y-axis"><span style={{ top: 0 }}>{tick(max)} {UNIT}</span><span style={{ top: '50%' }}>{tick(max / 2)}</span><span style={{ bottom: 0 }}>{tick(0)}</span></div>
         <div className="aw-plot"><svg className="aw-plot-svg" viewBox="0 0 600 200" preserveAspectRatio="none" role="img" aria-label={label}>
           {[0, max / 2, max].map(value => <line key={value} className="aw-gridline" x1={0} x2={600} y1={y(value)} y2={y(value)} />)}
-          {series.map(([key, title]) => { const known = points.filter(row => row[key] !== null); return <g key={key} className={'aw-series aw-' + key}>
-            <path d={known.map((row, index) => (index ? 'L' : 'M') + x(row) + ' ' + y(row[key])).join(' ')} fill="none" vectorEffect="non-scaling-stroke" />
-            {known.map(row => <circle key={row.time} cx={x(row)} cy={y(row[key])} r={3} vectorEffect="non-scaling-stroke"><title>{row.label} · {title} {row[key]} {UNIT}</title></circle>)}</g>; })}
+          {series.map(([key, title]) => {
+            const known = points.filter(row => row[key] !== null), path = [];
+            const circles = known.map((row, index) => {
+              const cx = x(row), cy = y(row[key]);
+              path.push((index ? 'L' : 'M') + cx + ' ' + cy);
+              return <circle key={row.time} cx={cx} cy={cy} r={3} vectorEffect="non-scaling-stroke"><title>{row.label} · {title} {row[key]} {UNIT}</title></circle>;
+            });
+            return <g key={key} className={'aw-series aw-' + key}>
+              <path d={path.join(' ')} fill="none" vectorEffect="non-scaling-stroke" />
+              {circles}</g>;
+          })}
         </svg></div></div>
       <div className="aw-x-axis"><span>{points[0].label}</span><span>{points[points.length - 1].label}</span></div>
       <details className="aw-data"><summary>图表数据</summary><div className="aw-data-scroll wb-table-frame" tabIndex={0} role="region" aria-label="累计完工趋势数据"><table><caption className="wb-visually-hidden">{label}</caption><thead><tr><th scope="col">日期</th><th scope="col">计划累计完工（道）</th><th scope="col">已确认整道完工（道）</th></tr></thead><tbody>{points.map(row => <tr key={row.time}><th scope="row">{window.WorkbenchFormat.date(row.label)}</th><td>{row.planned}</td><td>{row.actual == null ? '未知' : row.actual}</td></tr>)}</tbody></table></div></details>

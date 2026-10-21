@@ -4,7 +4,7 @@
   const number = v => typeof v === 'number' && Number.isFinite(v), count = v => Number.isSafeInteger(v) && v >= 0;
   const nullable = test => value => value === null || test(value);
   const shape = (value, required, optional = []) => C.object(value) && required.every(key => Object.prototype.hasOwnProperty.call(value, key))
-    && Object.keys(value).every(key => required.concat(optional).includes(key));
+    && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
   const issue = value => C.object(value) && C.text(value.code) && C.text(value.message);
   function envelope(value) {
     C.check(shape(value, ['ok', 'schema_version', 'data', 'meta', 'warnings']) && value.ok === true && value.schema_version === 1
@@ -36,7 +36,7 @@
       && nullable(number)(value.peak_utilization) && count(value.zero_capacity_days) && count(value.unknown_days)
       && R.window(value.window_metrics));
     value.days.forEach(day => C.check(C.object(day) && time(day.start) && time(day.end) && day.start <= day.end
-      && day.date === day.start.slice(0, 10) && R.day(day.window_metrics)
+      && day.date === day.start.slice(0, 10) && R.window(day.window_metrics)
       && ['available_hours', 'occupied_hours', 'inside_available_hours', 'outside_available_hours', 'overlap_hours', 'utilization']
         .every(key => nullable(number)(day[key]))));
   }
@@ -126,5 +126,5 @@
       _validate(value, planRef, q); return value;
     } };
   }
-  window.DashboardAnalysisAPI = { create, validate, scope, envelope, request, pressure, shape, number, count, nullable, issue };
+  window.DashboardAnalysisAPI = { create, validate, scope, envelope, request, pressure, shape, number, count, nullable };
 })();

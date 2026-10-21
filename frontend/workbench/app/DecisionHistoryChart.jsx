@@ -33,7 +33,7 @@
     const plotted = [], missing = [], untimed = [], untimedPrefix = [0], changedPrefix = [0], missingPrefix = [0];
     points.forEach((point, index) => {
       const metric = point.metrics[metricKey], timed = known(M.instant(point.occurred_at)), value = hasValue(metric);
-      if (!indexes.has(point.entry_ref)) indexes.set(point.entry_ref, index);
+      indexes.set(point.entry_ref, index);
       labels.set(point.entry_ref, pointText(point, metricKey, definition));
       untimedPrefix.push(untimedPrefix[index] + Number(!timed));
       changedPrefix.push(changedPrefix[index] + Number(index > 0 && !A.sameMetricDefinition(points[index - 1].metrics[metricKey], metric)));

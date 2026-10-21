@@ -85,5 +85,5 @@
         empty ? '暂无现场工时记录' : '已知小计 ' + hoursText(s.known_effective_processing_hours) + '；未知 ' + s.unknown_hour_events + ' 条', undefined, s.effective_processing_hours == null ? undefined : '小时']];
     return <MetricStrip columns={4} className="rw-metrics">{values.map(([label, value, helper, tone, unit]) => <Metric key={label} label={label} value={value} unit={unit} helper={helper} tone={tone} />)}</MetricStrip>;
   }
-  window.ReportTable = { Table, Metrics, text, time, amount, hoursText, minutes };
+  window.ReportTable = { Table, Metrics, text, time, amount, hoursText };
 })();

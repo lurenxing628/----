@@ -176,5 +176,5 @@
         return receipt(v, intent); }
     };
   }
-  window.DashboardContract = { READ_TIMEOUT_MS, categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, item, baseHandling, catalog, detail, expected, receipt, create, external, isRejected: e => rejected.has(e) };
+  window.DashboardContract = { READ_TIMEOUT_MS, categories, statuses, states, fields, labels, object, ref, text, equal, check, scope, baseHandling, catalog, expected, receipt, create, isRejected: e => rejected.has(e) };
 })();

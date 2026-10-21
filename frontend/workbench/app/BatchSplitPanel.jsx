@@ -49,7 +49,7 @@
       <ErrorBox error={error} /><window.ResourceForms.Feedback command={command} />
       {preview && ReactDOM.createPortal(<div className="plana"><Modal title="确认拆成两批" icon="box" guardOwner={owner} locked={command.locked} onClose={() => { if (!command.locked) setPreview(null); }}
         footer={<><Button disabled={command.locked} onClick={() => setPreview(null)}>取消</Button><Button className="btn primary" disabled={disabled || command.locked}
-          onClick={() => { if (!disabled && !command.locked) command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, { preview_ref: preview.preview_ref }); }}>确认拆批并选择子批</Button></>}>
+          onClick={() => command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, { preview_ref: preview.preview_ref })}>确认拆批并选择子批</Button></>}>
         <div className="modal-b"><p>{preview.source_code} 原有 {preview.original_quantity} 件：{preview.child_code} 先做 {preview.quantity} 件，原批保留 {preview.remaining_quantity} 件。</p>
           <div className="wb-table-frame"><table className="tbl wb-table" aria-label="拆分物料分配"><thead><tr><th>物料</th><th>子批需求</th><th>剩余需求</th><th>子批到料</th><th>剩余到料</th></tr></thead><tbody>
             {preview.materials.map((row, i) => <tr key={i}><td>{row.business_code} · {row.label}</td><td>{amount(row.child_required)}</td><td>{amount(row.source_required)}</td><td>{arrived(row.child_available, row.child_arrivals)}</td><td>{arrived(row.source_available, row.source_arrivals)}</td></tr>)}</tbody></table></div>

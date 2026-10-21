@@ -11,15 +11,14 @@
     try {
       const data = JSON.parse(v), refs = data && data.successful_restores;
       return shape(data, ['database_scope', 'successful_restores']) && text(data.database_scope) && data.database_scope.length > 0
-        && Array.isArray(refs) && refs.every(item => text(item) && /^[a-f0-9]{32}$/.test(item))
-        && refs.every((item, index) => index === 0 || refs[index - 1] < item);
+        && Array.isArray(refs) && refs.every((item, index) => text(item) && /^[a-f0-9]{32}$/.test(item) && (index === 0 || refs[index - 1] < item));
     } catch (_) { return false; }
   }
   const rejections = new WeakSet();
   const terminal = run => !!run && ['complete', 'partial', 'failed', 'interrupted'].includes(run.state);
   function check(valid, message = '读到的排产数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }
   function shape(v, required, optional = []) {
-    return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
+    return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.includes(k) || optional.includes(k));
   }
   function date(v) {
     if (!text(v) || !/^\d{4}-\d{2}-\d{2}$/.test(v) || v < '1900-01-01' || v >= '9999-12-31') return false;
@@ -72,7 +71,7 @@
       && (v.progress === null || v.state === 'running' && v.stage === 'computing' && progress(v.progress))
       && Array.isArray(v.plans) && v.plans.length === 0 && v.plan_catalog_connected === false
       && Array.isArray(v.candidates) && time(v.accepted_at) && (v.started_at === null || time(v.started_at))
-      && (v.finished_at === null || time(v.finished_at)) && (v.error === null || shape(v.error, ['code', 'message']) && issue(v.error)));
+      && (v.finished_at === null || time(v.finished_at)) && (v.error === null || shape(v.error, ['code', 'message']) && text(v.error.code) && v.error.code.length > 0 && text(v.error.message)));
     runScope(v.scope_summary);
     const unified = v.scope_summary.run_options && v.scope_summary.run_options.generation_policy_version === 'unified_search_v1';
     check(!unified || v.progress === null && v.candidates.length <= 3 && v.candidates.every(candidate => candidate.status === 'completed'));
@@ -141,9 +140,11 @@
       && count(d.page.total) && d.page.total === d.candidate_count && d.page.has_more === (scope.page * 20 < d.page.total)
       && (!scope.snapshot_ref || v.meta.snapshot_ref === scope.snapshot_ref) && Array.isArray(d.candidates)
       && d.candidates.length === Math.min(20, Math.max(0, d.page.total - (scope.page - 1) * 20)));
-    d.candidates.forEach(candidate => window.RunCandidateAPI.summary(candidate, runRef));
-    check(d.candidates.every(candidate => capabilities(candidate.capabilities) && blocked(candidate.blocked_reasons))
-      && new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
+    d.candidates.forEach(candidate => {
+      window.RunCandidateAPI.summary(candidate, runRef);
+      check(capabilities(candidate.capabilities) && blocked(candidate.blocked_reasons));
+    });
+    check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
     return d;
   }
   const OUTCOMES = window.WorkbenchTerms.outcomes;

@@ -49,8 +49,9 @@
     </button>;
   }
   function Rows({ model, view, width, viewport, left, top, height, labelWidth, dense, active, onSelect, onHover, onChainTarget, patch }) {
+    const scale = width / (model.end - model.start), nowX = (model.asOf - model.start) * scale;
     const visible = React.useMemo(() => M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100).map(row => ({ row,
-      visibleMarks: row.kind === 'group' ? [] : row.marks.filter(mark => (mark.end - model.start) / (model.end - model.start) * width >= left - 12 && (mark.start - model.start) / (model.end - model.start) * width <= left + viewport + 12)
+      visibleMarks: row.kind === 'group' ? [] : row.marks.filter(mark => (mark.end - model.start) * scale >= left - 12 && (mark.start - model.start) * scale <= left + viewport + 12)
     })), [model, top, height, width, left, viewport]), ticks = M.ticks(model, width, left, viewport);
     return <>{visible.map(({ row, visibleMarks }) => {
       const style = { top: row.top + 52, height: row.height, width: width + labelWidth };
@@ -62,10 +63,9 @@
       const hasLegacy = !row.reports.length && marks.some(mark => mark.legacy);
       const emptyText = row.kind === 'actual' && !row.reports.length && !hasLegacy ? emptyReports(row, view.mode) : '';
       const renderMark = (mark, canvasPainted = false) => <Bar key={mark.key} {...{ mark, row, visibleMarks, model, width, active, onSelect, onHover, canvasPainted }} selected={view.selected} />;
-      const pending = window.PointContract.isPoint(t) ? '零工时工序已安排 · 完成待确认' : '剩余数量还没安排';
-      const nowX = (model.asOf - model.start) / (model.end - model.start) * width;
-      const timing = M.deadlines(item);
-      const deviation = M.finishDeviation(item);
+      const point = window.PointContract.isPoint(t);
+      const pending = point ? '零工时工序已安排 · 完成待确认' : '剩余数量还没安排';
+      const timing = row.kind !== 'remaining' ? M.deadlines(item) : null, deviation = row.kind !== 'remaining' ? M.finishDeviation(item) : '';
       return <div key={row.key} className={'fg-virtual-row' + (view.selected === t.task_ref ? ' is-selected' : '')} data-task-row={t.task_ref} data-kind={row.kind}
         data-gantt-critical={active.critical.has(t.task_ref) || undefined} style={style}>
         <div className="fg-frozen"><button type="button" className="fg-task-select" title={M.taskLabel(t)} onClick={() => onSelect(item, row.reports[0])}
@@ -76,7 +76,7 @@
         <div className="fg-track" style={{ width }}>
           {ticks.map(tick => <i className="fg-gridline" key={tick.at} style={{ left: tick.x }} />)}
           {nowX >= 0 && nowX <= width && <i className="fg-now" style={{ left: nowX }} aria-hidden="true" />}
-          {row.kind === 'actual' && !window.PointContract.isPoint(t) && (row.baseline || row.reports.length > 0) && <i className="fg-baseline-end" data-plan-end={t.end} style={{ left: (row.planEnd - model.start) / (model.end - model.start) * width }} title={'计划完工 ' + M.time(t.end)} aria-hidden="true" />}
+          {row.kind === 'actual' && !point && (row.baseline || row.reports.length > 0) && <i className="fg-baseline-end" data-plan-end={t.end} style={{ left: (row.planEnd - model.start) * scale }} title={'计划完工 ' + M.time(t.end)} aria-hidden="true" />}
           {(dense || marks.length > 50) ? <window.ActualGanttCanvas.DenseRow {...{ row, marks, visibleMarks, model, width, viewport, left, onSelect, onHover, renderMark }} graphActive={active} selected={view.selected} /> :
             visibleMarks.map(mark => renderMark(mark))}
           {row.kind === 'remaining' && !e.remaining_plan && <span className="fg-wait">{pending} · {M.number(e.remaining_quantity)} 件</span>}

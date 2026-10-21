@@ -232,16 +232,45 @@ async function main() {
   workspace.window.APSResourceSession.useQuery = () => ({ result: listPayload(summary), loading: false, error: null });
   const workspaceNode = workspace.h.render(() => workspace.window.BatchWorkspace({ adapter }));
   assert.equal(find(workspaceNode, workspace.window.BatchTable).props.adapter, adapter);
-  const links = [], nextWorkspace = environment(), hiddenRef = 'd'.repeat(48);
-  nextWorkspace.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false });
+  const links = [], bulkPatches = [], nextWorkspace = environment(), hiddenRef = 'd'.repeat(48);
+  nextWorkspace.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false, reset: () => true });
   nextWorkspace.window.APSResourceSession.useQuery = () => ({ result: listPayload(summary), loading: false, error: null });
-  const nextProps = { adapter, onNav: (...args) => links.push(args) };
+  nextWorkspace.window.WorkbenchGuards.confirmLeave = async () => true;
+  nextWorkspace.window.BatchForms = { Preview: 'batch-preview' };
+  const nextProps = { adapter: { async preview(action, entityRef, input) {
+    bulkPatches.push(input.patch);
+    return envelope({ operation: 'batch.bulk_confirm', preview_ref: 'p'.repeat(32), write_context: clone(writeContext),
+      commit_policy: 'atomic', action: input.action, count: input.refs.length,
+      rows: input.refs.map(ref => ({ entity_ref: ref, before: { ...full, ref }, after: { ...full, ref } })) });
+  } }, onNav: (...args) => links.push(args) };
   let nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
   find(nextTree, nextWorkspace.window.BatchTable).props.setSelected([batchRef, hiddenRef]);
   nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
   find(nextTree, 'button', props => text(props.children) === '下一步 · 去排产').props.onClick();
   assert.deepEqual(clone(links.at(-1)), ['run', { scope: { source: 'production', batch_refs: [batchRef, hiddenRef] } }],
     'The next step carries the complete cross-page selection');
+  const bulkModal = tree => find(tree, 'modal', props => props.title === '批量修改批次');
+  const remarkInput = tree => find(find(tree, 'field', props => props.label === '批量备注'), 'input');
+  for (const dismiss of [tree => bulkModal(tree).props.onClose(),
+    tree => find(bulkModal(tree).props.footer, 'button', props => text(props.children) === '取消').props.onClick()]) {
+    find(nextTree, 'button', props => text(props.children) === '批量修改').props.onClick();
+    nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+    assert.equal(remarkInput(nextTree).props.value, '');
+    remarkInput(nextTree).props.onChange({ target: { value: 'PHASE6A-Bulk-X-应放弃' } });
+    nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+    assert.equal(remarkInput(nextTree).props.value, 'PHASE6A-Bulk-X-应放弃');
+    await dismiss(nextTree);
+    nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+    assert.equal(bulkModal(nextTree), undefined);
+  }
+  find(nextTree, 'button', props => text(props.children) === '批量修改').props.onClick();
+  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+  assert.equal(remarkInput(nextTree).props.value, '');
+  await find(bulkModal(nextTree).props.footer, 'button', props => text(props.children) === '预览变更').props.onClick();
+  assert.deepEqual(clone(bulkPatches), [{}]);
+  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
+  find(nextTree, 'batch-preview').props.onClose();
+  nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
   find(nextTree, nextWorkspace.window.BatchTable).props.setSelected([]);
   nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
   find(nextTree, 'button', props => text(props.children) === '下一步 · 去排产').props.onClick();

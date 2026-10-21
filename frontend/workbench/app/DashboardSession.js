@@ -33,7 +33,7 @@
       window.addEventListener('storage', changed); window.addEventListener(EVENT, changed);
       return () => { mounted.current = false; window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
-    function accept(v, original) { C.receipt(v, original); save({ ...original, phase: 'confirmed', receipt: v }, original); if (mounted.current) { setError(null); setNotice('请点「完成」查看最新风险。'); } }
+    function accept(v, original) { save({ ...original, phase: 'confirmed', receipt: v }, original); if (mounted.current) { setError(null); setNotice('请点「完成」查看最新风险。'); } }
     async function lookup() {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current; running.current = true; setBusy(true); setError(null);

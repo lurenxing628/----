@@ -31,7 +31,7 @@
       && issueRows(row.issues) && typeof row.editable === 'boolean';
   }
   function base(row) {
-    return C.entity(row) && ref(row.ref) && context(row.write_context) && object(row.fields)
+    return C.entity(row) && ref(row.ref) && context(row.write_context)
       && finite(row.fields.quantity) && fields.slice(1).every(key => nullableText(row.fields[key]))
       && ref(row.relationships.part_ref) && text(row.relationships.part_no) && text(row.relationships.part_name)
       && ['operation_count', 'completed_count', 'gap_count', 'plan_reference_count', 'execution_reference_count', 'material_requirement_count'].every(key => count(row.relationships[key]))

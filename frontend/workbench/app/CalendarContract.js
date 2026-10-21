@@ -41,9 +41,10 @@
   }
   function month(raw, year, number) {
     const result = envelope(raw), data = result.data;
+    const prefix = monthKey(year, number) + '-';
     if (data.year !== year || data.month !== number || data.time_basis !== 'factory_local' || !Array.isArray(data.days)
         || data.days.length !== monthDays(year, number) || !Array.isArray(data.cells) || data.cells.length % 7 !== 0
-        || !data.days.every((row, index) => day(row) && row.date === monthKey(year, number) + '-' + String(index + 1).padStart(2, '0')
+        || !data.days.every((row, index) => day(row) && row.date === prefix + String(index + 1).padStart(2, '0')
           && row.day === index + 1 && Number.isInteger(row.weekday) && row.weekday >= 0 && row.weekday <= 6
           && typeof row.is_weekend === 'boolean' && typeof row.is_today === 'boolean')
         || data.cells.filter(Boolean).map(row => row.date).join() !== data.days.map(row => row.date).join()
@@ -54,8 +55,6 @@
     return result;
   }
   function rangeDates(request) {
-    if (!isDate(request.start_date) || !isDate(request.end_date) || request.start_date > request.end_date)
-      throw C.failure('日期范围不正确，没有查看变更。请重新选择开始日期和结束日期。');
     const cursor = new Date(request.start_date + 'T12:00:00'), selected = [];
     for (let count = 0; count < 36500; count++) {
       const key = monthKey(cursor.getFullYear(), cursor.getMonth() + 1) + '-' + String(cursor.getDate()).padStart(2, '0');
@@ -70,13 +69,13 @@
     const result = envelope(raw), data = result.data;
     if (!/^[0-9a-f]{32}$/.test(data.preview_ref || '') || !Array.isArray(data.days) || !Array.isArray(data.dates)
         || !C.object(data.counts) || data.counts.selected !== data.days.length || data.dates.length !== data.days.length
-        || !C.object(data.request) || !isDate(data.request.start_date) || !isDate(data.request.end_date)
+        || !C.object(data.request) || !isDate(data.request.start_date) || !isDate(data.request.end_date) || data.request.start_date > data.request.end_date
         || !['all', 'weekday', 'weekend'].includes(data.request.scope) || !['upsert', 'delete'].includes(data.request.operation)
         || typeof data.expires_at !== 'string' || new Set(data.dates).size !== data.dates.length
         || !data.days.every((row, index) => isDate(row.date) && row.date === data.dates[index] && day(row.before)
           && row.before.date === row.date && policy(row.after) && typeof row.changed === 'boolean')
         || data.counts.changed !== data.days.filter(row => row.changed).length
-        || data.counts.unchanged !== data.days.filter(row => !row.changed).length
+        || data.counts.unchanged !== data.days.length - data.counts.changed
         || data.dates.join() !== rangeDates(data.request).join())
       throw C.failure('读到的变更清单不完整，没有写入。请点「重新预览变更」。');
     return result;
@@ -145,5 +144,5 @@
     }
     return { tone, text };
   }
-  window.APSCalendarContract = { path, month, preview, monthDays, monthKey, isDate, draft, switchType, input, stale, tag, rangeDates, displayNumber };
+  window.APSCalendarContract = { path, month, preview, monthDays, monthKey, isDate, draft, switchType, input, stale, tag, displayNumber };
 })();

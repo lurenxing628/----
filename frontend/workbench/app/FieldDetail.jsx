@@ -62,7 +62,7 @@
     const detail = React.useRef(null);
     const request = window.APSResourceSession.useQuery(async signal => C.query(await adapter.detail(taskRef, { ...scope, snapshot_ref: snapshot }, signal), 'detail', taskRef), [adapter, taskRef, scope, snapshot, revision]);
     const task = request.result && request.result.data.task, p = task && task.execution;
-    React.useEffect(() => { if (nextDraft && task && !request.loading && !request.error) onContinueReady(task); }, [nextDraft, task, request.loading, request.error, onContinueReady]);
+    React.useEffect(() => { if (nextDraft && task) onContinueReady(task); }, [nextDraft, task, onContinueReady]);
     React.useEffect(() => {
       if (!task || !detail.current || editor || nextDraft) return;
       // Only bring the detail into view when it is off screen; scrolling an already visible detail pushed the toolbar away.

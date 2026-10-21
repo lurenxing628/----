@@ -33,7 +33,7 @@
     const summary = summaryState || localSummary, rules = summary.result && summary.result.data;
     window.WorkbenchPageContext.useSnapshot({ source: 'production', kind: 'calendar', month: String(month.year).padStart(4, '0') + '-' + String(month.month).padStart(2, '0'),
       ...(dialog && dialog.mode === 'view' ? { date: dialog.day.date } : {}) },
-      rememberEnabled && !!data && !request.loading && !request.error && !navigationError && !deferred && command.phase === 'idle'
+      rememberEnabled && !!data && !navigationError && !deferred && command.phase === 'idle'
       && source === 'production' && (!dialog || dialog.mode === 'view'));
     React.useEffect(() => { if (onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle'); }, [dialog, command.phase, onNavigationReady]);
     React.useEffect(() => {
@@ -71,7 +71,7 @@
       <div className="chead wb-page-heading"><div><h2>工作日历</h2><p className="cdesc">全局工作时间、效率与可排产范围</p></div></div>
       <div className="statline wb-metrics" style={{ '--wb-columns': 4 }}>{stats.map(([key, label, tone]) => <div key={key} className="stat wb-metric" data-tone={tone}>
         <span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{view ? window.WorkbenchFormat.number(view.stats[key], { digits: 0 }) : '未读取'}</span></div>)}</div>
-      <ErrorBox error={request.error} /><Issues issues={result && result.warnings || []} />
+      <ErrorBox error={request.error} /><Issues issues={result ? result.warnings : undefined} />
       <ErrorBox error={navigationError} />{deferred && <div role="status"><p>上次工作日历操作还没处理完，暂时没有跳转。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
       <div className="cal-wrap" style={{ marginTop: 18 }}>
         <div className="cal-panel" style={{ minWidth: 0 }}>
@@ -97,7 +97,7 @@
           {view && <div className="cal-grid" aria-busy={request.loading}>{['一', '二', '三', '四', '五', '六', '日'].map(day => <div className="cal-wd" key={day}>{day}</div>)}
             {view.cells.map((cell, index) => {
               if (!cell) return <div key={'empty-' + index} className="cal-cell empty" />;
-              const row = view.days.find(day => day.date === cell.date), meta = K.tag(row);
+              const row = view.days[Number(cell.date.slice(8)) - 1], meta = K.tag(row);
               return <button key={row.date} type="button" className={'cal-cell ' + meta.tone + (row.is_today ? ' today' : '')}
                 style={{ minWidth: 0, textAlign: 'left', color: 'inherit', fontFamily: 'inherit' }} disabled={blocked || request.loading}
                 data-calendar-date={row.date} aria-current={target.context && target.context.date === row.date ? 'date' : undefined}

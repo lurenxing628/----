@@ -3,6 +3,7 @@
   const domains = [['part', '零件'], ['route', '工艺路线'], ['opType', '工种'], ['equipment', '设备'],
     ['personnel', '人员'], ['material', '物料'], ['supplier', '供应商'], ['calendar', '日历配置']];
   const statuses = { attention: '待维护', checked: '已检查', inactive: '停用', unknown: '未检查' };
+  const domainIds = domains.map(row => row[0]), relationDomains = domainIds.concat('batch'), statusKeys = Object.keys(statuses);
   const defaults = { view: 'issues', domain: 'all', status: 'all', query: '', sort: 'issue_count', direction: 'desc', size: 20, column_filters: {} };
   const common = [['business_code', '编号', 148], ['label', '名称', 178], ['domain', '资料类别', 96]];
   const columns = {
@@ -24,10 +25,10 @@
     if (!object(value) || Object.keys(value).some(key => !Object.hasOwnProperty.call(defaults, key))) fail('基础资料的筛选条件不正确，当前筛选没有变化。请重新选择。');
     if (value.column_filters !== undefined && !object(value.column_filters)) fail('列筛选条件格式不对，当前筛选没有变化。请重新填写。');
     const result = { ...defaults, ...value, column_filters: { ...(value.column_filters || {}) } };
-    if (!['issues', 'entities'].includes(result.view) || !['all'].concat(domains.map(row => row[0])).includes(result.domain)
-      || !['all'].concat(Object.keys(statuses)).includes(result.status) || ![20, 50, 100].includes(result.size)
+    if (!['issues', 'entities'].includes(result.view) || result.domain !== 'all' && !domainIds.includes(result.domain)
+      || result.status !== 'all' && !statusKeys.includes(result.status) || ![20, 50, 100].includes(result.size)
       || !['business_code', 'label', 'issue_count', 'relation_count'].includes(result.sort) || !['asc', 'desc'].includes(result.direction)
-      || typeof result.query !== 'string' || result.query.length > 1000 || !object(result.column_filters)) fail('基础资料的筛选范围无效，当前筛选没有变化。请重新选择。');
+      || typeof result.query !== 'string' || result.query.length > 1000) fail('基础资料的筛选范围无效，当前筛选没有变化。请重新选择。');
     const allowed = columns[result.view].map(row => row[0]).concat(result.view === 'issues' ? ['status', 'action', 'rule'] : []);
     if (Object.keys(result.column_filters).some(key => !allowed.includes(key) || typeof result.column_filters[key] !== 'string' || result.column_filters[key].length > 1000)) fail('列筛选条件无效，当前筛选没有变化。请重新填写。');
     return result;
@@ -103,7 +104,7 @@
     if (data.counts[section] !== data.page.total || data.counts.issues !== data.entity.issue_count || data.counts.relations !== data.entity.known_relation_count) fail('详情的数量对不上，请刷新后重试。');
     data.rows.forEach(item => {
       if (section === 'relations') {
-        if (!ref(item.ref) || !domains.map(row => row[0]).concat('batch').includes(item.domain) || ['business_code', 'label', 'relation', 'source'].some(key => typeof item[key] !== 'string')) fail();
+        if (!ref(item.ref) || !relationDomains.includes(item.domain) || ['business_code', 'label', 'relation', 'source'].some(key => typeof item[key] !== 'string')) fail();
         target(item.target);
       } else if (section === 'fields') {
         if (!object(item) || typeof item.label !== 'string' || typeof item.source !== 'string' || !['known', 'missing', 'unknown', 'invalid'].includes(item.state)) fail();

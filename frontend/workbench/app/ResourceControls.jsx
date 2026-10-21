@@ -77,7 +77,8 @@
   }
   function Field({ label, path, error, errors, required, full, hint, children }) {
     const generated = React.useId(), child = React.Children.only(children), id = child.props.id || generated;
-    const messages = Array.from(new Set(uniqueFieldErrors(error, errors).filter(row => fieldPath(row.path) === fieldPath(path)).map(row => row.message)));
+    const target = fieldPath(path);
+    const messages = uniqueFieldErrors(error, errors).filter(row => fieldPath(row.path) === target).map(row => row.message);
     const describedBy = [child.props['aria-describedby'], hint && id + '-hint', messages.length && id + '-error'].filter(Boolean).join(' ');
     return <div className={'field wb-field' + (full ? ' full' : '') + (messages.length ? ' err' : '')} data-field-path={path}>
       <label htmlFor={id}>{label}{required && <span className="req" aria-hidden="true">*</span>}</label>
@@ -264,9 +265,9 @@
     if (Array.isArray(related) && Array.isArray(refs)) return refs.map(ref => ({ ref, label: (related.find(item => item.ref === ref) || {}).label }));
     if (C.object(related) && related.ref === refs) return [{ ref: refs, label: related.label }];
     const map = { op_type_ref: 'op_type_label', group_ref: 'group_label', shift_profile_ref: 'shift_profile_label', skill_refs: 'skill_labels', op_type_refs: 'op_type_labels', machine_refs: 'machine_labels' };
-    const value = entity && entity.relationships[key], labels = entity && entity.relationships[map[key]];
-    if (Array.isArray(value)) return value.map((ref, index) => ({ ref, label: Array.isArray(labels) ? labels[index] : C.object(labels) ? labels[ref] : null }));
-    return value ? [{ ref: value, label: typeof labels === 'string' ? labels : null }] : [];
+    const labels = entity.relationships[map[key]];
+    if (Array.isArray(refs)) return refs.map((ref, index) => ({ ref, label: Array.isArray(labels) ? labels[index] : C.object(labels) ? labels[ref] : null }));
+    return refs ? [{ ref: refs, label: typeof labels === 'string' ? labels : null }] : [];
   }
   function Relation({ entity, field, onOpen }) {
     const items = relationLabels(entity, field);

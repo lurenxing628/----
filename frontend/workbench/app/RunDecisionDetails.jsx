@@ -49,11 +49,13 @@
   function BatchTable({ data, onDrill }) {
     return <div className="rc-table wb-table-frame rd-impact-frame" data-sticky-head data-sticky-key data-sticky-actions><table className="wb-table rd-impact-table rd-batch-table" aria-label="逐批交付影响"><caption className="wb-visually-hidden">逐批交付影响</caption>
       <thead><tr><th scope="col" className="wb-col-key">批次 / 零件</th><th scope="col">批量 / 优先级 / 交期</th><th scope="col">固定对照</th><th scope="col">当前方案</th><th scope="col">差值</th><th scope="col">变化</th><th scope="col" className="wb-col-actions">查看甘特</th></tr></thead>
-      <tbody>{data.items.map(row => <tr key={row.batch_ref} data-decision-batch={row.batch_ref}><td className="wb-col-key"><strong>{row.batch_id}</strong><small>{row.part_no || '图号未记录'} · {row.part_label || T.name_missing}</small><window.WorkbenchReference value={row.batch_ref} /></td>
+      <tbody>{data.items.map(row => {
+        const showYear = !row.before.planned_finish || !row.after.planned_finish || row.before.planned_finish.slice(0, 4) !== row.after.planned_finish.slice(0, 4);
+        return <tr key={row.batch_ref} data-decision-batch={row.batch_ref}><td className="wb-col-key"><strong>{row.batch_id}</strong><small>{row.part_no || '图号未记录'} · {row.part_label || T.name_missing}</small><window.WorkbenchReference value={row.batch_ref} /></td>
         <td>{amount(row.quantity, ' 件')}<small>优先级 {window.APSBatchContract.label('priority', row.priority)}</small><span>{T.due_date(row.due_date, row.due_state, row.due_issue)}</span></td>
-        <td><BatchDelivery value={row.before} absent={data.baseline.state !== 'available'} year={!row.before.planned_finish || !row.after.planned_finish || row.before.planned_finish.slice(0, 4) !== row.after.planned_finish.slice(0, 4)} /></td><td><BatchDelivery value={row.after} year={!row.before.planned_finish || !row.after.planned_finish || row.before.planned_finish.slice(0, 4) !== row.after.planned_finish.slice(0, 4)} /></td>
+        <td><BatchDelivery value={row.before} absent={data.baseline.state !== 'available'} year={showYear} /></td><td><BatchDelivery value={row.after} year={showYear} /></td>
         <td><span>预计完工 {delta(row.finish_delta_hours)}</span><small>拖期 {delta(row.delay_delta_hours, '减少', '增加')}</small></td><td><Changes values={row.change_kinds} /></td>
-        <td className="wb-col-actions"><Locate row={row} onDrill={onDrill} /></td></tr>)}</tbody></table></div>;
+        <td className="wb-col-actions"><Locate row={row} onDrill={onDrill} /></td></tr>; })}</tbody></table></div>;
   }
   function ArrangementSegment({ row }) {
     return <><span title={F.dateTime(row.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(row.end, { seconds: true, fractions: true })}>{F.compactRange(row.start, row.end)}</span>
@@ -81,14 +83,6 @@
       <details className="rd-effort-record"><summary>报工与锁定记录</summary><span>报工：{T.execution_states[value.execution_state] || '未记录'} · {T.data_quality[value.data_quality] || '资料质量未记录'}</span><span>已完工 {amount(value.known_completed_quantity, ' 件')} · 剩余 {amount(value.remaining_quantity, ' 件')}</span><span>排产时保留 {flag(value.protected_at_admission)} · 当前方案锁定 {flag(value.selected_locked)} · 固定对照锁定 {flag(value.reference_locked)}</span></details>
       <C.Reasons rows={value.reasons} /></>;
   }
-  function OperationTable({ data, onDrill }) {
-    return <div className="rc-table wb-table-frame rd-impact-frame" data-sticky-head data-sticky-key data-sticky-actions><table className="wb-table rd-impact-table rd-operation-table" aria-label="逐道工序变化"><caption className="wb-visually-hidden">逐道工序变化</caption>
-      <thead><tr><th scope="col" className="wb-col-key">批次 / 工序</th><th scope="col">固定对照安排</th><th scope="col">当前方案安排</th><th scope="col">差值 / 变化</th><th scope="col">准备与加工工时</th><th scope="col">锁定与报工</th><th scope="col" className="wb-col-actions">查看甘特</th></tr></thead>
-      <tbody>{data.items.map(row => <tr key={row.operation_ref} data-decision-operation={row.operation_ref}><td className="wb-col-key"><strong>{row.batch_label} · {amount(row.sequence)} {row.process_label || T.name_missing}</strong><small>{row.part_label || T.name_missing} · {M.pieceLabel(row)}</small><small>工序目标 {amount(row.quantity, ' 件')}</small><window.WorkbenchReference value={row.operation_ref} /></td>
-        <td><Arrangement row={row.before} absent={data.baseline.state !== 'available'} state={row.before_state} /></td><td><Arrangement row={row.after} state={row.after_state} /></td><td><span>开始 {delta(row.start_delta_hours)}</span><small>结束 {delta(row.end_delta_hours)}</small><Changes values={row.change_kinds} /></td>
-        <td>{row.runtime_effort ? <><small>当前需求</small><window.RunOperationEffort.Effort value={row.runtime_effort.after} showStandard={false} /><details className="rd-effort-record"><summary>固定对照需求</summary><window.RunOperationEffort.Effort value={row.runtime_effort.before} absent={data.baseline.state !== 'available'} /></details><window.RunOperationEffort.Standard value={row.effort} /></> : <Effort value={row.effort} />}</td><td><Constraints value={row.constraints} />{row.data_gaps && row.data_gaps.length > 0 && <details className="rd-effort-record"><summary>工序资料缺项</summary><C.Reasons rows={row.data_gaps} /></details>}</td>
-        <td className="wb-col-actions"><Locate row={row} onDrill={onDrill} /></td></tr>)}</tbody></table></div>;
-  }
   function CurrentRisk({ row }) {
     const value = row.after, missing = T.missing_arrangements(value.ordinary_unscheduled_operation_count, value.deferred_operation_count);
     return <><span className={'rd-batch-risk rd-risk-' + value.risk}>{T.delivery_risks[value.risk]}{value.delay_hours !== null && ' · ' + amount(value.delay_hours, ' 小时')}</span>{missing && <small>{missing}</small>}<small>{amount(value.scheduled_operation_count)} / {amount(value.operation_count)} 道已安排</small></>;
@@ -106,13 +100,16 @@
   function segments(value) { return value ? value.segments || [value] : []; }
   function ChainTimeline({ row, bounds, difference }) {
     if (!bounds) return <span className="rc-muted">安排时间待确认</span>;
-    const sides = difference ? [['before', '固定对照'], ['after', '当前查看']] : [['after', '当前查看']];
-    return <div className="rd-chain-timeline" role="img" aria-label={sides.map(([key, label]) => label + '：' + (segments(row[key]).length ? segments(row[key]).map(part => F.dateTime(part.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(part.end, { seconds: true, fractions: true })).join('；') : row[key + '_state'] && row[key + '_state'].status === 'deferred' ? '待料未排' : '未安排')).join('；')}>
-      {sides.map(([key, label]) => <div key={key} className={'rd-chain-track rd-chain-' + key}><span className="wb-visually-hidden">{label}</span>{segments(row[key]).filter(part => part.start && part.end).map(part => {
-        const start = M.instant(part.start), end = M.instant(part.end), span = bounds.end - bounds.start;
+    const sides = difference ? [['before', '固定对照'], ['after', '当前查看']] : [['after', '当前查看']], span = bounds.end - bounds.start;
+    const descriptions = [], tracks = sides.map(([key, label]) => {
+      const parts = segments(row[key]);
+      descriptions.push(label + '：' + (parts.length ? parts.map(part => F.dateTime(part.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(part.end, { seconds: true, fractions: true })).join('；') : row[key + '_state'] && row[key + '_state'].status === 'deferred' ? '待料未排' : '未安排'));
+      return <div key={key} className={'rd-chain-track rd-chain-' + key}><span className="wb-visually-hidden">{label}</span>{parts.filter(part => part.start && part.end).map(part => {
+        const start = M.instant(part.start), end = M.instant(part.end);
         return <span key={part.row_ref} className={'rd-chain-bar' + (start === end ? ' rd-chain-point' : '')} title={label + ' · ' + F.dateTime(part.start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(part.end, { seconds: true, fractions: true })} style={{ left: (start - bounds.start) / span * 100 + '%', width: start === end ? undefined : (end - start) / span * 100 + '%' }} />;
-      })}</div>)}
-    </div>;
+      })}</div>;
+    });
+    return <div className="rd-chain-timeline" role="img" aria-label={descriptions.join('；')}>{tracks}</div>;
   }
   function OperationFacts({ row, baseline }) {
     return <details className="rd-chain-facts"><summary>工时需求、锁定与报工</summary><div className="rd-chain-facts-body"><div>
@@ -199,5 +196,5 @@
         <details className="rd-delivery-source"><summary>数据来源</summary><Summary data={data} /></details></>}
     </section>;
   }
-  window.RunDecisionDetails = { Pane, BatchList, BatchChain, OperationChain, ChainTimeline, CurrentRisk, BatchTable, OperationTable, Arrangement, Summary, delta };
+  window.RunDecisionDetails = { Pane, BatchList, BatchChain, OperationChain, ChainTimeline, CurrentRisk, BatchTable, Arrangement, Summary, delta };
 })();

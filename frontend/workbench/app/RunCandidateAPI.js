@@ -7,7 +7,7 @@
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   function check(value, message = '候选数据不完整或不一致，请刷新后重试。') { if (!value) throw new Error(message); }
   function shape(v, required, optional = []) {
-    return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
+    return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.includes(k) || optional.includes(k));
   }
   function time(v) {
     if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?![\s\S])/.test(v)) return false;
@@ -188,25 +188,29 @@
     check(shape(d.time_scope, ['range_start', 'range_end', 'interval', 'time_basis', 'unplanned_policy'])
       && d.time_scope.range_start === (q.range_start || null) && d.time_scope.range_end === (q.range_end || null)
       && d.time_scope.interval === 'half_open_overlap' && d.time_scope.time_basis === 'factory_local' && d.time_scope.unplanned_policy === 'included_without_time_interval');
-    d.tasks.forEach(t => { operation(t, true); check(!q.batch_ref || t.batch_ref === q.batch_ref);
+    const rowRefs = new Set(), operationRefs = new Set();
+    let start = null, end = null;
+    d.tasks.forEach(t => {
+      operation(t, true); check(!q.batch_ref || t.batch_ref === q.batch_ref);
+      const low = timeKey(t.start), high = timeKey(t.end);
       if (q.range_start) {
-        const low = timeKey(q.range_start), high = timeKey(q.range_end), start = timeKey(t.start), end = timeKey(t.end);
-        check(P.isPoint(t) ? low <= start && start < high : start < high && end > low);
+        const rangeStart = timeKey(q.range_start), rangeEnd = timeKey(q.range_end);
+        check(P.isPoint(t) ? rangeStart <= low && low < rangeEnd : low < rangeEnd && high > rangeStart);
       }
+      rowRefs.add(t.row_ref); operationRefs.add(t.operation_ref);
+      if (start === null || low < start) start = low;
+      if (end === null || high > end) end = high;
     });
-    check(new Set(d.tasks.map(t => t.row_ref)).size === d.task_count && new Set(d.tasks.map(t => t.operation_ref)).size === d.task_count);
+    check(rowRefs.size === d.task_count && operationRefs.size === d.task_count);
     if (!q.range_start && !q.batch_ref) check(d.task_count === d.candidate_task_count);
     if (d.task_count) {
-      let start = timeKey(d.tasks[0].start), end = timeKey(d.tasks[0].end);
-      d.tasks.forEach(t => { const low = timeKey(t.start), high = timeKey(t.end); if (low < start) start = low; if (high > end) end = high; });
       check(start === timeKey(d.task_span.start) && end === timeKey(d.task_span.end)
         && start >= timeKey(d.candidate_span.start) && end <= timeKey(d.candidate_span.end));
     }
     if (d.unplanned_operations === null) check(d.unplanned_operation_count === null && d.data_gaps.some(g => g.field === 'unplanned_operations'));
     else {
       check(Array.isArray(d.unplanned_operations) && d.unplanned_operation_count === d.unplanned_operations.length);
-      const seen = new Set(d.tasks.map(t => t.operation_ref));
-      d.unplanned_operations.forEach(t => { operation(t, false); check(!seen.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref)); seen.add(t.operation_ref); });
+      d.unplanned_operations.forEach(t => { operation(t, false); check(!operationRefs.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref)); operationRefs.add(t.operation_ref); });
     }
     const g = d.generation, G = window.RunGenerationContract;
     check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm'])

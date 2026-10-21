@@ -23,10 +23,6 @@
     });
     return { filters, notice: removed ? '已清除 ' + removed + ' 项旧版列筛选，其余筛选和已选记录已保留。请重新选择这些列的筛选值。' : '' };
   }
-  function checked(value, key) {
-    const selected = rule(value);
-    return selected.mode === 'include' ? selected.values.includes(key) : !selected.values.includes(key);
-  }
   function toggle(value, key, enabled) {
     return toggleKeys(value, [key], enabled);
   }
@@ -93,5 +89,5 @@
       throw C.failure('全部匹配值不完整或超过 50000 个，筛选没有改动。请回到第 1 页重新查询。');
     return raw;
   }
-  window.ResourceTableFilterModel = { rule, restore, checked, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };
+  window.ResourceTableFilterModel = { rule, restore, toggle, toggleKeys, groupState, toolbarScope, active, signature, facets, selection };
 })();

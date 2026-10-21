@@ -14,16 +14,14 @@
     const paths = ['business_code', 'part_ref', ...B.fields.map(key => 'fields.' + key)];
     const currentError = error || command.error;
     const fieldErrors = [...(submitted ? B.inputErrors(value, entity) : []), ...C.fieldErrors(currentError)];
-    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: command.phase !== 'done' && JSON.stringify(value) !== JSON.stringify(B.draft(entity)),
+    const baseDraft = React.useMemo(() => JSON.stringify(B.draft(entity)), [entity]);
+    const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: command.phase !== 'done' && JSON.stringify(value) !== baseDraft,
       locked: command.locked, message: '批次资料尚未保存，离开会丢失本次填写。' });
     React.useEffect(() => { if (currentError) window.ResourceControls.focusFirstInvalid(formElement.current); }, [currentError]);
-    async function close(detail) {
-      if (command.locked) return;
-      if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose();
-    }
+    async function close() { if (!command.locked && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
     const choices = S.useQuery(async signal => {
       const result = await adapter.choices(signal);
-      if (!result || !result.data || !Array.isArray(result.data.parts) || !result.data.parts.every(row => B.ref(row.ref))) throw C.failure('图号列表没有读到，请刷新后重试。');
+      if (!Array.isArray(result.data.parts) || !result.data.parts.every(row => B.ref(row.ref))) throw C.failure('图号列表没有读到，请刷新后重试。');
       return result;
     }, [adapter], !entity);
     React.useEffect(() => {
@@ -51,7 +49,7 @@
       try { const payload = B.input(value, entity); if (!Object.keys(payload.fields).length) throw C.failure('没有需要保存的变更。'); setError(null); await command.submit('batch', action, entity ? entity.ref : null, context, payload); }
       catch (error) { setError(error); }
     }
-    return <Modal title={entity ? '编辑批次基础信息' : '新增批次'} icon="box" guardOwner={guardOwner} locked={command.locked} onClose={close} footer={<>
+    return <Modal title={entity ? '编辑批次基础信息' : '新增批次'} icon="box" guardOwner={guardOwner} locked={command.locked} onClose={onClose} footer={<>
       <Button onClick={close} disabled={command.locked}>{command.phase === 'done' ? '关闭' : '取消'}</Button>
       {command.phase !== 'done' && <Button type="submit" form={form} icon="check" className="btn primary" disabled={locked || !!review || !entity && !choices.result}
         reasonDisplay="inline" reason={B.reason(context, action, source)}>{entity ? '保存基础信息' : '确认新增'}</Button>}</>}>
@@ -81,7 +79,7 @@
         <thead><tr><th scope="col" style={{ width: 90 }}>工序 / 变化</th><th scope="col">当前批次工序</th><th scope="col">更新后</th></tr></thead><tbody>
           {preview.changes.map((row, index) => <tr key={index}><td><div>{row.sequence}{row.piece_id ? ' · ' + row.piece_id : ''}</div><div>{changeNames[row.change]}</div></td><td>{operation(row.before)}</td><td>{operation(row.after)}</td></tr>)}
         </tbody></table></div>
-      {groups && (groups.before.length > 0 || groups.after.length > 0) && <section aria-label="外协段更新前后对照"><h3>外协段更新前后对照</h3>
+      {(groups.before.length > 0 || groups.after.length > 0) && <section aria-label="外协段更新前后对照"><h3>外协段更新前后对照</h3>
         <div className="wb-table-frame"><table className="tbl wb-table"><caption className="wb-visually-hidden">外协段更新前后对照</caption>
           <thead><tr><th scope="col">当前批次外协段</th><th scope="col">更新后外协段</th></tr></thead>
           <tbody><tr><td>{groupList(groups.before)}</td><td>{groupList(groups.after)}</td></tr></tbody></table></div></section>}
@@ -115,7 +113,7 @@
       <div className="modal-b">{action === 'sync_confirm' ? <SyncPreview preview={preview} /> : <div className="batch-preview wb-table-frame" data-sticky-head><table className="tbl wb-table"><caption className="wb-visually-hidden">批次变更前后对照</caption><thead><tr><th scope="col">原记录</th><th scope="col">确认后</th></tr></thead><tbody>
         {preview.rows.map(row => <tr key={row.entity_ref}><td>{value(row.before)}</td><td>{value(row.after)}</td></tr>)}
       </tbody></table></div>}
-        <Issues issues={preview.warnings || []} /><ErrorBox error={error} />
+        <Issues issues={preview.warnings} /><ErrorBox error={error} />
         {deleting && command.phase !== 'done' && <label className="batch-check"><input type="checkbox" checked={acknowledged} disabled={disabled || command.locked} onChange={event => setAcknowledged(event.target.checked)} />
           {single ? '已核对明细，确认删除批次 ' + single + '。' : '已核对全部明细，确认删除这 ' + window.WorkbenchFormat.number(preview.rows.length, { digits: 0 }) + ' 个批次。'}</label>}
         <window.ResourceForms.Feedback command={command} action={deleting ? 'delete' : 'save'} /></div>

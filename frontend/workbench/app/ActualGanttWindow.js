@@ -31,8 +31,7 @@
   function anchor(model, selectedRef, reportRef) {
     const selected = model.taskIndex.get(selectedRef), report = selected && selected.reportIndex.get(reportRef);
     const selectedRange = report && Number.isFinite(report.start) ? report : selected ? selected.baseline : model.dataRange;
-    return selectedRange && Number.isFinite(selectedRange.start) && Number.isFinite(selectedRange.end)
-      ? ((selectedRange.start + selectedRange.end) / 2 - model.start) / (model.end - model.start) : .5;
+    return selectedRange ? ((selectedRange.start + selectedRange.end) / 2 - model.start) / (model.end - model.start) : .5;
   }
   function markBox(mark, model, width, left = 0) {
     const scale = width / (model.end - model.start), x = (mark.start - model.start) * scale - left;
@@ -42,14 +41,14 @@
     return { x, size, hitWidth, hitLeft, faceLeft: x - hitLeft };
   }
   function hitMark(marks, model, width, left, x, y) {
-    const matches = marks.filter(mark => {
+    let best = null, bestDistance = Infinity;
+    for (const mark of marks) {
       const box = markBox(mark, model, width, left);
-      return x >= box.hitLeft && x < box.hitLeft + box.hitWidth && y >= mark.y && y < mark.y + mark.height;
-    });
-    return matches.sort((a, b) => {
-      const distance = mark => { const box = markBox(mark, model, width, left); return Math.abs(x - box.x - box.size / 2); };
-      return distance(a) - distance(b);
-    })[0] || null;
+      if (x < box.hitLeft || x >= box.hitLeft + box.hitWidth || y < mark.y || y >= mark.y + mark.height) continue;
+      const distance = Math.abs(x - box.x - box.size / 2);
+      if (distance < bestDistance) { best = mark; bestDistance = distance; }
+    }
+    return best;
   }
   window.ActualGanttWindow = { dimensions, capture, restoreZoom, restoreLeft, initial, anchor, markBox, hitMark };
 })();

@@ -52,11 +52,11 @@
   }
   function Source({ data }) {
     const p = data.provenance, baseline = data.projections.baseline;
-    const algorithm = p && p.algorithm, captured = p && p.baseline;
+    const algorithm = p.algorithm, captured = p.baseline;
     const identity = plan => [plan.kind === 'official' ? '正式计划' : plan.kind === 'candidate' ? window.WorkbenchTerms.candidate : window.WorkbenchTerms.trial_scenario,
       plan.display_name, plan.version === null ? null : 'v' + plan.version].filter(Boolean).join(' · ');
     return <div className="wb-gantt-comparison-source" data-gantt-comparison-source>
-      <div><strong>当前安排：{identity(data.plan)}</strong>{p && p.state === 'available'
+      <div><strong>当前安排：{identity(data.plan)}</strong>{p.state === 'available'
         ? p.source_kind === 'candidate_adoption'
           ? <>，采用算法生成的候选「{p.source_label || '未命名'}」；算法：{algorithm.mode_label || algorithm.mode || '未记录'}{algorithm.strategy_label && ' · ' + algorithm.strategy_label}。</>
           : <>，采用保存的试调方案「{p.source_label || '未命名'}」。</>
@@ -99,7 +99,7 @@
     }, { locationIndex }), [active, model, width, renderLeft, renderViewport, position.top, position.height, printing, locationIndex]);
     const printItems = printing ? model.rows.flatMap(row => row.items) : [];
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
-    const risks = React.useMemo(() => new Map((data.projections.delivery_risks.items || []).map(row => [row.batch_id, row.risk])), [data]);
+    const risks = React.useMemo(() => new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row.risk])), [data]);
     const axis = V.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport }), ticks = axis.ticks;
     const refreshedAt = React.useMemo(() => M.instant(asOf), [asOf]);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;

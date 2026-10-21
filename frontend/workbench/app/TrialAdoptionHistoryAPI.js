@@ -39,5 +39,5 @@
     return window.TrialAPI.read('/trial/scenarios/' + scenarioRef + '/adoption-history', q, signal,
       value => validate(value, scenarioRef, q));
   }
-  window.TrialAdoptionHistoryAPI = { read, validate, states };
+  window.TrialAdoptionHistoryAPI = { read, states };
 })();

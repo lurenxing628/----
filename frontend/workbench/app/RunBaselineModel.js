@@ -16,7 +16,7 @@
       ...Object.keys(resourceLabels).map(kind => resourceLabels[kind] + '：' + resourceLabel(s, kind)),
       statusLabels[r.status], ...(r.comparison_available ? Object.keys(resourceLabels).map(kind => resourceLabels[kind] + '变化：' + resourceChange(r, kind)) : [])].join('\n');
   }
-  const resourceLabel = (side, kind) => M.resourceLabel(side, kind);
+  const resourceLabel = M.resourceLabel;
   function resourceChange(row, kind) {
     const changed = row.delta[kind + '_changed'];
     if (changed !== null) return changed ? '有' : '无';
@@ -106,8 +106,7 @@
         height: 30, lane, laneCount: lanes.length, baseline: true, baselinePoint
       }); });
     }
-    const facts = { tasks: candidate.tasks, unplottableTasks: candidate.unplottableTasks };
-    return { ...facts, rows, height: top, locations, baselineLocations, start, end, groupCount: prepared.groups.size,
+    return { tasks: candidate.tasks, unplottableTasks: candidate.unplottableTasks, rows, height: top, locations, baselineLocations, start, end, groupCount: prepared.groups.size,
       ...(prepared.hasBaseline ? { comparisons: prepared.comparisons } : {}) };
   }
   window.RunBaselineModel = { prepare, groupPrepared, selectPrepared, layoutPrepared, title, resourceLabel, resourceChange, sourceLabel, statusLabels };

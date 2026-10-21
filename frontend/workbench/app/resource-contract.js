@@ -208,7 +208,7 @@
     if (create || value.label !== base.label) {
       result.label = value.label.trim(); if (!result.label) bad('label', '请填写名称。');
     }
-    const writable = (textFields[kind] || []).concat(statuses[kind] ? ['status'] : [],
+    const writable = textFields[kind].concat(statuses[kind] ? ['status'] : [],
       kind === 'material' ? ['stock_qty'] : kind === 'supplier' ? ['default_days'] : []);
     writable.filter(key => own(value.fields, key) && (key !== 'default_merge_mode' || ['external', 'both'].includes(value.fields.category))).forEach(key => {
       const v = value.fields[key];
@@ -222,7 +222,7 @@
         if (!Number.isFinite(n) || n < 0 || (key === 'default_days' && n === 0)) bad('fields.' + key, key === 'stock_qty' ? '请填写有效的库存数量，不能小于 0。' : '请填写有效的周期天数，要大于 0。');
         else fields[key] = n;
       } else if (key === 'status') {
-        if (!(statuses[kind] || []).some(item => item[0] === v && v !== 'unknown')) bad('fields.status', '请明确选择状态。');
+        if (!statuses[kind].some(item => item[0] === v && v !== 'unknown')) bad('fields.status', '请明确选择状态。');
         else fields.status = v;
       } else if (key === 'category') {
         if (!['internal', 'external', 'both'].includes(v)) bad('fields.category', '请明确选择自制或外协。');

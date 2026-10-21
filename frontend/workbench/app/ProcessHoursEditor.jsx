@@ -2,13 +2,14 @@
   'use strict';
   const C = window.APSResourceContract, P = window.APSProcessContract, E = window.ProcessStageEditor, { Button, Modal, Issues } = window.ResourceControls;
   const numericText = value => value === null ? '' : String(value);
-  function mergedGroups(entity) {
-    const refs = new Set(E.active(entity).map(row => row.external_group_ref));
+  function mergedGroups(entity, active = E.active(entity)) {
+    const refs = new Set(active.map(row => row.external_group_ref));
     return entity.external_groups.filter(row => row.merge_mode === 'merged' && refs.has(row.ref));
   }
   function build(entity) {
-    return { operations: Object.fromEntries(E.active(entity).map(row => [row.ref, { ref: row.ref, setup_hours: numericText(row.setup_hours), unit_hours: numericText(row.unit_hours), external_days: numericText(row.external_days) }])),
-      groups: Object.fromEntries(mergedGroups(entity).map(row => [row.ref, numericText(row.total_days)])) };
+    const active = E.active(entity);
+    return { operations: Object.fromEntries(active.map(row => [row.ref, { ref: row.ref, setup_hours: numericText(row.setup_hours), unit_hours: numericText(row.unit_hours), external_days: numericText(row.external_days) }])),
+      groups: Object.fromEntries(mergedGroups(entity, active).map(row => [row.ref, numericText(row.total_days)])) };
   }
   function reconcile(draft, before, after) {
     const next = build(after), original = build(before), old = new Map(before.operations.map(row => [row.ref, row]));
@@ -28,8 +29,8 @@
     return Number(text);
   }
   function input(entity, draft, pageSize) {
-    const merged = new Set(mergedGroups(entity).map(row => row.ref)), groups = P.groupIndex(entity.external_groups);
-    const operations = E.active(entity).map(row => {
+    const active = E.active(entity), mergedRows = mergedGroups(entity, active), merged = new Set(mergedRows.map(row => row.ref)), groups = P.groupIndex(entity.external_groups);
+    const operations = active.map(row => {
       const current = draft.operations[row.ref];
       try {
         if (row.source === 'external') return { ref: row.ref, external_days: P.groupCycle(row, groups) || merged.has(row.external_group_ref)
@@ -39,16 +40,17 @@
       } catch (error) { error.locate_page = Math.floor(entity.operations.indexOf(row) / pageSize) + 1; throw error; }
     });
     if (!operations.length) throw C.failure('尚无有效工序，不能保存工时。');
-    return { operations, groups: mergedGroups(entity).map(row => ({ ref: row.ref, total_days: number(draft.groups[row.ref], '外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期', true) })), confirm_zero_unit_hours: false };
+    return { operations, groups: mergedRows.map(row => ({ ref: row.ref, total_days: number(draft.groups[row.ref], '外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期', true) })), confirm_zero_unit_hours: false };
   }
   function zeroRows(entity, body) {
-    const before = new Map(entity.operations.map(row => [row.ref, row]));
-    return body.operations.filter(row => {
+    const before = new Map(entity.operations.map(row => [row.ref, row])), rows = [];
+    for (const row of body.operations) {
       const old = before.get(row.ref);
-      return row.unit_hours === 0 && (old.confirmation.hours.state !== 'confirmed' || old.unit_hours !== row.unit_hours || old.setup_hours !== row.setup_hours);
-    }).map(row => before.get(row.ref));
+      if (row.unit_hours === 0 && (old.confirmation.hours.state !== 'confirmed' || old.unit_hours !== row.unit_hours || old.setup_hours !== row.setup_hours)) rows.push(old);
+    }
+    return rows;
   }
-  function ProcessHoursEditor({ adapter, result, command, disabled, saved, groupSaved = 0, onDirty, onOverlay, onFileAction }) {
+  function ProcessHoursEditor({ adapter, result, command, disabled, saved, groupSaved, onDirty, onOverlay, onFileAction }) {
     const model = E.useDraft({ result, adapter, stage: 'hours', build, reconcile, saved, onDirty });
     const entity = model.base.data, draft = model.draft, paging = E.usePage(entity.operations), [zero, setZero] = React.useState(null), [groupsOpen, setGroupsOpen] = React.useState(false);
     const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
@@ -78,9 +80,9 @@
         await command.submit('process', 'hours_confirm', entity.ref, entity.write_context, { ...body, confirm_zero_unit_hours: acknowledged === true });
       } catch (error) { model.setError(error); }
     }
-    const active = E.active(entity), internal = paging.rows.filter(row => row.source !== 'external'), external = paging.rows.filter(row => row.source === 'external');
+    const active = E.active(entity), merged = mergedGroups(entity, active), internal = paging.rows.filter(row => row.source !== 'external'), external = paging.rows.filter(row => row.source === 'external');
     function operation(row) { return <><b>{row.sequence}</b> {row.label}<div className="muted">{row.op_type_label || '未选工种'}</div></>; }
-    function record(row) { return <>{row.status !== 'active' ? '已停用工序' : <E.Confirmation record={row.confirmation && row.confirmation.hours} />}<Issues issues={row.issues.filter(item => item.code !== 'zero_unit_hours_review')} /></>; }
+    function record(row) { return <>{row.status !== 'active' ? '已停用工序' : <E.Confirmation record={row.confirmation.hours} />}<Issues issues={row.issues.filter(item => item.code !== 'zero_unit_hours_review')} /></>; }
     function cell(row, key, title, positive = false) {
       const current = draft.operations[row.ref];
       return <input className="wt-in" type="number" step="any" min="0" aria-label={'工序 ' + row.sequence + ' ' + title} placeholder={positive ? '大于 0' : '未填写'} value={current ? current[key] : numericText(row[key])} disabled={editBlocked || !current}
@@ -98,7 +100,7 @@
           <tbody>{external.map(row => { const cycle = P.groupCycle(row, groups); return <tr key={row.ref}><td>{operation(row)}</td><td>{row.supplier_label || '未选供应商'}</td>
             <td>{cycle ? <span className="process-group-cycle" data-process-cycle-group={row.external_group_ref}>{cycle}<small>在下方外协组填写统一周期</small></span> : cell(row, 'external_days', '外协周期', true)}</td><td>{record(row)}</td></tr>; })}
             {!external.length && <tr><td colSpan={4}>当前页没有外协工序。</td></tr>}</tbody></table></div>
-        {!!mergedGroups(entity).length && <E.Groups rows={mergedGroups(entity)} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} title="外协段统一周期" />}</section>
+        {!!merged.length && <E.Groups rows={merged} totals={draft.groups} disabled={editBlocked} onTotal={changeGroup} title="外协段统一周期" />}</section>
       <E.Pager paging={paging} disabled={blocked} />
       {!!changedTypes.length && <p role="status">工序 {changedTypes.map(row => row.sequence).join('、')} 的实际工种已更换。接受最新资料后将采用新工种的工时，原工种未保存的工时不会沿用，请重新核对填写。</p>}
       <E.Feedback model={model} disabled={blocked} paging={paging} /><div className="pd-foot"><span className="muted">保存全部 {active.length} 道有效工序，包含其他页和筛选隐藏的工序。</span><Button className="btn primary" icon="check" disabled={blocked} reason={stageReason} onClick={() => save()}>保存工时</Button></div>

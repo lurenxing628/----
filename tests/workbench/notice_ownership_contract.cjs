@@ -266,7 +266,8 @@ async function contract(h, assert) {
   const resourceRead = w.APSResourceSession.useQuery, resourceUseCommand = w.APSResourceSession.useCommand;
   w.APSResourceSession.useQuery = () => ({ result: null, loading: false, error: null });
   w.APSResourceSession.useCommand = () => staleCommand;
-  const editor = { action: 'create', base: null, ref: null, draft: w.APSResourceCatalogModel.draft(null),
+  const initialDraft = w.APSResourceCatalogModel.draft(null);
+  const editor = { action: 'create', base: null, ref: null, draft: initialDraft, baseline: JSON.stringify(initialDraft),
     context: { write_token: 'fixture', capabilities: { create: true } }, source: 'production' };
   const staleCatalog = h.render(w.ResourceCatalog, { kind: 'machine_group', adapter: {} }, { ResourceCatalog: { 1: editor, 6: true } });
   once(staleCatalog, stale, 1);

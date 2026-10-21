@@ -31,13 +31,14 @@
     check(object(t) && ['single', 'merged'].includes(t.kind) && ref(t.batch_ref) && ref(t.supplier_ref) && Array.isArray(t.operation_refs)
       && t.operation_refs.length >= 1 && t.operation_refs.length <= 200 && t.operation_refs.every(ref) && new Set(t.operation_refs).size === t.operation_refs.length
       && (t.kind === 'single') === (t.operation_refs.length === 1), '单工序要选 1 道，合并发出至少选 2 道，而且不能重复。');
+    const operation_refs = t.operation_refs.slice().sort();
     if (publicData) {
       check(t.grouping_basis === 'explicit_receipt_membership' && object(t.batch) && t.batch.ref === t.batch_ref && object(t.supplier) && t.supplier.ref === t.supplier_ref
-        && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), t.operation_refs.slice().sort()));
+        && Array.isArray(t.operations) && t.operations.length === t.operation_refs.length && equal(t.operations.map(o => o.operation_ref).sort(), operation_refs));
       if (t.part !== undefined) { check(object(t.part) && ref(t.part.ref)); entityLabel(t.part, t.part.ref); }
       if (t.source_resolution !== undefined) resolution(t.source_resolution);
     }
-    return { kind: t.kind, batch_ref: t.batch_ref, supplier_ref: t.supplier_ref, operation_refs: t.operation_refs.slice().sort() };
+    return { kind: t.kind, batch_ref: t.batch_ref, supplier_ref: t.supplier_ref, operation_refs };
   }
   function boundary(e, t) { check(object(e) && e.automatically_reported === false && equal(e.operation_refs.slice().sort(), t.operation_refs.slice().sort())
     && e.service === 'WorkbenchProductionReportService' && text(e.reason), '回厂登记数据无效，请刷新重试。'); }
@@ -78,7 +79,8 @@
         && (!q.batch_ref || r.batch_ref === q.batch_ref)); entityLabel(r.batch, r.batch_ref); entityLabel(r.supplier, r.supplier_ref);
         if (r.part !== undefined && r.part !== null) { check(object(r.part) && ref(r.part.ref)); entityLabel(r.part, r.part.ref); }
         if (r.source_resolution !== undefined && r.source_resolution !== null) resolution(r.source_resolution); });
-      check(new Set(d.items.filter(r => r.operation_ref).map(r => r.operation_ref)).size === d.items.filter(r => r.operation_ref).length);
+      const operationRefs = d.items.map(r => r.operation_ref).filter(Boolean);
+      check(new Set(operationRefs).size === operationRefs.length);
     } else if (kind === 'receipts') {
       check(d.as_of === v.meta.as_of && d.tracking_basis === 'manual_receipt_facts'); page(d.page, d.items, q);
       d.items.forEach(r => { row(r); check(!q.batch_ref || r.target.batch_ref === q.batch_ref); check(r.overdue === (r.returned === null && r.planned < v.meta.as_of));
@@ -142,5 +144,5 @@
         if (v.state === 'not_recorded') { check(v.ok === true && v.receipt === null && v.may_be_in_flight === true); return null; } return receipt(v, intent); }
     };
   }
-  window.OutsourcingContract = { states, fields, labels, object, ref, text, check, equal, time, stamp, facts, target, row, query, catalog, preview, receipt, create, isRejected: e => rejected.has(e) };
+  window.OutsourcingContract = { states, fields, labels, object, ref, text, check, equal, stamp, facts, target, preview, receipt, create, isRejected: e => rejected.has(e) };
 })();

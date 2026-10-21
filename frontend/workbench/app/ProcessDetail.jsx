@@ -47,7 +47,7 @@
     const command = S.useCommand(adapter), [stage, setStage] = React.useState(target.stage || null), [current, setCurrent] = React.useState(null);
     const [browsing, setBrowsing] = React.useState(navigationReadOnly || !!initialStage || !!templateOperationRef || !!templateExternalGroupRef);
     const [entry, setEntry] = React.useState(false), [entryStarted, setEntryStarted] = React.useState(false), [overlay, setOverlay] = React.useState(false);
-    const [dirty, setDirty] = React.useState({}), [discard, setDiscard] = React.useState(false), [saved, setSaved] = React.useState({ route: 0, source: 0, hours: 0 });
+    const [dirty, setDirty] = React.useState({}), [discard, setDiscard] = React.useState(false), [saved, setSaved] = React.useState({ route: 0, source: 0, hours: 0, groups: 0 });
     const [refresh, setRefresh] = React.useState({}), [receipt, setReceipt] = React.useState(null);
     const [fileAction, setFileAction] = React.useState(null), [fileReceipt, setFileReceipt] = React.useState(null);
     const request = React.useRef(null), notified = React.useRef(null), root = React.useRef(null), fileFocus = React.useRef(null);
@@ -102,7 +102,7 @@
       notified.current = value.receipt_ref; if (onCommitted) onCommitted(value);
     }
     function resetDrafts() {
-      setSaved(old => ({ route: old.route + 1, source: old.source + 1, hours: old.hours + 1 }));
+      setSaved(old => ({ route: old.route + 1, source: old.source + 1, hours: old.hours + 1, groups: old.groups }));
       setDirty({}); setEntry(false); setEntryStarted(false);
     }
     function openFile(kind, mode, abandon = false) {
@@ -123,7 +123,7 @@
         const fresh = await loadPart(controller.signal);
         if (controller.signal.aborted) return;
         const key = expectedStage;
-        setCurrent(fresh); setStage(fresh.data.workflow.stage); setSaved(old => ({ ...old, [key]: (old[key] || 0) + 1 })); onDirty(key, false);
+        setCurrent(fresh); setStage(fresh.data.workflow.stage); setSaved(old => ({ ...old, [key]: old[key] + 1 })); onDirty(key, false);
         if (key === 'route') { setEntry(false); setEntryStarted(false); }
         setReceipt(command.result); setRefresh({ done: true });
         if (!command.reset()) setRefresh({ error: C.failure('保存已确认，但本机还留着上次操作记录。请点「查询结果」重试。') });
@@ -144,7 +144,6 @@
       finally { if (request.current === controller) request.current = null; }
     }
     function fileCommitted(value) {
-      window.APSProcessFiles.receipt(value, command.intent, fileAction.kind, null, partRef);
       setFileReceipt(value); setReceipt(value); setFileAction(null); notify(value); readFileSaved(value);
     }
     function close() {
@@ -182,7 +181,7 @@
             {!browsing && <>{entity.workflow.ready && <div className="toolbar"><span className="pill ok">三阶段已确认 · 已就绪</span><Button icon="check" onClick={() => setStage('ready')} disabled={editingBlocked}>查看汇总</Button></div>}
             <div hidden={selected !== 'route'} role="tabpanel" id={panelId + '-route'} aria-labelledby={panelId + '-tab-route'}><RouteView entity={entity} disabled={editingBlocked} onFileAction={openFile} previewAvailable={typeof adapter.routePreview === 'function'} onEntry={() => { setEntryStarted(true); setEntry(true); }} /></div>
             <div hidden={selected !== 'source'} role="tabpanel" id={panelId + '-source'} aria-labelledby={panelId + '-tab-source'}><window.ProcessSourceEditor key={saved.source} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.source} onDirty={onDirty} onOverlay={setOverlay} onResourceCommitted={onCommitted} /></div>
-            <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><window.ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} groupSaved={saved.groups || 0} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
+            <div hidden={selected !== 'hours'} role="tabpanel" id={panelId + '-hours'} aria-labelledby={panelId + '-tab-hours'}><window.ProcessHoursEditor key={saved.hours} adapter={adapter} result={result} command={visibleCommand} disabled={editorDisabled} saved={saved.hours} groupSaved={saved.groups} onDirty={onDirty} onOverlay={setOverlay} onFileAction={openFile} /></div>
             {entity.workflow.ready && <div hidden={selected !== 'ready'} role="tabpanel" id={panelId + '-ready'} aria-labelledby={panelId + '-tab-ready'}><Operations entity={entity} hours /><E.Groups rows={entity.external_groups} /><p><E.Confirmation record={entity.workflow.hours} /></p></div>}</>}
           </>}
         </div>

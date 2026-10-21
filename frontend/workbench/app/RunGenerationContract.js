@@ -7,7 +7,7 @@
   const ref = value => text(value) && /^[a-f0-9]{48}$/.test(value);
   const refs = values => Array.isArray(values) && values.every(ref) && new Set(values).size === values.length;
   const shape = (value, required, optional = []) => object(value) && required.every(key => Object.prototype.hasOwnProperty.call(value, key))
-    && Object.keys(value).every(key => required.concat(optional).includes(key));
+    && Object.keys(value).every(key => required.includes(key) || optional.includes(key));
   const labels = { min_overdue: '交期优先', min_tardiness: '拖期更轻', min_changeover: '切换更少', min_weighted_tardiness: '加权拖期更轻' };
   const fieldOrders = {
     min_overdue: ['failed_ops', 'overdue_count', 'weighted_tardiness_hours', 'total_tardiness_hours', 'makespan_hours', 'changeover_count'],
@@ -54,7 +54,7 @@
       && (value.source_event_id === null || count(value.source_event_id) && value.source_event_id > 0);
   }
   function metadata(value, runRef) {
-    return unified(value) && metadataKeys.every(key => Object.prototype.hasOwnProperty.call(value, key))
+    return unified(value)
       && objectives(value.representative_objectives) && evaluations(value.evaluations)
       && value.representative_objectives.every(name => Object.prototype.hasOwnProperty.call(value.evaluations, name))
       && origin(value.origin) && number(value.first_found_elapsed_ms) && evidence(value.search_evidence_ref, runRef);

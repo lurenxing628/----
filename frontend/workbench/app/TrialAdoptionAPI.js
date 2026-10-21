@@ -106,5 +106,5 @@
         return lookup(await request(intent.scenario_ref + '/adoption-commands/' + intent.request_key, undefined, signal, intent), intent); }
     };
   }
-  window.TrialAdoptionAPI = { create, source, overview, preview, receipt, lookup, input, check, shape, ref, key, equal, isRejected: e => rejections.has(e) };
+  window.TrialAdoptionAPI = { create, source, overview, receipt, input, check, shape, key, equal, isRejected: e => rejections.has(e) };
 })();

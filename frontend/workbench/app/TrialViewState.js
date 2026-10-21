@@ -24,7 +24,7 @@
     return value;
   }
   function defaults(data) {
-    const scope = C.scope(data.scope);
+    const scope = data.scope;
     return { mode: scope.resource_type || 'machine', baseline: true, only_changed: false,
       query: scope.query === undefined ? '' : scope.query, result_tab: 'delivery' };
   }
@@ -75,7 +75,6 @@
       if (active.current !== name || !current.value) return false;
       let merged, value;
       try {
-        if (!C.object(patch) || !Object.keys(patch).every(field => fields.includes(field))) throw problem('invalid_preferences', '查看偏好含未知的项，没有保存。');
         merged = { ...pending.current.patch, ...patch }; value = preferences({ ...current.value, ...merged });
       } catch (error) { setState({ ...current, error }); return false; }
       pending.current.patch = merged;

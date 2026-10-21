@@ -18,11 +18,14 @@
     </form><ErrorBox error={list.error} />{list.loading && <EmptyState kind="loading" title="正在读取列表" />}
       {data && <><Issues issues={list.result.warnings} /><div className="wb-table-frame rc-list-scroll" data-sticky-head data-sticky-actions><table className="tbl wb-table rc-list"><caption className="wb-visually-hidden">{M.names[kind]}列表</caption><thead><tr>
         <th scope="col" className="wb-col-key">编号 / 名称</th><th scope="col">状态</th><th scope="col">{kind === 'machine_group' ? '关联设备' : '关联人员'}</th>{kind === 'shift_profile' && <th scope="col">轮换天数</th>}<th scope="col" className="wb-col-actions">操作</th></tr></thead><tbody>
-        {data.entities.map(entity => <tr key={entity.ref}><td className="rc-wrap wb-col-key"><b>{entity.business_code}</b><div>{entity.label}</div></td>
+        {data.entities.map(entity => {
+          const count = M.memberCount(kind, entity);
+          return <tr key={entity.ref}><td className="rc-wrap wb-col-key"><b>{entity.business_code}</b><div>{entity.label}</div></td>
           <td><span className={'pill ' + (entity.status === 'active' ? 'ok' : entity.status === 'inactive' ? 'off' : 'warn')}><span className="dot" />{entity.status === 'active' ? '启用' : entity.status === 'inactive' ? '停用' : '旧状态 / 原因未知'}</span></td>
-          <td>{M.memberCount(kind, entity) === null ? '未读取' : M.memberCount(kind, entity)}</td>{kind === 'shift_profile' && <td>{entity.fields.cycle_days}</td>}
+          <td>{count === null ? '未读取' : count}</td>{kind === 'shift_profile' && <td>{entity.fields.cycle_days}</td>}
           <td className="wb-col-actions"><div className="rowact"><Button className="mini rc-icon-button" icon="square-pen" aria-label={'编辑 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'update', list.result.meta.source)} onClick={() => onOpen('update', entity.ref)} />
-            <Button className="mini danger" icon="trash-2" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)}>删除</Button></div></td></tr>)}
+            <Button className="mini danger" icon="trash-2" aria-label={'删除 ' + entity.business_code} disabled={disabled} reasonDisplay="tooltip" reason={C.blocked(entity.write_context, kind, 'delete', list.result.meta.source)} onClick={() => onOpen('delete', entity.ref)}>删除</Button></div></td></tr>;
+        })}
         </tbody></table></div>
         {!data.entities.length && <EmptyState kind={scope.query || scope.status ? 'filtered' : 'empty'} title="当前范围没有记录"
           hint="可清除搜索和状态筛选后查看全部记录。" action={scope.query || scope.status ? <Button disabled={disabled} onClick={() => { setSearch(''); filter({ query: '', status: '' }); }}>清除筛选</Button> : undefined} />}
@@ -39,7 +42,7 @@
     const validKind = Object.prototype.hasOwnProperty.call(M.names, kind), done = command.phase === 'done';
     const locked = command.locked || busy, showList = !editor && !command.locked && !done;
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ owner: 'resource-catalog-' + formId,
-      dirty: !!(editor && editor.action !== 'delete' && !done && JSON.stringify(editor.draft) !== JSON.stringify(M.draft(editor.base))),
+      dirty: !!(editor && editor.action !== 'delete' && !done && JSON.stringify(editor.draft) !== editor.baseline),
       locked: command.locked, message: (M.names[kind] || '基础资料') + '有尚未保存的填写内容。' });
     React.useEffect(() => { if (error || command.error) focusFirstInvalid(root.current); }, [error, command.error]);
     const list = S.useQuery(async signal => C.query(await adapter.list(kind, scope, signal), 'list'), [adapter, kind, scope], validKind && showList);
@@ -66,8 +69,11 @@
         if (defaults && (!defaults.data || window.APSWorkPeriods.validate(defaults.data.periods))) throw C.failure("默认工作时间读取不完整，请刷新重试。");
         if (!alive.current || ticket !== generation.current) return;
         if (reviewing) setReview(result);
-        else setEditor({ action, ref, defaultPeriods: defaults && defaults.data.periods, base: ref ? result.data : null, draft: M.draft(ref ? result.data : null),
-          context: ref ? result.data.write_context : result.data.create_context, source: result.meta.source });
+        else {
+          const draft = M.draft(ref ? result.data : null);
+          setEditor({ action, ref, defaultPeriods: defaults && defaults.data.periods, base: ref ? result.data : null, draft, baseline: JSON.stringify(draft),
+            context: ref ? result.data.write_context : result.data.create_context, source: result.meta.source });
+        }
       } catch (failure) { if (alive.current && ticket === generation.current) setError(failure); }
       finally { if (alive.current && ticket === generation.current) setBusy(false); }
     }

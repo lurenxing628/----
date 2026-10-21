@@ -77,11 +77,12 @@
       event.preventDefault();
       if (action === 'fit') fit(); else zoomTo(timelineZoomStep(zoom, action === 'in' ? 1 : -1, ZOOM_MAX));
     }
+    const focused = picker.byRef.get(focusTask);
     return <section className="dy-timeline" aria-label={mode === 'downtime' ? '停机时段与计划安排' : '关联资源计划时间轴'} data-dashboard-timeline={mode} onKeyDown={zoomKeys}>
       <div className="dy-heading"><h3>{mode === 'downtime' ? '停机时段与计划安排' : '关联资源计划时间轴'}</h3><div className="dy-tools">
         <TimelineZoom zoom={zoom} max={ZOOM_MAX} scope="分析" onZoom={zoomTo} onFit={fit} />
       </div></div>
-      <label className="dy-run-picker">定位工序<select aria-label="定位分析时间轴中的工序" value={picker.byRef.has(focusTask) && picker.byRef.get(focusTask).batch_ref === selectedBatch ? focusTask : ''} onChange={event => {
+      <label className="dy-run-picker">定位工序<select aria-label="定位分析时间轴中的工序" value={focused && focused.batch_ref === selectedBatch ? focusTask : ''} onChange={event => {
         const task = picker.byRef.get(event.target.value); setFocusTask(event.target.value); if (task) onSelect(task.batch_ref);
       }}><option value="">选择需要查看的工序</option>{picker.options}</select></label>
       <div className="dy-timeline-board" ref={board} onScroll={measure} tabIndex={0} style={{ '--dy-label-width': labelWidth + 'px', height: Math.max(120, Math.min(330, model.height + 52)) }}>

@@ -30,9 +30,11 @@
     const reasons = Array.from(new Set(items.filter(item => item.reason).map(item => item.reason.message)));
     return <div className="wb-table-frame"><table className="wb-table rd-recommend-differences" aria-label="推荐方案全部差值与明细">
       <thead><tr><th scope="col">指标与解释</th><th scope="col">当前基准</th><th scope="col">推荐方案</th><th scope="col">差值 / 状态</th><th scope="col">查看明细</th></tr></thead>
-      <tbody>{items.map(item => <tr key={item.metric_key} data-recommendation-difference={item.metric_key}><th scope="row"><strong>{item.label}</strong><small title={item.text} aria-describedby={item.reason ? 'rd-recommend-reason-' + (reasons.indexOf(item.reason.message) + 1) : undefined}>{item.reason && item.text === item.label + '：' + item.reason.message ? states[item.state] : item.text}{item.reason && '（说明 ' + (reasons.indexOf(item.reason.message) + 1) + '）'}</small></th>
+      <tbody>{items.map(item => {
+        const reasonNumber = item.reason ? reasons.indexOf(item.reason.message) + 1 : 0;
+        return <tr key={item.metric_key} data-recommendation-difference={item.metric_key}><th scope="row"><strong>{item.label}</strong><small title={item.text} aria-describedby={item.reason ? 'rd-recommend-reason-' + reasonNumber : undefined}>{item.reason && item.text === item.label + '：' + item.reason.message ? states[item.state] : item.text}{item.reason && '（说明 ' + reasonNumber + '）'}</small></th>
         <td>{amount(item.reference_value, item)}</td><td>{amount(item.selected_value, item)}</td><td><span className={'rd-change rd-' + item.direction}>{difference(item)}</span><small>{states[item.state]}</small></td>
-        <td><Support targets={item.supporting_refs} onSupport={onSupport} /></td></tr>)}</tbody>
+        <td><Support targets={item.supporting_refs} onSupport={onSupport} /></td></tr>; })}</tbody>
     </table>{reasons.map((message, index) => <p className="rc-muted" key={message} id={'rd-recommend-reason-' + (index + 1)}>说明 {index + 1}：{message}</p>)}</div>;
   }
   function SelectionEvidence({ basis, data }) {

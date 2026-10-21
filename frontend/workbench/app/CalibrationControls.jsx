@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const { Button, Icon, ErrorBox } = window.ResourceControls;
+  const { Button, ErrorBox } = window.ResourceControls;
   const missingValue = value => value === null || value === undefined;
   const text = (value, missing = '未知') => missingValue(value) ? missing : String(value);
   // 数字一律走 WorkbenchFormat：小时最多 3 位小数、去掉尾零；缺值只写缺值说明，不拼单位。
@@ -11,7 +11,6 @@
     : (value > 0 ? '+' : '') + window.WorkbenchFormat.percent(value / 100, { digits: 1, trim: true });
   const source = value => ({ internal: '自制', external: '外协', unknown: '未确认' })[value] || '未确认';
   const statusText = value => value === 'insufficient_data' ? '数据不足' : '已有建议';
-  const writeReason = '请先检查所选模板是否可采用。';
   const viewReason = '当前来源暂不能查看。';
   function useRead(load, identity, adapter, enabled = true) {
     const read = window.APSResourceSession.useQuery(load, [identity, adapter], enabled);
@@ -58,5 +57,5 @@
         disabled={disabled} reasonDisplay="tooltip" reason={canView && row.capabilities.view === true ? '' : viewReason} onClick={() => onSelect(row.suggestion_ref)} /></td>
     </tr>)}</tbody></table>{!rows.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前筛选没有记录" hint="调整图号、工序来源或建议状态后重新查询。" />}</div>;
   }
-  window.CalibrationControls = { Button, Icon, ErrorBox, Filters, Page, Table, useRead, text, amount, hours, unitHours, percent, source, statusText, writeReason, viewReason };
+  window.CalibrationControls = { Button, ErrorBox, Filters, Page, Table, useRead, text, amount, hours, unitHours, percent, source, statusText, viewReason };
 })();

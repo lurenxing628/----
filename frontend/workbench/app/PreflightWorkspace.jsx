@@ -68,7 +68,7 @@
           if (serial.current !== id) return;
           const next = contextState(resolveContext(initialContext, saved.data.input));
           setInitial(next); setValue(next.value);
-          if (!next.error && next.value.batch_refs.length) await read(C.input(next.value), controller, id);
+          if (!next.error && next.value.batch_refs.length) await read(next.value, controller, id);
         } catch (problem) { if (serial.current === id) setError(problem); }
         finally { if (serial.current === id) setBusy(false); }
       }
@@ -97,7 +97,7 @@
       const cancel = () => { controller.abort(); if (serial.current === id) { serial.current++; setBusy(false); } };
       setBusy(true);
       if (signal.aborted) cancel(); else signal.addEventListener('abort', cancel, { once: true });
-      try { return await read(C.input(input), controller, id, confirmationOwner); }
+      try { return await read(input, controller, id, confirmationOwner); }
       catch (problem) { if (serial.current === id && !controller.signal.aborted) setError(problem); throw problem; }
       finally { signal.removeEventListener('abort', cancel); if (serial.current === id) setBusy(false); }
     }

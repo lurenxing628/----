@@ -34,7 +34,7 @@ function SystemLive({ boot, theme, initialContext }) {
     return () => controller.abort();
   }, [revision, readSuspended]);
   const data = payload && payload.data;
-  window.WorkbenchPageContext.useSnapshot({ tab, page_size: pageSize, records: recordContexts }, !readSuspended && !!data && !loading && !error);
+  window.WorkbenchPageContext.useSnapshot({ tab, page_size: pageSize, records: recordContexts }, !readSuspended && !!data && !loading);
   const tabs = [['overview', '概况'], ['backups', '备份恢复'], ['logs', '运行日志'], ['config', '配置']];
   const onTab = next => { setTab(next); setNotice(''); document.getElementById('sm-tab-' + next).focus(); };
   const diagnosticName = '页面诊断.json';
@@ -68,13 +68,13 @@ function SystemLive({ boot, theme, initialContext }) {
         pageSize={pageSize} onPageSize={setPageSize} compact={compact} onCompact={setCompact} revision={revision}
         onChanged={refresh} onReadSuspendedChange={onReadState} recordContexts={recordContexts} onRecordContext={recordContext}>
         {loading ? <p role="status" className="sm-note">正在读取本机状态…</p> : !data ? <SMUnavailable title="本机状态未能读取">请点「重新检查」读取本机状态。</SMUnavailable> :
-        <SystemLiveOverview data={data} report={local} onTab={onTab} />}
+        <SystemLiveOverview data={data} report={local} ready={ready} onTab={onTab} />}
       </window.SystemMaintenanceWorkspace>
     </div>
   </div>;
 }
 
-function SystemLiveOverview({ data, report, onTab }) {
+function SystemLiveOverview({ data, report, ready, onTab }) {
   const backup = data.backups, logs = data.logs, config = data.config;
   const entries = [
     { tab: 'backups', title: '备份与恢复', icon: 'folder-open', status: backup.count == null ? '备份信息待核对' : backup.count + ' 个备份文件 · 未校验', description: backup.message },
@@ -85,13 +85,13 @@ function SystemLiveOverview({ data, report, onTab }) {
     {entries.map(item => <button key={item.tab} type="button" className="sm-work-row" data-sm-destination={item.tab} title={'查看' + item.title} aria-label={'查看' + item.title}
       aria-describedby={'sm-work-summary-' + item.tab} onClick={() => onTab(item.tab)}><span className="sm-work-icon"><SMIcon name={item.icon} /></span>
       <span className="sm-work-copy"><span className="sm-work-title">{item.title}</span><span className="sm-work-summary" id={'sm-work-summary-' + item.tab}>
-        <strong className={data[item.tab === 'config' ? 'config' : item.tab].state === 'error' ? 'sm-tone-danger' : 'sm-meta'}>{item.status}</strong>
+        <strong className={data[item.tab].state === 'error' ? 'sm-tone-danger' : 'sm-meta'}>{item.status}</strong>
         <span className="sm-work-description">{item.description}</span></span></span><span className="sm-work-arrow" aria-hidden="true"><SMIcon name="chevron-right" /></span></button>)}
     <details className="sm-rules"><summary>最近自动维护结果</summary>{data.maintenance.jobs.map(job => <p key={job.kind}>
       {{ auto_backup: '自动备份', auto_backup_cleanup: '备份清理', auto_log_cleanup: '操作日志清理' }[job.kind]}：
       {job.last_run_time ? window.WorkbenchFormat.dateTime(job.last_run_time) : '暂无可确认的执行时间'} · {job.result ? ({ completed: '已记录完成', failed: '失败', partial: '部分异常', skipped: '已跳过', invalid: '结果异常', unknown: '结果待核对', not_recorded: '未留存结果' }[job.result.status]) : '未读取结果'}
     </p>)}</details>
-  </section><details className="sm-section sm-environment"><summary>页面环境自检<span className="sm-meta">{report.checks.filter(item => item.status === 'available').length} / {report.checks.length} 项可用</span></summary>
+  </section><details className="sm-section sm-environment"><summary>页面环境自检<span className="sm-meta">{ready} / {report.checks.length} 项可用</span></summary>
     <p className="sm-meta">检查时间 {window.WorkbenchFormat.instant(report.checkedAt)}</p>
     <div className="wb-table-shell wb-table-frame" data-sticky-head><table className="wb-table sm-table sm-check-table">
       <caption className="wb-visually-hidden">当前页面环境检查</caption>

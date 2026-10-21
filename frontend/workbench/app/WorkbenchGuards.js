@@ -18,7 +18,7 @@
     const rows = affected(pending.options);
     return { id: pending.id, locked: rows.some(entry => entry.locked), messages: Array.from(new Set(rows.map(entry => entry.message))) };
   }
-  function notify() { listeners.forEach(listener => listener(getPrompt())); }
+  function notify(prompt = getPrompt()) { listeners.forEach(listener => listener(prompt)); }
   function subscribe(listener) {
     listeners.add(listener);
     return () => { listeners.delete(listener); if (!listeners.size && pending) resolvePrompt(pending.id, false); };
@@ -31,11 +31,14 @@
       else window.removeEventListener('beforeunload', beforeLeave);
       listening = needed;
     }
-    if (pending && !hasDirty(pending.options)) {
-      // Everything the prompt protected has been saved or unmounted; leaving is safe, so close the empty prompt.
-      const request = pending; pending = null; notify(); request.resolve(true); return;
+    if (pending) {
+      const rows = affected(pending.options);
+      if (!rows.length) {
+        // Everything the prompt protected has been saved or unmounted; leaving is safe, so close the empty prompt.
+        const request = pending; pending = null; notify(null); request.resolve(true); return;
+      }
+      notify({ id: pending.id, locked: rows.some(entry => entry.locked), messages: Array.from(new Set(rows.map(entry => entry.message))) });
     }
-    if (pending) notify();
   }
   function register(entry) {
     if (!entry || typeof entry.owner !== 'string' || !entry.owner || typeof entry.message !== 'string')

@@ -8,7 +8,7 @@
     return { start: start - pad, end: end + pad };
   }
   function prepareTracks(items) {
-    return items.slice().sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)));
+    return items.sort((a, b) => a.start - b.start || itemRef(a).localeCompare(itemRef(b)));
   }
   function layoutTracks(items, start, end, width) {
     const lanes = [], heap = [], scale = Math.max(1, width) / (end - start);
@@ -33,9 +33,6 @@
     }
     return lanes;
   }
-  function tracks(items, start, end, width) {
-    return layoutTracks(prepareTracks(items), start, end, width);
-  }
   function visible(items, start, end, scale) {
     const pad = hitSize / 2 / scale;
     let low = 0, high = items.length;
@@ -54,25 +51,5 @@
     ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath();
     ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = edge; ctx.lineWidth = lineWidth; ctx.stroke(); ctx.restore();
   }
-  function candidateRows(model, width) {
-    const groups = new Map(), rows = [], locations = new Map(), baselineLocations = new Map(), done = new Set();
-    for (const row of model.rows) if (row.point) {
-      if (!groups.has(row.id)) groups.set(row.id, []);
-      groups.get(row.id).push(...row.items);
-    }
-    let top = 0;
-    function append(source, items, key) {
-      const row = { ...source, items, top, key };
-      for (const item of items) (row.baseline ? baselineLocations : locations).set(row.baseline ? item.segment.row_ref : item.task.row_ref, { row: rows.length, top, item });
-      rows.push(row); top += row.height;
-    }
-    for (const row of model.rows) {
-      if (!row.point) { append(row, row.items, row.key); continue; }
-      if (done.has(row.id)) continue; done.add(row.id);
-      const lanes = tracks(groups.get(row.id), model.start, model.end, width);
-      lanes.forEach((items, lane) => append({ ...row, lane, laneCount: lanes.length }, items, row.id + ':point:' + lane));
-    }
-    return { ...model, rows, locations, baselineLocations, height: top };
-  }
-  window.PointGanttModel = { bounds, prepareTracks, layoutTracks, tracks, visible, hit, paint, candidateRows, hitSize };
+  window.PointGanttModel = { bounds, prepareTracks, layoutTracks, visible, hit, paint };
 })();

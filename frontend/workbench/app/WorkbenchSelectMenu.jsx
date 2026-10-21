@@ -6,8 +6,8 @@
   function WorkbenchSelectMenu({ owner, id, menuRef, onCommit }) {
     const [rows, setRows] = React.useState(() => B.rows(owner));
     const [active, setActive] = React.useState(() => {
-      const options = B.rows(owner), selected = options.find(row => row.index === owner.selectedIndex && !row.disabled);
-      return (selected || options.find(row => !row.disabled) || { index: -1 }).index;
+      const selected = rows.find(row => row.index === owner.selectedIndex && !row.disabled);
+      return (selected || rows.find(row => !row.disabled) || { index: -1 }).index;
     });
     const [filter, setFilter] = React.useState(''), [typed, setTyped] = React.useState('');
     const buffer = React.useRef({ text: '', time: 0 }), expiry = React.useRef(0), box = React.useRef(null);

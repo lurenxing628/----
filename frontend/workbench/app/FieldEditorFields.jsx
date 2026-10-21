@@ -25,12 +25,13 @@
     // 外协不占本厂设备和人员，不提供选择；旧记录里已填的仍显示，方便用「更正」清除（写入仍以服务端校验为准）。
     const external = task.source === 'external', held = key => !!draft[key] || !!(record && record[key]);
     const resourceShown = key => !external || held(key);
+    const quantityReadonly = readonly('completed_quantity');
     return <><div className="field-entry-grid">
-      <section><h4>产出数量</h4><Field label="本次完成数量" path="completed_quantity" error={error}><input ref={first} type="number" min="0" step="1" aria-label="本次完成数量" value={draft.completed_quantity} disabled={readonly('completed_quantity')} onChange={event => change('completed_quantity', event.target.value)} /></Field>
-        <div className="field-quantity-tools"><span>件</span><Button disabled={readonly('completed_quantity')} onClick={() => change('completed_quantity', '0')}>填 0</Button>
-          {action === 'create' && <Button disabled={disabled || task.execution.remaining_quantity === null || readonly('completed_quantity')} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>填剩余数</Button>}</div>
+      <section><h4>产出数量</h4><Field label="本次完成数量" path="completed_quantity" error={error}><input ref={first} type="number" min="0" step="1" aria-label="本次完成数量" value={draft.completed_quantity} disabled={quantityReadonly} onChange={event => change('completed_quantity', event.target.value)} /></Field>
+        <div className="field-quantity-tools"><span>件</span><Button disabled={quantityReadonly} onClick={() => change('completed_quantity', '0')}>填 0</Button>
+          {action === 'create' && <Button disabled={quantityReadonly || task.execution.remaining_quantity === null} onClick={() => change('completed_quantity', String(task.execution.remaining_quantity))}>填剩余数</Button>}</div>
         <p className="field-note">已知累计 <output aria-label="已知累计">{cumulative === null ? '未核对' : cumulative}</output> / 执行目标 {C.quantity(task.execution.target_quantity)} 件
-          {readonly('completed_quantity') && <small> · 旧完工数量受保护，本次保留原累计数量</small>}
+          {quantityReadonly && <small> · 旧完工数量受保护，本次保留原累计数量</small>}
           {task.execution.unknown_record_count > 0 && <small> · 原记录数量待补 {task.execution.unknown_record_count} 条</small>}</p></section>
       <section><h4>实际起止</h4>{timeHints && <p className="field-suggestion" role="status">请核对预填时间；不确定的时间请清除。</p>}
         <div className="field-time-grid">{[['actual_start', '实际开工'], ['actual_end', '本次实际完工']].map(([key, label]) => <div key={key}>

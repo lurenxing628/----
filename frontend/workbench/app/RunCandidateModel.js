@@ -1,8 +1,7 @@
 (function () {
   'use strict';
   const geometry = window.PlanGanttModel;
-  const { instant, wire, visibleItems, visibleRows, ticks } = geometry;
-  const timeLabel = value => geometry.timeLabel(value);
+  const { instant, timeLabel, visibleItems, visibleRows } = geometry;
   // The candidate DTO preserves integers above MAX_SAFE_INTEGER as exact decimal text.
   // Comparison metrics keep up to three decimals; a one-decimal summary would make distinct candidates look identical.
   const number = value => typeof value === 'string' ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, { digits: 3, trim: true });
@@ -11,9 +10,6 @@
   const tiny = value => typeof value === 'number' && Number(Math.abs(value).toFixed(3)) === 0;
   const signedChange = value => value === 0 ? '不变' : (value > 0 ? '增加' : '减少') + (tiny(value) ? '不到 0.001' : ' ' + number(Math.abs(value)));
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
-  const metricLabels = { overdue_count: window.WorkbenchTerms.overdue_count, total_tardiness_hours: window.WorkbenchTerms.total_tardiness_hours + '（小时）', makespan_hours: '安排时长（小时）', changeover_count: window.WorkbenchTerms.algorithm_changeover_count,
-    weighted_tardiness_hours: '加权拖期（小时）', machine_used_count: '已用设备', operator_used_count: '已用人员', machine_busy_hours_total: '设备占用（小时）',
-    operator_busy_hours_total: '人员占用（小时）', machine_util_avg: '设备利用率', operator_util_avg: '人员利用率', elapsed_seconds: '计算用时（秒）' };
   const executionLabels = { target_quantity: '目标数量', known_completed_quantity: '已知完成数量', remaining_quantity: '剩余数量', execution_state: '执行状态', data_quality: '数据质量', target_basis: '数量计算方式',
     first_actual_start: '最早实际开工时间', confirmed_finish: '确认完工时间', unknown_record_count: '完成数量缺失记录数', records_complete: '报工记录资料', quantity_complete: '完成数量资料', completion_basis: '完成依据' };
   // 生成时的执行记录按项取词：执行状态与现场记录同一套叫法；数据质量的 complete 是“完整”，不能和执行状态的“已完工”混成一个词。
@@ -166,5 +162,5 @@
     return { rows, height: top, locations, tasks: prepared.tasks, unplottableTasks: prepared.unplottableTasks,
       groupCount: prepared.groupCount, start: prepared.start, end: prepared.end };
   }
-  window.RunCandidateModel = { instant, wire, timeLabel, number, percent, signedChange, visibleItems, visibleRows, ticks, matching, prepare, groupPrepared, selectPrepared, groupRows, layoutPrepared, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, metricLabels, executionLabels, executionValue, executionField };
+  window.RunCandidateModel = { instant, timeLabel, number, percent, signedChange, visibleItems, visibleRows, matching, prepare, groupPrepared, selectPrepared, groupRows, layoutPrepared, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, executionLabels, executionValue, executionField };
 })();

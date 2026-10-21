@@ -50,5 +50,5 @@
       && ['comparable', 'different_coverage', 'unavailable'].includes(value.state) && ['neutral', 'equal', 'better', 'worse'].includes(value.direction)
       && ['reference_value', 'selected_value'].every(key => nullable(number)(value[key]));
   }
-  window.EffortProjectionContract = Object.freeze({ compact, side, standard, metric, delta });
+  window.EffortProjectionContract = Object.freeze({ compact, side, metric, delta });
 })();

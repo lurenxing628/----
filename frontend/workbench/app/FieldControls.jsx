@@ -17,7 +17,7 @@
   function Feedback({ command, onDone, excludePaths = [] }) {
     const error = command.error && (command.error.error || command.error);
     return <div aria-live="polite"><ErrorBox error={command.error} excludePaths={excludePaths} />
-      <Conflicts rows={error && error.conflicts || []} />
+      <Conflicts rows={error ? error.conflicts : undefined} />
       {command.locked && <div className="field-note">{command.phase === 'sending' ? '正在保存，请保留当前页面。' : window.WorkbenchTerms.outcomes.pending('报工')} <Button icon="refresh-cw" disabled={command.phase !== 'pending'} onClick={command.check}>{window.WorkbenchTerms.actions.query_result}</Button></div>}
       {command.phase === 'done' && <div className="field-note">{command.result.result === 'unchanged' ? '内容没有变化，已确认。' : window.WorkbenchTerms.outcomes.done('保存')} <Button icon="check" onClick={onDone}>刷新已确认结果</Button></div>}
     </div>;

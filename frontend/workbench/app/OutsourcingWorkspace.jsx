@@ -51,11 +51,14 @@
         <Button icon="history" onClick={() => setDialog({ item: null })}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次登记结果'}</Button></div></div>}
       <ErrorBox error={read.error} />{read.loading && !shown && <EmptyState kind="loading" title="正在读取外协登记" />}
       {data && <><div className="os-muted" role="status">{read.loading ? '正在刷新外协登记…' : window.WorkbenchTerms.data_as_of(P.when(shown.meta.as_of))}</div><div className="os-scroll os-register-scroll wb-table-shell wb-table-frame" data-sticky-head data-sticky-actions aria-busy={read.loading}><table className="os-table wb-table"><caption className="wb-visually-hidden">外协发出与回厂登记</caption><thead><tr>
-        <th scope="col" className="wb-col-key">批次 / 成员</th><th scope="col">供应商 / 状态</th><th scope="col">实际发出</th><th scope="col">计划 / 实际回厂</th><th scope="col" className="wb-col-actions">操作</th></tr></thead><tbody>{data.items.map(r => <tr key={r.outsourcing_ref} data-outsourcing-ref={r.outsourcing_ref} data-selected={selected === r.outsourcing_ref} aria-selected={selected === r.outsourcing_ref}>
-          <td className="wb-col-key"><b>{P.value(r.target.batch.business_code)} · {P.value(r.target.batch.label)}</b><div className="os-muted">{r.target.kind === 'merged' ? '合并发出' : '单工序'} · {r.target.operations.map(o => P.value(o.business_code)).join('、')}</div></td>
+        <th scope="col" className="wb-col-key">批次 / 成员</th><th scope="col">供应商 / 状态</th><th scope="col">实际发出</th><th scope="col">计划 / 实际回厂</th><th scope="col" className="wb-col-actions">操作</th></tr></thead><tbody>{data.items.map(r => {
+          const codes = r.target.operations.map(o => P.value(o.business_code)).join('、');
+          return <tr key={r.outsourcing_ref} data-outsourcing-ref={r.outsourcing_ref} data-selected={selected === r.outsourcing_ref} aria-selected={selected === r.outsourcing_ref}>
+          <td className="wb-col-key"><b>{P.value(r.target.batch.business_code)} · {P.value(r.target.batch.label)}</b><div className="os-muted">{r.target.kind === 'merged' ? '合并发出' : '单工序'} · {codes}</div></td>
           <td>{P.value(r.target.supplier.label)}<div><span className={'os-state ' + (r.overdue ? 'danger' : !r.awaiting_return ? 'success' : r.confirmedState === 'awaiting_confirmation' ? 'warning' : '')}>{r.overdue ? '超期未回 · ' : ''}{C.states[r.confirmedState]}</span></div></td>
           <td>{P.when(r.sent)}</td><td>{P.when(r.planned)}<div className="os-muted">{r.returned === null ? '未回厂' : P.when(r.returned)}</div></td>
-          <td className="wb-col-actions"><Button className="mini" icon="search" aria-label={'查看外协登记 ' + r.target.operations.map(o => P.value(o.business_code)).join('、')} onClick={() => open(r.outsourcing_ref)}>详情</Button></td></tr>)}</tbody></table></div>
+          <td className="wb-col-actions"><Button className="mini" icon="search" aria-label={'查看外协登记 ' + codes} onClick={() => open(r.outsourcing_ref)}>详情</Button></td></tr>;
+        })}</tbody></table></div>
         {!data.items.length && <EmptyState kind={q.status === 'all' ? 'empty' : 'filtered'}
           title={data.page.total ? '当前页没有登记' : q.status === 'all' ? '还没有外协登记' : '没有' + filterNames[q.status] + '的登记'}
           hint={q.status === 'all' ? '有可登记的外协工序时，点「新增外协登记」开始登记。' : '可以切换筛选查看其他登记。'}

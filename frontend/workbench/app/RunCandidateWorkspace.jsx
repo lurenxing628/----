@@ -124,6 +124,7 @@
         setScope(next); setRangeError(null); setSelected(null);
       } catch (error) { setRangeError(error); }
     }
+    const historyError = tab === 'history' ? ownershipError(historyRead) : null;
     return <div className="plana run-candidate-workspace" data-run-candidate-workspace>
       <h2 className="wb-page-title">{isReference ? '排产时的正式计划甘特' : view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'}</h2>
       <div className="rc-heading scheduling-page-tools">{navigation}<div className="rc-tools">
@@ -176,7 +177,7 @@
             if (target >= 0) { event.preventDefault(); tabs[target].focus(); tabs[target].click(); }
           }}>
             {['tasks', 'unplanned', ...(view === 'delay' || isReference ? [] : ['delivery', 'history'])].map(t => <C.Button key={t} role="tab" id={'rc-detail-tab-' + t} aria-controls="rc-detail-panel" tabIndex={tab === t ? 0 : -1} icon={t === 'tasks' ? 'chart-gantt' : t === 'history' ? 'history' : 'circle-alert'} aria-selected={tab === t} onClick={() => setTab(t)}>{t === 'tasks' ? '任务安排' : t === 'delivery' ? '交付风险' : t === 'history' ? '采用记录' : '未安排明细'}</C.Button>)}</div></div>
-            <div role="tabpanel" id="rc-detail-panel" aria-labelledby={'rc-detail-tab-' + tab}>{tab === 'history' ? <><C.ErrorBox error={ownershipError(historyRead)} />{historyRead.result && !ownershipError(historyRead) && <Analysis.History data={historyRead.result.data}
+            <div role="tabpanel" id="rc-detail-panel" aria-labelledby={'rc-detail-tab-' + tab}>{tab === 'history' ? <><C.ErrorBox error={historyError} />{historyRead.result && !historyError && <Analysis.History data={historyRead.result.data}
               onPlan={onNavigate && (plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref }))} />}</> :
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
                 onBatch={onNavigate && (row => onNavigate('gantt', { ...historyOrigin, run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :

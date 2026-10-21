@@ -2,7 +2,7 @@
   'use strict';
   // Load after CalendarFileContract.js and ResourceMaterialActions.jsx.
   const K = window.APSCalendarContract;
-  const { Button, Field } = window.ResourceControls;
+  const { Field } = window.ResourceControls;
   function monthRange(month) {
     const key = K.monthKey(month.year, month.month);
     return { start_date: key + '-01', end_date: key + '-' + K.monthDays(month.year, month.month) };
@@ -54,6 +54,4 @@
     return <window.ResourceFileActionFlow key={kind} {...props} request={request} contract={contract} />;
   }
   window.CalendarFileActions = CalendarFileActions;
-  window.CalendarFileActions.ExportScope = ExportScope;
-  window.CalendarFileActions.monthRange = monthRange;
 })();

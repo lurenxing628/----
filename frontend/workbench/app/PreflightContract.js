@@ -123,7 +123,7 @@
     ['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks'].forEach((key, index) => {
       if (c[key] !== d.tasks.filter(row => row.status === taskStates[index]).length) throw fail('排产检查计数不一致。');
     });
-    if (c.held_tasks !== heldRows.length || c.hold_window_tasks !== heldRows.filter(row => row.held.basis === 'hold_window').length
+    if (c.held_tasks !== heldRows.length || c.hold_window_tasks !== heldRows.length
         || d.effective_config.hold_window === null && c.held_tasks !== 0) throw fail('排产检查计数不一致。');
     const batchRows = d.included_batches.concat(d.excluded_batches);
     const taskRefs = new Set(d.tasks.map(row => row.operation_ref));

@@ -5,7 +5,7 @@
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const own = (v, k) => Object.prototype.hasOwnProperty.call(v, k);
-  const shape = (v, required, optional = []) => object(v) && required.every(k => own(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
+  const shape = (v, required, optional = []) => object(v) && required.every(k => own(v, k)) && Object.keys(v).every(k => required.includes(k) || optional.includes(k));
   function check(value, message = '读到的排产记录数据不完整，请刷新重试。') {
     if (!value) { const error = new Error(message); error.code = 'invalid_response'; throw error; }
   }
@@ -52,12 +52,14 @@
     const recorded = keys.concat(s.hold_window === undefined ? [] : ['hold_window']);
     check(shape(s, recorded.concat(['selection', 'basis', 'data_gaps'], s.run_options === undefined ? [] : ['run_options'])) && s.selection === 'explicit_batches' && s.basis === 'captured_at_run_admission'
       && Array.isArray(s.data_gaps) && s.data_gaps.every(gap) && s.data_gaps.every(g => recorded.includes(g.field) && ['not_recorded', 'invalid_stored_value'].includes(g.code))
-      && holdWindow(s.hold_window) && s.data_gaps.filter(g => g.field === 'hold_window').length <= (s.hold_window === null ? 1 : 0));
+      && holdWindow(s.hold_window));
+    const gapFields = new Set(s.data_gaps.map(g => g.field));
     check(['start_date', 'end_date'].every(k => s[k] === null || date(s[k])) && (s.start_date === null || s.end_date === null || s.start_date <= s.end_date)
       && (s.ready_check === null || typeof s.ready_check === 'boolean') && [null, 'auto_assign', 'exclude'].includes(s.missing_resource_policy)
       && (s.material_strategy === undefined || [null, 'strict', 'stage', 'split'].includes(s.material_strategy))
-      && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0));
-    check(keys.every(k => s.data_gaps.filter(g => g.field === k).length === (s[k] === null ? 1 : 0)));
+      && [null, 'preserve_actuals'].includes(s.completed_policy) && (s.batch_count === null || count(s.batch_count) && s.batch_count > 0)
+      && gapFields.size === s.data_gaps.length && (s.hold_window === null || !gapFields.has('hold_window')));
+    check(keys.every(k => gapFields.has(k) === (s[k] === null)));
     check(s.run_options === undefined || window.RunGenerationContract.runOptions(s.run_options));
   }
   function run(v) {

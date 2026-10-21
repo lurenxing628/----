@@ -13,10 +13,10 @@
   }
   function Summary({ data }) {
     const c = data.comparison;
-    return <><div className="tt-summary">{[['overdue_count', T.overdue_count], ['total_tardiness_hours', T.total_tardiness_hours + '（小时）']].map(([metric, label]) =>
+    return <div className="tt-summary">{[['overdue_count', T.overdue_count], ['total_tardiness_hours', T.total_tardiness_hours + '（小时）']].map(([metric, label]) =>
       <div key={metric}><span>{label}</span><strong><DeliveryValue summary={c.delivery_summary} metric={metric} /></strong></div>)}{[[c.changed_operations, '调整工序'], [c.moved_operations, '换设备工序']].map(([value, label]) =>
       <div key={label}><span>{label}</span><strong>{U.number(value)}</strong></div>)}<div><span>{T.changeover_count}</span><strong>{c.changeovers === null ? '未知' : U.number(c.changeovers)}</strong>{c.changeovers === null && c.changeover_reason && <small>{c.changeover_reason}</small>}</div>
-      {c.preparation_common && <div><span>新安排准备标准工时</span><strong><RequirementMetric value={c.preparation_common.after.scheduled_setup_hours} /></strong></div>}</div></>;
+      {c.preparation_common && <div><span>新安排准备标准工时</span><strong><RequirementMetric value={c.preparation_common.after.scheduled_setup_hours} /></strong></div>}</div>;
   }
   function RequirementMetric({ value }) {
     return <>{value.state === 'not_applicable' ? '不适用' : U.number(value.value)}{value.value === null && <small>已知小计 {U.number(value.known_subtotal)} · 未知 {value.unknown_count} 道</small>}</>;
@@ -90,12 +90,11 @@
       try {
         const saved = history.state && history.state.trialAdoptionHistory;
         if (!data.scenario_ref || !saved || saved.scenario_ref !== data.scenario_ref) return { tab: null, error: null };
-        if (!H) throw new Error('dependency not wired: window.TrialAdoptionHistoryState');
         return { tab: H.restore(data.scenario_ref).tab, error: null };
       } catch (_) { return { tab: null, error: new Error('试调页签记录无法恢复，请刷新或清除本页页签记录。') }; }
     }
     const [entry, setEntry] = React.useState(readEntry), c = data.comparison;
-    const name = React.useMemo(() => window.TrialGantt.resourceNames(data), [data]);
+    const name = React.useMemo(() => window.TrialGantt.resourceNames(data), [data.resources]);
     // When the local preference cannot be read, the result still renders with defaults and the tab choice stays on this page.
     const [local, setLocal] = React.useState(null), values = preferences.value || local || V.defaults(data);
     const tab = entry.tab || values.result_tab;
@@ -105,12 +104,12 @@
         if (saved && saved.scenario_ref === data.scenario_ref) {
           const next = { ...current }; delete next.trialAdoptionHistory; history.replaceState(next, '', location.href);
         }
-        setEntry(readEntry());
+        setEntry({ tab: null, error: null });
       } catch (_) { setEntry({ ...entry, error: new Error('本页试调页签记录清除失败，请重试。') }); }
     }
     function selectTab(next) {
       if (!preferences.change({ result_tab: next })) setLocal({ ...values, result_tab: next });
-      try { if (H) H.remember(data.scenario_ref, { tab: next }); setEntry({ tab: next, error: null }); }
+      try { H.remember(data.scenario_ref, { tab: next }); setEntry({ tab: next, error: null }); }
       catch (_) { setEntry({ tab: next, error: new Error('本页试调页签记录保存失败，返回后可能无法恢复。') }); }
     }
     const arrangement = r => <>{name(r.machine_ref)}<br />{name(r.operator_ref)}<br />{U.timeLabel(r.start)}<br />{U.timeLabel(r.end)}</>;
@@ -121,7 +120,7 @@
       <U.Tabs value={tab} onChange={selectTab} label="试调结果" idPrefix="tt-result-tab-" panelId="tt-result-panel" options={[
       ['delivery', '批次对比'], ['capacity', '资源占用'], ['preparation', '准备与切换'], ['history', '调整记录'], ['adoptions', '采用记录'], ['issues', '约束问题'], ['tasks', '全部安排'], ['unplanned', '未安排工序']]} />
       <div role="tabpanel" id="tt-result-panel" aria-labelledby={'tt-result-tab-' + tab}>
-        {tab === 'adoptions' && (window.TrialAdoptionHistory ? <window.TrialAdoptionHistory data={data} /> : <p role="alert">{window.WorkbenchTerms.outcomes.unavailable}</p>)}
+        {tab === 'adoptions' && <window.TrialAdoptionHistory data={data} />}
         {tab === 'preparation' && <Preparation data={data} name={name} onSelect={onSelect} />}
         {tab === 'delivery' && <><details><summary>交期数据范围</summary><p>原安排：{T.delivery_coverage(c.before_delivery_summary)}</p><p>当前试调：{T.delivery_coverage(c.delivery_summary)}</p></details>
           <U.Table rows={c.batches} label="批次交付对比" columns={[

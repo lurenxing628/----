@@ -118,7 +118,7 @@
     return { ...state, locked, submit, check, reset };
   }
   const nonnegative = value => Number.isFinite(value) && value >= 0;
-  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const object = C.object;
   const issues = value => Array.isArray(value) && value.every(item => object(item) && typeof item.message === 'string');
   function calendarSummary(value) {
     const nullable = value => value === null || nonnegative(value);

@@ -1,13 +1,13 @@
 (function () {
   'use strict';
   const { validate, hours, duration } = window.APSWorkPeriods;
-  function Fields({ value, onChange, disabled, start = '08:00', end = '16:00', label = '工作时段' }) {
+  function Fields({ value, onChange, disabled, start, end, label = '工作时段' }) {
     const { Button, Field } = window.ResourceControls;
     if (value == null) return <div className="field full"><Button disabled={disabled}
       onClick={() => onChange([{ start: start || '08:00', end: end || '16:00', day_offset: 0 }])}>分段设置工作时间</Button>
       <span className="muted"> 可分别填写上午、下午或夜班，中间休息不计工时。</span></div>;
     const change = (index, key, next) => onChange(value.map((row, i) => i === index ? { ...row, [key]: next } : row));
-    const error = validate(value), total = hours(value);
+    const error = validate(value);
     return <div className="field full" role="group" aria-label={label}>
       <b>{label}</b>
       {value.map((row, index) => <div className="fgrid" key={index}>
@@ -23,7 +23,7 @@
       </div>)}
       <div className="wb-actions"><Button disabled={disabled || value.length >= 8}
         onClick={() => onChange([...value, { start: '', end: '', day_offset: 0 }])}>新增工作时段</Button>
-        <span className="muted">{error || '实际工作 ' + duration(total) + '；时段之间不排产。'}</span></div>
+        <span className="muted">{error || '实际工作 ' + duration(hours(value)) + '；时段之间不排产。'}</span></div>
     </div>;
   }
   window.WorkPeriodFields = Fields;

@@ -83,7 +83,7 @@
           if (!acquired) throw new Error('另一个页面正在确认采用，请稍后刷新上次操作记录。');
           if (!alive.current) return;
           const original = A.pending().begin(preview, values, active.current);
-          active.current = original; setIntent(original); setDraft(values); setPreview(null); setConsent(false); setReplacedInfo(null);
+          active.current = original; setIntent(original); setDraft(values); setPreview(null); setConsent(false);
           try { acceptResult(await api.adopt(original, preview.write_context.write_token), original); }
           catch (e) {
             if (A.isRejected(e)) {
@@ -123,7 +123,7 @@
       <U.Button icon={pending ? 'refresh-cw' : 'check'} className="btn primary" disabled={!intent && (!A.ref(candidateRef) || !!storageError)} onClick={() => {
         if (intent) { setOpen(true); if (pending && !result) refresh(); }
         else inspect();
-      }} aria-expanded={open} aria-label={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : label.trim()} title={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : undefined} busy={busy && !intent}>{label.trim()}</U.Button>
+      }} aria-expanded={open} aria-label={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : label} title={!intent && targetDisplay ? '采用前核对 ' + targetDisplay.label : undefined} busy={busy && !intent}>{label}</U.Button>
       {storageError && !open && <span className="ra-inline" role="alert">{storageError}<U.Button icon="refresh-cw" disabled={busy} onClick={() => { readStorage(); refresh(); }}>刷新上次操作记录</U.Button></span>}
       {intent && !open && <span className="ra-inline">{result ? '采用结果已确认。' : pending ? '上次操作已保留，结果待确认。' : '上次没有采用，请重新预检。'}</span>}
       {open && <U.Dialog value={display} intent={intent} result={result} preview={preview} draft={draft} consent={consent} busy={busy || checking}

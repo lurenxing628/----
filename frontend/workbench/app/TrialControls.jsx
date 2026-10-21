@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const { Button, Icon, Modal } = window.ResourceControls;
+  const { Button, Modal } = window.ResourceControls;
   const timeLabel = v => v ? window.WorkbenchFormat.compactDateTime(v) : '未记录';
   const number = v => v === null || v === undefined ? '暂无数据' : typeof v === 'number' ? window.WorkbenchFormat.number(v, { digits: Number.isInteger(v) ? 0 : 2 }) : String(v);
   const percent = v => v === null || v === undefined ? '暂无数据' : window.WorkbenchFormat.percent(v, 2);
@@ -44,14 +44,12 @@
   // 一个「导出」按钮打开弹窗，弹窗里列出全部可下载格式；和计划、候选、现场实际甘特的导出走法一致。
   function Download({ data }) {
     const [error, setError] = React.useState(null), [open, setOpen] = React.useState(false), [notice, setNotice] = React.useState('');
-    function save(section = 'csv') {
-      let url, a;
+    function save(section) {
       try {
         const output = window.TrialExport[section](data);
-        const blob = new Blob([output.text], { type: output.mime });
-        url = URL.createObjectURL(blob); a = document.createElement('a'); a.href = url; a.download = output.filename;
-        document.body.appendChild(a); a.click(); setError(null); setNotice(window.WorkbenchTerms.download_started(output.filename)); setOpen(false);
-      } catch (e) { setError(e); } finally { if (a) a.remove(); if (url) setTimeout(() => URL.revokeObjectURL(url), 1000); }
+        window.APSWorkbenchTransport.saveBlob(output.filename, new Blob([output.text], { type: output.mime }));
+        setError(null); setNotice(window.WorkbenchTerms.download_started(output.filename)); setOpen(false);
+      } catch (e) { setError(e); }
     }
     return <><span className="tt-tools"><Button transfer="export" onClick={() => { setError(null); setNotice(''); setOpen(true); }}>导出</Button>
       {notice && <span role="status" className="tt-muted">{notice}</span>}</span>
@@ -63,5 +61,5 @@
           <p>准备需求 CSV：逐工序原需求与执行目标、准备和加工标准工时。工种切换 CSV：完整汇总与前后工序事件。</p>
           <p>原始数据 JSON：包含任务、资源、班表、报工和调整记录。</p><ErrorBox error={error} /></div></Modal>}</>;
   }
-  window.TrialControls = { Button, Icon, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, percent, hours, statusLabel, runStatusLabel, candidateStatusLabel, sourceLabel };
+  window.TrialControls = { Button, Modal, ErrorBox, Pager, Tabs, Table, Issues, Download, timeLabel, number, percent, hours, statusLabel, runStatusLabel, candidateStatusLabel, sourceLabel };
 })();

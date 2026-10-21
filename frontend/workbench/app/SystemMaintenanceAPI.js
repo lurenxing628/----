@@ -75,7 +75,7 @@
   function result(value, intent) {
     const external = object(value) && object(value.meta) && value.meta.result_source === 'external_maintenance_journal';
     const data = external ? window.SystemRestoreStatus.envelope(value) : envelope(value, false);
-    if (data.host) window.SystemRestoreStatus.validateHost(data.host);
+    if (!external && data.host) window.SystemRestoreStatus.validateHost(data.host);
     if (data.kind === 'not_recorded') { check(text(data.message)); return { ...data, terminal: false }; }
     if (data.kind === 'config') { check(intent.action === 'config'); return receipt(data.command); }
     const op = data.operation;
@@ -284,5 +284,5 @@
       }
     };
   }
-  window.SystemMaintenanceAPI = { create, pending, inspectPending, PENDING_KEY, fields, actions, states, terminalStates, collection, config, receipt, result, blocked, normalize, recordContext, pageContext, backupFile, maintenanceEvent };
+  window.SystemMaintenanceAPI = { create, pending, inspectPending, PENDING_KEY, fields, actions, collection, blocked, normalize, recordContext, pageContext };
 })();

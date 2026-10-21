@@ -43,7 +43,7 @@
       <div><dt>缺资源工序</dt><dd>{value.missing_resource_policy === 'auto_assign' ? '自动分配' : '暂不排'}</dd></div>
       <div><dt>不重排时段</dt><dd data-hold-window>{holdText(value, effective)}</dd></div>
       <div><dt>已有报工</dt><dd>保留已开工和已完工的记录</dd></div>
-      {value && preview.run_options && <RunOptions value={preview.run_options} timeBudget={timeBudget} />}</dl>;
+      {preview.run_options && <RunOptions value={preview.run_options} timeBudget={timeBudget} />}</dl>;
   }
   function Reasons({ rows }) {
     const groups = new Map();
@@ -130,5 +130,5 @@
       </p>}
     </section>;
   }
-  window.RunJobControls = { Button, Confirmation, Scope, Reasons, Record, Status, BusinessScope };
+  window.RunJobControls = { Button, Confirmation, Scope, Reasons, Record };
 })();

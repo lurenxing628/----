@@ -102,5 +102,5 @@
         {command.notice && <div className="os-note" role="status">{command.notice}</div>}
       </div></Modal>;
   }
-  window.OutsourcingControls = { value, when, Pager, Target, Facts, TargetPicker, FormFields, Pending, Editor };
+  window.OutsourcingControls = { value, when, Pager, Target, Facts, Editor };
 })();

@@ -110,8 +110,8 @@
     const { view, context } = page;
     const initialContext = Object.keys(context).length ? context : undefined;
     const batchAdapter = React.useMemo(() => window.APSBatchAPI.create(), []);
-    const [preference, setPreference] = React.useState(window.APSWorkbenchTheme.get());
-    const [density, setDensity] = React.useState(window.WorkbenchDensity.get());
+    const [preference, setPreference] = React.useState(() => window.APSWorkbenchTheme.get());
+    const [density, setDensity] = React.useState(() => window.WorkbenchDensity.get());
     React.useEffect(() => {
       root.setAttribute('data-workbench-boot', 'ready');
       window.dispatchEvent(new Event('aps-workbench-ready'));
@@ -143,7 +143,7 @@
       const restore = () => { restoring.current = true; memory.cancel(); setMessages([]); setNavigationError('');
         let next = currentPage();
         const captured = !next.error && pageSnapshots.current.get(next.key);
-        if (captured) { window.WorkbenchNavigation.remember(boot, next, captured.scroll, captured.context); next = currentPage(); }
+        if (captured) { window.WorkbenchNavigation.remember(boot, next, captured.scroll, captured.context); next = history.state.workbench; }
         activePage.current = next; setPage(next); };
       if (!activePage.current.error) historyGuard.current = window.WorkbenchNavigation.guardHistory(boot, {
         hasDirty: () => window.WorkbenchGuards.hasDirty(), confirmLeave: () => window.WorkbenchGuards.confirmLeave(),
@@ -185,7 +185,7 @@
     };
     const switchTab = target => {
       if (target === view) return;
-      try { navigate(target, (pageSnapshots.current.get(page.key) || {}).context || window.WorkbenchNavigation.read(boot).context); }
+      try { navigate(target, (pageSnapshots.current.get(page.key) || {}).context || context); }
       catch (error) { setNavigationError(error.message); }
     };
     const openHelp = async () => {

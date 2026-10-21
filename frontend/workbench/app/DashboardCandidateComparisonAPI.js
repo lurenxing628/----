@@ -18,8 +18,8 @@
       && typeof value.available === 'boolean' && count(value.captured_task_count) && typeof value.comparison_available === 'boolean'
       && (value.reason === null || C.object(value.reason) && C.text(value.reason.code) && C.text(value.reason.message));
   }
-  function summary(value, rows) {
-    C.check(window.DeliveryProjectionContract.summary(value) && value.batch_count === rows.length
+  function summary(value, batchCount) {
+    C.check(window.DeliveryProjectionContract.summary(value) && value.batch_count === batchCount
       && shape(value.changeovers, ['value', 'reason']) && nullable(count)(value.changeovers.value)
       && (value.changeovers.value === null ? C.text(value.changeovers.reason) : value.changeovers.reason === null));
   }
@@ -54,13 +54,13 @@
       && C.equal(d.basis, { comparison: 'candidate_minus_admission_official', batch_scope: 'admission_selected_batches',
         delivery: 'complete_captured_batch_operations', resources: 'same_range_daily_peak_available_occupancy',
         changeovers: 'same_range_scheduled_operation_type_changes', current_entities_consulted: false })
-      && Array.isArray(d.batches) && d.batches.length === expected.length && C.equal(d.batches.map(row => row.batch_ref).slice().sort(), expected)
+      && Array.isArray(d.batches) && d.batches.length === expected.length && C.equal(d.batches.map(row => row.batch_ref).sort(), expected)
       && Array.isArray(d.resources) && typeof d.resource_scope_complete === 'boolean' && count(d.resource_scope_unknown_rows)
       && d.resource_scope_complete === (d.resource_scope_unknown_rows === 0));
     d.batches.forEach(row => { delivery(row.before, d.baseline.available); delivery(row.after); C.check(row.batch_ref === row.before.batch_ref && row.batch_ref === row.after.batch_ref
       && row.batch_id === row.before.batch_id && row.batch_id === row.after.batch_id && Array.isArray(row.change_kinds));
       delta(row.delay_delta_hours); delta(row.finish_delta_hours); });
-    summary(d.summary.before, d.batches.map(row => row.before)); summary(d.summary.after, d.batches.map(row => row.after));
+    summary(d.summary.before, d.batches.length); summary(d.summary.after, d.batches.length);
     delta(d.summary.changeover_delta);
     d.resources.forEach(row => { C.check(C.ref(row.resource_ref) && ['machine', 'operator'].includes(row.kind)); D.pressure(row.before); D.pressure(row.after); delta(row.delta); });
     C.check(new Set(d.resources.map(row => row.resource_ref)).size === d.resources.length

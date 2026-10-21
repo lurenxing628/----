@@ -11,7 +11,7 @@
       const matchesDraft = incoming && draft && A.fields.every(field => String(draft[field.key]) === String(incoming.values[field.key]));
       if (incoming && (!changed || matchesDraft)) { setBase(incoming); setDraft({ ...incoming.values }); setValidated(false); }
     }, [incoming]);
-    const ready = incoming && base === incoming && !request.loading && !request.error;
+    const ready = incoming && base === incoming;
     const reason = command.locked ? command.lockedReason : !ready ? '请先点「刷新配置」读取正式配置。' : '';
     function refreshNow() { setReplace(false); setBase(null); setDraft(null); reload(); }
     return <div className="sm-configuration sm-configuration-full">

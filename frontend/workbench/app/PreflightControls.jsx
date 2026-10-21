@@ -99,7 +99,7 @@
       <details className="pf-reasons"><summary>原因明细 · {data.run_blocked_reasons.length + data.warnings.length} 项</summary>
         <div className="pf-reason-list">{Array.from(groups, ([code, items]) => <div key={code}>{items.map((item, index) => <div className="pf-reason-item" key={index}
           data-reason-code={item.code} data-operation-ref={item.operation_ref} data-batch-ref={item.batch_ref}>
-          {objectLabel(item) && <strong>{objectLabel(item)}： </strong>}{item.message}<window.WorkbenchReference entries={{ '原因编号': item.code, '工序编号': item.operation_ref, '批次编号': item.batch_ref }} /></div>)}</div>)}</div>
+          <strong>{objectLabel(item)}： </strong>{item.message}<window.WorkbenchReference entries={{ '原因编号': item.code, '工序编号': item.operation_ref, '批次编号': item.batch_ref }} /></div>)}</div>)}</div>
       </details></div>;
   }
   window.PreflightControls = { Button, ErrorBox, Rules, Metrics, Reasons, HoldSummary };

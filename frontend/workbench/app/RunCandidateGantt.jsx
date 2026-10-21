@@ -44,7 +44,7 @@
     function hit(event) { const box = ref.current.getBoundingClientRect(), at = model.start + (event.clientX - box.left + left) / scale;
       return row.baselinePoint ? window.PointGanttModel.hit(items, event.clientX - box.left, event.clientY - box.top, model, width, left, 15) : M.visibleItems(items, at, at + 0.001)[0]; }
     const choose = item => row.baseline ? onBaselineSelect(item) : onSelect(item.task);
-    const selectedItem = row.items.find(item => !row.baseline && selected && item.task.row_ref === selected.row_ref);
+    const selectedItem = !row.baseline && selected ? row.items.find(item => item.task.row_ref === selected.row_ref) : null;
     return <canvas ref={ref} data-candidate-lane={row.baseline ? undefined : true} data-baseline-lane={row.baseline ? true : undefined} data-item-count={row.items.length} role="button" tabIndex={0} aria-label={row.label + '，' + M.laneLabel(row, reference) + '，' + row.items.length + ' 道安排' + (selectedItem ? '\n' + M.title(selectedItem.task) : '')}
       style={{ position: 'absolute', left, width: viewport, height: row.height }}
       onMouseMove={event => { const item = hit(event); onHover(item ? { taskRef: row.baseline ? null : item.task.row_ref, text: row.baseline ? B.title(item) : M.title(item.task), x: event.clientX, y: event.clientY } : null); }} onMouseLeave={() => onHover(null)}

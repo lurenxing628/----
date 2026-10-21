@@ -22,7 +22,7 @@
       else if (same(fresh, base) || same(draft, fresh)) { if (draft) rows.push(draft); }
       else conflicts.push({ seq, before: base || null, local: draft || null, latest: fresh || null });
     });
-    return { rows: rows.slice().sort(order), conflicts: conflicts.sort(order) };
+    return { rows: rows.sort(order), conflicts: conflicts.sort(order) };
   }
   function resolve(merged, choices) {
     if (merged.conflicts.some(row => !['local', 'latest'].includes(choices[row.seq]))) throw new Error('请逐项选择冲突工序要保留的内容。');

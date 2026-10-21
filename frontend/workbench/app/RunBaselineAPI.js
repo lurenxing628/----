@@ -50,12 +50,12 @@
       && (row.process_type_label === undefined || nullable(text)(row.process_type_label))
       && Array.isArray(row.reasons) && row.reasons.every(reason) && Array.isArray(row.baseline_segments));
     seen.add(row.operation_ref);
-    for (const value of row.baseline_segments) { interval(value, true); check(!segments.has(value.row_ref)); segments.add(value.row_ref); }
+    for (const value of row.baseline_segments) { interval(value, true); check(!segments.has(value.row_ref) && !candidateRefs.has(value.row_ref)); segments.add(value.row_ref); }
     const c = row.candidate, b = row.baseline_segments;
     check(typeof row.comparison_available === 'boolean' && shape(row.delta, deltaKeys)
       && ['start_hours', 'end_hours', 'elapsed_hours', 'effective_processing_hours'].every(key => nullable(finite)(row.delta[key]))
       && ['machine_changed', 'operator_changed', 'supplier_changed'].every(key => row.delta[key] === null || typeof row.delta[key] === 'boolean'));
-    if (c) { interval(c, false); check(row.row_ref === c.row_ref && !candidateRefs.has(c.row_ref) && row.candidate_operation_status === 'scheduled'); candidateRefs.add(c.row_ref); }
+    if (c) { interval(c, false); check(row.row_ref === c.row_ref && !candidateRefs.has(c.row_ref) && !segments.has(c.row_ref) && row.candidate_operation_status === 'scheduled'); candidateRefs.add(c.row_ref); }
     else check(row.row_ref === null && [null, 'skipped', 'unscheduled'].includes(row.candidate_operation_status));
     if (q.range_start && c) {
       const sides = [c].concat(b);
@@ -102,7 +102,7 @@
     check(object(d.counts) && Object.keys(d.counts).every(key => statuses.includes(key) && count(d.counts[key]))
       && count(d.execution_affected_count) && typeof b.comparison_available === 'boolean'
       && (b.reason === null || reason(b.reason))
-      && segments.size <= b.captured_task_count && [...segments].every(r => !candidateRefs.has(r)));
+      && segments.size <= b.captured_task_count);
     if (!q.range_start && !q.batch_ref) check(segments.size === b.captured_task_count);
     const rows = new Map(d.comparisons.map(r => [r.operation_ref, r]));
     workspace.tasks.forEach(t => {

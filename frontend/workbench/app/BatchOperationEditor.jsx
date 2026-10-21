@@ -12,10 +12,7 @@
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ dirty: !done && keys.some(key => draft[key] !== original[key]), locked: command.locked,
       message: '批次工序补充资料尚未保存，离开会丢失本次填写。' });
     React.useEffect(() => { if (currentError) window.ResourceControls.focusFirstInvalid(formElement.current); }, [currentError]);
-    async function close(detail) {
-      if (command.locked) return;
-      if (detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner || await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose();
-    }
+    async function close() { if (!command.locked && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
     const choices = S.useQuery(signal => adapter.operationChoices(entity.ref, operation.ref, signal), [adapter, entity.ref, operation.ref]);
     const catalogs = choices.result && choices.result.data;
     const names = { machine_ref: '设备', operator_ref: '人员', supplier_ref: '供应商', setup_hours: '换型工时（小时）', unit_hours: '单件工时（小时）', external_days: '外协周期（天）' };
@@ -50,16 +47,19 @@
         setError(null); await command.submit('batch', 'operation_update', entity.ref, entity.write_context, { operation_ref: operation.ref, fields });
       } catch (error) { setError(error); }
     }
-    return <Modal title={'工序 ' + operation.sequence + ' · ' + operation.label} icon="wrench" guardOwner={guardOwner} locked={command.locked} onClose={close}
+    return <Modal title={'工序 ' + operation.sequence + ' · ' + operation.label} icon="wrench" guardOwner={guardOwner} locked={command.locked} onClose={onClose}
       footer={<><Button onClick={close} disabled={command.locked}>{done || merged ? '关闭' : '取消'}</Button>{!done && !merged && <Button form={form} type="submit" icon="check" className="btn primary"
         disabled={locked || !catalogs || !!mismatch || unsuitable.length > 0} reason={B.reason(entity.write_context, 'operation_update', source)}>保存工序</Button>}</>}>
       <form id={form} ref={formElement} className="modal-b form" onSubmit={submit} noValidate><div className="fgrid batch-fields">
         {keys.map(key => <Field key={key} label={names[key]} path={'fields.' + key} error={currentError}>{key.endsWith('_ref') ? <select value={draft[key]} disabled={locked || !catalogs || merged} onChange={event => setDraft({ ...draft, [key]: event.target.value })}>
-          <option value="">未选</option>{catalogs && catalogs[catalogKeys[key]].map(row => <option key={row.ref} value={row.ref} disabled={row.eligible === false || row.status !== 'active' || key === 'operator_ref' && allowed && !allowed.includes(row.ref)}>{row.business_code} · {row.label}{row.unavailable_reason ? '（' + row.unavailable_reason + '）' : key === 'operator_ref' && allowed && !allowed.includes(row.ref) ? '（未获设备授权）' : ''}</option>)}</select>
+          <option value="">未选</option>{catalogs && catalogs[catalogKeys[key]].map(row => {
+            const unauthorized = key === 'operator_ref' && allowed && !allowed.includes(row.ref);
+            return <option key={row.ref} value={row.ref} disabled={row.eligible === false || row.status !== 'active' || unauthorized}>{row.business_code} · {row.label}{row.unavailable_reason ? '（' + row.unavailable_reason + '）' : unauthorized ? '（未获设备授权）' : ''}</option>;
+          })}</select>
           : <input value={draft[key]} type="text" inputMode="decimal" disabled={locked} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />}</Field>)}
-      </div>{merged && <p>{operation.external_group.start_sequence != null && operation.external_group.end_sequence != null
-        ? '工序 ' + operation.external_group.start_sequence + ' 至 ' + operation.external_group.end_sequence : '合并外协段'} · 整段周期 {window.WorkbenchFormat.number(operation.external_group.total_days, { digits: 20, trim: true })} 天（只读）</p>}
-        {merged && <p>合并外协段不能逐道更换供应商。请在工艺资料中整段改派，再到批次中预检工序更新。</p>}
+      </div>{merged && <><p>{operation.external_group.start_sequence != null && operation.external_group.end_sequence != null
+        ? '工序 ' + operation.external_group.start_sequence + ' 至 ' + operation.external_group.end_sequence : '合并外协段'} · 整段周期 {window.WorkbenchFormat.number(operation.external_group.total_days, { digits: 20, trim: true })} 天（只读）</p>
+        <p>合并外协段不能逐道更换供应商。请在工艺资料中整段改派，再到批次中预检工序更新。</p></>}
         {allowed && <p style={mismatch ? { color: 'var(--ui-danger-text)' } : undefined}>{mismatch ? '所选人员未获设备操作授权。' : '设备授权人员：'}{catalogs.operators.filter(row => allowed.includes(row.ref)).map(row => row.label).join('、') || '无'}</p>}
         {unsuitable.length > 0 && <p role="status">{unsuitable.join('；')}</p>}
         <ErrorBox error={error} excludePaths={paths} /><ErrorBox error={choices.error} /><window.ResourceForms.Feedback command={command} excludePaths={error ? [] : paths} />

@@ -8,7 +8,7 @@
   const key = v => text(v) && /^adoption-[a-f0-9]{48}$/.test(v), rejections = new WeakSet(), replacedProofs = new WeakMap();
   function check(valid, message = '读到的采用数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }
   function shape(v, required, optional = []) {
-    return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
+    return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.includes(k) || optional.includes(k));
   }
   function contextRef(v) {
     if (!text(v)) return false;
@@ -44,7 +44,8 @@
       && shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, [ACTION]) && issues(c.blocked_reasons));
     check(d.data_context_ref === undefined || contextRef(d.data_context_ref));
     if (validation.can_adopt === true) {
-      check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context'], ['data_context_ref']) && Boolean(overview(d))
+      check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context'], ['data_context_ref'])
+        && summary({ candidate_ref: d.candidate_ref, run_ref: d.run_ref, baseline: d.baseline, task_count: d.task_count, scope_complete: d.scope_complete })
         && validation.status === 'valid' && validation.issues.length === 0 && c.capabilities[ACTION] === true && token(c.write_token)
         && time(c.expires_at) && c.expires_at > v.meta.as_of && c.blocked_reasons.length === 0);
     } else check(shape(d, ['candidate_ref', 'validation', 'write_context'], ['data_context_ref']) && validation.can_adopt === false && validation.status === 'blocked'

@@ -2,9 +2,6 @@
   'use strict';
   const C = window.DashboardContract, S = window.DashboardSession, P = window.DashboardPanels, { Button, ErrorBox } = window.ResourceControls;
   function durableScope(query) { const result = { ...query }; delete result.snapshot_ref; return result; }
-  async function readList(api, query, signal) {
-    return api.list(query, signal);
-  }
   function Content({ start, onNavigate }) {
     const api = React.useMemo(() => C.create(), []), command = S.useCommand(api);
     const [q, setQuery] = React.useState(start.q), [tab, setTab] = React.useState(start.tab), [selected, setSelected] = React.useState(start.selected);
@@ -15,7 +12,7 @@
     const [analysisBatch, setAnalysisBatch] = React.useState(start.analysisBatch);
     const [comparisonState, setComparisonState] = React.useState({ context: start.comparison, caption: null });
     const onComparisonState = React.useCallback(value => setComparisonState(previous => C.equal(previous, value) ? previous : value), []);
-    const list = S.useRead(signal => readList(api, q, signal), [api, q, revision]);
+    const list = S.useRead(signal => api.list(q, signal), [api, q, revision]);
     const result = list.result, data = result && result.data, snapshot = result && result.meta.snapshot_ref;
     const analysisData = data && data.analysis;
     const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
@@ -66,8 +63,7 @@
     const activeTab = Object.prototype.hasOwnProperty.call(activeTabs, tab) ? tab : 'items', tabKeys = Object.keys(activeTabs);
     window.WorkbenchPageContext.useSnapshot(readContext(), !!data && !list.loading && !list.error && !detail.error);
     const comparing = !external && activeTab === 'compare', showingAnalysis = !external && activeTab === 'analysis';
-    const plan = !list.loading && !list.error && !outsourcing && !comparing && (showingAnalysis
-      ? !analysisRead.loading && !analysisRead.error && analysisData && analysisData.plan : data && data.plan);
+    const plan = !list.loading && !list.error && !outsourcing && !comparing && (showingAnalysis ? analysisData && analysisData.plan : data && data.plan);
     const caption = comparing ? !list.loading && !list.error && !outsourcing ? comparisonState.caption : null : plan && plan.kind === 'official' && plan.is_current_official === true ? {
       reference: plan.plan_ref, label: '正式计划', name: plan.display_name, status: '当前正式',
       ...(Number.isSafeInteger(plan.version) && plan.version > 0 ? { version: '正式 v' + plan.version } : {})
@@ -78,7 +74,7 @@
       <div className="dy-note">外协物流登记概览</div><window.WorkbenchReference entries={{ '登记编号': outsourcing.outsourcing_ref }} />
       {typeof window.OutsourcingWorkspace === 'function' ? <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} /> : <div className="dy-note warning" role="status">{window.WorkbenchTerms.outcomes.unavailable}</div>}
     </div>;
-    return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !analysisRead.loading && !analysisRead.error} aria-busy={list.loading}>
+    return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !list.loading} aria-busy={list.loading}>
       <h2 className="wb-page-title">值班台</h2><header className="dy-page-toolbar"><div className="dy-tools"><Button icon="refresh-cw" aria-label="刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload}>刷新</Button>
         {command.saved && <Button icon="history" onClick={() => setDialog(true)}>{command.saved.phase === 'confirmed' ? '查看已确认的结果' : '查询上次处置结果'}</Button>}</div>
         {data && <span className="dy-page-updated">更新于 {window.WorkbenchFormat.dateTime(data.as_of, { seconds: true, fractions: true })}</span>}</header>

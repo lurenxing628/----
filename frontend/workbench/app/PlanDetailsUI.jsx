@@ -7,7 +7,7 @@
     saved_plan_incomplete: '保存的计划不完整', due_date_missing: '交期未记录', due_date_invalid: '交期无效',
     part_label_missing: '零件名称或图号未记录'
   };
-  const issueText = issues => (issues || []).map(issue => typeof issue === 'string' ? deliveryIssues[issue] || '原因说明缺失' : issue.message).join('；');
+  const issueText = issues => issues.map(issue => typeof issue === 'string' ? deliveryIssues[issue] || '原因说明缺失' : issue.message).join('；');
   function Facts({ items }) {
     return <dl className="plan-facts">{items.map(([key, value]) => <React.Fragment key={key}><dt>{key}</dt><dd>{value}</dd></React.Fragment>)}</dl>;
   }
@@ -98,7 +98,7 @@
         {comparison.before && !selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.before, true)}>查看原安排</Button>}
         {comparison.after && selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.after, false)}>查看当前安排</Button>}
       </> : <p className="plan-muted">未找到对应对照记录</p>}</DetailSection>}
-      <DetailSection title="交付风险" collapsible={compact}>{!task ? <p className="plan-muted">尚未选中任务</p> : selected.before ? <p className="plan-muted">暂无原安排的交付风险数据。</p> : risk ? <>
+      <DetailSection title="交付风险" collapsible={compact}>{selected.before ? <p className="plan-muted">暂无原安排的交付风险数据。</p> : risk ? <>
         <Facts items={[
           ['判定', <span className={risk.risk === 'overdue' ? 'plan-danger' : ''}>{riskLabel[risk.risk]}</span>],
           ['交期', T.due_date(risk.due_date, risk.due_state, risk.due_issue)], [T.arrangement_labels.status, T.delivery_completion_states[risk.completion_state]], [T.arrangement_labels.planned_finish, <TimeValue value={risk.planned_finish} />],
@@ -108,7 +108,7 @@
         {risk.partial_planned_finish && <p className="plan-muted">{T.arrangement_labels.partial_finish}：<TimeValue value={risk.partial_planned_finish} /></p>}
         {risk.issues.length > 0 && <p className="plan-muted">{issueText(risk.issues)}</p>}
       </> : <p className="plan-muted">暂无数据</p>}</DetailSection>
-      <DetailSection title="资源总负荷" collapsible={compact}>{window.PointContract.isPoint(task) ? <p className="plan-muted">零工时工序，不占设备人员。</p> : selected && selected.before ? <p className="plan-muted">暂无原安排的班表和资源占用数据。</p> : !resources.length ? <p className="plan-muted">暂无资源占用数据</p> : <><p className="plan-muted">以下汇总覆盖所选时间范围内该资源的全部安排。</p>{resources.map(row => <div key={row.resource_ref}>
+      <DetailSection title="资源总负荷" collapsible={compact}>{window.PointContract.isPoint(task) ? <p className="plan-muted">零工时工序，不占设备人员。</p> : selected.before ? <p className="plan-muted">暂无原安排的班表和资源占用数据。</p> : !resources.length ? <p className="plan-muted">暂无资源占用数据</p> : <><p className="plan-muted">以下汇总覆盖所选时间范围内该资源的全部安排。</p>{resources.map(row => <div key={row.resource_ref}>
         <strong>{row.label || labels.get(row.resource_ref) || '资源名称未填写'}</strong>
         <Facts items={[
           ['班内已占', row.available_occupied_hours === null ? '暂无数据' : F.hours(row.available_occupied_hours, 2)], ['可排总时长', row.available_hours === null ? '暂无数据' : F.hours(row.available_hours, 2)],
@@ -122,33 +122,25 @@
     </aside>;
   }
   function conflictRows(data) {
-    const projection = data.projections.occupancy, scope = data.time_scope;
-    const require = value => { if (!value) throw new Error('资源重叠数据不完整，请刷新后重试。'); };
-    require(projection && projection.basis === 'selected_plan_only' && projection.plan_ref === data.plan.plan_ref
-      && ['available', 'partial', 'unavailable'].includes(projection.state) && Array.isArray(projection.resources)
-      && Array.isArray(projection.issues) && projection.time_scope && scope
-      && ['range_start', 'range_end', 'selection', 'boundary', 'time_basis'].every(key => projection.time_scope[key] === scope[key]));
+    const projection = data.projections.occupancy;
     // The read contract validates identities and interval boundaries; the source supplies calendar-bound conflict segments.
     const rows = projection.resources.filter(resource => resource.metric_version === 'decision-resource-v4' && resource.has_overlap === true)
       .flatMap(resource => resource.conflict_segments.map(segment => ({ kind: resource.kind, resource_ref: resource.resource_ref, label: resource.label, ...segment })));
     return { rows, projection };
   }
   function Conflicts({ data, prepared }) {
-    const [page, setPage] = React.useState(0), read = React.useMemo(() => {
-      try { return conflictRows(data); } catch (error) { return { error }; }
-    }, [data]);
+    const [page, setPage] = React.useState(0);
+    const { rows, projection } = React.useMemo(() => conflictRows(data), [data]);
+    const current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1));
     const visible = React.useMemo(() => {
-      if (read.error) return [];
-      const current = Math.min(page, Math.max(0, Math.ceil(read.rows.length / 20) - 1));
-      return read.rows.slice(current * 20, current * 20 + 20).map(row => {
+      return rows.slice(current * 20, current * 20 + 20).map(row => {
         const start = M.instant(row.start), end = M.instant(row.end);
         const tasks = (prepared.resourceMembers.get(row.resource_ref) || [])
           .filter(item => item.start < end && item.end > start).map(item => item.task);
         return { row, tasks };
       });
-    }, [read, prepared, page]);
-    if (read.error) return <section className="plan-projections" aria-label="资源重叠明细"><h3>资源重叠明细</h3><window.ResourceControls.ErrorBox error={read.error} /></section>;
-    const { rows, projection } = read, current = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1)), labels = prepared.labels;
+    }, [rows, prepared, current]);
+    const labels = prepared.labels;
     const legacy = projection.resources.some(resource => resource.metric_version !== 'decision-resource-v4');
     const known = projection.state === 'available' && !legacy;
     const empty = !known ? '班表内重叠资料未记录，暂无法完整核对。'

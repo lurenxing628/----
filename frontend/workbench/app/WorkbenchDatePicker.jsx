@@ -49,6 +49,7 @@
       else return;
       event.preventDefault(); event.stopPropagation(); onBrowse(next, true);
     }
+    const currentDay = M.today();
     return <div className="wb-picker-grid" ref={root} role="grid" aria-label={view.slice(0, 4) + ' 年 ' + Number(view.slice(5, 7)) + ' 月'}>
       <div role="row" className="wb-picker-row">{weekdays.map(day => <span role="columnheader" className="wb-picker-weekday" key={day}>周{day}</span>)}</div>
       {Array.from({ length: 6 }, (_, week) => <div role="row" key={week} className="wb-picker-row">
@@ -58,7 +59,7 @@
           return <button key={day} type="button" role="gridcell" data-date={day} data-outside={outside || undefined}
             className={'wb-picker-day' + (outside ? ' is-outside' : '') + (day === selected ? ' is-selected' : '')}
             aria-label={day} title={day + (allowed ? '' : '（不可选）')} aria-selected={day === selected} aria-disabled={!allowed}
-            aria-current={day === M.today() ? 'date' : undefined} tabIndex={day === cursor ? 0 : -1} data-picker-initial={day === cursor || undefined}
+            aria-current={day === currentDay ? 'date' : undefined} tabIndex={day === cursor ? 0 : -1} data-picker-initial={day === cursor || undefined}
             onFocus={() => { if (day !== cursor) onBrowse(day, false, true); }} onKeyDown={event => keydown(event, day)}
             onClick={() => { if (allowed) onChoose(day); }}>{Number(day.slice(8))}</button>;
         })}</div>)}
@@ -93,7 +94,7 @@
   function DatePickerBody(props) {
     const { type, value: rawValue = '', onCommit, onClose, label } = props;
     const value = type === 'factory-local' ? rawValue.trim().replace(' ', 'T') : rawValue;
-    const initial = M.seed(props), units = M.precision(props), root = React.useRef(null), focus = React.useRef(false);
+    const [initial] = React.useState(() => M.seed(props)), units = M.precision(props), root = React.useRef(null), focus = React.useRef(false);
     const [view, setView] = React.useState(initial), [cursor, setCursor] = React.useState(initial);
     const [pickerView, setPickerView] = React.useState(type === 'month' ? 'months' : type === 'time' ? 'time' : 'days');
     const monthAnchor = React.useRef(initial), showMonths = pickerView === 'months';
@@ -113,14 +114,16 @@
       focus.current = shouldFocus; setCursor(next);
       if (!keepView) { setView(next); setYear(next.slice(0, 4)); setYearError(''); }
     }
+    const yearApplied = !hasDate || /^\d{1,4}$/.test(year) && Number(year) >= 1 && M.pad(Number(year), 4) === view.slice(0, 4);
     function choose(next) {
-      if (hasDate && (!/^\d{1,4}$/.test(year) || Number(year) < 1 || M.pad(Number(year), 4) !== view.slice(0, 4))) { applyYear(); return; }
-      const allowed = type === 'month' ? M.validate(props, next).valid : M.daySelectable(props, next);
+      if (!yearApplied) { applyYear(); return; }
+      const validated = type === 'month' || !dateTime ? M.validate(props, next) : null;
+      const allowed = type === 'month' ? validated.valid : M.daySelectable(props, next);
       if (!allowed) return;
       setEdited(true); setSelected(next);
       if (type !== 'month') setPickerView('days');
       if (dateTime) browse(next, false);
-      else onCommit(M.validate(props, next).value);
+      else onCommit(validated.value);
     }
     function chooseMonth(key) {
       if (type === 'month') { choose(key); return; }
@@ -141,12 +144,11 @@
       const next = M.dateKey(Number(year), month, day);
       browse(next, false); return next;
     }
-    const yearApplied = !hasDate || /^\d{1,4}$/.test(year) && Number(year) >= 1 && M.pad(Number(year), 4) === view.slice(0, 4);
     function confirm() {
       if (!yearApplied) { applyYear(); return; }
       if (check.valid && !yearError) onCommit(check.value); else setEdited(true);
     }
-    const shortcut = type === 'month' ? M.today().slice(0, 7) : M.today();
+    const currentDay = M.today(), shortcut = type === 'month' ? currentDay.slice(0, 7) : currentDay;
     const shortcutAllowed = hasDate && (type === 'month' ? M.validate(props, shortcut).valid : M.daySelectable(props, shortcut));
     const move = showMonths ? 12 : 1;
     const browseYear = /^\d{1,4}$/.test(year) && Number(year) >= 1 ? Number(year) : Number(view.slice(0, 4));

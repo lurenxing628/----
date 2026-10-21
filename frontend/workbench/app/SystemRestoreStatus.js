@@ -76,8 +76,7 @@
     const payload = { scope: 'read_only_maintenance', result_source: source, host, result,
       query_error: error ? error.message : null, database_checked_by_page: false,
       note: '导出当前维护状态。' };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
-    window.APSWorkbenchTransport.saveBlob(DIAGNOSTIC_FILENAME, blob);
+    window.APSWorkbenchTransport.downloadJSON(DIAGNOSTIC_FILENAME, payload);
   }
-  window.SystemRestoreStatus = { validateHost, envelope, host, operation, sourceFacts, legacyDigests, referencePath, describe, download, labels, origins, hostLabels, DIAGNOSTIC_FILENAME };
+  window.SystemRestoreStatus = { validateHost, envelope, host, operation, sourceFacts, legacyDigests, referencePath, describe, download, labels, hostLabels, DIAGNOSTIC_FILENAME };
 })();

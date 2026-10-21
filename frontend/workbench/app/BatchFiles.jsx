@@ -25,17 +25,13 @@
     React.useEffect(() => () => { alive.current = false; serial.current++; }, []);
     React.useEffect(() => {
       if (!importing || !done || seen.current === command.result.receipt_ref) return;
-      try { B.receipt(command.result, 'import_confirm', preview && preview.preview_ref); seen.current = command.result.receipt_ref; onCommitted(command.result); }
+      try { B.receipt(command.result, 'import_confirm'); seen.current = command.result.receipt_ref; onCommitted(command.result); }
       catch (error) { setError(error); }
     }, [done, command.result]);
     function invalidate() { setPreview(null); setError(null); setAcknowledged(false); serial.current++; }
     function changeMode(value) { setMode(value); invalidate(); }
     function chooseFile(list) { setFile(list && list[0] || null); invalidate(); }
-    async function close(detail) {
-      if (command.locked || busy) return;
-      if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return;
-      onClose();
-    }
+    async function close() { if (!command.locked && !busy && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
     async function work(action) {
       if (locked) return;
       const id = ++serial.current; setBusy(true); setError(null); setNotice('');
@@ -43,7 +39,7 @@
         if (action === 'template') { saveDownload(await adapter.downloadTemplate(), TEMPLATE_NAME); if (alive.current && id === serial.current) setNotice(T.download_started(TEMPLATE_NAME)); }
         else if (action === 'preview') {
           const result = await adapter.importPreview(file, mode, scope, snapshot);
-          const data = result && result.data;
+          const data = result.data;
           if (!data || data.operation !== 'batch.import_confirm' || data.mode !== mode || !Array.isArray(data.rows) || !Array.isArray(data.deleted)
               || typeof data.can_confirm !== 'boolean' || data.can_confirm && (!data.write_context || !B.context(data.write_context))) throw C.failure('读到的导入预检结果不完整，没有写入批次。请再点一次「开始预检」。');
           if (alive.current && id === serial.current) setPreview(data);
@@ -59,7 +55,7 @@
     // 「先清除全部批次再重导」会删掉表格以外的所有批次：主按钮按危险动作着色，且必须先核对勾选。
     const replacing = mode === 'replace', replaceReason = replacing && !acknowledged ? '请先核对将删除的全部批次，并勾选确认。' : '';
     return <div className={'plana rm-actions' + (preview ? ' rm-wide' : '')}>
-      <Modal title={importing ? '批量导入批次' : '导出批次清单'} icon="box" locked={command.locked || busy} guardOwner={guardOwner} onClose={close} footer={<>
+      <Modal title={importing ? '批量导入批次' : '导出批次清单'} icon="box" locked={command.locked || busy} guardOwner={guardOwner} onClose={onClose} footer={<>
         <Button onClick={() => close()} disabled={command.locked || busy}>{done ? '关闭' : '取消'}</Button>
         {importing ? !done && <>{!preview ? <Button transfer="import" disabled={locked || !file} onClick={() => work('preview')}>开始预检</Button>
           : <Button transfer="import" className={'btn ' + (replacing ? 'danger' : 'primary')} disabled={locked || !preview.can_confirm} reason={replaceReason}

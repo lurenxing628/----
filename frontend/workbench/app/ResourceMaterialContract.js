@@ -35,8 +35,12 @@
       && (row.reference_fields === undefined || Array.isArray(row.reference_fields) && row.reference_fields.every(key => typeof key === 'string'
         && (kind !== 'material' || key === 'created_at')) && new Set(row.reference_fields).size === row.reference_fields.length)
       && typeof row.requires_confirmation === 'boolean' && count(row.reference_count);
-    if (!data.rows.every(validRow) || new Set(data.rows.map(row => row.row)).size !== data.rows.length
-        || !Object.keys(results).every(key => data.rows.filter(row => row.result === key).length === data.summary[key])
+    const counts = { new: 0, update: 0, unchanged: 0, delete: 0, rejected: 0 };
+    if (!data.rows.every(row => {
+      if (!validRow(row)) return false;
+      counts[row.result]++; return true;
+    }) || new Set(data.rows.map(row => row.row)).size !== data.rows.length
+        || !Object.keys(results).every(key => counts[key] === data.summary[key])
         || data.can_confirm && data.summary.rejected !== 0)
       throw C.failure('预检行内容不完整或统计不一致，本批没有提交。');
     if (mode === 'import' && (data.format !== expected || data.mode !== 'upsert' || data.template_version !== 1

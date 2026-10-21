@@ -2,23 +2,25 @@
   'use strict';
   const C = window.APSMasterOverviewContract, base = '/api/workbench/v1/master-overview';
   function url(path, scope, token, extra = {}) {
-    const query = new URLSearchParams({ scope: JSON.stringify(C.scope(scope)), ...extra });
+    const query = new URLSearchParams({ scope: JSON.stringify(scope), ...extra });
     if (token) query.set('snapshot_ref', token);
     return base + path + '?' + query.toString();
   }
   function create() {
     return {
       list: async (scope, page, token, signal) => {
-        const result = C.list(await window.APSWorkbenchTransport.read(url('', scope, token, { page }), signal), scope, token);
+        const normalized = C.scope(scope);
+        const result = C.list(await window.APSWorkbenchTransport.read(url('', normalized, token, { page }), signal), normalized, token);
         if (result.data.page.number !== page) C.fail('读到的不是当前这一页，页面内容没有变化。请刷新后重试。'); return result;
       },
       detail: async (scope, selected, section, page, token, signal) => {
-        const result = C.detail(await window.APSWorkbenchTransport.read(url('/entities/' + selected.domain + '/' + selected.entity_ref, scope, token, { section, detail_page: page }), signal), scope, selected, section, token);
+        const normalized = C.scope(scope);
+        const result = C.detail(await window.APSWorkbenchTransport.read(url('/entities/' + selected.domain + '/' + selected.entity_ref, normalized, token, { section, detail_page: page }), signal), normalized, selected, section, token);
         if (result.data.page.number !== page) C.fail('读到的不是当前这一页详情，页面内容没有变化。请刷新后重试。'); return result;
       },
       locate: async (scope, selected, token, signal) => {
         if (!C.ref(selected.entity_ref) || !C.domains.some(row => row[0] === selected.domain)) C.fail('定位目标不正确。');
-        const result = C.list(await window.APSWorkbenchTransport.read(url('/locate/' + selected.domain + '/' + selected.entity_ref, scope, token), signal));
+        const result = C.list(await window.APSWorkbenchTransport.read(url('/locate/' + selected.domain + '/' + selected.entity_ref, C.scope(scope), token), signal));
         if (!result.data.selected || result.data.selected.entity_ref !== selected.entity_ref || result.data.selected.domain !== selected.domain
           || !result.data.rows.some(row => row.ref === selected.entity_ref && row.domain === selected.domain)) C.fail('清单里没有定位到这条资料，页面内容没有变化。请刷新后重试。');
         return result;
@@ -32,7 +34,7 @@
     if (signal) { signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) controller.abort(); }
     const timer = setTimeout(() => { timedOut = true; abort(); }, 20000);
     try {
-      const response = await fetch(url('/export', scope, token), { signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'text/csv' } });
+      const response = await fetch(url('/export', C.scope(scope), token), { signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'text/csv' } });
       const type = (response.headers.get('content-type') || '').toLowerCase();
       if (!response.ok) {
         const payload = type.includes('application/json') ? await response.json() : null;

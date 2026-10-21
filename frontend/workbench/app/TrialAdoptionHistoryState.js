@@ -15,9 +15,6 @@
     const saved = { ...restore(scenarioRef), ...patch, scenario_ref: scenarioRef };
     history.replaceState({ ...history.state, [KEY]: saved }, '', location.href);
   }
-  function initialTab(scenarioRef) {
-    try { return restore(scenarioRef).tab; } catch (_) { return 'adoptions'; }
-  }
   function openPlan(scenarioRef, planRef, navigate) {
     C.check(C.ref(scenarioRef) && C.ref(planRef));
     const entry = history.state && history.state.workbench;
@@ -26,5 +23,5 @@
       '无法打开正式计划，请刷新后重试。');
     return navigate('gantt', { plan_ref: planRef });
   }
-  window.TrialAdoptionHistoryState = { restore, remember, initialTab, openPlan };
+  window.TrialAdoptionHistoryState = { restore, remember, openPlan };
 })();

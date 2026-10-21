@@ -150,7 +150,7 @@
           {!done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? <p>正在查询上次批量删除的结果，当前列表里新勾选的还没提交。</p> :
             <p>本次勾选了 <b>{refs.length}</b> 条{label}，含非当前页和当前筛选外的勾选项。</p>)}
           {activeRead && <p role="status">正在读取完整预检结果，尚未写入数据…</p>}
-          <ErrorBox error={error} excludePaths={isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []} /><ErrorBox error={query.error} /><Issues issues={result && result.warnings || []} />
+          <ErrorBox error={error} excludePaths={isExport && Array.isArray(M.exportFieldPaths) ? M.exportFieldPaths : []} /><ErrorBox error={query.error} /><Issues issues={result ? result.warnings : undefined} />
           {data && !isExport && <><Preview data={data} mode={effectiveMode} contract={M} label={label} /><p className="iohint">本批整体确认；任意一行校验不通过，全部不写入。</p>
             {needsAcknowledgement && !done && <label className="rm-check"><input type="checkbox" checked={acknowledged} disabled={controlsDisabled} onChange={event => setAcknowledged(event.target.checked)} /><span>{effectiveMode === 'bulk' ? '已核对完整删除范围及明细，确认删除这些' + label + '。' : M.acknowledgeHint}</span></label>}
           </>}

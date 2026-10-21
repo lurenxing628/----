@@ -22,7 +22,7 @@
   }
   function names(data) {
     const result = new Map();
-    for (const row of data.resources || []) result.set(row.ref, row.label || row.business_code);
+    for (const row of data.resources) result.set(row.ref, row.label || row.business_code);
     for (const key of ['calendar', 'occupancy']) {
       const projection = data.projections[key];
       for (const row of projection.resources || []) if (row.label) result.set(row.resource_ref, row.label);
@@ -59,7 +59,7 @@
     heap[index] = last; return first;
   }
   function tracks(items, conflicts) {
-    const sorted = items.slice().sort((a, b) => a.start - b.start || a.end - b.end || a.task.task_ref.localeCompare(b.task.task_ref));
+    const sorted = items.sort((a, b) => a.start - b.start || a.end - b.end || a.task.task_ref.localeCompare(b.task.task_ref));
     const heap = [], result = [];
     let furthest = null;
     for (const item of sorted) {
@@ -120,12 +120,14 @@
     }
     return { ...prepared, mode, groups: facts, start: bounds.start, end: bounds.end, baselineStart: comparisonBounds.start, baselineEnd: comparisonBounds.end, conflicts };
   }
-  function matching(prepared, query = '', changedOnly = false) {
-    const needle = query.trim().toLocaleLowerCase();
+  function matchingItems(prepared, needle, changedOnly) {
     return prepared.items.filter(item => (!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle)));
   }
+  function matching(prepared, query = '', changedOnly = false) {
+    return matchingItems(prepared, query.trim().toLocaleLowerCase(), changedOnly);
+  }
   function selectPrepared(prepared, query = '', changedOnly = false, baseline = false) {
-    const needle = query.trim().toLocaleLowerCase(), selected = matching(prepared, query, changedOnly), shown = new Set(selected);
+    const needle = query.trim().toLocaleLowerCase(), selected = matchingItems(prepared, needle, changedOnly), shown = new Set(selected);
     for (const item of baseline ? prepared.before : []) if ((!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle))) shown.add(item);
     const groups = prepared.groups.map(fact => ({ ...fact, shown,
       group: { ...fact.group, tasks: fact.group.tasks.filter(item => shown.has(item)), before: baseline ? fact.group.before.filter(item => shown.has(item)) : [] },

@@ -47,7 +47,7 @@
     const tasks = new Map(data.tasks.map(task => [task.task_ref, task]));
     return <section aria-label="工序执行偏差"><h3>工序报工与定额对照</h3><div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">工序执行偏差</caption>
     <thead><tr><th scope="col">批次 / 工序</th><th scope="col">定额加工小时</th><th scope="col">有效加工小时</th><th scope="col">超耗判断</th><th scope="col">现场记录</th></tr></thead><tbody>{data.execution.map(row => {
-      const source = row.source, task = tasks.get(source.task_ref), hours = source.hours || {}, context = { plan_ref: data.plan.plan_ref, task_ref: task.task_ref, operation_ref: task.operation_ref };
+      const source = row.source, task = tasks.get(source.task_ref), hours = source.hours, context = { plan_ref: data.plan.plan_ref, task_ref: task.task_ref, operation_ref: task.operation_ref };
       return <tr key={source.task_ref}><td>{task.batch_id + ' · ' + task.process_label}</td><td>{value(hours.quota_processing_hours)} 小时</td><td>{value(hours.effective_processing_hours)} 小时</td>
         <td>{hours.overrun === true ? '已确认超耗' : hours.overrun === false ? '未超耗' : '暂无数据'}</td><td><Button reasonDisplay="inline" icon="square-pen" onClick={() => navigate({ view: 'field', context, enabled: true })}>现场记录</Button>
           <Button reasonDisplay="inline" icon="chart-gantt" onClick={() => navigate({ view: 'fieldgantt', context, enabled: true })}>现场实际甘特</Button></td></tr>;
@@ -63,16 +63,15 @@
       if (paging.base === base) return paging.query;
       const loaded = loadedPage.current;
       // An in-page task selection keeps this read identity and its mounted timeline focus.
-      if (loaded && loaded.planRef === planRef && loaded.section === section && loaded.resourceRef === resourceRef
-        && loaded.query.size === paging.query.size && loaded.batches.has(locateBatchRef)) return loaded.query;
+      if (section === 'timeline' && loaded && loaded.planRef === planRef && loaded.query.size === paging.query.size && loaded.batches.has(locateBatchRef)) return loaded.query;
       return { ...base, size: paging.query.size };
     }, [base, paging]);
     const read = window.DashboardSession.useRead(signal => api.read(planRef, signal, query), [api, planRef, query], enabled);
     const result = read.result, data = result && result.data;
     React.useEffect(() => {
-      if (data) loadedPage.current = { planRef, section, resourceRef, query,
+      if (data && section === 'timeline') loadedPage.current = { planRef, query,
         batches: new Set(data.tasks.filter(task => task.source === 'internal' && task.machine_ref).map(task => task.batch_ref)) };
-    }, [data, query, planRef, section, resourceRef]);
+    }, [data, query, planRef, section]);
     function reload() { setPaging({ base, query: { ...base, size: query.size } }); }
     function page(number) {
       const next = { ...query, page: number, snapshot_ref: result.meta.snapshot_ref };
@@ -105,8 +104,8 @@
         : !analysis.plan ? <window.WorkbenchListControls.EmptyState kind="empty" title="当前没有可分析的正式计划。" />
         : section === 'actual' ? <Actual data={analysis} navigate={navigate} /> : section === 'downtime' ? <Downtime data={analysis} selected={selected} onSelect={onSelect} />
         : <Delivery data={analysis} selected={selected} onSelect={onSelect} onCompare={onCompare} />} />
-      {section === 'delivery' && data.plan && <Section section="timeline" planRef={planRef} locateBatchRef={selected} label="计划时间轴工序" render={analysis => analysis.plan
-        ? <window.DashboardTimeline data={analysis} selectedBatch={selected} onSelect={onSelect} /> : null} />}
+      {section === 'delivery' && data.plan && <Section section="timeline" planRef={planRef} locateBatchRef={selected} label="计划时间轴工序" render={analysis =>
+        <window.DashboardTimeline data={analysis} selectedBatch={selected} onSelect={onSelect} />} />}
       {!['material', 'actual'].includes(section) && <Section section="pressure" planRef={planRef} label="资源压力明细" render={analysis =>
         <window.DashboardPanels.Pressure data={{ ...data, analysis }} showIssues={false} navigate={navigate} canNavigate={canNavigate} />} />}
     </>;

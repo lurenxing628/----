@@ -33,7 +33,7 @@
     const api = React.useMemo(() => A.create(), []);
     const [initial] = React.useState(() => { try { return { saved: read(), error: '' }; } catch (e) { return { saved: null, error: e.message }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);
-    const [draft, setDraft] = React.useState(initial.saved ? initial.saved.input : empty());
+    const [draft, setDraft] = React.useState(() => initial.saved ? initial.saved.input : empty());
     const [open, setOpen] = React.useState(false), [preview, setPreview] = React.useState(null), [consent, setConsent] = React.useState(false);
     const [busy, setBusy] = React.useState(false), [checking, setChecking] = React.useState(false), [error, setError] = React.useState(''), [notice, setNotice] = React.useState('');
     window.WorkbenchGuards.useDirtyGuard({ dirty: !saved && (!!draft.reason || draft.declared_operator !== remembered()),
@@ -68,7 +68,6 @@
       }
     }, [result]);
     function accept(value, intent) {
-      A.receipt(value, intent);
       if (!mounted.current) return;
       if (!A.equal(active.current, intent)) { sync(); return; }
       const committed = { ...intent, phase: 'committed', receipt: value };
@@ -140,5 +139,5 @@
     return { saved, result, draft, open, preview, consent, busy: busy || checking, error, notice, storageError, sourceError, original, disabled,
       setOpen, setConsent, change: value => { if (!active.current) { setDraft(value); setConsent(false); } }, inspect, submit, lookup: () => lookup(), sync, close, finish };
   }
-  window.TrialAdoptionState = { KEY, EVENT, read, save, begin, valid, useSession };
+  window.TrialAdoptionState = { KEY, EVENT, read, save, useSession };
 })();

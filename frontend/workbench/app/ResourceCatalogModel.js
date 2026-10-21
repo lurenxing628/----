@@ -62,7 +62,8 @@
       if (!['active', 'inactive'].includes(value.status)) bad('status', '请明确选择启用或停用。');
       else fields.status = value.status;
     }
-    if (creating ? value.remark.trim() : value.remark !== base.remark) fields.remark = value.remark.trim() || null;
+    const remark = value.remark.trim();
+    if (creating ? remark : value.remark !== base.remark) fields.remark = remark || null;
     if (kind === 'shift_profile' && (creating || ['anchor_date', 'cycle_days', 'pattern'].some(key => JSON.stringify(base[key]) !== JSON.stringify(value[key])))) {
       let length;
       try { length = cycle(value.cycle_days); } catch (error) { errors.push(...C.fieldErrors(error)); }

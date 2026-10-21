@@ -4,20 +4,19 @@
   // 服务端仍按每次提交的字面值校验；本机存储不可用时按空值处理，并把原因随结果返回给调用方。
   const KEY = 'aps_workbench_handler_v1';
   const valid = value => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= 100 && !value.includes('\u0000');
-  function storage(store) { return store === undefined ? window.localStorage : store; }
   const parsed = raw => raw === null ? { value: '', error: '' } : valid(raw) ? { value: raw, error: '' } : { value: '', error: '本机记住的经办人格式无效，这次不预填。' };
-  function read(store) {
+  function read() {
     try {
-      const raw = storage(store).getItem(KEY);
+      const raw = window.localStorage.getItem(KEY);
       return parsed(raw);
     } catch (_) { return { value: '', error: '本机经办人记忆无法读取，这次不预填。' }; }
   }
   const listeners = new Set();
-  function write(value, store) {
+  function write(value) {
     const text = typeof value === 'string' ? value.trim() : '';
     if (!valid(text)) return { saved: false, error: '经办人为空或过长，没有记住。' };
     let result;
-    try { storage(store).setItem(KEY, text); result = { saved: true, value: text, error: '' }; }
+    try { window.localStorage.setItem(KEY, text); result = { saved: true, value: text, error: '' }; }
     catch (_) { result = { saved: false, value: '', error: '本机经办人记忆无法写入，下次仍需手填。' }; }
     for (const listener of listeners) listener(result);
     return result;
@@ -37,5 +36,5 @@
     }, []);
     return hint(current, memory);
   }
-  window.WorkbenchHandlerMemory = Object.freeze({ KEY, read, write, hint, useHint });
+  window.WorkbenchHandlerMemory = Object.freeze({ read, write, useHint });
 })();

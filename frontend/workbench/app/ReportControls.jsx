@@ -25,6 +25,7 @@
       if (selected && selected !== 'unassigned' && !rows.some(row => row.ref === selected)) rows.unshift({ ref: selected, label: '当前范围外的已选项' });
       return rows.map(row => <option value={row.ref} key={row.ref}>{row.label}{row.available === false ? '（原资料不可用）' : ''}</option>);
     }
+    const choiceList = Object.values(choices).flat();
     return <form className="aw-scope" aria-label="执行分析筛选" onSubmit={event => { event.preventDefault(); onChange(window.ReportAPI.scope(draft)); }}>
       <div className="aw-scope-main">
         <label>计划完工起日<input type="date" aria-label="计划完工起日" value={draft.plan_finish_date_from || ''} onChange={event => set({ plan_finish_date_from: event.target.value })} /></label>
@@ -41,7 +42,7 @@
         <label>分析范围<select aria-label="分析范围" value={draft.focus || 'all'} onChange={event => set({ focus: event.target.value })}>{focuses.map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
       </div>
       <div className="aw-scope-summary"><ul>{Object.entries(value).filter(([key, item]) => !['source', 'plan_ref'].includes(key) && item && item !== 'all').map(([key, item]) =>
-        <li key={key}><span>{key === 'query' ? item : key === 'focus' ? (focuses.find(row => row[0] === item) || [null, item])[1] : key.endsWith('_ref') ? item === 'unassigned' ? '未填写' : Object.values(choices).flat().find(row => row.ref === item)?.label || selectedFallback[key] || '已选条件' : item === 'machine' ? '设备' : item === 'operator' ? '人员' : item}</span>
+        <li key={key}><span>{key === 'query' ? item : key === 'focus' ? (focuses.find(row => row[0] === item) || [null, item])[1] : key.endsWith('_ref') ? item === 'unassigned' ? '未填写' : choiceList.find(row => row.ref === item)?.label || selectedFallback[key] || '已选条件' : item === 'machine' ? '设备' : item === 'operator' ? '人员' : item}</span>
           <button type="button" aria-label={'清除' + (scopeNames[key] || '筛选项')} onClick={() => { const next = { ...value }; delete next[key]; if (key === 'resource_type') delete next.resource_ref; if (key.startsWith('plan_finish_date')) { delete next.plan_finish_date_from; delete next.plan_finish_date_to; } onChange(next); }}><Icon name="x" /></button></li>)}</ul></div>
     </form>;
   }
@@ -52,7 +53,8 @@
         if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? 4 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 5) % 5;
-        onChange(window.ReportAPI.topics[next]); document.getElementById('report-tab-' + window.ReportAPI.topics[next]).focus();
+        const nextTopic = window.ReportAPI.topics[next];
+        onChange(nextTopic); document.getElementById('report-tab-' + nextTopic).focus();
       }}>{labels[index]}</button>)}</div>;
   }
   function Page({ page, onChange, busy }) {

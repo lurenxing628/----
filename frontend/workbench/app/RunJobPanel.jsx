@@ -190,8 +190,6 @@
     }
     const selected = preflight && preflight.normalized_input && preflight.normalized_input.batch_refs;
     const effective = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.effective_config : null;
-    const batches = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.included_batches.concat(preflight.excluded_batches) : [];
-    const operationCount = preflight && preview && preflight.input_ref === preview.input_ref ? preflight.counts.selected_tasks : undefined;
     const reason = storageError || (!inputRef ? '请先完成排产检查。' : selected && !selected.length ? '请先选择要排产的批次。' : pendingActive ? '上次排产尚未确认结果，请先查询。' : unavailable);
     return <section className="plana run-job-panel" data-run-job-panel="true" aria-label="候选排产">
       <div className="rj-heading"><div><h3>候选排产</h3><p className="rj-muted">选择范围并完成检查后，计算本次候选方案。</p></div></div>

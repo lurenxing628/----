@@ -6,15 +6,15 @@
     const start = run.started_at || run.accepted_at, finish = run.finished_at;
     function local(value) {
       if (typeof value !== 'string' || !value) return null;
-      const normalized = window.WorkbenchDatePickerModel.factoryTime(value), fraction = normalized.split('.')[1] || '';
-      const fields = normalized.slice(0, 19).split(/[-T:]/).map(Number);
+      const normalized = window.WorkbenchDatePickerModel.factoryTime(value), [main, paddedFraction = ''] = normalized.split('.');
+      const fields = main.split(/[-T:]/).map(Number);
       // UTC supplies an ordinal for naive factory fields, without applying the browser's timezone or DST.
       return { whole: Date.UTC(fields[0], fields[1] - 1, fields[2], fields[3], fields[4], fields[5]),
-        fraction: Number(fraction.padEnd(6, '0')) / 1000000, precision: (value.split('.')[1] || '').length };
+        fraction: Number(paddedFraction) / 1000000, precision: (value.split('.')[1] || '').length };
     }
-    const begin = local(start), current = !finish && Number.isFinite(now)
-      ? local(window.WorkbenchFormat.instant(new Date(now).toISOString(), { seconds: true })) : null;
-    const end = finish ? local(finish) : current && { ...current, fraction: now % 1000 / 1000, precision: 3 };
+    const begin = local(start);
+    const end = finish ? local(finish) : Number.isFinite(now)
+      ? { whole: Math.floor(now / 1000) * 1000 + 28800000, fraction: now % 1000 / 1000, precision: 3 } : null;
     if (!begin || !end || !Number.isFinite(begin.whole) || !Number.isFinite(end.whole)) return '未记录';
     const elapsed = (end.whole - begin.whole) / 1000 + end.fraction - begin.fraction;
     if (elapsed < 0) return '时间记录待核对';

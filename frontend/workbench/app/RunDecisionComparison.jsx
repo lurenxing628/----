@@ -49,11 +49,8 @@
   }
   function CompactValue({ metric, definition }) {
     const coverage = metricCoverage(metric, definition), label = metric.value === null ? coverage.pending : metricText(metric, definition);
-    return <span className="rd-compact-value" data-metric-state={metric.state}><strong title={metric.value === null ? coverage.title + '；保存小计 ' + (metric.known_subtotal === null ? '未记录' : metricText({ ...metric, value: metric.known_subtotal }, definition)) : metricText(metric, definition)}>{label}</strong>
+    return <span className="rd-compact-value" data-metric-state={metric.state}><strong title={metric.value === null ? coverage.title + '；保存小计 ' + (metric.known_subtotal === null ? '未记录' : metricText({ ...metric, value: metric.known_subtotal }, definition)) : label}>{label}</strong>
       {metric.value === null && coverage.known && <small>{coverage.known}</small>}</span>;
-  }
-  function CommonMetric({ metric, definition, delta }) {
-    return <><CompactValue metric={metric} definition={definition} />{metric.value !== null && delta && <small className={'rd-change rd-' + delta.direction}>{deltaText(delta, definition)}</small>}</>;
   }
   function CandidateBasis({ candidate, definitions, onCompletion, onProcess }) {
     return <details className="rd-candidate-basis"><summary aria-label={candidate.label + '指标依据'}>指标依据</summary><div>{onCompletion && <C.Button className="btn link" aria-label={candidate.label + '批次工序安排'} onClick={() => onCompletion(candidate)}>查看批次工序安排</C.Button>}{onProcess && <C.Button className="btn link" aria-label={candidate.label + '优化过程'} onClick={() => onProcess(candidate)}>优化过程</C.Button>}{definitions.map(definition => <div key={definition.key}><strong>{definition.label}</strong><Metric metric={candidate.metrics[definition.key]} definition={definition} delta={candidate.deltas[definition.key]} /></div>)}</div></details>;
@@ -342,5 +339,5 @@
         <details className="rd-official rd-data-source" open={sourceOpen} onToggle={event => { setSourceOpen(event.currentTarget.open); if (event.currentTarget.open) setFullPaused(false); }}><summary>数据来源</summary>{sourceOpen && <><FullReadStatus read={fullRead} paused={fullPaused} onCancel={() => setFullPaused(true)} onReload={reload} />{fullSelected && <CandidateFacts data={fullData} candidate={fullSelected} onCompletion={openCompletion} onProcess={openProcess} />}</>}<dl className="rc-meta"><div><dt>开始计算</dt><dd>{M.timeLabel(data.run.accepted_at)}</dd></div><div><dt>计算结束</dt><dd>{M.timeLabel(data.run.finished_at)}</dd></div><div><dt>候选搜索</dt><dd><RunCoverage data={data} /></dd></div><div><dt>资料依据</dt><dd>排产时选中的批次和工序、保存的候选安排与推荐原因</dd></div><div><dt>资源和切换比较范围</dt><dd>{windowTitle}</dd></div><div><dt>本次刷新时间</dt><dd>{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</dd></div></dl><window.WorkbenchReference entries={{ '排产记录': runRef, '当前查看候选': data.scope.selected_candidate_ref, '比较基准': data.scope.reference.candidate_ref }} /></details>
       </>}</div>;
   }
-  window.RunDecisionComparison = { Workspace, Recommendation, CandidateTable, CandidateFacts, DifferenceSummary, Details, Coverage, RunCoverage, Export, Metric, CommonMetric, CompactValue, metricText, deltaText, comparisonContext, referenceNotice };
+  window.RunDecisionComparison = { Workspace, Recommendation, CandidateTable, CandidateFacts, DifferenceSummary, Details, Coverage, RunCoverage, Export, Metric, CompactValue, metricText, deltaText, comparisonContext, referenceNotice };
 })();

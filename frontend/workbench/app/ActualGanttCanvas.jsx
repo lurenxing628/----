@@ -27,7 +27,7 @@
           if (size > 0) ctx.strokeRect(x + ctx.lineWidth / 2, mark.y + ctx.lineWidth / 2, size - ctx.lineWidth, mark.height - ctx.lineWidth);
           if (critical && mark.kind === 'actual') { ctx.fillStyle = colors.selected; ctx.fillRect(x, mark.y, size, 3); }
         }
-        if (focused && active && mark.key === active.key) {
+        if (focused && mark.key === active.key) {
           const box = window.ActualGanttWindow.markBox(mark, model, width, left);
           ctx.setLineDash([]); ctx.lineWidth = 2; ctx.strokeStyle = colors.selected;
           ctx.strokeRect(box.hitLeft - 2, mark.y - 2, box.hitWidth + 4, mark.height + 4);

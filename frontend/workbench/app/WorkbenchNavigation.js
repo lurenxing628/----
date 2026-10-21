@@ -208,7 +208,7 @@
   }
   function guardHistory(boot, { hasDirty, confirmLeave, onRestore, onError }) {
     let accepted, pending = null, disposed = false;
-    function capture() { return { page: read(boot), state: history.state, url: location.href }; }
+    function capture(page = read(boot)) { return { page, state: history.state, url: location.href }; }
     function sync() { if (!pending) accepted = capture(); }
     sync();
     function recover(error) {
@@ -216,7 +216,7 @@
       history.replaceState(accepted.state, '', accepted.url);
       onError(error);
     }
-    function accept() { pending = null; accepted = capture(); onRestore(); }
+    function accept(page) { pending = null; accepted = capture(page); onRestore(); }
     function confirm(entry) {
       entry.phase = 'confirm';
       Promise.resolve().then(confirmLeave).then(allowed => {
@@ -231,7 +231,7 @@
         const target = read(boot), delta = target.key - accepted.page.key;
         if (pending) {
           if (pending.phase === 'replay' && target.key === pending.target.key && location.href === pending.url) {
-            accept(); return;
+            accept(target); return;
           }
           if (target.key === accepted.page.key && location.href === accepted.url) {
             if (pending.phase === 'return') confirm(pending);
@@ -239,7 +239,7 @@
           }
           check(delta !== 0); history.go(-delta); return;
         }
-        if (!hasDirty()) { accept(); return; }
+        if (!hasDirty()) { accept(target); return; }
         check(delta !== 0);
         pending = { phase: 'return', delta, target, url: location.href };
         history.go(-delta);

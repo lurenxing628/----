@@ -79,10 +79,11 @@
       const next = revision + ':' + pageSize; if (previousVersion.current === next) return;
       previousVersion.current = next; setPage(1); setSnapshot(''); setSelected(null); setConfirm(null);
     }, [revision, pageSize]);
-    const savedScope = JSON.stringify(A.recordContext({ filters, page, selection }, kind));
+    const savedSelection = selection ? { ...(selection.key !== undefined ? { key: selection.key } : {}), ...(selection.record_kind ? { record_kind: selection.record_kind } : {}) } : null;
+    const savedScope = JSON.stringify({ filters, page, selection: savedSelection });
     React.useLayoutEffect(() => {
-      if (onReadContext && active && data && !request.loading && !request.error) onReadContext(kind, JSON.parse(savedScope));
-    }, [onReadContext, kind, active, !!data, request.loading, request.error, savedScope]);
+      if (onReadContext && active && data) onReadContext(kind, { filters: { ...filters }, page, selection: savedSelection });
+    }, [onReadContext, kind, active, !!data, savedScope]);
     React.useEffect(() => { if (!active || command.locked) setConfirm(null); }, [active, command.locked]);
     function apply(value) {
       if (value.start && value.end && value.start > value.end) { setError(new Error('开始日期不能晚于结束日期。')); return; }
@@ -107,12 +108,13 @@
       if (action !== 'create' && (!row || row.record_kind !== 'backup_file')) { setError(new Error('维护事件不是可操作的备份文件。')); return; }
       setConfirm({ action, row });
     };
+    const hasFilter = Object.values(filters).some(Boolean);
     return <section className="sm-section" aria-label={kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}>
       <div className="sm-section-head"><h3>{kind === 'logs' ? '运行日志与操作记录' : '备份与维护记录'}</h3><C.Button icon="refresh-cw" aria-label="刷新清单" busy={request.loading} onClick={() => { setPage(1); setSnapshot(''); setSelected(null); reload(); }} /></div>
       <div className="sm-toolbar"><Filters kind={kind} value={draft} onChange={setDraft} onSubmit={() => apply(draft)} loading={request.loading} onReset={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }} />
         <div className="sm-actions sm-record-actions">{kind === 'backups' ? <C.Button icon="plus" reason={sharedReason || A.blocked(data, 'create')} reasonDisplay={sharedReason ? 'tooltip' : 'inline'} onClick={() => ask('create', null)}>新增备份</C.Button> : <>
-          <C.Button transfer="export" disabled={!data || request.loading} busy={downloadBusy} onClick={() => download('csv')}>导出这段日志 CSV</C.Button>
-          <C.Button transfer="export" disabled={!data || request.loading} busy={downloadBusy} onClick={() => download('zip')}>导出诊断包</C.Button></>}</div>
+          <C.Button transfer="export" disabled={!data} busy={downloadBusy} onClick={() => download('csv')}>导出这段日志 CSV</C.Button>
+          <C.Button transfer="export" disabled={!data} busy={downloadBusy} onClick={() => download('zip')}>导出诊断包</C.Button></>}</div>
       </div>
       <C.ErrorBox error={request.error || error} />{notice && <p className="sm-notice" role="status">{notice}</p>}
       {selection && data && !selected && <p className="sm-notice" role="status">{!stableSelection
@@ -131,7 +133,7 @@
             <td><div className="sm-summary"><strong className="sm-summary-title">{row.summary}</strong>{kind === 'logs' && <small>{sourceText(row.file)}{row.content_truncated ? ' · 详情已截断' : ''}</small>}</div></td>
             {kind === 'backups' && <td className="sm-col-size">{row.record_kind === 'backup_file' ? window.WorkbenchFormat.number(row.size_bytes / 1024, { digits: 1 }) + ' KB' : '事件记录'}</td>}
             <td className="wb-col-actions"><C.Button icon="chevron-right" className="mini" aria-label={'查看详情 ' + row.summary} aria-expanded={!!selected && selected.key === row.key} onClick={event => { event.stopPropagation(); setSelected(row); }} /></td>
-          </tr>)}</tbody></table></div> : <window.WorkbenchListControls.EmptyState kind={Object.values(filters).some(Boolean) ? 'filtered' : 'empty'} title="当前筛选下暂无记录" hint={kind === 'logs' ? '只看已读取的那段日志；来源缺失和读取失败另行列出。' : '只看已读取的备份文件、恢复事件和清理记录。'} action={Object.values(filters).some(Boolean) ? <C.Button onClick={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }}>清除筛选</C.Button> : undefined} />}
+          </tr>)}</tbody></table></div> : <window.WorkbenchListControls.EmptyState kind={hasFilter ? 'filtered' : 'empty'} title="当前筛选下暂无记录" hint={kind === 'logs' ? '只看已读取的那段日志；来源缺失和读取失败另行列出。' : '只看已读取的备份文件、恢复事件和清理记录。'} action={hasFilter ? <C.Button onClick={() => { setDraft({ ...emptyFilters }); apply(emptyFilters); }}>清除筛选</C.Button> : undefined} />}
         <div className="sm-pager"><window.WorkbenchListControls.Pager page={data.page} sizes={[10, 25, 50]} unit="条" onSize={onPageSize} onPage={changePage} busy={request.loading} label="" sizeLabel="每页数量" /></div>
         {selected && <Detail key={selected.key} row={selected} kind={kind} data={data} reason={writeReason} sharedReason={sharedReason} onAction={ask} onDownload={downloadBackup} downloadBusy={downloadBusy} onClose={() => setSelected(null)} />}
       </>}

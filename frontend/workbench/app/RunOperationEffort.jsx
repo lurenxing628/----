@@ -25,8 +25,8 @@
       <div><dt>{T.operation_effort_labels.remaining_quantity}</dt><dd>{amount(value.remaining_quantity)}</dd></div>
       <div><dt>保存来源</dt><dd>{source ? labels[source.kind] || '已保存来源' : '工时来源缺失'}{source && source.version != null && ' · 第 ' + source.version + ' 版'}</dd></div>
       {showHours && <div><dt>{T.operation_effort_labels.setup_state}</dt><dd>{T.setup_states[value.setup_state]}</dd></div>}
-    </dl>{showHours && <><span>准备 {value.setup_standard_hours === null ? '—' : hours(value.setup_standard_hours, value.state, value)} · 加工 {value.processing_standard_hours === null ? '—' : hours(value.processing_standard_hours, value.state, value)}</span>
-      <small>{T.operation_effort_labels.required_standard_hours} {value.required_standard_hours === null ? '—' : hours(value.required_standard_hours, value.state, value)}</small></>}{source && <window.WorkbenchReference entries={{ '源排产记录': source.run_ref, '源候选': source.candidate_ref, '源试调': source.scenario_ref, '源正式计划': source.plan_ref }} />}</details>;
+    </dl>{showHours && <><span>准备 {value.setup_standard_hours === null ? '—' : hours(value.setup_standard_hours, value.state)} · 加工 {value.processing_standard_hours === null ? '—' : hours(value.processing_standard_hours, value.state)}</span>
+      <small>{T.operation_effort_labels.required_standard_hours} {value.required_standard_hours === null ? '—' : hours(value.required_standard_hours, value.state)}</small></>}{source && <window.WorkbenchReference entries={{ '源排产记录': source.run_ref, '源候选': source.candidate_ref, '源试调': source.scenario_ref, '源正式计划': source.plan_ref }} />}</details>;
   }
   function Effort({ value, absent = false, showStandard = true, showMachines = false }) {
     if (absent) return <span className="rc-muted">比较基准缺失</span>;
@@ -37,8 +37,8 @@
     const notConstructed = value.data_gaps.some(gap => gap.code === 'runtime_requirement_not_constructed');
     const missingText = (known.length ? '部分工时需求' : '工时需求') + (notConstructed ? '未生成' : value.effort_basis === 'runtime_requirement_v1' ? '待确认' : '未保存');
     return <div className="rd-operation-effort"><strong>{T.preparation_allocations[value.allocation_state]}{missing && '，' + missingText + '。'}</strong>
-      {!external && (missing ? known.length > 0 && <span>{known.map(key => T.operation_effort_labels[key] + ' ' + hours(value[key], value.state, value)).join(' · ')}</span> : <><span>准备 {hours(value.setup_standard_hours, value.state, value)} · 加工 {hours(value.processing_standard_hours, value.state, value)}</span>
-        <small>{T.operation_effort_labels.required_standard_hours} {hours(value.required_standard_hours, value.state, value)}</small><small>{T.setup_states[value.setup_state]}</small></>)}
+      {!external && (missing ? known.length > 0 && <span>{known.map(key => T.operation_effort_labels[key] + ' ' + hours(value[key], value.state)).join(' · ')}</span> : <><span>准备 {hours(value.setup_standard_hours, value.state)} · 加工 {hours(value.processing_standard_hours, value.state)}</span>
+        <small>{T.operation_effort_labels.required_standard_hours} {hours(value.required_standard_hours, value.state)}</small><small>{T.setup_states[value.setup_state]}</small></>)}
       {showMachines && <small>{value.machine_basis === 'admission_requirement' ? '所需设备' : value.machine_basis === 'saved_arrangement' ? '安排设备' : '设备'} {value.machines.length ? value.machines.map(row => row.label || T.name_missing).join(' / ') : '未记录'}</small>}
       {value.source === 'external' && <><span>{T.operation_effort_labels.external_cycle_days} {amount(value.external_cycle_days)}</span><small>外协组 {value.external_group_id || '未记录'} · {{ merged: '合并外协', separate: '分别外协' }[value.external_merge_mode] || value.external_merge_mode || '合并规则未记录'}</small></>}
       <Source value={value} showHours={missing || external} />{showStandard && <Standard value={value.standard} />}<C.Reasons rows={value.data_gaps} />
@@ -48,5 +48,5 @@
     const Tag = compact ? 'details' : 'section', Heading = compact ? 'summary' : 'h4';
     return <Tag className={compact ? 'wb-gantt-detail-section' : 'rd-effort-detail'}><Heading>准备与加工需求</Heading><div className={compact ? 'wb-gantt-detail-section-body' : undefined}><Effort value={value} /></div></Tag>;
   }
-  window.RunOperationEffort = { Effort, Detail, Standard, Source, hours, amount };
+  window.RunOperationEffort = { Effort, Detail, Standard, hours, amount };
 })();

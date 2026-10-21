@@ -25,7 +25,7 @@
       return <>{meaningful.length > 0 && <PreparationSummary data={data} definitions={definitions} keys={meaningful} />}<details className="rd-effort-record"><summary>全部工时汇总</summary><PreparationSummary data={data} definitions={definitions} keys={prepKeys} record /></details></>;
     }
     const keys = ['type_changeover_count', 'changed_machine_count'];
-    return <><div className={'rd-preparation-summary' + (section === 'changeovers' ? ' rd-changeover-summary' : '')}>{keys.map(key => {
+    return <><div className="rd-preparation-summary rd-changeover-summary">{keys.map(key => {
       const def = definition(key, definitions);
       return <div key={key}><strong>{def.label}</strong><div className="rd-effort-pair"><div><small>比较基准</small>{data.baseline.state !== 'available' ? <span>{D.referenceNotice(data)}</span> : <D.Metric metric={data.summary.before[key]} definition={def} />}</div>
         <div><small>当前方案</small><D.Metric metric={data.summary.after[key]} definition={def} delta={data.summary.deltas[key]} /></div></div></div>;
@@ -52,7 +52,7 @@
       </details>}
     </>;
   }
-  function Locate({ drill, baseline, onDrill }) {
+  function Locate({ drill, onDrill }) {
     return onDrill && <div className="rd-locate"><C.Button icon="chart-gantt" className="mini" onClick={() => onDrill(drill.selected)}>查看当前甘特</C.Button><C.Button icon="chart-gantt" className="mini" disabled={!drill.reference} onClick={() => onDrill(drill.reference)}>查看对照甘特</C.Button></div>;
   }
   function PreparationTable({ data, onDrill }) {
@@ -60,9 +60,9 @@
     return <><p className="rd-preparation-direction">工时：对照 → 当前；相同值显示一次。</p><div className="rc-table wb-table-frame rd-preparation-frame" data-sticky-head data-sticky-key data-sticky-actions><table className="wb-table rd-preparation-table" aria-label="逐道准备与加工需求"><caption className="wb-visually-hidden">逐道工序准备与加工工时及安排方式</caption>
       <thead><tr><th scope="col" className="wb-col-key">批次 / 工序</th><th scope="col">准备工时<small>小时</small></th><th scope="col">加工工时<small>小时</small></th><th scope="col">合计<small>小时</small></th><th scope="col">安排状态</th><th scope="col" className="wb-col-actions">查看</th></tr></thead>
       <tbody>{data.items.map(row => <React.Fragment key={row.operation_ref}><tr data-decision-preparation={row.operation_ref}><td className="wb-col-key">{onDrill ? <C.Button className="btn link" data-preparation-operation={row.operation_ref} onClick={() => onDrill(row.drill.selected)}>{row.batch_label} · {E.amount(row.sequence)} {row.process_label || T.name_missing}</C.Button> : <strong>{row.batch_label} · {E.amount(row.sequence)} {row.process_label || T.name_missing}</strong>}<small>{row.part_label || T.name_missing} · {M.pieceLabel(row)}</small></td>
-        {['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].map(key => <td key={key} className="rd-preparation-hours"><strong>{data.baseline.state === 'available' && row.before[key] !== row.after[key] && <>{row.before[key] === null ? E.hours(row.before[key], row.before.state, row.before) : E.amount(row.before[key])} → </>}{row.after[key] === null ? E.hours(row.after[key], row.after.state, row.after) : E.amount(row.after[key])}</strong></td>)}
+        {['setup_standard_hours', 'processing_standard_hours', 'required_standard_hours'].map(key => <td key={key} className="rd-preparation-hours"><strong>{data.baseline.state === 'available' && row.before[key] !== row.after[key] && <>{row.before[key] === null ? E.hours(row.before[key], row.before.state) : E.amount(row.before[key])} → </>}{row.after[key] === null ? E.hours(row.after[key], row.after.state) : E.amount(row.after[key])}</strong></td>)}
         <td><strong>{T.preparation_allocations[row.after.allocation_state]}</strong></td><td className="wb-col-actions"><C.Button className="mini" aria-expanded={openOperation === row.operation_ref} data-preparation-detail={row.operation_ref} onClick={() => setOpenOperation(openOperation === row.operation_ref ? null : row.operation_ref)}>工时详情</C.Button>{onDrill && <C.Button icon="chart-gantt" className="mini" onClick={() => onDrill(row.drill.selected)}>看甘特</C.Button>}</td></tr>
-        {openOperation === row.operation_ref && <tr className="rd-preparation-expanded"><td colSpan={6}><div className="rd-preparation-effort-pair"><div><h4>对照</h4><E.Effort value={row.before} absent={data.baseline.state !== 'available'} showMachines /></div><div><h4>当前方案</h4><E.Effort value={row.after} showMachines /></div></div><Difference value={row.deltas} />{row.data_gaps.length > 0 && <C.Reasons rows={row.data_gaps} />}<window.WorkbenchReference value={row.operation_ref} /><Locate drill={row.drill} baseline={data.baseline} onDrill={onDrill} /></td></tr>}</React.Fragment>)}</tbody></table></div></>;
+        {openOperation === row.operation_ref && <tr className="rd-preparation-expanded"><td colSpan={6}><div className="rd-preparation-effort-pair"><div><h4>对照</h4><E.Effort value={row.before} absent={data.baseline.state !== 'available'} showMachines /></div><div><h4>当前方案</h4><E.Effort value={row.after} showMachines /></div></div><Difference value={row.deltas} />{row.data_gaps.length > 0 && <C.Reasons rows={row.data_gaps} />}<window.WorkbenchReference value={row.operation_ref} /><Locate drill={row.drill} onDrill={onDrill} /></td></tr>}</React.Fragment>)}</tbody></table></div></>;
   }
   function EventOperation({ row, start, end }) {
     return <><strong>{row.batch_label || '批次未记录'} · {row.process_label || T.name_missing}</strong><small>工种 {row.type_label || '工种未记录'}</small><span title={F.dateTime(start, { seconds: true, fractions: true }) + ' 至 ' + F.dateTime(end, { seconds: true, fractions: true })}>{F.compactRange(start, end)}</span></>;

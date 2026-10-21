@@ -38,5 +38,5 @@
       && ['total_tardiness_hours', 'known_tardiness_hours'].every(key => nullable(number)(value[key]))
       && Array.isArray(value.known_batch_refs) && value.known_batch_refs.every(ref);
   }
-  window.DeliveryProjectionContract = Object.freeze({ row, summary, rowFields, operationCounts });
+  window.DeliveryProjectionContract = Object.freeze({ row, summary, operationCounts });
 })();

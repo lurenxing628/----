@@ -55,19 +55,19 @@
       <tr><td>同范围{T.changeover_count}</td><td>{number(old.changeovers.value)}{old.changeovers.value === null && old.changeovers.reason && <small>{old.changeovers.reason}</small>}</td>
         <td>{number(selected.changeovers.value)}{selected.changeovers.value === null && selected.changeovers.reason && <small>{selected.changeovers.reason}</small>}</td></tr>
     </tbody></table></div>
-      {data.resource_common && <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">设备与人员占用汇总</caption><thead><tr><th>资源类型</th><th>原安排班内已占 / 可排（小时）</th><th>候选班内已占 / 可排（小时）</th><th>候选占用比例</th></tr></thead><tbody>{['machine', 'operator'].map(kind => {
+      <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">设备与人员占用汇总</caption><thead><tr><th>资源类型</th><th>原安排班内已占 / 可排（小时）</th><th>候选班内已占 / 可排（小时）</th><th>候选占用比例</th></tr></thead><tbody>{['machine', 'operator'].map(kind => {
         const before = data.resource_common.before[kind], after = data.resource_common.after[kind];
         return <tr key={kind}><td>{T.resource_kinds[kind]} · {after.resource_count} 项</td><td>{number(before.occupied_hours)} / {number(before.available_hours)}</td><td>{number(after.occupied_hours)} / {number(after.available_hours)}</td><td>{window.WorkbenchFormat.percent(after.utilization_ratio)}</td></tr>;
-      })}</tbody></table></div>}
+      })}</tbody></table></div>
       <details className="dy-evidence"><summary>交期数据范围与资源计算详情</summary><p>排产时的正式计划：{T.delivery_coverage(old)}</p><p>候选方案：{T.delivery_coverage(selected)}</p>
         <p>使用排产时保存的班表，在同一时间范围内对照全部候选和当时正式计划涉及的设备、人员。这里统计所选批次的占用。</p>
         <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">逐资源日峰值对照</caption><thead><tr><th>资源</th><th>原安排日峰值占用比例</th><th>候选日峰值占用比例</th></tr></thead><tbody>
           {data.resources.map(row => <tr key={row.resource_ref} data-comparison-resource={row.resource_ref}><td>{T.resource_kinds[row.kind]} · {row.label || T.name_missing}</td><td><Peak value={row.before} /></td><td><Peak value={row.after} /></td></tr>)}
         </tbody></table></div>
-        {data.resource_common && <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">资源计算详情</caption><thead><tr><th>资源类型</th><th>候选班内工序累计 / 可排时间</th><th>候选资源占用差异</th></tr></thead><tbody>{['machine', 'operator'].map(kind => {
+        <div className="dy-scroll"><table className="dy-analysis-table"><caption className="wb-sr-only">资源计算详情</caption><thead><tr><th>资源类型</th><th>候选班内工序累计 / 可排时间</th><th>候选资源占用差异</th></tr></thead><tbody>{['machine', 'operator'].map(kind => {
           const after = data.resource_common.after[kind];
           return <tr key={kind}><td>{T.resource_kinds[kind]}</td><td>{window.WorkbenchFormat.percent(after.demand_ratio)}</td><td>{after.balance_state === 'not_applicable' ? '不适用' : number(after.balance_cv)}{after.balance_reason && <small>{after.balance_reason.message}</small>}</td></tr>;
-        })}</tbody></table></div>}<p>资源占用差异按各资源的可排时间加权，比较占用比例的离散程度；数值越小，占用比例越接近。</p>
+        })}</tbody></table></div><p>资源占用差异按各资源的可排时间加权，比较占用比例的离散程度；数值越小，占用比例越接近。</p>
       </details>
       {!data.resource_scope_complete && <div className="dy-note warning">有 {data.resource_scope_unknown_rows} 条安排读不到所在资源，这部分没有计入负荷，实际占用可能更高。</div>}
     </section>;

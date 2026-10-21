@@ -22,23 +22,23 @@
     </>;
   }
   function CalendarRangeDialog({ adapter, month, defaultPeriods, source, command, onClose, refreshState, onRefresh }) {
-    const [range, setRange] = React.useState({ start_date: K.monthKey(month.year, month.month) + '-01',
-      end_date: K.monthKey(month.year, month.month) + '-' + K.monthDays(month.year, month.month), scope: 'all', operation: 'upsert' });
+    const monthPrefix = K.monthKey(month.year, month.month), fullMonth = { start_date: monthPrefix + '-01', end_date: monthPrefix + '-' + K.monthDays(month.year, month.month) };
+    const [range, setRange] = React.useState({ ...fullMonth, scope: 'all', operation: 'upsert' });
     const [value, setValue] = React.useState({ type: 'work', hours: String(window.APSWorkPeriods.hours(defaultPeriods)), periods: window.APSWorkPeriods.clone(defaultPeriods), eff: '100', allowNormal: 'yes', allowUrgent: 'yes', note: '' });
     const [replaceNote, setReplaceNote] = React.useState(false);
     const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null), [page, setPage] = React.useState(1);
     const controller = React.useRef(null), mounted = React.useRef(true), formRef = React.useRef(null), formId = React.useId();
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; if (controller.current) controller.current.abort(); }; }, []);
     const done = command.phase === 'done', disabled = command.locked || done || loading;
-    const original = React.useRef(JSON.stringify({ range, value, replaceNote }));
+    const snapshot = JSON.stringify({ range, value, replaceNote }), original = React.useRef(snapshot);
     const guardOwner = window.WorkbenchGuards.useDirtyGuard({ owner: 'calendar-range-' + formId,
-      dirty: !done && JSON.stringify({ range, value, replaceNote }) !== original.current, locked: command.locked, message: '批量日历维护有尚未保存的范围或规则。' });
+      dirty: !done && snapshot !== original.current, locked: command.locked, message: '批量日历维护有尚未保存的范围或规则。' });
     async function close() { if (!command.locked && !loading && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }
     React.useEffect(() => { if (error) focusFirstInvalid(formRef.current); }, [error]);
     const reason = K.stale(command) ? '预览变更已过期，没有写入。请点「重新预览变更」。' : !result ? '请先点「预览变更」查看全部命中日期。' :
       !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
     async function preview(event) {
-      if (event) event.preventDefault(); if (disabled) return;
+      event.preventDefault(); if (disabled) return;
       try {
         if (source !== 'production') throw C.failure('当前不是生产数据，不能执行日历维护。');
         if (!K.isDate(range.start_date) || !K.isDate(range.end_date) || range.start_date > range.end_date) throw C.failure('请选择正确的开始和结束日期。',
@@ -65,19 +65,18 @@
           <input id={formId + '-from'} type="date" value={range.start_date} disabled={disabled} onChange={event => { setRange({ ...range, start_date: event.target.value }); setError(null); }} /></Field>
           <Field label="结束日期" path="end_date" error={error} required><input id={formId + '-to'} type="date" value={range.end_date}
             disabled={disabled} onChange={event => { setRange({ ...range, end_date: event.target.value }); setError(null); }} /></Field></div>
-          <Button disabled={disabled} icon="calendar-days" onClick={() => setRange({ ...range, start_date: K.monthKey(month.year, month.month) + '-01',
-            end_date: K.monthKey(month.year, month.month) + '-' + K.monthDays(month.year, month.month) })}>当前整月</Button>
+          <Button disabled={disabled} icon="calendar-days" onClick={() => setRange({ ...range, ...fullMonth })}>当前整月</Button>
           <Segment label="应用到" value={range.scope} disabled={disabled} options={[["all", "范围内每天"], ["weekday", "仅周一至周五"], ["weekend", "仅周六、周日"]]}
             onChange={scope => setRange({ ...range, scope })} />
           <Segment label="维护方式" value={range.operation} disabled={disabled} options={[["upsert", "设置日历"], ["delete", "清除单独设置，恢复默认"]]}
             onChange={operation => setRange({ ...range, operation })} />
           {range.operation === 'upsert' ? <><label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '12px 0' }}>
             <input type="checkbox" checked={replaceNote} disabled={disabled} style={{ width: 15, height: 15 }} onChange={event => setReplaceNote(event.target.checked)} />
-            同时替换备注（留空即清除）</label><Fields value={value} error={error} showSummary={false} onChange={next => { setValue(next); setError(null); }} disabled={disabled} noteEnabled={replaceNote} /></> : <p>清除范围内命中日期的单独设置，恢复默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p>}</>}
+            同时替换备注（留空即清除）</label><Fields value={value} error={error} onChange={next => { setValue(next); setError(null); }} disabled={disabled} noteEnabled={replaceNote} /></> : <p>清除范围内命中日期的单独设置，恢复默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p>}</>}
         {loading && <p role="status">正在读取全部命中日期并计算变更前后配置…</p>}
         {result && <RangePreview result={result} page={page} setPage={setPage} onBack={back} disabled={disabled} />}
         <ErrorBox error={error} excludePaths={result ? [] : ['start_date', 'end_date'].concat(range.operation === 'upsert' ? window.CalendarFields.fieldPaths : [])} />
-        <Issues issues={result && result.warnings || []} /><Feedback command={command} />
+        <Issues issues={result ? result.warnings : undefined} /><Feedback command={command} />
         {done && <RefreshResult state={refreshState} onRefresh={onRefresh} />}
       </form></Modal></div>;
   }

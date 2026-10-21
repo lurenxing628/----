@@ -69,8 +69,14 @@
       style={widths ? { width: tableWidth } : undefined} aria-busy={loading}>
       <caption className="wb-visually-hidden">{C.resourceName(kind, opCategory)}列表，编号与操作列固定。</caption>
       <thead><tr><th scope="col" className="cbx" data-column="__selection" style={{ width: widths ? widths.__selection : 44 }}><input ref={selectAll} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !entities.length} onChange={event => {
-        const visible = new Set(entities.map(item => item.ref));
-        onSelect(event.target.checked ? Array.from(new Set(selected.concat(Array.from(visible)))) : selected.filter(ref => !visible.has(ref)));
+        if (event.target.checked) {
+          const next = new Set(selected);
+          entities.forEach(item => next.add(item.ref));
+          onSelect(Array.from(next));
+        } else {
+          const visible = new Set(entities.map(item => item.ref));
+          onSelect(selected.filter(ref => !visible.has(ref)));
+        }
       }} /></th>
         {cols.map(col => <th key={col.key} scope="col" data-column={col.key} className={col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : ''} style={{ width: widths ? widths[col.key] : col.width }} aria-sort={sortActive && sort === col.key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           <window.ResourceTableHeader column={col} kind={kind} scope={scope} adapter={adapter} matchingCount={matchingCount}
@@ -78,14 +84,17 @@
             width={widths ? widths[col.key] : col.width} onResize={width => resize(col.key, width)} disabled={headerDisabled} />
         </th>)}
         <th scope="col" className="actcol wb-col-actions" data-column="__actions" style={{ width: widths ? widths.__actions : 216 }}>操作</th></tr></thead>
-      <tbody>{entities.map(entity => <tr key={entity.ref}><td className="cbx"><input type="checkbox" aria-label={'选择 ' + entity.business_code + ' ' + entity.label} checked={selected.includes(entity.ref)} disabled={disabled}
+      <tbody>{entities.map(entity => {
+        const issueCount = entity.issues.reduce((n, issue) => n + (issue.scope !== 'collection' ? 1 : 0), 0);
+        return <tr key={entity.ref}><td className="cbx"><input type="checkbox" aria-label={'选择 ' + entity.business_code + ' ' + entity.label} checked={selected.includes(entity.ref)} disabled={disabled}
         onChange={event => onSelect(event.target.checked ? selected.concat(entity.ref) : selected.filter(ref => ref !== entity.ref))} /></td>
         {cols.map(col => <td key={col.key} className={col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : ''} style={{ overflowWrap: 'anywhere', whiteSpace: 'normal' }}>{col.render(entity)}
-          {col.key === 'label' && entity.issues.some(issue => issue.scope !== 'collection') && <span className="muted" style={{ display: 'block', fontSize: 12 }}>待核对 {entity.issues.filter(issue => issue.scope !== 'collection').length} 项</span>}</td>)}
+          {col.key === 'label' && issueCount > 0 && <span className="muted" style={{ display: 'block', fontSize: 12 }}>待核对 {issueCount} 项</span>}</td>)}
         <td className="actcol wb-col-actions"><div className="rowact">
           <Button className="mini" icon="search" disabled={disabled} onClick={() => onOpen(entity.ref)}>{kind === 'op_type' ? entity.fields.category === 'internal' ? '查看绑定' : entity.fields.category === 'external' ? '查看供应商' : '查看/编辑' : '查看/编辑'}</Button>
           <Button className="mini danger" icon="trash-2" reasonDisplay="tooltip" reason={disabled ? '正在处理，请稍候。' : C.blocked(entity.write_context, kind, 'delete', source)} onClick={() => onDelete(entity.ref)}>删除</Button>
-        </div></td></tr>)}{!entities.length && <tr><td colSpan={cols.length + 2}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
+        </div></td></tr>;
+      })}{!entities.length && <tr><td colSpan={cols.length + 2}><window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : filtered ? 'filtered' : 'empty'} error={error}
           action={error ? <Button onClick={onRetry}>刷新</Button> : filtered ? <Button onClick={onClear}>清除筛选</Button> : undefined} /></td></tr>}</tbody>
     </table></div></div>;
   }

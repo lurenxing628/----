@@ -73,5 +73,5 @@
     return <div className="rh-pagination"><window.WorkbenchListControls.Pager page={page} sizes={[10, 20, 50]} unit="次" label="排产记录" sizeLabel="排产记录每页数量" busy={busy}
       onSize={size => onChange({ page: 1, size }, false)} onPage={number => onChange({ page: number }, true)} /></div>;
   }
-  window.RunHistoryControls = { Button, ErrorBox, Filters, Table, Pager, timeLabel };
+  window.RunHistoryControls = { Button, ErrorBox, Filters, Table, Pager };
 })();

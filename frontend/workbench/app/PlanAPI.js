@@ -21,8 +21,8 @@
   function adapter(value) {
     const C = window.APSPlanContract;
     return window.APSReadBoundary.checked(value, {
-      catalog: (result, scope = {}) => C.catalog(result, C.catalogScope(scope)),
-      workspace: (result, planRef, scope = {}) => C.workspace(result, planRef, C.workspaceScope(planRef, scope))
+      catalog: (result, scope = {}) => C.catalog(result, scope),
+      workspace: (result, planRef, scope = {}) => C.workspace(result, planRef, scope)
     });
   }
   window.APSPlanAPI = { create, adapter };

@@ -7,7 +7,7 @@
     React.useEffect(() => { setQuery(q => ({ page: 1, size: q.size, status: q.status })); }, [revision]);
     const selectedBase = fixedBase || (onlyBase ? filterBase : null);
     const q = { ...query, ...(selectedBase ? { base_kind: Object.keys(selectedBase)[0], base_ref: Object.values(selectedBase)[0] } : {}) };
-    const read = S.useRead(async signal => { const v = await A.read('/trial/' + collection, q, signal); C.catalog(v, collection, q); return v; }, [collection, JSON.stringify(q), revision, reload]);
+    const read = S.useRead(signal => A.read('/trial/' + collection, q, signal, v => { C.catalog(v, collection, q); return v; }), [collection, JSON.stringify(q), revision, reload]);
     function reset(patch = {}) { setQuery({ page: 1, size: query.size, status: query.status, ...patch }); refresh(); }
     return <section aria-label="试调草稿与试调方案" className="tt-directory"><div className="tt-heading"><U.Tabs value={collection} label="试调列表类别"
       options={[["drafts", '试调草稿'], ['scenarios', '试调方案']]} onChange={value => { setCollection(value); reset({ status: 'all' }); }} />

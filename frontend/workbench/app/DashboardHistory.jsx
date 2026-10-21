@@ -4,7 +4,7 @@
   function History({ read, selected, historyPage, onPage, onSelect, rows, onHandle }) {
     const [source, setSource] = React.useState(''), result = read.result, history = result && result.data.history, item = result && result.data.item;
     React.useEffect(() => setSource(''), [selected]);
-    const options = rows.slice(); if (item && !options.some(r => r.item_ref === item.item_ref)) options.push(item);
+    const options = item && !rows.some(r => r.item_ref === item.item_ref) ? rows.concat(item) : rows;
     return <section aria-label="处置历史"><div className="dy-filters"><label className="dy-search">历史条目<select aria-label="选择历史条目" value={selected || ''} onChange={e => onSelect(e.target.value || null)}><option value="">请选择条目</option>{options.map(row => <option key={row.item_ref} value={row.item_ref}>{row.subject} · {C.categories[row.category]}</option>)}</select></label>
       {item && <Button reasonDisplay="inline" icon={item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen'} onClick={onHandle}>{item.handling.status === 'closed' ? '重新打开处置' : '登记处置'}</Button>}</div>
       {item && <div className="dy-tools"><P.Risk risk={item.risk} /><P.Status handling={item.handling} /><span>当前状态</span></div>}

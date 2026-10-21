@@ -31,7 +31,7 @@
     const d = envelope(payload);
     check(shape(d, ['candidate_ref', 'run_ref', 'baseline', 'batch_refs', 'batches', 'metrics', 'before_metrics', 'delivery_deltas', 'operations', 'basis', 'capabilities'])
       && d.candidate_ref === candidateRef && ref(d.run_ref) && (!runRef || d.run_ref === runRef)
-      && refs(d.batch_refs) && Array.isArray(d.batches) && refs(d.batches.map(row => row.batch_ref))
+      && refs(d.batch_refs) && Array.isArray(d.batches)
       && equal(d.batches.map(row => row.batch_ref), d.batch_refs) && shape(d.metrics, keys)
       && shape(d.before_metrics, keys.slice(0, 2)) && shape(d.delivery_deltas, keys.slice(0, 2))
       && equal(d.basis, { scope: 'full_candidate_and_full_admission_baseline', batch_scope: 'admission_selected_batches',
@@ -49,8 +49,8 @@
         && [row.delay_delta_hours, row.finish_delta_hours].every(v => v === null || number(v)));
       delivery(row.before, row, b.available); delivery(row.after, row); check(row.before.due_date === row.after.due_date);
     });
-    keys.slice(0, 2).forEach(key => { metric(d.metrics[key], key); metric(d.before_metrics[key], key); });
     for (const key of keys.slice(0, 2)) {
+      metric(d.metrics[key], key); metric(d.before_metrics[key], key);
       check(d.delivery_deltas[key] === null || number(d.delivery_deltas[key]));
     }
     const o = d.operations, lists = ['operation_refs', 'changed_operation_refs', 'machine_changed_operation_refs', 'unknown_operation_refs', 'machine_unknown_operation_refs'];
@@ -107,5 +107,5 @@
   function adapter(value) {
     return window.APSReadBoundary.checked(A.adapter(value), { analysis, adoptions: history });
   }
-  window.RunCandidateAnalysisAPI = { create, adapter, analysis, history, keys };
+  window.RunCandidateAnalysisAPI = { create, adapter, analysis, history };
 })();

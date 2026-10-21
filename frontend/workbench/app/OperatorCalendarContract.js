@@ -91,16 +91,11 @@
       const periods = draft.type === 'rest' ? [] : draft.periods, issue = window.APSWorkPeriods.validate(periods);
       if (issue) throw C.failure(issue, [{ path: 'fields.periods', message: issue }]);
       fields.periods = window.APSWorkPeriods.clone(periods);
-      delete fields.shiftStart; delete fields.shiftEnd;
     }
     const note = String(draft.note == null ? '' : draft.note).trim();
     fields.note = note || null;
     if (original && original.explicit && draft.eff === draftOf(original).eff) delete fields.eff;
     return fields;
-  }
-  function hours(value) {
-    if (!value || !value.explicit) return '';
-    return window.WorkbenchFormat.hours(value.shift_hours, { digits: 2, trim: true });
   }
   function tag(value) {
     if (!value || !value.explicit) return { tone: 'none', text: '按班次' };
@@ -127,5 +122,5 @@
     if (!C.object(data.write_context)) throw C.failure('清除能力没有声明，没有清除任何设置。');
     return result;
   }
-  window.APSOperatorCalendar = { envelope, month, draftOf, switchType, input, hours, tag, rangeInput, rangePreview, isDate, isClock, ACTIONS };
+  window.APSOperatorCalendar = { month, draftOf, switchType, input, tag, rangeInput, rangePreview };
 })();

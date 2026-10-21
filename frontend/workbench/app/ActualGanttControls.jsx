@@ -1,8 +1,6 @@
 (function () {
   'use strict';
   const { Button, Icon, TimelineZoom } = window.ResourceControls, M = window.ActualGanttModel;
-  // 工序说明只有 ActualGanttModel 那一份写法，这里不再改写措辞。
-  const describe = M.describe;
   function Toolbar({ view, patch, model, data, zoom, width, onZoom, onFit, onLocate, onExport, busy }) {
     const allCollapsed = model.groups.length > 0 && model.groups.every(g => view.collapsed[g.id]);
     const counts = React.useMemo(() => {
@@ -15,6 +13,7 @@
       }
       return counts;
     }, [data]);
+    const step = M.tickStep(model, width);
     return <div className="gb-toolbar fg-toolbar">
       <div className="fg-toolbar-main"><div className="seg" role="group" aria-label="甘特视图">
         {Object.entries(M.views).map(([key, label]) => <button type="button" key={key} className={'seg-btn' + (view.mode === key ? ' on' : '')} aria-pressed={view.mode === key} onClick={() => patch({ mode: key, collapsed: {} })}>{label}</button>)}</div>
@@ -30,7 +29,7 @@
           <label className="fg-chain-toggle"><input type="checkbox" checked={view.onlySelected} disabled={!view.selected && !view.onlySelected} onChange={e => patch({ onlySelected: e.target.checked })} />只看选中</label>
           <Button icon={view.details ? 'panel-right-close' : 'panel-right-open'} aria-expanded={view.details} aria-controls="actual-gantt-detail" onClick={() => patch({ details: !view.details })}>{view.details ? '收起详情' : '详情'}</Button>
           <TimelineZoom zoom={zoom} max={1024} onZoom={onZoom} onFit={onFit} className="fg-icon-button" />
-          <span className="fg-muted" aria-label="时间轴刻度" data-tick-step={M.tickStep(model, width)}>刻度 {M.tickLabel(M.tickStep(model, width))}</span>
+          <span className="fg-muted" aria-label="时间轴刻度" data-tick-step={step}>刻度 {M.tickLabel(step)}</span>
           <Button className="fg-icon-button" icon="search" aria-label="定位选中工序" disabled={!model.items.some(i => i.task.task_ref === view.selected)} onClick={onLocate} />
         </div></div>
     </div>;
@@ -60,6 +59,7 @@
     const [draft, setDraft] = React.useState(scope), [batches, setBatches] = React.useState((scope.batch_ids || []).join(','));
     React.useEffect(() => { setDraft(scope); setBatches((scope.batch_ids || []).join(',')); }, [scope]);
     const patch = value => setDraft(previous => ({ ...previous, ...value }));
+    const selectable = resources ? resources.filter(r => r.kind !== 'supplier') : null;
     return <form className="fg-range" onSubmit={event => { event.preventDefault(); const next = { ...draft };
       Object.keys(next).forEach(key => { if (next[key] === '' || next[key] === null) delete next[key]; });
       if (!next.resource_ref) delete next.resource_type;
@@ -71,11 +71,11 @@
       <label>至<input type="date" aria-label="计划完工结束日" value={draft.plan_finish_date_to || ''} onChange={e => patch({ plan_finish_date_to: e.target.value })} /></label>
       <label>资源<select aria-label="资源范围" value={draft.resource_ref || ''} disabled={resources === null} onChange={e => { const row = resources.find(r => r.ref === e.target.value); patch({ resource_ref: e.target.value, resource_type: row ? row.kind : '' }); }}>
         {resources === null ? <option value={draft.resource_ref || ''}>{draft.resource_ref ? '已选资源（选项待读取）' : '资源选项待读取'}</option> : <><option value="">全部计划或实际资源</option>
-          {draft.resource_ref && !resources.some(r => r.ref === draft.resource_ref && r.kind !== 'supplier') && <option value={draft.resource_ref}>已选资源（当前范围无记录）</option>}
-          {resources.filter(r => r.kind !== 'supplier').map(r => <option key={r.ref} value={r.ref}>{M.views[r.kind]} · {r.label || r.business_code}</option>)}</>}</select></label>
+          {draft.resource_ref && !selectable.some(r => r.ref === draft.resource_ref) && <option value={draft.resource_ref}>已选资源（当前范围无记录）</option>}
+          {selectable.map(r => <option key={r.ref} value={r.ref}>{M.views[r.kind]} · {r.label || r.business_code}</option>)}</>}</select></label>
       <label>批次<input className="fg-batches" aria-label="批次范围" placeholder="多个批次用逗号分隔" value={batches} onChange={e => setBatches(e.target.value)} /></label>
       <Button type="submit" icon="search" busy={busy}>应用范围</Button><Button icon="x" aria-label="清除来源范围" disabled={busy} onClick={() => onApply({ plan_ref: scope.plan_ref })} />
     </form>;
   }
-  window.ActualGanttControls = { Toolbar, Range, Chain, describe };
+  window.ActualGanttControls = { Toolbar, Range, Chain };
 })();

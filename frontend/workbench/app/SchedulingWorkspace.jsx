@@ -24,11 +24,12 @@
     })}>{label}</U.Button>;
   }
   function ReadRun({ runRef, api, onNavigate, initialContext, runHistoryReturn }) {
+    const validRef = A.ref(runRef);
     const [record, setRecord] = React.useState(null), [error, setError] = React.useState('');
     const [checking, setChecking] = React.useState(false), [verified, setVerified] = React.useState(false), [retryPaused, setRetryPaused] = React.useState(false);
     const [paused, setPaused] = React.useState(document.hidden), [revision, refresh] = React.useReducer(v => v + 1, 0);
     React.useEffect(() => {
-      if (!A.ref(runRef)) return undefined;
+      if (!validRef) return undefined;
       setRetryPaused(false);
       let disposed = false, timer, controller, querying = false, done = false, attempt = 0, unsettledSince = null;
       function schedule() { if (!disposed && !done && !document.hidden) timer = setTimeout(read, A.pollDelay(attempt++)); }
@@ -64,7 +65,7 @@
       renderAdoption={(candidateRef, metadata = {}) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />}
       renderTrial={value => trialAction(onNavigate, value)} />;
     return <section className="plana run-job-panel rj-status-workspace" aria-label="本次排产">
-      {!A.ref(runRef) ? <><div className="rj-heading rj-business-heading"><h2>本次排产</h2>{navigation}</div><p role="alert">这条排产记录已失效，请点「排产记录」重新选择。</p></> : <>
+      {!validRef ? <><div className="rj-heading rj-business-heading"><h2>本次排产</h2>{navigation}</div><p role="alert">这条排产记录已失效，请点「排产记录」重新选择。</p></> : <>
         <U.Record run={record} paused={paused} checking={checking} verified={verified} retryPaused={retryPaused} retryHint="请点「刷新本次排产」再次核对。" api={api} onNavigate={onNavigate} navigation={navigation}
           actions={<U.Button icon="refresh-cw" aria-label="刷新本次排产" busy={checking} onClick={refresh} />} />
         {error && <div className="rj-notice" role="alert">{error}</div>}
@@ -96,10 +97,10 @@
       <U.Button icon="files" aria-pressed={!candidate && !history} onClick={() => onNavigate(view, {})}>计划版本</U.Button>
       {!candidate && <U.Button icon="history" aria-pressed={history} onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button>}
     </Navigation>;
-    return <>{candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} navigation={navigation}
+    return candidate ? <window.RunCandidateWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} navigation={navigation}
       renderAdoption={(candidateRef, metadata = {}) => <window.RunAdoptionAction candidateRef={candidateRef} {...metadata} onNavigate={onNavigate} />} renderTrial={renderTrial} /> : history ?
       <window.RunHistoryWorkspace initialContext={context.history_query} pageContext={context} onNavigate={onNavigate} navigation={navigation} /> :
-      <window.PlanWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} renderTrial={renderTrial} navigation={navigation} />}</>;
+      <window.PlanWorkspace view={view} initialContext={initialContext} onNavigate={onNavigate} renderTrial={renderTrial} navigation={navigation} />;
   }
   window.RunWorkspace = RunWorkspace;
   window.PlanCenterWorkspace = PlanCenterWorkspace;

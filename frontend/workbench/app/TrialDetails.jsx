@@ -59,7 +59,7 @@
   }
   function Detail({ data, selected, commands, onSelect, onEditing, onRecheck, guardOwner, editorRevision, inspectFocus, onCollapse }) {
     const tasksByRef = React.useMemo(() => new Map(data.tasks.map(t => [t.task_ref, t])), [data.tasks]);
-    const name = React.useMemo(() => window.TrialGantt.resourceNames(data), [data]);
+    const name = React.useMemo(() => window.TrialGantt.resourceNames(data), [data.resources]);
     const task = tasksByRef.get(selected);
     const panel = React.useRef(null), heading = React.useRef(null);
     React.useEffect(() => {

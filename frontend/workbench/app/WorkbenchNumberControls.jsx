@@ -4,7 +4,7 @@
   const inputClass = 'wb-number-input', parentClass = 'wb-number-parent', staticClass = 'wb-number-parent-static';
 
   function editable(input) {
-    return window.APSWorkbenchControlBridge.available(input) && input.type === 'number' && !input.matches(':disabled') && !input.closest('.wb-control-popup');
+    return window.APSWorkbenchControlBridge.available(input) && input.type === 'number' && !input.closest('.wb-control-popup');
   }
   function numberValue(document, value) {
     const probe = document.createElement('input');
@@ -25,14 +25,14 @@
     if (increment !== null && input.value === '') return null;
     const probe = input.ownerDocument.createElement('input');
     probe.type = 'number';
-    ['min', 'max', 'step', 'value'].forEach(name => {
-      if (input.hasAttribute(name)) probe.setAttribute(name, input.getAttribute(name));
-    });
     const anchored = input.step.toLowerCase() === 'any' || increment !== null;
     if (anchored) {
       // UI increments use the current value as a base, not a validity/rounding grid.
-      probe.removeAttribute('min'); probe.removeAttribute('max');
       probe.step = increment === null ? '1' : increment; probe.setAttribute('value', input.value || '0');
+    } else {
+      ['min', 'max', 'step', 'value'].forEach(name => {
+        if (input.hasAttribute(name)) probe.setAttribute(name, input.getAttribute(name));
+      });
     }
     probe.value = input.value;
     if (direction > 0) probe.stepUp(); else probe.stepDown();

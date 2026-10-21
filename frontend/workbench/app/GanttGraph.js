@@ -41,13 +41,13 @@
     return edgesValid(graph.critical_edges, ['process', 'machine', 'operator'], critical);
   }
   function create(graph) {
-    const nodes = new Map(), operations = new Map(), batches = new Map(), batchFacts = new Map(), missingPredecessors = new Map();
+    const nodes = new Map(), operations = new Map(), batchFacts = new Map(), missingPredecessors = new Map();
     for (const [order, node] of graph.nodes.entries()) {
       nodes.set(node.task_ref, node); operations.set(node.operation_ref, node);
       if (!batchFacts.has(node.batch_id)) {
         const facts = { nodes: [], pieces: new Map(), edges: [], commonEdges: [], pieceEdges: new Map(),
           previous: new Map(), route: null };
-        batchFacts.set(node.batch_id, facts); batches.set(node.batch_id, facts.nodes);
+        batchFacts.set(node.batch_id, facts);
       }
       const facts = batchFacts.get(node.batch_id);
       facts.nodes.push(node); facts.previous.set(node.task_ref, []);
@@ -75,7 +75,7 @@
     }
     const criticalEdges = new Map();
     graph.critical_edges.forEach(edge => criticalEdges.set(connection(edge), { ...edge, kind: 'critical' }));
-    return { graph, nodes, batches, batchFacts, missingPredecessors, critical: new Set(graph.critical_task_refs),
+    return { graph, nodes, batchFacts, missingPredecessors, critical: new Set(graph.critical_task_refs),
       global: edgeFacts(Array.from(criticalEdges.values())), empty: edgeFacts([]), selected: null };
   }
   function edgeFacts(edges) {
@@ -167,7 +167,7 @@
     for (let row = low; row < prepared.rows.length && prepared.rows[row].top < viewport.top + viewport.height; row++) {
       for (const entry of prepared.rows[row].entries) {
         const { point } = entry, pad = point.start === point.end ? 12 : 0;
-        if (point.bottom > viewport.top && point.top < viewport.top + viewport.height
+        if (point.bottom > viewport.top
           && x(point.end) + pad >= viewport.left && x(point.start) - pad <= viewport.left + viewport.width) visibleEntries.push(entry);
       }
     }

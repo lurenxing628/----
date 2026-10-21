@@ -9,14 +9,15 @@
       <summary className="gantt-route-group-heading">{label}<small> · {group.nodes.length} 道</small></summary>{children}</details>
       : <div className="gantt-route-group"><h4>{label}</h4>{children}</div>;
   }
-  function GanttRouteList({ index, targetRef, loadedRefs, onSelect, disabled = false, collapsible = false, children }) {
+  function GanttRouteList({ index, targetRef, loadedRefs, onSelect, disabled = false, collapsible = false }) {
     const graph = index.graph;
     const route = React.useMemo(() => G.route(index, targetRef), [index, targetRef]);
+    const pieceCount = route ? route.groups.filter(group => group.pieceId !== null).length : 0, missing = index.missingPredecessors.get(targetRef);
     return <section className="gantt-route" aria-label="完整工艺路线"><h3>完整工艺路线</h3>
       {graph.state !== 'available' ? <p className="gantt-route-summary">{graph.reason}</p> : !route ?
         <p className="gantt-route-summary">此工序未安排，暂无甘特节点。</p> : <>
-          <p className="gantt-route-summary">{route.target.batch_id} · {route.count} 道已安排{route.groups.filter(group => group.pieceId !== null).length > 0 &&
-            ' · ' + route.groups.filter(group => group.pieceId !== null).length + ' 个分件'}。点击工序定位；前序按实际关系显示。</p>
+          <p className="gantt-route-summary">{route.target.batch_id} · {route.count} 道已安排{pieceCount > 0 &&
+            ' · ' + pieceCount + ' 个分件'}。点击工序定位；前序按实际关系显示。</p>
           {route.groups.map(group => <RouteGroup group={group} selectedPiece={route.target.piece_id} collapsible={collapsible} key={(route.target.piece_id || 'common') + ':' + (group.pieceId === null ? 'common' : 'piece:' + group.pieceId)}>
             <ul className="gantt-route-list">{group.nodes.map(node => {
               const outside = !loadedRefs.has(node.task_ref), previous = route.previous.get(node.task_ref);
@@ -34,8 +35,8 @@
                     aria-label={'定位前序 ' + pieceLabel(parent) + ' · ' + operationLabel(parent)}>{pieceLabel(parent)} · {operationLabel(parent)}</Button>)}</div>}
               </li>;
             })}</ul></RouteGroup>)}
-          {index.missingPredecessors.get(targetRef) > 0 && <p className="plan-muted">所选工序有 {index.missingPredecessors.get(targetRef)} 道前序未在本计划安排。</p>}
-        </>}{children}
+          {missing > 0 && <p className="plan-muted">所选工序有 {missing} 道前序未在本计划安排。</p>}
+        </>}
     </section>;
   }
   window.GanttRouteList = GanttRouteList;

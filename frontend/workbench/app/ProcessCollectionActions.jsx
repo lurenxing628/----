@@ -3,7 +3,7 @@
   const C = window.APSResourceContract, P = window.APSProcessContract, A = window.APSProcessActions, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox, Issues } = window.ResourceControls;
   function ProcessCollectionActions({ adapter, request, onClose, onCommitted, onOpen, disabled = false }) {
-    const [original] = React.useState(() => ({ ...request, refs: request.refs && request.refs.slice(), scope: A.scope(request.scope) }));
+    const [original] = React.useState(() => ({ ...request, scope: A.scope(request.scope) }));
     const [draft, setDraft] = React.useState({ business_code: '', label: '', route_raw: '', remark: '' });
     const [error, setError] = React.useState(null), [discard, setDiscard] = React.useState(false), [job, setJob] = React.useState(null);
     const [ack, setAck] = React.useState(false), [now, setNow] = React.useState(Date.now()), [opening, setOpening] = React.useState(false);

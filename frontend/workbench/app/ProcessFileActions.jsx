@@ -3,7 +3,7 @@
   const C = window.APSResourceContract, A = window.APSProcessActions, F = window.APSProcessFiles, S = window.APSResourceSession, M = window.APSResourceMaterial;
   const { Button, Modal, ErrorBox, Issues, Icon } = window.ResourceControls;
   function ProcessFileActions({ adapter, kind, mode, request, onClose, onCommitted, disabled = false }) {
-    const [original] = React.useState(() => ({ ...request, scope: A.scope(request.scope), refs: request.refs && request.refs.slice() }));
+    const [original] = React.useState(() => ({ ...request, scope: A.scope(request.scope) }));
     const [file, setFile] = React.useState(null), [format, setFormat] = React.useState('xlsx'), [selection, setSelection] = React.useState(original.target_ref ? 'explicit' : '');
     const [job, setJob] = React.useState(null), [error, setError] = React.useState(null), [discard, setDiscard] = React.useState(false);
     const [groups, setGroups] = React.useState([]), [now, setNow] = React.useState(Date.now());
@@ -66,12 +66,12 @@
     }
     let reason = importing ? A.blocked(result, original.source, F.operation(kind)) : '';
     if (data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
-    if (data && importing && !reason) { try { F.confirmInput(data, groups, data.zero_review_required); } catch (failure) { reason = C.message(failure); } }
+    let confirmInput = null;
+    if (data && importing && !reason) { try { confirmInput = F.confirmInput(data, groups, data.zero_review_required); } catch (failure) { reason = C.message(failure); } }
     if (command.phase === 'rejected') reason = '本次未导入，请重新预检后再确认。';
     function confirm() {
       if (!importing || controlsDisabled || recovery || !data || reason) return;
-      try { command.submit('process_' + kind + '_import', 'confirm', data.preview_ref, data.write_context, F.confirmInput(data, groups, data.zero_review_required)); }
-      catch (failure) { setError(failure); }
+      command.submit('process_' + kind + '_import', 'confirm', data.preview_ref, data.write_context, confirmInput);
     }
     async function downloadFile(template) {
       if (controlsDisabled || !template && (!data || reason)) return;

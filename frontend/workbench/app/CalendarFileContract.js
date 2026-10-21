@@ -93,7 +93,6 @@
       // 导出范围是日期区间，不是勾选；初始值由弹窗按当前月份给。
       rowsMatchSelection: false,
       templateHint: '空白表头模板，只有列名，没有示例数据。',
-      checkRange,
       preview(raw, mode, expected, request) {
         const result = shared.preview(raw, mode, expected, request);
         columns(result.data);
@@ -121,5 +120,5 @@
       }
     };
   }
-  window.APSCalendarFile = { create, labels, checkRange, peopleKind: PEOPLE_KIND };
+  window.APSCalendarFile = { create, labels, peopleKind: PEOPLE_KIND };
 })();

@@ -16,7 +16,7 @@
       document.addEventListener('keydown', close);
       return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', close); if (trigger.current && trigger.current.isConnected) trigger.current.focus(); };
     }, [expanded]);
-    return { expanded, toggle: event => { if (!expanded) trigger.current = event.currentTarget; setExpanded(value => !value); }, collapse: () => setExpanded(false) };
+    return { expanded, toggle: event => { if (!expanded) trigger.current = event.currentTarget; setExpanded(value => !value); } };
   }
   window.GanttPresentationUI = { Axis, useExpanded };
 })();

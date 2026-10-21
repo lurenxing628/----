@@ -131,10 +131,11 @@
     React.useEffect(() => {
       if (current && (!draft || draft.date !== current.date)) { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); }
     }, [current && current.date, current && current.calendar_ref]);
-    const staleDraft = !done && !!current && !!editBase && (current.calendar_ref !== editBase.calendar_ref
-      || JSON.stringify(O.draftOf(current)) !== JSON.stringify(O.draftOf(editBase)));
-    const dirty = !done && mode === 'day' && !!current && !!draft && draft.date === current.date
-      && JSON.stringify(draft) !== JSON.stringify({ ...O.draftOf(editBase || current), date: current.date });
+    const baseDraft = !done && current ? O.draftOf(editBase || current) : null;
+    const staleDraft = !!baseDraft && !!editBase && (current.calendar_ref !== editBase.calendar_ref
+      || JSON.stringify(O.draftOf(current)) !== JSON.stringify(baseDraft));
+    const dirty = !!baseDraft && mode === 'day' && !!draft && draft.date === current.date
+      && JSON.stringify(draft) !== JSON.stringify({ ...baseDraft, date: current.date });
     const owner = window.WorkbenchGuards.useDirtyGuard({ dirty, message: window.WorkbenchTerms.personal_calendar + '有尚未保存的修改。', locked: command.locked });
     async function close(detail) {
       if (command.locked) return;

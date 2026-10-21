@@ -4,7 +4,8 @@
   function label(input) {
     const described = (input.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean)
       .map(id => document.getElementById(id)).filter(Boolean).map(node => node.textContent.trim()).join(' ');
-    if (described || input.getAttribute('aria-label')) return described || input.getAttribute('aria-label');
+    const direct = described || input.getAttribute('aria-label');
+    if (direct) return direct;
     const labels = Array.from(input.labels || []).map(node => {
       const copy = node.cloneNode(true);
       copy.querySelectorAll('input,select,textarea,button,.req,.fhint').forEach(child => child.remove());

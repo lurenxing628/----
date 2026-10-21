@@ -79,11 +79,10 @@
             onSize={size => setScope(current => ({ ...current, size, page: 1, snapshot_ref: undefined }))} /></>}
       </div></Modal>;
   }
-  function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirty, onOverlay, onResourceCommitted, focusRef = null }) {
+  function ProcessSourceEditor({ adapter, result, command, disabled, saved, onDirty, onOverlay, onResourceCommitted }) {
     const model = E.useDraft({ result, adapter, stage: 'source', build, reconcile, saved, onDirty });
-    const entity = model.base.data, draft = model.draft, rows = entity.operations, paging = E.usePage(rows, focusRef), root = React.useRef(null);
+    const entity = model.base.data, draft = model.draft, rows = entity.operations, paging = E.usePage(rows);
     const groups = React.useMemo(() => P.groupIndex(entity.external_groups), [entity.external_groups]);
-    E.useFocus(root, focusRef, paging.page.number);
     const [picker, setPicker] = React.useState(null), [create, setCreate] = React.useState(null);
     const [preflightResult, setPreview] = React.useState(null), [discarded, setDiscarded] = React.useState([]), [checking, setChecking] = React.useState(false);
     const preview = preflightResult && preflightResult.base === model.base && preflightResult.draft === draft ? preflightResult : null;
@@ -125,7 +124,7 @@
       invalidate(); model.setError(null);
       const controller = new AbortController(); request.current = controller;
       try {
-        if (typeof adapter.stagePreview !== 'function' || typeof P.stagePreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.stagePreview');
+        if (typeof adapter.stagePreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.stagePreview');
         const body = input(entity, draft, paging.page.size); setChecking(true);
         const response = P.stagePreview(await adapter.stagePreview(entity.ref, 'source_confirm', body, model.base.meta.snapshot_ref, controller.signal), entity.ref, 'source_confirm');
         if (!controller.signal.aborted && request.current === controller) {
@@ -144,7 +143,7 @@
       await command.submit('process', 'source_confirm', entity.ref, preview.response.data.write_context, { ...preview.body, discard_group_refs: discarded });
     }
     const active = E.active(entity);
-    return <section ref={root} data-process-source-editor>
+    return <section data-process-source-editor>
       {active.some(row => draft[row.ref] && row.op_type_ref !== draft[row.ref].op_type_ref) && <p role="status">更换实际工种后，将清除原换型工时、单件工时和本序外协周期，请重新填写并确认。</p>}
       <div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>共 {active.length} 道有效工序</span><span className="tb-spacer" />
       <Button icon="plus" disabled={editBlocked} reason={!adapter.resourceAdapter || !window.ProcessOpTypeCreate ? window.WorkbenchTerms.outcomes.unavailable : ''}
@@ -152,12 +151,12 @@
       <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="归属明细" style={{ minWidth: 950, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"归属明细"}</caption>
         <thead><tr><th scope="col" style={{ width: 150 }}>工序</th><th scope="col" style={{ width: 160 }}>工种</th><th scope="col" style={{ width: 160 }}>归属</th><th scope="col" style={{ width: 190 }}>供应商</th><th scope="col">保存记录</th></tr></thead><tbody>{paging.rows.map(row => {
           const current = draft[row.ref] || row, inactive = row.status !== 'active', cycle = current.source === row.source && P.groupCycle(row, groups);
-          return <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}><td><b>{row.sequence}</b> {row.label}{cycle && <div className="muted" data-process-cycle-group={row.external_group_ref}>{cycle}</div>}</td><td>{current.op_type_label || '未选工种'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 工种'} disabled={editBlocked || inactive || !current.source} onClick={() => openPicker(row, 'op_type')} /></div></td>
+          return <tr key={row.ref} data-process-location={row.ref}><td><b>{row.sequence}</b> {row.label}{cycle && <div className="muted" data-process-cycle-group={row.external_group_ref}>{cycle}</div>}</td><td>{current.op_type_label || '未选工种'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 工种'} disabled={editBlocked || inactive || !current.source} onClick={() => openPicker(row, 'op_type')} /></div></td>
             <td><span className="segm" role="group" aria-label={'工序 ' + row.sequence + ' 归属'}>{['internal', 'external'].map(source => <Button key={source} className={current.source === source ? 'on ' + (source === 'internal' ? 'int' : 'ext') : ''}
               aria-pressed={current.source === source} disabled={editBlocked || inactive} onClick={() => { if (source !== current.source) change(row.ref, { source, op_type_ref: null, op_type_label: null, supplier_ref: null, supplier_label: null }); }}>{P.sourceLabel(source)}</Button>)}</span>{!current.source && <div>未归类</div>}</td>
             <td>{current.source === 'internal' ? '不适用' : <>{current.supplier_label || '未选供应商'}<div><Button icon="search" aria-label={'选择工序 ' + row.sequence + ' 供应商'} disabled={editBlocked || inactive || current.source !== 'external'} onClick={() => openPicker(row, 'supplier')} />
               {current.supplier_ref && <Button icon="x" aria-label={'清除工序 ' + row.sequence + ' 供应商'} title={row.external_group_ref ? '清除本外协段所有工序的供应商' : '清除供应商'} disabled={editBlocked || inactive} onClick={() => clearSupplier(row)} />}</div>{row.external_group_ref && <div className="muted">选择或清除供应商会应用到本外协段。</div>}</>}</td>
-            <td>{inactive ? '已停用工序' : <div className="muted"><E.Confirmation record={row.confirmation && row.confirmation.source} /></div>}<Issues issues={row.issues} /></td></tr>;
+            <td>{inactive ? '已停用工序' : <div className="muted"><E.Confirmation record={row.confirmation.source} /></div>}<Issues issues={row.issues} /></td></tr>;
         })}{!paging.rows.length && <tr><td colSpan={5}>{rows.length ? '没有匹配的工序。' : '尚无工序记录。'}</td></tr>}</tbody></table></div><E.Pager paging={paging} disabled={blocked} />
       <E.Groups rows={displayGroups} affected={affected.map(row => row.ref)} discarded={discarded} onDiscard={preview ? setDiscarded : undefined} disabled={blocked} />
       {entity.external_groups.length > 0 && <p className="muted">需要让段内工序改用不同供应商或改为自制时，请先到工时定额页管理、拆分外协段。</p>}

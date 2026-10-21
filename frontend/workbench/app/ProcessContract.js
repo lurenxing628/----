@@ -78,11 +78,13 @@
       if (!group) return false;
       if (row.status === 'active' && (row.source !== 'external' || !within(row.sequence, group.start_sequence, group.end_sequence))) invalid.add(group.ref);
     }
-    return entity.operations.every(row => row.external_days_source !== 'group' || row.source === 'external' && row.status === 'active'
-      && groups.has(row.external_group_ref) && !invalid.has(row.external_group_ref)
-      && groups.get(row.external_group_ref).merge_mode === 'merged' && groups.get(row.external_group_ref).total_days > 0
-      && !groups.get(row.external_group_ref).issues.length
-      && !row.issues.some(item => ['sequence_invalid', 'external_group_invalid', 'external_group_part_mismatch'].includes(item.code)));
+    return entity.operations.every(row => {
+      if (row.external_days_source !== 'group') return true;
+      const group = groups.get(row.external_group_ref);
+      return row.source === 'external' && row.status === 'active' && !!group && !invalid.has(row.external_group_ref)
+        && group.merge_mode === 'merged' && group.total_days > 0 && !group.issues.length
+        && !row.issues.some(item => ['sequence_invalid', 'external_group_invalid', 'external_group_part_mismatch'].includes(item.code));
+    });
   }
   function groupCycle(row, groups) {
     if (row.external_days_source !== 'group') return null;
@@ -94,14 +96,14 @@
   }
   function list(result, scope) {
     C.query(result, 'list');
-    const d = result.data, p = d.page;
+    const d = result.data, p = d.page, sort = ordering(scope);
     if (!d.entities.every(entity) || !uniqueRefs(d.entities) || !capabilities(d.capabilities)
-        || d.create_context !== null && (!writeContext(d.create_context) || !C.object(d.create_context))
+        || d.create_context !== null && !writeContext(d.create_context)
         || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]]))
         || p.number !== scope.page || p.size !== scope.size
         || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) && !(p.total === 0 && p.pages === 0)
-        || p.sort.length !== ordering(scope).length || !p.sort.every((item, index) => C.object(item)
-          && item.field === ordering(scope)[index].field && item.direction === ordering(scope)[index].direction))
+        || p.sort.length !== sort.length || !p.sort.every((item, index) => C.object(item)
+          && item.field === sort[index].field && item.direction === sort[index].direction))
       throw C.failure('读到的工艺列表不完整，请刷新后重试。');
     if (scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref)
       throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
@@ -196,7 +198,6 @@
     if (state === 'unconfirmed') return '待确认';
     return '状态未明确';
   }
-  function stageLabel(key) { return own(stageNames, key) ? stageNames[key] : '阶段未明确'; }
-  const own = (target, key) => Object.prototype.hasOwnProperty.call(target, key);
-  window.APSProcessContract = { stages, sorts, columns, ordering, externalGroup, groupIndex, groupCycle, list, detail, preview, stagePreview, previewBody, reason, sourceLabel, valueText, workflowStateLabel, stageLabel };
+  function stageLabel(key) { return C.own(stageNames, key) ? stageNames[key] : '阶段未明确'; }
+  window.APSProcessContract = { stages, columns, ordering, externalGroup, groupIndex, groupCycle, list, detail, preview, stagePreview, previewBody, reason, sourceLabel, valueText, workflowStateLabel, stageLabel };
 })();

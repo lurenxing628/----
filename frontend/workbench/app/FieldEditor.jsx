@@ -52,10 +52,11 @@
       setSuggestions(Object.fromEntries(['actual_start', 'actual_end'].filter(key => value[key]).map(key => [key, '复制自同任务上一条报工，请重新核对'])));
     }
     const fresh = action === 'create' && !legacy;
+    const hasPrevious = React.useMemo(() => fresh && Boolean(M.previous(task)), [fresh, task]);
     const mapped = C.fields.concat(['reason', 'declared_operator']);
     return <form ref={form} className="field-editor" aria-label={title} noValidate onSubmit={event => { event.preventDefault(); save(draft); }}>
       <div className="field-editor-heading"><h3>{title}{record ? ' · ' + record.report_no : ''}</h3>
-        {fresh && <Button disabled={disabled} reason={!M.previous(task) ? '同任务同工序暂无可复制的有效报工。' : ''} reasonDisplay="inline" onClick={copy}>复制上一条</Button>}</div>
+        {fresh && <Button disabled={disabled} reason={!hasPrevious ? '同任务同工序暂无可复制的有效报工。' : ''} reasonDisplay="inline" onClick={copy}>复制上一条</Button>}</div>
       <window.FieldEditorFields {...{ task, record, legacy, action, adapter, draft, suggestions, disabled, first, change, knownLegacy }} error={shownError} />
       <ErrorBox error={error} excludePaths={mapped} /><Feedback command={command} onDone={onDone} excludePaths={mapped} />
       <div className="field-footer"><Button onClick={onClose} disabled={command.locked}>取消</Button>

@@ -18,7 +18,7 @@
       '；更新时间：' + (data.scenario_ref ? data.saved_at || '未记录' : data.updated_at || '未记录') +
       '；导出 ' + data.comparison.batches.length + ' 批次、' + data.task_count + ' 道安排、' + data.unplanned_operations.length + ' 道未安排工序。';
   }
-  function cell(value, index, columns = headers) {
+  function cell(value, index, columns) {
     if (value === undefined || value === null) return '""';
     if (typeof value === 'number') { C.check(Number.isFinite(value), '导出数据中有无效数值。'); return String(value); }
     const text = typeof value === 'boolean' ? value ? '是' : '否' : value;
@@ -31,10 +31,10 @@
         rows.map(row => row.map((value, index) => cell(value, index, columns)).join(',')).join('\r\n') + '\r\n' };
   }
   function csv(data) {
-    C.workspace(data);
     const c = data.comparison;
     const issues = data.validation.issues.filter(row => row.code !== 'scenario_adoption_not_connected');
-    const constraints = '约束检查：' + label(data.validation.constraints_status, states) + '；整体状态：' + label(data.validation.constraints_status, states) +
+    const constraintStatus = label(data.validation.constraints_status, states);
+    const constraints = '约束检查：' + constraintStatus + '；整体状态：' + constraintStatus +
       '；问题 ' + issues.length + ' 项';
     const common = [data.name || '未命名试调草稿', label(data.status, states), constraints,
       data.base_identity.display_name || '上次排产的候选方案', c.changeovers];
@@ -49,7 +49,6 @@
     return document('方案试调对比.csv', headers, rows);
   }
   function preparation(data) {
-    C.workspace(data);
     const columns = ['方案', '安排侧', '批次', '工序', '顺序', '分件', '工序安排', '准备状态', '工序类别',
       '原需求目标量', '原需求数量依据', '本次执行目标量', '本次执行数量依据', '本次执行剩余',
       '准备标准工时（小时）', '加工标准工时（小时）', '所需标准工时（小时）',
@@ -73,7 +72,6 @@
     return document('试调准备需求.csv', columns, rows);
   }
   function changeovers(data) {
-    C.workspace(data);
     const columns = ['方案', '安排侧', '记录类型', '工种切换次数（次）', '已知切换（次）', '未知工序数', '冲突数', '设备',
       '前工种', '后工种', '前序预计开工', '前序预计完工', '后序预计开工', '后序预计完工', '重叠', '缺项说明',
       '设备编号', '前工序编号', '后工序编号', '前安排编号', '后安排编号', '草稿编号', '试调方案编号'];
@@ -91,7 +89,6 @@
     return document('试调工种切换.csv', columns, rows);
   }
   function raw(data) {
-    C.workspace(data);
     return { filename: '试调原始数据.json', mime: 'application/json;charset=utf-8',
       text: JSON.stringify(data, (key, value) => key === 'write_context' ? undefined : value, 2) };
   }

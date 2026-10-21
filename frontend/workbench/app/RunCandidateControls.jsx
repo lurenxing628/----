@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const { Button, Icon } = window.ResourceControls;
+  const { Button } = window.ResourceControls;
   function ErrorBox({ error }) { return error ? <div className="rc-notice rc-error" role="alert">{error.message || '候选方案读取失败，请刷新后重试。'}</div> : null; }
   function Reasons({ rows = [] }) {
     const groups = new Map();
@@ -146,9 +146,11 @@
         <div><dt>关联批次</dt><dd>{M.number(summary.batch_count)}</dd></div></dl>
       {data.issues.map((issue, index) => <p className="rc-notice" key={index}>{issue.message}</p>)}
       <div className="rc-table wb-table-frame" data-sticky-head data-sticky-actions><table className="wb-table" aria-label="候选交付风险列表"><caption className="wb-visually-hidden">候选交付风险列表</caption><thead><tr>{['批次 / 零件', '批量 / ' + T.arrangement_labels.status, '交期', T.arrangement_labels.planned_finish, '预计交付', '末端工序 / 依据'].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead>
-        <tbody>{data.items.slice((current - 1) * 20, current * 20).map(row => <tr key={row.batch_ref}>
+        <tbody>{data.items.slice((current - 1) * 20, current * 20).map(row => {
+          const missing = T.missing_arrangements(row.ordinary_unscheduled_operation_count, row.deferred_operation_count);
+          return <tr key={row.batch_ref}>
           <td>{row.batch_id}<small>{row.part_no || '图号未记录'} · {row.part_label || '名称未填写'}</small></td>
-          <td>{M.number(row.quantity)} 件<small>{row.scheduled_operation_count} / {row.operation_count} 道 · {T.delivery_completion_states[row.completion_state]}</small>{T.missing_arrangements(row.ordinary_unscheduled_operation_count, row.deferred_operation_count) && <small>{T.missing_arrangements(row.ordinary_unscheduled_operation_count, row.deferred_operation_count)}</small>}</td>
+          <td>{M.number(row.quantity)} 件<small>{row.scheduled_operation_count} / {row.operation_count} 道 · {T.delivery_completion_states[row.completion_state]}</small>{missing && <small>{missing}</small>}</td>
           <td>{T.due_date(row.due_date, row.due_state, row.due_issue)}</td><td title={row.planned_finish ? M.timeLabel(row.planned_finish) : undefined}>{row.planned_finish ? F.dateTime(row.planned_finish) : ['complete', 'unknown'].includes(row.completion_state) ? '预计完工时间待确认' : '待工序排齐后确定'}
             {!row.planned_finish && row.partial_planned_finish && <small title={M.timeLabel(row.partial_planned_finish)}>{T.arrangement_labels.partial_finish}：{F.dateTime(row.partial_planned_finish)}</small>}</td>
           <td>{T.delivery_risks[row.risk]}{row.delay_hours > 0 && <small>{M.number(row.delay_hours)} 小时</small>}</td>
@@ -156,11 +158,11 @@
             aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}>
             {M.number(task.sequence)} {task.process_label || '工序未记录'}{task.piece_id && ' · ' + task.piece_id}</Button>)}
             {row.issues.map((code, index) => <small key={index}>{reasons[code] || '排产时依据不完整，交付结论待确认'}</small>)}</td>
-        </tr>)}{!data.items.length && <tr><td colSpan={6}>{data.items_complete ? '当前读取范围没有批次。' : '交付资料不完整，暂无法评估。'}</td></tr>}</tbody></table></div>
+        </tr>; })}{!data.items.length && <tr><td colSpan={6}>{data.items_complete ? '当前读取范围没有批次。' : '交付资料不完整，暂无法评估。'}</td></tr>}</tbody></table></div>
       <Pager page={current} pages={pages} onPage={setPage} label="候选交付风险" />
       <details className="rc-reasons"><summary>交期数据范围</summary><div>按排产时的交期和完整工艺安排判断预计交付；工序排齐情况另列。</div>
         <div>交期评价 {M.number(summary.due_evaluation_count)} 批 · 未指定交期 {M.number(summary.excluded_due_count)} 批 · 交付待确认 {M.number(summary.unknown_due_count)} 批</div></details>
     </section>;
   }
-  window.RunCandidateControls = { Button, Icon, ErrorBox, Reasons, Pager, Metric, ScoringScope, GenerationMetadata, Status, Catalog, Generation, Detail, Delivery };
+  window.RunCandidateControls = { Button, ErrorBox, Reasons, Pager, Metric, ScoringScope, GenerationMetadata, Status, Catalog, Generation, Detail, Delivery };
 })();

@@ -73,7 +73,6 @@
     </div>;
   }
   function MetricValue({ value, definition }) {
-    if (!value) return <span>未记录</span>;
     return <><strong className="dh-metric-value">{A.metricText(value, definition)}</strong>
       {value.value === null && value.known_count > 0 && value.known_subtotal !== null && <p className="dh-note">已知小计 {A.numberText(value.known_subtotal, value.unit, definition.precision)}</p>}
       {(!['full_admission', 'full_candidate', 'complete_trial'].includes(value.scope) || value.unknown_count > 0) && <p className="dh-metric-scope">{scopeLabels[value.scope] || '保存范围'}{value.unknown_count > 0 && ' · 另有 ' + value.unknown_count + ' 项待确认'}</p>}{value.value === null && <Reason value={value.reason} />}
@@ -84,8 +83,9 @@
       <caption className="wb-visually-hidden">历史指标原值与对照</caption><thead><tr><th scope="col">结果指标</th><th scope="col">当前记录</th>{compare && <><th scope="col">对照记录</th><th scope="col">变化</th></>}</tr></thead>
       <tbody>{definitions.map(definition => {
         const selected = entry.metrics[definition.key], before = reference && reference.metrics[definition.key], delta = comparison.metric_deltas[definition.key];
+        const comparable = Boolean(delta && delta.state === 'comparable');
         return <tr key={definition.key} data-history-metric={definition.key}><th scope="row">{definition.label}</th><td><MetricValue value={selected} definition={definition} /></td>{compare && <><td><MetricValue value={before} definition={definition} /></td>
-          <td data-direction={delta && delta.state === 'comparable' ? delta.direction : undefined}>{delta ? <><strong>{delta.state === 'comparable' ? window.RunDecisionComparison.deltaText(delta, { ...definition, unit: selected.unit }) : gateLabels[delta.state]}</strong>{delta.state === 'comparable' && delta.direction !== 'equal' && <p className="dh-note">{directionLabels[delta.direction]}</p>}</> : '待确认'}</td></>}</tr>;
+          <td data-direction={comparable ? delta.direction : undefined}>{delta ? <><strong>{comparable ? window.RunDecisionComparison.deltaText(delta, { ...definition, unit: selected.unit }) : gateLabels[delta.state]}</strong>{comparable && delta.direction !== 'equal' && <p className="dh-note">{directionLabels[delta.direction]}</p>}</> : '待确认'}</td></>}</tr>;
       })}</tbody></table></div>;
   }
   function ResourceWindow({ entry, label, definitions }) {

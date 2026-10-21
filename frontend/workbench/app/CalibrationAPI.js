@@ -8,7 +8,7 @@
   const count = value => Number.isInteger(value) && value >= 0;
   const number = value => value === null || typeof value === 'number' && Number.isFinite(value);
   function failure(message, code) { const error = new Error(message); error.committed = false; error.error = { code, message, fields: [] }; return error; }
-  function readInput(value = {}) {
+  function input(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !(key in defaults) && key !== 'snapshot_ref')) throw failure('筛选条件不受支持，未切换到其他范围。');
     const result = { ...defaults, ...value };
     if (typeof result.query !== 'string' || result.query.length > 200 || result.query.includes('\0') || result.part_ref !== null && !ref(result.part_ref)
@@ -21,9 +21,6 @@
     result.column_filters = Object.fromEntries(Object.keys(result.column_filters).sort().map(key => [key, window.ResourceTableFilterModel.rule(result.column_filters[key])]));
     return result;
   }
-  function input(value = {}) {
-    return readInput(value);
-  }
   function restoreInitial(value = {}) {
     if (!object(value) || Object.keys(value).some(key => !['scope', 'table', 'snapshot_ref', 'selected', 'sample_ref', 'table_widths'].includes(key))) throw failure('无法识别所选完工记录来源。');
     if (value.selected != null && !ref(value.selected) || value.sample_ref != null && !ref(value.sample_ref)) throw failure('已选记录编号无效。');
@@ -31,14 +28,13 @@
       || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
     const saved = { ...value.scope, ...value.table };
     delete saved.snapshot_ref;
-    const restored = readInput(saved), migration = window.ResourceTableFilterModel.restore(restored.column_filters);
+    const restored = input(saved), migration = window.ResourceTableFilterModel.restore(restored.column_filters);
     restored.column_filters = migration.filters;
     return { input: restored, notice: migration.notice };
   }
   const initial = value => restoreInitial(value).input;
   async function readView(api, value, signal) {
-    if (value.snapshot_ref) return validate(await api.read(value, signal), value);
-    const wanted = readInput(value);
+    const wanted = input(value);
     return validate(await api.read(wanted, signal), wanted);
   }
   function validRow(row, meta) {
@@ -59,7 +55,7 @@
     const row = data.suggestion, samples = data.samples;
     if (data.candidate_scope_basis !== 'template_ref_and_same_part_unbound' || !Array.isArray(samples)
       || samples.length !== row.candidate_count || new Set(samples.map(sample => sample && sample.sample_ref)).size !== samples.length) return false;
-    const valid = samples.every(sample => {
+    if (!samples.every(sample => {
       if (!object(sample) || !ref(sample.sample_ref) || sample.execution_operation_ref !== sample.sample_ref
         || typeof sample.eligible !== 'boolean' || typeof sample.selected !== 'boolean' || typeof sample.sample_revision !== 'string'
         || !['completed_quantity', 'effective_processing_hours', 'unit_hours'].every(key => number(sample[key])) || !count(sample.unknown_record_count)
@@ -71,9 +67,9 @@
         && ref(sample.lineage_evidence_ref) && (!sample.eligible || sample.template_revision === row.template_revision)
         && (!sample.selected || sample.eligible && sample.exclusion_reasons.length === 0)
         && (sample.selected || sample.exclusion_reasons.length > 0);
-    });
-    const selected = samples.filter(sample => sample && sample.selected);
-    return valid && selected.length === row.sample_count && samples.filter(sample => sample.eligible).length === row.eligible_sample_count
+    })) return false;
+    const selected = samples.filter(sample => sample.selected);
+    return selected.length === row.sample_count && samples.filter(sample => sample.eligible).length === row.eligible_sample_count
       && selected.every(sample => row.sample_refs.includes(sample.sample_ref) && row.sample_revisions.some(revision => object(revision)
         && revision.sample_ref === sample.sample_ref && revision.sample_revision === sample.sample_revision && revision.template_revision === sample.template_revision
         && JSON.stringify(revision.report_revision_refs) === JSON.stringify(sample.report_revision_refs)));

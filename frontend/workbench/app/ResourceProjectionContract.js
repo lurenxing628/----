@@ -43,5 +43,5 @@
           && ['machine', 'operator'].every(kind => summary(value[side][kind])))
         : ['machine', 'operator'].every(kind => summary(value[kind])));
   }
-  window.ResourceProjectionContract = Object.freeze({ window: metricWindow, day: metricWindow, summary, common });
+  window.ResourceProjectionContract = Object.freeze({ window: metricWindow, summary, common });
 })();

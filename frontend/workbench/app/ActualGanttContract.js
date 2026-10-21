@@ -142,22 +142,6 @@
     } else if (typeof chain.reason !== 'string' || !chain.reason) fail('关键链不可用时必须保留明确原因。');
     return chain;
   }
-  function related(result, context, original, target) {
-    const d = result && result.data, meta = result && result.meta, query = scope(context);
-    if (!ref(target) || !query.snapshot_ref || !result || result.ok !== true || result.schema_version !== 1 || !d || !meta
-      || meta.source !== 'production' || meta.time_basis !== 'factory_local' || !local(meta.as_of) || meta.snapshot_ref !== query.snapshot_ref
-      || !d.plan || d.plan.plan_ref !== query.plan_ref || !d.scope || cohortKeys.some(key => JSON.stringify(d.scope[key]) !== JSON.stringify(original.scope[key])))
-      fail('关联链与原计划、目标或数据版本不一致，没有改用整版链。');
-    return relatedChain(d.critical_chain, query, original, target);
-  }
-  // Both native and injected readers return a chain; the request scope is already normalized at their boundary.
-  function relatedChain(chain, query, original, target) {
-    if (!ref(target) || !query.snapshot_ref || !scopeMatches(original.scope, query) || !object(chain)
-      || chain.plan_ref !== query.plan_ref || chain.snapshot_ref !== query.snapshot_ref
-      || chain.mode !== 'related' || chain.target_task_ref !== target || !Array.isArray(chain.task_refs) || !Array.isArray(chain.edges))
-      fail('关联链与原计划、目标或数据版本不一致，没有改用整版链。');
-    return validateChain(chain, original, query, { snapshot_ref: query.snapshot_ref });
-  }
   function transport(value) { const result = { ...value }; if (result.batch_ids) result.batch_ids = JSON.stringify(result.batch_ids); return result; }
-  window.ActualGanttContract = { scope, workspace, related, relatedChain, transport, local, ref };
+  window.ActualGanttContract = { scope, workspace, transport, local, ref };
 })();

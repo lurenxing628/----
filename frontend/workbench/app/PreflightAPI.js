@@ -22,9 +22,7 @@
       async list(scope, signal) {
         return window.APSBatchContract.list(await batches.list('batch', scope, signal), scope);
       },
-      async selection(scope, signal) {
-        const result = await batches.selection(scope, signal); C.selection(result, scope.snapshot_ref); return result;
-      }
+      selection(scope, signal) { return batches.selection(scope, signal); }
     };
   }
   window.PreflightAPI = { create };

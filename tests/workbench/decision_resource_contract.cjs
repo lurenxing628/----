@@ -173,17 +173,20 @@ function presentationContracts() {
   assert.equal(occupiedZero.text, '无可排时段仍有工作'); assert.equal(occupiedZero.zeroCapacity, true);
   compared.before = metricWindow({ utilization_ratio: 0, occupied_hours: 0, high_pressure: false, conflict: false });
   assert.equal(local.RunDecisionResourceHeatmap.cellText(compared, 'before'), '0.0%', '真实空闲显示0，不归入休息或未知');
-  const shiftData = payload({ grain: 'shift' }).data, firstCell = shiftData.heatmap.items[0].cells[0];
-  firstCell.start = dates[0] + 'T06:30:00'; firstCell.end = dates[0] + 'T10:30:00';
-  shiftData.heatmap.items[0].cells.splice(1, 0, { ...clone(firstCell), bucket_key: dates[0] + '-night', start: dates[0] + 'T18:30:00', end: dates[1] + 'T02:30:00' });
-  shiftData.heatmap.items[0].continuations.push({ group_key: dates[1], bucket_key: dates[0] + '-night', date: dates[0], start: dates[0] + 'T18:30:00', end: dates[1] + 'T02:30:00', continuation_start: dates[1] + 'T00:00:00', continuation_end: dates[1] + 'T02:30:00', basis: 'continuation_of_archived_work_period' });
-  const nightFocus = [], shiftTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: shiftData, mode: 'after', onCursor() {}, onFocus: (...values) => nightFocus.push(values) }));
-  const shiftButtons = nodes(shiftTree).filter(node => node.props['data-heatmap-row'] === 0 && node.props['data-resource-date'] === dates[0]);
-  assert.equal(shiftButtons.length, 2, '同资源同日真实多班段保持独立格');
-  assert(shiftButtons[0].props['aria-label'].includes('06:30') && shiftButtons[1].props['aria-label'].includes('02:30'), '班次按钮沿真实归档边界与跨夜结束展示');
-  const continuation = nodes(shiftTree).find(node => node.props['data-resource-continuation']);
-  assert(continuation && text(continuation).includes('班段延续'), '续日格使用说明链接，保留原完整夜班的一次计时');
-  continuation.props.onClick(); assert.equal(nightFocus[0][1].start, dates[0] + 'T18:30:00'); assert.equal(nightFocus[0][1].end, dates[1] + 'T02:30:00', '延续链接读取原完整班段');
+  for (const secondStart of [dates[0] + 'T18:30:00', dates[1] + 'T00:00:00', dates[1] + 'T00:30:00']) {
+    const shiftEnvelope = payload({ grain: 'shift' }), shiftData = shiftEnvelope.data, firstCell = shiftData.heatmap.items[0].cells[0];
+    firstCell.start = dates[0] + 'T06:30:00'; firstCell.end = dates[0] + 'T10:30:00';
+    shiftData.heatmap.items[0].cells.splice(1, 0, { ...clone(firstCell), bucket_key: dates[0] + '-night', start: secondStart, end: dates[1] + 'T02:30:00' });
+    shiftData.heatmap.items[0].continuations.push({ group_key: dates[1], bucket_key: dates[0] + '-night', date: dates[0], start: secondStart, end: dates[1] + 'T02:30:00', continuation_start: secondStart > dates[1] + 'T00:00:00' ? secondStart : dates[1] + 'T00:00:00', continuation_end: dates[1] + 'T02:30:00', basis: 'continuation_of_archived_work_period' });
+    assert.equal(API.resourceDetails(shiftEnvelope, run, { ...common, grain: 'shift' }), shiftData);
+    const nightFocus = [], shiftTree = state.render(() => local.RunDecisionResourceHeatmap.Heatmap({ data: shiftData, mode: 'after', onCursor() {}, onFocus: (...values) => nightFocus.push(values) }));
+    const shiftButtons = nodes(shiftTree).filter(node => node.props['data-heatmap-row'] === 0 && node.props['data-resource-date'] === dates[0]);
+    assert.equal(shiftButtons.length, 2, '同资源同日真实多班段保持独立格');
+    assert(shiftButtons[0].props['aria-label'].includes('06:30') && shiftButtons[1].props['aria-label'].includes('02:30'), '班次按钮沿真实归档边界与跨夜结束展示');
+    const continuation = nodes(shiftTree).find(node => node.props['data-resource-continuation']);
+    assert(continuation && text(continuation).includes('班段延续'), '续日格使用说明链接，保留原完整夜班的一次计时');
+    continuation.props.onClick(); assert.equal(nightFocus[0][1].start, secondStart); assert.equal(nightFocus[0][1].end, dates[1] + 'T02:30:00', '延续链接读取原完整班段');
+  }
   const preciseQuery = { ...common, resource_ref: machines[0], grain: 'hour', bucket_start: dates[0] + 'T08:00:00', bucket_end: dates[0] + 'T09:00:00' }, preciseResult = payload(preciseQuery, 'resource-days');
   preciseResult.data.items[0].after.tasks[0].occupied_hours = 0.125;
   state.reset();

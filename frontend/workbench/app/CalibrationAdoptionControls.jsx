@@ -12,14 +12,15 @@
   }
   function Samples({ preview, detail }) {
     const rows = preview.samples;
+    const excluded = detail ? detail.samples.filter(row => !row.selected) : null;
     return <section className="cad-samples" aria-label="采用预检的完工记录"><h4>本次采用的可用完工记录（{rows.length} 条）</h4>
       <table className="ca-table"><caption className="wb-visually-hidden">本次采用的可用完工记录，按批次列出数量、加工工时与单件工时</caption>
         <thead><tr><th scope="col">批次 / 工序</th><th scope="col">数量</th><th scope="col">加工工时（小时）</th><th scope="col">单件（小时）</th><th scope="col">来源与版本</th></tr></thead>
         <tbody>{rows.map(row => <tr key={row.sample_ref} data-adoption-sample={row.sample_ref}><td>{row.batch_code}<small>{row.operation_code}</small></td>
           <td>{text(row.completed_quantity)}</td><td>{amount(row.effective_processing_hours)}</td><td>{amount(row.unit_hours)}</td>
           <td><details><summary>模板第 {row.template_revision} 版</summary><window.WorkbenchReference entries={{ '完工记录编号': row.sample_ref, '来源记录编号': row.lineage_evidence_ref, '记录版本': row.sample_revision }} /></details></td></tr>)}</tbody></table>
-      {detail && <details className="cad-records"><summary>排除与未关联的记录（{detail.samples.filter(row => !row.selected).length} 条）</summary>
-        {detail.samples.filter(row => !row.selected).map(row => <div key={row.sample_ref}>{row.batch_code} · {row.template_operation_ref === null ? '未关联' : '已排除'}：
+      {detail && <details className="cad-records"><summary>排除与未关联的记录（{excluded.length} 条）</summary>
+        {excluded.map(row => <div key={row.sample_ref}>{row.batch_code} · {row.template_operation_ref === null ? '未关联' : '已排除'}：
           {row.exclusion_reasons.map(item => item.message).join('；')}</div>)}</details>}</section>;
   }
   function Receipt({ value }) {

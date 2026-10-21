@@ -37,7 +37,8 @@
   function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refreshState = {}, onRefresh, active = true, disabled = false }) {
     const [context, setContext] = React.useState(result);
     const entity = context.data, sequence = React.useRef(0), request = React.useRef(null);
-    const initialRows = React.useRef(D.fromEntity(entity));
+    const initialRows = React.useRef(null);
+    if (initialRows.current === null) initialRows.current = D.fromEntity(entity);
     const [mode, setMode] = React.useState('text'), [routeRaw, setRouteRaw] = React.useState(() => openingText(entity, initialRows.current));
     const [rows, setRows] = React.useState(() => openingRows(initialRows.current).map(row => ({ ...row, key: ++sequence.current })));
     const draftText = mode === 'text' ? routeRaw : D.serialize(rows), baselineDraft = React.useRef(draftText);
@@ -137,7 +138,7 @@
         if (!controller.signal.aborted && request.current === controller) setState({ busy: false, result: null, error });
       } finally { if (request.current === controller) request.current = null; }
     }
-    const affected = state.result ? state.result.data.affected_groups || [] : [];
+    const affected = state.result ? state.result.data.affected_groups : [];
     const saveReason = P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function' && !!command) ||
       (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' :
         !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));

@@ -11,9 +11,8 @@
       return result;
     }, [adapter]);
     const [base, setBase] = React.useState(null), [periods, setPeriods] = React.useState(null), [error, setError] = React.useState(null);
-    const discarded = React.useRef(null);
     const formId = React.useId(), done = command.phase === 'done', disabled = command.locked || done || request.loading;
-    React.useEffect(() => { if (!base && request.result && request.result !== discarded.current && !request.loading) { setBase(request.result); setPeriods(P.clone(request.result.data.periods)); } }, [request.result, request.loading, base]);
+    React.useEffect(() => { if (!base && request.result) { setBase(request.result); setPeriods(P.clone(request.result.data.periods)); } }, [request.result, base]);
     const owner = window.WorkbenchGuards.useDirtyGuard({ owner: 'calendar-defaults-' + formId,
       dirty: !done && !!base && JSON.stringify(periods) !== JSON.stringify(base.data.periods), locked: command.locked,
       message: '默认工作时间有尚未保存的修改。' });
@@ -29,10 +28,9 @@
     }
     function reload() {
       if (!command.reset()) return;
-      discarded.current = request.result;
       setBase(null); setPeriods(null); setError(null); request.reload();
     }
-    return <Modal title="修改默认工作时间" icon="calendar-days" onClose={close} guardOwner={owner} locked={command.locked}
+    return <Modal title="修改默认工作时间" icon="calendar-days" onClose={onClose} guardOwner={owner} locked={command.locked}
       footer={<><Button disabled={command.locked} onClick={close}>{done ? '关闭' : '取消'}</Button>
         {!done && <Button type="submit" form={formId} className="btn primary" disabled={disabled} reason={reason}>保存默认工作时间</Button>}</>}>
       <form id={formId} className="modal-b form scroll" onSubmit={save} noValidate>

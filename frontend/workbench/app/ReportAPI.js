@@ -52,10 +52,12 @@
       || !data || !data.plan || !data.plan.is_current_official || !data.scope || !Array.isArray(data.rows) || !data.page || !data.summary || !Array.isArray(data.data_gaps)
       || !Number.isInteger(data.page.total) || data.page.total < 0 || !Number.isInteger(data.page.number) || !Number.isInteger(data.page.pages))
       throw new Error('读到的报表数据不完整，请刷新重试。');
-    if (topics.includes(data.topic) && (!['operations', 'events', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0)
-      || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key]))))
-      throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
-    if (topics.includes(data.topic)) validateLedger(data);
+    if (topics.includes(data.topic)) {
+      if (!['operations', 'events', 'due', 'confirmed_due', 'unreported', 'finish_sample'].every(key => Number.isInteger(data.summary[key]) && data.summary[key] >= 0)
+        || !['completion_rate', 'on_time_rate', 'effective_processing_hours', 'median_finish_minutes'].every(key => data.summary[key] === null || Number.isFinite(data.summary[key])))
+        throw new Error('报表汇总缺列或数值无效，没有按 0 处理。');
+      validateLedger(data);
+    }
     return result;
   }
   function validateDetail(result) {
@@ -73,7 +75,7 @@
       async detail(ref, input, signal) {
         if (!/^[0-9a-f]{48}$/.test(ref)) throw new Error('工序编号无效，没有定位其他工序。');
         const result = validateDetail(await io.query('analytics/operations/' + ref, input, signal));
-        if (!result.data.detail || result.data.detail.operation.operation_ref !== ref
+        if (result.data.detail.operation.operation_ref !== ref
           || result.data.detail.records.some(row => row.operation_ref !== ref) || result.meta.snapshot_ref !== input.snapshot_ref
           || input.plan_ref && result.data.plan.plan_ref !== input.plan_ref)
           throw new Error('工序详情与原工序、计划或当前数据版本不一致，没有改指其他工序。');

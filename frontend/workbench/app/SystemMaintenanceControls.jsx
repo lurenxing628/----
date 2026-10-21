@@ -53,7 +53,7 @@
         {op.filename && <p>目标文件：{op.filename}</p>}{op.protection_filename && <p>保护副本：{op.protection_filename}</p>}
         <details className="sm-rules"><summary>维护阶段</summary>{op.history.map((step, index) => <p key={index}>{window.WorkbenchFormat.dateTime(step.time)} · {labels[step.state]}</p>)}</details>
       </div> : result && result.kind === 'config' ? <div role="status"><p>{result.command.result === 'committed' ? '八项维护配置已保存，操作记录已留存。' : '配置没有变化，没有写入新的操作记录。'}</p>
-        <window.WorkbenchReference label="保存结果编号" value={result.command.receipt_ref} />{result.command.replayed && <p>查询上次结果</p>}</div> : result && result.kind === 'rejected' ? <p role="status">{rejectedText[intent && intent.action] || rejectedText.config}请按上面的提示改好后重新提交。</p> : null}
+        <window.WorkbenchReference label="保存结果编号" value={result.command.receipt_ref} />{result.command.replayed && <p>查询上次结果</p>}</div> : result && result.kind === 'rejected' ? <p role="status">{rejectedText[intent.action]}请按上面的提示改好后重新提交。</p> : null}
       {intent && !(result && result.terminal) && <p className="sm-note">{result && result.kind === 'not_recorded' ? result.message : '上次操作还没有确认结果。'}请点「查询结果」，勿重复提交。{intent.action === 'restore' ? '确认恢复结果前，业务操作暂停。' : ''}</p>}
     </section>;
   }

@@ -11,7 +11,7 @@
         error: (legacy && !valid(legacy)) || (workbench && !valid(workbench)) ? '已忽略无效的主题设置。' : '' };
     } catch (_) { return { theme: 'light', error: '无法读取本机主题偏好，当前使用浅色。' }; }
   }
-  function notify() { listeners.slice().forEach(function (listener) { listener({ theme: current, error: error }); }); }
+  function notify() { listeners.forEach(function (listener) { listener({ theme: current, error: error }); }); }
   function refresh() {
     var result = read();
     // Window focus and pageshow re-read the preference; an unchanged value must not re-render the whole shell.

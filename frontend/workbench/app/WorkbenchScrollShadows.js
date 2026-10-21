@@ -22,7 +22,7 @@
     if (!container || typeof container.querySelectorAll !== 'function') throw new TypeError('WorkbenchScrollShadows.attach needs a container element');
     const registered = new Map();
     const resize = new ResizeObserver(entries => {
-      for (const entry of entries) update(entry.target.matches(SELECTOR) ? entry.target : entry.target.closest(SELECTOR));
+      for (const entry of entries) update(entry.target.closest(SELECTOR));
     });
     const register = frame => {
       if (registered.has(frame)) return;
@@ -48,5 +48,5 @@
     mutations.observe(container, { childList: true, subtree: true });
     return () => { mutations.disconnect(); Array.from(registered.keys()).forEach(release); resize.disconnect(); };
   }
-  window.WorkbenchScrollShadows = Object.freeze({ attach, update });
+  window.WorkbenchScrollShadows = Object.freeze({ attach });
 })();

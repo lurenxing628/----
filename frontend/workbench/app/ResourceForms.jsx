@@ -63,7 +63,8 @@
     onClose, onReloadContext, refreshState = {}, onRefresh, contextError, contextReview, contextBusy, stockOnly = false }) {
     const [entity, setEntity] = React.useState(initialEntity);
     const [draft, setDraft] = React.useState(() => C.draft(kind, initialEntity, category));
-    const baseline = React.useRef(JSON.stringify(C.draft(kind, initialEntity, category))), form = React.useRef(null);
+    const baseline = React.useRef(null), form = React.useRef(null);
+    if (baseline.current === null) baseline.current = JSON.stringify(draft);
     const [error, setError] = React.useState(null), [catalogBusy, setCatalogBusy] = React.useState(false);
     const [deleteChecked, setDeleteChecked] = React.useState(false);
     React.useLayoutEffect(() => {
@@ -138,7 +139,7 @@
       {!C.statuses[kind].some(row => row[0] === draft.fields.status && row[0] !== 'unknown') && draft.fields.status && <option value={draft.fields.status}>旧状态 / 原因未知（保持原值）</option>}</select></Field>;
     return <Modal title={adjustingStock ? '调整库存' : (action === 'create' ? '新增' : action === 'delete' ? '删除' : '编辑') + C.resourceName(kind, opCategory)} icon={action === 'delete' ? 'trash-2' : icons[kind]} onClose={close} guardOwner={guardOwner} locked={command.locked || catalogBusy || contextBusy} suspended={catalogBusy}
       footer={<><Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : contextBusy ? '正在读取最新资料。' : ''} disabled={catalogBusy}>{done ? '关闭' : '取消'}</Button>
-        {!done && <Button form={formId} type="submit" icon={action === 'delete' ? 'trash-2' : 'check'} className={action === 'delete' ? 'btn danger' : 'btn primary wb-action wb-primary'} reason={reason || confirmReason} busy={disabled}>
+        {!done && <Button form={formId} type="submit" icon={action === 'delete' ? 'trash-2' : 'check'} className={action === 'delete' ? 'btn danger' : 'btn primary'} reason={reason || confirmReason} busy={disabled}>
           {action === 'delete' ? '确认删除' : '保存'}</Button>}</>}>
       <form id={formId} ref={form} className="modal-b form scroll" onSubmit={submit} noValidate>
         {action === 'delete' ? <><p>确认删除 <b>{entity.business_code} · {entity.label}</b>？系统会再次核对关联关系和删除条件。</p>

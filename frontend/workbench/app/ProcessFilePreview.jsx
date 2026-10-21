@@ -13,8 +13,9 @@
     const counts = window.APSProcessFiles.hoursCounts(data);
     const status = row => ['update', 'new', 'committed'].includes(row.result) ? 'changed' : row.result;
     const labels = { changed: receipt ? '已导入' : '待导入', unchanged: '原值相同 · 无需导入', rejected: '不能提交' };
+    const needle = search.trim().toLowerCase();
     const rows = data.rows.filter(row => (filter === 'all' || status(row) === filter) &&
-      (String(row.business_code || '') + ' ' + String(row.sequence || '')).toLowerCase().includes(search.trim().toLowerCase()));
+      (!needle || (String(row.business_code || '') + ' ' + String(row.sequence || '')).toLowerCase().includes(needle)));
     const pages = Math.max(1, Math.ceil(rows.length / 20)), current = Math.min(page, pages);
     const fields = !receipt && Object.fromEntries(data.columns.map(row => [row.key, row.label]));
     return <section className="rm-preview" aria-label={receipt ? '工时导入结果' : '工时导入预检'}>

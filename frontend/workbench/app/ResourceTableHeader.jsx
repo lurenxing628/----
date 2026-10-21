@@ -4,7 +4,6 @@
   function useResize({ columnKey, kind, scopeKey, width, disabled, onResize }, holder) {
     const drag = React.useRef(null), live = React.useRef(null), [measured, setMeasured] = React.useState(56), [moving, setMoving] = React.useState(false);
     live.current = { columnKey, kind, disabled, onResize };
-    const currentWidth = measured;
     function measure() {
       const th = holder.current && holder.current.closest('th');
       return Math.max(56, Math.round(th ? th.getBoundingClientRect().width : Number.isFinite(width) ? width : 56));
@@ -49,7 +48,7 @@
       else return;
       event.preventDefault(); event.stopPropagation(); onResize(Math.max(56, Math.round(next)));
     }
-    return { currentWidth, moving, start, keyboard };
+    return { currentWidth: measured, moving, start, keyboard };
   }
   function ResourceTableHeader({ column, kind, scope, adapter, sort, direction, sortActive, onSort, onFilter, filter = null, matchingCount, width, onResize, disabled = false, scopeTransform = M.toolbarScope, pageSize = 100 }) {
     const holder = React.useRef(null), [opened, setOpened] = React.useState(null);
@@ -65,7 +64,6 @@
     const current = opened && opened.identity === identity && !disabled;
     return <span ref={holder} className="wb-resource-th" data-column-key={column.key} data-sort-direction={sorted ? direction : undefined}
       style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0, width: '100%', position: 'relative', paddingRight: 5, boxSizing: 'border-box' }}>
-      {null}
       <span className="wb-th-sort-shell"><Button className="wb-th-sort" disabled={disabled || typeof onSort !== 'function'}
         title={column.title + '：' + (next === 'asc' ? '升序' : next === 'desc' ? '降序' : '恢复默认顺序')} aria-label={column.title + '排序'}
         style={{ justifyContent: column.numeric ? 'flex-end' : 'flex-start' }} onClick={event => { event.stopPropagation(); onSort(column.key, next); }}>

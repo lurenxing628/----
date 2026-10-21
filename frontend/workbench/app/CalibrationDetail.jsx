@@ -1,13 +1,16 @@
 (function () {
   'use strict';
-  const { Button, ErrorBox, Page, text, amount, hours, unitHours, writeReason } = window.CalibrationControls;
+  const { Button, ErrorBox, Page, text, amount, hours, unitHours } = window.CalibrationControls;
   const fields = [['actual_start', '实际开工'], ['actual_end', '本次结束'], ['completed_quantity', '完成数量'], ['effective_processing_hours', '有效加工工时（小时）'], ['remark', '备注']];
   // 工时列已在表头写明单位，格子里只放整形后的数字；其余项照原值显示。
   const cell = (key, value) => key === 'effective_processing_hours' ? amount(value) : text(value);
   function Refs({ rows }) {
     // 编号、版本号一律进折叠的「编号」区，正文只留人看得懂的内容。
-    const visible = rows.filter(([label]) => !/(编号|版本)$/.test(label));
-    const refs = Object.fromEntries(rows.filter(([label]) => /(编号|版本)$/.test(label)));
+    const visible = [], refs = {};
+    for (const row of rows) {
+      if (/(编号|版本)$/.test(row[0])) refs[row[0]] = row[1];
+      else visible.push(row);
+    }
     return <><dl className="ca-refs">{visible.map(([label, value]) => <React.Fragment key={label}><dt>{label}</dt><dd>{['实际开工', '本次结束', '登记时间', '生成时间', '数据截至'].includes(label) && value ? window.WorkbenchFormat.dateTime(value, { seconds: true }) : text(value)}</dd></React.Fragment>)}</dl>
       {!!Object.keys(refs).length && <window.WorkbenchReference entries={refs} />}</>;
   }
@@ -56,16 +59,17 @@
   }
   function Detail({ result, busy, error, selected, sampleRef, onSample, onClose, onRefresh, stale }) {
     const data = result && result.data, row = data && data.suggestion;
-    const groups = React.useMemo(() => data ? [
-      ['可用记录', 'selected', data.suggestion.sample_refs.map(ref => data.samples.find(sample => sample.sample_ref === ref))],
-      ['已关联但剔除', 'excluded', data.samples.filter(sample => sample.template_operation_ref !== null && !sample.selected)],
-      ['同零件未关联核对', 'unbound', data.samples.filter(sample => sample.template_operation_ref === null)]
-    ] : [], [data]);
-    const actions = <div className="ca-actions">
-        {!window.CalibrationAdoptionAction && <><Button icon="check" reason={writeReason}>采用</Button></>}
-        </div>;
+    const { groups, byRef } = React.useMemo(() => {
+      if (!data) return { groups: [], byRef: null };
+      const byRef = new Map(data.samples.map(sample => [sample.sample_ref, sample]));
+      return { byRef, groups: [
+        ['可用记录', 'selected', data.suggestion.sample_refs.map(ref => byRef.get(ref))],
+        ['已关联但剔除', 'excluded', data.samples.filter(sample => sample.template_operation_ref !== null && !sample.selected)],
+        ['同零件未关联核对', 'unbound', data.samples.filter(sample => sample.template_operation_ref === null)]
+      ] };
+    }, [data]);
     return <window.WorkbenchDetailPanel className="ca-detail" detailKey={selected} title={row ? row.part_no + ' · ' + row.sequence + ' ' + row.operation_label : '已选校准记录'}
-      subtitle="校准详情" actions={actions} onClose={onClose}>
+      subtitle="校准详情" onClose={onClose}>
       {!row && <Refs rows={[["已选记录编号", selected], ["已选完工记录编号", sampleRef]]} />}
       <ErrorBox error={error} />
       {(error || stale) && <Button icon="refresh-cw" onClick={onRefresh}>刷新所选记录</Button>}
@@ -80,7 +84,7 @@
           <ul>{row.exclusion_reasons.map((reason, index) => <li key={reason.code + ':' + index}>{reason.message}（{reason.count} 条记录）</li>)}</ul>
         </details>
         <h3>完工记录与来源核对</h3>
-        {sampleRef && !data.samples.some(sample => sample.sample_ref === sampleRef) && <><p className="ca-note">所选完工记录已不在当前结果中。</p><window.WorkbenchReference value={sampleRef} label="原选完工记录编号" /></>}
+        {sampleRef && !byRef.has(sampleRef) && <><p className="ca-note">所选完工记录已不在当前结果中。</p><window.WorkbenchReference value={sampleRef} label="原选完工记录编号" /></>}
         {groups.map(([label, kind, samples]) => <SampleGroup key={selected + kind} label={label} kind={kind} samples={samples} sampleRef={sampleRef} onSample={onSample} />)}
       </>}
     </window.WorkbenchDetailPanel>;

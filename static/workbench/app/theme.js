@@ -24,7 +24,7 @@
     }
   }
   function notify() {
-    listeners.slice().forEach(function (listener) {
+    listeners.forEach(function (listener) {
       listener({
         theme: current,
         error: error

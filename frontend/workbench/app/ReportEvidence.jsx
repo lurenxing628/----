@@ -101,7 +101,7 @@
       heading.className = 'wb-visually-hidden'; heading.textContent = caption;
       table.querySelectorAll('thead th').forEach(cell => cell.setAttribute('scope', 'col'));
       table.querySelectorAll('tr').forEach(row => {
-        Array.from(row.cells).forEach((cell, index) => {
+        Array.prototype.forEach.call(row.cells, (cell, index) => {
           cell.classList.toggle('rw-fixed-action', index === actionColumn);
           cell.classList.toggle('rw-fixed-key', actionColumn >= 0 && index === 0);
         });

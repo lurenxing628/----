@@ -50,7 +50,6 @@
       return () => { window.removeEventListener('storage', changed); window.removeEventListener(EVENT, changed); };
     }, []);
     function accept(value, original) {
-      A.receipt(value, original);
       const committed = { ...original, phase: 'committed', receipt: value };
       save(committed, original);
       if (mounted.current) { setSaved(committed); setError(''); setNotice(''); }

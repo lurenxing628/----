@@ -44,7 +44,10 @@
       const index = rows.findIndex(row => row.ref === focusRef);
       if (index >= 0) { setQuery(''); setNumber(Math.floor(index / size) + 1); }
     }, [rows, focusRef, size]);
-    const filtered = React.useMemo(() => rows.filter(row => !query || [row.sequence, row.label, row.op_type_label].some(item => String(item || '').toLowerCase().includes(query.toLowerCase()))), [rows, query]);
+    const filtered = React.useMemo(() => {
+      const needle = query.toLowerCase();
+      return !needle ? rows : rows.filter(row => [row.sequence, row.label, row.op_type_label].some(item => String(item || '').toLowerCase().includes(needle)));
+    }, [rows, query]);
     const pages = Math.max(1, Math.ceil(filtered.length / size)), page = Math.min(number, pages);
     return { query, setQuery: text => { setQuery(text); setNumber(1); }, setNumber, setSize: next => { setSize(next); setNumber(1); }, rows: filtered.slice((page - 1) * size, page * size),
       page: { number: page, size, total: filtered.length, pages, sort: [] } };
@@ -65,7 +68,7 @@
         <tbody>{paging.rows.map(row => <tr key={row.ref} data-process-location={row.ref} tabIndex={row.ref === focusRef ? -1 : undefined} aria-current={row.ref === focusRef ? 'true' : undefined}>
           <td>{row.start_sequence} 至 {row.end_sequence}{row.ref === focusRef && <window.WorkbenchReference value={row.ref} />}</td><td>{({ merged: '合并设置', separate: '分别设置' })[row.merge_mode] || value(row.merge_mode)}</td>
           <td>{onTotal && row.merge_mode === 'merged' && C.own(totals, row.ref) ? <input className="wt-in" type="number" step="any" min="0" aria-label={'外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 总周期'} value={totals[row.ref]} disabled={disabled} onChange={event => onTotal(row.ref, event.target.value)} style={{ width: '100%' }} /> : P.valueText(row.total_days)}</td>
-          <td>{value(row.supplier_label)}</td><td style={{ whiteSpace: 'pre-wrap' }}>{value(row.remark)}<Issues issues={row.issues || []} /></td>
+          <td>{value(row.supplier_label)}</td><td style={{ whiteSpace: 'pre-wrap' }}>{value(row.remark)}<Issues issues={row.issues} /></td>
           {onDiscard && <td>{changed.has(row.ref) ? <label><input type="checkbox" aria-label={'解除外协组 ' + row.start_sequence + ' 至 ' + row.end_sequence} checked={selected.has(row.ref)} disabled={disabled}
             onChange={event => onDiscard(event.target.checked ? discarded.concat(row.ref) : discarded.filter(ref => ref !== row.ref))} />明确解除</label> : '保持原组'}</td>}</tr>)}</tbody>
       </table></div><Pager paging={paging} disabled={disabled} /></> }</section>;

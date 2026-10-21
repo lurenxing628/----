@@ -29,7 +29,7 @@
   function Charts({ data, open, onChange, onDrill, resourceView, onResourceView, expanded = false }) {
     const { DistributionChart, TrendChart } = window.ReviewChartViews, { hoursText } = window.ReportTable, legacy = window.WorkbenchTerms.legacy_field_records;
     const points = data.charts.trend.map(row => ({ time: new Date(row.date + 'T00:00:00').getTime(), label: row.date,
-      planned: row.planned, actual: row.actual, unclosed: row.actual == null ? null : Math.max(0, row.planned - row.actual) }));
+      planned: row.planned, actual: row.actual }));
     const items = (rows, tone) => rows.map(row => ({ ...row, id: row.label, tone }));
     const body = <>
       <div className="er-overview-grid"><section className="er-section er-trend"><h3>计划与实际累计完工</h3><TrendChart points={points} label="范围内工序累计完工" /></section>

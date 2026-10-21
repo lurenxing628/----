@@ -6,10 +6,9 @@
     return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) + 'T' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
   }
   function previous(task) {
-    return task.execution.reports.filter(record => C.report(record)
-      && record.recorded_against_task_ref === task.task_ref && record.operation_ref === task.operation_ref
+    return task.execution.reports.filter(record => record.recorded_against_task_ref === task.task_ref
       && C.validTime(record.actual_end) && (record.actual_start === null || C.validTime(record.actual_start) && record.actual_start <= record.actual_end))
-      .slice().sort((a, b) => b.actual_end.localeCompare(a.actual_end) || b.report_no.localeCompare(a.report_no))[0] || null;
+      .sort((a, b) => b.actual_end.localeCompare(a.actual_end) || b.report_no.localeCompare(a.report_no))[0] || null;
   }
   function legacyTime(value) {
     // Match the preserved formats accepted by parse_operation_event_time.

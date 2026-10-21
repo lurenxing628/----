@@ -147,6 +147,6 @@
     return dateParts(current) ? current : monthParts(current) ? current + '-01'
       : dateParts(minimum) ? minimum : monthParts(minimum) ? minimum + '-01' : today();
   }
-  window.WorkbenchDatePickerModel = { types, pad, monthKey, dateKey, monthParts, dateParts, today, weekday,
-    moveDay, moveMonth, nativeField, factoryTime, nextInstant, hasShape, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed };
+  window.WorkbenchDatePickerModel = { pad, dateKey, monthParts, dateParts, today, weekday,
+    moveDay, moveMonth, factoryTime, nextInstant, validate, daySelectable, monthSelectable, precision, readTime, timeValue, seed };
 })();

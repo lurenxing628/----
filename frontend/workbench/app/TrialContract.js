@@ -132,7 +132,7 @@
       }
       if (d.base.candidate_ref && !d.scenario_ref) check(t.source_task_ref === null);
       check(['internal', 'external'].includes(t.source) && object(t.hours) && typeof t.changed === 'boolean'
-        && Array.isArray(t.predecessor_refs) && t.predecessor_refs.every(ref) && Array.isArray(t.predecessor_operation_refs)
+        && Array.isArray(t.predecessor_refs) && Array.isArray(t.predecessor_operation_refs)
         && object(t.edit_context) && typeof t.edit_context.can_change === 'boolean');
       if (d.status !== 'editing') check(t.edit_context.can_change === false);
       issues(t.issues); issues(t.data_gaps); issues(t.edit_context.blocked_reasons);
@@ -141,7 +141,6 @@
         if (!historyOwners.has(key)) historyOwners.set(key, t);
       });
     });
-    d.tasks.forEach(t => check(t.predecessor_refs.every(r => seen.has(r))));
     check(object(d.resources) && ['machines', 'operators', 'authorizations'].every(k => Array.isArray(d.resources[k])));
     ['machines', 'operators'].forEach(k => check(d.resources[k].every(r => ref(r.ref) && typeof r.business_code === 'string')));
     check(d.comparison.basis === 'draft_original' && Array.isArray(d.comparison.batches) && d.capacity.basis === 'selected_trial_only'
@@ -153,7 +152,7 @@
     const batches = d.comparison.batches, batchRefs = new Set(batches.map(r => r.batch_ref));
     deliverySummary(d.comparison.delivery_summary, batches.length);
     deliverySummary(d.comparison.before_delivery_summary, batches.length);
-    check(batchRefs.size === batches.length && d.tasks.every(t => batchRefs.has(t.batch_ref)));
+    check(batchRefs.size === batches.length);
     batches.forEach(r => {
       check(ref(r.batch_ref) && [r.baseline_finish, r.finish, r.partial_baseline_finish, r.partial_finish].every(v => v === null || time(v))
         && ['on_time', 'overdue', 'unknown', 'not_applicable'].includes(r.risk)
@@ -177,7 +176,8 @@
       check(object(r.calendar) && (r.calendar.windows === null || Array.isArray(r.calendar.windows))); issues(r.calendar.issues);
     });
     check(time(d.time_scope.start) && time(d.time_scope.end) && d.time_scope.selection === 'complete_base'
-      && d.tasks.every(t => t.start >= d.time_scope.start && t.end <= d.time_scope.end));
+      && d.tasks.every(t => t.predecessor_refs.every(r => seen.has(r)) && batchRefs.has(t.batch_ref)
+        && t.start >= d.time_scope.start && t.end <= d.time_scope.end));
     d.change_history.forEach(r => {
       const owner = historyOwners.get(r.task_ref);
       check(ref(r.change_ref) && ref(r.task_ref) && !!owner);
@@ -212,5 +212,5 @@
     }
     return v;
   }
-  window.TrialContract = { object, ref, count, fields, check, time, base, scope, target, origin, originTask, issues, validation, envelope, workspace, catalog, receipt };
+  window.TrialContract = { object, ref, count, check, time, base, scope, target, originTask, issues, validation, envelope, workspace, catalog, receipt };
 })();

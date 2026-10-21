@@ -21,7 +21,6 @@
     return <><span>{summary.state === 'not_applicable' ? '未指定交期，交期风险不适用' : C.states[summary.state] + (summary.risk_count === null ? ' · 总风险未知' : ' · ' + summary.risk_count + ' 项风险')}</span>
       {summary.risk_count === null && summary.known_risk_count > 0 && <small>已确认 {summary.known_risk_count} 项风险</small>}</>;
   }
-  const deliveryCoverage = summary => T.delivery_coverage({ ...summary, known_due_count: summary.assessed_count, unknown_due_count: summary.unknown_count });
   function Overview({ data, analysis, loading = false, error = null, analysisLoading = false, analysisError = null, onCategory, onAnalysis }) { return <div className="dy-metrics" role="region" aria-label="风险概览" aria-busy={loading || analysisLoading}>
     {(loading || analysisLoading) && <span className="wb-visually-hidden" role="status">正在读取风险概览</span>}
     {['delivery', 'pressure', 'actual', 'external', 'downtime', 'material', 'pending'].map(k => {
@@ -106,7 +105,7 @@
     <div className="dy-heading"><h3>{item.subject} · {C.categories[item.category]}</h3><div className="dy-tools"><Risk risk={item.risk} /><Status handling={item.handling} /></div></div>
     <p>{item.risk.message}</p><Facts handling={item.handling} /><Evidence source={item.source} /><div className="dy-tools">
       <Button reasonDisplay="inline" icon={item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen'} onClick={onHandle}>{item.handling.status === 'closed' ? '重新打开处置' : '登记处置'}</Button>
-      <Button reasonDisplay="inline" icon="history" onClick={onHistory}>查看处置历史</Button>{item.navigation.map((n, i) => <Button reasonDisplay="inline" key={i} icon="arrow-right" onClick={() => navigate(n, item)}>{n.view === 'outsourcing' ? '外协物流登记' : navigationLabels[n.view] || '未知跳转目标'}</Button>)}
+      <Button reasonDisplay="inline" icon="history" onClick={onHistory}>查看处置历史</Button>{item.navigation.map((n, i) => <Button reasonDisplay="inline" key={i} icon="arrow-right" onClick={() => navigate(n, item)}>{navigationLabels[n.view]}</Button>)}
       {item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && <Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ ...item.navigation[0], view: 'field' })}>{navigationLabels.field}</Button>}
     </div></section></window.WorkbenchDetailPanel>; }
   function NavigationConfirmation({ entry, error, onClose, onConfirm }) {
